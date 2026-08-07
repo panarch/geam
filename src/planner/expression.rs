@@ -3,6 +3,7 @@ mod block;
 mod call;
 mod case;
 mod constant;
+pub(in crate::planner) mod conversion;
 mod echo;
 mod function;
 mod operator;
@@ -18,9 +19,9 @@ use crate::plan::{
     PanicExpr, StringExpr, TupleExpr, ValueShape, ValueType,
 };
 use crate::planner::context::PlanContext;
-use crate::planner::error::{
-    InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-};
+#[cfg(test)]
+use crate::planner::error::InvalidExpressionType;
+use crate::planner::error::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
 use gleam_core::ast::TodoKind;
 use gleam_core::ast::TypedExpr;
 use gleam_core::strings::convert_string_escape_chars;
@@ -160,22 +161,11 @@ pub(super) fn plan_expr(
             context,
         ),
         TypedExpr::Invalid { .. } => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::Invalid,
-            },
+            reason: InvalidTypedAstReason::InvalidExpressionNode,
         }),
     }?;
     let expression = if shape.value_type() == expression.value_type() {
-        match expression.with_shape(shape.clone()) {
-            Some(expression) => expression,
-            None => {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::Invalid,
-                    },
-                });
-            }
-        }
+        conversion::refine_expression_shape(expression, shape.clone())?
     } else {
         expression
     };
@@ -225,14 +215,14 @@ pub(super) fn plan_expr_with_expected_source_stop_shape(
     }
 }
 
-pub(super) use call::UseAssignmentNormalization;
-
 pub(super) fn plan_use_call(
-    call: TypedExpr,
-    use_assignments: Vec<UseAssignmentNormalization>,
+    location: gleam_core::ast::SrcSpan,
+    type_: std::sync::Arc<gleam_core::type_::Type>,
+    fun: TypedExpr,
+    arguments: Vec<gleam_core::ast::CallArg<TypedExpr>>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    call::plan_use_call(call, use_assignments, context)
+    call::plan_use_call(location, type_, fun, arguments, context)
 }
 
 fn plan_todo_expr(
@@ -313,7 +303,7 @@ fn generated_todo_expr(
     if message.is_some() {
         return Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::Invalid,
+                kind: InvalidExpressionShapeKind::GeneratedTodoMessage,
             },
         });
     }
@@ -434,9 +424,10 @@ fn plan_tuple(
         ValueShape::Tuple(shape) => shape,
         actual => {
             return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Tuple,
-                    actual: InvalidExpressionType::from_value_type(actual.value_type()),
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::TupleType {
+                        actual: actual.value_type(),
+                    },
                 },
             });
         }
@@ -448,9 +439,11 @@ fn plan_tuple(
         .collect::<Vec<_>>();
     if elements.len() != expected_shape.len() {
         return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Tuple,
-                actual: InvalidExpressionType::Tuple,
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::TupleArity {
+                    expected: expected_shape.len(),
+                    actual: elements.len(),
+                },
             },
         });
     }
@@ -467,14 +460,10 @@ fn plan_tuple(
         .map(Expr::value_type)
         .collect::<Vec<_>>();
 
-    if expected_type != actual_type {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Tuple,
-                actual: InvalidExpressionType::Tuple,
-            },
-        });
-    }
+    conversion::validate_expression_value_type(
+        &ValueType::Tuple(expected_type.clone()),
+        &ValueType::Tuple(actual_type),
+    )?;
 
     Ok(Expr::tuple(TupleExpr::value(
         planned_elements,
@@ -490,9 +479,10 @@ fn plan_list(
 ) -> Result<Expr, PlanError> {
     let Some(list_element_type) = type_.list_type() else {
         return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::List,
-                actual: InvalidExpressionType::from_value_type(context.value_type(type_.as_ref())),
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ListType {
+                    actual: context.value_type(type_.as_ref()),
+                },
             },
         });
     };
@@ -508,67 +498,26 @@ fn plan_list(
         .collect::<Result<Vec<_>, _>>()?;
 
     let Some(tail) = tail else {
-        let list = match ListExpr::try_value(planned_elements, expected_element_type) {
-            Ok(list) => list,
-            Err(error) => {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::from_value_type(error.expected),
-                        actual: InvalidExpressionType::from_value_type(error.actual),
-                    },
-                });
-            }
-        };
+        let list = conversion::expect_value_type_result(
+            ListExpr::try_value(planned_elements, expected_element_type),
+            |error| (error.expected, error.actual),
+        )?;
         return Ok(Expr::list(list));
     };
 
-    let tail = plan_expr_with_expected_source_stop_shape(
+    let tail: ListExpr = conversion::expect_expression(plan_expr_with_expected_source_stop_shape(
         tail,
         ValueShape::List(Box::new(expected_item_shape.clone())),
         context,
-    )?;
-    let actual = tail.value_type();
-    let Some(tail) = tail.into_list() else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::List,
-                actual: InvalidExpressionType::from_value_type(actual),
-            },
-        });
-    };
+    )?)?;
 
-    let elements = match crate::plan::ListElements::from_exprs(
-        expected_element_type.clone(),
-        planned_elements,
-    ) {
-        Ok(elements) => elements,
-        Err(error) => {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::from_value_type(error.expected),
-                    actual: InvalidExpressionType::from_value_type(error.actual),
-                },
-            });
-        }
-    };
-    let elements = match crate::plan::ListSpreadElements::from_parts(elements, tail) {
-        Ok(elements) => elements,
-        Err(crate::plan::ListSpreadConstructionError::EmptyPrefix) => {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
-                },
-            });
-        }
-        Err(crate::plan::ListSpreadConstructionError::ElementTypeMismatch(_)) => {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::List,
-                    actual: InvalidExpressionType::List,
-                },
-            });
-        }
-    };
+    let elements = conversion::expect_value_type_result(
+        crate::plan::ListElements::from_exprs(expected_element_type, planned_elements),
+        |error| (error.expected, error.actual),
+    )?;
+    let elements = conversion::expect_list_spread(crate::plan::ListSpreadElements::from_parts(
+        elements, tail,
+    ))?;
     Ok(Expr::list(ListExpr::from_spread_elements(elements)))
 }
 
@@ -578,25 +527,8 @@ fn plan_tuple_index(
     tuple: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    #[cfg(target_pointer_width = "64")]
     let index = index as usize;
-    #[cfg(not(target_pointer_width = "64"))]
-    let index = usize::try_from(index).map_err(|_| PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionType {
-            expected: InvalidExpressionType::Tuple,
-            actual: InvalidExpressionType::Tuple,
-        },
-    })?;
-    let tuple = plan_expr(tuple, context)?;
-    let actual = expression_type(&tuple);
-    let Some(tuple) = tuple.into_tuple() else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Tuple,
-                actual,
-            },
-        });
-    };
+    let tuple: TupleExpr = conversion::expect_expression(plan_expr(tuple, context)?)?;
     let expected = context.value_type(type_.as_ref());
     tuple_index_expr(tuple, index, expected)
 }
@@ -608,21 +540,16 @@ pub(super) fn tuple_index_expr(
 ) -> Result<Expr, PlanError> {
     let Some(shape) = tuple.shape().get(index).cloned() else {
         return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::from_value_type(return_type),
-                actual: InvalidExpressionType::Tuple,
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::TupleIndex {
+                    index,
+                    available: tuple.shape().len(),
+                },
             },
         });
     };
     let actual = shape.value_type();
-    if actual != return_type {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::from_value_type(return_type),
-                actual: InvalidExpressionType::from_value_type(actual),
-            },
-        });
-    }
+    conversion::validate_expression_value_type(&return_type, &actual)?;
     Ok(Expr::tuple_index_shape(tuple, index, shape))
 }
 
@@ -634,14 +561,7 @@ pub(super) fn list_index_expr(
     let item_shape = list.item_shape().clone();
     let expected = ValueType::List(Box::new(return_type.clone()));
     let actual = list.element_type();
-    if item_shape.value_type() != return_type {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::from_value_type(expected),
-                actual: InvalidExpressionType::from_value_type(actual),
-            },
-        });
-    }
+    conversion::validate_expression_value_type(&return_type, &actual)?;
     Ok(match (item_shape, list) {
         (crate::plan::ValueShape::Parameter(_), ListExpr::Generic(list)) => {
             Expr::generic(GenericExpr::list_index(list, index))
@@ -709,9 +629,8 @@ pub(super) fn list_index_expr(
         }
         _ => {
             return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::from_value_type(expected),
-                    actual: InvalidExpressionType::from_value_type(actual),
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ListIndexShape { type_: expected },
                 },
             });
         }
@@ -822,16 +741,7 @@ fn plan_int_expr(
     context: &mut PlanContext<'_>,
 ) -> Result<IntExpr, PlanError> {
     let expression = plan_expr_with_expected_source_stop_type(expression, ValueType::Int, context)?;
-    let actual = expression_type(&expression);
-    match expression.into_int() {
-        Some(expression) => Ok(expression),
-        None => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Int,
-                actual,
-            },
-        }),
-    }
+    conversion::expect_expression(expression)
 }
 
 pub(super) fn plan_string_expr(
@@ -840,16 +750,7 @@ pub(super) fn plan_string_expr(
 ) -> Result<StringExpr, PlanError> {
     let expression =
         plan_expr_with_expected_source_stop_type(expression, ValueType::String, context)?;
-    let actual = expression_type(&expression);
-    match expression.into_string() {
-        Some(expression) => Ok(expression),
-        None => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::String,
-                actual,
-            },
-        }),
-    }
+    conversion::expect_expression(expression)
 }
 
 fn plan_float_expr(
@@ -858,16 +759,7 @@ fn plan_float_expr(
 ) -> Result<FloatExpr, PlanError> {
     let expression =
         plan_expr_with_expected_source_stop_type(expression, ValueType::Float, context)?;
-    let actual = expression_type(&expression);
-    match expression.into_float() {
-        Some(expression) => Ok(expression),
-        None => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Float,
-                actual,
-            },
-        }),
-    }
+    conversion::expect_expression(expression)
 }
 
 pub(super) fn plan_bool_expr(
@@ -876,18 +768,10 @@ pub(super) fn plan_bool_expr(
 ) -> Result<BoolExpr, PlanError> {
     let expression =
         plan_expr_with_expected_source_stop_type(expression, ValueType::Bool, context)?;
-    let actual = expression_type(&expression);
-    match expression.into_bool() {
-        Some(expression) => Ok(expression),
-        None => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Bool,
-                actual,
-            },
-        }),
-    }
+    conversion::expect_expression(expression)
 }
 
+#[cfg(test)]
 fn expression_type(expression: &Expr) -> InvalidExpressionType {
     InvalidExpressionType::from_value_type(expression.value_type())
 }
@@ -1087,11 +971,16 @@ pub fn main() {
         let mut refinement_mismatch = compile(source);
         let expression = main_final_expression_mut(&mut refinement_mismatch);
         set_expression_constructor_inferred_variant(expression, 1);
+        let choice = ValueType::Custom(CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Choice".into()),
+            Vec::new(),
+        ));
         assert_eq!(
             plan_module(refinement_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                reason: InvalidTypedAstReason::ExpressionShapeRefinement {
+                    expected: choice.clone(),
+                    actual: choice,
                 },
             }),
         );
@@ -1477,7 +1366,7 @@ pub fn main() -> Int {
                 ),
                 Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::Invalid,
+                        kind: InvalidExpressionShapeKind::GeneratedTodoMessage,
                     },
                 }),
             );
@@ -1540,9 +1429,7 @@ pub fn main() -> Int {
                 extra_information: None,
             })),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
-                },
+                reason: InvalidTypedAstReason::InvalidExpressionNode,
             }),
         );
     }
@@ -1554,9 +1441,7 @@ pub fn main() -> Int {
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
         let expected = PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::Invalid,
-            },
+            reason: InvalidTypedAstReason::InvalidExpressionNode,
         };
 
         assert_eq!(
@@ -1719,9 +1604,9 @@ pub fn main() -> Int {
         assert_eq!(
             super::list_index_expr(parameter_list, 2, ValueType::List(Box::new(ValueType::Int)),),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::List,
-                    actual: InvalidExpressionType::List,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::List(Box::new(ValueType::Int)),
+                    actual: ValueType::List(Box::new(ValueType::Parameter(parameter))),
                 },
             }),
         );
@@ -1846,9 +1731,9 @@ pub fn main() -> Int {
                 ValueType::External(second_shape.type_().clone()),
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::List,
-                    actual: InvalidExpressionType::External,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::External(second_shape.type_().clone()),
+                    actual: ValueType::External(first_shape.type_().clone()),
                 },
             }),
         );
@@ -2417,9 +2302,10 @@ pub fn main() {
                     elements: vec![typed_int_expr(1)],
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::Tuple,
-                        actual: InvalidExpressionType::Int,
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::TupleType {
+                            actual: ValueType::Int,
+                        },
                     },
                 },
             ),
@@ -2430,9 +2316,13 @@ pub fn main() {
                     elements: vec![typed_int_expr(1)],
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::Tuple,
-                        actual: InvalidExpressionType::Custom,
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::TupleType {
+                            actual: ValueType::Custom(CustomType::new(
+                                CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
+                                vec![ValueType::Int, ValueType::Nil],
+                            )),
+                        },
                     },
                 },
             ),
@@ -2443,9 +2333,10 @@ pub fn main() {
                     elements: vec![typed_int_expr(1)],
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::Tuple,
-                        actual: InvalidExpressionType::TypeParameter,
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::TupleType {
+                            actual: ValueType::Parameter(TypeParameterId(0)),
+                        },
                     },
                 },
             ),
@@ -2456,9 +2347,9 @@ pub fn main() {
                     elements: vec![typed_int_expr(1)],
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::Tuple,
-                        actual: InvalidExpressionType::Tuple,
+                    reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                        expected: ValueType::Tuple(vec![ValueType::List(Box::new(ValueType::Int))]),
+                        actual: ValueType::Tuple(vec![ValueType::Int]),
                     },
                 },
             ),
@@ -2469,9 +2360,9 @@ pub fn main() {
                     elements: vec![typed_int_expr(1)],
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::Tuple,
-                        actual: InvalidExpressionType::Tuple,
+                    reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                        expected: ValueType::Tuple(vec![ValueType::String]),
+                        actual: ValueType::Tuple(vec![ValueType::Int]),
                     },
                 },
             ),
@@ -2482,9 +2373,11 @@ pub fn main() {
                     elements: vec![typed_int_expr(1), typed_int_expr(2)],
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::Tuple,
-                        actual: InvalidExpressionType::Tuple,
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::TupleArity {
+                            expected: 1,
+                            actual: 2,
+                        },
                     },
                 },
             ),
@@ -2495,9 +2388,7 @@ pub fn main() {
                     elements: vec![invalid_expr(type_::int())],
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::Invalid,
-                    },
+                    reason: InvalidTypedAstReason::InvalidExpressionNode,
                 },
             ),
             (
@@ -2522,9 +2413,9 @@ pub fn main() {
                     tuple: Box::new(typed_tuple_expr(tuple_int.clone(), vec![typed_int_expr(1)])),
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::List,
-                        actual: InvalidExpressionType::Int,
+                    reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                        expected: ValueType::List(Box::new(ValueType::Int)),
+                        actual: ValueType::Int,
                     },
                 },
             ),
@@ -2536,9 +2427,11 @@ pub fn main() {
                     tuple: Box::new(typed_tuple_expr(tuple_int.clone(), vec![typed_int_expr(1)])),
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::Int,
-                        actual: InvalidExpressionType::Tuple,
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::TupleIndex {
+                            index: 1,
+                            available: 1,
+                        },
                     },
                 },
             ),
@@ -2550,9 +2443,12 @@ pub fn main() {
                     tuple: Box::new(typed_tuple_expr(tuple_int.clone(), vec![typed_int_expr(1)])),
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::Custom,
-                        actual: InvalidExpressionType::Int,
+                    reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                        expected: ValueType::Custom(CustomType::new(
+                            CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
+                            vec![ValueType::Int, ValueType::Nil],
+                        )),
+                        actual: ValueType::Int,
                     },
                 },
             ),
@@ -2564,9 +2460,9 @@ pub fn main() {
                     tuple: Box::new(typed_tuple_expr(tuple_int.clone(), vec![typed_int_expr(1)])),
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::TypeParameter,
-                        actual: InvalidExpressionType::Int,
+                    reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                        expected: ValueType::Parameter(TypeParameterId(0)),
+                        actual: ValueType::Int,
                     },
                 },
             ),
@@ -2578,9 +2474,9 @@ pub fn main() {
                     tuple: Box::new(typed_tuple_expr(tuple_int, vec![typed_int_expr(1)])),
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::String,
-                        actual: InvalidExpressionType::Int,
+                    reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                        expected: ValueType::String,
+                        actual: ValueType::Int,
                     },
                 },
             ),
@@ -2592,9 +2488,7 @@ pub fn main() {
                     tuple: Box::new(invalid_expr(type_::tuple(vec![type_::int()]))),
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::Invalid,
-                    },
+                    reason: InvalidTypedAstReason::InvalidExpressionNode,
                 },
             ),
         ];
@@ -2618,9 +2512,10 @@ pub fn main() {
                     tail: None,
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::List,
-                        actual: InvalidExpressionType::Int,
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ListType {
+                            actual: ValueType::Int,
+                        },
                     },
                 },
             ),
@@ -2632,9 +2527,13 @@ pub fn main() {
                     tail: None,
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::List,
-                        actual: InvalidExpressionType::Custom,
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ListType {
+                            actual: ValueType::Custom(CustomType::new(
+                                CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
+                                vec![ValueType::Int, ValueType::Nil],
+                            )),
+                        },
                     },
                 },
             ),
@@ -2646,9 +2545,10 @@ pub fn main() {
                     tail: None,
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::List,
-                        actual: InvalidExpressionType::TypeParameter,
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ListType {
+                            actual: ValueType::Parameter(TypeParameterId(0)),
+                        },
                     },
                 },
             ),
@@ -2660,9 +2560,9 @@ pub fn main() {
                     tail: None,
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::String,
-                        actual: InvalidExpressionType::Int,
+                    reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                        expected: ValueType::String,
+                        actual: ValueType::Int,
                     },
                 },
             ),
@@ -2680,7 +2580,7 @@ pub fn main() {
                 },
                 PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::Invalid,
+                        kind: InvalidExpressionShapeKind::ListSpreadEmptyPrefix,
                     },
                 },
             ),
@@ -2697,9 +2597,9 @@ pub fn main() {
                     })),
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::String,
-                        actual: InvalidExpressionType::Int,
+                    reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                        expected: ValueType::String,
+                        actual: ValueType::Int,
                     },
                 },
             ),
@@ -2711,9 +2611,7 @@ pub fn main() {
                     tail: None,
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::Invalid,
-                    },
+                    reason: InvalidTypedAstReason::InvalidExpressionNode,
                 },
             ),
             (
@@ -2724,9 +2622,7 @@ pub fn main() {
                     tail: Some(Box::new(invalid_expr(type_::list(type_::int())))),
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::Invalid,
-                    },
+                    reason: InvalidTypedAstReason::InvalidExpressionNode,
                 },
             ),
             (
@@ -2756,9 +2652,9 @@ pub fn main() {
                     })),
                 },
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::List,
-                        actual: InvalidExpressionType::List,
+                    reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                        expected: ValueType::Int,
+                        actual: ValueType::String,
                     },
                 },
             ),
@@ -2893,30 +2789,55 @@ pub fn main() {
             super::list_index_expr(
                 ListExpr::value(
                     Vec::new(),
-                    ValueType::Function(Box::new(actual_function_type)),
+                    ValueType::Function(Box::new(actual_function_type.clone())),
                 ),
                 0,
-                ValueType::Function(Box::new(expected_function_type)),
+                ValueType::Function(Box::new(expected_function_type.clone())),
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::List,
-                    actual: InvalidExpressionType::Function,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::Function(Box::new(expected_function_type)),
+                    actual: ValueType::Function(Box::new(actual_function_type)),
                 },
             }),
         );
     }
 
     #[test]
-    fn reject_margin_list_index_rejects_facade_and_shape_family_conflict() {
+    fn reject_margin_list_index_distinguishes_value_type_and_shape_family_conflicts() {
         let list = ListExpr::value(Vec::new(), ValueType::Int).with_item_shape(ValueShape::String);
 
         assert_eq!(
-            super::list_index_expr(list, 0, ValueType::String),
+            super::list_index_expr(list.clone(), 0, ValueType::String),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::List,
-                    actual: InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::String,
+                    actual: ValueType::Int,
+                },
+            }),
+        );
+        assert_eq!(
+            super::list_index_expr(list, 0, ValueType::Int),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ListIndexShape {
+                        type_: ValueType::List(Box::new(ValueType::Int)),
+                    },
+                },
+            }),
+        );
+
+        let parameter = TypeParameterId(0);
+        let item_type = ValueType::List(Box::new(ValueType::Parameter(parameter)));
+        let parameter_list = ListExpr::value(Vec::new(), item_type.clone())
+            .with_item_shape(ValueShape::List(Box::new(ValueShape::Int)));
+        assert_eq!(
+            super::list_index_expr(parameter_list, 0, item_type.clone()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ListIndexShape {
+                        type_: ValueType::List(Box::new(item_type)),
+                    },
                 },
             }),
         );

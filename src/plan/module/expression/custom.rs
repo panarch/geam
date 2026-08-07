@@ -36,6 +36,7 @@ pub(crate) struct CustomLocalExpr {
     value: CustomExpr,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CustomArgumentCountMismatch {
     pub(crate) expected: usize,
@@ -183,21 +184,18 @@ impl CustomExpr {
     }
 
     #[cfg(test)]
-    pub(crate) fn try_function_call(
-        function: CustomFunctionExpr,
-        args: Vec<CallArg>,
-    ) -> Result<Self, CustomArgumentCountMismatch> {
-        Self::try_function_call_at(function, args, crate::plan::HostCallSite::unknown())
+    pub(crate) fn function_call(function: CustomFunctionExpr, args: Vec<CallArg>) -> Self {
+        Self::function_call_at(function, args, crate::plan::HostCallSite::unknown())
     }
 
-    pub(crate) fn try_function_call_at(
+    pub(crate) fn function_call_at(
         function: CustomFunctionExpr,
         args: Vec<CallArg>,
         site: crate::plan::HostCallSite,
-    ) -> Result<Self, CustomArgumentCountMismatch> {
+    ) -> Self {
         let shape = function.custom_function_type().return_().clone();
-        CustomFunctionCall::try_new(function, args, site)
-            .map(|call| Self::new(shape, CustomExprKind::FunctionCall(call)))
+        let call = CustomFunctionCall::new(function, args, site);
+        Self::new(shape, CustomExprKind::FunctionCall(call))
     }
 
     pub(crate) fn tuple_index_shape(
@@ -349,13 +347,16 @@ impl CustomLocalExpr {
 }
 
 impl CustomBoolCaseBranches {
-    pub(crate) fn try_new(true_: CustomExpr, false_: CustomExpr) -> Option<Self> {
-        let shape = true_.shape.merge(&false_.shape)?;
-        Some(Self {
+    pub(crate) fn from_resolved_shape(
+        shape: CustomValueShape,
+        true_: CustomExpr,
+        false_: CustomExpr,
+    ) -> Self {
+        Self {
             shape,
             true_: true_.kind,
             false_: false_.kind,
-        })
+        }
     }
 
     fn into_parts(self) -> (CustomValueShape, CustomExprKind, CustomExprKind) {
@@ -364,21 +365,19 @@ impl CustomBoolCaseBranches {
 }
 
 impl<Pattern> CustomCaseBranches<Pattern> {
-    pub(crate) fn try_new(
+    pub(crate) fn from_resolved_shape(
+        shape: CustomValueShape,
         clauses: Vec<(Pattern, CustomExpr)>,
         fallback: CustomExpr,
-    ) -> Option<Self> {
-        let mut shape = fallback.shape.clone();
-        let mut bodies = Vec::with_capacity(clauses.len());
-        for (pattern, branch) in clauses {
-            shape = shape.merge(&branch.shape)?;
-            bodies.push((pattern, branch.kind));
-        }
-        Some(Self {
+    ) -> Self {
+        Self {
             shape,
-            clauses: bodies,
+            clauses: clauses
+                .into_iter()
+                .map(|(pattern, branch)| (pattern, branch.kind))
+                .collect(),
             fallback: fallback.kind,
-        })
+        }
     }
 
     fn into_parts(
@@ -407,6 +406,14 @@ pub(super) fn custom_constructor_shape(constructor: &CustomConstructor) -> Custo
 }
 
 impl CustomConstruction {
+    pub(crate) fn from_validated(constructor: CustomConstructor, fields: Vec<super::Expr>) -> Self {
+        Self {
+            constructor,
+            fields: fields.into_boxed_slice(),
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn try_new(
         constructor: CustomConstructor,
         fields: Vec<super::Expr>,
@@ -418,10 +425,7 @@ impl CustomConstruction {
             });
         }
 
-        Ok(Self {
-            constructor,
-            fields: fields.into_boxed_slice(),
-        })
+        Ok(Self::from_validated(constructor, fields))
     }
 
     pub(crate) fn constructor(&self) -> &CustomConstructor {
@@ -434,26 +438,18 @@ impl CustomConstruction {
 }
 
 impl CustomFunctionCall {
-    pub(crate) fn try_new(
+    pub(crate) fn new(
         function: CustomFunctionExpr,
         arguments: Vec<CallArg>,
         site: crate::plan::HostCallSite,
-    ) -> Result<Self, CustomArgumentCountMismatch> {
-        let expected = function.custom_function_type().argument_types().len();
-        if expected != arguments.len() {
-            return Err(CustomArgumentCountMismatch {
-                expected,
-                actual: arguments.len(),
-            });
-        }
-
-        Ok(Self {
+    ) -> Self {
+        Self {
             function: Box::new(function),
             arguments: CustomCallArguments {
                 values: arguments.into_boxed_slice(),
             },
             site,
-        })
+        }
     }
 
     pub(crate) fn function(&self) -> &CustomFunctionExpr {
@@ -511,10 +507,10 @@ mod tests {
         assert_eq!(expression.type_(), &type_);
         assert_eq!(
             expression.kind(),
-            &CustomExprKind::Constructor(
-                super::CustomConstruction::try_new(constructor, vec![field])
-                    .expect("exact custom construction should be valid"),
-            ),
+            &CustomExprKind::Constructor(super::CustomConstruction::from_validated(
+                constructor,
+                vec![field]
+            ),),
         );
     }
 
@@ -525,21 +521,20 @@ mod tests {
             Vec::new(),
         );
         let constructor = CustomConstructor::new(type_.clone(), "Empty".into(), 0, Vec::new());
-        let expression = CustomExpr::try_constructor(constructor.clone(), Vec::new())
-            .expect("zero-field custom construction should be valid");
+        let expression = validated_custom_expr(constructor.clone(), Vec::new());
 
         assert_eq!(expression.type_(), &type_);
         assert_eq!(
             expression.kind(),
-            &CustomExprKind::Constructor(
-                super::CustomConstruction::try_new(constructor, Vec::new())
-                    .expect("zero-field custom construction should be valid"),
-            ),
+            &CustomExprKind::Constructor(super::CustomConstruction::from_validated(
+                constructor,
+                Vec::new()
+            ),),
         );
     }
 
     #[test]
-    fn custom_function_call_owns_an_exact_argument_pack() {
+    fn custom_function_call_owns_its_validated_argument_pack() {
         let type_ = CustomType::new(
             CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
             Vec::new(),
@@ -553,68 +548,15 @@ mod tests {
         let function = CustomFunctionExpr::constructor(constructor);
         let argument = CallArg::new(crate::plan::Expr::int(IntExpr::value(1.into())));
 
-        assert_eq!(
-            CustomExpr::try_function_call(function.clone(), Vec::new()),
-            Err(CustomArgumentCountMismatch {
-                expected: 1,
-                actual: 0,
-            }),
-        );
-        assert_eq!(
-            CustomExpr::try_function_call(
-                function.clone(),
-                vec![argument.clone(), argument.clone()],
-            ),
-            Err(CustomArgumentCountMismatch {
-                expected: 1,
-                actual: 2,
-            }),
-        );
-
-        let expression = CustomExpr::try_function_call(function.clone(), vec![argument.clone()])
-            .expect("exact custom function call should be valid");
+        let expression = CustomExpr::function_call(function.clone(), vec![argument.clone()]);
         assert_eq!(expression.type_(), &type_);
         assert_eq!(
             expression.kind(),
-            &CustomExprKind::FunctionCall(
-                super::CustomFunctionCall::try_new(
-                    function,
-                    vec![argument],
-                    crate::plan::HostCallSite::unknown(),
-                )
-                .expect("exact custom function call should be valid"),
-            ),
-        );
-    }
-
-    #[test]
-    fn custom_case_branch_owners_reject_incompatible_nominal_types() {
-        let boxed = CustomType::new(
-            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
-            Vec::new(),
-        );
-        let other = CustomType::new(
-            CustomTypeName::new("geam".into(), "main".into(), "Other".into()),
-            Vec::new(),
-        );
-        let boxed = CustomExpr::try_constructor(
-            CustomConstructor::new(boxed, "Boxed".into(), 0, Vec::new()),
-            Vec::new(),
-        )
-        .expect("zero-field custom construction should be valid");
-        let other = CustomExpr::try_constructor(
-            CustomConstructor::new(other, "Other".into(), 0, Vec::new()),
-            Vec::new(),
-        )
-        .expect("zero-field custom construction should be valid");
-
-        assert_eq!(
-            super::CustomBoolCaseBranches::try_new(boxed.clone(), other.clone()),
-            None,
-        );
-        assert_eq!(
-            super::CustomCaseBranches::try_new(vec![(1, boxed.clone()), (2, other)], boxed,),
-            None,
+            &CustomExprKind::FunctionCall(super::CustomFunctionCall::new(
+                function,
+                vec![argument],
+                crate::plan::HostCallSite::unknown(),
+            ),),
         );
     }
 
@@ -625,18 +567,15 @@ mod tests {
             Vec::new(),
         );
         let constructor = CustomConstructor::new(type_.clone(), "Boxed".into(), 0, Vec::new());
-        let branch = CustomExpr::try_constructor(constructor.clone(), Vec::new())
-            .expect("zero-field custom construction should be valid");
+        let branch = validated_custom_expr(constructor.clone(), Vec::new());
         let shape = branch.shape().clone();
-        let fallback = CustomExpr::try_constructor(constructor.clone(), Vec::new())
-            .expect("zero-field custom construction should be valid");
+        let fallback = validated_custom_expr(constructor.clone(), Vec::new());
 
         let expression = CustomExpr::block(
             Vec::new(),
             CustomExpr::bool_case(
                 crate::plan::BoolExpr::value(true),
-                super::CustomBoolCaseBranches::try_new(branch, fallback)
-                    .expect("matching custom branches should be valid"),
+                super::CustomBoolCaseBranches::from_resolved_shape(shape.clone(), branch, fallback),
             ),
         );
 
@@ -649,16 +588,23 @@ mod tests {
                     return_: Box::new(CustomExprKind::BoolCase {
                         subject: Box::new(crate::plan::BoolExpr::value(true)),
                         true_: Box::new(CustomExprKind::Constructor(
-                            super::CustomConstruction::try_new(constructor.clone(), Vec::new())
-                                .expect("zero-field custom construction should be valid"),
+                            super::CustomConstruction::from_validated(
+                                constructor.clone(),
+                                Vec::new(),
+                            ),
                         )),
                         false_: Box::new(CustomExprKind::Constructor(
-                            super::CustomConstruction::try_new(constructor, Vec::new())
-                                .expect("zero-field custom construction should be valid"),
+                            super::CustomConstruction::from_validated(constructor, Vec::new()),
                         )),
                     }),
                 },
             ),
         );
+    }
+
+    fn validated_custom_expr(constructor: CustomConstructor, fields: Vec<Expr>) -> CustomExpr {
+        let shape = super::custom_constructor_shape(&constructor);
+        let construction = super::CustomConstruction::from_validated(constructor, fields);
+        CustomExpr::from_construction(shape, construction)
     }
 }

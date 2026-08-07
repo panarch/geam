@@ -2370,11 +2370,10 @@ mod tests {
         let custom_function_type =
             plan::CustomFunctionType::from_shapes(Vec::new(), boxed_parameter_shape.clone());
         let custom_expressions = [
-            plan::CustomExpr::try_function_call(
+            plan::CustomExpr::function_call(
                 plan::CustomFunctionExpr::panic(source_stop(), custom_function_type),
                 Vec::new(),
-            )
-            .expect("the zero-argument custom function call is exact"),
+            ),
             plan::CustomExpr::tuple_index_shape(
                 plan::TupleExpr::value(
                     vec![plan::Expr::int(plan::IntExpr::value(1.into()))],
@@ -2466,18 +2465,27 @@ mod tests {
         let custom_bool_cases = [
             plan::CustomExpr::bool_case(
                 plan::BoolExpr::panic(source_stop()),
-                plan::CustomBoolCaseBranches::try_new(custom_local(), custom_local())
-                    .expect("matching custom branches should form a Bool case"),
+                plan::CustomBoolCaseBranches::from_resolved_shape(
+                    boxed_shape.clone(),
+                    custom_local(),
+                    custom_local(),
+                ),
             ),
             plan::CustomExpr::bool_case(
                 plan::BoolExpr::value(true),
-                plan::CustomBoolCaseBranches::try_new(custom_stop(), custom_local())
-                    .expect("matching custom branches should form a Bool case"),
+                plan::CustomBoolCaseBranches::from_resolved_shape(
+                    boxed_shape.clone(),
+                    custom_stop(),
+                    custom_local(),
+                ),
             ),
             plan::CustomExpr::bool_case(
                 plan::BoolExpr::value(false),
-                plan::CustomBoolCaseBranches::try_new(custom_local(), custom_stop())
-                    .expect("matching custom branches should form a Bool case"),
+                plan::CustomBoolCaseBranches::from_resolved_shape(
+                    boxed_shape.clone(),
+                    custom_local(),
+                    custom_stop(),
+                ),
             ),
         ];
         let tuple_switches = [
@@ -2515,39 +2523,51 @@ mod tests {
         let custom_switches = [
             plan::CustomExpr::int_case(
                 plan::IntExpr::panic(source_stop()),
-                plan::CustomCaseBranches::try_new(vec![(1.into(), custom_local())], custom_stop())
-                    .expect("matching custom branches should form an Int case"),
+                plan::CustomCaseBranches::from_resolved_shape(
+                    boxed_shape.clone(),
+                    vec![(1.into(), custom_local())],
+                    custom_stop(),
+                ),
             ),
             plan::CustomExpr::int_case(
                 plan::IntExpr::value(1.into()),
-                plan::CustomCaseBranches::try_new(vec![(1.into(), custom_local())], custom_stop())
-                    .expect("matching custom branches should form an Int case"),
+                plan::CustomCaseBranches::from_resolved_shape(
+                    boxed_shape.clone(),
+                    vec![(1.into(), custom_local())],
+                    custom_stop(),
+                ),
             ),
             plan::CustomExpr::string_case(
                 plan::StringExpr::panic(source_stop()),
-                plan::CustomCaseBranches::try_new(
+                plan::CustomCaseBranches::from_resolved_shape(
+                    boxed_shape.clone(),
                     vec![("one".into(), custom_local())],
                     custom_stop(),
-                )
-                .expect("matching custom branches should form a String case"),
+                ),
             ),
             plan::CustomExpr::string_case(
                 plan::StringExpr::value("one".into()),
-                plan::CustomCaseBranches::try_new(
+                plan::CustomCaseBranches::from_resolved_shape(
+                    boxed_shape.clone(),
                     vec![("one".into(), custom_local())],
                     custom_stop(),
-                )
-                .expect("matching custom branches should form a String case"),
+                ),
             ),
             plan::CustomExpr::float_case(
                 plan::FloatExpr::panic(source_stop()),
-                plan::CustomCaseBranches::try_new(vec![(1.0, custom_local())], custom_stop())
-                    .expect("matching custom branches should form a Float case"),
+                plan::CustomCaseBranches::from_resolved_shape(
+                    boxed_shape.clone(),
+                    vec![(1.0, custom_local())],
+                    custom_stop(),
+                ),
             ),
             plan::CustomExpr::float_case(
                 plan::FloatExpr::value(1.0),
-                plan::CustomCaseBranches::try_new(vec![(1.0, custom_local())], custom_stop())
-                    .expect("matching custom branches should form a Float case"),
+                plan::CustomCaseBranches::from_resolved_shape(
+                    boxed_shape.clone(),
+                    vec![(1.0, custom_local())],
+                    custom_stop(),
+                ),
             ),
         ];
         let (mut graph, _) = DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());

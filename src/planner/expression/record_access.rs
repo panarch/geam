@@ -1,7 +1,10 @@
-use super::{expression_type, plan_expr};
-use crate::plan::Expr;
+use super::{
+    conversion::{expect_expression, refine_value_shape},
+    plan_expr,
+};
+use crate::plan::{CustomExpr, Expr};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
+use crate::planner::error::PlanError;
 use ecow::EcoString;
 use gleam_core::ast::TypedExpr;
 use gleam_core::type_::Type;
@@ -25,36 +28,13 @@ pub(super) fn plan_from_expr(
     record: Expr,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    #[cfg(target_pointer_width = "64")]
     let index = index as usize;
-    #[cfg(not(target_pointer_width = "64"))]
-    let index = usize::try_from(index).map_err(|_| PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionType {
-            expected: InvalidExpressionType::Custom,
-            actual: InvalidExpressionType::Custom,
-        },
-    })?;
 
-    let actual = expression_type(&record);
-    let Some(record) = record.into_custom() else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Custom,
-                actual,
-            },
-        });
-    };
+    let record: CustomExpr = expect_expression(record)?;
     let expected_shape = context.value_shape(type_.as_ref());
     let expected = expected_shape.value_type();
     let (access, source_shape) = context.custom_field_access(record, index, label, &expected)?;
-    let Some(resolved_shape) = source_shape.refine(&expected_shape) else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::from_value_type(expected),
-                actual: InvalidExpressionType::from_value_type(source_shape.value_type()),
-            },
-        });
-    };
+    let resolved_shape = refine_value_shape(source_shape, expected_shape)?;
 
     Ok(Expr::custom_field_shape(access, resolved_shape))
 }
@@ -109,9 +89,7 @@ mod tests {
                 &mut context,
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: crate::planner::InvalidExpressionShapeKind::Invalid,
-                },
+                reason: InvalidTypedAstReason::InvalidExpressionNode,
             }),
         );
         assert_eq!(
@@ -139,8 +117,14 @@ mod tests {
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Generic".into(),
-                    reason: InvalidCustomTypeReason::FieldType,
+                    reason: Box::new(InvalidCustomTypeReason::FieldType {
+                        index: 0,
+                        expected: ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                        actual: ValueType::Int,
+                    }),
                 },
             }),
         );
@@ -158,7 +142,7 @@ mod tests {
             ),
             Err(custom_error(
                 &missing,
-                InvalidCustomTypeReason::UnknownDefinition,
+                InvalidCustomTypeReason::MissingDefinition,
             )),
         );
     }
@@ -191,7 +175,7 @@ mod tests {
             ),
             Err(custom_error(
                 &missing,
-                InvalidCustomTypeReason::UnknownDefinition,
+                InvalidCustomTypeReason::MissingDefinition,
             )),
         );
         assert_eq!(
@@ -203,7 +187,10 @@ mod tests {
             ),
             Err(custom_error(
                 &generic_without_arguments,
-                InvalidCustomTypeReason::TypeArgumentCount,
+                InvalidCustomTypeReason::TypeArgumentCount {
+                    expected: 1,
+                    actual: 0,
+                },
             )),
         );
         assert_eq!(
@@ -225,7 +212,10 @@ mod tests {
             ),
             Err(custom_error(
                 &generic_int,
-                InvalidCustomTypeReason::ConstructorIndex,
+                InvalidCustomTypeReason::ConstructorIndex {
+                    index: 1,
+                    available: 1,
+                },
             )),
         );
         assert_eq!(
@@ -237,7 +227,10 @@ mod tests {
             ),
             Err(custom_error(
                 &generic_int,
-                InvalidCustomTypeReason::FieldIndex,
+                InvalidCustomTypeReason::FieldIndex {
+                    index: 1,
+                    available: 1,
+                },
             )),
         );
         assert_eq!(
@@ -249,7 +242,11 @@ mod tests {
             ),
             Err(custom_error(
                 &generic_int,
-                InvalidCustomTypeReason::FieldLabel,
+                InvalidCustomTypeReason::FieldLabel {
+                    index: 0,
+                    expected: Some("value".into()),
+                    actual: Some("wrong".into()),
+                },
             )),
         );
         assert_eq!(
@@ -261,7 +258,11 @@ mod tests {
             ),
             Err(custom_error(
                 &generic_int,
-                InvalidCustomTypeReason::FieldType,
+                InvalidCustomTypeReason::FieldType {
+                    index: 0,
+                    expected: ValueType::String,
+                    actual: ValueType::Int,
+                },
             )),
         );
 
@@ -296,7 +297,10 @@ mod tests {
             ),
             Err(custom_error(
                 &broken,
-                InvalidCustomTypeReason::ParameterType,
+                InvalidCustomTypeReason::TemplateParameterIndex {
+                    index: 1,
+                    available: 1,
+                },
             )),
         );
 
@@ -340,7 +344,10 @@ mod tests {
             ),
             Err(custom_error(
                 &partially_broken,
-                InvalidCustomTypeReason::ParameterType,
+                InvalidCustomTypeReason::TemplateParameterIndex {
+                    index: 1,
+                    available: 1,
+                },
             )),
         );
     }
@@ -396,7 +403,13 @@ mod tests {
                 Some("value".into()),
                 &ValueType::Int,
             ),
-            Err(custom_error(&empty, InvalidCustomTypeReason::FieldIndex,)),
+            Err(custom_error(
+                &empty,
+                InvalidCustomTypeReason::FieldIndex {
+                    index: 0,
+                    available: 0,
+                },
+            )),
         );
 
         let choice = CustomType::new(
@@ -430,9 +443,15 @@ mod tests {
                 source,
                 0,
                 Some("value".into()),
-                &ValueType::Function(Box::new(function_type)),
+                &ValueType::Function(Box::new(function_type.clone())),
             ),
-            Err(custom_error(&shared, InvalidCustomTypeReason::FieldType,)),
+            Err(custom_error(
+                &shared,
+                InvalidCustomTypeReason::FieldShapeConflict {
+                    index: 0,
+                    type_: ValueType::Function(Box::new(function_type)),
+                },
+            )),
         );
     }
 
@@ -486,9 +505,9 @@ mod tests {
         assert_eq!(
             plan_from_expr(expected, Some("value".into()), 0, source, &mut context,),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Custom,
-                    actual: InvalidExpressionType::Custom,
+                reason: InvalidTypedAstReason::ExpressionShapeRefinement {
+                    expected: ValueType::Custom(choice.clone()),
+                    actual: ValueType::Custom(choice),
                 },
             }),
         );
@@ -547,8 +566,10 @@ mod tests {
     fn custom_error(type_: &CustomType, reason: InvalidCustomTypeReason) -> PlanError {
         PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::CustomType {
+                package: type_.type_name().package().clone(),
+                module: type_.type_name().module().clone(),
                 name: type_.type_name().name().clone(),
-                reason,
+                reason: Box::new(reason),
             },
         }
     }

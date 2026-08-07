@@ -44,7 +44,7 @@ fn plan_custom_type(
     }
 
     let name = CustomTypeName::new(package.clone(), module.clone(), type_.name.clone());
-    let parameter_ids = parameter_ids(&type_)?;
+    let parameter_ids = parameter_ids(&type_, &name)?;
     let parameters = (0..type_.typed_parameters.len())
         .map(CustomTypeParameterId)
         .collect();
@@ -53,15 +53,22 @@ fn plan_custom_type(
         .into_iter()
         .enumerate()
         .map(|(index, constructor)| {
+            let constructor_name = constructor.name.clone();
             let fields = constructor
                 .arguments
                 .into_iter()
-                .map(|field| {
+                .enumerate()
+                .map(|(field_index, field)| {
                     let type_ = type_template(field.type_.as_ref(), &parameter_ids, external_types)
                         .ok_or_else(|| PlanError::InvalidTypedAst {
                             reason: InvalidTypedAstReason::CustomType {
+                                package: name.package().clone(),
+                                module: name.module().clone(),
                                 name: type_.name.clone(),
-                                reason: InvalidCustomTypeReason::FieldType,
+                                reason: Box::new(InvalidCustomTypeReason::DefinitionField {
+                                    constructor: constructor_name.clone(),
+                                    field: field_index,
+                                }),
                             },
                         })?;
                     Ok(CustomFieldDefinition::new(
@@ -89,34 +96,35 @@ fn plan_custom_type(
 
 fn parameter_ids(
     type_: &TypedCustomType,
+    name: &CustomTypeName,
 ) -> Result<HashMap<u64, CustomTypeParameterId>, PlanError> {
     type_
         .typed_parameters
         .iter()
         .enumerate()
         .map(|(index, parameter)| {
-            let Type::Var {
-                type_: parameter_type,
-            } = parameter.as_ref()
-            else {
-                return Err(invalid_parameter(&type_.name));
+            let id = match parameter.as_ref() {
+                Type::Var {
+                    type_: parameter_type,
+                } => match parameter_type.borrow().deref() {
+                    TypeVar::Generic { id } => Some(*id),
+                    TypeVar::Link { .. } | TypeVar::Unbound { .. } => None,
+                },
+                Type::Named { .. } | Type::Fn { .. } | Type::Tuple { .. } => None,
             };
-            let parameter_type = parameter_type.borrow();
-            let TypeVar::Generic { id } = parameter_type.deref() else {
-                return Err(invalid_parameter(&type_.name));
+            let Some(id) = id else {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::CustomType {
+                        package: name.package().clone(),
+                        module: name.module().clone(),
+                        name: name.name().clone(),
+                        reason: Box::new(InvalidCustomTypeReason::DefinitionParameter { index }),
+                    },
+                });
             };
-            Ok((*id, CustomTypeParameterId(index)))
+            Ok((id, CustomTypeParameterId(index)))
         })
         .collect()
-}
-
-fn invalid_parameter(name: &EcoString) -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::CustomType {
-            name: name.clone(),
-            reason: InvalidCustomTypeReason::ParameterType,
-        },
-    }
 }
 
 fn type_template(
@@ -367,8 +375,10 @@ pub fn main() { 1 }
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Box".into(),
-                    reason: InvalidCustomTypeReason::ParameterType,
+                    reason: Box::new(InvalidCustomTypeReason::DefinitionParameter { index: 0 }),
                 },
             }),
         );
@@ -383,8 +393,10 @@ pub fn main() { 1 }
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Box".into(),
-                    reason: InvalidCustomTypeReason::ParameterType,
+                    reason: Box::new(InvalidCustomTypeReason::DefinitionParameter { index: 0 }),
                 },
             }),
         );
@@ -403,8 +415,10 @@ pub fn main() { 1 }
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Box".into(),
-                    reason: InvalidCustomTypeReason::ParameterType,
+                    reason: Box::new(InvalidCustomTypeReason::DefinitionParameter { index: 0 }),
                 },
             }),
         );
@@ -420,8 +434,13 @@ pub fn main() { 1 }
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Box".into(),
-                    reason: InvalidCustomTypeReason::FieldType,
+                    reason: Box::new(InvalidCustomTypeReason::DefinitionField {
+                        constructor: "Box".into(),
+                        field: 0,
+                    }),
                 },
             }),
         );
@@ -437,8 +456,13 @@ pub fn main() { 1 }
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Box".into(),
-                    reason: InvalidCustomTypeReason::FieldType,
+                    reason: Box::new(InvalidCustomTypeReason::DefinitionField {
+                        constructor: "Box".into(),
+                        field: 0,
+                    }),
                 },
             }),
         );
@@ -454,8 +478,13 @@ pub fn main() { 1 }
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Box".into(),
-                    reason: InvalidCustomTypeReason::FieldType,
+                    reason: Box::new(InvalidCustomTypeReason::DefinitionField {
+                        constructor: "Box".into(),
+                        field: 0,
+                    }),
                 },
             }),
         );
@@ -471,8 +500,13 @@ pub fn main() { 1 }
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Box".into(),
-                    reason: InvalidCustomTypeReason::FieldType,
+                    reason: Box::new(InvalidCustomTypeReason::DefinitionField {
+                        constructor: "Box".into(),
+                        field: 0,
+                    }),
                 },
             }),
         );
@@ -494,8 +528,13 @@ pub fn main() { 1 }
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Box".into(),
-                    reason: InvalidCustomTypeReason::FieldType,
+                    reason: Box::new(InvalidCustomTypeReason::DefinitionField {
+                        constructor: "Box".into(),
+                        field: 0,
+                    }),
                 },
             }),
         );
@@ -506,8 +545,13 @@ pub fn main() { 1 }
             plan_custom_types(&module.type_info.package, &module.name, vec![unbound_field]),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Box".into(),
-                    reason: InvalidCustomTypeReason::FieldType,
+                    reason: Box::new(InvalidCustomTypeReason::DefinitionField {
+                        constructor: "Box".into(),
+                        field: 0,
+                    }),
                 },
             }),
         );

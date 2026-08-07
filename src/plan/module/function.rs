@@ -2740,11 +2740,11 @@ mod tests {
             Vec::new(),
             CustomExpr::bool_case(
                 BoolExpr::value(true),
-                crate::plan::CustomBoolCaseBranches::try_new(
+                crate::plan::CustomBoolCaseBranches::from_resolved_shape(
+                    custom_shape.clone(),
                     CustomExpr::call(function.clone(), Vec::new(), custom_shape.clone()),
                     CustomExpr::call(function.clone(), Vec::new(), custom_shape.clone()),
-                )
-                .expect("matching custom branches should be valid"),
+                ),
             ),
         ));
 

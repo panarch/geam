@@ -57,10 +57,9 @@ pub(crate) use self::{
     function::{
         BitArrayFunctionExprKind, BoolFunctionExprKind, CustomFunctionExprKind,
         ExternalFunctionExprKind, FloatFunctionExprKind, FunctionExprKind,
-        FunctionFunctionCallMismatch, FunctionFunctionExprKind, GenericFunctionExpr,
-        GenericFunctionExprKind, IntFunctionExprKind, ListFunctionExprKind, NilFunctionExprKind,
-        StringFunctionExprKind, TupleFunctionExprKind, TypedFunctionExprKind,
-        UtfCodepointFunctionExprKind,
+        FunctionFunctionExprKind, GenericFunctionExpr, GenericFunctionExprKind,
+        IntFunctionExprKind, ListFunctionExprKind, NilFunctionExprKind, StringFunctionExprKind,
+        TupleFunctionExprKind, TypedFunctionExprKind, UtfCodepointFunctionExprKind,
     },
     generic::{GenericExpr, GenericExprKind},
     int::IntExprKind,
@@ -742,6 +741,7 @@ impl Expr {
         self.kind
     }
 
+    #[cfg(test)]
     pub(crate) fn into_int(self) -> Option<IntExpr> {
         match self.kind {
             ExprKind::Int(expression) => Some(expression),
@@ -749,6 +749,7 @@ impl Expr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn into_string(self) -> Option<StringExpr> {
         match self.kind {
             ExprKind::String(expression) => Some(expression),
@@ -756,13 +757,7 @@ impl Expr {
         }
     }
 
-    pub(crate) fn into_bit_array(self) -> Option<BitArrayExpr> {
-        match self.kind {
-            ExprKind::BitArray(expression) => Some(expression),
-            _ => None,
-        }
-    }
-
+    #[cfg(test)]
     pub(crate) fn into_utf_codepoint(self) -> Option<UtfCodepointExpr> {
         match self.kind {
             ExprKind::UtfCodepoint(expression) => Some(expression),
@@ -770,6 +765,7 @@ impl Expr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn into_custom(self) -> Option<CustomExpr> {
         match self.kind {
             ExprKind::Custom(expression) => Some(expression),
@@ -777,6 +773,7 @@ impl Expr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn into_float(self) -> Option<FloatExpr> {
         match self.kind {
             ExprKind::Float(expression) => Some(expression),
@@ -784,6 +781,7 @@ impl Expr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn into_bool(self) -> Option<BoolExpr> {
         match self.kind {
             ExprKind::Bool(expression) => Some(expression),
@@ -791,6 +789,7 @@ impl Expr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn into_tuple(self) -> Option<TupleExpr> {
         match self.kind {
             ExprKind::Tuple(expression) => Some(expression),
@@ -798,6 +797,7 @@ impl Expr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn into_list(self) -> Option<ListExpr> {
         match self.kind {
             ExprKind::List(expression) => Some(expression),
@@ -805,6 +805,7 @@ impl Expr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn into_function(self) -> Option<FunctionExpr> {
         match self.kind {
             ExprKind::Function(expression) => Some(expression),
@@ -869,6 +870,8 @@ mod tests {
     fn expression_shape_updates_reject_incompatible_value_families() {
         let expression = Expr::int(IntExpr::value(BigInt::from(1)));
 
+        assert_eq!(expression.clone().into_bool(), None);
+        assert_eq!(expression.clone().into_tuple(), None);
         assert_eq!(expression.clone().with_shape(ValueShape::String), None);
         assert_eq!(expression.with_resolved_shape(ValueShape::String), None);
 
@@ -1565,6 +1568,10 @@ mod tests {
         assert_eq!(
             Expr::string(StringExpr::value("geam".into())).into_string(),
             Some(StringExpr::value("geam".into())),
+        );
+        assert_eq!(
+            Expr::int(IntExpr::value(BigInt::from(1))).into_string(),
+            None,
         );
         let codepoint = UtfCodepointExpr::local_get(UtfCodepointLocalId(0), "codepoint".into());
         assert_eq!(

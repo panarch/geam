@@ -37,7 +37,7 @@ pub(crate) use self::{
     int::IntFunctionExprKind,
     list::ListFunctionExprKind,
     nil::NilFunctionExprKind,
-    returning_function::{FunctionFunctionCallMismatch, FunctionFunctionExprKind},
+    returning_function::FunctionFunctionExprKind,
     string::StringFunctionExprKind,
     tuple::TupleFunctionExprKind,
     typed::TypedFunctionExpr,
@@ -741,6 +741,10 @@ impl FunctionExpr {
         }
 
         Some(self.set_resolved_shape(shape))
+    }
+
+    pub(crate) fn resolve_constructed_shape(self, shape: crate::plan::FunctionShape) -> Self {
+        self.set_resolved_shape(shape)
     }
 
     fn set_resolved_shape(mut self, shape: crate::plan::FunctionShape) -> Self {

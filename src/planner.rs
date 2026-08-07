@@ -1,3 +1,4 @@
+mod bit_array;
 mod context;
 #[cfg(test)]
 mod dsl;
@@ -11,13 +12,13 @@ mod type_parameter;
 mod value_shape;
 
 pub use error::{
-    ExternalTypeProviderLinkReason, HostProviderLinkReason, InvalidCallShapeReason,
-    InvalidCaseShapeReason, InvalidCustomTypeReason, InvalidExpressionShapeKind,
-    InvalidExpressionType, InvalidFunctionShapeReason, InvalidModuleReferenceReason,
-    InvalidPipelineShapeReason, InvalidRecordUpdateShapeReason, InvalidTypedAstReason,
-    InvalidUseShapeReason, PlanError, UnsupportedArgumentReason, UnsupportedBitArraySegmentReason,
-    UnsupportedCaseReason, UnsupportedExpressionKind, UnsupportedFunctionReason,
-    UnsupportedPatternKind, UnsupportedTopLevelKind,
+    ExternalTypeProviderLinkReason, HostProviderLinkReason, InvalidBitArraySegmentOptionsReason,
+    InvalidCallShapeReason, InvalidCaseShapeReason, InvalidCustomTypeReason,
+    InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
+    InvalidModuleReferenceReason, InvalidPatternShapeReason, InvalidPipelineShapeReason,
+    InvalidRecordUpdateShapeReason, InvalidTypedAstReason, InvalidUseShapeReason, PatternKind,
+    PlanError, RecordUpdateArgumentOrigin, UnsupportedBitArraySegmentReason,
+    UnsupportedFunctionReason, UnsupportedPatternKind, UnsupportedTopLevelKind,
 };
 pub use module::{plan_host_program, plan_module, plan_module_with_source, plan_program};
 

@@ -2311,15 +2311,15 @@ mod tests {
                 function_shape.clone(),
             ),
         );
-        let function_value = ExternalFunctionExpr::try_function_call_at(
+        let function_value = ExternalFunctionExpr::function_call_at(
             callable,
             vec![CallArg::new(Expr::generic(GenericExpr::local_get(
                 GenericLocal::new(GenericLocalId(0), parameter),
                 "value".into(),
             )))],
+            external_type.clone(),
             plan::HostCallSite::unknown(),
-        )
-        .expect("one symbolic argument should match the callable");
+        );
         let block = FunctionExpr::external(ExternalFunctionExpr::block(
             vec![Step::evaluate(Expr::int(IntExpr::panic(panic())))],
             ExternalFunctionExpr::panic(panic(), external_type),

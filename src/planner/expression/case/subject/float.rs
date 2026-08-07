@@ -1,9 +1,9 @@
 use super::super::super::plan_float_expr;
-use super::super::invalid_case_shape;
+use super::super::coverage::{CaseBranchRequirement, require_branch};
 use super::{CaseClause, OrderedCaseClauseInput};
-use crate::plan::{BoolExpr, Expr, ExprKind, FloatCaseBranches, FloatExpr, ValueShape};
+use crate::plan::{BoolExpr, Expr, FloatExpr, ValueShape};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidCaseShapeReason, PlanError};
+use crate::planner::error::PlanError;
 use ecow::EcoString;
 use gleam_core::ast::{Pattern, TypedExpr};
 use gleam_core::type_::Type;
@@ -22,8 +22,7 @@ pub(super) fn plan(
         .any(|clause| clause.guard.is_some() || clause.has_alternative_patterns())
     {
         let (subject_step, subject) = super::bind_float_case_subject(subject, context);
-        let case =
-            plan_guarded_float_case(type_.as_ref(), return_shape, subject, clauses, context)?;
+        let case = plan_guarded_float_case(return_shape, subject, clauses, context)?;
         return Ok(super::case_subject_block(subject_step, case));
     }
     let needs_subject_binding = clauses.iter().any(clause_has_float_bound_name);
@@ -36,15 +35,9 @@ pub(super) fn plan(
     let mut literal_clauses = Vec::new();
     let mut fallback = None;
     for clause in clauses {
-        let pattern = plan_float_case_pattern(clause.pattern)?;
+        let pattern = plan_float_case_pattern(clause.pattern, context)?;
         let bindings = super::branch_bindings(pattern.bound_names(), Expr::float(subject.clone()));
-        let branch = super::plan_case_branch(
-            type_.as_ref(),
-            &return_shape,
-            clause.then,
-            bindings,
-            context,
-        )?;
+        let branch = super::plan_case_branch(&return_shape, clause.then, bindings, context)?;
 
         match pattern {
             FloatCasePattern::Literal { value, .. } => {
@@ -64,18 +57,17 @@ pub(super) fn plan(
         }
     }
 
-    let fallback = fallback.ok_or(invalid_case_shape(
-        InvalidCaseShapeReason::MissingFallbackPattern,
-    ))?;
+    let fallback = require_branch(fallback, CaseBranchRequirement::Fallback)?;
 
-    float_case_expr(subject, literal_clauses, fallback).map(|case| match subject_step {
-        Some(step) => super::case_subject_block(step, case),
-        None => case,
+    super::super::result::float_case_expr(subject, literal_clauses, fallback).map(|case| {
+        match subject_step {
+            Some(step) => super::case_subject_block(step, case),
+            None => case,
+        }
     })
 }
 
 fn plan_guarded_float_case(
-    case_type: &Type,
     return_shape: ValueShape,
     subject: FloatExpr,
     clauses: Vec<CaseClause>,
@@ -85,7 +77,7 @@ fn plan_guarded_float_case(
     for clause in clauses {
         for pattern in clause.patterns() {
             let (pattern, reachable, exhaustive_remainder) = pattern.into_parts();
-            let pattern = plan_float_case_pattern(pattern)?;
+            let pattern = plan_float_case_pattern(pattern, context)?;
             let bindings =
                 super::branch_bindings(pattern.bound_names(), Expr::float(subject.clone()));
             let is_total =
@@ -99,7 +91,6 @@ fn plan_guarded_float_case(
             };
             ordered_clauses.push(super::plan_ordered_case_clause(
                 OrderedCaseClauseInput {
-                    case_type,
                     return_shape: &return_shape,
                     then: clause.then.clone(),
                     branch_bindings: bindings,
@@ -146,39 +137,44 @@ impl FloatCasePattern {
     }
 }
 
-fn plan_float_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<FloatCasePattern, PlanError> {
+fn plan_float_case_pattern(
+    pattern: Pattern<Arc<Type>>,
+    context: &PlanContext<'_>,
+) -> Result<FloatCasePattern, PlanError> {
     match pattern {
         Pattern::Float { float_value, .. } => Ok(FloatCasePattern::Literal {
             value: float_value.value(),
             bound_names: Vec::new(),
         }),
-        Pattern::Variable { name, type_, .. } if type_.is_float() => Ok(FloatCasePattern::Any {
-            bound_names: vec![name],
-        }),
-        Pattern::Variable { .. } => Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
-        )),
-        Pattern::Discard { type_, .. } if type_.is_float() => Ok(FloatCasePattern::Any {
-            bound_names: Vec::new(),
-        }),
-        Pattern::Discard { .. } => Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
-        )),
+        ref pattern @ Pattern::Variable { ref name, .. } => {
+            crate::planner::pattern::validate_pattern(pattern, &ValueShape::Float, context)?;
+            Ok(FloatCasePattern::Any {
+                bound_names: vec![name.clone()],
+            })
+        }
+        ref pattern @ Pattern::Discard { .. } => {
+            crate::planner::pattern::validate_pattern(pattern, &ValueShape::Float, context)?;
+            Ok(FloatCasePattern::Any {
+                bound_names: Vec::new(),
+            })
+        }
         Pattern::Assign { name, pattern, .. } => {
-            let mut pattern = plan_float_case_pattern(*pattern)?;
+            let mut pattern = plan_float_case_pattern(*pattern, context)?;
             pattern.add_bound_name(name);
             Ok(pattern)
         }
-        Pattern::Invalid { .. } => Err(invalid_case_shape(InvalidCaseShapeReason::InvalidPattern)),
-        Pattern::Int { .. }
+        pattern @ (Pattern::Int { .. }
         | Pattern::String { .. }
         | Pattern::BitArraySize(_)
         | Pattern::List { .. }
         | Pattern::Constructor { .. }
         | Pattern::Tuple { .. }
         | Pattern::BitArray { .. }
-        | Pattern::StringPrefix { .. } => Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. }) => Err(crate::planner::pattern::unexpected_pattern(
+            &pattern,
+            &ValueShape::Float,
+            context,
         )),
     }
 }
@@ -195,590 +191,15 @@ fn float_pattern_has_bound_name(pattern: &Pattern<Arc<Type>>) -> bool {
     }
 }
 
-fn float_case_expr(
-    subject: FloatExpr,
-    clauses: Vec<(f64, Expr)>,
-    fallback: Expr,
-) -> Result<Expr, PlanError> {
-    let clause_shapes = clauses
-        .iter()
-        .map(|(_, branch)| branch.value_shape().clone())
-        .collect::<Vec<_>>();
-    let fallback_shape = fallback.value_shape().clone();
-    let branches = match fallback.into_kind() {
-        ExprKind::Generic(fallback) => {
-            let expression = crate::plan::GenericExpr::float_case(
-                subject,
-                super::generic_case_clauses(clauses)?,
-                fallback,
-            )
-            .ok_or_else(|| invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch))?;
-            return Ok(Expr::generic(expression));
-        }
-        ExprKind::Int(fallback) => FloatCaseBranches::Int {
-            clauses: int_case_clauses(clauses)?,
-            fallback,
-        },
-        ExprKind::String(fallback) => FloatCaseBranches::String {
-            clauses: string_case_clauses(clauses)?,
-            fallback,
-        },
-        ExprKind::BitArray(fallback) => FloatCaseBranches::BitArray {
-            clauses: bit_array_case_clauses(clauses)?,
-            fallback,
-        },
-        ExprKind::UtfCodepoint(fallback) => FloatCaseBranches::UtfCodepoint {
-            clauses: utf_codepoint_case_clauses(clauses)?,
-            fallback,
-        },
-        ExprKind::Custom(fallback) => FloatCaseBranches::Custom(
-            crate::plan::CustomCaseBranches::try_new(custom_case_clauses(clauses)?, fallback)
-                .ok_or_else(|| {
-                    invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch)
-                })?,
-        ),
-        ExprKind::External(fallback) => FloatCaseBranches::External {
-            clauses: external_case_clauses(clauses)?,
-            fallback,
-        },
-        ExprKind::Float(fallback) => FloatCaseBranches::Float {
-            clauses: float_case_clauses(clauses)?,
-            fallback,
-        },
-        ExprKind::Bool(fallback) => FloatCaseBranches::Bool {
-            clauses: bool_case_clauses(clauses)?,
-            fallback,
-        },
-        ExprKind::Nil(fallback) => FloatCaseBranches::Nil {
-            clauses: nil_case_clauses(clauses)?,
-            fallback,
-        },
-        ExprKind::Tuple(fallback) => FloatCaseBranches::Tuple {
-            clauses: tuple_case_clauses(clauses)?,
-            fallback,
-        },
-        ExprKind::List(fallback) => FloatCaseBranches::List(list_case_branches(clauses, fallback)?),
-        ExprKind::Function(fallback) => {
-            if let crate::plan::FunctionExprKind::Generic(generic_fallback) = fallback.kind() {
-                let expression = crate::plan::GenericFunctionExpr::float_case(
-                    subject,
-                    super::generic_function_case_clauses(clauses)?,
-                    generic_fallback.clone(),
-                )
-                .ok_or_else(|| {
-                    invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch)
-                })?;
-                return Ok(Expr::function(crate::plan::FunctionExpr::generic(
-                    expression,
-                )));
-            }
-            function_case_branches(clauses, fallback)?
-        }
-    };
-
-    let shape = super::case_result_shape(&clause_shapes, &fallback_shape)?;
-    Expr::float_case(subject, branches)
-        .with_resolved_shape(shape)
-        .ok_or_else(|| invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch))
-}
-
-fn int_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::IntExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::Int(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn string_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::StringExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::String(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn bit_array_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::BitArrayExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::BitArray(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn utf_codepoint_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::UtfCodepointExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::UtfCodepoint(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn custom_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::CustomExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::Custom(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn external_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::ExternalExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::External(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn float_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::FloatExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::Float(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn bool_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::BoolExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::Bool(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn nil_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::NilExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::Nil(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn tuple_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::TupleExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::Tuple(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn list_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::ListExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::List(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn list_case_branches(
-    clauses: Vec<(f64, Expr)>,
-    fallback: crate::plan::ListExpr,
-) -> Result<crate::plan::ListCaseBranches<f64>, PlanError> {
-    crate::plan::ListCaseBranches::from_exprs(list_case_clauses(clauses)?, fallback)
-        .map_err(|_| invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch))
-}
-
-fn function_case_branches(
-    clauses: Vec<(f64, Expr)>,
-    fallback: crate::plan::FunctionExpr,
-) -> Result<FloatCaseBranches, PlanError> {
-    match fallback.into_kind() {
-        crate::plan::FunctionExprKind::Generic(_) => Err(invalid_case_shape(
-            InvalidCaseShapeReason::BranchReturnTypeMismatch,
-        )),
-        crate::plan::FunctionExprKind::Int(fallback) => Ok(FloatCaseBranches::IntFunction {
-            clauses: int_function_case_clauses(clauses)?,
-            fallback,
-        }),
-        crate::plan::FunctionExprKind::String(fallback) => Ok(FloatCaseBranches::StringFunction {
-            clauses: string_function_case_clauses(clauses)?,
-            fallback,
-        }),
-        crate::plan::FunctionExprKind::BitArray(fallback) => {
-            Ok(FloatCaseBranches::BitArrayFunction {
-                clauses: bit_array_function_case_clauses(clauses)?,
-                fallback,
-            })
-        }
-        crate::plan::FunctionExprKind::UtfCodepoint(fallback) => {
-            Ok(FloatCaseBranches::UtfCodepointFunction {
-                clauses: utf_codepoint_function_case_clauses(clauses)?,
-                fallback,
-            })
-        }
-        crate::plan::FunctionExprKind::Custom(fallback) => Ok(FloatCaseBranches::CustomFunction {
-            clauses: custom_function_case_clauses(clauses)?,
-            fallback,
-        }),
-        crate::plan::FunctionExprKind::External(fallback) => {
-            Ok(FloatCaseBranches::ExternalFunction {
-                clauses: external_function_case_clauses(clauses)?,
-                fallback,
-            })
-        }
-        crate::plan::FunctionExprKind::Float(fallback) => Ok(FloatCaseBranches::FloatFunction {
-            clauses: float_function_case_clauses(clauses)?,
-            fallback,
-        }),
-        crate::plan::FunctionExprKind::Bool(fallback) => Ok(FloatCaseBranches::BoolFunction {
-            clauses: bool_function_case_clauses(clauses)?,
-            fallback,
-        }),
-        crate::plan::FunctionExprKind::Nil(fallback) => Ok(FloatCaseBranches::NilFunction {
-            clauses: nil_function_case_clauses(clauses)?,
-            fallback,
-        }),
-        crate::plan::FunctionExprKind::Tuple(fallback) => Ok(FloatCaseBranches::TupleFunction {
-            clauses: tuple_function_case_clauses(clauses)?,
-            fallback,
-        }),
-        crate::plan::FunctionExprKind::List(fallback) => Ok(FloatCaseBranches::ListFunction {
-            clauses: list_function_case_clauses(clauses)?,
-            fallback,
-        }),
-        crate::plan::FunctionExprKind::Function(fallback) => {
-            Ok(FloatCaseBranches::FunctionFunction {
-                clauses: function_function_case_clauses(clauses)?,
-                fallback,
-            })
-        }
-    }
-}
-
-fn int_function_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::IntFunctionExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::Function(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        let Some(clause) = clause.into_int() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn string_function_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::StringFunctionExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::Function(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        let Some(clause) = clause.into_string() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn bit_array_function_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::BitArrayFunctionExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::Function(function) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        let crate::plan::FunctionExprKind::BitArray(clause) = function.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn utf_codepoint_function_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::UtfCodepointFunctionExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::Function(function) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        let crate::plan::FunctionExprKind::UtfCodepoint(clause) = function.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn custom_function_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::CustomFunctionExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::Function(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        let Some(clause) = clause.into_custom() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn external_function_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::ExternalFunctionExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::Function(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        let Some(clause) = clause.into_external() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn float_function_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::FloatFunctionExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::Function(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        let Some(clause) = clause.into_float() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn bool_function_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::BoolFunctionExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::Function(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        let Some(clause) = clause.into_bool() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn nil_function_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::NilFunctionExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::Function(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        let Some(clause) = clause.into_nil() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn tuple_function_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::TupleFunctionExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::Function(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        let Some(clause) = clause.into_tuple() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn list_function_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::ListFunctionExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::Function(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        let Some(clause) = clause.into_list() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
-fn function_function_case_clauses(
-    clauses: Vec<(f64, Expr)>,
-) -> Result<Vec<(f64, crate::plan::FunctionFunctionExpr)>, PlanError> {
-    let mut typed_clauses = Vec::with_capacity(clauses.len());
-    for (value, clause) in clauses {
-        let ExprKind::Function(clause) = clause.into_kind() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        let Some(clause) = clause.into_function() else {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        };
-        typed_clauses.push((value, clause));
-    }
-    Ok(typed_clauses)
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::plan::{
-        BoolExpr, BoolFunctionId, Expr, ExternalExpr, ExternalFunctionExpr, ExternalFunctionLocal,
-        ExternalFunctionLocalId, ExternalFunctionType, ExternalLocal, ExternalLocalId,
-        ExternalTypeName, ExternalValueShape, FloatCaseBranches, FloatFunctionFunctionId,
-        FloatFunctionId, FloatReturn, FunctionExpr, FunctionFunctionId, FunctionType,
-        IntFunctionExpr, IntFunctionId, IntLocalId, ListFunctionId, LocalId, NilFunctionId,
-        RuntimeFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointExpr,
-        UtfCodepointFunctionId, UtfCodepointLocalId, ValueType,
-    };
+    use crate::plan::{BoolExpr, FloatReturn, ValueType};
     use crate::planner::dsl::{
-        bit_array, bit_array_function_ref, bool_, bool_return_expr, bool_return_float_case, float,
-        float_return_block, float_return_expr, float_return_float_case, function, function_ref,
-        int, int_return_expr, int_return_float_case, let_float_step, list, list_return_expr,
-        list_return_float_case, local_float, module, nil, nil_return_expr, nil_return_float_case,
-        return_list, string, string_return_expr, string_return_float_case, tuple,
+        bool_, bool_return_expr, bool_return_float_case, float, float_return_block,
+        float_return_expr, float_return_float_case, function, int, int_return_expr,
+        int_return_float_case, let_float_step, list, list_return_expr, list_return_float_case,
+        local_float, module, nil, nil_return_expr, nil_return_float_case, return_list, string,
+        string_return_expr, string_return_float_case,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
@@ -1170,296 +591,6 @@ fn duplicate_literal(value: Float) {
     }
 
     #[test]
-    fn plan_float_case_function_expr_shape() {
-        let actual = super::float_case_expr(
-            float(1.0).into(),
-            vec![(1.0, int_function_ref_expr(0))],
-            int_function_ref_expr(0),
-        );
-        let branch = FunctionExpr::from(function_ref(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
-            [LocalId::Int(IntLocalId(0))],
-        ))
-        .into_int()
-        .expect("int function expression");
-        let fallback = FunctionExpr::from(function_ref(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
-            [LocalId::Int(IntLocalId(0))],
-        ))
-        .into_int()
-        .expect("int function expression");
-        let expected = Ok(Expr::function(FunctionExpr::int(
-            IntFunctionExpr::float_case(float(1.0).into(), vec![(1.0, branch)], fallback),
-        )));
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn plan_float_case_function_branch_return_families_direct() {
-        let external_shape = ExternalValueShape::new(
-            ExternalTypeName::new(
-                "dependency".into(),
-                "dependency/token".into(),
-                "Token".into(),
-            ),
-            Vec::new(),
-        );
-        let external_clause = ExternalExpr::local_get(
-            ExternalLocal::from_shape(ExternalLocalId(0), external_shape.clone()),
-            "external_clause".into(),
-        );
-        let external_fallback = ExternalExpr::local_get(
-            ExternalLocal::from_shape(ExternalLocalId(1), external_shape.clone()),
-            "external_fallback".into(),
-        );
-        let external_function_type =
-            ExternalFunctionType::from_shapes(Vec::new(), external_shape.clone());
-        let external_function_clause = ExternalFunctionExpr::local_get(
-            ExternalFunctionLocal::new(ExternalFunctionLocalId(0), external_function_type.clone()),
-            "external_function_clause".into(),
-        );
-        let external_function_fallback = ExternalFunctionExpr::local_get(
-            ExternalFunctionLocal::new(ExternalFunctionLocalId(1), external_function_type),
-            "external_function_fallback".into(),
-        );
-        let codepoint = |local| {
-            Expr::utf_codepoint(UtfCodepointExpr::local_get(
-                UtfCodepointLocalId(local),
-                "codepoint".into(),
-            ))
-        };
-        assert_eq!(
-            super::float_case_expr(float(1.0).into(), vec![(1.0, codepoint(0))], codepoint(1),),
-            Ok(Expr::float_case(
-                float(1.0).into(),
-                FloatCaseBranches::UtfCodepoint {
-                    clauses: vec![(
-                        1.0,
-                        UtfCodepointExpr::local_get(UtfCodepointLocalId(0), "codepoint".into(),),
-                    )],
-                    fallback: UtfCodepointExpr::local_get(
-                        UtfCodepointLocalId(1),
-                        "codepoint".into(),
-                    ),
-                },
-            )),
-        );
-        assert_eq!(
-            super::float_case_expr(float(1.0).into(), vec![(1.0, int(1).into())], codepoint(1),),
-            Err(case_branch_return_type_mismatch()),
-        );
-
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, Expr::external(external_clause.clone()))],
-                Expr::external(external_fallback.clone()),
-            ),
-            Ok(Expr::float_case(
-                float(1.0).into(),
-                FloatCaseBranches::External {
-                    clauses: vec![(1.0, external_clause)],
-                    fallback: external_fallback,
-                },
-            )),
-        );
-
-        assert_eq!(
-            super::function_case_branches(
-                vec![(
-                    1.0,
-                    Expr::function(FunctionExpr::external(external_function_clause.clone())),
-                )],
-                FunctionExpr::external(external_function_fallback.clone()),
-            ),
-            Ok(FloatCaseBranches::ExternalFunction {
-                clauses: vec![(1.0, external_function_clause)],
-                fallback: external_function_fallback,
-            }),
-        );
-
-        assert_eq!(
-            super::function_case_branches(
-                vec![(1.0, utf_codepoint_function_ref_expr(0))],
-                utf_codepoint_function_ref_expr(1)
-                    .into_function()
-                    .expect("function expression"),
-            ),
-            Ok(FloatCaseBranches::UtfCodepointFunction {
-                clauses: vec![(
-                    1.0,
-                    utf_codepoint_function_ref_expr(0)
-                        .into_function()
-                        .expect("function expression")
-                        .into_utf_codepoint()
-                        .expect("utf codepoint function expression"),
-                )],
-                fallback: utf_codepoint_function_ref_expr(1)
-                    .into_function()
-                    .expect("function expression")
-                    .into_utf_codepoint()
-                    .expect("utf codepoint function expression"),
-            }),
-        );
-
-        assert_eq!(
-            super::function_case_branches(
-                vec![(1.0, string_function_ref_expr(0))],
-                FunctionExpr::from(function_ref(
-                    RuntimeFunctionId::String(StringFunctionId(1)),
-                    [LocalId::String(crate::plan::StringLocalId(0))],
-                )),
-            ),
-            Ok(FloatCaseBranches::StringFunction {
-                clauses: vec![(
-                    1.0,
-                    string_function_ref_expr(0)
-                        .into_function()
-                        .expect("function expression")
-                        .into_string()
-                        .expect("string function expression"),
-                )],
-                fallback: FunctionExpr::from(function_ref(
-                    RuntimeFunctionId::String(StringFunctionId(1)),
-                    [LocalId::String(crate::plan::StringLocalId(0))],
-                ))
-                .into_string()
-                .expect("string function expression"),
-            }),
-        );
-        assert_eq!(
-            super::function_case_branches(
-                vec![(1.0, float_function_ref_expr(0))],
-                FunctionExpr::from(function_ref(
-                    RuntimeFunctionId::Float(FloatFunctionId(1)),
-                    [LocalId::Float(crate::plan::FloatLocalId(0))],
-                )),
-            ),
-            Ok(FloatCaseBranches::FloatFunction {
-                clauses: vec![(
-                    1.0,
-                    float_function_ref_expr(0)
-                        .into_function()
-                        .expect("function expression")
-                        .into_float()
-                        .expect("float function expression"),
-                )],
-                fallback: FunctionExpr::from(function_ref(
-                    RuntimeFunctionId::Float(FloatFunctionId(1)),
-                    [LocalId::Float(crate::plan::FloatLocalId(0))],
-                ))
-                .into_float()
-                .expect("float function expression"),
-            }),
-        );
-        assert_eq!(
-            super::function_case_branches(
-                vec![(1.0, bool_function_ref_expr(0))],
-                FunctionExpr::from(function_ref(
-                    RuntimeFunctionId::Bool(BoolFunctionId(1)),
-                    [LocalId::Bool(crate::plan::BoolLocalId(0))],
-                )),
-            ),
-            Ok(FloatCaseBranches::BoolFunction {
-                clauses: vec![(
-                    1.0,
-                    bool_function_ref_expr(0)
-                        .into_function()
-                        .expect("function expression")
-                        .into_bool()
-                        .expect("bool function expression"),
-                )],
-                fallback: FunctionExpr::from(function_ref(
-                    RuntimeFunctionId::Bool(BoolFunctionId(1)),
-                    [LocalId::Bool(crate::plan::BoolLocalId(0))],
-                ))
-                .into_bool()
-                .expect("bool function expression"),
-            }),
-        );
-        assert_eq!(
-            super::function_case_branches(
-                vec![(1.0, nil_function_ref_expr(0))],
-                FunctionExpr::from(function_ref(
-                    RuntimeFunctionId::Nil(NilFunctionId(1)),
-                    [LocalId::Nil(crate::plan::NilLocalId(0))],
-                )),
-            ),
-            Ok(FloatCaseBranches::NilFunction {
-                clauses: vec![(
-                    1.0,
-                    nil_function_ref_expr(0)
-                        .into_function()
-                        .expect("function expression")
-                        .into_nil()
-                        .expect("nil function expression"),
-                )],
-                fallback: FunctionExpr::from(function_ref(
-                    RuntimeFunctionId::Nil(NilFunctionId(1)),
-                    [LocalId::Nil(crate::plan::NilLocalId(0))],
-                ))
-                .into_nil()
-                .expect("nil function expression"),
-            }),
-        );
-        assert_eq!(
-            super::function_case_branches(
-                vec![(1.0, list_function_ref_expr(0))],
-                FunctionExpr::from(function_ref(
-                    RuntimeFunctionId::List(ListFunctionId::from_item_type(
-                        1,
-                        crate::plan::ValueType::Int
-                    )),
-                    [LocalId::Int(IntLocalId(0))],
-                )),
-            ),
-            Ok(FloatCaseBranches::ListFunction {
-                clauses: vec![(
-                    1.0,
-                    list_function_ref_expr(0)
-                        .into_function()
-                        .expect("function expression")
-                        .into_list()
-                        .expect("list function expression"),
-                )],
-                fallback: FunctionExpr::from(function_ref(
-                    RuntimeFunctionId::List(ListFunctionId::from_item_type(
-                        1,
-                        crate::plan::ValueType::Int
-                    )),
-                    [LocalId::Int(IntLocalId(0))],
-                ))
-                .into_list()
-                .expect("list function expression"),
-            }),
-        );
-        assert_eq!(
-            super::function_case_branches(
-                vec![(1.0, function_function_ref_expr(0))],
-                function_function_ref_expr(1)
-                    .into_function()
-                    .expect("function expression"),
-            ),
-            Ok(FloatCaseBranches::FunctionFunction {
-                clauses: vec![(
-                    1.0,
-                    function_function_ref_expr(0)
-                        .into_function()
-                        .expect("function expression")
-                        .into_function()
-                        .expect("function-returning function expression"),
-                )],
-                fallback: function_function_ref_expr(1)
-                    .into_function()
-                    .expect("function expression")
-                    .into_function()
-                    .expect("function-returning function expression"),
-            }),
-        );
-    }
-
-    #[test]
     fn reject_profile_float_case_unreachable_duplicate_clause_body() {
         assert_eq!(
             expect_plan_error(
@@ -1493,11 +624,10 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(variable_type_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Float,
+                ValueType::Bool,
+            )),
         );
 
         let mut discard_type_mismatch = compile_float_case_module();
@@ -1511,11 +641,10 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(discard_type_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Float,
+                ValueType::Bool,
+            )),
         );
 
         let mut invalid_pattern = compile_float_case_module();
@@ -1529,8 +658,8 @@ pub fn main() {
         assert_eq!(
             plan_module(invalid_pattern),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::InvalidNode,
                 },
             }),
         );
@@ -1545,11 +674,10 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(pattern_type_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Float,
+                ValueType::String,
+            )),
         );
 
         let mut assign_invalid_pattern = compile_float_case_module();
@@ -1567,8 +695,8 @@ pub fn main() {
         assert_eq!(
             plan_module(assign_invalid_pattern),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::InvalidNode,
                 },
             }),
         );
@@ -1587,11 +715,10 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(assign_type_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Float,
+                ValueType::String,
+            )),
         );
 
         let mut empty_pattern = compile_float_case_module();
@@ -1603,7 +730,10 @@ pub fn main() {
             plan_module(empty_pattern),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch,
+                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch {
+                        expected: 1,
+                        actual: 0,
+                    },
                 },
             }),
         );
@@ -1617,7 +747,10 @@ pub fn main() {
             plan_module(case_type_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::BranchReturnTypeMismatch,
+                    reason: InvalidCaseShapeReason::BranchAnnotatedTypeMismatch {
+                        expected: ValueType::Bool,
+                        actual: ValueType::Int,
+                    },
                 },
             }),
         );
@@ -1693,7 +826,10 @@ fn add_one(value: Float) {
             plan_module(empty_pattern),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch,
+                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch {
+                        expected: 1,
+                        actual: 0,
+                    },
                 },
             }),
         );
@@ -1713,11 +849,10 @@ fn add_one(value: Float) {
         };
         assert_eq!(
             plan_module(pattern_type_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Float,
+                ValueType::String,
+            )),
         );
     }
 
@@ -1768,626 +903,24 @@ fn add_one(value: Float) {
     }
 
     #[test]
-    fn reject_margin_float_case_expr_type_mismatch() {
+    fn reject_margin_float_case_return_annotation_mismatch() {
         let mut module = compile_float_case_module();
         let (type_, _, _) = super::super::super::expect_case_statement_mut(
             &mut module.definitions.functions[0].body[0],
         );
         *type_ = super::super::mismatched_generic_case_return_type();
-        assert_eq!(plan_module(module), Err(case_branch_return_type_mismatch()));
 
         assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, int(1).into())],
-                bit_array([]).into(),
-            ),
-            Err(case_branch_return_type_mismatch()),
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::BranchAnnotatedTypeMismatch {
+                        expected: ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                        actual: ValueType::Int,
+                    },
+                },
+            }),
         );
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, int_function_ref_expr(0))],
-                bit_array_function_ref(0, Vec::<LocalId>::new()).into(),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, bool_(true).into())],
-                int(0).into(),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, int(10).into())],
-                string("other").into(),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, int(10).into())],
-                float(0.0).into(),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, int(10).into())],
-                bool_(false).into(),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::float_case_expr(float(1.0).into(), vec![(1.0, int(10).into())], nil().into(),),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, int(10).into())],
-                Expr::from(tuple([Expr::from(int(0))])),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, int(10).into())],
-                Expr::from(list([int(0)], ValueType::Int)),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, Expr::from(list([string("wrong")], ValueType::String)))],
-                Expr::from(list([int(0)], ValueType::Int)),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, int(10).into())],
-                int_function_ref_expr(0),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-
-        let string_function: Expr = function_ref(
-            RuntimeFunctionId::String(StringFunctionId(0)),
-            [LocalId::String(crate::plan::StringLocalId(0))],
-        )
-        .into();
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, string_function)],
-                int_function_ref_expr(0),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-    }
-
-    #[test]
-    fn generic_float_case_branches_preserve_parameter_shapes() {
-        let generic = |parameter, local| {
-            crate::plan::GenericExpr::local_get(
-                crate::plan::GenericLocal::new(
-                    crate::plan::GenericLocalId(local),
-                    crate::plan::TypeParameterId(parameter),
-                ),
-                "generic".into(),
-            )
-        };
-        let generic_function = |parameter, local| {
-            let type_ = crate::plan::GenericFunctionType::new(
-                vec![crate::plan::ValueShape::Int],
-                crate::plan::TypeParameterId(parameter),
-            );
-            crate::plan::GenericFunctionExpr::local_get(
-                crate::plan::GenericFunctionLocal::new(
-                    crate::plan::GenericFunctionLocalId(local),
-                    type_,
-                ),
-                "generic_function".into(),
-            )
-        };
-
-        let generic_branch = generic(0, 0);
-        let generic_fallback = generic(0, 1);
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, Expr::generic(generic_branch.clone()))],
-                Expr::generic(generic_fallback.clone()),
-            ),
-            Ok(Expr::generic(
-                crate::plan::GenericExpr::float_case(
-                    float(1.0).into(),
-                    vec![(1.0, generic_branch)],
-                    generic_fallback,
-                )
-                .expect("matching generic branches should form a Float case"),
-            )),
-        );
-
-        let generic_function_branch = generic_function(0, 0);
-        let generic_function_fallback = generic_function(0, 1);
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(
-                    1.0,
-                    Expr::function(crate::plan::FunctionExpr::generic(
-                        generic_function_branch.clone(),
-                    )),
-                )],
-                Expr::function(crate::plan::FunctionExpr::generic(
-                    generic_function_fallback.clone(),
-                )),
-            ),
-            Ok(Expr::function(crate::plan::FunctionExpr::generic(
-                crate::plan::GenericFunctionExpr::float_case(
-                    float(1.0).into(),
-                    vec![(1.0, generic_function_branch)],
-                    generic_function_fallback,
-                )
-                .expect("matching generic function branches should form a Float case"),
-            ))),
-        );
-    }
-
-    #[test]
-    fn reject_margin_float_case_function_clause_family_mismatch_direct() {
-        let generic = |parameter, local| {
-            Expr::generic(crate::plan::GenericExpr::local_get(
-                crate::plan::GenericLocal::new(
-                    crate::plan::GenericLocalId(local),
-                    crate::plan::TypeParameterId(parameter),
-                ),
-                "generic".into(),
-            ))
-        };
-        let generic_function = |parameter, local| {
-            let type_ = crate::plan::GenericFunctionType::new(
-                vec![crate::plan::ValueShape::Int],
-                crate::plan::TypeParameterId(parameter),
-            );
-            Expr::function(crate::plan::FunctionExpr::generic(
-                crate::plan::GenericFunctionExpr::local_get(
-                    crate::plan::GenericFunctionLocal::new(
-                        crate::plan::GenericFunctionLocalId(local),
-                        type_,
-                    ),
-                    "generic_function".into(),
-                ),
-            ))
-        };
-        let external_shape = ExternalValueShape::new(
-            ExternalTypeName::new(
-                "dependency".into(),
-                "dependency/token".into(),
-                "Token".into(),
-            ),
-            Vec::new(),
-        );
-        let external = |local| {
-            Expr::external(ExternalExpr::local_get(
-                ExternalLocal::from_shape(ExternalLocalId(local), external_shape.clone()),
-                "external".into(),
-            ))
-        };
-        let external_function = |local| {
-            Expr::function(FunctionExpr::external(ExternalFunctionExpr::local_get(
-                ExternalFunctionLocal::new(
-                    ExternalFunctionLocalId(local),
-                    ExternalFunctionType::from_shapes(Vec::new(), external_shape.clone()),
-                ),
-                "external_function".into(),
-            )))
-        };
-
-        assert_eq!(
-            super::float_case_expr(float(1.0).into(), vec![(1.0, generic(0, 0))], generic(1, 1),),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, generic_function(0, 0))],
-                generic_function(1, 1),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, Expr::from(int(1)))],
-                generic(0, 0),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, int_function_ref_expr(0))],
-                generic_function(0, 0),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::int_case_clauses(vec![(1.0, generic(0, 0))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::string_case_clauses(vec![(1.0, generic(0, 0))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::float_case_clauses(vec![(1.0, generic(0, 0))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::bool_case_clauses(vec![(1.0, generic(0, 0))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::nil_case_clauses(vec![(1.0, generic(0, 0))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::function_case_branches(
-                Vec::new(),
-                generic_function(0, 0)
-                    .into_function()
-                    .expect("generic function expression"),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::int_function_case_clauses(vec![(1.0, generic_function(0, 0))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-
-        assert_eq!(
-            super::custom_case_clauses(vec![(1.0, Expr::from(int(1)))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::custom_function_case_clauses(vec![(1.0, Expr::from(int(1)))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::custom_function_case_clauses(vec![(1.0, int_function_ref_expr(0))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::external_case_clauses(vec![(1.0, Expr::from(int(1)))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::external_function_case_clauses(vec![(1.0, Expr::from(int(1)))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::external_function_case_clauses(vec![(1.0, int_function_ref_expr(0))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, Expr::from(int(1)))],
-                external(0),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, int_function_ref_expr(0))],
-                external_function(0),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-
-        let custom_expr = |name: &str, local| {
-            let type_ = crate::plan::CustomType::new(
-                crate::plan::CustomTypeName::new("geam".into(), "main".into(), name.into()),
-                Vec::new(),
-            );
-            Expr::custom(crate::plan::CustomExpr::local_get(
-                crate::plan::CustomLocal::new(crate::plan::CustomLocalId(local), type_),
-                name.into(),
-            ))
-        };
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, custom_expr("First", 0))],
-                custom_expr("Second", 1),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-        let tuple_expr = |expression: Expr| {
-            let type_ = expression.value_type();
-            Expr::tuple(crate::plan::TupleExpr::value(vec![expression], vec![type_]))
-        };
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, tuple_expr(custom_expr("First", 0)))],
-                tuple_expr(custom_expr("Second", 1)),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-
-        let custom_type = crate::plan::CustomType::new(
-            crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Choice".into()),
-            Vec::new(),
-        );
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, Expr::from(int(1)))],
-                Expr::custom(crate::plan::CustomExpr::local_get(
-                    crate::plan::CustomLocal::new(
-                        crate::plan::CustomLocalId(0),
-                        custom_type.clone(),
-                    ),
-                    "fallback".into(),
-                )),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-
-        let malformed_return_type = crate::plan::CustomType::new(
-            crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Malformed".into()),
-            Vec::new(),
-        );
-        let malformed_function = |id| {
-            let function = int_function_ref_expr(id)
-                .into_function()
-                .expect("test expression is function-valued")
-                .into_int()
-                .expect("test expression is Int-returning");
-            Expr::function(FunctionExpr::int_with_shape(
-                function,
-                crate::plan::FunctionShape::new(
-                    vec![crate::plan::ValueShape::Int],
-                    crate::plan::ValueShape::Custom(crate::plan::CustomValueShape::any(
-                        malformed_return_type.clone(),
-                    )),
-                ),
-            ))
-        };
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, malformed_function(0))],
-                malformed_function(1),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-        let function_type = crate::plan::CustomFunctionType::new(Vec::new(), custom_type);
-        assert_eq!(
-            super::float_case_expr(
-                float(1.0).into(),
-                vec![(1.0, Expr::from(int(1)))],
-                Expr::function(FunctionExpr::custom(
-                    crate::plan::CustomFunctionExpr::local_get(
-                        crate::plan::CustomFunctionLocal::new(
-                            crate::plan::CustomFunctionLocalId(0),
-                            function_type,
-                        ),
-                        "fallback".into(),
-                    ),
-                )),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::utf_codepoint_case_clauses(vec![(1.0, Expr::from(int(1)))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::utf_codepoint_function_case_clauses(vec![(1.0, Expr::from(int(1)))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::utf_codepoint_function_case_clauses(vec![(1.0, int_function_ref_expr(0))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::bit_array_case_clauses(vec![(1.0, Expr::from(int(1)))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::bit_array_function_case_clauses(vec![(1.0, Expr::from(int(1)))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::bit_array_function_case_clauses(vec![(1.0, int_function_ref_expr(0))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::string_function_case_clauses(vec![(1.0, Expr::from(int(1)))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::string_function_case_clauses(vec![(1.0, int_function_ref_expr(0))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::float_function_case_clauses(vec![(1.0, Expr::from(int(1)))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::float_function_case_clauses(vec![(1.0, int_function_ref_expr(0))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::bool_function_case_clauses(vec![(1.0, Expr::from(int(1)))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::bool_function_case_clauses(vec![(1.0, int_function_ref_expr(0))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::nil_function_case_clauses(vec![(1.0, Expr::from(int(1)))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::nil_function_case_clauses(vec![(1.0, int_function_ref_expr(0))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::tuple_case_clauses(vec![(1.0, Expr::from(int(1)))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::list_case_clauses(vec![(1.0, Expr::from(int(1)))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::tuple_function_case_clauses(vec![(1.0, Expr::from(int(1)))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::tuple_function_case_clauses(vec![(1.0, int_function_ref_expr(0))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::list_function_case_clauses(vec![(1.0, Expr::from(int(1)))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::list_function_case_clauses(vec![(1.0, int_function_ref_expr(0))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::function_function_case_clauses(vec![(1.0, Expr::from(int(1)))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::function_function_case_clauses(vec![(1.0, int_function_ref_expr(0))]),
-            Err(case_branch_return_type_mismatch()),
-        );
-
-        assert_float_function_case_branch_mismatch(int_function_ref_expr(1));
-        assert_float_function_case_branch_mismatch(string_function_ref_expr(1));
-        assert_float_function_case_branch_mismatch(utf_codepoint_function_ref_expr(1));
-        assert_float_function_case_branch_mismatch(float_function_ref_expr(1));
-        assert_float_function_case_branch_mismatch(bool_function_ref_expr(1));
-        assert_float_function_case_branch_mismatch(nil_function_ref_expr(1));
-        assert_float_function_case_branch_mismatch(tuple_function_ref_expr(1));
-        assert_float_function_case_branch_mismatch(list_function_ref_expr(1));
-        assert_float_function_case_branch_mismatch(function_function_ref_expr(1));
-    }
-
-    fn int_function_ref_expr(id: usize) -> Expr {
-        function_ref(
-            RuntimeFunctionId::Int(IntFunctionId(id)),
-            [LocalId::Int(IntLocalId(0))],
-        )
-        .into()
-    }
-
-    fn string_function_ref_expr(id: usize) -> Expr {
-        function_ref(
-            RuntimeFunctionId::String(StringFunctionId(id)),
-            [LocalId::String(crate::plan::StringLocalId(0))],
-        )
-        .into()
-    }
-
-    fn float_function_ref_expr(id: usize) -> Expr {
-        function_ref(
-            RuntimeFunctionId::Float(FloatFunctionId(id)),
-            [LocalId::Float(crate::plan::FloatLocalId(0))],
-        )
-        .into()
-    }
-
-    fn bool_function_ref_expr(id: usize) -> Expr {
-        function_ref(
-            RuntimeFunctionId::Bool(BoolFunctionId(id)),
-            [LocalId::Bool(crate::plan::BoolLocalId(0))],
-        )
-        .into()
-    }
-
-    fn nil_function_ref_expr(id: usize) -> Expr {
-        function_ref(
-            RuntimeFunctionId::Nil(NilFunctionId(id)),
-            [LocalId::Nil(crate::plan::NilLocalId(0))],
-        )
-        .into()
-    }
-
-    fn list_function_ref_expr(id: usize) -> Expr {
-        function_ref(
-            RuntimeFunctionId::List(ListFunctionId::from_item_type(id, ValueType::Int)),
-            [LocalId::Int(IntLocalId(0))],
-        )
-        .into()
-    }
-
-    fn tuple_function_ref_expr(id: usize) -> Expr {
-        function_ref(
-            RuntimeFunctionId::Tuple {
-                id: TupleFunctionId(id),
-                return_type: vec![ValueType::Int],
-            },
-            [LocalId::Int(IntLocalId(0))],
-        )
-        .into()
-    }
-
-    fn utf_codepoint_function_ref_expr(id: usize) -> Expr {
-        function_ref(
-            RuntimeFunctionId::UtfCodepoint(UtfCodepointFunctionId(id)),
-            [LocalId::UtfCodepoint(UtfCodepointLocalId(0))],
-        )
-        .into()
-    }
-
-    fn function_function_ref_expr(id: usize) -> Expr {
-        function_ref(
-            RuntimeFunctionId::Function {
-                id: FunctionFunctionId::Float(FloatFunctionFunctionId(id)),
-                return_type: FunctionType::new(vec![ValueType::Float], ValueType::Float),
-            },
-            Vec::<LocalId>::new(),
-        )
-        .into()
-    }
-
-    fn assert_float_function_case_branch_mismatch(fallback: Expr) {
-        assert_eq!(
-            super::function_case_branches(
-                vec![(1.0, Expr::from(int(1)))],
-                fallback.into_function().expect("function expression"),
-            ),
-            Err(case_branch_return_type_mismatch()),
-        );
-    }
-
-    fn case_branch_return_type_mismatch() -> PlanError {
-        PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::CaseShape {
-                reason: InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            },
-        }
     }
 
     fn compile_float_case_module() -> TypedModule {

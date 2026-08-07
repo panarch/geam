@@ -327,6 +327,14 @@ Errors make boundaries visible:
 - Stable error variants should represent one boundary condition. Do not use one
   variant for multiple distinct profile, typed-AST, host, or runtime boundaries
   merely because the broad feature family is similar.
+- Each concrete planner leaf error must have one semantic validation owner and
+  one production construction site. The function that performs the failing
+  lookup, comparison, or conversion constructs that fixed leaf; callers
+  propagate it without reconstructing the same decision.
+- Grouping nodes such as `InvalidTypedAst` and case-shape reason containers are
+  not leaf errors. A helper that only receives a reason and wraps it in such a
+  node is not the error owner. Do not use reason-only wrappers, constructor
+  macros, or factories to disguise duplicated leaf construction.
 - Stable error variants must correspond to a reachable production boundary.
   Test-only references do not justify keeping an error variant.
 - When feature scope changes, re-audit newly added error variants and remove any

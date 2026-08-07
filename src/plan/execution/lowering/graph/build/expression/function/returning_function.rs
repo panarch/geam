@@ -345,32 +345,33 @@ mod tests {
             PanicExpr::panic_at(None, PanicSite::unknown()),
             FunctionFunctionType::from_shapes(
                 vec![ValueShape::Parameter(parameter)],
-                returned_function,
+                returned_function.clone(),
             ),
         );
         let argument = Expr::generic(GenericExpr::local_get(
             GenericLocal::new(GenericLocalId(0), parameter),
             "value".into(),
         ));
-        let call = FunctionFunctionExpr::try_function_call(callee, vec![CallArg::new(argument)]);
+        let call = FunctionFunctionExpr::function_call(
+            callee,
+            vec![CallArg::new(argument)],
+            FunctionFunctionType::new(Vec::new(), FunctionType::new(Vec::new(), ValueType::Int)),
+        );
         assert_eq!(
-            call.as_ref()
-                .map(|call| call.function_function_type().to_function_type()),
-            Ok(FunctionType::new(
+            call.function_function_type().to_function_type(),
+            FunctionType::new(
                 Vec::new(),
                 ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
-            )),
+            ),
         );
 
         let mut context =
             crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
         let (mut graph, cursor) =
             DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
-        let flow = call.map(|call| {
-            super::function_function_expr(&call, cursor, &mut graph, &mut context)
-                .map(|flow| flow.fold(false, |_, _| true))
-        });
+        let flow = super::function_function_expr(&call, cursor, &mut graph, &mut context)
+            .map(|flow| flow.fold(false, |_, _| true));
 
-        assert_eq!(flow, Ok(Representability::Inhabited(false)));
+        assert_eq!(flow, Representability::Inhabited(false));
     }
 }

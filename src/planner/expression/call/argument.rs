@@ -1,98 +1,150 @@
 use super::CaptureSubstitution;
 use crate::plan::{CallArg, CustomConstructor, Expr, ValueShape, ValueType};
-use crate::planner::context::PlanContext;
-use crate::planner::error::{
-    InvalidCallShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-};
+use crate::planner::context::{FunctionParam, PlanContext};
+use crate::planner::error::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
 use gleam_core::ast::{CallArg as GleamCallArg, TypedExpr};
 
-pub(super) fn plan_instantiated_call_args(
-    arguments: Vec<GleamCallArg<TypedExpr>>,
-    instantiated_shapes: &[ValueShape],
-    context: &mut PlanContext<'_>,
-    capture: Option<&CaptureSubstitution>,
-) -> Result<Vec<CallArg>, PlanError> {
-    let mut args = Vec::with_capacity(arguments.len());
-    for (argument, instantiated_shape) in arguments.into_iter().zip(instantiated_shapes) {
-        let expression =
-            plan_argument_value(argument, instantiated_shape.clone(), capture, context)?;
-        let actual = expression.value_type();
-        let expected = instantiated_shape.value_type();
-        if actual != expected {
-            return Err(call_arg_type_mismatch(expected, actual));
-        }
-        if !expression.shape().can_flow_to(instantiated_shape) {
-            return Err(call_arg_shape_mismatch());
-        }
-        args.push(CallArg::new(expression));
-    }
-    Ok(args)
+pub(super) struct NormalizedCallArguments {
+    values: Vec<GleamCallArg<TypedExpr>>,
 }
 
-pub(super) fn plan_function_call_args(
-    arguments: Vec<GleamCallArg<TypedExpr>>,
-    params: &[ValueShape],
+impl NormalizedCallArguments {
+    pub(super) fn ordinary(values: Vec<GleamCallArg<TypedExpr>>) -> Result<Self, PlanError> {
+        if let Some((index, _)) = values
+            .iter()
+            .enumerate()
+            .find(|(_, argument)| argument.implicit.is_some())
+        {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::ImplicitArgument { index },
+                },
+            });
+        }
+        Ok(Self { values })
+    }
+
+    pub(super) fn specialized(values: Vec<GleamCallArg<TypedExpr>>) -> Self {
+        Self { values }
+    }
+
+    pub(super) fn for_direct(self, params: &[FunctionParam]) -> Result<Self, PlanError> {
+        validate_argument_count(params.len(), self.values.len())?;
+        validate_argument_labels(
+            &self.values,
+            params.iter().map(|param| param.label.as_ref()),
+        )?;
+        Ok(self)
+    }
+
+    pub(super) fn for_function_value(self, expected: usize) -> Result<Self, PlanError> {
+        validate_argument_count(expected, self.values.len())?;
+        validate_argument_labels(&self.values, std::iter::repeat_n(None, expected))?;
+        Ok(self)
+    }
+
+    pub(super) fn for_constructor(
+        self,
+        constructor: &CustomConstructor,
+    ) -> Result<Self, PlanError> {
+        validate_constructor_argument_count(constructor.fields().len(), self.values.len())?;
+        validate_argument_labels(
+            &self.values,
+            constructor.fields().iter().map(|field| field.label()),
+        )?;
+        Ok(self)
+    }
+
+    fn into_values(self) -> Vec<GleamCallArg<TypedExpr>> {
+        self.values
+    }
+
+    pub(super) fn iter(&self) -> impl Iterator<Item = &GleamCallArg<TypedExpr>> {
+        self.values.iter()
+    }
+}
+
+fn validate_argument_count(expected: usize, actual: usize) -> Result<(), PlanError> {
+    if expected == actual {
+        return Ok(());
+    }
+    Err(PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::CallShape {
+            reason: InvalidCallShapeReason::ArgumentCount { expected, actual },
+        },
+    })
+}
+
+fn validate_constructor_argument_count(expected: usize, actual: usize) -> Result<(), PlanError> {
+    if expected == actual {
+        return Ok(());
+    }
+    Err(PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::CallShape {
+            reason: InvalidCallShapeReason::RecordConstructorArgumentCount { expected, actual },
+        },
+    })
+}
+
+fn validate_argument_labels<'a>(
+    arguments: &[GleamCallArg<TypedExpr>],
+    expected: impl IntoIterator<Item = Option<&'a ecow::EcoString>>,
+) -> Result<(), PlanError> {
+    for (index, (argument, expected)) in arguments.iter().zip(expected).enumerate() {
+        if let Some(actual) = &argument.label
+            && Some(actual) != expected
+        {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::ArgumentLabel {
+                        index,
+                        expected: expected.cloned(),
+                        actual: actual.clone(),
+                    },
+                },
+            });
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn plan_call_args(
+    arguments: NormalizedCallArguments,
+    shapes: &[ValueShape],
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
 ) -> Result<Vec<CallArg>, PlanError> {
-    let mut args = Vec::with_capacity(arguments.len());
-    for (argument, shape) in arguments.into_iter().zip(params) {
+    let mut args = Vec::with_capacity(shapes.len());
+    for (index, (argument, shape)) in arguments.into_values().into_iter().zip(shapes).enumerate() {
+        let actual = context.value_shape(&argument.value.type_()).value_type();
+        validate_call_arg_type(index, &shape.value_type(), &actual)?;
         let expression = plan_argument_value(argument, shape.clone(), capture, context)?;
-        let actual = expression.value_type();
-        let expected = shape.value_type();
-        if actual == expected && !expression.shape().can_flow_to(shape) {
-            return Err(call_arg_shape_mismatch());
-        }
-        if actual != expected {
-            return Err(call_arg_type_mismatch(expected, actual));
-        }
+        validate_call_arg_shape(index, shape, &expression)?;
         args.push(CallArg::new(expression));
     }
     Ok(args)
 }
 
 pub(super) fn plan_custom_constructor_args(
-    arguments: Vec<GleamCallArg<TypedExpr>>,
+    arguments: NormalizedCallArguments,
     constructor: &CustomConstructor,
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
 ) -> Result<Vec<Expr>, PlanError> {
-    let actual = arguments.len();
     arguments
+        .into_values()
         .into_iter()
         .enumerate()
         .map(|(index, argument)| {
-            let Some(field) = constructor.fields().get(index) else {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::CallShape {
-                        reason: InvalidCallShapeReason::RecordConstructorExtraArguments {
-                            expected: constructor.fields().len(),
-                            actual,
-                        },
-                    },
-                });
-            };
-            if let Some(label) = &argument.label
-                && field.label() != Some(label)
-            {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::CallShape {
-                        reason: InvalidCallShapeReason::LabelledArguments,
-                    },
-                });
-            }
+            let field = &constructor.fields()[index];
+            let actual = context.value_shape(&argument.value.type_()).value_type();
+            validate_call_arg_type(index, field.type_(), &actual)?;
             let expression = plan_argument_value(
                 argument,
                 ValueShape::from_value_type(field.type_().clone()),
                 capture,
                 context,
             )?;
-            if expression.value_type() != *field.type_() {
-                return Err(call_arg_type_mismatch(
-                    field.type_().clone(),
-                    expression.value_type(),
-                ));
-            }
             Ok(expression)
         })
         .collect()
@@ -113,35 +165,48 @@ fn plan_argument_value(
     super::super::plan_expr_with_expected_source_stop_shape(argument.value, expected, context)
 }
 
-fn call_arg_type_mismatch(expected: ValueType, actual: ValueType) -> PlanError {
-    if matches!(expected, ValueType::Function(_)) && matches!(actual, ValueType::Function(_)) {
-        PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::CallShape {
-                reason: InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
-            },
-        }
-    } else {
-        PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::from_value_type(expected),
-                actual: InvalidExpressionType::from_value_type(actual),
-            },
-        }
+fn validate_call_arg_shape(
+    index: usize,
+    expected_shape: &ValueShape,
+    expression: &Expr,
+) -> Result<(), PlanError> {
+    let expected = expected_shape.value_type();
+    if expression.shape().can_flow_to(expected_shape) {
+        return Ok(());
     }
+    Err(PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::CallShape {
+            reason: InvalidCallShapeReason::ArgumentShape {
+                index,
+                type_: expected,
+            },
+        },
+    })
 }
 
-fn call_arg_shape_mismatch() -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::CallShape {
-            reason: InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
-        },
+fn validate_call_arg_type(
+    index: usize,
+    expected: &ValueType,
+    actual: &ValueType,
+) -> Result<(), PlanError> {
+    if expected != actual {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CallShape {
+                reason: InvalidCallShapeReason::ArgumentType {
+                    index,
+                    expected: expected.clone(),
+                    actual: actual.clone(),
+                },
+            },
+        });
     }
+    Ok(())
 }
 
 #[cfg(test)]
 #[allow(clippy::arc_with_non_send_sync)]
 mod tests {
-    use super::{plan_function_call_args, plan_instantiated_call_args};
+    use super::{NormalizedCallArguments, plan_call_args};
     use crate::plan::{
         CustomConstructorDefinition, CustomConstructorRefinement, CustomType, CustomTypeDefinition,
         CustomTypeName, CustomTypePublicity, CustomValueShape, ValueShape,
@@ -174,7 +239,11 @@ mod tests {
     fn call_arguments_reject_incompatible_constructor_refinements() {
         let expected = PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::CallShape {
-                reason: InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
+                reason: InvalidCallShapeReason::FunctionInstantiationArgumentShape {
+                    index: 0,
+                    expected: crate::plan::ValueType::Custom(choice_type()),
+                    actual: crate::plan::ValueType::Custom(choice_type()),
+                },
             },
         };
         let source = r#"
@@ -259,11 +328,20 @@ pub fn main() {
             Vec::new(),
             CustomConstructorRefinement::Exact(0),
         ));
+        let expected_type = expected.value_type();
         assert_eq!(
-            plan_instantiated_call_args(arguments, &[expected], &mut context, None,),
+            plan_call_args(
+                NormalizedCallArguments::specialized(arguments),
+                &[expected],
+                &mut context,
+                None,
+            ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
+                    reason: InvalidCallShapeReason::ArgumentShape {
+                        index: 0,
+                        type_: expected_type,
+                    },
                 },
             }),
         );
@@ -303,12 +381,21 @@ pub fn main() {
             Vec::new(),
             CustomConstructorRefinement::Exact(0),
         ));
+        let expected_type = expected.value_type();
 
         assert_eq!(
-            plan_function_call_args(arguments, &[expected], &mut context, None),
+            plan_call_args(
+                NormalizedCallArguments::specialized(arguments),
+                &[expected],
+                &mut context,
+                None,
+            ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
+                    reason: InvalidCallShapeReason::ArgumentShape {
+                        index: 0,
+                        type_: expected_type,
+                    },
                 },
             }),
         );

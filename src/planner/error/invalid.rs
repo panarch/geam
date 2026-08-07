@@ -4,10 +4,12 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum InvalidTypedAstReason {
-    #[error("custom type {name}: {reason}")]
+    #[error("custom type {package}:{module}.{name}: {reason}")]
     CustomType {
+        package: EcoString,
+        module: EcoString,
         name: EcoString,
-        reason: InvalidCustomTypeReason,
+        reason: Box<InvalidCustomTypeReason>,
     },
     #[error("function shape {name}: {reason}")]
     FunctionShape {
@@ -18,8 +20,15 @@ pub enum InvalidTypedAstReason {
     GeneratedAssignment,
     #[error("use statement")]
     UseStatement,
-    #[error("invalid pattern")]
-    InvalidPattern,
+    #[error("invalid expression node")]
+    InvalidExpressionNode,
+    #[error("expression shape refinement: expected {expected:?}, got {actual:?}")]
+    ExpressionShapeRefinement {
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("pattern shape: {reason}")]
+    PatternShape { reason: InvalidPatternShapeReason },
     #[error("expression shape: {kind}")]
     ExpressionShape { kind: InvalidExpressionShapeKind },
     #[error("expression type: expected {expected}, got {actual}")]
@@ -27,6 +36,13 @@ pub enum InvalidTypedAstReason {
         expected: InvalidExpressionType,
         actual: InvalidExpressionType,
     },
+    #[error("expression value type: expected {expected:?}, got {actual:?}")]
+    ExpressionValueTypeMismatch {
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("expression type has no supported runtime family; expected {expected}")]
+    UnsupportedExpressionType { expected: InvalidExpressionType },
     #[error("call shape: {reason}")]
     CallShape { reason: InvalidCallShapeReason },
     #[error("case shape: {reason}")]
@@ -49,33 +65,206 @@ pub enum InvalidTypedAstReason {
     UnknownLocal { name: EcoString },
 }
 
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
-pub enum InvalidCustomTypeReason {
-    #[error("type argument count does not match definition")]
-    TypeArgumentCount,
-    #[error("constructor index is out of range")]
-    ConstructorIndex,
-    #[error("constructor name does not match definition")]
-    ConstructorName,
-    #[error("constructor module does not match custom type")]
-    ConstructorModule,
-    #[error("constructor field count does not match definition")]
-    ConstructorArity,
-    #[error("constructor type is not a custom type")]
-    ConstructorType,
-    #[error("constructor field type is invalid")]
-    FieldType,
-    #[error("constructor field index is invalid")]
-    FieldIndex,
-    #[error("constructor field label is invalid")]
-    FieldLabel,
-    #[error("type parameter is not generic")]
-    ParameterType,
-    #[error("custom type definition is missing")]
-    UnknownDefinition,
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum InvalidPatternShapeReason {
+    #[error("pattern type: expected {expected:?}, got {actual:?}")]
+    TypeMismatch {
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("pattern annotation has no supported runtime type")]
+    UnsupportedType,
+    #[error("{actual} pattern cannot represent {expected:?}")]
+    KindMismatch {
+        expected: ValueType,
+        actual: PatternKind,
+    },
+    #[error("tuple pattern arity: expected {expected}, got {actual}")]
+    TupleArity { expected: usize, actual: usize },
+    #[error("list tail must bind or discard, got {actual}")]
+    ListTailKind { actual: PatternKind },
+    #[error("{actual} pattern cannot be used as a total binding")]
+    BindingKind { actual: PatternKind },
+    #[error("binding aliases cannot contain another alias")]
+    NestedBindingAlias,
+    #[error("{actual} binding cannot represent {expected:?}")]
+    BindingShape {
+        expected: ValueType,
+        actual: PatternKind,
+    },
+    #[error("binding shapes for {type_:?} are incompatible")]
+    BindingShapeConflict { type_: ValueType },
+    #[error("binding constructor {expected} does not match {actual:?}")]
+    BindingConstructorRefinement {
+        expected: usize,
+        actual: Option<usize>,
+    },
+    #[error("list binding must not contain elements, got {actual}")]
+    ListBindingElements { actual: usize },
+    #[error("list binding must contain a tail")]
+    ListBindingTailMissing,
+    #[error("constructor binding is refutable across {constructors} constructors")]
+    RefutableBindingConstructor { constructors: usize },
+    #[error("bit-array binding segment count: expected 1, got {actual}")]
+    BitArrayBindingSegmentCount { actual: usize },
+    #[error("bit-array binding segment must not have a size")]
+    BitArrayBindingSegmentSize,
+    #[error("bit-array binding segment must use the bits option")]
+    BitArrayBindingSegmentOptions,
+    #[error("unsized bit-array segment {index} is not the final segment of {count}")]
+    BitArrayUnsizedSegment { index: usize, count: usize },
+    #[error("bit-array segment options: {reason}")]
+    BitArraySegmentOptions {
+        reason: InvalidBitArraySegmentOptionsReason,
+    },
+    #[error("bit-array size must use a size node, got {actual}")]
+    BitArraySizePattern { actual: PatternKind },
+    #[error("bit-array size variable {name} has no constructor metadata")]
+    BitArraySizeUnresolved { name: EcoString },
+    #[error("bit-array size variable {name} has an unsupported source")]
+    BitArraySizeSource { name: EcoString },
+    #[error("bit-array size constant is not an integer expression")]
+    BitArraySizeConstant,
+    #[error("{actual:?} cannot be used as a refutable assertion subject")]
+    AssertSubject { actual: ValueType },
+    #[error("invalid pattern node")]
+    InvalidNode,
+    #[error("bit-array size node used as a pattern")]
+    BitArraySizeNode,
+    #[error("constructor metadata is unresolved")]
+    UnresolvedConstructor,
+    #[error("constructor module: expected {expected}, got {actual}")]
+    ConstructorModule {
+        expected: EcoString,
+        actual: EcoString,
+    },
+    #[error("constructor name: expected {expected}, got {actual}")]
+    ConstructorName {
+        expected: EcoString,
+        actual: EcoString,
+    },
+    #[error("constructor index: expected {expected}, got {actual}")]
+    ConstructorIndex { expected: usize, actual: usize },
+    #[error("constructor arity: expected {expected}, got {actual}")]
+    ConstructorArity { expected: usize, actual: usize },
+    #[error("constructor pattern cannot represent {type_:?}")]
+    ConstructorType { type_: ValueType },
+    #[error("constructor spread is invalid for {type_:?}")]
+    ConstructorSpread { type_: ValueType },
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum InvalidBitArraySegmentOptionsReason {
+    #[error("multiple segment kinds")]
+    MultipleKinds,
+    #[error("multiple signedness options")]
+    MultipleSignedness,
+    #[error("multiple endianness options")]
+    MultipleEndianness,
+    #[error("multiple size options")]
+    MultipleSizes,
+    #[error("multiple unit options")]
+    MultipleUnits,
+    #[error("unit option without a size")]
+    UnitWithoutSize,
+    #[error("zero unit")]
+    ZeroUnit,
+    #[error("options incompatible with the segment kind")]
+    Incompatible,
+}
+
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum PatternKind {
+    #[error("integer")]
+    Int,
+    #[error("float")]
+    Float,
+    #[error("string")]
+    String,
+    #[error("variable")]
+    Variable,
+    #[error("bit-array size")]
+    BitArraySize,
+    #[error("alias")]
+    Assign,
+    #[error("discard")]
+    Discard,
+    #[error("list")]
+    List,
+    #[error("constructor")]
+    Constructor,
+    #[error("tuple")]
+    Tuple,
+    #[error("bit array")]
+    BitArray,
+    #[error("string prefix")]
+    StringPrefix,
+    #[error("invalid")]
+    Invalid,
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum InvalidCustomTypeReason {
+    #[error("type parameter {index} is not a generic parameter")]
+    DefinitionParameter { index: usize },
+    #[error("field {field} of constructor {constructor} has no supported type template")]
+    DefinitionField {
+        constructor: EcoString,
+        field: usize,
+    },
+    #[error("template parameter {index} is outside {available} type arguments")]
+    TemplateParameterIndex { index: usize, available: usize },
+    #[error("template shape expected {expected:?}, got {actual:?}")]
+    TemplateShapeMismatch {
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("parameter {parameter} inferred incompatible shapes {previous:?} and {actual:?}")]
+    ConflictingParameterShape {
+        parameter: usize,
+        previous: ValueType,
+        actual: ValueType,
+    },
+    #[error("custom type definition is missing")]
+    MissingDefinition,
+    #[error("type argument count: expected {expected}, got {actual}")]
+    TypeArgumentCount { expected: usize, actual: usize },
+    #[error("constructor index {index} is outside {available} constructors")]
+    ConstructorIndex { index: usize, available: usize },
+    #[error("constructor {index} name: expected {expected}, got {actual}")]
+    ConstructorName {
+        index: usize,
+        expected: EcoString,
+        actual: EcoString,
+    },
+    #[error("constructor module: expected {expected}, got {actual}")]
+    ConstructorModule {
+        expected: EcoString,
+        actual: EcoString,
+    },
+    #[error("constructor arity: expected {expected}, got {actual}")]
+    ConstructorArity { expected: usize, actual: usize },
+    #[error("constructor result is {actual:?}, not a custom type")]
+    ConstructorType { actual: ValueType },
+    #[error("field index {index} is outside {available} fields")]
+    FieldIndex { index: usize, available: usize },
+    #[error("field {index} label: expected {expected:?}, got {actual:?}")]
+    FieldLabel {
+        index: usize,
+        expected: Option<EcoString>,
+        actual: Option<EcoString>,
+    },
+    #[error("field {index} type: expected {expected:?}, got {actual:?}")]
+    FieldType {
+        index: usize,
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("field {index} has incompatible result shape for {type_:?}")]
+    FieldShapeConflict { index: usize, type_: ValueType },
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum InvalidFunctionShapeReason {
     #[error("function argument types do not match signature")]
     ArgumentTypeMismatch,
@@ -85,32 +274,184 @@ pub enum InvalidFunctionShapeReason {
     EmptyBody,
     #[error("labelled function argument")]
     LabelledArgument,
+    #[error("function expression has type {actual:?}")]
+    ExpressionType { actual: ValueType },
     #[error("function return type does not match body")]
     ReturnTypeMismatch,
 }
 
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum InvalidExpressionShapeKind {
-    #[error("bit array segment option")]
-    BitArraySegmentOption,
-    #[error("invalid")]
-    Invalid,
+    #[error("bit-array constant size is not an integer")]
+    BitArrayConstantSize,
+    #[error("bit-array float size: got {actual}")]
+    BitArrayFloatSize { actual: usize },
+    #[error("bit-array segment has multiple kinds")]
+    BitArrayMultipleKinds,
+    #[error("bit-array segment cannot infer a kind from {actual:?}")]
+    BitArrayImplicitKind { actual: ValueType },
+    #[error("bit-array string segment has a size or non-default unit")]
+    BitArrayStringOptions,
+    #[error("bit-array codepoint segment has incompatible options")]
+    BitArrayUtfCodepointOptions,
+    #[error("unsupported bit-array segment option")]
+    BitArrayUnsupportedOption,
+    #[error("constant local variable")]
+    ConstantLocalVariable,
+    #[error("constant variable has no constructor metadata")]
+    ConstantMissingConstructor,
+    #[error("invalid constant node")]
+    ConstantNode,
+    #[error("constant record constructor kind")]
+    ConstantRecordConstructorKind,
+    #[error("constant record kind")]
+    ConstantRecordKind,
+    #[error("constant record constructor metadata is missing")]
+    ConstantRecordMissingConstructor,
+    #[error("constant record argument count: expected {expected}, got {actual}")]
+    ConstantRecordArgumentCount { expected: usize, actual: usize },
+    #[error("constant record argument {index} label: expected {expected:?}, got {actual:?}")]
+    ConstantRecordArgumentLabel {
+        index: usize,
+        expected: Option<EcoString>,
+        actual: Option<EcoString>,
+    },
+    #[error("constant record constructor type: got {actual:?}")]
+    ConstantRecordConstructorType { actual: Option<ValueType> },
+    #[error("constant prelude constructor {name}/{arity}: got {actual:?}")]
+    ConstantPreludeConstructor {
+        name: EcoString,
+        arity: usize,
+        actual: Option<ValueType>,
+    },
+    #[error("constant record update")]
+    ConstantRecordUpdate,
+    #[error("constant list element type")]
+    ConstantListElementType,
+    #[error("constant list type: got {actual:?}")]
+    ConstantListType { actual: Option<ValueType> },
+    #[error("constant tuple elements: expected {expected:?}, got {actual:?}")]
+    ConstantTupleElements {
+        expected: Vec<ValueType>,
+        actual: Vec<ValueType>,
+    },
+    #[error("constant tuple type: got {actual:?}")]
+    ConstantTupleType { actual: Option<ValueType> },
+    #[error("echo expression is missing")]
+    EchoExpressionMissing,
     #[error("function capture literal")]
     FunctionCaptureLiteral,
+    #[error("function literal kind")]
+    FunctionLiteralKind,
+    #[error("generated todo message")]
+    GeneratedTodoMessage,
+    #[error("invalid guard node")]
+    GuardNode,
+    #[error("guard local shape")]
+    GuardLocalShape,
+    #[error("guard function local shape")]
+    GuardFunctionLocalShape,
+    #[error("list spread has no prefix elements")]
+    ListSpreadEmptyPrefix,
+    #[error("list expression type: got {actual:?}")]
+    ListType { actual: ValueType },
+    #[error("list index expression shape for {type_:?}")]
+    ListIndexShape { type_: ValueType },
+    #[error("local binding shape")]
+    LocalBindingShape,
+    #[error("invalid module constant node")]
+    ModuleConstantNode,
+    #[error("module constant bit-array float size: got {actual}")]
+    ModuleConstantBitArrayFloatSize { actual: usize },
+    #[error("module constant bit-array segment cannot infer a kind from {actual:?}")]
+    ModuleConstantBitArrayImplicitKind { actual: ValueType },
+    #[error("module constant bit-array segment has multiple kinds")]
+    ModuleConstantBitArrayMultipleKinds,
+    #[error("module constant bit-array size is not an integer")]
+    ModuleConstantBitArraySize,
+    #[error("module constant bit-array string segment has a size or non-default unit")]
+    ModuleConstantBitArrayStringOptions,
+    #[error("module constant bit-array codepoint option")]
+    ModuleConstantBitArrayCodepointOption,
+    #[error("unsupported module constant bit-array segment option")]
+    ModuleConstantBitArrayUnsupportedOption,
+    #[error("module constant list spread has no prefix elements")]
+    ModuleConstantListSpreadEmptyPrefix,
+    #[error("module constant list type: got {actual:?}")]
+    ModuleConstantListType { actual: ValueType },
+    #[error("module constant local variable")]
+    ModuleConstantLocalVariable,
+    #[error("module constant variable has no constructor metadata")]
+    ModuleConstantMissingConstructor,
+    #[error("module constant record kind")]
+    ModuleConstantRecordKind,
+    #[error("module constant record constructor metadata is missing")]
+    ModuleConstantRecordMissingConstructor,
+    #[error("module constant record argument count: expected {expected}, got {actual}")]
+    ModuleConstantRecordArgumentCount { expected: usize, actual: usize },
+    #[error("module constant record argument {index} label: expected {expected:?}, got {actual:?}")]
+    ModuleConstantRecordArgumentLabel {
+        index: usize,
+        expected: Option<EcoString>,
+        actual: Option<EcoString>,
+    },
+    #[error("module constant record value must be custom, got {actual:?}")]
+    ModuleConstantRecordCustomShape { actual: ValueType },
+    #[error("module constant record reference must be a function, got {actual:?}")]
+    ModuleConstantRecordFunctionShape { actual: ValueType },
+    #[error("module constant prelude constructor {name}/{arity}: got {actual:?}")]
+    ModuleConstantPreludeConstructor {
+        name: EcoString,
+        arity: usize,
+        actual: ValueType,
+    },
+    #[error("module constant record update")]
+    ModuleConstantRecordUpdate,
+    #[error("module constant storage shape")]
+    ModuleConstantStorageShape,
+    #[error("module constant tuple arity: expected {expected}, got {actual}")]
+    ModuleConstantTupleArity { expected: usize, actual: usize },
+    #[error("module constant tuple type: got {actual:?}")]
+    ModuleConstantTupleType { actual: ValueType },
     #[error("positional access")]
     PositionalAccess,
-    #[error("prelude constructor")]
-    PreludeConstructor,
-    #[error("record constructor")]
-    RecordConstructor,
+    #[error("custom constructor metadata is not a record")]
+    CustomConstructorKind,
     #[error("record access")]
     RecordAccess,
-    #[error("record update")]
-    RecordUpdate,
+    #[error("tuple expression arity: expected {expected}, got {actual}")]
+    TupleArity { expected: usize, actual: usize },
+    #[error("tuple index {index} is outside {available} elements")]
+    TupleIndex { index: usize, available: usize },
+    #[error("tuple expression type: got {actual:?}")]
+    TupleType { actual: ValueType },
+    #[error("variable function local shape")]
+    VariableFunctionLocalShape,
+    #[error("variable prelude constructor {name}/{arity}: got {actual:?}")]
+    VariablePreludeConstructor {
+        name: EcoString,
+        arity: usize,
+        actual: ValueType,
+    },
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum InvalidRecordUpdateShapeReason {
+    #[error("record constructor argument count: expected {expected}, got {actual}")]
+    ArgumentCount { expected: usize, actual: usize },
+    #[error("record constructor argument {index} label: expected {expected:?}, got {actual:?}")]
+    ArgumentLabel {
+        index: usize,
+        expected: Option<EcoString>,
+        actual: Option<EcoString>,
+    },
+    #[error(
+        "record update base assignment: requires assignment {requires_assignment}, got {has_assignment}"
+    )]
+    BaseAssignment {
+        requires_assignment: bool,
+        has_assignment: bool,
+    },
     #[error("record constructor expression")]
     ConstructorExpression,
     #[error("record constructor kind")]
@@ -120,26 +461,91 @@ pub enum InvalidRecordUpdateShapeReason {
         expected: EcoString,
         actual: EcoString,
     },
-    #[error("record constructor argument count")]
-    ArgumentCount,
-    #[error("record constructor argument label")]
-    ArgumentLabel,
-    #[error("record update base assignment")]
-    BaseAssignment,
-    #[error("record update implicit argument origin")]
-    ImplicitArgumentOrigin,
-    #[error("record update implicit field access")]
-    ImplicitFieldAccess,
-    #[error("record update implicit field target")]
-    ImplicitFieldTarget,
-    #[error("record update type")]
-    Type,
+    #[error("record constructor result type: expected {expected:?}, got {actual:?}")]
+    ConstructorResultType {
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("record update implicit argument {index} origin: got {actual}")]
+    ImplicitArgumentOrigin {
+        index: usize,
+        actual: RecordUpdateArgumentOrigin,
+    },
+    #[error("record update implicit argument {argument} is not a field access")]
+    ImplicitFieldExpression { argument: usize },
+    #[error(
+        "record update implicit argument {argument} field index: expected {expected}, got {actual}"
+    )]
+    ImplicitFieldIndex {
+        argument: usize,
+        expected: usize,
+        actual: u64,
+    },
+    #[error(
+        "record update implicit argument {argument} field label: expected {expected:?}, got {actual:?}"
+    )]
+    ImplicitFieldLabel {
+        argument: usize,
+        expected: Option<EcoString>,
+        actual: Option<EcoString>,
+    },
+    #[error(
+        "record update implicit argument {argument} field type: expected {expected:?}, got {actual:?}"
+    )]
+    ImplicitFieldType {
+        argument: usize,
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("record update implicit argument {argument} generated target kind")]
+    ImplicitGeneratedTargetKind { argument: usize },
+    #[error("record update implicit argument {argument} generated target origin")]
+    ImplicitGeneratedTargetOrigin { argument: usize },
+    #[error(
+        "record update implicit argument {argument} generated target type: expected {expected:?}, got {actual:?}"
+    )]
+    ImplicitGeneratedTargetType {
+        argument: usize,
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("record update implicit argument {argument} original target constructor")]
+    ImplicitOriginalTargetConstructor { argument: usize },
+    #[error("record update implicit argument {argument} target is not a variable")]
+    ImplicitTargetExpression { argument: usize },
+    #[error(
+        "record update implicit argument {argument} target name: expected {expected}, got {actual}"
+    )]
+    ImplicitTargetName {
+        argument: usize,
+        expected: EcoString,
+        actual: EcoString,
+    },
+    #[error("record update source is not a custom type: got {actual:?}")]
+    UpdatedSourceFamily { actual: ValueType },
+    #[error("record update source type: expected {expected:?}, got {actual:?}")]
+    UpdatedSourceType {
+        expected: ValueType,
+        actual: ValueType,
+    },
+}
+
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum RecordUpdateArgumentOrigin {
+    #[error("incorrect-arity use")]
+    IncorrectArityUse,
+    #[error("pattern field spread")]
+    PatternFieldSpread,
+    #[error("pipe")]
+    Pipe,
+    #[error("record update")]
+    RecordUpdate,
+    #[error("use")]
+    Use,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum InvalidExpressionType {
-    #[error("unsupported")]
-    Unsupported,
     #[error("type parameter")]
     TypeParameter,
     #[error("Int")]
@@ -207,26 +613,48 @@ mod tests {
     }
 }
 
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum InvalidCallShapeReason {
-    #[error("function value call arity mismatch")]
-    FunctionCallArityMismatch,
-    #[error("function value call argument type mismatch")]
-    FunctionCallArgumentTypeMismatch,
-    #[error("function value call return type mismatch")]
-    FunctionCallReturnTypeMismatch,
-    #[error("implicit call arguments")]
-    ImplicitArguments,
-    #[error("labelled call arguments")]
-    LabelledArguments,
-    #[error("local function call arity mismatch")]
-    LocalFunctionCallArityMismatch,
-    #[error("local function call return type does not match function table")]
-    LocalFunctionCallReturnTypeMismatch,
-    #[error("record constructor has extra arguments: expected {expected}, got {actual}")]
-    RecordConstructorExtraArguments { expected: usize, actual: usize },
-    #[error("record constructor has missing arguments: expected {expected}, got {actual}")]
-    RecordConstructorMissingArguments { expected: usize, actual: usize },
+    #[error("call argument count: expected {expected}, got {actual}")]
+    ArgumentCount { expected: usize, actual: usize },
+    #[error("call argument {index} label: expected {expected:?}, got {actual}")]
+    ArgumentLabel {
+        index: usize,
+        expected: Option<EcoString>,
+        actual: EcoString,
+    },
+    #[error("call argument {index} shape is incompatible with {type_:?}")]
+    ArgumentShape { index: usize, type_: ValueType },
+    #[error("call argument {index} type: expected {expected:?}, got {actual:?}")]
+    ArgumentType {
+        index: usize,
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("function instantiation argument count: expected {expected}, got {actual}")]
+    FunctionInstantiationArgumentCount { expected: usize, actual: usize },
+    #[error("function instantiation argument {index}: expected {expected:?}, got {actual:?}")]
+    FunctionInstantiationArgumentShape {
+        index: usize,
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("function instantiation return shape: expected {expected:?}, got {actual:?}")]
+    FunctionInstantiationReturnShape {
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("function instantiation has an unresolved type parameter")]
+    FunctionInstantiationUnresolvedParameter,
+    #[error("function value return type: expected {expected:?}, got {actual:?}")]
+    FunctionValueReturnType {
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("implicit call argument at index {index}")]
+    ImplicitArgument { index: usize },
+    #[error("record constructor argument count: expected {expected}, got {actual}")]
+    RecordConstructorArgumentCount { expected: usize, actual: usize },
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -259,10 +687,23 @@ pub enum InvalidModuleReferenceReason {
     ConstantInstantiation,
 }
 
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum InvalidCaseShapeReason {
-    #[error("branch return type does not match case type")]
-    BranchReturnTypeMismatch,
+    #[error("branch annotation type: expected {expected:?}, got {actual:?}")]
+    BranchAnnotatedTypeMismatch {
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("branch shapes are incompatible: expected {expected:?}, got {actual:?}")]
+    BranchShapeIncompatibility {
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("branch family assembly: expected {expected:?}, got {actual:?}")]
+    BranchFamilyAssemblyMismatch {
+        expected: ValueType,
+        actual: ValueType,
+    },
     #[error("empty clauses")]
     EmptyClauses,
     #[error("empty subjects")]
@@ -277,54 +718,66 @@ pub enum InvalidCaseShapeReason {
     CompiledCaseGuard,
     #[error("compiled case subject count does not match case subjects")]
     CompiledCaseSubjectCountMismatch,
-    #[error("invalid pattern")]
-    InvalidPattern,
     #[error("missing false pattern")]
     MissingFalsePattern,
     #[error("missing fallback pattern")]
     MissingFallbackPattern,
     #[error("missing true pattern")]
     MissingTruePattern,
-    #[error("pattern type mismatch")]
-    PatternTypeMismatch,
-    #[error("pattern subject count mismatch")]
-    PatternSubjectCountMismatch,
+    #[error("case pattern count: expected {expected}, got {actual}")]
+    PatternSubjectCountMismatch { expected: usize, actual: usize },
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum InvalidPipelineShapeReason {
     #[error("invalid echo step")]
     EchoStep,
-    #[error("invalid hole capture")]
-    InvalidHoleCapture,
+    #[error("hole capture argument is not a variable binding")]
+    HoleCaptureBinding,
+    #[error("hole capture argument count: expected 1, got {actual}")]
+    HoleCaptureArgumentCount { actual: usize },
+    #[error("hole capture is not a function literal")]
+    HoleCaptureFunction,
+    #[error("hole capture function has the wrong literal kind")]
+    HoleCaptureLiteralKind,
+    #[error("hole capture use count: expected 1, got {actual}")]
+    HoleCaptureUseCount { actual: usize },
+    #[error("hole body has an implicit argument at index {index}")]
+    HoleBodyImplicitArgument { index: usize },
+    #[error("hole body is not a call")]
+    HoleBodyNotCall,
+    #[error("hole body statement count: expected 1, got {actual}")]
+    HoleBodyStatementCount { actual: usize },
+    #[error("hole wrapper argument count: expected 1, got {actual}")]
+    HoleWrapperArgumentCount { actual: usize },
     #[error("missing pipe argument")]
     MissingPipeArgument,
-    #[error("multiple pipe arguments")]
-    MultiplePipeArguments,
+    #[error("multiple pipe arguments at indices {first} and {second}")]
+    MultiplePipeArguments { first: usize, second: usize },
     #[error("non-call pipeline step")]
     NonCallStep,
-    #[error("unsupported implicit argument")]
-    UnsupportedImplicitArgument,
+    #[error("unsupported pipe argument at index {index}")]
+    UnsupportedPipeArgument { index: usize },
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum InvalidUseShapeReason {
     #[error("callback literal kind is not use")]
-    CallbackLiteralKindNotUse,
+    CallbackLiteralKindNotUse { index: usize },
     #[error("callback is not the last argument")]
-    CallbackNotLast,
+    CallbackNotLast { index: usize, arguments: usize },
     #[error("callback argument is not a function literal")]
-    CallbackNotFunctionLiteral,
+    CallbackNotFunctionLiteral { index: usize },
     #[error("invalid generated assignment")]
-    InvalidGeneratedAssignment,
+    InvalidGeneratedAssignment { index: usize },
     #[error("missing callback")]
     MissingCallback,
-    #[error("multiple callbacks")]
-    MultipleCallbacks,
+    #[error("multiple callbacks at indices {first} and {second}")]
+    MultipleCallbacks { first: usize, second: usize },
     #[error("non-call use right hand side")]
     NonCallRhs,
-    #[error("unexpected variable use assignment")]
-    UnexpectedVariableAssignment,
-    #[error("unsupported implicit argument")]
-    UnsupportedImplicitArgument,
+    #[error("unexpected variable use assignment at index {index}")]
+    UnexpectedVariableAssignment { index: usize },
+    #[error("unsupported implicit use argument at index {index}")]
+    UnsupportedImplicitArgument { index: usize },
 }

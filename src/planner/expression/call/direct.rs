@@ -1,9 +1,9 @@
 use super::CaptureSubstitution;
 use crate::plan::{Expr, FunctionShape};
-use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
+use crate::planner::context::{FunctionInfo, PlanContext};
 use crate::planner::error::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
 use crate::planner::type_parameter::FunctionInstantiationMismatch;
-use gleam_core::ast::{CallArg as GleamCallArg, SrcSpan, TypedExpr};
+use gleam_core::ast::SrcSpan;
 use gleam_core::type_::Type;
 use std::sync::Arc;
 
@@ -11,18 +11,11 @@ pub(super) fn plan_direct_function_call(
     location: SrcSpan,
     type_: Arc<Type>,
     function: FunctionInfo,
-    arguments: Vec<GleamCallArg<TypedExpr>>,
+    arguments: super::argument::NormalizedCallArguments,
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
 ) -> Result<Expr, PlanError> {
-    if function.arity() != arguments.len() {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::CallShape {
-                reason: InvalidCallShapeReason::LocalFunctionCallArityMismatch,
-            },
-        });
-    }
-    validate_argument_labels(&arguments, &function.params)?;
+    let arguments = arguments.for_direct(&function.params)?;
     let actual_shape = FunctionShape::new(
         arguments
             .iter()
@@ -30,10 +23,8 @@ pub(super) fn plan_direct_function_call(
             .collect(),
         context.value_shape(type_.as_ref()),
     );
-    let instantiation = function
-        .instantiate(&actual_shape)
-        .map_err(function_instantiation_mismatch)?;
-    let args = super::argument::plan_instantiated_call_args(
+    let instantiation = instantiate_direct_function(&function, &actual_shape)?;
+    let args = super::argument::plan_call_args(
         arguments,
         instantiation.shape().argument_shapes(),
         context,
@@ -47,47 +38,45 @@ pub(super) fn plan_direct_function_call(
     ))
 }
 
-fn function_instantiation_mismatch(mismatch: FunctionInstantiationMismatch) -> PlanError {
-    let reason = match mismatch {
-        FunctionInstantiationMismatch::ArgumentCount => {
-            InvalidCallShapeReason::LocalFunctionCallArityMismatch
+fn instantiate_direct_function(
+    function: &FunctionInfo,
+    actual: &FunctionShape,
+) -> Result<crate::plan::FunctionInstantiation, PlanError> {
+    function.instantiate(actual).map_err(|mismatch| {
+        let reason = match mismatch {
+            FunctionInstantiationMismatch::ArgumentCount { expected, actual } => {
+                InvalidCallShapeReason::FunctionInstantiationArgumentCount { expected, actual }
+            }
+            FunctionInstantiationMismatch::ArgumentShape {
+                index,
+                expected,
+                actual,
+            } => InvalidCallShapeReason::FunctionInstantiationArgumentShape {
+                index,
+                expected,
+                actual,
+            },
+            FunctionInstantiationMismatch::ReturnShape { expected, actual } => {
+                InvalidCallShapeReason::FunctionInstantiationReturnShape { expected, actual }
+            }
+            FunctionInstantiationMismatch::UnresolvedParameter => {
+                InvalidCallShapeReason::FunctionInstantiationUnresolvedParameter
+            }
+        };
+        PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CallShape { reason },
         }
-        FunctionInstantiationMismatch::ArgumentShape => {
-            InvalidCallShapeReason::FunctionCallArgumentTypeMismatch
-        }
-        FunctionInstantiationMismatch::ReturnShape
-        | FunctionInstantiationMismatch::UnresolvedParameter => {
-            InvalidCallShapeReason::LocalFunctionCallReturnTypeMismatch
-        }
-    };
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::CallShape { reason },
-    }
-}
-
-fn validate_argument_labels(
-    arguments: &[GleamCallArg<TypedExpr>],
-    params: &[FunctionParam],
-) -> Result<(), PlanError> {
-    for (argument, param) in arguments.iter().zip(params) {
-        if let Some(label) = &argument.label
-            && param.label.as_ref() != Some(label)
-        {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::LabelledArguments,
-                },
-            });
-        }
-    }
-
-    Ok(())
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::function_instantiation_mismatch;
-    use crate::plan::{Expr, FunctionType, IntLocalId, LocalId, Step, ValueType};
+    use super::instantiate_direct_function;
+    use crate::plan::{
+        Expr, FunctionShape, FunctionTemplateId, FunctionTemplateSignature, FunctionType,
+        IntLocalId, LocalId, ModuleId, Step, TypeScheme, ValueShape, ValueType,
+    };
+    use crate::planner::context::FunctionInfo;
     use crate::planner::dsl::{
         call_float_at, call_int_function_at, call_list_at, float, float_arg, function,
         host_call_site, int, int_arg, int_function_arg, int_function_call_arg, int_function_ref,
@@ -99,35 +88,64 @@ mod tests {
     use crate::planner::expression::{typed_int_expr, typed_string_expr};
     use crate::planner::plan_module;
     use crate::planner::support::compile;
-    use crate::planner::type_parameter::FunctionInstantiationMismatch;
+    use crate::planner::type_parameter::TypeParameterScope;
     use crate::planner::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
     use gleam_core::type_;
 
     #[test]
-    fn function_instantiation_mismatch_preserves_each_call_boundary() {
-        for (mismatch, reason) in [
+    fn direct_function_instantiation_preserves_each_call_boundary() {
+        for (scheme, template, actual, reason) in [
             (
-                FunctionInstantiationMismatch::ArgumentCount,
-                InvalidCallShapeReason::LocalFunctionCallArityMismatch,
+                TypeScheme::new(0),
+                FunctionShape::new(vec![ValueShape::Int], ValueShape::Int),
+                FunctionShape::new(Vec::new(), ValueShape::Int),
+                InvalidCallShapeReason::FunctionInstantiationArgumentCount {
+                    expected: 1,
+                    actual: 0,
+                },
             ),
             (
-                FunctionInstantiationMismatch::ArgumentShape,
-                InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
+                TypeScheme::new(0),
+                FunctionShape::new(vec![ValueShape::Int], ValueShape::Int),
+                FunctionShape::new(vec![ValueShape::String], ValueShape::Int),
+                InvalidCallShapeReason::FunctionInstantiationArgumentShape {
+                    index: 0,
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
+                },
             ),
             (
-                FunctionInstantiationMismatch::ReturnShape,
-                InvalidCallShapeReason::LocalFunctionCallReturnTypeMismatch,
+                TypeScheme::new(0),
+                FunctionShape::new(Vec::new(), ValueShape::Int),
+                FunctionShape::new(Vec::new(), ValueShape::String),
+                InvalidCallShapeReason::FunctionInstantiationReturnShape {
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
+                },
             ),
             (
-                FunctionInstantiationMismatch::UnresolvedParameter,
-                InvalidCallShapeReason::LocalFunctionCallReturnTypeMismatch,
+                TypeScheme::new(1),
+                FunctionShape::new(Vec::new(), ValueShape::Int),
+                FunctionShape::new(Vec::new(), ValueShape::Int),
+                InvalidCallShapeReason::FunctionInstantiationUnresolvedParameter,
             ),
         ] {
+            let function = FunctionInfo {
+                signature: FunctionTemplateSignature::new(
+                    FunctionTemplateId::in_module(ModuleId::root(), 0),
+                    scheme,
+                    template.clone(),
+                ),
+                type_parameters: TypeParameterScope::default(),
+                return_shape: template.return_shape().clone(),
+                params: Vec::new(),
+                definition_span: crate::plan::SourceSpan::new(0, 0),
+            };
             assert_eq!(
-                function_instantiation_mismatch(mismatch),
-                PlanError::InvalidTypedAst {
+                instantiate_direct_function(&function, &actual),
+                Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::CallShape { reason },
-                },
+                }),
             );
         }
     }
@@ -367,7 +385,10 @@ pub fn main() {
             plan_module(arity_mismatch_call),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::LocalFunctionCallArityMismatch,
+                    reason: InvalidCallShapeReason::ArgumentCount {
+                        expected: 1,
+                        actual: 0,
+                    },
                 },
             }),
         );
@@ -391,7 +412,17 @@ pub fn main() {
             plan_module(custom_return_type_mismatch_call),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::LocalFunctionCallReturnTypeMismatch,
+                    reason: InvalidCallShapeReason::FunctionInstantiationReturnShape {
+                        expected: ValueType::Int,
+                        actual: ValueType::Custom(crate::plan::CustomType::new(
+                            crate::plan::CustomTypeName::new(
+                                "".into(),
+                                "gleam".into(),
+                                "Result".into(),
+                            ),
+                            vec![ValueType::Int, ValueType::Nil],
+                        )),
+                    },
                 },
             }),
         );
@@ -410,7 +441,10 @@ pub fn main() { identity(1) }
             plan_module(unsupported_return_type_call),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::LocalFunctionCallReturnTypeMismatch,
+                    reason: InvalidCallShapeReason::FunctionInstantiationReturnShape {
+                        expected: ValueType::Int,
+                        actual: ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                    },
                 },
             }),
         );
@@ -434,7 +468,10 @@ pub fn main() {
             plan_module(return_type_mismatch_call),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::LocalFunctionCallReturnTypeMismatch,
+                    reason: InvalidCallShapeReason::FunctionInstantiationReturnShape {
+                        expected: ValueType::Int,
+                        actual: ValueType::Bool,
+                    },
                 },
             }),
         );
@@ -450,6 +487,8 @@ pub fn main() {
 }
             "#,
             typed_string_expr("wrong"),
+            ValueType::Int,
+            ValueType::String,
         );
 
         assert_call_argument_type_mismatch(
@@ -463,6 +502,8 @@ pub fn main() {
 }
             "#,
             typed_int_expr(1),
+            ValueType::String,
+            ValueType::Int,
         );
 
         assert_call_argument_type_mismatch(
@@ -476,6 +517,8 @@ pub fn main() {
 }
             "#,
             typed_int_expr(1),
+            ValueType::Bool,
+            ValueType::Int,
         );
 
         assert_call_argument_type_mismatch(
@@ -489,6 +532,8 @@ pub fn main() {
 }
             "#,
             typed_int_expr(1),
+            ValueType::Nil,
+            ValueType::Int,
         );
 
         let mut wrong_label_call = compile(
@@ -509,7 +554,11 @@ pub fn main() {
             plan_module(wrong_label_call),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::LabelledArguments,
+                    reason: InvalidCallShapeReason::ArgumentLabel {
+                        index: 0,
+                        expected: Some("to".into()),
+                        actual: "wrong".into(),
+                    },
                 },
             }),
         );
@@ -554,7 +603,17 @@ pub fn main() {
             plan_module(function_mismatch_call),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
+                    reason: InvalidCallShapeReason::FunctionInstantiationArgumentShape {
+                        index: 0,
+                        expected: ValueType::Function(Box::new(FunctionType::new(
+                            vec![ValueType::Int],
+                            ValueType::Int,
+                        ))),
+                        actual: ValueType::Function(Box::new(FunctionType::new(
+                            vec![ValueType::String],
+                            ValueType::String,
+                        ))),
+                    },
                 },
             }),
         );
@@ -581,13 +640,25 @@ pub fn main() {
             plan_module(non_function_call),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
+                    reason: InvalidCallShapeReason::FunctionInstantiationArgumentShape {
+                        index: 0,
+                        expected: ValueType::Function(Box::new(FunctionType::new(
+                            vec![ValueType::Int],
+                            ValueType::Int,
+                        ))),
+                        actual: ValueType::Int,
+                    },
                 },
             }),
         );
     }
 
-    fn assert_call_argument_type_mismatch(src: &str, value: gleam_core::ast::TypedExpr) {
+    fn assert_call_argument_type_mismatch(
+        src: &str,
+        value: gleam_core::ast::TypedExpr,
+        expected: ValueType,
+        actual: ValueType,
+    ) {
         let mut module = compile(src);
         let (_, _, arguments) =
             expect_call_statement_mut(&mut module.definitions.functions[1].body[0]);
@@ -597,7 +668,11 @@ pub fn main() {
             plan_module(module),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
+                    reason: InvalidCallShapeReason::FunctionInstantiationArgumentShape {
+                        index: 0,
+                        expected,
+                        actual,
+                    },
                 },
             }),
         );

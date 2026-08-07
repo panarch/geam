@@ -3,10 +3,8 @@ use crate::plan::{
     ValueType,
 };
 use crate::planner::context::{ModuleFunctionTarget, PlanContext};
-use crate::planner::error::{
-    InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-    UnsupportedExpressionKind,
-};
+use crate::planner::error::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
+use crate::planner::expression::conversion::expect_expression;
 use crate::planner::expression::record_constructor::ResolvedRecordConstructor;
 use gleam_core::ast::Constant;
 use gleam_core::strings::convert_string_escape_chars;
@@ -55,12 +53,16 @@ pub(in crate::planner::expression) fn plan(
         Constant::BitArray { segments, .. } => {
             super::bit_array::plan_constant(segments, context).map(Expr::bit_array)
         }
-        Constant::RecordUpdate { .. } => {
-            invalid_expression_shape(InvalidExpressionShapeKind::RecordUpdate)
-        }
-        Constant::Todo { .. } | Constant::Invalid { .. } => {
-            invalid_expression_shape(InvalidExpressionShapeKind::Invalid)
-        }
+        Constant::RecordUpdate { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ConstantRecordUpdate,
+            },
+        }),
+        Constant::Todo { .. } | Constant::Invalid { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ConstantNode,
+            },
+        }),
     }
 }
 
@@ -68,17 +70,7 @@ fn plan_string(
     literal: Constant<Arc<Type>>,
     context: &PlanContext<'_>,
 ) -> Result<StringExpr, PlanError> {
-    let expression = plan(literal, context)?;
-    let actual = expression.value_type();
-    match expression.into_string() {
-        Some(expression) => Ok(expression),
-        None => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::String,
-                actual: InvalidExpressionType::from_value_type(actual),
-            },
-        }),
-    }
+    expect_expression(plan(literal, context)?)
 }
 
 fn plan_tuple(
@@ -94,21 +86,13 @@ fn plan_tuple(
         .iter()
         .map(Expr::value_type)
         .collect::<Vec<_>>();
-    let expected_type = match ValueType::from_gleam(type_.as_ref()) {
+    let actual = ValueType::from_gleam(type_.as_ref());
+    let expected_type = match actual {
         Some(ValueType::Tuple(type_)) => type_,
-        Some(actual) => {
+        actual => {
             return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Tuple,
-                    actual: InvalidExpressionType::from_value_type(actual),
-                },
-            });
-        }
-        None => {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Tuple,
-                    actual: InvalidExpressionType::Unsupported,
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ConstantTupleType { actual },
                 },
             });
         }
@@ -116,9 +100,11 @@ fn plan_tuple(
 
     if expected_type != actual_type {
         return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Tuple,
-                actual: InvalidExpressionType::Tuple,
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ConstantTupleElements {
+                    expected: expected_type,
+                    actual: actual_type,
+                },
             },
         });
     }
@@ -140,83 +126,43 @@ fn plan_list(
         .map(|element| plan(element, context))
         .collect::<Result<Vec<_>, _>>()?;
 
-    let Some(list_element_type) = type_.list_type() else {
-        return match ValueType::from_gleam(type_.as_ref()) {
-            Some(actual) => Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::List,
-                    actual: InvalidExpressionType::from_value_type(actual),
+    let list_element_type = match type_.list_type() {
+        Some(list_element_type) => list_element_type,
+        None => {
+            let actual = ValueType::from_gleam(type_.as_ref());
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ConstantListType { actual },
                 },
-            }),
-            None => Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::List,
-                    actual: InvalidExpressionType::Unsupported,
-                },
-            }),
-        };
+            });
+        }
     };
     let expected_element_type = match ValueType::from_gleam(list_element_type.as_ref()) {
         Some(type_) => type_,
         None => {
-            return Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::UnsupportedListElementType,
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ConstantListElementType,
+                },
             });
         }
     };
 
     let Some(tail) = tail else {
-        let list = match ListExpr::try_value(planned_elements, expected_element_type) {
-            Ok(list) => list,
-            Err(error) => {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::from_value_type(error.expected),
-                        actual: InvalidExpressionType::from_value_type(error.actual),
-                    },
-                });
-            }
-        };
+        let list = super::conversion::expect_value_type_result(
+            ListExpr::try_value(planned_elements, expected_element_type),
+            |error| (error.expected, error.actual),
+        )?;
         return Ok(Expr::list(list));
     };
-    let tail = plan(tail, context)?;
-    let actual = tail.value_type();
-    let Some(tail) = tail.into_list() else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::List,
-                actual: InvalidExpressionType::from_value_type(actual),
-            },
-        });
-    };
-    let elements = match crate::plan::ListElements::from_exprs(
-        expected_element_type.clone(),
-        planned_elements,
-    ) {
-        Ok(elements) => elements,
-        Err(error) => {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::from_value_type(error.expected),
-                    actual: InvalidExpressionType::from_value_type(error.actual),
-                },
-            });
-        }
-    };
-    let elements = match crate::plan::ListSpreadElements::from_parts(elements, tail) {
-        Ok(elements) => elements,
-        Err(crate::plan::ListSpreadConstructionError::EmptyPrefix) => {
-            return invalid_expression_shape(InvalidExpressionShapeKind::Invalid);
-        }
-        Err(crate::plan::ListSpreadConstructionError::ElementTypeMismatch(_)) => {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::List,
-                    actual: InvalidExpressionType::List,
-                },
-            });
-        }
-    };
+    let tail: ListExpr = expect_expression(plan(tail, context)?)?;
+    let elements = super::conversion::expect_value_type_result(
+        crate::plan::ListElements::from_exprs(expected_element_type, planned_elements),
+        |error| (error.expected, error.actual),
+    )?;
+    let elements = super::conversion::expect_list_spread(
+        crate::plan::ListSpreadElements::from_parts(elements, tail),
+    )?;
     Ok(Expr::list(ListExpr::from_spread_elements(elements)))
 }
 
@@ -226,7 +172,11 @@ fn plan_var(
     context: &PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let Some(constructor) = constructor else {
-        return invalid_expression_shape(InvalidExpressionShapeKind::Invalid);
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ConstantMissingConstructor,
+            },
+        });
     };
 
     match constructor.variant {
@@ -254,9 +204,11 @@ fn plan_var(
             )))
         }
         ValueConstructorVariant::Record { .. } => plan_record_constructor(constructor, context),
-        ValueConstructorVariant::LocalVariable { .. } => {
-            invalid_expression_shape(InvalidExpressionShapeKind::Invalid)
-        }
+        ValueConstructorVariant::LocalVariable { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ConstantLocalVariable,
+            },
+        }),
     }
 }
 
@@ -266,11 +218,19 @@ fn plan_record(
     context: &PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let Some(constructor) = constructor else {
-        return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ConstantRecordMissingConstructor,
+            },
+        });
     };
 
     let ValueConstructorVariant::Record { .. } = &constructor.variant else {
-        return invalid_expression_shape(InvalidExpressionShapeKind::Invalid);
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ConstantRecordKind,
+            },
+        });
     };
     let Some(arguments) = arguments else {
         return plan_record_constructor(constructor, context);
@@ -290,38 +250,43 @@ fn plan_record(
         return plan_record_constructor(constructor, context);
     }
     let constructor = context.custom_constructor(&constructor)?;
+    if arguments.len() != constructor.fields().len() {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ConstantRecordArgumentCount {
+                    expected: constructor.fields().len(),
+                    actual: arguments.len(),
+                },
+            },
+        });
+    }
     let arguments = arguments
         .into_iter()
+        .zip(constructor.fields())
         .enumerate()
-        .map(|(index, argument)| {
-            let Some(field) = constructor.fields().get(index) else {
-                return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
-            };
+        .map(|(index, (argument, field))| {
             if let Some(label) = &argument.label
                 && field.label() != Some(label)
             {
-                return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
-            }
-            let argument = plan(argument.value, context)?;
-            if argument.value_type() != *field.type_() {
                 return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::from_value_type(field.type_().clone()),
-                        actual: InvalidExpressionType::from_value_type(argument.value_type()),
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ConstantRecordArgumentLabel {
+                            index,
+                            expected: field.label().cloned(),
+                            actual: argument.label.clone(),
+                        },
                     },
                 });
             }
+            let argument = plan(argument.value, context)?;
+            super::conversion::validate_expression_value_type(
+                field.type_(),
+                &argument.value_type(),
+            )?;
             Ok(argument)
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let construction =
-        crate::plan::CustomConstruction::try_new(constructor, arguments).map_err(|_| {
-            PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
-                },
-            }
-        })?;
+    let construction = crate::plan::CustomConstruction::from_validated(constructor, arguments);
     context
         .custom_expr_from_construction(construction)
         .map(Expr::custom)
@@ -338,37 +303,44 @@ fn plan_record_constructor(
         ..
     } = &constructor.variant
     else {
-        return invalid_expression_shape(InvalidExpressionShapeKind::Invalid);
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ConstantRecordConstructorKind,
+            },
+        });
     };
-    if module == PRELUDE_MODULE_NAME && *arity == 0 {
-        match name.as_str() {
-            "True" => return Ok(Expr::bool(BoolExpr::value(true))),
-            "False" => return Ok(Expr::bool(BoolExpr::value(false))),
-            "Nil" => return Ok(Expr::nil(NilExpr::value())),
-            _ => {
-                return invalid_expression_shape(InvalidExpressionShapeKind::PreludeConstructor);
-            }
-        }
-    }
     if module == PRELUDE_MODULE_NAME && !matches!(name.as_str(), "Ok" | "Error") {
-        return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
+        return match (name.as_str(), *arity) {
+            ("True", 0) => Ok(Expr::bool(BoolExpr::value(true))),
+            ("False", 0) => Ok(Expr::bool(BoolExpr::value(false))),
+            ("Nil", 0) => Ok(Expr::nil(NilExpr::value())),
+            _ => Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ConstantPreludeConstructor {
+                        name: name.clone(),
+                        arity: usize::from(*arity),
+                        actual: ValueType::from_gleam(constructor.type_.as_ref()),
+                    },
+                },
+            }),
+        };
     }
     if module != PRELUDE_MODULE_NAME {
         let _linked_module = context.resolve_module_reference(module, name)?;
     }
     let Some(shape) = crate::plan::ValueShape::from_gleam(constructor.type_.as_ref()) else {
-        return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ConstantRecordConstructorType {
+                    actual: ValueType::from_gleam(constructor.type_.as_ref()),
+                },
+            },
+        });
     };
     let module = module.clone();
     let name = name.clone();
     let constructor = context.custom_constructor(&constructor)?;
     ResolvedRecordConstructor::direct(module, name, constructor).plan_reference(shape)
-}
-
-fn invalid_expression_shape(kind: InvalidExpressionShapeKind) -> Result<Expr, PlanError> {
-    Err(PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionShape { kind },
-    })
 }
 
 #[cfg(test)]
@@ -388,7 +360,7 @@ mod tests {
     };
     use crate::planner::error::{
         InvalidCustomTypeReason, InvalidExpressionShapeKind, InvalidExpressionType,
-        InvalidModuleReferenceReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+        InvalidModuleReferenceReason, InvalidTypedAstReason, PlanError,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
@@ -888,7 +860,9 @@ pub fn main() {
             plan_record_constructor(generic_constructor, &context),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                    kind: InvalidExpressionShapeKind::ConstantRecordConstructorType {
+                        actual: None,
+                    },
                 },
             }),
         );
@@ -1047,7 +1021,7 @@ pub fn main() {
         };
         let invalid_error = Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::Invalid,
+                kind: InvalidExpressionShapeKind::ConstantNode,
             },
         });
 
@@ -1104,7 +1078,11 @@ pub fn main() {
                     tail: None,
                 })),
             }),
-            invalid_error,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ListSpreadEmptyPrefix,
+                },
+            }),
         );
         assert_eq!(
             plan_constant_literal(Constant::BitArray {
@@ -1126,9 +1104,10 @@ pub fn main() {
                 type_: type_::int(),
             }),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Tuple,
-                    actual: InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ConstantTupleType {
+                        actual: Some(ValueType::Int),
+                    },
                 },
             }),
         );
@@ -1139,9 +1118,8 @@ pub fn main() {
                 type_: type_::tuple(vec![type_::generic_var(0)]),
             }),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Tuple,
-                    actual: InvalidExpressionType::Unsupported,
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ConstantTupleType { actual: None },
                 },
             }),
         );
@@ -1156,9 +1134,11 @@ pub fn main() {
                 type_: type_::tuple(vec![type_::string()]),
             }),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Tuple,
-                    actual: InvalidExpressionType::Tuple,
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ConstantTupleElements {
+                        expected: vec![ValueType::String],
+                        actual: vec![ValueType::Int],
+                    },
                 },
             }),
         );
@@ -1170,9 +1150,10 @@ pub fn main() {
                 tail: None,
             }),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::List,
-                    actual: InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ConstantListType {
+                        actual: Some(ValueType::Int),
+                    },
                 },
             }),
         );
@@ -1184,9 +1165,8 @@ pub fn main() {
                 tail: None,
             }),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::List,
-                    actual: InvalidExpressionType::Unsupported,
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ConstantListType { actual: None },
                 },
             }),
         );
@@ -1197,8 +1177,10 @@ pub fn main() {
                 type_: type_::list(type_::generic_var(0)),
                 tail: None,
             }),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::UnsupportedListElementType,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ConstantListElementType,
+                },
             }),
         );
         assert_eq!(
@@ -1213,9 +1195,9 @@ pub fn main() {
                 tail: None,
             }),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Float,
-                    actual: InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::Float,
+                    actual: ValueType::Int,
                 },
             }),
         );
@@ -1231,9 +1213,9 @@ pub fn main() {
                 tail: None,
             }),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Bool,
-                    actual: InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::Bool,
+                    actual: ValueType::Int,
                 },
             }),
         );
@@ -1249,9 +1231,9 @@ pub fn main() {
                 tail: None,
             }),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Nil,
-                    actual: InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::Nil,
+                    actual: ValueType::Int,
                 },
             }),
         );
@@ -1267,9 +1249,12 @@ pub fn main() {
                 tail: None,
             }),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Function,
-                    actual: InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::Function(Box::new(crate::plan::FunctionType::new(
+                        vec![ValueType::Int],
+                        ValueType::Int,
+                    ))),
+                    actual: ValueType::Int,
                 },
             }),
         );
@@ -1293,9 +1278,9 @@ pub fn main() {
                 })),
             }),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::String,
-                    actual: InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::String,
+                    actual: ValueType::Int,
                 },
             }),
         );
@@ -1307,7 +1292,7 @@ pub fn main() {
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                    kind: InvalidExpressionShapeKind::ConstantNode,
                 },
             }),
         );
@@ -1385,9 +1370,9 @@ pub fn main() {
                 })),
             }),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::List,
-                    actual: InvalidExpressionType::List,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
                 },
             }),
         );
@@ -1401,7 +1386,7 @@ pub fn main() {
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                    kind: InvalidExpressionShapeKind::ConstantMissingConstructor,
                 },
             }),
         );
@@ -1419,7 +1404,7 @@ pub fn main() {
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                    kind: InvalidExpressionShapeKind::ConstantLocalVariable,
                 },
             }),
         );
@@ -1433,7 +1418,11 @@ pub fn main() {
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::PreludeConstructor,
+                    kind: InvalidExpressionShapeKind::ConstantPreludeConstructor {
+                        name: "Other".into(),
+                        arity: 0,
+                        actual: Some(ValueType::Int),
+                    },
                 },
             }),
         );
@@ -1447,8 +1436,12 @@ pub fn main() {
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "".into(),
+                    module: "main".into(),
                     name: "Boxed".into(),
-                    reason: InvalidCustomTypeReason::ConstructorType,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorType {
+                        actual: ValueType::Int,
+                    }),
                 },
             }),
         );
@@ -1465,7 +1458,7 @@ pub fn main() {
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                    kind: InvalidExpressionShapeKind::ConstantRecordMissingConstructor,
                 },
             }),
         );
@@ -1491,8 +1484,12 @@ pub fn main() {
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "".into(),
+                    module: "main".into(),
                     name: "Boxed".into(),
-                    reason: InvalidCustomTypeReason::ConstructorType,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorType {
+                        actual: ValueType::Int,
+                    }),
                 },
             }),
         );
@@ -1518,8 +1515,12 @@ pub fn main() {
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "".into(),
+                    module: "gleam".into(),
                     name: "True".into(),
-                    reason: InvalidCustomTypeReason::ConstructorType,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorType {
+                        actual: ValueType::Int,
+                    }),
                 },
             }),
         );
@@ -1540,7 +1541,7 @@ pub fn main() {
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                    kind: InvalidExpressionShapeKind::ConstantRecordKind,
                 },
             }),
         );
@@ -1552,7 +1553,7 @@ pub fn main() {
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                    kind: InvalidExpressionShapeKind::ConstantNode,
                 },
             }),
         );
@@ -1576,7 +1577,7 @@ pub fn main() {
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordUpdate,
+                    kind: InvalidExpressionShapeKind::ConstantRecordUpdate,
                 },
             }),
         );
@@ -1666,7 +1667,10 @@ pub fn main() {
             plan_record(Some(Vec::new()), Some(result_constructor()), &context,),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                    kind: InvalidExpressionShapeKind::ConstantRecordArgumentCount {
+                        expected: 1,
+                        actual: 0,
+                    },
                 },
             }),
         );
@@ -1678,7 +1682,10 @@ pub fn main() {
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                    kind: InvalidExpressionShapeKind::ConstantRecordArgumentCount {
+                        expected: 1,
+                        actual: 2,
+                    },
                 },
             }),
         );
@@ -1695,8 +1702,13 @@ pub fn main() {
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "".into(),
+                    module: "gleam".into(),
                     name: "Result".into(),
-                    reason: crate::planner::InvalidCustomTypeReason::ConstructorArity,
+                    reason: Box::new(crate::planner::InvalidCustomTypeReason::ConstructorArity {
+                        expected: 1,
+                        actual: 2,
+                    }),
                 },
             }),
         );
@@ -1708,7 +1720,11 @@ pub fn main() {
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                    kind: InvalidExpressionShapeKind::ConstantRecordArgumentLabel {
+                        index: 0,
+                        expected: None,
+                        actual: Some("wrong".into()),
+                    },
                 },
             }),
         );
@@ -1727,9 +1743,9 @@ pub fn main() {
                 &context,
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Int,
-                    actual: InvalidExpressionType::String,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
                 },
             }),
         );
@@ -1750,7 +1766,7 @@ pub fn main() {
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                    kind: InvalidExpressionShapeKind::ConstantNode,
                 },
             }),
         );
@@ -1764,7 +1780,7 @@ pub fn main() {
             plan_record_constructor(local, &context),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                    kind: InvalidExpressionShapeKind::ConstantRecordConstructorKind,
                 },
             }),
         );
@@ -1804,7 +1820,11 @@ pub fn main() {
             plan_record_constructor(record_constructor("External", "gleam", 1), &context),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                    kind: InvalidExpressionShapeKind::ConstantPreludeConstructor {
+                        name: "External".into(),
+                        arity: 1,
+                        actual: Some(ValueType::Int),
+                    },
                 },
             }),
         );
@@ -1817,8 +1837,13 @@ pub fn main() {
             plan_record_constructor(mismatched_result_constructor, &context),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "".into(),
+                    module: "gleam".into(),
                     name: "Result".into(),
-                    reason: crate::planner::InvalidCustomTypeReason::ConstructorArity,
+                    reason: Box::new(crate::planner::InvalidCustomTypeReason::ConstructorArity {
+                        expected: 1,
+                        actual: 2,
+                    }),
                 },
             }),
         );
@@ -1876,8 +1901,13 @@ pub fn main() { pair }
             plan_module(module),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Pair".into(),
-                    reason: crate::planner::InvalidCustomTypeReason::ConstructorArity,
+                    reason: Box::new(crate::planner::InvalidCustomTypeReason::ConstructorArity {
+                        expected: 2,
+                        actual: 1,
+                    }),
                 },
             }),
         );
@@ -1956,9 +1986,9 @@ pub fn main() {
                 }),
             })),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::String,
-                    actual: InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::String,
+                    actual: ValueType::Int,
                 },
             }),
         );
@@ -1976,9 +2006,9 @@ pub fn main() {
                 }),
             })),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::String,
-                    actual: InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::String,
+                    actual: ValueType::Int,
                 },
             }),
         );
@@ -1990,7 +2020,7 @@ pub fn main() {
             })),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                    kind: InvalidExpressionShapeKind::ModuleConstantNode,
                 },
             }),
         );

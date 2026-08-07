@@ -1,7 +1,11 @@
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidTypedAstReason, InvalidUseShapeReason, PlanError};
-use crate::planner::expression::{UseAssignmentNormalization, plan_use_call};
-use gleam_core::ast::{Pattern, TypedPattern, TypedUseAssignment};
+use crate::planner::expression::plan_use_call;
+use gleam_core::ast::{
+    AssignmentKind, CallArg, FunctionLiteralKind, ImplicitCallArgOrigin, Pattern, Statement,
+    TypedExpr, TypedPattern, TypedStatement, TypedUseAssignment,
+};
+use vec1::Vec1;
 
 use super::assignment::{non_variable_pattern_error, plan_binding_pattern_in_context};
 
@@ -10,7 +14,25 @@ pub(super) fn plan_use_statement(
     context: &mut PlanContext<'_>,
 ) -> Result<crate::plan::Expr, PlanError> {
     let use_assignments = validate_use_assignments(&use_.assignments, context)?;
-    plan_use_call(*use_.call, use_assignments, context)
+    let NormalizedUseCall {
+        location,
+        type_,
+        fun,
+        arguments,
+    } = normalize_use_call(*use_.call, use_assignments)?;
+    plan_use_call(location, type_, *fun, arguments, context)
+}
+
+struct UseAssignmentNormalization {
+    expected: TypedPattern,
+    normalized: TypedPattern,
+}
+
+struct NormalizedUseCall {
+    location: gleam_core::ast::SrcSpan,
+    type_: std::sync::Arc<gleam_core::type_::Type>,
+    fun: Box<TypedExpr>,
+    arguments: Vec<CallArg<TypedExpr>>,
 }
 
 fn validate_use_assignments(
@@ -18,16 +40,19 @@ fn validate_use_assignments(
     context: &PlanContext<'_>,
 ) -> Result<Vec<UseAssignmentNormalization>, PlanError> {
     let mut validated = Vec::with_capacity(assignments.len());
-    for assignment in assignments {
+    for (index, assignment) in assignments.iter().enumerate() {
         let expected = assignment.pattern.clone();
         let normalized = match normalize_nil_use_assignment(&expected) {
             Some(normalized) => normalized,
             None => {
-                validate_use_assignment_pattern(&expected, context)?;
+                validate_use_assignment_pattern(index, &expected, context)?;
                 expected.clone()
             }
         };
-        validated.push(UseAssignmentNormalization::new(expected, normalized));
+        validated.push(UseAssignmentNormalization {
+            expected,
+            normalized,
+        });
     }
     Ok(validated)
 }
@@ -54,13 +79,16 @@ fn normalize_nil_use_assignment(pattern: &TypedPattern) -> Option<TypedPattern> 
 }
 
 fn validate_use_assignment_pattern(
+    index: usize,
     pattern: &TypedPattern,
     context: &PlanContext<'_>,
 ) -> Result<(), PlanError> {
     match pattern {
-        Pattern::Variable { .. } => Err(invalid_use_shape(
-            InvalidUseShapeReason::UnexpectedVariableAssignment,
-        )),
+        Pattern::Variable { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::UseShape {
+                reason: InvalidUseShapeReason::UnexpectedVariableAssignment { index },
+            },
+        }),
         Pattern::Tuple { .. }
         | Pattern::List { .. }
         | Pattern::BitArray { .. }
@@ -72,15 +100,157 @@ fn validate_use_assignment_pattern(
     }
 }
 
-fn invalid_use_shape(reason: InvalidUseShapeReason) -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::UseShape { reason },
+fn normalize_use_call(
+    call: TypedExpr,
+    use_assignments: Vec<UseAssignmentNormalization>,
+) -> Result<NormalizedUseCall, PlanError> {
+    let TypedExpr::Call {
+        location,
+        type_,
+        fun,
+        mut arguments,
+        ..
+    } = call
+    else {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::UseShape {
+                reason: InvalidUseShapeReason::NonCallRhs,
+            },
+        });
+    };
+
+    let callback_index = use_callback_index(&arguments)?;
+    let callback = &mut arguments[callback_index];
+    callback.implicit = None;
+    normalize_use_callback(callback_index, &mut callback.value, use_assignments)?;
+
+    Ok(NormalizedUseCall {
+        location,
+        type_,
+        fun,
+        arguments,
+    })
+}
+
+fn use_callback_index(arguments: &[CallArg<TypedExpr>]) -> Result<usize, PlanError> {
+    let mut callback_index = None;
+    for (index, argument) in arguments.iter().enumerate() {
+        match argument.implicit {
+            None => {}
+            Some(ImplicitCallArgOrigin::Use) => {
+                if let Some(first) = callback_index.replace(index) {
+                    return Err(PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::UseShape {
+                            reason: InvalidUseShapeReason::MultipleCallbacks {
+                                first,
+                                second: index,
+                            },
+                        },
+                    });
+                }
+            }
+            Some(
+                ImplicitCallArgOrigin::Pipe
+                | ImplicitCallArgOrigin::PatternFieldSpread
+                | ImplicitCallArgOrigin::IncorrectArityUse
+                | ImplicitCallArgOrigin::RecordUpdate,
+            ) => {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::UseShape {
+                        reason: InvalidUseShapeReason::UnsupportedImplicitArgument { index },
+                    },
+                });
+            }
+        }
     }
+
+    match callback_index {
+        Some(index) if index + 1 == arguments.len() => Ok(index),
+        Some(index) => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::UseShape {
+                reason: InvalidUseShapeReason::CallbackNotLast {
+                    index,
+                    arguments: arguments.len(),
+                },
+            },
+        }),
+        None => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::UseShape {
+                reason: InvalidUseShapeReason::MissingCallback,
+            },
+        }),
+    }
+}
+
+fn normalize_use_callback(
+    index: usize,
+    callback: &mut TypedExpr,
+    use_assignments: Vec<UseAssignmentNormalization>,
+) -> Result<(), PlanError> {
+    match callback {
+        TypedExpr::Fn { kind, body, .. } => match kind {
+            FunctionLiteralKind::Use { location } => {
+                normalize_use_generated_assignments(body, use_assignments)?;
+                *kind = FunctionLiteralKind::Anonymous { head: *location };
+                Ok(())
+            }
+            FunctionLiteralKind::Anonymous { .. } | FunctionLiteralKind::Capture { .. } => {
+                Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::UseShape {
+                        reason: InvalidUseShapeReason::CallbackLiteralKindNotUse { index },
+                    },
+                })
+            }
+        },
+        _ => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::UseShape {
+                reason: InvalidUseShapeReason::CallbackNotFunctionLiteral { index },
+            },
+        }),
+    }
+}
+
+fn normalize_use_generated_assignments(
+    body: &mut Vec1<TypedStatement>,
+    use_assignments: Vec<UseAssignmentNormalization>,
+) -> Result<(), PlanError> {
+    let statements = body.as_mut_slice();
+    let mut normalized = Vec::with_capacity(use_assignments.len());
+    let mut invalid_index = (statements.len() < use_assignments.len()).then_some(statements.len());
+    if invalid_index.is_none() {
+        for (index, (statement, assignment)) in statements.iter().zip(use_assignments).enumerate() {
+            let Statement::Assignment(generated) = statement else {
+                invalid_index = Some(index);
+                break;
+            };
+            if !matches!(generated.kind, AssignmentKind::Generated)
+                || generated.pattern != assignment.expected
+            {
+                invalid_index = Some(index);
+                break;
+            }
+
+            let mut assignment_statement = generated.clone();
+            assignment_statement.kind = AssignmentKind::Let;
+            assignment_statement.pattern = assignment.normalized;
+            normalized.push(Statement::Assignment(assignment_statement));
+        }
+    }
+    if let Some(index) = invalid_index {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::UseShape {
+                reason: InvalidUseShapeReason::InvalidGeneratedAssignment { index },
+            },
+        });
+    }
+
+    statements[..normalized.len()].clone_from_slice(&normalized);
+
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::invalid_use_shape;
     use crate::plan::{
         Expr, IntListLocalId, IntLocalId, ListLocal, LocalId, NilLocalId, Param, ParamLocal,
         ReturnExpr, TupleLocalId, ValueType,
@@ -604,6 +774,7 @@ pub fn main() {
 
         assert_eq!(
             super::validate_use_assignment_pattern(
+                0,
                 &Pattern::Int {
                     location: dummy_span(),
                     value: "1".into(),
@@ -612,11 +783,16 @@ pub fn main() {
                 &context
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::BindingKind {
+                        actual: crate::planner::PatternKind::Int,
+                    },
+                },
             }),
         );
         assert_eq!(
             super::validate_use_assignment_pattern(
+                0,
                 &Pattern::List {
                     location: dummy_span(),
                     elements: vec![Pattern::Variable {
@@ -639,7 +815,11 @@ pub fn main() {
                 &context
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::ListBindingElements {
+                        actual: 1,
+                    },
+                },
             }),
         );
 
@@ -724,7 +904,7 @@ pub fn main() {
         assert_eq!(
             plan_module(unexpected_assignment),
             Err(invalid_use_shape(
-                InvalidUseShapeReason::UnexpectedVariableAssignment
+                InvalidUseShapeReason::UnexpectedVariableAssignment { index: 0 }
             )),
         );
 
@@ -735,7 +915,11 @@ pub fn main() {
             plan_module(labelled_argument),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: crate::planner::InvalidCallShapeReason::LabelledArguments,
+                    reason: crate::planner::InvalidCallShapeReason::ArgumentLabel {
+                        index: 0,
+                        expected: None,
+                        actual: "value".into(),
+                    },
                 },
             }),
         );
@@ -749,7 +933,12 @@ pub fn main() {
         arguments.push(callback);
         assert_eq!(
             plan_module(multiple_callbacks),
-            Err(invalid_use_shape(InvalidUseShapeReason::MultipleCallbacks)),
+            Err(invalid_use_shape(
+                InvalidUseShapeReason::MultipleCallbacks {
+                    first: 0,
+                    second: 1,
+                }
+            )),
         );
 
         let mut callback_not_last = compile_use_with_argument_module();
@@ -757,7 +946,10 @@ pub fn main() {
         arguments.swap(0, 1);
         assert_eq!(
             plan_module(callback_not_last),
-            Err(invalid_use_shape(InvalidUseShapeReason::CallbackNotLast)),
+            Err(invalid_use_shape(InvalidUseShapeReason::CallbackNotLast {
+                index: 0,
+                arguments: 2,
+            })),
         );
 
         let mut unsupported_implicit = compile_use_module();
@@ -766,7 +958,7 @@ pub fn main() {
         assert_eq!(
             plan_module(unsupported_implicit),
             Err(invalid_use_shape(
-                InvalidUseShapeReason::UnsupportedImplicitArgument
+                InvalidUseShapeReason::UnsupportedImplicitArgument { index: 0 }
             )),
         );
 
@@ -775,7 +967,7 @@ pub fn main() {
         assert_eq!(
             plan_module(callback_not_function),
             Err(invalid_use_shape(
-                InvalidUseShapeReason::CallbackNotFunctionLiteral
+                InvalidUseShapeReason::CallbackNotFunctionLiteral { index: 0 }
             )),
         );
 
@@ -785,7 +977,7 @@ pub fn main() {
         assert_eq!(
             plan_module(callback_literal_kind),
             Err(invalid_use_shape(
-                InvalidUseShapeReason::CallbackLiteralKindNotUse
+                InvalidUseShapeReason::CallbackLiteralKindNotUse { index: 0 }
             )),
         );
 
@@ -796,7 +988,14 @@ pub fn main() {
             plan_module(callback_non_function_type),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
+                    reason: InvalidCallShapeReason::FunctionInstantiationArgumentShape {
+                        index: 0,
+                        expected: ValueType::Function(Box::new(crate::plan::FunctionType::new(
+                            vec![ValueType::Int],
+                            ValueType::Int,
+                        ))),
+                        actual: ValueType::Int,
+                    },
                 },
             }),
         );
@@ -809,7 +1008,14 @@ pub fn main() {
             plan_module(callback_unsupported_function_type),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
+                    reason: InvalidCallShapeReason::FunctionInstantiationArgumentShape {
+                        index: 0,
+                        expected: ValueType::Function(Box::new(crate::plan::FunctionType::new(
+                            vec![ValueType::Int],
+                            ValueType::Int,
+                        ))),
+                        actual: ValueType::List(Box::new(ValueType::Int)),
+                    },
                 },
             }),
         );
@@ -859,7 +1065,7 @@ pub fn main() {
         assert_eq!(
             plan_module(missing_generated_assignment),
             Err(invalid_use_shape(
-                InvalidUseShapeReason::InvalidGeneratedAssignment
+                InvalidUseShapeReason::InvalidGeneratedAssignment { index: 1 }
             )),
         );
 
@@ -869,7 +1075,7 @@ pub fn main() {
         assert_eq!(
             plan_module(non_assignment_generated_step),
             Err(invalid_use_shape(
-                InvalidUseShapeReason::InvalidGeneratedAssignment
+                InvalidUseShapeReason::InvalidGeneratedAssignment { index: 0 }
             )),
         );
 
@@ -879,7 +1085,7 @@ pub fn main() {
         assert_eq!(
             plan_module(non_generated_assignment),
             Err(invalid_use_shape(
-                InvalidUseShapeReason::InvalidGeneratedAssignment
+                InvalidUseShapeReason::InvalidGeneratedAssignment { index: 0 }
             )),
         );
 
@@ -893,7 +1099,7 @@ pub fn main() {
         assert_eq!(
             plan_module(mismatched_generated_pattern),
             Err(invalid_use_shape(
-                InvalidUseShapeReason::InvalidGeneratedAssignment
+                InvalidUseShapeReason::InvalidGeneratedAssignment { index: 0 }
             )),
         );
     }
@@ -1064,6 +1270,12 @@ pub fn main() {
             Statement::Expression(_) | Statement::Use(_) | Statement::Assert(_) => {
                 panic!("expected use callback assignment");
             }
+        }
+    }
+
+    fn invalid_use_shape(reason: InvalidUseShapeReason) -> PlanError {
+        PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::UseShape { reason },
         }
     }
 

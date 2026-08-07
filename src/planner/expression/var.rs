@@ -5,7 +5,9 @@ use crate::plan::{
     ListFunctionExpr, LocalId, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
     TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
-use crate::planner::context::{FunctionLocalBinding, ModuleFunctionTarget, PlanContext};
+use crate::planner::context::{
+    FunctionLocalBinding, ModuleFunctionTarget, PlanContext, ResolvedLocal,
+};
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidModuleReferenceReason, InvalidTypedAstReason, PlanError,
 };
@@ -23,26 +25,25 @@ pub(super) fn plan_var(
 ) -> Result<Expr, PlanError> {
     match constructor.variant {
         ValueConstructorVariant::LocalVariable { .. } => {
-            let expression = if let Some((local, _)) = context.lookup_local(&name) {
-                local_get(local, name)
-            } else if let Some((local, shape)) = context.lookup_tuple_local(&name) {
-                let type_ = shape
-                    .iter()
-                    .map(crate::plan::ValueShape::value_type)
-                    .collect();
-                Expr::tuple(TupleExpr::local_get(local, name, type_).with_shape(shape))
-            } else if let Some(local) = context.lookup_custom_local(&name) {
-                Expr::custom(CustomExpr::local_get(local, name))
-            } else if let Some(local) = context.lookup_external_local(&name) {
-                Expr::external(ExternalExpr::local_get(local, name))
-            } else if let Some((local, item_shape)) = context.lookup_list_local(&name) {
-                Expr::list(ListExpr::local_get(local, name).with_item_shape(item_shape))
-            } else if let Some((binding, shape)) = context.lookup_function_local(&name) {
-                function_local_get(binding, name, shape)?
-            } else {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::UnknownLocal { name },
-                });
+            let expression = match context.resolve_local(&name)? {
+                ResolvedLocal::Primitive(local) => local_get(local, name),
+                ResolvedLocal::Custom(local) => Expr::custom(CustomExpr::local_get(local, name)),
+                ResolvedLocal::External(local) => {
+                    Expr::external(ExternalExpr::local_get(local, name))
+                }
+                ResolvedLocal::Tuple { local, shape } => {
+                    let type_ = shape
+                        .iter()
+                        .map(crate::plan::ValueShape::value_type)
+                        .collect();
+                    Expr::tuple(TupleExpr::local_get(local, name, type_).with_shape(shape))
+                }
+                ResolvedLocal::List { local, item_shape } => {
+                    Expr::list(ListExpr::local_get(local, name).with_item_shape(item_shape))
+                }
+                ResolvedLocal::Function { binding, shape } => {
+                    function_local_get(binding, name, shape)?
+                }
             };
 
             Ok(expression)
@@ -64,7 +65,11 @@ pub(super) fn plan_var(
             if module == PRELUDE_MODULE_NAME && !matches!(name.as_str(), "Ok" | "Error") {
                 return Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::PreludeConstructor,
+                        kind: InvalidExpressionShapeKind::VariablePreludeConstructor {
+                            name: name.clone(),
+                            arity: usize::from(arity),
+                            actual: constructor_shape.value_type(),
+                        },
                     },
                 });
             }
@@ -214,7 +219,7 @@ fn function_local_get(
         .map(Expr::function)
         .ok_or(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::Invalid,
+                kind: InvalidExpressionShapeKind::VariableFunctionLocalShape,
             },
         })
 }
@@ -644,8 +649,10 @@ pub fn main() {
             plan_module(record_constructor),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Boxed".into(),
-                    reason: InvalidCustomTypeReason::UnknownDefinition,
+                    reason: Box::new(InvalidCustomTypeReason::MissingDefinition),
                 },
             }),
         );
@@ -673,8 +680,13 @@ pub fn main() { Boxed }
             plan_module(constructor_arity_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Boxed".into(),
-                    reason: InvalidCustomTypeReason::ConstructorArity,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorArity {
+                        expected: 1,
+                        actual: 0,
+                    }),
                 },
             }),
         );
@@ -686,7 +698,11 @@ pub fn main() { Boxed }
             ))),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::PreludeConstructor,
+                    kind: InvalidExpressionShapeKind::VariablePreludeConstructor {
+                        name: "Other".into(),
+                        arity: 0,
+                        actual: crate::plan::ValueType::Bool,
+                    },
                 },
             }),
         );
@@ -747,8 +763,13 @@ pub fn main() {
             plan_module(arity_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Boxed".into(),
-                    reason: InvalidCustomTypeReason::ConstructorArity,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorArity {
+                        expected: 1,
+                        actual: 0,
+                    }),
                 },
             }),
         );
@@ -762,8 +783,12 @@ pub fn main() {
             plan_module(constructor_type_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "".into(),
+                    module: "main".into(),
                     name: "Boxed".into(),
-                    reason: InvalidCustomTypeReason::ConstructorType,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorType {
+                        actual: crate::plan::ValueType::Int,
+                    }),
                 },
             }),
         );
@@ -1035,7 +1060,7 @@ pub fn main() {
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                    kind: InvalidExpressionShapeKind::VariableFunctionLocalShape,
                 },
             }),
         );

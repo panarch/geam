@@ -1,5 +1,6 @@
 mod coverage;
 mod guard;
+mod result;
 mod subject;
 
 use crate::plan::Expr;
@@ -21,13 +22,21 @@ pub(super) fn plan_case(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     if clauses.is_empty() {
-        return Err(invalid_case_shape(InvalidCaseShapeReason::EmptyClauses));
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CaseShape {
+                reason: InvalidCaseShapeReason::EmptyClauses,
+            },
+        });
     }
 
     let subject_count = subjects.len();
     let mut subjects = subjects.into_iter();
     let Some(subject) = subjects.next() else {
-        return Err(invalid_case_shape(InvalidCaseShapeReason::EmptySubjects));
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CaseShape {
+                reason: InvalidCaseShapeReason::EmptySubjects,
+            },
+        });
     };
     let coverage = coverage::CaseCoverage::new(&compiled_case, subject_count, &clauses)?;
     if subjects.len() == 0 {
@@ -38,12 +47,6 @@ pub(super) fn plan_case(
     all_subjects.push(subject);
     all_subjects.extend(subjects);
     subject::plan_multi(type_, all_subjects, clauses, coverage, context)
-}
-
-pub(super) fn invalid_case_shape(reason: InvalidCaseShapeReason) -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::CaseShape { reason },
-    }
 }
 
 #[cfg(test)]

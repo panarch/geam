@@ -5,10 +5,11 @@ use crate::plan::{
     NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
     UtfCodepointExpr, UtfCodepointFunctionExpr, ValueType,
 };
-use crate::planner::context::{FunctionLocalBinding, PlanContext};
+use crate::planner::context::{FunctionLocalBinding, PlanContext, ResolvedLocal};
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
 };
+use crate::planner::expression::conversion::{expect_expression, value_type_from_gleam};
 use ecow::EcoString;
 use gleam_core::ast::{BinOp, ClauseGuard};
 use gleam_core::type_::Type;
@@ -18,11 +19,7 @@ pub(super) fn plan_bool(
     guard: ClauseGuard<Arc<Type>>,
     context: &mut PlanContext<'_>,
 ) -> Result<BoolExpr, PlanError> {
-    let expression = plan_expr(guard, context)?;
-    let actual = expression.value_type();
-    expression
-        .into_bool()
-        .ok_or_else(|| invalid_expression_type_for_value(ValueType::Bool, actual))
+    expect_expression(plan_expr(guard, context)?)
 }
 
 fn plan_expr(
@@ -73,12 +70,16 @@ fn plan_expr(
                 context,
             )
         }
-        ClauseGuard::FieldAccess { index: None, .. } => {
-            invalid_expression_shape(InvalidExpressionShapeKind::RecordAccess)
-        }
-        ClauseGuard::Invalid { .. } => {
-            invalid_expression_shape(InvalidExpressionShapeKind::Invalid)
-        }
+        ClauseGuard::FieldAccess { index: None, .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::RecordAccess,
+            },
+        }),
+        ClauseGuard::Invalid { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::GuardNode,
+            },
+        }),
     }
 }
 
@@ -195,33 +196,21 @@ fn plan_int(
     guard: ClauseGuard<Arc<Type>>,
     context: &mut PlanContext<'_>,
 ) -> Result<IntExpr, PlanError> {
-    let expression = plan_expr(guard, context)?;
-    let actual = expression.value_type();
-    expression
-        .into_int()
-        .ok_or_else(|| invalid_expression_type_for_value(ValueType::Int, actual))
+    expect_expression(plan_expr(guard, context)?)
 }
 
 fn plan_float(
     guard: ClauseGuard<Arc<Type>>,
     context: &mut PlanContext<'_>,
 ) -> Result<FloatExpr, PlanError> {
-    let expression = plan_expr(guard, context)?;
-    let actual = expression.value_type();
-    expression
-        .into_float()
-        .ok_or_else(|| invalid_expression_type_for_value(ValueType::Float, actual))
+    expect_expression(plan_expr(guard, context)?)
 }
 
 fn plan_string(
     guard: ClauseGuard<Arc<Type>>,
     context: &mut PlanContext<'_>,
 ) -> Result<StringExpr, PlanError> {
-    let expression = plan_expr(guard, context)?;
-    let actual = expression.value_type();
-    expression
-        .into_string()
-        .ok_or_else(|| invalid_expression_type_for_value(ValueType::String, actual))
+    expect_expression(plan_expr(guard, context)?)
 }
 
 fn plan_tuple_index(
@@ -230,64 +219,31 @@ fn plan_tuple_index(
     type_: Arc<Type>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    #[cfg(target_pointer_width = "64")]
     let index = index as usize;
-    #[cfg(not(target_pointer_width = "64"))]
-    let index = usize::try_from(index).map_err(|_| PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionType {
-            expected: InvalidExpressionType::Tuple,
-            actual: InvalidExpressionType::Tuple,
-        },
-    })?;
-    let tuple = plan_expr(tuple, context)?;
-    let actual = tuple.value_type();
-    let Some(tuple) = tuple.into_tuple() else {
-        return Err(invalid_expression_type_for_value(
-            ValueType::Tuple(Vec::new()),
-            actual,
-        ));
-    };
-    let expected =
-        ValueType::from_gleam(type_.as_ref()).ok_or_else(|| PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Unsupported,
-                actual: InvalidExpressionType::Tuple,
-            },
-        })?;
+    let tuple: TupleExpr = expect_expression(plan_expr(tuple, context)?)?;
+    let expected = value_type_from_gleam(type_.as_ref(), InvalidExpressionType::Tuple)?;
     super::super::tuple_index_expr(tuple, index, expected)
 }
 
 fn plan_local(name: EcoString, context: &PlanContext<'_>) -> Result<Expr, PlanError> {
-    if let Some((local, type_)) = context.lookup_local(&name) {
-        return local_get(local, name, type_);
-    }
-    if let Some(local) = context.lookup_custom_local(&name) {
-        return Ok(Expr::custom(CustomExpr::local_get(local, name)));
-    }
-    if let Some(local) = context.lookup_external_local(&name) {
-        return Ok(Expr::external(ExternalExpr::local_get(local, name)));
-    }
-    if let Some((local, shape)) = context.lookup_tuple_local(&name) {
-        let type_ = shape
-            .iter()
-            .map(crate::plan::ValueShape::value_type)
-            .collect();
-        return Ok(Expr::tuple(
-            TupleExpr::local_get(local, name, type_).with_shape(shape),
-        ));
-    }
-    if let Some((local, item_shape)) = context.lookup_list_local(&name) {
-        return Ok(Expr::list(
+    match context.resolve_local(&name)? {
+        ResolvedLocal::Primitive(local) => local_get(local, name, local.value_type()),
+        ResolvedLocal::Custom(local) => Ok(Expr::custom(CustomExpr::local_get(local, name))),
+        ResolvedLocal::External(local) => Ok(Expr::external(ExternalExpr::local_get(local, name))),
+        ResolvedLocal::Tuple { local, shape } => {
+            let type_ = shape
+                .iter()
+                .map(crate::plan::ValueShape::value_type)
+                .collect();
+            Ok(Expr::tuple(
+                TupleExpr::local_get(local, name, type_).with_shape(shape),
+            ))
+        }
+        ResolvedLocal::List { local, item_shape } => Ok(Expr::list(
             ListExpr::local_get(local, name).with_item_shape(item_shape),
-        ));
+        )),
+        ResolvedLocal::Function { binding, shape } => function_local_get(binding, name, shape),
     }
-    if let Some((binding, shape)) = context.lookup_function_local(&name) {
-        return function_local_get(binding, name, shape);
-    }
-
-    Err(PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::UnknownLocal { name },
-    })
 }
 
 fn local_get(local: LocalId, name: EcoString, type_: ValueType) -> Result<Expr, PlanError> {
@@ -314,7 +270,11 @@ fn local_get(local: LocalId, name: EcoString, type_: ValueType) -> Result<Expr, 
         )),
         (LocalId::Bool(local), ValueType::Bool) => Ok(Expr::bool(BoolExpr::local_get(local, name))),
         (LocalId::Nil(local), ValueType::Nil) => Ok(Expr::nil(NilExpr::local_get(local, name))),
-        _ => invalid_expression_shape(InvalidExpressionShapeKind::Invalid),
+        _ => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::GuardLocalShape,
+            },
+        }),
     }
 }
 
@@ -369,48 +329,15 @@ fn function_local_get(
         .map(Expr::function)
         .ok_or(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::Invalid,
+                kind: InvalidExpressionShapeKind::GuardFunctionLocalShape,
             },
         })
-}
-
-fn invalid_expression_type_for_value(expected: ValueType, actual: ValueType) -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionType {
-            expected: invalid_expression_type(expected),
-            actual: invalid_expression_type(actual),
-        },
-    }
-}
-
-fn invalid_expression_type(type_: ValueType) -> InvalidExpressionType {
-    match type_ {
-        ValueType::Parameter(_) => InvalidExpressionType::TypeParameter,
-        ValueType::Int => InvalidExpressionType::Int,
-        ValueType::Float => InvalidExpressionType::Float,
-        ValueType::String => InvalidExpressionType::String,
-        ValueType::BitArray => InvalidExpressionType::BitArray,
-        ValueType::UtfCodepoint => InvalidExpressionType::UtfCodepoint,
-        ValueType::Custom(_) => InvalidExpressionType::Custom,
-        ValueType::External(_) => InvalidExpressionType::External,
-        ValueType::Bool => InvalidExpressionType::Bool,
-        ValueType::Nil => InvalidExpressionType::Nil,
-        ValueType::Tuple(_) => InvalidExpressionType::Tuple,
-        ValueType::List(_) => InvalidExpressionType::List,
-        ValueType::Function(_) => InvalidExpressionType::Function,
-    }
-}
-
-fn invalid_expression_shape(kind: InvalidExpressionShapeKind) -> Result<Expr, PlanError> {
-    Err(PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionShape { kind },
-    })
 }
 
 #[cfg(test)]
 #[allow(clippy::arc_with_non_send_sync)]
 mod tests {
-    use super::{function_local_get, invalid_expression_type, plan_expr};
+    use super::{function_local_get, plan_expr};
     use crate::plan::{
         BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayLocalId, BoolExpr,
         BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, CustomExpr, CustomFunctionExpr,
@@ -561,10 +488,11 @@ mod tests {
                 },
                 &mut context,
             ),
-            Err(expression_type_error(
-                InvalidExpressionType::Unsupported,
-                InvalidExpressionType::Tuple,
-            )),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::UnsupportedExpressionType {
+                    expected: InvalidExpressionType::Tuple,
+                },
+            }),
         );
         assert_eq!(
             plan_expr(
@@ -597,7 +525,7 @@ mod tests {
                 &mut context,
             ),
             Err(invalid_expression_shape(
-                InvalidExpressionShapeKind::Invalid,
+                InvalidExpressionShapeKind::GuardNode,
             )),
         );
         assert_eq!(
@@ -624,7 +552,7 @@ mod tests {
                 &mut context,
             ),
             Err(invalid_expression_shape(
-                InvalidExpressionShapeKind::Invalid
+                InvalidExpressionShapeKind::GuardNode
             )),
         );
     }
@@ -974,7 +902,7 @@ mod tests {
                 IntExpr::add,
             ),
             Err(invalid_expression_shape(
-                InvalidExpressionShapeKind::Invalid
+                InvalidExpressionShapeKind::GuardNode
             )),
         );
         assert_eq!(
@@ -988,7 +916,7 @@ mod tests {
                 IntExpr::add,
             ),
             Err(invalid_expression_shape(
-                InvalidExpressionShapeKind::Invalid
+                InvalidExpressionShapeKind::GuardNode
             )),
         );
         assert_eq!(
@@ -1002,7 +930,7 @@ mod tests {
                 FloatExpr::add,
             ),
             Err(invalid_expression_shape(
-                InvalidExpressionShapeKind::Invalid
+                InvalidExpressionShapeKind::GuardNode
             )),
         );
         assert_eq!(
@@ -1016,7 +944,7 @@ mod tests {
                 FloatExpr::add,
             ),
             Err(invalid_expression_shape(
-                InvalidExpressionShapeKind::Invalid
+                InvalidExpressionShapeKind::GuardNode
             )),
         );
         assert_eq!(
@@ -1042,7 +970,7 @@ mod tests {
                 StringExpr::concatenate,
             ),
             Err(invalid_expression_shape(
-                InvalidExpressionShapeKind::Invalid
+                InvalidExpressionShapeKind::GuardNode
             )),
         );
         assert_eq!(
@@ -1066,7 +994,7 @@ mod tests {
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
         let expected = Err(invalid_expression_shape(
-            InvalidExpressionShapeKind::Invalid,
+            InvalidExpressionShapeKind::GuardNode,
         ));
 
         assert_eq!(
@@ -1104,7 +1032,7 @@ mod tests {
                 &mut context,
             ),
             Err(invalid_expression_shape(
-                InvalidExpressionShapeKind::Invalid
+                InvalidExpressionShapeKind::GuardNode
             )),
         );
         assert_eq!(
@@ -1118,7 +1046,7 @@ mod tests {
                 &mut context,
             ),
             Err(invalid_expression_shape(
-                InvalidExpressionShapeKind::Invalid
+                InvalidExpressionShapeKind::GuardNode
             )),
         );
     }
@@ -1157,10 +1085,19 @@ mod tests {
                 },
                 &mut context,
             ),
-            Err(expression_type_error(
-                InvalidExpressionType::Custom,
-                InvalidExpressionType::String,
-            )),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::Custom(crate::plan::CustomType::new(
+                        crate::plan::CustomTypeName::new(
+                            "".into(),
+                            "gleam".into(),
+                            "Result".into(),
+                        ),
+                        vec![ValueType::Int, ValueType::Nil],
+                    )),
+                    actual: ValueType::String,
+                },
+            }),
         );
         assert_eq!(
             plan_expr(
@@ -1172,9 +1109,11 @@ mod tests {
                 },
                 &mut context,
             ),
-            Err(expression_type_error(
-                InvalidExpressionType::Int,
-                InvalidExpressionType::Tuple,
+            Err(invalid_expression_shape(
+                InvalidExpressionShapeKind::TupleIndex {
+                    index: 1,
+                    available: 1,
+                },
             )),
         );
         assert_eq!(
@@ -1187,10 +1126,12 @@ mod tests {
                 },
                 &mut context,
             ),
-            Err(expression_type_error(
-                InvalidExpressionType::Int,
-                InvalidExpressionType::String,
-            )),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
+                },
+            }),
         );
         assert_eq!(
             plan_expr(
@@ -1206,7 +1147,7 @@ mod tests {
                 &mut context,
             ),
             Err(invalid_expression_shape(
-                InvalidExpressionShapeKind::Invalid
+                InvalidExpressionShapeKind::GuardNode
             )),
         );
     }
@@ -1316,7 +1257,7 @@ mod tests {
         assert_eq!(
             super::local_get(LocalId::Int(IntLocalId(0)), "bad".into(), ValueType::String),
             Err(invalid_expression_shape(
-                InvalidExpressionShapeKind::Invalid
+                InvalidExpressionShapeKind::GuardLocalShape
             )),
         );
     }
@@ -1562,7 +1503,7 @@ mod tests {
                 ValueType::List(Box::new(ValueType::Int)),
                 ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
             ]
-            .map(invalid_expression_type),
+            .map(InvalidExpressionType::from_value_type),
             [
                 InvalidExpressionType::TypeParameter,
                 InvalidExpressionType::Int,

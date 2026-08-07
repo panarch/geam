@@ -1,4 +1,4 @@
-use geam::planner::{InvalidExpressionType, InvalidTypedAstReason};
+use geam::planner::InvalidTypedAstReason;
 use geam::{
     ExecutionError, FunctionType, ListValue, ModuleSource, PlanError, SourceContext, Value,
     ValueType, compile_typed_module, compile_typed_program, plan_module, plan_module_with_source,
@@ -916,12 +916,18 @@ fn generic_constant_rejects_inhabited_typed_ast_payloads() {
     )
     .expect("inhabited list source should compile");
     let value = value_module.definitions.constants[0].value.clone();
-    let mut generic_value_module = compile_typed_module(
-        "main",
-        "generic_value.gleam",
-        "const empty = [] pub fn main() { empty }",
+    let generic_source = "const empty = [] pub fn main() { empty }";
+    let parameter = plan_module(
+        compile_typed_module("main", "generic_parameter.gleam", generic_source)
+            .expect("generic empty list source should compile"),
     )
-    .expect("generic empty list source should compile");
+    .expect("generic empty list should plan")
+    .constants()[0]
+        .scheme()
+        .parameters()[0];
+    let mut generic_value_module =
+        compile_typed_module("main", "generic_value.gleam", generic_source)
+            .expect("generic empty list source should compile");
     generic_value_module.definitions.constants[0].value = value;
     let generic_value_type = generic_value_module.definitions.constants[0].type_.clone();
     let Constant::List { type_, .. } = generic_value_module.definitions.constants[0].value.as_mut()
@@ -960,9 +966,9 @@ fn generic_constant_rejects_inhabited_typed_ast_payloads() {
     *type_ = generic_spread_type;
 
     let expected = Err(PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionType {
-            expected: InvalidExpressionType::TypeParameter,
-            actual: InvalidExpressionType::Int,
+        reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+            expected: ValueType::Parameter(parameter),
+            actual: ValueType::Int,
         },
     });
     assert_eq!(plan_module(generic_value_module), expected);
@@ -995,9 +1001,9 @@ fn constant_list_rejects_mismatched_typed_ast_tail() {
     assert_eq!(
         plan_module(int_module),
         Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::List,
-                actual: InvalidExpressionType::List,
+            reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                expected: ValueType::List(Box::new(ValueType::Int)),
+                actual: ValueType::List(Box::new(ValueType::String)),
             },
         }),
     );
@@ -1050,18 +1056,18 @@ fn constant_nested_list_rejects_mismatched_typed_ast_elements() {
     assert_eq!(
         plan_module(scalar_element_module),
         Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::List,
-                actual: InvalidExpressionType::Int,
+            reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                expected: ValueType::List(Box::new(ValueType::Int)),
+                actual: ValueType::Int,
             },
         }),
     );
     assert_eq!(
         plan_module(list_element_module),
         Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::List,
-                actual: InvalidExpressionType::List,
+            reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                expected: ValueType::List(Box::new(ValueType::Int)),
+                actual: ValueType::List(Box::new(ValueType::String)),
             },
         }),
     );

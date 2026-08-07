@@ -12,12 +12,6 @@ pub struct ExternalExpr {
     kind: ExternalExprKind,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ExternalArgumentCountMismatch {
-    pub(crate) expected: usize,
-    pub(crate) actual: usize,
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ExternalFunctionCall {
     function: Box<ExternalFunctionExpr>,
@@ -97,27 +91,20 @@ impl ExternalExpr {
         )
     }
 
-    pub(crate) fn try_function_call_at(
+    pub(crate) fn function_call_at(
         function: ExternalFunctionExpr,
         args: Vec<CallArg>,
         site: crate::plan::HostCallSite,
-    ) -> Result<Self, ExternalArgumentCountMismatch> {
-        let expected = function.external_function_type().argument_shapes().len();
-        if expected != args.len() {
-            return Err(ExternalArgumentCountMismatch {
-                expected,
-                actual: args.len(),
-            });
-        }
+    ) -> Self {
         let shape = function.external_function_type().return_().clone();
-        Ok(Self::new(
+        Self::new(
             shape,
             ExternalExprKind::FunctionCall(ExternalFunctionCall {
                 function: Box::new(function),
                 arguments: args.into_boxed_slice(),
                 site,
             }),
-        ))
+        )
     }
 
     pub(crate) fn tuple_index_shape(
@@ -260,14 +247,14 @@ impl ExternalFunctionCall {
 
 #[cfg(test)]
 mod tests {
-    use super::{ExternalArgumentCountMismatch, ExternalExpr};
+    use super::{ExternalExpr, ExternalExprKind, ExternalFunctionCall};
     use crate::plan::{
         CallArg, Expr, ExternalFunctionExpr, ExternalFunctionReference, ExternalTypeName,
         ExternalValueShape, FunctionShape, IntExpr, ValueShape, monomorphic_function_instantiation,
     };
 
     #[test]
-    fn external_function_call_derives_its_return_shape_and_checks_argument_count() {
+    fn external_function_call_derives_its_return_shape() {
         let return_ = ExternalValueShape::new(
             ExternalTypeName::new("geam".into(), "main".into(), "Resource".into()),
             Vec::new(),
@@ -281,23 +268,19 @@ mod tests {
         );
         let argument = CallArg::new(Expr::int(IntExpr::value(1.into())));
 
-        let expression = ExternalExpr::try_function_call_at(
+        let expression = ExternalExpr::function_call_at(
             function.clone(),
-            vec![argument],
+            vec![argument.clone()],
             crate::plan::HostCallSite::unknown(),
-        )
-        .expect("one argument should match the external function");
+        );
 
         assert_eq!(expression.shape(), &return_);
         assert_eq!(
-            ExternalExpr::try_function_call_at(
-                function,
-                Vec::new(),
-                crate::plan::HostCallSite::unknown(),
-            ),
-            Err(ExternalArgumentCountMismatch {
-                expected: 1,
-                actual: 0,
+            expression.kind(),
+            &ExternalExprKind::FunctionCall(ExternalFunctionCall {
+                function: Box::new(function),
+                arguments: vec![argument].into_boxed_slice(),
+                site: crate::plan::HostCallSite::unknown(),
             }),
         );
     }

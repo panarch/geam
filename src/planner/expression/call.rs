@@ -5,10 +5,7 @@ mod implicit;
 
 use crate::plan::Expr;
 use crate::planner::context::{ModuleFunctionTarget, PlanContext};
-use crate::planner::error::{
-    InvalidCallShapeReason, InvalidModuleReferenceReason, InvalidTypedAstReason,
-    InvalidUseShapeReason, PlanError,
-};
+use crate::planner::error::{InvalidModuleReferenceReason, InvalidTypedAstReason, PlanError};
 use crate::planner::expression::record_constructor::ResolvedRecordConstructor;
 use ecow::EcoString;
 use gleam_core::ast::{CallArg as GleamCallArg, SrcSpan, TypedExpr};
@@ -22,44 +19,25 @@ pub(super) fn plan_call(
     arguments: Vec<GleamCallArg<TypedExpr>>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    if arguments.iter().any(|argument| argument.implicit.is_some()) {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::CallShape {
-                reason: InvalidCallShapeReason::ImplicitArguments,
-            },
-        });
-    }
-
+    let arguments = argument::NormalizedCallArguments::ordinary(arguments)?;
     plan_call_expression(location, type_, fun, arguments, context, None)
 }
 
-pub(in crate::planner) struct UseAssignmentNormalization {
-    expected: gleam_core::ast::TypedPattern,
-    normalized: gleam_core::ast::TypedPattern,
-}
-
-impl UseAssignmentNormalization {
-    pub(in crate::planner) fn new(
-        expected: gleam_core::ast::TypedPattern,
-        normalized: gleam_core::ast::TypedPattern,
-    ) -> Self {
-        Self {
-            expected,
-            normalized,
-        }
-    }
-
-    fn into_parts(self) -> (gleam_core::ast::TypedPattern, gleam_core::ast::TypedPattern) {
-        (self.expected, self.normalized)
-    }
-}
-
 pub(super) fn plan_use_call(
-    call: TypedExpr,
-    use_assignments: Vec<UseAssignmentNormalization>,
+    location: SrcSpan,
+    type_: Arc<Type>,
+    fun: TypedExpr,
+    arguments: Vec<GleamCallArg<TypedExpr>>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    implicit::plan_use_call(call, use_assignments, context)
+    plan_call_expression(
+        location,
+        type_,
+        fun,
+        argument::NormalizedCallArguments::specialized(arguments),
+        context,
+        None,
+    )
 }
 
 pub(super) fn plan_pipeline_direct_call(
@@ -87,12 +65,6 @@ struct CaptureSubstitution {
     value: Expr,
 }
 
-fn invalid_use_shape(reason: InvalidUseShapeReason) -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::UseShape { reason },
-    }
-}
-
 fn is_capture_local(expression: &TypedExpr, capture_name: &EcoString) -> bool {
     matches!(
         expression,
@@ -112,7 +84,7 @@ fn plan_call_expression(
     location: SrcSpan,
     type_: Arc<Type>,
     fun: TypedExpr,
-    arguments: Vec<GleamCallArg<TypedExpr>>,
+    arguments: argument::NormalizedCallArguments,
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
 ) -> Result<Expr, PlanError> {
@@ -237,23 +209,14 @@ fn plan_call_expression(
 
 fn plan_custom_constructor_call(
     constructor: crate::plan::CustomConstructor,
-    arguments: Vec<GleamCallArg<TypedExpr>>,
+    arguments: argument::NormalizedCallArguments,
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
 ) -> Result<Expr, PlanError> {
+    let arguments = arguments.for_constructor(&constructor)?;
     let arguments =
         argument::plan_custom_constructor_args(arguments, &constructor, context, capture)?;
-    let construction =
-        crate::plan::CustomConstruction::try_new(constructor, arguments).map_err(|error| {
-            PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::RecordConstructorMissingArguments {
-                        expected: error.expected,
-                        actual: error.actual,
-                    },
-                },
-            }
-        })?;
+    let construction = crate::plan::CustomConstruction::from_validated(constructor, arguments);
     context
         .custom_expr_from_construction(construction)
         .map(Expr::custom)
@@ -480,7 +443,11 @@ pub fn main() {
             plan_module(labelled_call),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::LabelledArguments,
+                    reason: InvalidCallShapeReason::ArgumentLabel {
+                        index: 0,
+                        expected: None,
+                        actual: "value".into(),
+                    },
                 },
             }),
         );
@@ -503,7 +470,7 @@ pub fn main() {
             plan_module(implicit_call),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::ImplicitArguments,
+                    reason: InvalidCallShapeReason::ImplicitArgument { index: 0 },
                 },
             }),
         );
@@ -587,8 +554,10 @@ pub fn main() {
             plan_module(record_constructor_call),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Boxed".into(),
-                    reason: InvalidCustomTypeReason::UnknownDefinition,
+                    reason: Box::new(InvalidCustomTypeReason::MissingDefinition),
                 },
             }),
         );
@@ -607,7 +576,7 @@ pub fn main() { Boxed(1) }
             plan_module(constructor_arity_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::RecordConstructorMissingArguments {
+                    reason: InvalidCallShapeReason::RecordConstructorArgumentCount {
                         expected: 1,
                         actual: 0,
                     },
@@ -640,8 +609,13 @@ pub fn main() { Boxed(1) }
             plan_module(constructor_descriptor_arity_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Boxed".into(),
-                    reason: InvalidCustomTypeReason::ConstructorArity,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorArity {
+                        expected: 1,
+                        actual: 0,
+                    }),
                 },
             }),
         );
@@ -660,7 +634,7 @@ pub fn main() { Boxed(1) }
             plan_module(extra_constructor_argument),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::RecordConstructorExtraArguments {
+                    reason: InvalidCallShapeReason::RecordConstructorArgumentCount {
                         expected: 1,
                         actual: 2,
                     },
@@ -682,7 +656,11 @@ pub fn main() { Boxed(value: 1) }
             plan_module(labelled_constructor_argument),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::LabelledArguments,
+                    reason: InvalidCallShapeReason::ArgumentLabel {
+                        index: 0,
+                        expected: Some("value".into()),
+                        actual: "other".into(),
+                    },
                 },
             }),
         );
@@ -700,9 +678,12 @@ pub fn main() { Boxed(1) }
         assert_eq!(
             plan_module(constructor_field_type_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: crate::planner::InvalidExpressionType::Int,
-                    actual: crate::planner::InvalidExpressionType::String,
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::ArgumentType {
+                        index: 0,
+                        expected: crate::plan::ValueType::Int,
+                        actual: crate::plan::ValueType::String,
+                    },
                 },
             }),
         );
@@ -748,8 +729,12 @@ pub fn main() { Boxed(1) }
             })),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "".into(),
+                    module: type_::PRELUDE_MODULE_NAME.into(),
                     name: "True".into(),
-                    reason: InvalidCustomTypeReason::ConstructorType,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorType {
+                        actual: crate::plan::ValueType::Bool,
+                    }),
                 },
             }),
         );
@@ -815,8 +800,13 @@ pub fn main() {
             plan_module(constructor_arity_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Boxed".into(),
-                    reason: InvalidCustomTypeReason::ConstructorArity,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorArity {
+                        expected: 1,
+                        actual: 0,
+                    }),
                 },
             }),
         );
@@ -831,7 +821,7 @@ pub fn main() {
             plan_module(argument_count_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::RecordConstructorMissingArguments {
+                    reason: InvalidCallShapeReason::RecordConstructorArgumentCount {
                         expected: 1,
                         actual: 0,
                     },
@@ -848,8 +838,12 @@ pub fn main() {
             plan_module(constructor_type_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "".into(),
+                    module: "main".into(),
                     name: "Boxed".into(),
-                    reason: InvalidCustomTypeReason::ConstructorType,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorType {
+                        actual: crate::plan::ValueType::Int,
+                    }),
                 },
             }),
         );
@@ -863,9 +857,12 @@ pub fn main() {
         assert_eq!(
             plan_module(constructor_argument_type_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: crate::planner::InvalidExpressionType::Int,
-                    actual: crate::planner::InvalidExpressionType::String,
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::ArgumentType {
+                        index: 0,
+                        expected: crate::plan::ValueType::Int,
+                        actual: crate::plan::ValueType::String,
+                    },
                 },
             }),
         );

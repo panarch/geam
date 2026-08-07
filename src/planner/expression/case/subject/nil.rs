@@ -1,9 +1,10 @@
-use super::super::super::plan_expr_with_expected_source_stop_type;
-use super::super::invalid_case_shape;
+use super::super::super::{
+    conversion::expect_expression, plan_expr_with_expected_source_stop_type,
+};
 use super::{CaseClause, OrderedCaseClauseInput};
-use crate::plan::{BoolExpr, Expr, ExprKind, NilExpr, NilLocalId, Step, ValueType};
+use crate::plan::{BoolExpr, Expr, NilExpr, NilLocalId, Step, ValueType};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidCaseShapeReason, PlanError};
+use crate::planner::error::PlanError;
 use ecow::EcoString;
 use gleam_core::ast::{Pattern, TypedExpr};
 use gleam_core::type_::Type;
@@ -18,22 +19,17 @@ pub(super) fn plan(
     let subject = plan_expr_with_expected_source_stop_type(subject, ValueType::Nil, context)?;
     let return_shape = context.value_shape(type_.as_ref());
 
-    let ExprKind::Nil(subject) = subject.into_kind() else {
-        return Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
-        ));
-    };
+    let subject: NilExpr = expect_expression(subject)?;
     let (subject_step, subject) = bind_nil_case_subject(subject, context);
     let mut ordered_clauses = Vec::new();
     for clause in clauses {
         for pattern in clause.patterns() {
             let (pattern, reachable, exhaustive_remainder) = pattern.into_parts();
-            let pattern = plan_nil_case_pattern(pattern)?;
+            let pattern = plan_nil_case_pattern_with_context(pattern, context)?;
             let bindings = super::branch_bindings(pattern.bound_names(), subject.clone());
             let is_total = clause.guard.is_none();
             ordered_clauses.push(super::plan_ordered_case_clause(
                 OrderedCaseClauseInput {
-                    case_type: type_.as_ref(),
                     return_shape: &return_shape,
                     then: clause.then.clone(),
                     branch_bindings: bindings,
@@ -67,38 +63,53 @@ impl NilCasePattern {
     }
 }
 
-fn plan_nil_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<NilCasePattern, PlanError> {
+fn plan_nil_case_pattern_with_context(
+    pattern: Pattern<Arc<Type>>,
+    context: &PlanContext<'_>,
+) -> Result<NilCasePattern, PlanError> {
     match pattern {
-        Pattern::Variable { name, type_, .. } if type_.is_nil() => Ok(NilCasePattern {
-            bound_names: vec![name],
-        }),
-        Pattern::Variable { .. } => Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
-        )),
-        Pattern::Discard { type_, .. } if type_.is_nil() => Ok(NilCasePattern {
-            bound_names: Vec::new(),
-        }),
-        Pattern::Discard { .. } => Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
-        )),
-        Pattern::Assign { name, pattern, .. } => {
-            let mut pattern = plan_nil_case_pattern(*pattern)?;
-            pattern.add_bound_name(name);
-            Ok(pattern)
+        ref pattern @ Pattern::Variable { ref name, .. } => {
+            crate::planner::pattern::validate_pattern(
+                pattern,
+                &crate::plan::ValueShape::Nil,
+                context,
+            )?;
+            Ok(NilCasePattern {
+                bound_names: vec![name.clone()],
+            })
         }
-        Pattern::Constructor {
-            name,
-            arguments,
-            spread,
-            type_,
-            ..
-        } if name == "Nil" && arguments.is_empty() && spread.is_none() && type_.is_nil() => {
+        ref pattern @ Pattern::Discard { .. } => {
+            crate::planner::pattern::validate_pattern(
+                pattern,
+                &crate::plan::ValueShape::Nil,
+                context,
+            )?;
             Ok(NilCasePattern {
                 bound_names: Vec::new(),
             })
         }
-        Pattern::Invalid { .. } => Err(invalid_case_shape(InvalidCaseShapeReason::InvalidPattern)),
-        Pattern::Int { .. }
+        Pattern::Assign { name, pattern, .. } => {
+            let mut pattern = plan_nil_case_pattern_with_context(*pattern, context)?;
+            pattern.add_bound_name(name);
+            Ok(pattern)
+        }
+        ref pattern @ Pattern::Constructor {
+            ref name,
+            ref arguments,
+            ref spread,
+            ref type_,
+            ..
+        } if name == "Nil" && arguments.is_empty() && spread.is_none() && type_.is_nil() => {
+            crate::planner::pattern::validate_pattern(
+                pattern,
+                &crate::plan::ValueShape::Nil,
+                context,
+            )?;
+            Ok(NilCasePattern {
+                bound_names: Vec::new(),
+            })
+        }
+        pattern @ (Pattern::Int { .. }
         | Pattern::Float { .. }
         | Pattern::String { .. }
         | Pattern::BitArraySize(_)
@@ -106,10 +117,22 @@ fn plan_nil_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<NilCasePattern, 
         | Pattern::Constructor { .. }
         | Pattern::Tuple { .. }
         | Pattern::BitArray { .. }
-        | Pattern::StringPrefix { .. } => Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. }) => Err(crate::planner::pattern::unexpected_pattern(
+            &pattern,
+            &crate::plan::ValueShape::Nil,
+            context,
         )),
     }
+}
+
+#[cfg(test)]
+fn plan_nil_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<NilCasePattern, PlanError> {
+    let module_name = EcoString::from("main");
+    let functions = std::collections::HashMap::new();
+    let mut anonymous = crate::planner::context::AnonymousFunctions::default();
+    let context = PlanContext::new(&module_name, &functions, &mut anonymous);
+    plan_nil_case_pattern_with_context(pattern, &context)
 }
 
 fn bind_nil_case_subject(subject: NilExpr, context: &mut PlanContext<'_>) -> (Step, Expr) {
@@ -127,12 +150,15 @@ fn internal_nil_case_subject_name(local: NilLocalId) -> EcoString {
 
 #[cfg(test)]
 mod tests {
+    use crate::plan::ValueType;
     use crate::planner::dsl::{
         function, int, int_return_block, int_return_expr, let_nil_step, local_nil, module, nil,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
-    use crate::planner::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
+    use crate::planner::{
+        InvalidCaseShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
+    };
     use gleam_core::type_::error::VariableOrigin;
 
     #[test]
@@ -250,7 +276,10 @@ pub fn main() {
             plan_module(unsupported_case_type),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::BranchReturnTypeMismatch,
+                    reason: InvalidCaseShapeReason::BranchAnnotatedTypeMismatch {
+                        expected: ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                        actual: ValueType::Int,
+                    },
                 },
             }),
         );
@@ -272,7 +301,10 @@ pub fn main() {
             plan_module(empty_pattern),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch,
+                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch {
+                        expected: 1,
+                        actual: 0,
+                    },
                 },
             }),
         );
@@ -296,11 +328,10 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(pattern_type_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Nil,
+                ValueType::Int,
+            )),
         );
 
         let mut subject_expression_family_mismatch = crate::planner::support::compile(
@@ -323,16 +354,32 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(subject_expression_family_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::expression_type_mismatch(
+                InvalidExpressionType::Nil,
+                InvalidExpressionType::Int,
+            )),
         );
     }
 
     #[test]
     fn reject_margin_nil_case_pattern_mismatched_and_invalid_shapes() {
+        assert_eq!(
+            super::plan_nil_case_pattern(gleam_core::ast::Pattern::Constructor {
+                location: dummy_span(),
+                name_location: dummy_span(),
+                name: "Nil".into(),
+                arguments: Vec::new(),
+                module: None,
+                constructor: Default::default(),
+                spread: None,
+                type_: gleam_core::type_::nil(),
+            }),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::UnresolvedConstructor,
+                },
+            }),
+        );
         assert_eq!(
             super::plan_nil_case_pattern(gleam_core::ast::Pattern::Constructor {
                 location: dummy_span(),
@@ -345,8 +392,8 @@ pub fn main() {
                 type_: gleam_core::type_::nil(),
             }),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::UnresolvedConstructor,
                 },
             }),
         );
@@ -357,11 +404,10 @@ pub fn main() {
                 type_: gleam_core::type_::int(),
                 origin: VariableOrigin::generated(),
             }),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Nil,
+                ValueType::Int,
+            )),
         );
         assert_eq!(
             super::plan_nil_case_pattern(gleam_core::ast::Pattern::Assign {
@@ -374,11 +420,10 @@ pub fn main() {
                     origin: VariableOrigin::generated(),
                 }),
             }),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Nil,
+                ValueType::Int,
+            )),
         );
         assert_eq!(
             super::plan_nil_case_pattern(gleam_core::ast::Pattern::Discard {
@@ -386,11 +431,10 @@ pub fn main() {
                 name: "_".into(),
                 type_: gleam_core::type_::int(),
             }),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Nil,
+                ValueType::Int,
+            )),
         );
         assert_eq!(
             super::plan_nil_case_pattern(gleam_core::ast::Pattern::Invalid {
@@ -398,8 +442,8 @@ pub fn main() {
                 type_: gleam_core::type_::nil(),
             }),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::InvalidNode,
                 },
             }),
         );
@@ -409,22 +453,20 @@ pub fn main() {
                 value: "1".into(),
                 int_value: num_bigint::BigInt::from(1),
             }),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Nil,
+                ValueType::Int,
+            )),
         );
         assert_eq!(
             super::plan_nil_case_pattern(gleam_core::ast::Pattern::Tuple {
                 location: dummy_span(),
                 elements: Vec::new(),
             }),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Nil,
+                ValueType::Tuple(Vec::new()),
+            )),
         );
     }
 }

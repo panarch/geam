@@ -9,11 +9,21 @@ pub(super) struct TypeParameterScope {
     parameters: HashMap<u64, TypeParameterId>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum FunctionInstantiationMismatch {
-    ArgumentCount,
-    ArgumentShape,
-    ReturnShape,
+    ArgumentCount {
+        expected: usize,
+        actual: usize,
+    },
+    ArgumentShape {
+        index: usize,
+        expected: crate::plan::ValueType,
+        actual: crate::plan::ValueType,
+    },
+    ReturnShape {
+        expected: crate::plan::ValueType,
+        actual: crate::plan::ValueType,
+    },
     UnresolvedParameter,
 }
 
@@ -33,44 +43,65 @@ pub(super) fn instantiate(
     actual: &crate::plan::FunctionShape,
 ) -> Result<FunctionInstantiation, FunctionInstantiationMismatch> {
     if signature.shape().argument_shapes().len() != actual.argument_shapes().len() {
-        return Err(FunctionInstantiationMismatch::ArgumentCount);
+        return Err(FunctionInstantiationMismatch::ArgumentCount {
+            expected: signature.shape().argument_shapes().len(),
+            actual: actual.argument_shapes().len(),
+        });
     }
 
     if signature.scheme().is_monomorphic() {
-        for (template, actual) in signature
+        for (index, (template, actual)) in signature
             .shape()
             .argument_shapes()
             .iter()
             .zip(actual.argument_shapes())
+            .enumerate()
         {
-            match_shape(template, actual, &mut [])
-                .ok_or(FunctionInstantiationMismatch::ArgumentShape)?;
+            match_shape(template, actual, &mut []).ok_or_else(|| {
+                FunctionInstantiationMismatch::ArgumentShape {
+                    index,
+                    expected: template.value_type(),
+                    actual: actual.value_type(),
+                }
+            })?;
         }
         match_shape(
             signature.shape().return_shape(),
             actual.return_shape(),
             &mut [],
         )
-        .ok_or(FunctionInstantiationMismatch::ReturnShape)?;
+        .ok_or_else(|| FunctionInstantiationMismatch::ReturnShape {
+            expected: signature.shape().return_shape().value_type(),
+            actual: actual.return_shape().value_type(),
+        })?;
         return Ok(signature.identity_instantiation());
     }
 
     let mut bindings = vec![None; signature.scheme().parameters().len()];
-    for (template, actual) in signature
+    for (index, (template, actual)) in signature
         .shape()
         .argument_shapes()
         .iter()
         .zip(actual.argument_shapes())
+        .enumerate()
     {
-        match_shape(template, actual, &mut bindings)
-            .ok_or(FunctionInstantiationMismatch::ArgumentShape)?;
+        match_shape(template, actual, &mut bindings).ok_or_else(|| {
+            FunctionInstantiationMismatch::ArgumentShape {
+                index,
+                expected: template.value_type(),
+                actual: actual.value_type(),
+            }
+        })?;
     }
     match_shape(
         signature.shape().return_shape(),
         actual.return_shape(),
         &mut bindings,
     )
-    .ok_or(FunctionInstantiationMismatch::ReturnShape)?;
+    .ok_or_else(|| FunctionInstantiationMismatch::ReturnShape {
+        expected: signature.shape().return_shape().value_type(),
+        actual: actual.return_shape().value_type(),
+    })?;
 
     let arguments = bindings
         .into_iter()
@@ -220,7 +251,10 @@ mod tests {
                 &polymorphic,
                 &FunctionShape::new(Vec::new(), ValueShape::Int),
             ),
-            Err(FunctionInstantiationMismatch::ArgumentCount),
+            Err(FunctionInstantiationMismatch::ArgumentCount {
+                expected: 1,
+                actual: 0,
+            }),
         );
 
         let argument_constrained = function_signature(1, vec![ValueShape::Int], parameter.clone());
@@ -229,7 +263,11 @@ mod tests {
                 &argument_constrained,
                 &FunctionShape::new(vec![ValueShape::String], ValueShape::String),
             ),
-            Err(FunctionInstantiationMismatch::ArgumentShape),
+            Err(FunctionInstantiationMismatch::ArgumentShape {
+                index: 0,
+                expected: crate::plan::ValueType::Int,
+                actual: crate::plan::ValueType::String,
+            }),
         );
 
         assert_eq!(
@@ -237,7 +275,10 @@ mod tests {
                 &polymorphic,
                 &FunctionShape::new(vec![ValueShape::Int], ValueShape::String),
             ),
-            Err(FunctionInstantiationMismatch::ReturnShape),
+            Err(FunctionInstantiationMismatch::ReturnShape {
+                expected: crate::plan::ValueType::Parameter(TypeParameterId(0)),
+                actual: crate::plan::ValueType::String,
+            }),
         );
 
         let unresolved = function_signature(2, vec![parameter.clone()], parameter.clone());
@@ -255,14 +296,21 @@ mod tests {
                 &monomorphic,
                 &FunctionShape::new(vec![ValueShape::String], ValueShape::String),
             ),
-            Err(FunctionInstantiationMismatch::ArgumentShape),
+            Err(FunctionInstantiationMismatch::ArgumentShape {
+                index: 0,
+                expected: crate::plan::ValueType::Int,
+                actual: crate::plan::ValueType::String,
+            }),
         );
         assert_eq!(
             instantiate(
                 &monomorphic,
                 &FunctionShape::new(vec![ValueShape::Int], ValueShape::Int),
             ),
-            Err(FunctionInstantiationMismatch::ReturnShape),
+            Err(FunctionInstantiationMismatch::ReturnShape {
+                expected: crate::plan::ValueType::String,
+                actual: crate::plan::ValueType::Int,
+            }),
         );
     }
 
@@ -347,7 +395,12 @@ mod tests {
                     ValueShape::Int,
                 ),
             ),
-            Err(FunctionInstantiationMismatch::ArgumentShape),
+            Err(FunctionInstantiationMismatch::ArgumentShape {
+                index: 0,
+                expected: exact_zero.shape().argument_shapes()[0].value_type(),
+                actual: custom_shape(CustomConstructorRefinement::Exact(1), vec![ValueShape::Int],)
+                    .value_type(),
+            }),
         );
     }
 
@@ -402,7 +455,18 @@ mod tests {
                     ValueShape::String,
                 ),
             ),
-            Err(FunctionInstantiationMismatch::ArgumentShape),
+            Err(FunctionInstantiationMismatch::ArgumentShape {
+                index: 0,
+                expected: ValueShape::Tuple(
+                    vec![ValueShape::Parameter(TypeParameterId(0)), ValueShape::Int,]
+                        .into_boxed_slice(),
+                )
+                .value_type(),
+                actual: ValueShape::Tuple(
+                    vec![ValueShape::String, ValueShape::String].into_boxed_slice(),
+                )
+                .value_type(),
+            }),
         );
 
         let custom_signature = function_signature(
@@ -424,7 +488,19 @@ mod tests {
                     ValueShape::String,
                 ),
             ),
-            Err(FunctionInstantiationMismatch::ArgumentShape),
+            Err(FunctionInstantiationMismatch::ArgumentShape {
+                index: 0,
+                expected: custom_shape(
+                    CustomConstructorRefinement::Any,
+                    vec![ValueShape::Parameter(TypeParameterId(0)), ValueShape::Int,],
+                )
+                .value_type(),
+                actual: custom_shape(
+                    CustomConstructorRefinement::Exact(0),
+                    vec![ValueShape::String, ValueShape::String],
+                )
+                .value_type(),
+            }),
         );
 
         let external_name =
@@ -448,7 +524,27 @@ mod tests {
                     ValueShape::String,
                 ),
             ),
-            Err(FunctionInstantiationMismatch::ArgumentShape),
+            Err(FunctionInstantiationMismatch::ArgumentShape {
+                index: 0,
+                expected: ValueShape::External(ExternalValueShape::new(
+                    ExternalTypeName::new(
+                        "dependency".into(),
+                        "dependency/box".into(),
+                        "Box".into(),
+                    ),
+                    vec![ValueShape::Parameter(TypeParameterId(0)), ValueShape::Int,],
+                ))
+                .value_type(),
+                actual: ValueShape::External(ExternalValueShape::new(
+                    ExternalTypeName::new(
+                        "dependency".into(),
+                        "dependency/box".into(),
+                        "Box".into(),
+                    ),
+                    vec![ValueShape::String, ValueShape::String],
+                ))
+                .value_type(),
+            }),
         );
     }
 }

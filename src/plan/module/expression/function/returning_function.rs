@@ -2,7 +2,7 @@ use crate::plan::CustomFieldAccess;
 use crate::plan::{
     BoolExpr, CaptureArg, ConstantFunctionFunctionInstantiation, FloatExpr, FunctionFunctionLocal,
     FunctionFunctionReference, FunctionFunctionType, FunctionInstantiation, FunctionListExpr,
-    FunctionType, IntExpr, PanicExpr, Step, StringExpr, TupleExpr, ValueShape,
+    FunctionType, IntExpr, PanicExpr, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -11,12 +11,6 @@ use num_bigint::BigInt;
 pub struct FunctionFunctionExpr {
     type_: FunctionFunctionType,
     kind: FunctionFunctionExprKind,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum FunctionFunctionCallMismatch {
-    ArgumentCount { expected: usize, actual: usize },
-    ReturnFamily,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -150,43 +144,28 @@ impl FunctionFunctionExpr {
     }
 
     #[cfg(test)]
-    pub(crate) fn try_function_call(
+    pub(crate) fn function_call(
         function: FunctionFunctionExpr,
         args: Vec<crate::plan::CallArg>,
-    ) -> Result<Self, FunctionFunctionCallMismatch> {
-        Self::try_function_call_at(function, args, crate::plan::HostCallSite::unknown())
+        type_: FunctionFunctionType,
+    ) -> Self {
+        Self::function_call_at(function, args, type_, crate::plan::HostCallSite::unknown())
     }
 
-    pub(crate) fn try_function_call_at(
+    pub(crate) fn function_call_at(
         function: FunctionFunctionExpr,
         args: Vec<crate::plan::CallArg>,
+        type_: FunctionFunctionType,
         site: crate::plan::HostCallSite,
-    ) -> Result<Self, FunctionFunctionCallMismatch> {
-        let expected = function.function_function_type().argument_types().len();
-        if expected != args.len() {
-            return Err(FunctionFunctionCallMismatch::ArgumentCount {
-                expected,
-                actual: args.len(),
-            });
-        }
-
-        let returned = function.function_function_type().return_shape();
-        let ValueShape::Function(return_) = returned.return_shape() else {
-            return Err(FunctionFunctionCallMismatch::ReturnFamily);
-        };
-        let type_ = FunctionFunctionType::from_shapes(
-            returned.argument_shapes().to_vec(),
-            return_.as_ref().clone(),
-        );
-
-        Ok(Self {
+    ) -> Self {
+        Self {
             type_,
             kind: FunctionFunctionExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
                 site,
             },
-        })
+        }
     }
 
     pub(crate) fn tuple_index(tuple: TupleExpr, index: usize, type_: FunctionFunctionType) -> Self {
@@ -338,7 +317,7 @@ impl FunctionFunctionExpr {
 
 #[cfg(test)]
 mod tests {
-    use super::{FunctionFunctionCallMismatch, FunctionFunctionExpr, FunctionFunctionExprKind};
+    use super::{FunctionFunctionExpr, FunctionFunctionExprKind};
     use crate::plan::{
         BoolExpr, CallArg, Expr, FunctionFunctionLocal, FunctionFunctionLocalId,
         FunctionFunctionReference, FunctionFunctionType, FunctionInstantiation, FunctionShape,
@@ -472,12 +451,14 @@ mod tests {
     }
 
     #[test]
-    fn function_call_derives_return_type_and_checks_argument_count() {
+    fn function_call_stores_the_validated_return_type() {
         let function = function_call_callee();
         let argument = CallArg::new(crate::plan::Expr::int(IntExpr::value(1.into())));
-        let expression =
-            FunctionFunctionExpr::try_function_call(function.clone(), vec![argument.clone()])
-                .expect("exact function call");
+        let expression = FunctionFunctionExpr::function_call(
+            function.clone(),
+            vec![argument.clone()],
+            function_function_type(),
+        );
 
         assert_eq!(
             expression.into_parts(),
@@ -489,17 +470,6 @@ mod tests {
                     site: crate::plan::HostCallSite::unknown(),
                 },
             ),
-        );
-        assert_eq!(
-            FunctionFunctionExpr::try_function_call(function, Vec::new()),
-            Err(FunctionFunctionCallMismatch::ArgumentCount {
-                expected: 1,
-                actual: 0,
-            }),
-        );
-        assert_eq!(
-            FunctionFunctionExpr::try_function_call(function_value(), vec![argument]),
-            Err(FunctionFunctionCallMismatch::ReturnFamily),
         );
     }
 
