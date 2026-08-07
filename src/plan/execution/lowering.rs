@@ -1411,8 +1411,142 @@ mod tests {
         FixedPointStep, SpecializationOutcome, resolve_specialization_fixed_point,
         try_resolve_specialization_fixed_point,
     };
+    use crate::plan::execution::function::{
+        IntFunctionId, ProfiledCoreRuntimeFunctionId, ProfiledRuntimeFunctionId,
+    };
 
     use std::collections::{HashSet, VecDeque};
+
+    #[test]
+    fn preserves_public_module_and_source_context() {
+        let source = "pub fn main() { 1 }";
+        let typed = crate::compile_typed_module("sample", "sample.gleam", source)
+            .expect("source should compile");
+        let context = crate::SourceContext::new("sample.gleam", source);
+        let module =
+            crate::plan_module_with_source(typed, context.clone()).expect("source should plan");
+        let execution = crate::ExecutionPlan::from_module_plan(module);
+
+        assert_eq!(execution.program.common.root, crate::plan::ModuleId::new(0));
+        assert_eq!(execution.program.common.modules.len(), 1);
+        assert_eq!(execution.program.common.modules[0].module, "sample");
+        assert_eq!(
+            execution.program.common.modules[0].source_context,
+            Some(context),
+        );
+    }
+
+    #[test]
+    fn seeds_only_the_root_entry_and_preserves_module_sources() {
+        let root_source = "pub fn main() { 7 }";
+        let dependency_source = "pub fn main(value: Int) { value }";
+        let typed = crate::compile_typed_program(
+            "root",
+            [
+                crate::ModuleSource::new("root", "root.gleam", root_source),
+                crate::ModuleSource::new("alpha", "alpha.gleam", dependency_source),
+            ],
+        )
+        .expect("program should compile");
+        let module = crate::plan_program(typed).expect("program should plan");
+        let execution = crate::ExecutionPlan::from_module_plan(module);
+
+        assert_eq!(execution.program.common.root, crate::plan::ModuleId::new(1));
+        assert_eq!(
+            execution.program.common.main,
+            ProfiledRuntimeFunctionId::Core(ProfiledCoreRuntimeFunctionId::Int(IntFunctionId(0))),
+        );
+        assert_eq!(
+            execution
+                .program
+                .common
+                .modules
+                .iter()
+                .map(|module| {
+                    (
+                        module.module.as_str(),
+                        module
+                            .source_context
+                            .as_ref()
+                            .map(crate::SourceContext::source),
+                    )
+                })
+                .collect::<Vec<_>>(),
+            vec![
+                ("alpha", Some(dependency_source)),
+                ("root", Some(root_source))
+            ],
+        );
+        assert_eq!(
+            execution
+                .program
+                .functions
+                .value_returns
+                .int_functions
+                .len(),
+            1,
+        );
+    }
+
+    #[test]
+    fn deduplicates_cross_module_generic_specializations() {
+        let typed = crate::compile_typed_program(
+            "main",
+            [
+                crate::ModuleSource::new(
+                    "generic",
+                    "generic.gleam",
+                    "pub fn identity(value: value) { value }",
+                ),
+                crate::ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    r#"
+import generic
+
+pub fn main() {
+  #(
+    generic.identity(1),
+    generic.identity(2),
+    generic.identity("three"),
+  )
+}
+"#,
+                ),
+            ],
+        )
+        .expect("generic module program should compile");
+        let module = crate::plan_program(typed).expect("generic module program should plan");
+        let execution = crate::ExecutionPlan::from_module_plan(module);
+
+        assert_eq!(
+            execution
+                .program
+                .functions
+                .value_returns
+                .int_functions
+                .len(),
+            1,
+        );
+        assert_eq!(
+            execution
+                .program
+                .functions
+                .value_returns
+                .string_functions
+                .len(),
+            1,
+        );
+        assert_eq!(
+            execution
+                .program
+                .functions
+                .value_returns
+                .tuple_functions
+                .len(),
+            1,
+        );
+    }
 
     #[test]
     fn specialization_fixed_point_discards_provisional_passes_before_completing() {

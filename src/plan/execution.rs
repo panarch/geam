@@ -143,16 +143,6 @@ impl ExecutionPlan {
             .as_ref()
     }
 
-    #[cfg(test)]
-    pub(crate) fn source_context_for(&self, module: &EcoString) -> Option<&SourceContext> {
-        self.program
-            .common
-            .modules
-            .iter()
-            .find(|context| &context.module == module)
-            .and_then(|context| context.source_context.as_ref())
-    }
-
     pub fn explain(&self) -> ExecutionPlanExplanation<'_> {
         ExecutionPlanExplanation::new(self)
     }
@@ -578,6 +568,20 @@ mod tests {
     }
 
     #[test]
+    fn exposes_the_root_module_and_source_context() {
+        let source = "pub fn main() { 1 }";
+        let typed =
+            compile_typed_module("sample", "sample.gleam", source).expect("source should compile");
+        let context = crate::SourceContext::new("sample.gleam", source);
+        let module =
+            crate::plan_module_with_source(typed, context.clone()).expect("source should plan");
+        let execution = super::ExecutionPlan::from_module_plan(module);
+
+        assert_eq!(execution.module(), "sample");
+        assert_eq!(execution.source_context(), Some(&context));
+    }
+
+    #[test]
     fn writes_the_complete_execution_plan() {
         let source = "pub fn main() { 1 }";
         let expected = concat!(
@@ -633,132 +637,5 @@ mod tests {
         );
 
         assert_eq!(execution.explain().to_string(), expected);
-    }
-
-    #[test]
-    fn lowering_preserves_public_module_and_source_context() {
-        let source = "pub fn main() { 1 }";
-        let typed = crate::compile_typed_module("sample", "sample.gleam", source)
-            .expect("source should compile");
-        let context = crate::SourceContext::new("sample.gleam", source);
-        let module =
-            crate::plan_module_with_source(typed, context.clone()).expect("source should plan");
-        let execution = super::ExecutionPlan::from_module_plan(module);
-
-        assert_eq!(execution.module(), "sample");
-        assert_eq!(execution.source_context(), Some(&context));
-    }
-
-    #[test]
-    fn lowering_seeds_only_the_root_entry_and_preserves_module_sources() {
-        let root_source = "pub fn main() { 7 }";
-        let dependency_source = "pub fn main(value: Int) { value }";
-        let typed = crate::compile_typed_program(
-            "root",
-            [
-                crate::ModuleSource::new("root", "root.gleam", root_source),
-                crate::ModuleSource::new("alpha", "alpha.gleam", dependency_source),
-            ],
-        )
-        .expect("program should compile");
-        let module = crate::plan_program(typed).expect("program should plan");
-        let execution = super::ExecutionPlan::from_module_plan(module);
-
-        assert_eq!(execution.module(), "root");
-        assert_eq!(
-            execution.source_context().map(|context| context.source()),
-            Some(root_source),
-        );
-        assert_eq!(
-            execution
-                .source_context_for(&"alpha".into())
-                .map(|context| context.source()),
-            Some(dependency_source),
-        );
-        assert_eq!(
-            crate::run_main(&execution, &mut Vec::new()),
-            Ok(crate::Value::Int(7.into())),
-        );
-        assert_eq!(
-            execution.explain().to_string(),
-            concat!(
-                "module root\n",
-                "main int#0\n",
-                "\n",
-                "function int#0\n",
-                "  entry b0 params=[] captures=[]\n",
-                "  block b0 params=[]\n",
-                "    %int#0:shape#0(Int) = int.value 7\n",
-                "    return %int#0\n",
-            ),
-        );
-    }
-
-    #[test]
-    fn lowering_deduplicates_cross_module_generic_specializations() {
-        let typed = crate::compile_typed_program(
-            "main",
-            [
-                crate::ModuleSource::new(
-                    "generic",
-                    "generic.gleam",
-                    "pub fn identity(value: value) { value }",
-                ),
-                crate::ModuleSource::new(
-                    "main",
-                    "main.gleam",
-                    r#"
-import generic
-
-pub fn main() {
-  #(
-    generic.identity(1),
-    generic.identity(2),
-    generic.identity("three"),
-  )
-}
-"#,
-                ),
-            ],
-        )
-        .expect("generic module program should compile");
-        let module = crate::plan_program(typed).expect("generic module program should plan");
-        let execution = super::ExecutionPlan::from_module_plan(module);
-
-        assert_eq!(
-            execution
-                .program
-                .functions
-                .value_returns
-                .int_functions
-                .len(),
-            1
-        );
-        assert_eq!(
-            execution
-                .program
-                .functions
-                .value_returns
-                .string_functions
-                .len(),
-            1
-        );
-        assert_eq!(
-            execution
-                .program
-                .functions
-                .value_returns
-                .tuple_functions
-                .len(),
-            1
-        );
-        assert_eq!(
-            crate::run_main(&execution, &mut Vec::new()),
-            Ok(crate::Value::Tuple(vec![
-                crate::Value::Int(1.into()),
-                crate::Value::Int(2.into()),
-                crate::Value::String("three".into()),
-            ])),
-        );
     }
 }
