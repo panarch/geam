@@ -2788,3 +2788,216 @@ fn lower_polymorphic_function<Expression, ModuleFunction, Lower>(
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::plan::execution::function::FunctionBodyOwner;
+    use crate::plan::execution::graph::{
+        BlockGraphExitId, ParamLocal, SourceStop, SourceStopKind, Terminator,
+    };
+
+    #[test]
+    fn concrete_and_generic_inhabited_specializations_use_family_local_tables() {
+        let plan = execution_plan(
+            r#"
+fn first() { 1 }
+fn second() { 2 }
+fn identity(value: value) { value }
+
+pub fn main() {
+  #(first(), second(), identity(3), identity(4), identity("five"))
+}
+"#,
+        );
+        let functions = &plan.program.functions;
+
+        assert_eq!(functions.value_returns.int_functions.len(), 3);
+        assert_eq!(functions.value_returns.string_functions.len(), 1);
+        assert_eq!(functions.value_returns.tuple_functions.len(), 1);
+
+        let generic_int = &functions.value_returns.int_functions[2];
+        let int_params = generic_int.entry().params(generic_int.body());
+        assert_eq!(int_params.len(), 1);
+        assert!(matches!(int_params[0].local(), ParamLocal::Int(local) if local.0 == 0));
+        assert!(generic_int.entry().captures(generic_int.body()).is_empty());
+
+        let generic_string = &functions.value_returns.string_functions[0];
+        let string_params = generic_string.entry().params(generic_string.body());
+        assert_eq!(string_params.len(), 1);
+        assert!(matches!(
+            string_params[0].local(),
+            ParamLocal::String(local) if local.0 == 0
+        ));
+        assert!(
+            generic_string
+                .entry()
+                .captures(generic_string.body())
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn symbolic_and_never_generic_functions_use_distinct_function_tables() {
+        let symbolic = execution_plan(
+            r#"
+pub type Never
+fn identity(value: value) { value }
+pub fn main() -> fn(Never) -> Never { identity }
+"#,
+        );
+        let never = execution_plan(
+            r#"
+pub type Never
+fn fail() -> value { panic as "failure" }
+pub fn main() -> fn() -> Never { fail }
+"#,
+        );
+
+        assert_eq!(
+            symbolic
+                .program
+                .functions
+                .function_returns
+                .generic_function_functions
+                .len(),
+            1,
+        );
+        assert!(
+            symbolic
+                .program
+                .functions
+                .function_returns
+                .never_function_functions
+                .is_empty()
+        );
+        assert_eq!(
+            never
+                .program
+                .functions
+                .function_returns
+                .never_function_functions
+                .len(),
+            1,
+        );
+        assert_eq!(
+            never.program.functions.value_returns.never_functions.len(),
+            1,
+        );
+    }
+
+    #[test]
+    fn custom_and_tuple_uninhabited_returns_keep_distinct_never_specializations() {
+        let custom = execution_plan(
+            r#"
+pub type Never
+pub type Boxed { Boxed(Never) }
+fn fail() -> value { panic as "failure" }
+pub fn main() -> fn() -> Boxed { fn() { Boxed(fail()) } }
+"#,
+        );
+        let tuple = execution_plan(
+            r#"
+pub type Never
+fn fail() -> value { panic as "failure" }
+pub fn main() -> fn() -> #(Never, Int) { fn() { #(fail(), 1) } }
+"#,
+        );
+
+        for plan in [&custom, &tuple] {
+            assert_eq!(
+                plan.program
+                    .functions
+                    .function_returns
+                    .never_function_functions
+                    .len(),
+                1,
+            );
+            assert_eq!(
+                plan.program.functions.value_returns.never_functions.len(),
+                2,
+            );
+        }
+    }
+
+    #[test]
+    fn function_returning_function_uses_each_exact_nested_table() {
+        let plan = execution_plan("pub fn main() -> fn() -> fn() -> Int { fn() { fn() { 1 } } }");
+        let functions = &plan.program.functions;
+
+        assert_eq!(
+            functions.function_returns.function_function_functions.len(),
+            1
+        );
+        assert_eq!(functions.function_returns.int_function_functions.len(), 1);
+        assert_eq!(functions.value_returns.int_functions.len(), 1);
+
+        let outer = &functions.function_returns.function_function_functions[0];
+        let outer_body = FunctionBodyOwner::function_body(outer.body());
+        assert!(outer.entry().params(outer_body).is_empty());
+        assert!(outer.entry().captures(outer_body).is_empty());
+    }
+
+    #[test]
+    fn custom_list_function_return_uses_only_the_custom_list_table() {
+        let plan = execution_plan(
+            r#"
+pub type Boxed { Boxed(Int) }
+
+fn factory() -> fn() -> List(Boxed) {
+  fn() { [Boxed(1)] }
+}
+
+pub fn main() {
+  let assert [Boxed(value)] = factory()()
+  value
+}
+"#,
+        );
+        let functions = &plan.program.functions;
+        let tables = &functions.function_returns;
+
+        assert_eq!(tables.custom_list_function_functions.len(), 1);
+        assert!(tables.int_list_function_functions.is_empty());
+        assert!(tables.string_list_function_functions.is_empty());
+        assert!(tables.list_list_function_functions.is_empty());
+        assert!(tables.function_list_function_functions.is_empty());
+        assert_eq!(functions.list_returns.custom_list_functions.len(), 1);
+
+        let factory = &tables.custom_list_function_functions[0];
+        let body = FunctionBodyOwner::function_body(factory.body());
+        assert!(factory.entry().params(body).is_empty());
+        assert!(factory.entry().captures(body).is_empty());
+        assert_eq!(
+            returned_exit(
+                body.block_graph()
+                    .block(body.block_graph().entry())
+                    .terminator(),
+            ),
+            BlockGraphExitId::new(0),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "function specialization fixture should return from its entry")]
+    fn returned_exit_guard_rejects_source_stops() {
+        returned_exit(&Terminator::SourceStop(SourceStop::new(
+            SourceStopKind::Panic,
+            None,
+            crate::plan::PanicSite::unknown(),
+        )));
+    }
+
+    fn returned_exit(terminator: &Terminator) -> BlockGraphExitId {
+        match terminator {
+            Terminator::Exit(exit) => *exit,
+            _ => panic!("function specialization fixture should return from its entry"),
+        }
+    }
+
+    fn execution_plan(source: &str) -> crate::ExecutionPlan {
+        let typed = crate::compile_typed_module("main", "main.gleam", source)
+            .expect("source should compile");
+        let module_plan = crate::plan_module(typed).expect("source should plan");
+        crate::ExecutionPlan::from_module_plan(module_plan)
+    }
+}

@@ -624,46 +624,359 @@ fn runtime_list_function_function_id(
 #[cfg(test)]
 mod tests {
     use super::{
-        FunctionTableFamily, function_function_table_family, list_function_table_family,
-        stored_function_table_family,
+        FunctionTableFamily, function_function_table_family, list_function_function_signature,
+        list_function_table_family, stored_function_table_family,
+    };
+    use crate::plan::execution::function::{
+        ExternalListFunctionFunctionId, IntListFunctionFunctionId, ProfiledListFunctionFunctionId,
     };
     use crate::plan::execution::lowering::specialization::{
-        RepresentationContext, SpecializedFunctionShape, SpecializedValueShape, StoredValueShape,
+        RepresentationContext, SpecializedCustomValueShape, SpecializedExternalValueShape,
+        SpecializedFunctionShape, SpecializedTypeSubstitution, SpecializedValueShape,
+        StoredValueShape,
+    };
+    use crate::plan::execution::lowering::value_type::TypeInterner;
+    use crate::plan::{
+        CustomConstructorDefinition, CustomConstructorRefinement, CustomTypeDefinition,
+        CustomTypeName, CustomTypePublicity, ExternalTypeName, ExternalValueShape, TypeParameterId,
     };
 
     #[test]
-    fn maps_stored_shapes_to_exact_function_table_families() {
-        let representations = RepresentationContext::new(Vec::new());
-        let int_function = SpecializedFunctionShape::new(
-            vec![SpecializedValueShape::Bool],
+    fn maps_every_stored_value_shape_to_its_exact_table_family() {
+        let (representations, custom) = custom_representation();
+        let external = external_shape();
+        let int_function = function(SpecializedValueShape::Int);
+        let cases = [
+            (StoredValueShape::Int, FunctionTableFamily::Int),
+            (StoredValueShape::Float, FunctionTableFamily::Float),
+            (StoredValueShape::String, FunctionTableFamily::String),
+            (StoredValueShape::BitArray, FunctionTableFamily::BitArray),
+            (
+                StoredValueShape::UtfCodepoint,
+                FunctionTableFamily::UtfCodepoint,
+            ),
+            (
+                StoredValueShape::Custom(custom),
+                FunctionTableFamily::Custom,
+            ),
+            (
+                StoredValueShape::External(external),
+                FunctionTableFamily::External,
+            ),
+            (StoredValueShape::Bool, FunctionTableFamily::Bool),
+            (StoredValueShape::Nil, FunctionTableFamily::Nil),
+            (
+                StoredValueShape::Tuple(vec![SpecializedValueShape::Int].into_boxed_slice()),
+                FunctionTableFamily::Tuple,
+            ),
+            (
+                StoredValueShape::List(Box::new(SpecializedValueShape::String)),
+                FunctionTableFamily::StringList,
+            ),
+            (
+                StoredValueShape::Function(Box::new(int_function)),
+                FunctionTableFamily::IntFunction,
+            ),
+        ];
+
+        for (shape, expected) in cases {
+            assert_eq!(
+                stored_function_table_family(&shape, &representations),
+                expected,
+                "stored shape {shape:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn maps_every_list_item_shape_to_its_exact_table_family() {
+        let (_, custom) = custom_representation();
+        let external = external_shape();
+        let cases = [
+            (
+                SpecializedValueShape::Parameter(TypeParameterId(0)),
+                FunctionTableFamily::ParameterList,
+            ),
+            (SpecializedValueShape::Int, FunctionTableFamily::IntList),
+            (
+                SpecializedValueShape::String,
+                FunctionTableFamily::StringList,
+            ),
+            (
+                SpecializedValueShape::BitArray,
+                FunctionTableFamily::BitArrayList,
+            ),
+            (
+                SpecializedValueShape::UtfCodepoint,
+                FunctionTableFamily::UtfCodepointList,
+            ),
+            (
+                SpecializedValueShape::Custom(custom),
+                FunctionTableFamily::CustomList,
+            ),
+            (
+                SpecializedValueShape::External(external),
+                FunctionTableFamily::ExternalList,
+            ),
+            (SpecializedValueShape::Float, FunctionTableFamily::FloatList),
+            (SpecializedValueShape::Bool, FunctionTableFamily::BoolList),
+            (SpecializedValueShape::Nil, FunctionTableFamily::NilList),
+            (
+                SpecializedValueShape::Tuple(vec![SpecializedValueShape::Int].into_boxed_slice()),
+                FunctionTableFamily::TupleList,
+            ),
+            (
+                SpecializedValueShape::List(Box::new(SpecializedValueShape::Parameter(
+                    TypeParameterId(0),
+                ))),
+                FunctionTableFamily::ParameterListList,
+            ),
+            (
+                SpecializedValueShape::List(Box::new(SpecializedValueShape::Int)),
+                FunctionTableFamily::ListList,
+            ),
+            (
+                SpecializedValueShape::Function(Box::new(function(SpecializedValueShape::Int))),
+                FunctionTableFamily::FunctionList,
+            ),
+        ];
+
+        for (shape, expected) in cases {
+            assert_eq!(
+                list_function_table_family(&shape),
+                expected,
+                "list item shape {shape:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn maps_every_function_representation_to_its_exact_table_family() {
+        let (representations, custom) = custom_representation();
+        let external = external_shape();
+        let symbolic = SpecializedFunctionShape::new(
+            vec![SpecializedValueShape::Parameter(TypeParameterId(0))],
             SpecializedValueShape::Int,
         );
+        let never = function(SpecializedValueShape::Tuple(
+            vec![SpecializedValueShape::Parameter(TypeParameterId(0))].into_boxed_slice(),
+        ));
+        let cases = [
+            (symbolic, FunctionTableFamily::GenericFunction),
+            (never, FunctionTableFamily::NeverFunction),
+            (
+                function(SpecializedValueShape::Int),
+                FunctionTableFamily::IntFunction,
+            ),
+            (
+                function(SpecializedValueShape::Float),
+                FunctionTableFamily::FloatFunction,
+            ),
+            (
+                function(SpecializedValueShape::String),
+                FunctionTableFamily::StringFunction,
+            ),
+            (
+                function(SpecializedValueShape::BitArray),
+                FunctionTableFamily::BitArrayFunction,
+            ),
+            (
+                function(SpecializedValueShape::UtfCodepoint),
+                FunctionTableFamily::UtfCodepointFunction,
+            ),
+            (
+                function(SpecializedValueShape::Custom(custom.clone())),
+                FunctionTableFamily::CustomFunction,
+            ),
+            (
+                function(SpecializedValueShape::External(external.clone())),
+                FunctionTableFamily::ExternalFunction,
+            ),
+            (
+                function(SpecializedValueShape::Bool),
+                FunctionTableFamily::BoolFunction,
+            ),
+            (
+                function(SpecializedValueShape::Nil),
+                FunctionTableFamily::NilFunction,
+            ),
+            (
+                function(SpecializedValueShape::Tuple(
+                    vec![SpecializedValueShape::Int].into_boxed_slice(),
+                )),
+                FunctionTableFamily::TupleFunction,
+            ),
+            (
+                list_function(SpecializedValueShape::Parameter(TypeParameterId(0))),
+                FunctionTableFamily::ParameterListFunction,
+            ),
+            (
+                list_function(SpecializedValueShape::List(Box::new(
+                    SpecializedValueShape::Parameter(TypeParameterId(0)),
+                ))),
+                FunctionTableFamily::ParameterListListFunction,
+            ),
+            (
+                list_function(SpecializedValueShape::Int),
+                FunctionTableFamily::IntListFunction,
+            ),
+            (
+                list_function(SpecializedValueShape::String),
+                FunctionTableFamily::StringListFunction,
+            ),
+            (
+                list_function(SpecializedValueShape::BitArray),
+                FunctionTableFamily::BitArrayListFunction,
+            ),
+            (
+                list_function(SpecializedValueShape::UtfCodepoint),
+                FunctionTableFamily::UtfCodepointListFunction,
+            ),
+            (
+                list_function(SpecializedValueShape::Custom(custom)),
+                FunctionTableFamily::CustomListFunction,
+            ),
+            (
+                list_function(SpecializedValueShape::External(external)),
+                FunctionTableFamily::ExternalListFunction,
+            ),
+            (
+                list_function(SpecializedValueShape::Float),
+                FunctionTableFamily::FloatListFunction,
+            ),
+            (
+                list_function(SpecializedValueShape::Bool),
+                FunctionTableFamily::BoolListFunction,
+            ),
+            (
+                list_function(SpecializedValueShape::Nil),
+                FunctionTableFamily::NilListFunction,
+            ),
+            (
+                list_function(SpecializedValueShape::Tuple(
+                    vec![SpecializedValueShape::Int].into_boxed_slice(),
+                )),
+                FunctionTableFamily::TupleListFunction,
+            ),
+            (
+                list_function(SpecializedValueShape::List(Box::new(
+                    SpecializedValueShape::Int,
+                ))),
+                FunctionTableFamily::ListListFunction,
+            ),
+            (
+                list_function(SpecializedValueShape::Function(Box::new(function(
+                    SpecializedValueShape::Int,
+                )))),
+                FunctionTableFamily::FunctionListFunction,
+            ),
+            (
+                function(SpecializedValueShape::Function(Box::new(function(
+                    SpecializedValueShape::Int,
+                )))),
+                FunctionTableFamily::FunctionFunction,
+            ),
+        ];
+
+        for (shape, expected) in cases {
+            assert_eq!(
+                function_function_table_family(&shape, &representations),
+                expected,
+                "function shape {shape:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn list_function_signatures_preserve_core_and_external_ids_and_types() {
+        let mut types = TypeInterner::new();
+        let core_function = SpecializedFunctionShape::new(
+            vec![SpecializedValueShape::Bool],
+            SpecializedValueShape::List(Box::new(SpecializedValueShape::Int)),
+        );
+        let core = list_function_function_signature(
+            &core_function,
+            &SpecializedValueShape::Int,
+            &mut types,
+        );
+        let expected_core_type = types.function_type(&core_function);
+        let expected_core_list_type = types.int_list_type();
+
+        assert_eq!(core.table_family(), FunctionTableFamily::IntListFunction);
+        assert_eq!(
+            core.hosted_id(4),
+            ProfiledListFunctionFunctionId::Int {
+                id: IntListFunctionFunctionId(4),
+                type_: expected_core_type,
+                list_type: expected_core_list_type,
+            }
+        );
+
+        let external = external_shape();
+        let external_function = SpecializedFunctionShape::new(
+            vec![SpecializedValueShape::String],
+            SpecializedValueShape::List(Box::new(SpecializedValueShape::External(
+                external.clone(),
+            ))),
+        );
+        let external_signature = list_function_function_signature(
+            &external_function,
+            &SpecializedValueShape::External(external.clone()),
+            &mut types,
+        );
+        let expected_external_type = types.function_type(&external_function);
+        let expected_external_list_type = types.external_list_type(&external);
 
         assert_eq!(
-            stored_function_table_family(&StoredValueShape::Int, &representations),
-            FunctionTableFamily::Int,
+            external_signature.table_family(),
+            FunctionTableFamily::ExternalListFunction,
         );
         assert_eq!(
-            stored_function_table_family(
-                &StoredValueShape::List(Box::new(SpecializedValueShape::String)),
-                &representations,
+            external_signature.hosted_id(6),
+            ProfiledListFunctionFunctionId::External {
+                id: ExternalListFunctionFunctionId(6),
+                type_: expected_external_type,
+                list_type: expected_external_list_type,
+            }
+        );
+    }
+
+    fn function(return_: SpecializedValueShape) -> SpecializedFunctionShape {
+        SpecializedFunctionShape::new(Vec::new(), return_)
+    }
+
+    fn list_function(item: SpecializedValueShape) -> SpecializedFunctionShape {
+        function(SpecializedValueShape::List(Box::new(item)))
+    }
+
+    fn custom_representation() -> (RepresentationContext, SpecializedCustomValueShape) {
+        let name = CustomTypeName::new("geam".into(), "main".into(), "Boxed".into());
+        let definition = CustomTypeDefinition::new(
+            name.clone(),
+            CustomTypePublicity::Private,
+            false,
+            Vec::new(),
+            vec![CustomConstructorDefinition::new(
+                "Boxed".into(),
+                0,
+                Vec::new(),
+            )],
+        );
+        let shape = SpecializedCustomValueShape::new(
+            name,
+            Vec::new(),
+            CustomConstructorRefinement::Exact(0),
+        );
+        (RepresentationContext::new(vec![definition]), shape)
+    }
+
+    fn external_shape() -> SpecializedExternalValueShape {
+        SpecializedExternalValueShape::instantiate(
+            &ExternalValueShape::new(
+                ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
+                Vec::new(),
             ),
-            FunctionTableFamily::StringList,
-        );
-        assert_eq!(
-            stored_function_table_family(
-                &StoredValueShape::Function(Box::new(int_function.clone())),
-                &representations,
-            ),
-            FunctionTableFamily::IntFunction,
-        );
-        assert_eq!(
-            function_function_table_family(&int_function, &representations),
-            FunctionTableFamily::IntFunction,
-        );
-        assert_eq!(
-            list_function_table_family(&SpecializedValueShape::Function(Box::new(int_function))),
-            FunctionTableFamily::FunctionList,
-        );
+            &SpecializedTypeSubstitution::empty(),
+        )
     }
 }

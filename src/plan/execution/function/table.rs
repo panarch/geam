@@ -550,6 +550,22 @@ impl<Profile: ExecutionProfile> FunctionTables<Profile> {
 }
 
 #[cfg(test)]
+impl FunctionTables<Infallible> {
+    pub(in crate::plan::execution) fn custom_function_id(&self, index: usize) -> CustomFunctionId {
+        let function = &self.value_returns.custom_functions[index];
+        CustomFunctionId::new(index, *function.body().signature_shape())
+    }
+
+    pub(in crate::plan::execution) fn function_function_function_id(
+        &self,
+        index: usize,
+    ) -> FunctionFunctionFunctionId {
+        let function = &self.function_returns.function_function_functions[index];
+        FunctionFunctionFunctionId::new(index, function.body().type_().clone())
+    }
+}
+
+#[cfg(test)]
 mod explain_tests {
     use crate::plan::execution::explain;
 
@@ -603,137 +619,5 @@ pub fn main() {
             let mut context = explain::ExplainContext::new(plan, output);
             context.write(&plan.program.functions);
         });
-    }
-}
-
-#[cfg(test)]
-impl FunctionTables<Infallible> {
-    pub(in crate::plan::execution) fn custom_function_id(&self, index: usize) -> CustomFunctionId {
-        let function = &self.value_returns.custom_functions[index];
-        CustomFunctionId::new(index, *function.body().signature_shape())
-    }
-
-    pub(in crate::plan::execution) fn function_function_function_id(
-        &self,
-        index: usize,
-    ) -> FunctionFunctionFunctionId {
-        let function = &self.function_returns.function_function_functions[index];
-        FunctionFunctionFunctionId::new(index, function.body().type_().clone())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::plan::{FunctionType, TypeParameterId, ValueType};
-    use crate::runtime::{FunctionValue, Value, run_main};
-
-    #[test]
-    fn custom_list_function_function_uses_its_exact_runtime_table() {
-        assert_eq!(
-            run_main(
-                &execution_plan(
-                    r#"
-pub type Boxed { Boxed(Int) }
-
-fn factory() -> fn() -> List(Boxed) {
-  fn() { [Boxed(1)] }
-}
-
-pub fn main() {
-  let assert [Boxed(value)] = factory()()
-  value
-}
-"#,
-                ),
-                &mut Vec::new()
-            ),
-            Ok(Value::Int(1.into())),
-        );
-    }
-
-    #[test]
-    fn list_function_function_tables_dispatch_every_item_family() {
-        let cases = [
-            (
-                "fn factory() -> fn() -> List(value) { fn() { [] } } pub fn main() { factory() }",
-                ValueType::Parameter(TypeParameterId(0)),
-            ),
-            (
-                "fn factory() -> fn() -> List(List(value)) { fn() { [] } } pub fn main() { factory() }",
-                ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(0)))),
-            ),
-            (
-                "pub fn main() -> fn() -> List(Int) { fn() { [] } }",
-                ValueType::Int,
-            ),
-            (
-                "pub fn main() -> fn() -> List(String) { fn() { [] } }",
-                ValueType::String,
-            ),
-            (
-                "pub fn main() -> fn() -> List(BitArray) { fn() { [] } }",
-                ValueType::BitArray,
-            ),
-            (
-                "pub fn main() -> fn() -> List(UtfCodepoint) { fn() { [] } }",
-                ValueType::UtfCodepoint,
-            ),
-            (
-                "pub fn main() -> fn() -> List(Float) { fn() { [] } }",
-                ValueType::Float,
-            ),
-            (
-                "pub fn main() -> fn() -> List(Bool) { fn() { [] } }",
-                ValueType::Bool,
-            ),
-            (
-                "pub fn main() -> fn() -> List(Nil) { fn() { [] } }",
-                ValueType::Nil,
-            ),
-            (
-                "pub fn main() -> fn() -> List(#(Int)) { fn() { [] } }",
-                ValueType::Tuple(vec![ValueType::Int]),
-            ),
-            (
-                "pub fn main() -> fn() -> List(List(Int)) { fn() { [] } }",
-                ValueType::List(Box::new(ValueType::Int)),
-            ),
-            (
-                "pub fn main() -> fn() -> List(fn() -> Int) { fn() { [] } }",
-                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
-            ),
-        ];
-
-        for (source, item_type) in cases {
-            let plan = execution_plan(source);
-            let function = expect_function(
-                run_main(&plan, &mut Vec::new()).expect("main should return a function"),
-            );
-
-            assert_eq!(
-                function.type_(),
-                FunctionType::new(Vec::new(), ValueType::List(Box::new(item_type))),
-            );
-        }
-    }
-
-    #[test]
-    #[should_panic(expected = "expected a function value")]
-    fn function_value_fixture_guard_rejects_int_value() {
-        let _ = expect_function(Value::Int(0.into()));
-    }
-
-    fn expect_function(value: Value) -> FunctionValue {
-        match value {
-            Value::Function(function) => function,
-            _ => panic!("expected a function value"),
-        }
-    }
-
-    fn execution_plan(source: &str) -> crate::ExecutionPlan {
-        let typed = crate::compile_typed_module("main", "main.gleam", source)
-            .expect("source should compile");
-        let module_plan = crate::plan_module(typed).expect("source should plan");
-        crate::ExecutionPlan::from_module_plan(module_plan)
     }
 }
