@@ -1,3 +1,6 @@
+#[cfg(not(target_pointer_width = "64"))]
+compile_error!("geam requires a 64-bit target");
+
 pub mod frontend;
 pub mod gleam_json;
 pub mod gleam_stdlib;

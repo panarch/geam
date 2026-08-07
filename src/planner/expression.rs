@@ -527,10 +527,7 @@ fn plan_tuple_index(
     tuple: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    #[cfg(target_pointer_width = "64")]
-    let index = conversion::tuple_index(index);
-    #[cfg(not(target_pointer_width = "64"))]
-    let index = conversion::tuple_index(index)?;
+    let index = index as usize;
     let tuple: TupleExpr = conversion::expect_expression(plan_expr(tuple, context)?)?;
     let expected = context.value_type(type_.as_ref());
     tuple_index_expr(tuple, index, expected)

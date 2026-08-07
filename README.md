@@ -42,7 +42,8 @@ human-readable output rather than a stable serialization format.
 
 ## Status
 
-Geam is in an early runtime milestone. The current execution profile includes
+Geam is in an early runtime milestone and requires a 64-bit Rust target. The
+current execution profile includes
 the core Gleam value families, custom types, generics, patterns, records,
 functions, constants, imports, and read-only loading of already resolved Gleam
 projects. The official `gleam_stdlib` package is not built in: compatible

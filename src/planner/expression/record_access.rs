@@ -28,14 +28,7 @@ pub(super) fn plan_from_expr(
     record: Expr,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    #[cfg(target_pointer_width = "64")]
     let index = index as usize;
-    #[cfg(not(target_pointer_width = "64"))]
-    let index = usize::try_from(index).map_err(|_| PlanError::InvalidTypedAst {
-        reason: crate::planner::InvalidTypedAstReason::ExpressionShape {
-            kind: crate::planner::InvalidExpressionShapeKind::RecordAccessIndexOverflow,
-        },
-    })?;
 
     let record: CustomExpr = expect_expression(record)?;
     let expected_shape = context.value_shape(type_.as_ref());

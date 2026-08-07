@@ -419,14 +419,10 @@ pub enum InvalidExpressionShapeKind {
     CustomConstructorKind,
     #[error("record access")]
     RecordAccess,
-    #[error("record access index cannot be represented on this target")]
-    RecordAccessIndexOverflow,
     #[error("tuple expression arity: expected {expected}, got {actual}")]
     TupleArity { expected: usize, actual: usize },
     #[error("tuple index {index} is outside {available} elements")]
     TupleIndex { index: usize, available: usize },
-    #[error("tuple index cannot be represented on this target")]
-    TupleIndexOverflow,
     #[error("tuple expression type: got {actual:?}")]
     TupleType { actual: ValueType },
     #[error("variable function local shape")]
