@@ -8,6 +8,10 @@ mod process;
 mod project;
 #[path = "geam/provider.rs"]
 mod provider;
+#[path = "geam/runner.rs"]
+mod runner;
+#[path = "geam/standalone.rs"]
+mod standalone;
 
 use clap::Parser;
 use command::{Cli, Command, ProviderCommand};
@@ -31,8 +35,7 @@ fn run(cli: Cli, current_directory: std::io::Result<std::path::PathBuf>) -> Resu
     match cli.command {
         Command::Prepare(command) => {
             let module = project::entry_module(&project_root, command.module)?;
-            project::compile_resolved_project(&project_root, module)?;
-            Err(CliError::RunnerNotPrepared)
+            standalone::prepare(&project_root, module)
         }
         Command::Run(command) => {
             let _ = command.provider_configs;

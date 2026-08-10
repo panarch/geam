@@ -60,6 +60,11 @@ pub(super) enum CliError {
     #[error("provider targets Gleam package {package}, which is absent from the resolved project")]
     MissingGleamPackage { package: String },
 
+    #[error(
+        "Gleam package {package} requires a host provider; select one with `geam provider add geam-{package}`"
+    )]
+    MissingProviderSelection { package: String },
+
     #[error("provider crate specification {spec} is invalid: {reason}")]
     InvalidCrateSpecification { spec: String, reason: String },
 
@@ -110,6 +115,6 @@ pub(super) enum CliError {
         reason: String,
     },
 
-    #[error("standalone runner generation is unavailable")]
+    #[error("standalone execution is unavailable")]
     RunnerNotPrepared,
 }

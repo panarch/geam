@@ -45,14 +45,14 @@ pub(super) enum ProviderSource {
     Git { url: String, rev: Option<String> },
 }
 
-pub(super) struct ManagedProject {
+pub(crate) struct ManagedProject {
     root: Utf8PathBuf,
     root_package: String,
     providers: BTreeMap<String, ProviderSelection>,
 }
 
 impl ManagedProject {
-    pub(super) fn load(root: &Utf8Path, root_package: impl Into<String>) -> Result<Self, CliError> {
+    pub(crate) fn load(root: &Utf8Path, root_package: impl Into<String>) -> Result<Self, CliError> {
         let path = root.join("Cargo.toml");
         let root_package = root_package.into();
         if !path.exists() {
@@ -133,12 +133,23 @@ impl ManagedProject {
             })
     }
 
-    pub(super) fn retain_packages(&mut self, packages: &BTreeSet<String>) {
+    pub(crate) fn retain_packages(&mut self, packages: &BTreeSet<String>) {
         self.providers
             .retain(|gleam_package, _| packages.contains(gleam_package));
     }
 
-    pub(super) fn write(&self) -> Result<bool, CliError> {
+    pub(crate) fn has_provider(&self, gleam_package: &str) -> bool {
+        self.providers.contains_key(gleam_package)
+    }
+
+    pub(crate) fn provider_aliases(&self) -> Vec<String> {
+        self.providers
+            .values()
+            .map(ProviderSelection::alias)
+            .collect()
+    }
+
+    pub(crate) fn write(&self) -> Result<bool, CliError> {
         let path = self.root.join("Cargo.toml");
         let source = self.render();
         match fs::read_to_string(&path) {
@@ -638,5 +649,36 @@ mod tests {
                 error: std::io::Error::other(""),
             }),
         );
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let atomic_write = tempdir().expect("temporary project should be created");
+            let root = Utf8PathBuf::from_path_buf(atomic_write.path().to_path_buf())
+                .expect("temporary path should be valid UTF-8");
+            let managed = ManagedProject::load(&root, "application")
+                .expect("managed project should initialize");
+            fs::write(root.join("Cargo.toml.geam.tmp"), "stale")
+                .expect("existing temporary file should be written");
+            let original = fs::metadata(&root)
+                .expect("project metadata should be readable")
+                .permissions();
+            let mut restricted = original.clone();
+            restricted.set_mode(0o500);
+            fs::set_permissions(&root, restricted)
+                .expect("project directory should become read-only");
+            let result = managed.write();
+            fs::set_permissions(&root, original)
+                .expect("project directory permissions should be restored");
+            let error = result.expect_err("atomic replacement should preserve rename failures");
+            assert_eq!(
+                std::mem::discriminant(&error),
+                std::mem::discriminant(&CliError::FileWrite {
+                    path: Utf8PathBuf::new(),
+                    error: std::io::Error::other(""),
+                }),
+            );
+        }
     }
 }

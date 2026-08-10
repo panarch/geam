@@ -9,7 +9,8 @@ use crate::command::{AddProvider, RemoveProvider};
 use crate::error::CliError;
 use crate::project::read_resolved_project;
 use camino::Utf8Path;
-use manifest::{ManagedProject, ProviderSelection};
+pub(super) use manifest::ManagedProject;
+use manifest::ProviderSelection;
 use std::path::Path;
 
 const BUILT_IN_PROVIDER_PACKAGES: [&str; 3] = ["gleam_json", "gleam_stdlib", "gleam_time"];
@@ -19,12 +20,26 @@ pub(super) fn add(
     current_directory: &Path,
     command: AddProvider,
 ) -> Result<(), CliError> {
+    add_with(
+        project_root,
+        current_directory,
+        command,
+        &crate::runner::SystemCargo,
+    )
+}
+
+fn add_with(
+    project_root: &Utf8Path,
+    current_directory: &Path,
+    command: AddProvider,
+    cargo: &dyn crate::runner::CargoLock,
+) -> Result<(), CliError> {
     let project = read_resolved_project(project_root)?;
     let mut managed = ManagedProject::load(project_root, project.root_package())?;
     managed.retain_packages(&project.package_names());
     let resolved = resolution::resolve(project_root, current_directory, command)?;
     let package = resolved.metadata.gleam_package();
-    if BUILT_IN_PROVIDER_PACKAGES.contains(&package) {
+    if is_built_in_package(package) {
         return Err(CliError::BuiltInProviderPackage {
             package: package.to_owned(),
         });
@@ -48,46 +63,90 @@ pub(super) fn add(
         resolved.metadata.crate_name().to_owned(),
         resolved.source,
     ))?;
-    managed.write()?;
+    crate::runner::reconcile_source(project_root, &managed.provider_aliases())?;
+    let manifest_changed = managed.write()?;
+    crate::runner::reconcile_lock(project_root, manifest_changed, cargo)?;
     Ok(())
 }
 
 pub(super) fn remove(project_root: &Utf8Path, command: RemoveProvider) -> Result<(), CliError> {
+    remove_with(project_root, command, &crate::runner::SystemCargo)
+}
+
+fn remove_with(
+    project_root: &Utf8Path,
+    command: RemoveProvider,
+    cargo: &dyn crate::runner::CargoLock,
+) -> Result<(), CliError> {
     let project = read_resolved_project(project_root)?;
     let mut managed = ManagedProject::load(project_root, project.root_package())?;
     managed.remove(&command.gleam_package)?;
     managed.retain_packages(&project.package_names());
-    managed.write()?;
+    crate::runner::reconcile_source(project_root, &managed.provider_aliases())?;
+    let manifest_changed = managed.write()?;
+    crate::runner::reconcile_lock(project_root, manifest_changed, cargo)?;
     Ok(())
+}
+
+pub(super) fn is_built_in_package(package: &str) -> bool {
+    BUILT_IN_PROVIDER_PACKAGES.contains(&package)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{add, remove};
+    use super::{add_with, remove_with};
     use crate::command::{AddProvider, RemoveProvider};
     use crate::error::CliError;
+    use crate::runner::CargoLock;
     use camino::Utf8PathBuf;
     use std::fs;
     use tempfile::{TempDir, tempdir};
+
+    struct TestCargo;
+
+    impl CargoLock for TestCargo {
+        fn generate_lockfile(&self, project_root: &camino::Utf8Path) -> Result<(), CliError> {
+            fs::write(project_root.join("Cargo.lock"), "fixture lock\n")
+                .expect("fixture lock should be written");
+            Ok(())
+        }
+    }
+
+    struct FailingCargoLock;
+
+    impl CargoLock for FailingCargoLock {
+        fn generate_lockfile(&self, _project_root: &camino::Utf8Path) -> Result<(), CliError> {
+            Err(CliError::ProcessFailure {
+                command: "cargo generate-lockfile".to_owned(),
+                status: Some(1),
+                stderr: "fixture lock failed".to_owned(),
+            })
+        }
+    }
 
     #[test]
     fn adds_and_removes_a_valid_path_provider() {
         let project = gleam_project("images", "2.5.0");
         let provider = provider_package("geam-images", "images", ">= 2.0.0 and < 3.0.0");
         let root = utf8_path(&project);
-
-        add(&root, project.path(), path_command(provider.path(), None))
-            .expect("compatible provider should be selected");
+        add_with(
+            &root,
+            project.path(),
+            path_command(provider.path(), None),
+            &TestCargo,
+        )
+        .expect("compatible provider should be selected");
         let source = fs::read_to_string(project.path().join("Cargo.toml"))
             .expect("managed manifest should be written");
         assert!(source.contains("geam_provider_images"));
         assert!(source.contains("package = \"geam-images\""));
 
-        remove(
+        remove_with(
             &root,
             RemoveProvider {
                 gleam_package: "images".to_owned(),
             },
+            &TestCargo,
         )
         .expect("selected provider should be removed");
         let source = fs::read_to_string(project.path().join("Cargo.toml"))
@@ -100,10 +159,11 @@ mod tests {
         let project = gleam_project("gleam_stdlib", "1.0.3");
         let provider = provider_package("geam-provider", "gleam_stdlib", "1.0.3");
         assert_eq!(
-            add(
+            add_with(
                 &utf8_path(&project),
                 project.path(),
                 path_command(provider.path(), None),
+                &TestCargo,
             )
             .expect_err("built-in package should be rejected")
             .to_string(),
@@ -113,10 +173,11 @@ mod tests {
         let project = gleam_project("images", "2.5.0");
         let provider = provider_package("geam-provider", "missing", "1.0.0");
         assert_eq!(
-            add(
+            add_with(
                 &utf8_path(&project),
                 project.path(),
                 path_command(provider.path(), None),
+                &TestCargo,
             )
             .expect_err("missing package should be rejected")
             .to_string(),
@@ -126,10 +187,11 @@ mod tests {
         let project = gleam_project("images", "2.5.0");
         let provider = provider_package("geam-provider", "images", "1.0.0");
         assert_eq!(
-            add(
+            add_with(
                 &utf8_path(&project),
                 project.path(),
                 path_command(provider.path(), None),
+                &TestCargo,
             )
             .expect_err("incompatible provider should be rejected")
             .to_string(),
@@ -139,12 +201,22 @@ mod tests {
         let project = gleam_project("images", "2.5.0");
         let provider = provider_package("geam-images", "images", "2.5.0");
         let root = utf8_path(&project);
-        add(&root, project.path(), path_command(provider.path(), None))
-            .expect("first provider should be selected");
+        add_with(
+            &root,
+            project.path(),
+            path_command(provider.path(), None),
+            &TestCargo,
+        )
+        .expect("first provider should be selected");
         assert_eq!(
-            add(&root, project.path(), path_command(provider.path(), None),)
-                .expect_err("duplicate provider should be rejected")
-                .to_string(),
+            add_with(
+                &root,
+                project.path(),
+                path_command(provider.path(), None),
+                &TestCargo,
+            )
+            .expect_err("duplicate provider should be rejected")
+            .to_string(),
             "provider for Gleam package images is already selected",
         );
     }
@@ -153,11 +225,12 @@ mod tests {
     fn remove_requires_an_existing_selection() {
         let project = gleam_project("images", "1.0.0");
         assert_eq!(
-            remove(
+            remove_with(
                 &utf8_path(&project),
                 RemoveProvider {
                     gleam_package: "images".to_owned(),
                 },
+                &TestCargo,
             )
             .expect_err("missing provider should be rejected")
             .to_string(),
@@ -172,10 +245,11 @@ mod tests {
         let invalid_add = gleam_project("images", "1.0.0");
         fs::write(invalid_add.path().join("manifest.toml"), "invalid")
             .expect("invalid manifest should be written");
-        let error = add(
+        let error = add_with(
             &utf8_path(&invalid_add),
             invalid_add.path(),
             path_command(provider.path(), None),
+            &TestCargo,
         )
         .expect_err("invalid manifest should stop provider add");
         assert_eq!(
@@ -190,11 +264,12 @@ mod tests {
         let invalid_remove = gleam_project("images", "1.0.0");
         fs::write(invalid_remove.path().join("manifest.toml"), "invalid")
             .expect("invalid manifest should be written");
-        let error = remove(
+        let error = remove_with(
             &utf8_path(&invalid_remove),
             RemoveProvider {
                 gleam_package: "images".to_owned(),
             },
+            &TestCargo,
         )
         .expect_err("invalid manifest should stop provider remove");
         assert_eq!(
@@ -209,10 +284,11 @@ mod tests {
         let user_add = gleam_project("images", "1.0.0");
         fs::write(user_add.path().join("Cargo.toml"), "[workspace]\n")
             .expect("user Cargo manifest should be written");
-        let error = add(
+        let error = add_with(
             &utf8_path(&user_add),
             user_add.path(),
             path_command(provider.path(), None),
+            &TestCargo,
         )
         .expect_err("user Cargo manifest should stop provider add");
         assert_eq!(
@@ -225,11 +301,12 @@ mod tests {
         let user_remove = gleam_project("images", "1.0.0");
         fs::write(user_remove.path().join("Cargo.toml"), "[workspace]\n")
             .expect("user Cargo manifest should be written");
-        let error = remove(
+        let error = remove_with(
             &utf8_path(&user_remove),
             RemoveProvider {
                 gleam_package: "images".to_owned(),
             },
+            &TestCargo,
         )
         .expect_err("user Cargo manifest should stop provider remove");
         assert_eq!(
@@ -240,10 +317,11 @@ mod tests {
         );
 
         let unresolved = gleam_project("images", "1.0.0");
-        let error = add(
+        let error = add_with(
             &utf8_path(&unresolved),
             unresolved.path(),
             path_command(&unresolved.path().join("missing"), None),
+            &TestCargo,
         )
         .expect_err("missing provider path should stop resolution");
         assert_eq!(
@@ -253,6 +331,167 @@ mod tests {
                 error: std::io::Error::new(std::io::ErrorKind::NotFound, ""),
             }),
         );
+    }
+
+    #[test]
+    fn keeps_provider_add_recoverable_across_generated_input_failures() {
+        let blocked_source = gleam_project("images", "1.0.0");
+        let provider = provider_package("geam-images", "images", "1.0.0");
+        fs::create_dir_all(blocked_source.path().join("build/geam/runner.rs"))
+            .expect("blocking runner source directory should be created");
+        let error = add_with(
+            &utf8_path(&blocked_source),
+            blocked_source.path(),
+            path_command(provider.path(), None),
+            &TestCargo,
+        )
+        .expect_err("runner source failure should stop provider add");
+        assert_eq!(
+            std::mem::discriminant(&error),
+            std::mem::discriminant(&CliError::FileRead {
+                path: Utf8PathBuf::new(),
+                error: std::io::Error::other(""),
+            }),
+        );
+        assert!(!blocked_source.path().join("Cargo.toml").exists());
+
+        let blocked_manifest = gleam_project("images", "1.0.0");
+        fs::create_dir(blocked_manifest.path().join("Cargo.toml.geam.tmp"))
+            .expect("blocking manifest directory should be created");
+        let error = add_with(
+            &utf8_path(&blocked_manifest),
+            blocked_manifest.path(),
+            path_command(provider.path(), None),
+            &TestCargo,
+        )
+        .expect_err("manifest failure should stop provider add");
+        assert_eq!(
+            std::mem::discriminant(&error),
+            std::mem::discriminant(&CliError::FileWrite {
+                path: Utf8PathBuf::new(),
+                error: std::io::Error::other(""),
+            }),
+        );
+        assert!(!blocked_manifest.path().join("Cargo.toml").exists());
+
+        let failed_lock = gleam_project("images", "1.0.0");
+        let root = utf8_path(&failed_lock);
+        let error = add_with(
+            &root,
+            failed_lock.path(),
+            path_command(provider.path(), None),
+            &FailingCargoLock,
+        )
+        .expect_err("lock failure should remain a Cargo process error");
+        assert_eq!(
+            error.to_string(),
+            "`cargo generate-lockfile` failed with status Some(1): fixture lock failed",
+        );
+        assert!(
+            fs::read_to_string(root.join("Cargo.toml"))
+                .expect("selected manifest should remain readable")
+                .contains("geam_provider_images")
+        );
+        assert!(!root.join("Cargo.lock").exists());
+    }
+
+    #[test]
+    fn keeps_provider_remove_recoverable_across_manifest_and_lock_failures() {
+        let provider = provider_package("geam-images", "images", "1.0.0");
+
+        let blocked_source = gleam_project("images", "1.0.0");
+        let root = utf8_path(&blocked_source);
+        add_with(
+            &root,
+            blocked_source.path(),
+            path_command(provider.path(), None),
+            &TestCargo,
+        )
+        .expect("provider should first be selected");
+        fs::remove_file(root.join("build/geam/runner.rs"))
+            .expect("generated source should be removed");
+        fs::create_dir(root.join("build/geam/runner.rs"))
+            .expect("blocking source directory should be created");
+        let error = remove_with(
+            &root,
+            RemoveProvider {
+                gleam_package: "images".to_owned(),
+            },
+            &TestCargo,
+        )
+        .expect_err("runner source failure should stop provider removal");
+        assert_eq!(
+            std::mem::discriminant(&error),
+            std::mem::discriminant(&CliError::FileRead {
+                path: Utf8PathBuf::new(),
+                error: std::io::Error::other(""),
+            }),
+        );
+        assert!(
+            fs::read_to_string(root.join("Cargo.toml"))
+                .expect("existing manifest should remain readable")
+                .contains("geam_provider_images")
+        );
+
+        let blocked_manifest = gleam_project("images", "1.0.0");
+        let root = utf8_path(&blocked_manifest);
+        add_with(
+            &root,
+            blocked_manifest.path(),
+            path_command(provider.path(), None),
+            &TestCargo,
+        )
+        .expect("provider should first be selected");
+        fs::create_dir(root.join("Cargo.toml.geam.tmp"))
+            .expect("blocking manifest directory should be created");
+        let error = remove_with(
+            &root,
+            RemoveProvider {
+                gleam_package: "images".to_owned(),
+            },
+            &TestCargo,
+        )
+        .expect_err("manifest failure should stop provider removal");
+        assert_eq!(
+            std::mem::discriminant(&error),
+            std::mem::discriminant(&CliError::FileWrite {
+                path: Utf8PathBuf::new(),
+                error: std::io::Error::other(""),
+            }),
+        );
+        assert!(
+            fs::read_to_string(root.join("Cargo.toml"))
+                .expect("existing manifest should remain readable")
+                .contains("geam_provider_images")
+        );
+
+        let failed_lock = gleam_project("images", "1.0.0");
+        let root = utf8_path(&failed_lock);
+        add_with(
+            &root,
+            failed_lock.path(),
+            path_command(provider.path(), None),
+            &TestCargo,
+        )
+        .expect("provider should first be selected");
+        let error = remove_with(
+            &root,
+            RemoveProvider {
+                gleam_package: "images".to_owned(),
+            },
+            &FailingCargoLock,
+        )
+        .expect_err("lock failure should remain a Cargo process error");
+        assert_eq!(
+            error.to_string(),
+            "`cargo generate-lockfile` failed with status Some(1): fixture lock failed",
+        );
+        assert!(
+            !fs::read_to_string(root.join("Cargo.toml"))
+                .expect("updated manifest should remain readable")
+                .contains("geam_provider_images")
+        );
+        assert!(!root.join("Cargo.lock").exists());
     }
 
     fn path_command(path: &std::path::Path, package: Option<&str>) -> AddProvider {

@@ -30,7 +30,7 @@ pub(super) fn resolve(
 fn resolve_with(
     project_root: &Utf8Path,
     request: ProviderRequest,
-    loader: &impl CargoMetadataLoader,
+    loader: &dyn CargoMetadataLoader,
 ) -> Result<ResolvedProvider, CliError> {
     let request = complete_package_identity(project_root, request, loader)?;
     let candidate_manifest = write_candidate_manifest(project_root, &request)?;
@@ -120,7 +120,7 @@ impl ProviderRequest {
 fn complete_package_identity(
     project_root: &Utf8Path,
     request: ProviderRequest,
-    loader: &impl CargoMetadataLoader,
+    loader: &dyn CargoMetadataLoader,
 ) -> Result<ProviderRequest, CliError> {
     match request {
         ProviderRequest::Registry { .. } => Ok(request),
@@ -159,7 +159,7 @@ fn complete_package_identity(
 fn inspect_workspace(
     path: &Utf8Path,
     requested_package: Option<&str>,
-    loader: &impl CargoMetadataLoader,
+    loader: &dyn CargoMetadataLoader,
 ) -> Result<(String, Utf8PathBuf), CliError> {
     let manifest = path.join("Cargo.toml");
     if !manifest.is_file() {
@@ -457,6 +457,7 @@ mod tests {
     use camino::Utf8PathBuf;
     use cargo_metadata::Metadata;
     use std::fs;
+    use std::path::Path;
     use std::process::Command;
     use tempfile::{TempDir, tempdir};
 
@@ -677,6 +678,24 @@ mod tests {
                 }),
             );
         }
+
+        let error = ProviderRequest::from_command(
+            Path::new("/workspace"),
+            AddProvider {
+                crate_spec: Some("geam-images@^1".to_owned()),
+                path: None,
+                git: None,
+                rev: None,
+                package: None,
+            },
+        )
+        .expect_err("invalid registry command should preserve its parse failure");
+        assert!(matches!(
+            error,
+            CliError::InvalidCrateSpecification { spec, reason }
+                if spec == "geam-images@^1"
+                    && reason == "version must be exact Cargo SemVer: unexpected character '^' while parsing major version number"
+        ));
     }
 
     #[test]

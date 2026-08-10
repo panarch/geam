@@ -55,6 +55,26 @@ pub(super) fn entry_module(
 }
 
 pub(super) fn read_resolved_project(project_root: &Utf8Path) -> Result<ResolvedProject, CliError> {
+    read_resolved_project_with(project_root, &ProcessDependencyDownloader::gleam())
+}
+
+fn read_resolved_project_with(
+    project_root: &Utf8Path,
+    downloader: &dyn DependencyDownloader,
+) -> Result<ResolvedProject, CliError> {
+    match read_resolved_project_files(project_root) {
+        Err(CliError::FileRead { path, error })
+            if path == project_root.join(MANIFEST_FILE)
+                && error.kind() == std::io::ErrorKind::NotFound =>
+        {
+            downloader.download(project_root)?;
+            read_resolved_project_files(project_root)
+        }
+        result => result,
+    }
+}
+
+fn read_resolved_project_files(project_root: &Utf8Path) -> Result<ResolvedProject, CliError> {
     let config = read_package_config(project_root)?;
     let manifest_path = project_root.join(MANIFEST_FILE);
     let manifest = read_toml::<Manifest>("Gleam manifest", &manifest_path)?;
@@ -91,7 +111,7 @@ pub(super) fn compile_resolved_project(
 fn compile_resolved_project_with(
     project_root: &Utf8Path,
     root_module: String,
-    downloader: &impl DependencyDownloader,
+    downloader: &dyn DependencyDownloader,
 ) -> Result<TypedProgram, CliError> {
     match compile_typed_project(project_root, root_module.clone()) {
         Ok(program) => Ok(program),
@@ -174,7 +194,7 @@ mod tests {
     use super::{
         DependencyDownloader, ProcessDependencyDownloader, compile_resolved_project,
         compile_resolved_project_with, entry_module, find_project_root, read_resolved_project,
-        should_download_dependencies,
+        read_resolved_project_with, should_download_dependencies,
     };
     use crate::error::CliError;
     use camino::{Utf8Path, Utf8PathBuf};
@@ -348,6 +368,34 @@ packages = [
     #[test]
     fn retries_only_missing_resolution_inputs() {
         let project = project_without_manifest("application", "1.0.0");
+        let downloader = RecordingDownloader {
+            calls: Cell::new(0),
+            manifest: "packages = []\n[requirements]\n",
+        };
+        let resolved = read_resolved_project_with(&utf8_path(&project), &downloader)
+            .expect("missing resolved manifest should be downloaded once");
+        assert_eq!(resolved.root_package(), "application");
+        assert_eq!(downloader.calls.get(), 1);
+
+        let project = project_without_manifest("application", "1.0.0");
+        let downloader = RecordingDownloader {
+            calls: Cell::new(0),
+            manifest: "invalid",
+        };
+        let error = read_resolved_project_with(&utf8_path(&project), &downloader)
+            .err()
+            .expect("invalid downloaded resolution should be preserved");
+        assert_eq!(
+            std::mem::discriminant(&error),
+            std::mem::discriminant(&CliError::InvalidToml {
+                kind: "Gleam manifest",
+                path: Utf8PathBuf::new(),
+                reason: String::new(),
+            }),
+        );
+        assert_eq!(downloader.calls.get(), 1);
+
+        let project = project_without_manifest("application", "1.0.0");
         let root = utf8_path(&project);
         let downloader = RecordingDownloader {
             calls: Cell::new(0),
@@ -358,6 +406,15 @@ packages = [
             .expect("missing manifest should be resolved once");
         assert_eq!(program.root_package(), "application");
         assert_eq!(downloader.calls.get(), 1);
+
+        let project = project_without_manifest("application", "1.0.0");
+        let error = read_resolved_project_with(&utf8_path(&project), &FailingDownloader)
+            .err()
+            .expect("resolved manifest download failure should be preserved");
+        assert_eq!(
+            error.to_string(),
+            "`gleam deps download` failed with status Some(1): fixture failure",
+        );
 
         let project = project_without_manifest("application", "1.0.0");
         let downloader = RecordingDownloader {
