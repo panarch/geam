@@ -1,16 +1,22 @@
 use crate::error::CliError;
 use crate::project::{compile_resolved_project, read_resolved_project};
-use crate::provider::{ManagedProject, is_built_in_package};
+use crate::provider::{ManagedProject, ProviderSelectionReconciler, SystemProviderReconciler};
 use camino::{Utf8Path, Utf8PathBuf};
-use geam::required_host_functions;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::io::IsTerminal;
 
 pub(super) fn prepare(project_root: &Utf8Path, module: String) -> Result<(), CliError> {
+    let stdin = std::io::stdin();
+    let stdout = std::io::stdout();
+    let mut input = stdin.lock();
+    let mut output = stdout.lock();
+    let mut providers = SystemProviderReconciler::new(stdin.is_terminal(), &mut input, &mut output);
     prepare_with(
         project_root,
         module,
         &crate::runner::SystemCargo,
         &crate::runner::SystemCargo,
+        &mut providers,
     )
 }
 
@@ -20,6 +26,11 @@ pub(super) fn run(
     module: String,
     configuration_specs: Vec<String>,
 ) -> Result<(), CliError> {
+    let stdin = std::io::stdin();
+    let stdout = std::io::stdout();
+    let mut input = stdin.lock();
+    let mut output = stdout.lock();
+    let mut providers = SystemProviderReconciler::new(stdin.is_terminal(), &mut input, &mut output);
     run_with(
         project_root,
         current_directory,
@@ -27,6 +38,7 @@ pub(super) fn run(
         configuration_specs,
         &crate::runner::SystemCargo,
         &crate::runner::SystemCargo,
+        &mut providers,
     )
 }
 
@@ -35,8 +47,9 @@ fn prepare_with(
     module: String,
     lock: &dyn crate::runner::CargoLock,
     checker: &dyn crate::runner::RunnerChecker,
+    providers: &mut dyn ProviderSelectionReconciler,
 ) -> Result<(), CliError> {
-    reconcile(project_root, &module, lock)?;
+    reconcile(project_root, &module, lock, providers)?;
     checker.check(project_root, &module)
 }
 
@@ -47,8 +60,9 @@ fn run_with(
     configuration_specs: Vec<String>,
     lock: &dyn crate::runner::CargoLock,
     executor: &dyn crate::runner::RunnerExecutor,
+    providers: &mut dyn ProviderSelectionReconciler,
 ) -> Result<(), CliError> {
-    let managed = reconcile(project_root, &module, lock)?;
+    let managed = reconcile(project_root, &module, lock, providers)?;
     let configurations =
         resolve_provider_configurations(current_directory, &managed, configuration_specs)?;
     executor.execute(project_root, &module, &configurations)
@@ -58,12 +72,12 @@ fn reconcile(
     project_root: &Utf8Path,
     module: &str,
     lock: &dyn crate::runner::CargoLock,
+    providers: &mut dyn ProviderSelectionReconciler,
 ) -> Result<ManagedProject, CliError> {
     let project = read_resolved_project(project_root)?;
     let typed = compile_resolved_project(project_root, module.to_owned())?;
     let mut managed = ManagedProject::load(project_root, project.root_package())?;
-    managed.retain_packages(&project.package_names());
-    validate_required_providers(&typed, &managed)?;
+    providers.reconcile(project_root, &project, &typed, &mut managed)?;
     crate::runner::reconcile_source(project_root, &managed.provider_aliases())?;
     let manifest_changed = managed.write()?;
     crate::runner::reconcile_lock(project_root, manifest_changed, lock)?;
@@ -104,27 +118,12 @@ fn resolve_provider_configurations(
     Ok(configurations.into_iter().collect())
 }
 
-fn validate_required_providers(
-    program: &geam::TypedProgram,
-    managed: &ManagedProject,
-) -> Result<(), CliError> {
-    let packages = required_host_functions(program)
-        .into_iter()
-        .map(|requirement| requirement.package().to_string())
-        .collect::<BTreeSet<_>>();
-    for package in packages {
-        if !is_built_in_package(&package) && !managed.has_provider(&package) {
-            return Err(CliError::MissingProviderSelection { package });
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{prepare_with, resolve_provider_configurations, run_with};
+    use super::resolve_provider_configurations;
     use crate::error::CliError;
-    use crate::provider::ManagedProject;
+    use crate::project::ResolvedProject;
+    use crate::provider::{ManagedProject, ProviderSelectionReconciler};
     use crate::runner::{CargoLock, RunnerChecker, RunnerExecutor};
     use camino::{Utf8Path, Utf8PathBuf};
     use std::cell::RefCell;
@@ -220,6 +219,48 @@ mod tests {
                 status: Some(1),
             })
         }
+    }
+
+    struct UnchangedProviders;
+
+    impl ProviderSelectionReconciler for UnchangedProviders {
+        fn reconcile(
+            &mut self,
+            _project_root: &Utf8Path,
+            _project: &ResolvedProject,
+            _program: &geam::TypedProgram,
+            _managed: &mut ManagedProject,
+        ) -> Result<(), CliError> {
+            Ok(())
+        }
+    }
+
+    fn prepare_with(
+        project_root: &Utf8Path,
+        module: String,
+        lock: &dyn CargoLock,
+        checker: &dyn RunnerChecker,
+    ) -> Result<(), CliError> {
+        super::prepare_with(project_root, module, lock, checker, &mut UnchangedProviders)
+    }
+
+    fn run_with(
+        project_root: &Utf8Path,
+        current_directory: &Utf8Path,
+        module: String,
+        configuration_specs: Vec<String>,
+        lock: &dyn CargoLock,
+        executor: &dyn RunnerExecutor,
+    ) -> Result<(), CliError> {
+        super::run_with(
+            project_root,
+            current_directory,
+            module,
+            configuration_specs,
+            lock,
+            executor,
+            &mut UnchangedProviders,
+        )
     }
 
     #[test]
@@ -395,7 +436,7 @@ pub fn main() { 1 }
     }
 
     #[test]
-    fn requires_explicit_selection_for_non_builtin_host_functions() {
+    fn preserves_provider_reconciliation_failures_before_writing_runner_inputs() {
         let project = project(
             "application",
             r#"
@@ -407,16 +448,34 @@ pub fn main() { 1 }
         );
         let root = utf8_path(&project);
 
+        struct FailingProviders;
+
+        impl ProviderSelectionReconciler for FailingProviders {
+            fn reconcile(
+                &mut self,
+                _project_root: &Utf8Path,
+                _project: &ResolvedProject,
+                _program: &geam::TypedProgram,
+                _managed: &mut ManagedProject,
+            ) -> Result<(), CliError> {
+                Err(CliError::ProviderApprovalRequired {
+                    package: "application".to_owned(),
+                    command: "geam provider add geam-application@1.0.0".to_owned(),
+                })
+            }
+        }
+
         assert_eq!(
-            prepare_with(
+            super::prepare_with(
                 &root,
                 "application".to_owned(),
                 &RecordingCargo::default(),
                 &RecordingCargo::default(),
+                &mut FailingProviders,
             )
-            .expect_err("unselected native package should fail")
+            .expect_err("provider reconciliation should fail")
             .to_string(),
-            "Gleam package application requires a host provider; select one with `geam provider add geam-application`",
+            "Gleam package application requires native provider approval; run Geam interactively or select it explicitly with `geam provider add geam-application@1.0.0`",
         );
         assert!(!root.join("Cargo.toml").exists());
     }
@@ -465,35 +524,6 @@ pub fn main() { 1 }
             fs::read_to_string(root.join("build/geam/runner.rs"))
                 .expect("runner source should be readable")
                 .contains("geam_provider_application::Component"),
-        );
-    }
-
-    #[test]
-    fn removes_provider_selections_absent_from_the_resolved_project() {
-        let project = project("application", "pub fn main() { 1 }\n");
-        let root = utf8_path(&project);
-        write_managed_manifest(
-            &root,
-            "geam_provider_images = { package = \"geam-images\", version = \"=1.0.0\" }\n",
-        );
-
-        prepare_with(
-            &root,
-            "application".to_owned(),
-            &RecordingCargo::default(),
-            &RecordingCargo::default(),
-        )
-        .expect("stale selection should be removed");
-
-        assert!(
-            !fs::read_to_string(root.join("Cargo.toml"))
-                .expect("managed manifest should be readable")
-                .contains("geam_provider_images")
-        );
-        assert!(
-            !fs::read_to_string(root.join("build/geam/runner.rs"))
-                .expect("runner source should be readable")
-                .contains("geam_provider_images")
         );
     }
 

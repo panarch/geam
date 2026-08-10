@@ -60,10 +60,37 @@ pub(super) enum CliError {
     #[error("provider targets Gleam package {package}, which is absent from the resolved project")]
     MissingGleamPackage { package: String },
 
+    #[error("provider registry access for Gleam package {package} failed: {reason}")]
+    ProviderRegistryAccess { package: String, reason: String },
+
+    #[error("provider registry response for Gleam package {package} is unusable: {reason}")]
+    ProviderRegistryProtocol { package: String, reason: String },
+
     #[error(
-        "Gleam package {package} requires a host provider; select one with `geam provider add geam-{package}`"
+        "no metadata-verified provider is available for Gleam package {package} {version}: {details}"
     )]
-    MissingProviderSelection { package: String },
+    ProviderCandidatesUnavailable {
+        package: String,
+        version: String,
+        details: String,
+    },
+
+    #[error(
+        "Gleam package {package} requires native provider approval; run Geam interactively or select it explicitly with `{command}`"
+    )]
+    ProviderApprovalRequired { package: String, command: String },
+
+    #[error(
+        "provider selection for Gleam package {package} was cancelled; no provider selections were changed"
+    )]
+    ProviderApprovalCancelled { package: String },
+
+    #[error("failed to {operation} provider approval prompt")]
+    ProviderApprovalIo {
+        operation: &'static str,
+        #[source]
+        error: io::Error,
+    },
 
     #[error("provider configuration {spec} is invalid: {reason}")]
     InvalidProviderConfiguration { spec: String, reason: String },

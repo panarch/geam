@@ -31,6 +31,12 @@ impl ResolvedProject {
     pub(super) fn package_names(&self) -> BTreeSet<String> {
         self.packages.keys().cloned().collect()
     }
+
+    pub(super) fn packages(&self) -> impl Iterator<Item = (&str, &Version)> {
+        self.packages
+            .iter()
+            .map(|(package, version)| (package.as_str(), version))
+    }
 }
 
 pub(super) fn into_utf8_path(path: std::path::PathBuf) -> Result<Utf8PathBuf, CliError> {
@@ -307,6 +313,13 @@ packages = [
             Some("2.4.5".to_owned()),
         );
         assert_eq!(resolved.package_version("missing"), None);
+        assert_eq!(
+            resolved
+                .packages()
+                .map(|(package, version)| format!("{package}@{version}"))
+                .collect::<Vec<_>>(),
+            ["application@1.2.3", "images@2.4.5"],
+        );
     }
 
     #[test]

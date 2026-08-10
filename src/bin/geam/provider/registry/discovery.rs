@@ -13,6 +13,10 @@ pub(in crate::provider) struct ProviderCandidate {
 }
 
 impl ProviderCandidate {
+    pub(in crate::provider) fn new(version: Version, metadata: ProviderMetadata) -> Self {
+        Self { version, metadata }
+    }
+
     pub(in crate::provider) fn crate_name(&self) -> &str {
         self.metadata.crate_name()
     }
@@ -84,6 +88,7 @@ pub(in crate::provider) enum RegistryDiscoveryError {
 }
 
 impl RegistryDiscoveryError {
+    #[cfg(test)]
     pub(in crate::provider) fn rejections(&self) -> &[CandidateRejection] {
         match self {
             Self::NoCandidates { rejections, .. } => rejections,
@@ -154,10 +159,7 @@ pub(in crate::provider) fn discover(
                 rejected = true;
                 continue;
             }
-            candidates.push(ProviderCandidate {
-                version: version.version,
-                metadata,
-            });
+            candidates.push(ProviderCandidate::new(version.version, metadata));
             found = true;
             break;
         }

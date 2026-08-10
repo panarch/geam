@@ -1,15 +1,11 @@
+#[path = "provider/approval.rs"]
+mod approval;
 #[path = "provider/manifest.rs"]
 mod manifest;
 #[path = "provider/metadata.rs"]
 mod metadata;
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        unused_imports,
-        reason = "registry discovery is connected by the following approval stage"
-    )
-)]
+#[path = "provider/reconcile.rs"]
+mod reconcile;
 #[path = "provider/registry.rs"]
 mod registry;
 #[path = "provider/resolution.rs"]
@@ -17,13 +13,51 @@ mod resolution;
 
 use crate::command::{AddProvider, RemoveProvider};
 use crate::error::CliError;
-use crate::project::read_resolved_project;
+use crate::project::{ResolvedProject, read_resolved_project};
 use camino::Utf8Path;
 pub(super) use manifest::ManagedProject;
 use manifest::ProviderSelection;
+pub(super) use reconcile::ProviderSelectionReconciler;
 use std::path::Path;
 
 const BUILT_IN_PROVIDER_PACKAGES: [&str; 3] = ["gleam_json", "gleam_stdlib", "gleam_time"];
+
+pub(super) struct SystemProviderReconciler<'io> {
+    registry: registry::CratesIoRegistry,
+    approval: approval::TerminalApproval<'io>,
+}
+
+impl<'io> SystemProviderReconciler<'io> {
+    pub(super) fn new(
+        terminal: bool,
+        reader: &'io mut dyn std::io::BufRead,
+        writer: &'io mut dyn std::io::Write,
+    ) -> Self {
+        Self {
+            registry: registry::CratesIoRegistry::default(),
+            approval: approval::TerminalApproval::new(terminal, reader, writer),
+        }
+    }
+}
+
+impl ProviderSelectionReconciler for SystemProviderReconciler<'_> {
+    fn reconcile(
+        &mut self,
+        project_root: &Utf8Path,
+        project: &ResolvedProject,
+        program: &geam::TypedProgram,
+        managed: &mut ManagedProject,
+    ) -> Result<(), CliError> {
+        let discovery = reconcile::RegistryProviderDiscovery::new(&self.registry);
+        let resolver = reconcile::SystemApprovedProviderResolver;
+        reconcile::ProviderReconciler::new(&resolver, &discovery, &mut self.approval).reconcile(
+            project_root,
+            project,
+            program,
+            managed,
+        )
+    }
+}
 
 pub(super) fn add(
     project_root: &Utf8Path,

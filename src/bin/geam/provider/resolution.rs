@@ -27,6 +27,36 @@ pub(super) fn resolve(
     resolve_with(project_root, request, &loader)
 }
 
+pub(super) fn resolve_selection(
+    project_root: &Utf8Path,
+    selection: &super::manifest::ProviderSelection,
+) -> Result<ProviderMetadata, CliError> {
+    resolve_with(
+        project_root,
+        selection_request(selection),
+        &SystemCargoMetadata,
+    )
+    .map(|resolved| resolved.metadata)
+}
+
+fn selection_request(selection: &super::manifest::ProviderSelection) -> ProviderRequest {
+    match selection.source() {
+        ProviderSource::Registry { version } => ProviderRequest::Registry {
+            crate_name: selection.crate_name().to_owned(),
+            version: Some(version.clone()),
+        },
+        ProviderSource::Path { path } => ProviderRequest::Path {
+            path: path.clone(),
+            package: Some(selection.crate_name().to_owned()),
+        },
+        ProviderSource::Git { url, rev } => ProviderRequest::Git {
+            url: url.clone(),
+            rev: rev.clone(),
+            package: Some(selection.crate_name().to_owned()),
+        },
+    }
+}
+
 fn resolve_with(
     project_root: &Utf8Path,
     request: ProviderRequest,
@@ -449,11 +479,11 @@ mod tests {
         CargoMetadataLoader, ProviderRequest, SystemCargoMetadata, candidate_dependency,
         canonical_provider_path, canonical_provider_path_from, clone_git_for_inspection,
         complete_package_identity, inspect_workspace, parse_metadata_output,
-        parse_registry_specification, resolve_with, write_candidate_manifest,
+        parse_registry_specification, resolve_with, selection_request, write_candidate_manifest,
     };
     use crate::command::AddProvider;
     use crate::error::CliError;
-    use crate::provider::manifest::ProviderSource;
+    use crate::provider::manifest::{ProviderSelection, ProviderSource};
     use camino::Utf8PathBuf;
     use cargo_metadata::Metadata;
     use std::fs;
@@ -734,6 +764,57 @@ mod tests {
                 .expect("candidate manifest should be written");
             let source = fs::read_to_string(manifest).expect("manifest should be readable");
             assert!(source.contains(expected), "missing {expected}: {source}");
+        }
+    }
+
+    #[test]
+    fn reconstructs_exact_requests_from_every_recorded_provider_source() {
+        let selections = [
+            (
+                ProviderSelection::new(
+                    "images".to_owned(),
+                    "geam-images".to_owned(),
+                    ProviderSource::Registry {
+                        version: "1.2.3".parse().expect("version should parse"),
+                    },
+                ),
+                ProviderRequest::Registry {
+                    crate_name: "geam-images".to_owned(),
+                    version: Some("1.2.3".parse().expect("version should parse")),
+                },
+            ),
+            (
+                ProviderSelection::new(
+                    "images".to_owned(),
+                    "geam-images".to_owned(),
+                    ProviderSource::Path {
+                        path: "/providers/images".into(),
+                    },
+                ),
+                ProviderRequest::Path {
+                    path: "/providers/images".into(),
+                    package: Some("geam-images".to_owned()),
+                },
+            ),
+            (
+                ProviderSelection::new(
+                    "images".to_owned(),
+                    "geam-images".to_owned(),
+                    ProviderSource::Git {
+                        url: "https://example.com/images.git".to_owned(),
+                        rev: Some("abc123".to_owned()),
+                    },
+                ),
+                ProviderRequest::Git {
+                    url: "https://example.com/images.git".to_owned(),
+                    rev: Some("abc123".to_owned()),
+                    package: Some("geam-images".to_owned()),
+                },
+            ),
+        ];
+
+        for (selection, expected) in selections {
+            assert_eq!(selection_request(&selection), expected);
         }
     }
 

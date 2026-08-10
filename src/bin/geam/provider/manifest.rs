@@ -29,6 +29,10 @@ impl ProviderSelection {
         &self.crate_name
     }
 
+    pub(super) fn gleam_package(&self) -> &str {
+        &self.gleam_package
+    }
+
     pub(super) fn source(&self) -> &ProviderSource {
         &self.source
     }
@@ -124,6 +128,11 @@ impl ManagedProject {
         Ok(())
     }
 
+    pub(super) fn replace(&mut self, provider: ProviderSelection) {
+        self.providers
+            .insert(provider.gleam_package.clone(), provider);
+    }
+
     pub(super) fn remove(&mut self, gleam_package: &str) -> Result<(), CliError> {
         self.providers
             .remove(gleam_package)
@@ -140,6 +149,10 @@ impl ManagedProject {
 
     pub(crate) fn has_provider(&self, gleam_package: &str) -> bool {
         self.providers.contains_key(gleam_package)
+    }
+
+    pub(super) fn provider(&self, gleam_package: &str) -> Option<&ProviderSelection> {
+        self.providers.get(gleam_package)
     }
 
     pub(crate) fn provider_aliases(&self) -> Vec<String> {
