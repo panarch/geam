@@ -7,6 +7,7 @@ use std::io::Read;
 pub(super) const MAX_COMPRESSED_SIZE: usize = 20 * 1024 * 1024;
 const MAX_DECLARED_SIZE: u64 = 64 * 1024 * 1024;
 const MAX_MANIFEST_SIZE: u64 = 1024 * 1024;
+const TAR_BLOCK_SIZE: u64 = 512;
 
 pub(super) fn verify(
     crate_name: &str,
@@ -75,18 +76,17 @@ fn read_manifest(
     let entries = archive
         .entries()
         .map_err(|error| format!("invalid gzip or tar archive: {error}"))?;
-    let mut declared_size = 0_u64;
     let mut manifest = None;
     for entry in entries {
         let mut entry = entry.map_err(|error| format!("invalid tar entry: {error}"))?;
         let size = entry.size();
-        if size > MAX_DECLARED_SIZE - declared_size {
+        let declared_end = declared_entry_end(entry.raw_file_position(), size);
+        if !matches!(declared_end, Some(end) if end <= MAX_DECLARED_SIZE) {
             return Err(format!(
                 "declared archive contents exceed the {} byte limit",
                 MAX_DECLARED_SIZE
             ));
         }
-        declared_size += size;
         if entry.path_bytes().as_ref() != expected_manifest.as_bytes() {
             continue;
         }
@@ -109,9 +109,17 @@ fn read_manifest(
     manifest.ok_or_else(|| format!("archive is missing {expected_manifest}"))
 }
 
+fn declared_entry_end(file_position: u64, size: u64) -> Option<u64> {
+    let padded_size = size.checked_add(TAR_BLOCK_SIZE - 1)? / TAR_BLOCK_SIZE * TAR_BLOCK_SIZE;
+    file_position.checked_add(padded_size)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{MAX_COMPRESSED_SIZE, MAX_DECLARED_SIZE, MAX_MANIFEST_SIZE, read_manifest, verify};
+    use super::{
+        MAX_COMPRESSED_SIZE, MAX_DECLARED_SIZE, MAX_MANIFEST_SIZE, declared_entry_end,
+        read_manifest, verify,
+    };
     use flate2::{Compression, write::GzEncoder};
     use semver::Version;
     use sha2::{Digest, Sha256};
@@ -201,6 +209,15 @@ mod tests {
                 MAX_MANIFEST_SIZE
             ),
         );
+    }
+
+    #[test]
+    fn counts_tar_headers_and_payload_padding_in_declared_size() {
+        assert_eq!(declared_entry_end(512, 0), Some(512));
+        assert_eq!(declared_entry_end(512, 1), Some(1024));
+        assert_eq!(declared_entry_end(512, 512), Some(1024));
+        assert_eq!(declared_entry_end(0, u64::MAX), None);
+        assert_eq!(declared_entry_end(u64::MAX, 1), None);
     }
 
     #[test]
