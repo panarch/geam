@@ -48,8 +48,8 @@ pub use plan::{
     StringLocalId, ValueType,
 };
 pub use planner::{
-    ExternalTypeProviderLinkReason, HostProviderLinkReason, PlanError, plan_host_program,
-    plan_module, plan_module_with_source, plan_program,
+    ExternalTypeProviderLinkReason, HostProviderLinkReason, PlanError, RequiredHostFunction,
+    plan_host_program, plan_module, plan_module_with_source, plan_program, required_host_functions,
 };
 pub use runtime::{
     BitArraySegmentPanicReason, BitArrayValue, BitArrayValueLengthError, CustomFieldValue,
