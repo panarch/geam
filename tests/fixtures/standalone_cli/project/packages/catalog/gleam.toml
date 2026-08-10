@@ -1,0 +1,4 @@
+name = "catalog"
+version = "1.0.0"
+description = "Standalone Geam external storage fixture"
+licences = ["Apache-2.0"]

@@ -1,0 +1,4 @@
+name = "pure_labels"
+version = "1.0.0"
+description = "Standalone Geam Pure Gleam fixture"
+licences = ["Apache-2.0"]

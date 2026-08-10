@@ -1,5 +1,8 @@
 #[path = "provider/approval.rs"]
 mod approval;
+#[cfg(test)]
+#[path = "provider/integration.rs"]
+mod integration;
 #[path = "provider/manifest.rs"]
 mod manifest;
 #[path = "provider/metadata.rs"]

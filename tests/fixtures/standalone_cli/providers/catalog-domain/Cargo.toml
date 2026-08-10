@@ -1,0 +1,11 @@
+[package]
+name = "standalone-catalog-domain"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Domain model for the standalone Geam fixture"
+license = "Apache-2.0"
+repository = "https://github.com/panarch/geam"
+
+[dependencies]
+im = "15"

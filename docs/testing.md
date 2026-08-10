@@ -148,6 +148,27 @@ cargo llvm-cov --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspac
 This workspace is independently locked and needs neither network access nor a
 Gleam CLI. CI runs it as a separate provider SDK boundary.
 
+The tracked `tests/fixtures/standalone_cli` fixture verifies the complete CLI
+assembly boundary. Its Gleam project combines a Pure Gleam path package,
+unchanged stdlib and JSON source, and two provider-backed path packages. The
+independent Rust providers exercise state, callbacks, external storage, and a
+compound return through the generated static profile. Registry owner tests feed
+real `cargo package` archives through a fake bounded registry, checksum and
+metadata verification, approval, and registry-shaped manifest generation.
+Fixture-only Cargo patches then keep acquisition and runner builds local.
+
+The normal suite runs CLI owner and boundary tests without network access or an
+installed Gleam CLI. The full generated runner is an ignored target because it
+performs its own Cargo build:
+
+```sh
+cargo test --test standalone_cli -- --ignored
+```
+
+The dedicated CI job also runs `gleam export hex-tarball` for each local Gleam
+dependency and `cargo package` for both provider crates. No fixture package is
+published.
+
 Source-level rejection fixtures live under categorized
 `tests/fixtures/rejection/**/*.gleam` paths. They are reserved for public
 boundary cases that are clearer as complete Gleam modules than as planner unit

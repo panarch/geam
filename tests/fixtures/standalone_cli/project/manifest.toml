@@ -1,0 +1,14 @@
+packages = [
+  { name = "catalog", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/catalog" },
+  { name = "counter", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/counter" },
+  { name = "gleam_json", version = "3.1.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], source = "local", path = "packages/gleam_json" },
+  { name = "gleam_stdlib", version = "1.0.3", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/gleam_stdlib" },
+  { name = "pure_labels", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/pure_labels" },
+]
+
+[requirements]
+catalog = { path = "packages/catalog" }
+counter = { path = "packages/counter" }
+gleam_json = { path = "packages/gleam_json" }
+gleam_stdlib = { path = "packages/gleam_stdlib" }
+pure_labels = { path = "packages/pure_labels" }

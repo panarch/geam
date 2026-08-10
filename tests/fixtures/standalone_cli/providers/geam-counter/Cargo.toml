@@ -1,0 +1,16 @@
+[package]
+name = "geam-counter"
+version = "1.0.0"
+edition = "2024"
+description = "Stateful provider for the standalone Geam fixture"
+license = "Apache-2.0"
+repository = "https://github.com/panarch/geam"
+
+[package.metadata.geam.provider]
+schema = 1
+gleam-package = "counter"
+gleam-version = ">= 1.0.0 and < 2.0.0"
+
+[dependencies]
+ecow = "=0.2.6"
+geam = "=0.1.1"

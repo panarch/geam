@@ -238,6 +238,61 @@ jobs:
       - name: Check fixture coverage
         run: cargo llvm-cov --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --summary-only --fail-under-lines 100 --fail-under-regions 100
 
+  standalone-cli:
+    name: Standalone CLI
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Gleam toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          gleam-version: "1.18.1"
+          rebar3-version: "3"
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+          cache: false
+          rustflags: ""
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            tests/fixtures/standalone_cli/providers -> target
+
+      - name: Fetch Rust dependencies
+        run: cargo fetch --locked
+
+      - name: Run standalone CLI integration
+        run: cargo test --test standalone_cli -- --ignored
+
+      - name: Check provider formatting
+        working-directory: tests/fixtures/standalone_cli/providers
+        run: cargo fmt --all --check
+
+      - name: Run provider clippy
+        working-directory: tests/fixtures/standalone_cli/providers
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Verify provider packages
+        working-directory: tests/fixtures/standalone_cli/providers
+        run: |
+          cargo package --quiet --offline --allow-dirty --no-verify --locked --package geam-catalog
+          cargo package --quiet --offline --allow-dirty --no-verify --locked --package geam-counter
+
+      - name: Verify Gleam packages
+        run: |
+          for package in catalog counter pure_labels; do
+            (cd "tests/fixtures/standalone_cli/project/packages/$package" && gleam export hex-tarball)
+          done
+
   coverage:
     name: coverage
     runs-on: ubuntu-latest

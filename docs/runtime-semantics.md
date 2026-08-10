@@ -159,6 +159,22 @@ component and remains a runner assembly error; configuration, component
 identity, and mutable state do not enter ModulePlan, the execution graph,
 Explain metadata, or `ExecutionError`.
 
+The standalone CLI inventories mandatory Erlang externals from the selected
+typed program, reconciles approved provider crates, and generates one concrete
+Cargo runner. Registry discovery and process execution stay outside the
+read-only project loader. First-time native provider selection and incompatible
+replacement require approval; accepted selections are exact Cargo dependencies
+and `Cargo.lock` is the only dependency lock. Source edits and entry-module
+selection do not alter the generated profile while the approved provider set is
+unchanged.
+
+`prepare` compiles, plans, and seals the hosted project without creating
+component state. `run` reads explicit configuration, initializes every approved
+component, and then plans, seals, and executes. Configuration and credentials do
+not enter generated source, Cargo metadata, global state, canonical plans, or
+runtime values. Built-in stdlib, JSON, and Time components use the same static
+profile and never pass through registry discovery.
+
 ### Time Sources
 
 The separate `gleam_time` provider projects a caller-owned `TimeSource` from

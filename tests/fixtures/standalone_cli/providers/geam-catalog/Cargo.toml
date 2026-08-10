@@ -1,0 +1,18 @@
+[package]
+name = "geam-catalog"
+version = "1.0.0"
+edition = "2024"
+description = "External storage provider for the standalone Geam fixture"
+license = "Apache-2.0"
+repository = "https://github.com/panarch/geam"
+
+[package.metadata.geam.provider]
+schema = 1
+gleam-package = "catalog"
+gleam-version = ">= 1.0.0 and < 2.0.0"
+
+[dependencies]
+ecow = "=0.2.6"
+geam = "=0.1.1"
+num-bigint = "0.4"
+standalone-catalog-domain = { path = "../catalog-domain", version = "0.1.0" }

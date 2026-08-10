@@ -1,0 +1,4 @@
+name = "counter"
+version = "1.0.0"
+description = "Standalone Geam stateful provider fixture"
+licences = ["Apache-2.0"]

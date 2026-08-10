@@ -154,6 +154,29 @@ source panics and host failures retain the actual failed source or provider
 identity. See [runtime semantics](docs/runtime-semantics.md) for the ownership,
 re-entry, and sealing rules.
 
+## Standalone Projects
+
+The `geam` binary prepares and runs an ordinary resolved Gleam project:
+
+```sh
+gleam add gleam_json
+geam prepare
+geam run
+```
+
+`prepare` creates a project-local static Cargo runner and verifies its hosted
+plan without initializing provider state or running `main`. `run` reconciles
+the same runner, initializes its approved providers, and executes the package
+module. Provider-backed Hex dependencies are selected explicitly or discovered
+under the reserved `geam-<gleam-package>` crate namespace and require an
+interactive native-code approval before being recorded.
+
+Geam owns only a manifest carrying its exact managed marker, `Cargo.lock`, and
+`build/geam/` runner artifacts. It refuses to adopt an existing user Cargo
+project. See [standalone execution](docs/standalone.md) for provider commands,
+configuration, generated files, trust boundaries, and the separate embedding
+workflow.
+
 ## Upstream
 
 Current Gleam compiler baseline: `v1.18.1`.

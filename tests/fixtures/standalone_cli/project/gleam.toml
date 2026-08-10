@@ -1,0 +1,9 @@
+name = "standalone_fixture"
+version = "1.0.0"
+
+[dependencies]
+catalog = { path = "packages/catalog" }
+counter = { path = "packages/counter" }
+gleam_json = { path = "packages/gleam_json" }
+gleam_stdlib = { path = "packages/gleam_stdlib" }
+pure_labels = { path = "packages/pure_labels" }

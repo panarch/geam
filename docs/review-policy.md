@@ -235,6 +235,20 @@ move component identity, configuration, mutable state, or initialization into
 canonical plans, graphs, Explain metadata, runtime registries, or host callback
 errors.
 
+Keep standalone package management outside the read-only project loader.
+Registry access, dependency download, process execution, approval prompts, and
+managed file mutation belong to CLI owners. A generated runner must derive only
+from approved Cargo dependencies and compose concrete components statically;
+ordinary source edits, module selection, and runtime configuration must not
+change its profile.
+
+Treat first-time native provider selection and incompatible replacement as
+explicit trust boundaries. Verify bounded registry responses, exact archive
+checksums, packaged metadata, target Gleam package, and compatibility before
+presenting a candidate. Do not execute provider code before approval, silently
+select in noninteractive use, adopt user-owned Cargo manifests, or introduce a
+second provider lock beside `Cargo.lock`.
+
 Source provider selection must finish before function body planning. Match an
 exact external scheme, preserve a declared Gleam fallback when no provider is
 selected, reject missing providers for bodyless externals, and never defer

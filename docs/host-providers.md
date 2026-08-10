@@ -5,10 +5,10 @@ externals. The crate does not need dynamic loading or a Geam-specific package
 format: a runner adds it as a normal Cargo path, Git, or registry dependency and
 composes it into a concrete hosted profile at compile time.
 
-This boundary is intentionally static. Geam does not discover provider crates,
-parse provider configuration, generate a runner, or choose implementations at
-runtime. Those are future CLI responsibilities built on the contracts described
-here.
+This boundary is intentionally static. The standalone CLI can discover and
+approve provider dependencies, parse explicit configuration, and generate a
+concrete runner, but the resulting Rust program still composes every component
+at compile time. It does not choose or type-erase implementations at runtime.
 
 ## Provider Crate
 
@@ -171,10 +171,17 @@ the callback capability come from the same type list, so runtime does not need
 signature or permission checks. Generic construction types may refer only to
 type parameters already bound by the function signature.
 
-## Future CLI Boundary
+## Standalone CLI Boundary
 
-A future CLI may resolve provider dependencies, parse configuration, and emit
-the aggregate `Stores`, `RunState`, `Profile`, projections, and initialization
-code shown above. It does not need a new provider ABI to do so. This SDK does
-not itself define discovery metadata, build caching, source generation, or a
-publication workflow.
+The standalone CLI emits the aggregate `Stores`, `RunState`, `Profile`,
+projections, registrations, and initialization shown above. A provider crate
+advertises one component through `[package.metadata.geam.provider]`; the CLI
+verifies that metadata before recording the crate as an ordinary exact Cargo
+dependency. Generated code uses only the crate-root `Component` and the public
+component contracts.
+
+Discovery, native-code approval, managed Cargo files, and runtime configuration
+belong to the CLI rather than this SDK. Provider callbacks, stores, and state
+remain governed by the same static ABI whether a runner is generated or written
+by an embedding application. See [standalone execution](standalone.md) for the
+CLI workflow and trust boundary.

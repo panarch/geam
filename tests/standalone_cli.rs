@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::Path;
 #[cfg(unix)]
 use std::process::Stdio;
 use std::process::{Command, Output};
@@ -294,15 +295,173 @@ nested = true
     );
 }
 
+#[test]
+fn refuses_to_adopt_user_owned_cargo_projects() {
+    let project = gleam_project();
+    fs::write(
+        project.path().join("Cargo.toml"),
+        "[package]\nname = \"application\"\nversion = \"1.0.0\"\n",
+    )
+    .expect("user Cargo manifest should be written");
+
+    let output = geam(&project, ["prepare"]);
+
+    assert!(!output.status.success());
+    let manifest = fs::canonicalize(project.path())
+        .expect("temporary project should canonicalize")
+        .join("Cargo.toml");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        format!(
+            "geam: refusing to modify user-owned Cargo manifest {}; use the manual embedding workflow tracked by #115\n",
+            manifest.display(),
+        ),
+    );
+}
+
+#[test]
+#[ignore = "builds the independently patched canonical standalone fixture"]
+fn runs_the_canonical_standalone_project_with_independent_path_providers() {
+    let fixture = standalone_fixture();
+    let project = fixture.path().join("project");
+
+    for package in ["geam-catalog", "geam-counter"] {
+        let add = geam_at(
+            &project,
+            [
+                "provider",
+                "add",
+                "--path",
+                "../providers",
+                "--package",
+                package,
+            ],
+        );
+        assert!(
+            add.status.success(),
+            "provider add failed for {package}: {}",
+            String::from_utf8_lossy(&add.stderr),
+        );
+    }
+
+    let prepare = geam_at(&project, ["prepare"]);
+    assert!(
+        prepare.status.success(),
+        "canonical prepare failed: {}",
+        String::from_utf8_lossy(&prepare.stderr),
+    );
+    let manifest = fs::read_to_string(project.join("Cargo.toml"))
+        .expect("managed manifest should be readable");
+    let runner = fs::read_to_string(project.join("build/geam/runner.rs"))
+        .expect("generated runner should be readable");
+    let catalog = manifest
+        .find("geam_provider_catalog")
+        .expect("catalog dependency should be generated");
+    let counter = manifest
+        .find("geam_provider_counter")
+        .expect("counter dependency should be generated");
+    assert!(catalog < counter);
+    assert!(runner.contains("geam_provider_catalog::Component"));
+    assert!(runner.contains("geam_provider_counter::Component"));
+
+    let root_source = project.join("src/standalone_fixture.gleam");
+    let mut source = fs::read_to_string(&root_source).expect("root source should be readable");
+    source.push_str("\n// Source-only edits do not change the static Rust profile.\n");
+    fs::write(&root_source, source).expect("root source should be updated");
+    let repeated = geam_at(&project, ["prepare", "--module", "alternate"]);
+    assert!(
+        repeated.status.success(),
+        "repeated prepare failed: {}",
+        String::from_utf8_lossy(&repeated.stderr),
+    );
+    assert_eq!(
+        fs::read_to_string(project.join("Cargo.toml"))
+            .expect("managed manifest should remain readable"),
+        manifest,
+    );
+    assert_eq!(
+        fs::read_to_string(project.join("build/geam/runner.rs"))
+            .expect("generated runner should remain readable"),
+        runner,
+    );
+
+    for _ in 0..2 {
+        let run = geam_at(
+            &project,
+            [
+                "run",
+                "--provider-config",
+                "catalog=config/catalog.toml",
+                "--provider-config",
+                "counter=config/counter.toml",
+            ],
+        );
+        assert!(
+            run.status.success(),
+            "canonical run failed: {}",
+            String::from_utf8_lossy(&run.stderr),
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&run.stdout),
+            "\"count:3/count:4\"\n"
+        );
+        let stderr = String::from_utf8_lossy(&run.stderr);
+        let before = stderr
+            .find("provider-before\n")
+            .expect("first IO event should be present");
+        let echo = stderr
+            .find("provider-summary\nSummary(count: 1, items: [\"pure:native:alpha\"])")
+            .expect("provider-backed Echo should be present");
+        let after = stderr
+            .find("provider-after\n")
+            .expect("final IO event should be present");
+        assert!(before < echo && echo < after);
+    }
+
+    let alternate = geam_at(
+        &project,
+        [
+            "run",
+            "--module",
+            "alternate",
+            "--provider-config",
+            "catalog=config/catalog.toml",
+            "--provider-config",
+            "counter=config/counter.toml",
+        ],
+    );
+    assert!(
+        alternate.status.success(),
+        "alternate run failed: {}",
+        String::from_utf8_lossy(&alternate.stderr),
+    );
+    assert_eq!(String::from_utf8_lossy(&alternate.stdout), "alternate\n");
+    assert!(alternate.stderr.is_empty());
+
+    let missing_configuration = geam_at(&project, ["run"]);
+    assert!(!missing_configuration.status.success());
+    assert!(String::from_utf8_lossy(&missing_configuration.stderr).contains(
+        "could not initialize host provider component geam-catalog: configuration key `prefix` must be a String",
+    ));
+}
+
 fn geam<const N: usize>(directory: &TempDir, arguments: [&str; N]) -> Output {
-    geam_command(directory, arguments)
+    geam_at(directory.path(), arguments)
+}
+
+fn geam_at<const N: usize>(directory: &Path, arguments: [&str; N]) -> Output {
+    geam_command_at(directory, arguments)
         .output()
         .expect("Geam CLI should start")
 }
 
 fn geam_command<const N: usize>(directory: &TempDir, arguments: [&str; N]) -> Command {
+    geam_command_at(directory.path(), arguments)
+}
+
+fn geam_command_at<const N: usize>(directory: &Path, arguments: [&str; N]) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_geam"));
-    command.args(arguments).current_dir(directory.path());
+    command.args(arguments).current_dir(directory);
     remove_nested_cargo_instrumentation(&mut command);
     command
 }
@@ -483,6 +642,41 @@ fn write_cargo_config(project: &TempDir) {
         format!("[patch.crates-io]\ngeam = {{ path = {geam_path} }}\n\n[net]\noffline = true\n"),
     )
     .expect("Cargo config should be written");
+}
+
+fn standalone_fixture() -> TempDir {
+    let fixture = tempdir().expect("temporary standalone fixture should be created");
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/standalone_cli");
+    copy_directory(&source, fixture.path());
+
+    let geam_path = toml::Value::String(env!("CARGO_MANIFEST_DIR").to_owned()).to_string();
+    fs::write(
+        fixture.path().join("project/.cargo/config.toml"),
+        format!(
+            "[patch.crates-io]\ngeam = {{ path = {geam_path} }}\ngeam-catalog = {{ path = \"../providers/geam-catalog\" }}\ngeam-counter = {{ path = \"../providers/geam-counter\" }}\nstandalone-catalog-domain = {{ path = \"../providers/catalog-domain\" }}\n\n[net]\noffline = true\n",
+        ),
+    )
+    .expect("project Cargo config should be written");
+    fs::write(
+        fixture.path().join("providers/.cargo/config.toml"),
+        format!("[patch.crates-io]\ngeam = {{ path = {geam_path} }}\n\n[net]\noffline = true\n",),
+    )
+    .expect("provider Cargo config should be written");
+    fixture
+}
+
+fn copy_directory(source: &Path, destination: &Path) {
+    fs::create_dir_all(destination).expect("fixture directory should be created");
+    for entry in fs::read_dir(source).expect("fixture directory should be readable") {
+        let entry = entry.expect("fixture entry should be readable");
+        let source = entry.path();
+        let destination = destination.join(entry.file_name());
+        if source.is_dir() {
+            copy_directory(&source, &destination);
+        } else {
+            fs::copy(&source, &destination).expect("fixture file should be copied");
+        }
+    }
 }
 
 fn gleam_project_with_dependency(package: &str, version: &str) -> TempDir {
