@@ -75,7 +75,7 @@ impl ProviderRequest {
                 path
             } else {
                 let current = Utf8PathBuf::from_path_buf(current_directory.to_path_buf())
-                    .map_err(|path| CliError::NonUtf8Path { path })?;
+                    .map_err(CliError::NonUtf8Path)?;
                 current.join(path)
             };
             return Ok(Self::Path {
@@ -405,7 +405,7 @@ fn canonical_provider_path_from(
 }
 
 fn canonical_utf8_path(path: std::path::PathBuf) -> Result<Utf8PathBuf, CliError> {
-    Utf8PathBuf::from_path_buf(path).map_err(|path| CliError::NonUtf8Path { path })
+    Utf8PathBuf::from_path_buf(path).map_err(CliError::NonUtf8Path)
 }
 
 fn parse_registry_specification(spec: &str) -> Result<(String, Option<Version>), CliError> {
@@ -635,9 +635,7 @@ mod tests {
         .expect_err("non-UTF-8 current directory should be rejected");
         assert_eq!(
             std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::NonUtf8Path {
-                path: std::path::PathBuf::new(),
-            }),
+            std::mem::discriminant(&CliError::NonUtf8Path(std::path::PathBuf::new())),
         );
 
         let error =
@@ -647,9 +645,7 @@ mod tests {
             .expect_err("non-UTF-8 canonical path should be rejected");
         assert_eq!(
             std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::NonUtf8Path {
-                path: std::path::PathBuf::new(),
-            }),
+            std::mem::discriminant(&CliError::NonUtf8Path(std::path::PathBuf::new())),
         );
     }
 

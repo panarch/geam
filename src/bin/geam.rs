@@ -20,7 +20,12 @@ use std::env;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    match run(Cli::parse(), env::current_dir()) {
+    let cli = Cli::parse();
+    let result = env::current_dir()
+        .map_err(CliError::CurrentDirectory)
+        .and_then(project::into_utf8_path)
+        .and_then(|current_directory| run(cli, current_directory));
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("geam: {error}");
@@ -29,8 +34,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(cli: Cli, current_directory: std::io::Result<std::path::PathBuf>) -> Result<(), CliError> {
-    let current_directory = current_directory.map_err(CliError::CurrentDirectory)?;
+fn run(cli: Cli, current_directory: camino::Utf8PathBuf) -> Result<(), CliError> {
     let project_root = project::find_project_root(&current_directory)?;
     match cli.command {
         Command::Prepare(command) => {
@@ -38,14 +42,17 @@ fn run(cli: Cli, current_directory: std::io::Result<std::path::PathBuf>) -> Resu
             standalone::prepare(&project_root, module)
         }
         Command::Run(command) => {
-            let _ = command.provider_configs;
             let module = project::entry_module(&project_root, command.module)?;
-            project::compile_resolved_project(&project_root, module)?;
-            Err(CliError::RunnerNotPrepared)
+            standalone::run(
+                &project_root,
+                &current_directory,
+                module,
+                command.provider_configs,
+            )
         }
         Command::Provider(command) => match command.command {
             ProviderCommand::Add(command) => {
-                provider::add(&project_root, &current_directory, command)
+                provider::add(&project_root, current_directory.as_std_path(), command)
             }
             ProviderCommand::Remove(command) => provider::remove(&project_root, command),
         },
@@ -59,21 +66,7 @@ mod tests {
     use camino::Utf8PathBuf;
     use clap::Parser;
     use std::fs;
-    use std::io;
     use tempfile::tempdir;
-
-    #[test]
-    fn preserves_current_directory_failures() {
-        let error = run(
-            Cli::try_parse_from(["geam", "prepare"]).expect("command should parse"),
-            Err(io::Error::new(io::ErrorKind::PermissionDenied, "denied")),
-        )
-        .expect_err("current directory lookup should fail");
-
-        assert!(
-            matches!(error, CliError::CurrentDirectory(error) if error.kind() == io::ErrorKind::PermissionDenied)
-        );
-    }
 
     #[test]
     fn preserves_entry_resolution_failures_for_prepare_and_run() {
@@ -84,7 +77,8 @@ mod tests {
         for arguments in [vec!["geam", "prepare"], vec!["geam", "run"]] {
             let error = run(
                 Cli::try_parse_from(arguments).expect("command should parse"),
-                Ok(project.path().to_path_buf()),
+                Utf8PathBuf::from_path_buf(project.path().to_path_buf())
+                    .expect("temporary path should be valid UTF-8"),
             )
             .expect_err("entry resolution should fail");
             assert_eq!(
@@ -124,7 +118,8 @@ mod tests {
         ] {
             let error = run(
                 Cli::try_parse_from(arguments).expect("command should parse"),
-                Ok(project.path().to_path_buf()),
+                Utf8PathBuf::from_path_buf(project.path().to_path_buf())
+                    .expect("temporary path should be valid UTF-8"),
             )
             .expect_err("missing entry module should fail");
             assert_eq!(

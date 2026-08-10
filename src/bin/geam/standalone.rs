@@ -1,14 +1,30 @@
 use crate::error::CliError;
 use crate::project::{compile_resolved_project, read_resolved_project};
 use crate::provider::{ManagedProject, is_built_in_package};
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 use geam::required_host_functions;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn prepare(project_root: &Utf8Path, module: String) -> Result<(), CliError> {
     prepare_with(
         project_root,
         module,
+        &crate::runner::SystemCargo,
+        &crate::runner::SystemCargo,
+    )
+}
+
+pub(super) fn run(
+    project_root: &Utf8Path,
+    current_directory: &Utf8Path,
+    module: String,
+    configuration_specs: Vec<String>,
+) -> Result<(), CliError> {
+    run_with(
+        project_root,
+        current_directory,
+        module,
+        configuration_specs,
         &crate::runner::SystemCargo,
         &crate::runner::SystemCargo,
     )
@@ -20,15 +36,72 @@ fn prepare_with(
     lock: &dyn crate::runner::CargoLock,
     checker: &dyn crate::runner::RunnerChecker,
 ) -> Result<(), CliError> {
+    reconcile(project_root, &module, lock)?;
+    checker.check(project_root, &module)
+}
+
+fn run_with(
+    project_root: &Utf8Path,
+    current_directory: &Utf8Path,
+    module: String,
+    configuration_specs: Vec<String>,
+    lock: &dyn crate::runner::CargoLock,
+    executor: &dyn crate::runner::RunnerExecutor,
+) -> Result<(), CliError> {
+    let managed = reconcile(project_root, &module, lock)?;
+    let configurations =
+        resolve_provider_configurations(current_directory, &managed, configuration_specs)?;
+    executor.execute(project_root, &module, &configurations)
+}
+
+fn reconcile(
+    project_root: &Utf8Path,
+    module: &str,
+    lock: &dyn crate::runner::CargoLock,
+) -> Result<ManagedProject, CliError> {
     let project = read_resolved_project(project_root)?;
-    let typed = compile_resolved_project(project_root, module.clone())?;
+    let typed = compile_resolved_project(project_root, module.to_owned())?;
     let mut managed = ManagedProject::load(project_root, project.root_package())?;
     managed.retain_packages(&project.package_names());
     validate_required_providers(&typed, &managed)?;
     crate::runner::reconcile_source(project_root, &managed.provider_aliases())?;
     let manifest_changed = managed.write()?;
     crate::runner::reconcile_lock(project_root, manifest_changed, lock)?;
-    checker.check(project_root, &module)
+    Ok(managed)
+}
+
+fn resolve_provider_configurations(
+    current_directory: &Utf8Path,
+    managed: &ManagedProject,
+    specs: Vec<String>,
+) -> Result<Vec<(String, Utf8PathBuf)>, CliError> {
+    let mut configurations = BTreeMap::new();
+    for spec in specs {
+        let Some((package, path)) = spec.split_once('=') else {
+            return Err(CliError::InvalidProviderConfiguration {
+                spec,
+                reason: "expected GLEAM_PACKAGE=PATH".to_owned(),
+            });
+        };
+        if package.is_empty() || path.is_empty() {
+            return Err(CliError::InvalidProviderConfiguration {
+                spec,
+                reason: "package and path must both be non-empty".to_owned(),
+            });
+        }
+        if !managed.has_provider(package) {
+            return Err(CliError::UnknownProviderConfiguration {
+                package: package.to_owned(),
+            });
+        }
+        let path = current_directory.join(path);
+        if configurations.insert(package.to_owned(), path).is_some() {
+            return Err(CliError::DuplicateProviderConfiguration {
+                package: package.to_owned(),
+            });
+        }
+    }
+    Ok(configurations.into_iter().collect())
 }
 
 fn validate_required_providers(
@@ -49,9 +122,10 @@ fn validate_required_providers(
 
 #[cfg(test)]
 mod tests {
-    use super::prepare_with;
+    use super::{prepare_with, resolve_provider_configurations, run_with};
     use crate::error::CliError;
-    use crate::runner::{CargoLock, RunnerChecker};
+    use crate::provider::ManagedProject;
+    use crate::runner::{CargoLock, RunnerChecker, RunnerExecutor};
     use camino::{Utf8Path, Utf8PathBuf};
     use std::cell::RefCell;
     use std::fs;
@@ -77,6 +151,25 @@ mod tests {
     impl RunnerChecker for RecordingCargo {
         fn check(&self, _project_root: &Utf8Path, module: &str) -> Result<(), CliError> {
             self.operations.borrow_mut().push(format!("check:{module}"));
+            Ok(())
+        }
+    }
+
+    impl RunnerExecutor for RecordingCargo {
+        fn execute(
+            &self,
+            _project_root: &Utf8Path,
+            module: &str,
+            configurations: &[(String, Utf8PathBuf)],
+        ) -> Result<(), CliError> {
+            self.operations.borrow_mut().push(format!(
+                "run:{module}:{}",
+                configurations
+                    .iter()
+                    .map(|(package, path)| format!("{package}={path}"))
+                    .collect::<Vec<_>>()
+                    .join(","),
+            ));
             Ok(())
         }
     }
@@ -113,6 +206,22 @@ mod tests {
         }
     }
 
+    struct FailingRun;
+
+    impl RunnerExecutor for FailingRun {
+        fn execute(
+            &self,
+            _project_root: &Utf8Path,
+            _module: &str,
+            _configurations: &[(String, Utf8PathBuf)],
+        ) -> Result<(), CliError> {
+            Err(CliError::InheritedProcessFailure {
+                command: "cargo run".to_owned(),
+                status: Some(1),
+            })
+        }
+    }
+
     #[test]
     fn prepares_pure_projects_and_reuses_unchanged_runner_inputs() {
         let project = project("application", "pub fn main() { 1 }\n");
@@ -143,6 +252,145 @@ mod tests {
             fs::read_to_string(root.join("build/geam/runner.rs"))
                 .expect("runner source should remain readable"),
             source,
+        );
+    }
+
+    #[test]
+    fn runs_reconciled_projects_without_a_separate_check() {
+        let project = project(
+            "application",
+            r#"
+@external(erlang, "native", "required")
+fn required() -> Int
+
+pub fn main() { 1 }
+"#,
+        );
+        let root = utf8_path(&project);
+        write_managed_manifest(
+            &root,
+            "geam_provider_application = { package = \"geam-application\", path = \"/provider\" }\n",
+        );
+        let invocation = root.join("nested");
+        fs::create_dir(&invocation).expect("invocation directory should be created");
+        let cargo = RecordingCargo::default();
+
+        run_with(
+            &root,
+            &invocation,
+            "application".to_owned(),
+            vec!["application=../config.toml".to_owned()],
+            &cargo,
+            &cargo,
+        )
+        .expect("configured standalone project should run");
+
+        assert_eq!(
+            cargo.operations.borrow().as_slice(),
+            [
+                "lock",
+                &format!(
+                    "run:application:application={}",
+                    root.join("nested/../config.toml")
+                ),
+            ],
+        );
+
+        cargo.operations.borrow_mut().clear();
+        let error = run_with(
+            &root,
+            &invocation,
+            "application".to_owned(),
+            vec!["application".to_owned()],
+            &cargo,
+            &cargo,
+        )
+        .expect_err("invalid configuration should stop before runner execution");
+        assert_eq!(
+            error.to_string(),
+            "provider configuration application is invalid: expected GLEAM_PACKAGE=PATH",
+        );
+        assert!(cargo.operations.borrow().is_empty());
+    }
+
+    #[test]
+    fn validates_provider_configuration_specs_before_execution() {
+        let project = project("application", "pub fn main() { 1 }\n");
+        let root = utf8_path(&project);
+        write_managed_manifest(
+            &root,
+            "geam_provider_images = { package = \"geam-images\", path = \"/provider\" }\n",
+        );
+        let managed =
+            ManagedProject::load(&root, "application").expect("managed project should load");
+
+        let invalid = resolve_provider_configurations(&root, &managed, vec!["images".to_owned()])
+            .expect_err("configuration without a path should fail");
+        assert_eq!(
+            invalid.to_string(),
+            "provider configuration images is invalid: expected GLEAM_PACKAGE=PATH",
+        );
+        for spec in ["=config.toml", "images="] {
+            assert_eq!(
+                resolve_provider_configurations(&root, &managed, vec![spec.to_owned()],)
+                    .expect_err("empty configuration part should fail")
+                    .to_string(),
+                format!(
+                    "provider configuration {spec} is invalid: package and path must both be non-empty"
+                ),
+            );
+        }
+        assert_eq!(
+            resolve_provider_configurations(
+                &root,
+                &managed,
+                vec!["search=config.toml".to_owned()],
+            )
+            .expect_err("unknown provider configuration should fail")
+            .to_string(),
+            "no selected provider accepts configuration for Gleam package search",
+        );
+        assert_eq!(
+            resolve_provider_configurations(
+                &root,
+                &managed,
+                vec![
+                    "images=first.toml".to_owned(),
+                    "images=second.toml".to_owned(),
+                ],
+            )
+            .expect_err("duplicate provider configuration should fail")
+            .to_string(),
+            "provider configuration for Gleam package images was supplied more than once",
+        );
+        assert_eq!(
+            resolve_provider_configurations(
+                &root,
+                &managed,
+                vec!["images=config=local.toml".to_owned()],
+            )
+            .expect("paths may contain equals signs"),
+            [("images".to_owned(), root.join("config=local.toml"),)],
+        );
+    }
+
+    #[test]
+    fn preserves_generated_runner_execution_failures() {
+        let project = project("application", "pub fn main() { 1 }\n");
+        let root = utf8_path(&project);
+
+        assert_eq!(
+            run_with(
+                &root,
+                &root,
+                "application".to_owned(),
+                Vec::new(),
+                &RecordingCargo::default(),
+                &FailingRun,
+            )
+            .expect_err("runner failure should be preserved")
+            .to_string(),
+            "`cargo run` failed with status Some(1) after writing its output directly",
         );
     }
 

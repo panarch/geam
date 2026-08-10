@@ -9,7 +9,6 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::fs;
-use std::path::Path;
 use std::process::Command;
 
 const CONFIG_FILE: &str = "gleam.toml";
@@ -34,14 +33,18 @@ impl ResolvedProject {
     }
 }
 
-pub(super) fn find_project_root(start: &Path) -> Result<Utf8PathBuf, CliError> {
-    let start = Utf8PathBuf::from_path_buf(start.to_path_buf())
-        .map_err(|path| CliError::NonUtf8Path { path })?;
+pub(super) fn into_utf8_path(path: std::path::PathBuf) -> Result<Utf8PathBuf, CliError> {
+    Utf8PathBuf::from_path_buf(path).map_err(CliError::NonUtf8Path)
+}
+
+pub(super) fn find_project_root(start: &Utf8Path) -> Result<Utf8PathBuf, CliError> {
     start
         .ancestors()
         .find(|directory| directory.join(CONFIG_FILE).is_file())
         .map(Utf8Path::to_path_buf)
-        .ok_or_else(|| CliError::ProjectRootNotFound { start })
+        .ok_or_else(|| CliError::ProjectRootNotFound {
+            start: start.to_path_buf(),
+        })
 }
 
 pub(super) fn entry_module(
@@ -193,8 +196,8 @@ fn read_toml<Type: serde::de::DeserializeOwned>(
 mod tests {
     use super::{
         DependencyDownloader, ProcessDependencyDownloader, compile_resolved_project,
-        compile_resolved_project_with, entry_module, find_project_root, read_resolved_project,
-        read_resolved_project_with, should_download_dependencies,
+        compile_resolved_project_with, entry_module, find_project_root, into_utf8_path,
+        read_resolved_project, read_resolved_project_with, should_download_dependencies,
     };
     use crate::error::CliError;
     use camino::{Utf8Path, Utf8PathBuf};
@@ -232,7 +235,8 @@ mod tests {
     #[test]
     fn discovers_the_nearest_project_root() {
         let project = project("application", "1.2.3", "packages = []\n[requirements]\n");
-        let nested = project.path().join("one/two");
+        let nested = Utf8PathBuf::from_path_buf(project.path().join("one/two"))
+            .expect("temporary path should be valid UTF-8");
         fs::create_dir_all(&nested).expect("nested directory should be created");
 
         assert_eq!(
@@ -242,28 +246,29 @@ mod tests {
     }
 
     #[test]
-    fn rejects_missing_and_non_utf8_project_roots() {
+    fn rejects_missing_project_roots() {
         let directory = tempdir().expect("temporary directory should be created");
-        let error = find_project_root(directory.path()).expect_err("project root should be absent");
+        let start = utf8_path(&directory);
+        let error = find_project_root(&start).expect_err("project root should be absent");
         assert_eq!(
             std::mem::discriminant(&error),
             std::mem::discriminant(&CliError::ProjectRootNotFound {
                 start: Utf8PathBuf::new(),
             }),
         );
+    }
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::ffi::OsStringExt;
-            let path = std::path::PathBuf::from(std::ffi::OsString::from_vec(vec![0xff]));
-            let error = find_project_root(&path).expect_err("non-UTF-8 path should be rejected");
-            assert_eq!(
-                std::mem::discriminant(&error),
-                std::mem::discriminant(&CliError::NonUtf8Path {
-                    path: std::path::PathBuf::new(),
-                }),
-            );
-        }
+    #[cfg(unix)]
+    #[test]
+    fn rejects_non_utf8_os_paths() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let path = std::path::PathBuf::from(std::ffi::OsString::from_vec(vec![0xff]));
+        let error = into_utf8_path(path.clone()).expect_err("non-UTF-8 path should fail");
+        assert_eq!(
+            error.to_string(),
+            format!("path is not valid UTF-8: {path:?}")
+        );
     }
 
     #[test]

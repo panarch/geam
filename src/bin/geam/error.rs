@@ -10,8 +10,8 @@ pub(super) enum CliError {
     #[error("no gleam.toml was found at or above {start}")]
     ProjectRootNotFound { start: Utf8PathBuf },
 
-    #[error("path is not valid UTF-8: {path:?}")]
-    NonUtf8Path { path: std::path::PathBuf },
+    #[error("path is not valid UTF-8: {0:?}")]
+    NonUtf8Path(std::path::PathBuf),
 
     #[error(transparent)]
     Project(#[from] geam::ProjectError),
@@ -65,6 +65,15 @@ pub(super) enum CliError {
     )]
     MissingProviderSelection { package: String },
 
+    #[error("provider configuration {spec} is invalid: {reason}")]
+    InvalidProviderConfiguration { spec: String, reason: String },
+
+    #[error("provider configuration for Gleam package {package} was supplied more than once")]
+    DuplicateProviderConfiguration { package: String },
+
+    #[error("no selected provider accepts configuration for Gleam package {package}")]
+    UnknownProviderConfiguration { package: String },
+
     #[error("provider crate specification {spec} is invalid: {reason}")]
     InvalidCrateSpecification { spec: String, reason: String },
 
@@ -106,6 +115,12 @@ pub(super) enum CliError {
         stderr: String,
     },
 
+    #[error("`{command}` failed with status {status:?} after writing its output directly")]
+    InheritedProcessFailure {
+        command: String,
+        status: Option<i32>,
+    },
+
     #[error("Cargo metadata did not contain the candidate dependency {alias}")]
     MissingCandidateDependency { alias: String },
 
@@ -114,7 +129,4 @@ pub(super) enum CliError {
         manifest: Utf8PathBuf,
         reason: String,
     },
-
-    #[error("standalone execution is unavailable")]
-    RunnerNotPrepared,
 }

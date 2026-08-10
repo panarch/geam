@@ -1,4 +1,6 @@
 use std::fs;
+#[cfg(unix)]
+use std::process::Stdio;
 use std::process::{Command, Output};
 use tempfile::{TempDir, tempdir};
 
@@ -66,7 +68,7 @@ fn reports_project_compilation_failures_through_the_binary_boundary() {
 }
 
 #[test]
-fn prepares_pure_projects_and_keeps_run_pending() {
+fn prepares_and_runs_pure_projects_without_printing_main_results() {
     let project = gleam_project();
 
     let prepare = geam(&project, ["prepare"]);
@@ -78,18 +80,77 @@ fn prepares_pure_projects_and_keeps_run_pending() {
     assert!(project.path().join("Cargo.lock").is_file());
     assert!(project.path().join("build/geam/runner.rs").is_file());
 
-    let run = geam(
-        &project,
-        [
-            "run",
-            "--module",
-            "application",
-            "--provider-config",
-            "images=config.toml",
-        ],
+    let run = geam(&project, ["run", "--module", "application"]);
+    assert!(
+        run.status.success(),
+        "run failed: {}",
+        String::from_utf8_lossy(&run.stderr),
     );
-    assert!(!run.status.success());
-    assert!(String::from_utf8_lossy(&run.stderr).contains("standalone execution is unavailable"));
+    assert!(run.stdout.is_empty());
+    assert!(
+        run.stderr.is_empty(),
+        "run wrote unexpected stderr: {}",
+        String::from_utf8_lossy(&run.stderr),
+    );
+}
+
+#[test]
+fn streams_gleam_io_and_echo_in_source_order_before_runtime_failure() {
+    let project = io_project();
+
+    let run = geam(&project, ["run"]);
+    assert!(
+        run.status.success(),
+        "IO run failed: {}",
+        String::from_utf8_lossy(&run.stderr),
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "stdout");
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    let first = stderr
+        .find("stderr-one\n")
+        .expect("first stderr IO should be present");
+    let echo = stderr
+        .find(" middle\nNil\n")
+        .expect("echo output should be present");
+    let last = stderr
+        .find("stderr-two\n")
+        .expect("last stderr IO should be present");
+    assert!(first < echo && echo < last);
+
+    #[cfg(unix)]
+    {
+        let mut child = geam_command(&project, ["run"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("Geam CLI should start with piped output");
+        drop(child.stdout.take());
+        let failed_output = child
+            .wait_with_output()
+            .expect("Geam CLI output failure should complete");
+        assert!(!failed_output.status.success());
+        let stderr = String::from_utf8_lossy(&failed_output.stderr);
+        assert!(stderr.contains("geam runner:"));
+        assert!(stderr.contains("after writing its output directly"));
+    }
+
+    fs::write(
+        project.path().join("src/application.gleam"),
+        r#"import gleam/io
+
+pub fn main() {
+  io.print_error("before panic\n")
+  panic as "stop"
+}
+"#,
+    )
+    .expect("failing source should be written");
+    let failed = geam(&project, ["run"]);
+    assert!(!failed.status.success());
+    assert!(failed.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&failed.stderr);
+    assert!(stderr.starts_with("before panic\n"));
+    assert!(stderr.contains("stop"));
 }
 
 #[test]
@@ -175,13 +236,75 @@ fn prepares_an_independent_path_provider_through_the_generated_runner() {
             .expect("runner source should remain readable"),
         runner,
     );
+
+    fs::write(
+        project.path().join("provider.toml"),
+        r#"prefix = "sdk:"
+integer = -7
+float = 1.5
+enabled = true
+array = ["text", 1, 2.5, false, { nested = "value" }]
+
+[table]
+nested = true
+"#,
+    )
+    .expect("provider configuration should be written");
+    for _ in 0..2 {
+        let run = geam(
+            &project,
+            [
+                "run",
+                "--provider-config",
+                "provider_sdk_example=provider.toml",
+            ],
+        );
+        assert!(
+            run.status.success(),
+            "configured provider run failed: {}",
+            String::from_utf8_lossy(&run.stderr),
+        );
+        assert!(run.stdout.is_empty());
+        assert!(run.stderr.is_empty());
+    }
+
+    let missing = geam(&project, ["run"]);
+    assert!(!missing.status.success());
+    assert!(String::from_utf8_lossy(&missing.stderr).contains(
+        "could not initialize host provider component provider-sdk-example: configuration key `prefix` must be a String"
+    ));
+
+    fs::write(
+        project.path().join("invalid.toml"),
+        "prefix = \"sdk:\"\ncreated = 1979-05-27T07:32:00Z\n",
+    )
+    .expect("unsupported provider configuration should be written");
+    let invalid = geam(
+        &project,
+        [
+            "run",
+            "--provider-config",
+            "provider_sdk_example=invalid.toml",
+        ],
+    );
+    assert!(!invalid.status.success());
+    assert!(
+        String::from_utf8_lossy(&invalid.stderr)
+            .contains("TOML datetime configuration values are unsupported"),
+    );
 }
 
 fn geam<const N: usize>(directory: &TempDir, arguments: [&str; N]) -> Output {
+    geam_command(directory, arguments)
+        .output()
+        .expect("Geam CLI should start")
+}
+
+fn geam_command<const N: usize>(directory: &TempDir, arguments: [&str; N]) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_geam"));
     command.args(arguments).current_dir(directory.path());
     remove_nested_cargo_instrumentation(&mut command);
-    command.output().expect("Geam CLI should start")
+    command
 }
 
 fn remove_nested_cargo_instrumentation(command: &mut Command) {
@@ -284,6 +407,70 @@ pub fn summarize(value: String, transform: fn(String) -> String) -> Summary
 "#,
     )
     .expect("provider package source should be written");
+    project
+}
+
+fn io_project() -> TempDir {
+    let project = gleam_project();
+    fs::write(
+        project.path().join("gleam.toml"),
+        r#"name = "application"
+version = "1.0.0"
+
+[dependencies]
+gleam_stdlib = { path = "packages/gleam_stdlib" }
+"#,
+    )
+    .expect("Gleam config should be written");
+    fs::write(
+        project.path().join("manifest.toml"),
+        r#"packages = [
+  { name = "gleam_stdlib", version = "1.0.3", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/gleam_stdlib" },
+]
+
+[requirements]
+gleam_stdlib = { path = "packages/gleam_stdlib" }
+"#,
+    )
+    .expect("Gleam manifest should be written");
+    fs::write(
+        project.path().join("src/application.gleam"),
+        r#"import gleam/io
+
+pub fn main() {
+  io.print("stdout")
+  io.print_error("stderr-one\n")
+  echo Nil as "middle"
+  io.print_error("stderr-two\n")
+  Nil
+}
+"#,
+    )
+    .expect("application source should be written");
+    let package = project.path().join("packages/gleam_stdlib");
+    fs::create_dir_all(package.join("src/gleam"))
+        .expect("stdlib package source directory should be created");
+    fs::write(
+        package.join("gleam.toml"),
+        "name = \"gleam_stdlib\"\nversion = \"1.0.3\"\n",
+    )
+    .expect("stdlib package config should be written");
+    fs::write(
+        package.join("src/gleam/io.gleam"),
+        r#"@external(erlang, "gleam_stdlib", "print")
+pub fn print(output: String) -> Nil
+
+@external(erlang, "gleam_stdlib", "print_error")
+pub fn print_error(output: String) -> Nil
+
+@external(erlang, "gleam_stdlib", "println")
+pub fn println(output: String) -> Nil
+
+@external(erlang, "gleam_stdlib", "println_error")
+pub fn println_error(output: String) -> Nil
+"#,
+    )
+    .expect("stdlib IO source should be written");
     project
 }
 
