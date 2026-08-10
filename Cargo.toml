@@ -27,6 +27,7 @@ clap = { version = "4", features = ["derive"] }
 # Keep this aligned with the Gleam v1.18.1 dependency graph. geam-gleam-core
 # does not compile against ecow 0.3.0.
 ecow = "=0.2.6"
+flate2 = "1"
 gleam-core = { package = "geam-gleam-core", version = "=1.18.1-geam.2" }
 hexpm = { package = "geam-gleam-hexpm", version = "=1.18.1-geam.2" }
 half = { version = "2.7.1", default-features = false }
@@ -41,9 +42,13 @@ rand = { version = "=0.10.0", default-features = false, features = ["std", "chac
 ryu = "1"
 semver = "1"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tar = "0.4"
 thiserror = "2"
 toml = "0.9"
 unicode-segmentation = "1.13"
+ureq = { version = "3", features = ["json"] }
 vec1 = "1"
 
 [dev-dependencies]

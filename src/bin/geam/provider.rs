@@ -2,6 +2,16 @@
 mod manifest;
 #[path = "provider/metadata.rs"]
 mod metadata;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        unused_imports,
+        reason = "registry discovery is connected by the following approval stage"
+    )
+)]
+#[path = "provider/registry.rs"]
+mod registry;
 #[path = "provider/resolution.rs"]
 mod resolution;
 

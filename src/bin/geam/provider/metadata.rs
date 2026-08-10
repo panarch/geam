@@ -12,10 +12,6 @@ pub(super) struct ProviderMetadata {
 
 impl ProviderMetadata {
     pub(super) fn from_package(package: &Package) -> Result<Self, CliError> {
-        let error = |reason: String| CliError::InvalidProviderMetadata {
-            package: package.name.to_string(),
-            reason,
-        };
         let provider = package
             .metadata
             .as_object()
@@ -23,36 +19,72 @@ impl ProviderMetadata {
             .and_then(|geam| geam.as_object())
             .and_then(|geam| geam.get("provider"))
             .and_then(|provider| provider.as_object())
-            .ok_or_else(|| error("missing [package.metadata.geam.provider] table".to_owned()))?;
-        let fields = provider.keys().map(String::as_str).collect::<BTreeSet<_>>();
+            .ok_or_else(|| CliError::InvalidProviderMetadata {
+                package: package.name.to_string(),
+                reason: "missing [package.metadata.geam.provider] table".to_owned(),
+            })?;
+        Self::from_fields(
+            package.name.to_string(),
+            provider.keys().map(String::as_str).collect(),
+            provider.get("schema").and_then(|schema| schema.as_i64()),
+            provider
+                .get("gleam-package")
+                .and_then(|package| package.as_str()),
+            provider
+                .get("gleam-version")
+                .and_then(|range| range.as_str()),
+        )
+        .map_err(|reason| CliError::InvalidProviderMetadata {
+            package: package.name.to_string(),
+            reason,
+        })
+    }
+
+    pub(super) fn from_manifest(crate_name: &str, package: &toml::Table) -> Result<Self, String> {
+        let provider = package
+            .get("metadata")
+            .and_then(toml::Value::as_table)
+            .and_then(|metadata| metadata.get("geam"))
+            .and_then(toml::Value::as_table)
+            .and_then(|geam| geam.get("provider"))
+            .and_then(toml::Value::as_table)
+            .ok_or_else(|| "missing [package.metadata.geam.provider] table".to_owned())?;
+        Self::from_fields(
+            crate_name.to_owned(),
+            provider.keys().map(String::as_str).collect(),
+            provider.get("schema").and_then(toml::Value::as_integer),
+            provider.get("gleam-package").and_then(toml::Value::as_str),
+            provider.get("gleam-version").and_then(toml::Value::as_str),
+        )
+    }
+
+    fn from_fields(
+        crate_name: String,
+        fields: BTreeSet<&str>,
+        schema: Option<i64>,
+        gleam_package: Option<&str>,
+        range: Option<&str>,
+    ) -> Result<Self, String> {
         let expected = BTreeSet::from(["gleam-package", "gleam-version", "schema"]);
         if fields != expected {
-            return Err(error(format!(
+            return Err(format!(
                 "expected exactly schema, gleam-package, and gleam-version fields; found {}",
                 fields.into_iter().collect::<Vec<_>>().join(", ")
-            )));
+            ));
         }
-        let schema = provider
-            .get("schema")
-            .and_then(|schema| schema.as_u64())
-            .ok_or_else(|| error("schema must be an integer".to_owned()))?;
+        let schema = schema.ok_or_else(|| "schema must be an integer".to_owned())?;
         if schema != 1 {
-            return Err(error(format!("unsupported schema {schema}")));
+            return Err(format!("unsupported schema {schema}"));
         }
-        let gleam_package = provider
-            .get("gleam-package")
-            .and_then(|package| package.as_str())
+        let gleam_package = gleam_package
             .filter(|package| !package.is_empty())
-            .ok_or_else(|| error("gleam-package must be a non-empty string".to_owned()))?
+            .ok_or_else(|| "gleam-package must be a non-empty string".to_owned())?
             .to_owned();
-        let range = provider
-            .get("gleam-version")
-            .and_then(|range| range.as_str())
-            .ok_or_else(|| error("gleam-version must be a string".to_owned()))?;
+        let range = range.ok_or_else(|| "gleam-version must be a string".to_owned())?;
         let gleam_range = Range::new(range.to_owned())
-            .map_err(|parse| error(format!("invalid Gleam version range: {parse}")))?;
+            .map_err(|parse| format!("invalid Gleam version range: {parse}"))?;
         Ok(Self {
-            crate_name: package.name.to_string(),
+            crate_name,
             gleam_package,
             gleam_range,
         })
@@ -138,6 +170,43 @@ mod tests {
         }
     }
 
+    #[test]
+    fn parses_and_rejects_packaged_toml_metadata_through_the_same_schema() {
+        let package = packaged_table(
+            r#"
+[package]
+name = "geam-images"
+version = "1.2.3"
+
+[package.metadata.geam.provider]
+schema = 1
+gleam-package = "images"
+gleam-version = ">= 1.0.0 and < 2.0.0"
+"#,
+        );
+        let metadata = ProviderMetadata::from_manifest("geam-images", &package)
+            .expect("packaged provider metadata should parse");
+        assert_eq!(metadata.crate_name(), "geam-images");
+        assert_eq!(metadata.gleam_package(), "images");
+
+        let missing_tables = [
+            "[package]",
+            "[package]\nmetadata = 1",
+            "[package.metadata]",
+            "[package.metadata]\ngeam = 1",
+            "[package.metadata.geam]",
+            "[package.metadata.geam]\nprovider = 1",
+        ];
+        for source in missing_tables {
+            let package = packaged_table(source);
+            assert_eq!(
+                ProviderMetadata::from_manifest("geam-images", &package)
+                    .expect_err("missing provider table should fail"),
+                "missing [package.metadata.geam.provider] table",
+            );
+        }
+    }
+
     fn package_with_metadata(metadata: &str) -> cargo_metadata::Package {
         let source = format!(
             r#"{{
@@ -182,5 +251,14 @@ mod tests {
             .packages
             .pop()
             .expect("package should be present")
+    }
+
+    fn packaged_table(source: &str) -> toml::Table {
+        source
+            .parse::<toml::Table>()
+            .expect("packaged manifest fixture should parse")
+            .remove("package")
+            .and_then(|package| package.as_table().cloned())
+            .expect("packaged manifest fixture should contain [package]")
     }
 }
