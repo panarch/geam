@@ -219,10 +219,60 @@ fn download_url(crate_name: &str) -> String {
 
 fn standalone_fixture() -> TempDir {
     let fixture = tempdir().expect("temporary standalone fixture should be created");
-    copy_directory(&fixture_source(), fixture.path());
-    let geam_path = toml::Value::String(env!("CARGO_MANIFEST_DIR").to_owned()).to_string();
+    let project = fixture.path().join("project");
+    fs::create_dir_all(project.join("src")).expect("project source should be created");
+    copy_directory(
+        &fixture_source().join("providers"),
+        &fixture.path().join("providers"),
+    );
+    for package in ["catalog", "counter"] {
+        copy_directory(
+            &fixture_source().join("project/packages").join(package),
+            &project.join("packages").join(package),
+        );
+    }
     fs::write(
-        fixture.path().join("project/.cargo/config.toml"),
+        project.join("gleam.toml"),
+        r#"name = "standalone_fixture"
+version = "0.0.0"
+description = "Standalone registry integration fixture"
+licences = ["Apache-2.0"]
+
+[dependencies]
+catalog = { path = "packages/catalog" }
+counter = { path = "packages/counter" }
+"#,
+    )
+    .expect("project configuration should be written");
+    fs::write(
+        project.join("manifest.toml"),
+        r#"packages = [
+  { name = "catalog", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/catalog" },
+  { name = "counter", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/counter" },
+]
+
+[requirements]
+catalog = { path = "packages/catalog" }
+counter = { path = "packages/counter" }
+"#,
+    )
+    .expect("project manifest should be written");
+    fs::write(
+        project.join("src/standalone_fixture.gleam"),
+        r#"import catalog
+import counter
+
+pub fn main() {
+  let _ = catalog.new()
+  counter.next("count")
+}
+"#,
+    )
+    .expect("project source should be written");
+    let geam_path = toml::Value::String(env!("CARGO_MANIFEST_DIR").to_owned()).to_string();
+    fs::create_dir_all(project.join(".cargo")).expect("project Cargo config should be created");
+    fs::write(
+        project.join(".cargo/config.toml"),
         format!(
             "[patch.crates-io]\ngeam = {{ path = {geam_path} }}\ngeam-catalog = {{ path = \"../providers/geam-catalog\" }}\ngeam-counter = {{ path = \"../providers/geam-counter\" }}\nstandalone-catalog-domain = {{ path = \"../providers/catalog-domain\" }}\n\n[net]\noffline = true\n",
         ),

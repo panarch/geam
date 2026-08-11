@@ -270,6 +270,10 @@ jobs:
       - name: Fetch Rust dependencies
         run: cargo fetch --locked
 
+      - name: Download standalone Gleam dependencies
+        working-directory: tests/fixtures/standalone_cli/project
+        run: gleam deps download
+
       - name: Run standalone CLI integration
         run: cargo test --test standalone_cli -- --ignored
 

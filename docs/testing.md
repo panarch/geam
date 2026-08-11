@@ -150,18 +150,23 @@ Gleam CLI. CI runs it as a separate provider SDK boundary.
 
 The tracked `tests/fixtures/standalone_cli` fixture verifies the complete CLI
 assembly boundary. Its Gleam project combines a Pure Gleam path package,
-unchanged stdlib and JSON source, and two provider-backed path packages. The
-independent Rust providers exercise state, callbacks, external storage, and a
-compound return through the generated static profile. Registry owner tests feed
-real `cargo package` archives through a fake bounded registry, checksum and
-metadata verification, approval, and registry-shaped manifest generation.
-Fixture-only Cargo patches then keep acquisition and runner builds local.
+version-locked stdlib, JSON, and Time dependencies, and two provider-backed path
+packages. Official package source is downloaded outside Git, while the local
+packages remain visible test-owned fixtures. The independent Rust providers
+exercise state, callbacks, external storage, and a compound return through the
+generated static profile. Registry owner tests feed real `cargo package`
+archives through a fake bounded registry, checksum and metadata verification,
+approval, and registry-shaped manifest generation. Fixture-only Cargo patches
+then keep provider acquisition and runner builds local.
 
 The normal suite runs CLI owner and boundary tests without network access or an
 installed Gleam CLI. The full generated runner is an ignored target because it
 performs its own Cargo build:
 
 ```sh
+cd tests/fixtures/standalone_cli/project
+gleam deps download
+cd ../../../..
 cargo test --test standalone_cli -- --ignored
 ```
 

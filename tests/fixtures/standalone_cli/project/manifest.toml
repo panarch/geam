@@ -1,16 +1,17 @@
 packages = [
   { name = "catalog", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/catalog" },
   { name = "counter", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/counter" },
-  { name = "gleam_json", version = "3.1.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], source = "local", path = "packages/gleam_json" },
-  { name = "gleam_stdlib", version = "1.0.3", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/gleam_stdlib" },
-  { name = "gleam_time", version = "1.8.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], source = "local", path = "packages/gleam_time" },
   { name = "pure_labels", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/pure_labels" },
+  { name = "gleam_json", version = "3.1.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "gleam_json", source = "hex", outer_checksum = "44FDAA8847BE8FC48CA7A1C089706BD54BADCC4C45B237A992EDDF9F2CDB2836" },
+  { name = "gleam_stdlib", version = "1.0.3", build_tools = ["gleam"], requirements = [], otp_app = "gleam_stdlib", source = "hex", outer_checksum = "1F543AFBA5D33DA493E6087F4E4C4F20D899411343512686C98A8ABB2963CF22" },
+  { name = "gleam_time", version = "1.8.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "gleam_time", source = "hex", outer_checksum = "533D8723774D61AD4998324F5DD1DABDCDBFABAFB9E87CB5D03C6955448FC97D" },
 ]
 
 [requirements]
 catalog = { path = "packages/catalog" }
 counter = { path = "packages/counter" }
-gleam_json = { path = "packages/gleam_json" }
-gleam_stdlib = { path = "packages/gleam_stdlib" }
-gleam_time = { path = "packages/gleam_time" }
 pure_labels = { path = "packages/pure_labels" }
+
+gleam_json = { version = ">= 3.1.0 and < 3.1.1" }
+gleam_stdlib = { version = ">= 1.0.3 and < 1.0.4" }
+gleam_time = { version = ">= 1.8.0 and < 1.8.1" }
