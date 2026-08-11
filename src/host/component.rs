@@ -16,7 +16,10 @@ pub trait HostProviderComponent: Send + Sync + 'static {
 
     /// Caller-owned mutable state used while executing this component.
     type RunState: 'static;
+}
 
+/// Initializes one provider component from explicit read-only configuration.
+pub trait HostProviderComponentInitialization: HostProviderComponent {
     /// Initializes caller-owned run state from explicit component configuration.
     fn initialize(
         configuration: &HostProviderConfiguration,
@@ -85,8 +88,8 @@ impl std::error::Error for HostProviderInitializationError {}
 #[cfg(test)]
 mod tests {
     use super::{
-        HostComponentProfile, HostProviderComponent, HostProviderConfiguration,
-        HostProviderInitializationError,
+        HostComponentProfile, HostProviderComponent, HostProviderComponentInitialization,
+        HostProviderConfiguration, HostProviderInitializationError,
     };
     use crate::host::HostProfile;
 
@@ -109,7 +112,9 @@ mod tests {
         const ID: &'static str = "first";
         type Stores = Vec<u8>;
         type RunState = String;
+    }
 
+    impl HostProviderComponentInitialization for FirstComponent {
         fn initialize(
             _configuration: &HostProviderConfiguration,
         ) -> Result<Self::RunState, HostProviderInitializationError> {
@@ -121,7 +126,9 @@ mod tests {
         const ID: &'static str = "second";
         type Stores = Vec<u16>;
         type RunState = usize;
+    }
 
+    impl HostProviderComponentInitialization for SecondComponent {
         fn initialize(
             _configuration: &HostProviderConfiguration,
         ) -> Result<Self::RunState, HostProviderInitializationError> {

@@ -1,8 +1,9 @@
 use ecow::EcoString;
 use geam::{
     HostCall, HostCallCompletion, HostCallError, HostComponentProfile, HostProvider,
-    HostProviderComponent, HostProviderComponentRegistration, HostProviderConfiguration,
-    HostProviderInitializationError, HostProviderModule, HostRegistrationError,
+    HostProviderComponent, HostProviderComponentInitialization, HostProviderComponentRegistration,
+    HostProviderConfiguration, HostProviderInitializationError, HostProviderModule,
+    HostRegistrationError,
 };
 
 pub struct Component;
@@ -20,7 +21,9 @@ impl HostProviderComponent for Component {
     const ID: &'static str = "geam-counter";
     type Stores = Stores;
     type RunState = RunState;
+}
 
+impl HostProviderComponentInitialization for Component {
     fn initialize(
         configuration: &HostProviderConfiguration,
     ) -> Result<Self::RunState, HostProviderInitializationError> {

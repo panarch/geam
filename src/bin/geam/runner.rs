@@ -205,7 +205,7 @@ fn render_source(provider_aliases: &[String]) -> String {
         .iter()
         .map(|alias| {
             format!(
-                "    let state_{alias} = <{alias}::Component as geam::HostProviderComponent>::initialize(&configuration_{alias})?;\n"
+                "    let state_{alias} = <{alias}::Component as geam::HostProviderComponentInitialization>::initialize(&configuration_{alias})?;\n"
             )
         })
         .collect::<String>();

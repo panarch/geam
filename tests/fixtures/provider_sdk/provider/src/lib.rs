@@ -6,9 +6,9 @@ use geam::{
     HostCustomFieldListEnd, HostCustomIndex0, HostCustomSchema, HostCustomType, HostExternal,
     HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
     HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostFunctionType,
-    HostListType, HostProvider, HostProviderComponent, HostProviderComponentRegistration,
-    HostProviderConfiguration, HostProviderInitializationError, HostProviderModule,
-    HostRegistrationError, HostTypeIndex0, HostTypeList, HostTypeListEnd,
+    HostListType, HostProvider, HostProviderComponent, HostProviderComponentInitialization,
+    HostProviderComponentRegistration, HostProviderConfiguration, HostProviderInitializationError,
+    HostProviderModule, HostRegistrationError, HostTypeIndex0, HostTypeList, HostTypeListEnd,
 };
 use num_bigint::BigInt;
 use provider_sdk_example_domain::Catalog;
@@ -54,7 +54,9 @@ impl HostProviderComponent for Component {
     const ID: &'static str = "provider-sdk-example";
     type Stores = Stores;
     type RunState = RunState;
+}
 
+impl HostProviderComponentInitialization for Component {
     fn initialize(
         configuration: &HostProviderConfiguration,
     ) -> Result<Self::RunState, HostProviderInitializationError> {
@@ -292,7 +294,10 @@ where
 mod tests {
     use super::{Component, RunState};
     use ecow::EcoString;
-    use geam::{HostProviderComponent, HostProviderConfiguration, HostProviderInitializationError};
+    use geam::{
+        HostProviderComponentInitialization, HostProviderConfiguration,
+        HostProviderInitializationError,
+    };
     use std::collections::BTreeMap;
 
     #[test]
