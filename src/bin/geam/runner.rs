@@ -160,63 +160,187 @@ fn write_generated_source(path: &Utf8Path, source: String) -> Result<(), CliErro
     })
 }
 
-fn render_source(provider_aliases: &[String]) -> String {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RunnerComponent {
+    field: String,
+    type_path: String,
+    initialization: ComponentInitialization,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ComponentInitialization {
+    Stdlib,
+    Unit,
+    SystemTime,
+    Configured { package: String },
+}
+
+impl RunnerComponent {
+    fn stdlib() -> Self {
+        Self {
+            field: "stdlib".to_owned(),
+            type_path: "geam::gleam_stdlib::Component<CliIoSink>".to_owned(),
+            initialization: ComponentInitialization::Stdlib,
+        }
+    }
+
+    fn json() -> Self {
+        Self {
+            field: "json".to_owned(),
+            type_path: "geam::gleam_json::Component".to_owned(),
+            initialization: ComponentInitialization::Unit,
+        }
+    }
+
+    fn time() -> Self {
+        Self {
+            field: "time".to_owned(),
+            type_path: "geam::gleam_time::Component".to_owned(),
+            initialization: ComponentInitialization::SystemTime,
+        }
+    }
+
+    fn external(alias: String) -> Self {
+        Self {
+            field: alias.clone(),
+            type_path: format!("{alias}::Component"),
+            initialization: ComponentInitialization::Configured {
+                package: provider_package(&alias).to_owned(),
+            },
+        }
+    }
+
+    fn store_field(&self) -> String {
+        format!(
+            "    {}: <{} as geam::HostProviderComponent>::Stores,\n",
+            self.field, self.type_path,
+        )
+    }
+
+    fn state_field(&self) -> String {
+        format!(
+            "    {}: <{} as geam::HostProviderComponent>::RunState,\n",
+            self.field, self.type_path,
+        )
+    }
+
+    fn profile(&self) -> String {
+        format!(
+            "\nimpl geam::HostComponentProfile<{type_path}> for Profile {{\n    fn component_stores(stores: &Self::ExternalStores) -> &<{type_path} as geam::HostProviderComponent>::Stores {{\n        &stores.{field}\n    }}\n\n    fn component_state(state: &mut Self::RunState) -> &mut <{type_path} as geam::HostProviderComponent>::RunState {{\n        &mut state.{field}\n    }}\n}}\n",
+            type_path = self.type_path,
+            field = self.field,
+        )
+    }
+
+    fn registration(&self) -> String {
+        format!(
+            "    providers.extend(<{} as geam::HostProviderComponentRegistration<Profile>>::providers()?);\n",
+            self.type_path,
+        )
+    }
+
+    fn configuration_selection(&self) -> String {
+        match &self.initialization {
+            ComponentInitialization::Configured { package } => format!(
+                "    let configuration_{field} = configurations.remove(\"{package}\").unwrap_or_else(geam::HostProviderConfiguration::empty);\n",
+                field = self.field,
+            ),
+            ComponentInitialization::Stdlib
+            | ComponentInitialization::Unit
+            | ComponentInitialization::SystemTime => String::new(),
+        }
+    }
+
+    fn configured_initialization(&self) -> String {
+        match &self.initialization {
+            ComponentInitialization::Configured { .. } => format!(
+                "    let state_{field} = <{type_path} as geam::HostProviderComponentInitialization>::initialize(&configuration_{field})?;\n",
+                field = self.field,
+                type_path = self.type_path,
+            ),
+            ComponentInitialization::Stdlib
+            | ComponentInitialization::Unit
+            | ComponentInitialization::SystemTime => String::new(),
+        }
+    }
+
+    fn capability_initialization(&self) -> String {
+        let value = match &self.initialization {
+            ComponentInitialization::Stdlib => {
+                "geam::gleam_stdlib::GleamStdlibRunState::try_from_entropy_with_io(output.io_sink())?".to_owned()
+            }
+            ComponentInitialization::Unit => "()".to_owned(),
+            ComponentInitialization::SystemTime => {
+                "geam::gleam_time::SystemTimeSource".to_owned()
+            }
+            ComponentInitialization::Configured { .. } => return String::new(),
+        };
+        format!("    let state_{} = {value};\n", self.field)
+    }
+
+    fn state_initializer(&self) -> String {
+        format!("        {}: state_{},\n", self.field, self.field)
+    }
+}
+
+fn runner_components(provider_aliases: &[String]) -> Vec<RunnerComponent> {
     let mut provider_aliases = provider_aliases.to_vec();
     provider_aliases.sort();
     provider_aliases.dedup();
-    let store_fields = provider_aliases
+
+    [
+        RunnerComponent::stdlib(),
+        RunnerComponent::json(),
+        RunnerComponent::time(),
+    ]
+    .into_iter()
+    .chain(provider_aliases.into_iter().map(RunnerComponent::external))
+    .collect()
+}
+
+fn render_source(provider_aliases: &[String]) -> String {
+    let components = runner_components(provider_aliases);
+    let store_fields = components
         .iter()
-        .map(|alias| {
-            format!("    {alias}: <{alias}::Component as geam::HostProviderComponent>::Stores,\n")
-        })
+        .map(RunnerComponent::store_field)
         .collect::<String>();
-    let state_fields = provider_aliases
+    let state_fields = components
         .iter()
-        .map(|alias| {
-            format!("    {alias}: <{alias}::Component as geam::HostProviderComponent>::RunState,\n")
-        })
+        .map(RunnerComponent::state_field)
         .collect::<String>();
-    let component_profiles = provider_aliases
+    let component_profiles = components
         .iter()
-        .map(|alias| {
-            format!(
-                "\nimpl geam::HostComponentProfile<{alias}::Component> for Profile {{\n    fn component_stores(stores: &Self::ExternalStores) -> &<{alias}::Component as geam::HostProviderComponent>::Stores {{\n        &stores.{alias}\n    }}\n\n    fn component_state(state: &mut Self::RunState) -> &mut <{alias}::Component as geam::HostProviderComponent>::RunState {{\n        &mut state.{alias}\n    }}\n}}\n"
-            )
-        })
+        .map(RunnerComponent::profile)
         .collect::<String>();
-    let component_registrations = provider_aliases
+    let component_registrations = components
         .iter()
-        .map(|alias| {
-            format!(
-                "    providers.extend(<{alias}::Component as geam::HostProviderComponentRegistration<Profile>>::providers()?);\n"
-            )
-        })
+        .map(RunnerComponent::registration)
         .collect::<String>();
-    let configuration_selections = provider_aliases
+    let configuration_selections = components
         .iter()
-        .map(|alias| {
-            let package = provider_package(alias);
-            format!(
-                "    let configuration_{alias} = configurations.remove(\"{package}\").unwrap_or_else(geam::HostProviderConfiguration::empty);\n"
-            )
-        })
+        .map(RunnerComponent::configuration_selection)
         .collect::<String>();
-    let component_initializers = provider_aliases
+    let configured_initializations = components
         .iter()
-        .map(|alias| {
-            format!(
-                "    let state_{alias} = <{alias}::Component as geam::HostProviderComponentInitialization>::initialize(&configuration_{alias})?;\n"
-            )
-        })
+        .map(RunnerComponent::configured_initialization)
         .collect::<String>();
-    let state_initializers = provider_aliases
+    let capability_initializations = components
         .iter()
-        .map(|alias| format!("        {alias}: state_{alias},\n"))
+        .map(RunnerComponent::capability_initialization)
         .collect::<String>();
-    let configuration_mutability = if provider_aliases.is_empty() {
-        ""
-    } else {
+    let state_initializers = components
+        .iter()
+        .map(RunnerComponent::state_initializer)
+        .collect::<String>();
+    let configuration_mutability = if components.iter().any(|component| {
+        matches!(
+            component.initialization,
+            ComponentInitialization::Configured { .. }
+        )
+    }) {
         "mut "
+    } else {
+        ""
     };
 
     RUNNER_TEMPLATE
@@ -225,7 +349,14 @@ fn render_source(provider_aliases: &[String]) -> String {
         .replace("__COMPONENT_PROFILES__", &component_profiles)
         .replace("__COMPONENT_REGISTRATIONS__", &component_registrations)
         .replace("__CONFIGURATION_SELECTIONS__", &configuration_selections)
-        .replace("__COMPONENT_INITIALIZERS__", &component_initializers)
+        .replace(
+            "__CONFIGURED_INITIALIZATIONS__",
+            &configured_initializations,
+        )
+        .replace(
+            "__CAPABILITY_INITIALIZATIONS__",
+            &capability_initializations,
+        )
         .replace("__STATE_INITIALIZERS__", &state_initializers)
         .replace("__CONFIGURATION_MUTABILITY__", configuration_mutability)
 }
@@ -238,15 +369,9 @@ const RUNNER_TEMPLATE: &str = r#"// Generated by Geam. Do not edit.
 
 #[derive(Default)]
 struct Stores {
-    stdlib: <geam::gleam_stdlib::Component<CliIoSink> as geam::HostProviderComponent>::Stores,
-    json: <geam::gleam_json::Component as geam::HostProviderComponent>::Stores,
-    time: <geam::gleam_time::Component as geam::HostProviderComponent>::Stores,
 __STORE_FIELDS__}
 
 struct RunState {
-    stdlib: <geam::gleam_stdlib::Component<CliIoSink> as geam::HostProviderComponent>::RunState,
-    json: <geam::gleam_json::Component as geam::HostProviderComponent>::RunState,
-    time: <geam::gleam_time::Component as geam::HostProviderComponent>::RunState,
 __STATE_FIELDS__}
 
 struct Profile;
@@ -256,48 +381,18 @@ impl geam::HostProfile for Profile {
     type ExternalStores = Stores;
 }
 
-impl geam::HostComponentProfile<geam::gleam_stdlib::Component<CliIoSink>> for Profile {
-    fn component_stores(stores: &Self::ExternalStores) -> &<geam::gleam_stdlib::Component<CliIoSink> as geam::HostProviderComponent>::Stores {
-        &stores.stdlib
-    }
-
-    fn component_state(state: &mut Self::RunState) -> &mut <geam::gleam_stdlib::Component<CliIoSink> as geam::HostProviderComponent>::RunState {
-        &mut state.stdlib
-    }
-}
+__COMPONENT_PROFILES__
 
 impl geam::gleam_stdlib::GleamStdlibHostProfile for Profile {
     type Io = CliIoSink;
 }
 
-impl geam::HostComponentProfile<geam::gleam_json::Component> for Profile {
-    fn component_stores(stores: &Self::ExternalStores) -> &<geam::gleam_json::Component as geam::HostProviderComponent>::Stores {
-        &stores.json
-    }
-
-    fn component_state(state: &mut Self::RunState) -> &mut <geam::gleam_json::Component as geam::HostProviderComponent>::RunState {
-        &mut state.json
-    }
-}
-
-impl geam::HostComponentProfile<geam::gleam_time::Component> for Profile {
-    fn component_stores(stores: &Self::ExternalStores) -> &<geam::gleam_time::Component as geam::HostProviderComponent>::Stores {
-        &stores.time
-    }
-
-    fn component_state(state: &mut Self::RunState) -> &mut <geam::gleam_time::Component as geam::HostProviderComponent>::RunState {
-        &mut state.time
-    }
-}
-
 impl geam::gleam_time::GleamTimeHostProfile for Profile {
     type Source = geam::gleam_time::SystemTimeSource;
 }
-__COMPONENT_PROFILES__
+
 fn host_providers() -> Result<geam::HostProviderSet<Profile>, geam::HostRegistrationError> {
-    let mut providers = geam::gleam_stdlib::host_providers::<Profile>()?;
-    providers.extend(geam::gleam_json::host_providers::<Profile>()?);
-    providers.extend(geam::gleam_time::host_providers::<Profile>()?);
+    let mut providers = Vec::new();
 __COMPONENT_REGISTRATIONS__    geam::HostProviderSet::with_providers(Vec::<geam::HostModule<Profile>>::new(), providers)
 }
 
@@ -318,12 +413,9 @@ fn run_project(
 __CONFIGURATION_SELECTIONS__    if let Some(package) = configurations.keys().next() {
         return Err(invalid_data(format!("no selected provider accepts configuration for Gleam package {package}")).into());
     }
-__COMPONENT_INITIALIZERS__    let output = SharedOutput::new();
-    let stdlib = geam::gleam_stdlib::GleamStdlibRunState::try_from_entropy_with_io(output.io_sink())?;
+__CONFIGURED_INITIALIZATIONS__    let output = SharedOutput::new();
+__CAPABILITY_INITIALIZATIONS__
     let mut state = RunState {
-        stdlib,
-        json: (),
-        time: geam::gleam_time::SystemTimeSource,
 __STATE_INITIALIZERS__    };
     let plan = geam::plan_host_program(typed)?;
     let execution = geam::HostedExecution::try_from_module_plan(plan)?;
