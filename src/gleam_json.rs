@@ -8,9 +8,12 @@ use self::function::{
 };
 use self::schema::{DecodeConstructions, Json, JsonDynamicResult, JsonList, ObjectEntries};
 use crate::gleam_stdlib::{
-    GleamStdlibHostProfile, GleamStdlibRunState, GleamStdlibStores, IoOutput,
+    Component as GleamStdlibComponent, GleamStdlibHostProfile, GleamStdlibRunState,
+    GleamStdlibStores, IoOutput,
 };
-use crate::{BitArrayValue, HostProfile, HostProviderModule, HostRegistrationError};
+use crate::{
+    BitArrayValue, HostComponentProfile, HostProfile, HostProviderModule, HostRegistrationError,
+};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -42,20 +45,18 @@ impl HostProfile for GleamJsonProfile {
     type ExternalStores = GleamJsonProfileStores;
 }
 
-impl GleamStdlibHostProfile for GleamJsonProfile {
-    type Io = Vec<IoOutput>;
-
-    fn gleam_stdlib_stores(stores: &Self::ExternalStores) -> &GleamStdlibStores {
+impl HostComponentProfile<GleamStdlibComponent> for GleamJsonProfile {
+    fn component_stores(stores: &Self::ExternalStores) -> &GleamStdlibStores {
         &stores.stdlib
     }
 
-    fn gleam_stdlib_run_state(state: &mut Self::RunState) -> &mut GleamStdlibRunState {
+    fn component_state(state: &mut Self::RunState) -> &mut GleamStdlibRunState {
         state
     }
+}
 
-    fn gleam_stdlib_io(state: &mut Self::RunState) -> &mut Self::Io {
-        <crate::gleam_stdlib::GleamStdlibProfile as GleamStdlibHostProfile>::gleam_stdlib_io(state)
-    }
+impl GleamStdlibHostProfile for GleamJsonProfile {
+    type Io = Vec<IoOutput>;
 }
 
 impl GleamJsonHostProfile for GleamJsonProfile {

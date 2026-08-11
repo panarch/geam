@@ -54,6 +54,9 @@ fn renders_static_profiles_and_initialization_in_sorted_component_order() {
                 .expect("zeta should render"),
     );
     assert!(source.contains("impl geam::gleam_stdlib::GleamStdlibHostProfile for Profile"));
+    assert!(source.contains(
+        "impl geam::HostComponentProfile<geam::gleam_stdlib::Component<CliIoSink>> for Profile"
+    ));
     assert!(source.contains("impl geam::gleam_json::GleamJsonHostProfile for Profile"));
     assert!(source.contains("impl geam::gleam_time::GleamTimeHostProfile for Profile"));
     assert!(source.contains(
@@ -69,10 +72,9 @@ fn renders_static_profiles_and_initialization_in_sorted_component_order() {
         .find("let state_geam_provider_zeta")
         .expect("zeta initializer should render");
     assert!(alpha < zeta);
-    assert!(
-        source
-            .contains("let stdlib = geam::gleam_stdlib::GleamStdlibRunState::try_from_entropy()?;")
-    );
+    assert!(source.contains(
+        "let stdlib = geam::gleam_stdlib::GleamStdlibRunState::try_from_entropy_with_io(output.io_sink())?;"
+    ));
     assert!(source.contains("let execution_result = execution.run_main(&mut state, &mut echo);"));
     assert_eq!(
         source,

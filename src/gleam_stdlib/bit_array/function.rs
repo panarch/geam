@@ -5,7 +5,7 @@ pub(super) use self::codec::{base16_decode, base16_encode, base64_encode, decode
 pub(super) use self::slice::slice;
 
 use super::schema::IntPair;
-use crate::gleam_stdlib::GleamStdlibHostProfile;
+use crate::gleam_stdlib::{GleamStdlibHostProfile, GleamStdlibRunState, stdlib_state};
 use crate::{
     BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostFailure, HostList, HostProvider,
 };
@@ -21,10 +21,10 @@ impl<Profile> HostProvider<Profile> for BitArrayProvider<Profile>
 where
     Profile: GleamStdlibHostProfile,
 {
-    type State = Profile::RunState;
+    type State = GleamStdlibRunState<Profile::Io>;
 
     fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        state
+        stdlib_state::<Profile>(state)
     }
 }
 

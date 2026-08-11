@@ -1,5 +1,5 @@
 use super::schema::StringTreeSchema;
-use crate::gleam_stdlib::GleamStdlibHostProfile;
+use crate::gleam_stdlib::{GleamStdlibHostProfile, stdlib_stores};
 use crate::{
     HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalStorage,
     HostExternalStore,
@@ -164,7 +164,7 @@ where
     type Payload = StringTreePayload;
 
     fn store(stores: &Profile::ExternalStores) -> &HostExternalStore<Self::Payload> {
-        &Profile::gleam_stdlib_stores(stores).string_tree.values
+        &stdlib_stores::<Profile>(stores).string_tree.values
     }
 
     fn source_equal(

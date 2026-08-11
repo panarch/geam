@@ -4,7 +4,7 @@ use super::schema::{
     CodeunitPair, PercentDecodeError, PercentDecodeOk, PercentDecodeResult, QueryConstructions,
     QueryError, QueryOk, QueryPairIndex, QueryPairsIndex, QueryResult,
 };
-use crate::gleam_stdlib::GleamStdlibHostProfile;
+use crate::gleam_stdlib::{GleamStdlibHostProfile, GleamStdlibRunState, stdlib_state};
 use crate::{
     HostCall, HostCallCompletion, HostCallError, HostConstructions, HostFailure, HostProvider,
 };
@@ -19,10 +19,10 @@ impl<Profile> HostProvider<Profile> for UriProvider<Profile>
 where
     Profile: GleamStdlibHostProfile,
 {
-    type State = Profile::RunState;
+    type State = GleamStdlibRunState<Profile::Io>;
 
     fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        state
+        stdlib_state::<Profile>(state)
     }
 }
 

@@ -1,11 +1,12 @@
 use ecow::EcoString;
 use geam::gleam_stdlib::{
-    GleamStdlibHostProfile, GleamStdlibProfile, GleamStdlibRunState, GleamStdlibStores, IoOutput,
-    IoSink, IoStream, host_providers,
+    Component, GleamStdlibHostProfile, GleamStdlibProfile, GleamStdlibRunState, GleamStdlibStores,
+    IoOutput, IoSink, IoStream, host_providers,
 };
 use geam::{
-    EchoOutput, EchoSink, ExecutionError, HostModule, HostProfile, HostProviderSet,
-    HostedExecution, PanicKind, PanicMessage, Value, compile_typed_host_project, plan_host_program,
+    EchoOutput, EchoSink, ExecutionError, HostComponentProfile, HostModule, HostProfile,
+    HostProviderSet, HostedExecution, PanicKind, PanicMessage, Value, compile_typed_host_project,
+    plan_host_program,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -95,10 +96,12 @@ fn preserves_io_and_echo_order_before_a_later_panic() {
     let execution = execution::<RecordingProfile>("gleam_io_order_and_panic");
     let events = Rc::new(RefCell::new(Vec::new()));
     let mut state = RecordingRunState {
-        stdlib: GleamStdlibRunState::from_seed([9; 32]),
-        io: RecordingIoSink {
-            events: Rc::clone(&events),
-        },
+        stdlib: GleamStdlibRunState::from_seed_with_io(
+            [9; 32],
+            RecordingIoSink {
+                events: Rc::clone(&events),
+            },
+        ),
     };
     let mut echo = RecordingEchoSink {
         events: Rc::clone(&events),
@@ -167,8 +170,7 @@ fn assert_outputs<'expected>(
 struct RecordingProfile;
 
 struct RecordingRunState {
-    stdlib: GleamStdlibRunState,
-    io: RecordingIoSink,
+    stdlib: GleamStdlibRunState<RecordingIoSink>,
 }
 
 #[derive(Default)]
@@ -198,20 +200,18 @@ impl HostProfile for RecordingProfile {
     type ExternalStores = RecordingStores;
 }
 
-impl GleamStdlibHostProfile for RecordingProfile {
-    type Io = RecordingIoSink;
-
-    fn gleam_stdlib_stores(stores: &Self::ExternalStores) -> &GleamStdlibStores {
+impl HostComponentProfile<Component<RecordingIoSink>> for RecordingProfile {
+    fn component_stores(stores: &Self::ExternalStores) -> &GleamStdlibStores {
         &stores.stdlib
     }
 
-    fn gleam_stdlib_run_state(state: &mut Self::RunState) -> &mut GleamStdlibRunState {
+    fn component_state(state: &mut Self::RunState) -> &mut GleamStdlibRunState<RecordingIoSink> {
         &mut state.stdlib
     }
+}
 
-    fn gleam_stdlib_io(state: &mut Self::RunState) -> &mut Self::Io {
-        &mut state.io
-    }
+impl GleamStdlibHostProfile for RecordingProfile {
+    type Io = RecordingIoSink;
 }
 
 impl IoSink for RecordingIoSink {

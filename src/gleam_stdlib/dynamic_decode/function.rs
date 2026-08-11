@@ -10,6 +10,7 @@ pub(super) use scalar::{
 
 use crate::gleam_stdlib::{
     DictExternalStorage, DictSchema, DynamicExternalStorage, DynamicSchema, GleamStdlibHostProfile,
+    GleamStdlibRunState, stdlib_state,
 };
 use crate::{HostExternalBinding, HostProvider};
 use std::marker::PhantomData;
@@ -20,10 +21,10 @@ impl<Profile> HostProvider<Profile> for DynamicDecodeProvider<Profile>
 where
     Profile: GleamStdlibHostProfile,
 {
-    type State = Profile::RunState;
+    type State = GleamStdlibRunState<Profile::Io>;
 
     fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        state
+        stdlib_state::<Profile>(state)
     }
 }
 

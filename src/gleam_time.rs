@@ -4,9 +4,12 @@ mod timestamp;
 
 pub use self::source::SystemTimeSource;
 use crate::gleam_stdlib::{
-    GleamStdlibHostProfile, GleamStdlibProfile, GleamStdlibRunState, GleamStdlibStores, IoOutput,
+    Component as GleamStdlibComponent, GleamStdlibHostProfile, GleamStdlibRunState,
+    GleamStdlibStores, IoOutput,
 };
-use crate::{HostProfile, HostProvider, HostProviderModule, HostRegistrationError};
+use crate::{
+    HostComponentProfile, HostProfile, HostProvider, HostProviderModule, HostRegistrationError,
+};
 use std::marker::PhantomData;
 use std::time::SystemTime;
 
@@ -73,23 +76,24 @@ where
     type ExternalStores = GleamStdlibStores;
 }
 
+impl<Source> HostComponentProfile<GleamStdlibComponent> for GleamTimeProfile<Source>
+where
+    Source: TimeSource,
+{
+    fn component_stores(stores: &Self::ExternalStores) -> &GleamStdlibStores {
+        stores
+    }
+
+    fn component_state(state: &mut Self::RunState) -> &mut GleamStdlibRunState {
+        &mut state.stdlib
+    }
+}
+
 impl<Source> GleamStdlibHostProfile for GleamTimeProfile<Source>
 where
     Source: TimeSource,
 {
     type Io = Vec<IoOutput>;
-
-    fn gleam_stdlib_stores(stores: &Self::ExternalStores) -> &GleamStdlibStores {
-        stores
-    }
-
-    fn gleam_stdlib_run_state(state: &mut Self::RunState) -> &mut GleamStdlibRunState {
-        &mut state.stdlib
-    }
-
-    fn gleam_stdlib_io(state: &mut Self::RunState) -> &mut Self::Io {
-        GleamStdlibProfile::gleam_stdlib_io(&mut state.stdlib)
-    }
 }
 
 impl<Source> GleamTimeHostProfile for GleamTimeProfile<Source>

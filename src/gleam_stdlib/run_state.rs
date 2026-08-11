@@ -6,9 +6,9 @@ use std::fmt::{self, Display, Formatter};
 use super::IoOutput;
 
 /// Caller-owned mutable state used by the official Gleam standard library.
-pub struct GleamStdlibRunState {
+pub struct GleamStdlibRunState<Io = Vec<IoOutput>> {
     random: ChaCha12Rng,
-    io_outputs: Vec<IoOutput>,
+    io: Io,
 }
 
 /// Failure to initialize standard-library run state from system entropy.
@@ -20,25 +20,37 @@ pub struct GleamStdlibRunStateError {
 impl GleamStdlibRunState {
     /// Creates reproducible standard-library state from an explicit seed.
     pub fn from_seed(seed: [u8; 32]) -> Self {
-        Self {
-            random: ChaCha12Rng::from_seed(seed),
-            io_outputs: Vec::new(),
-        }
+        Self::from_seed_with_io(seed, Vec::new())
     }
 
     /// Creates standard-library state from the operating system random source.
     pub fn try_from_entropy() -> Result<Self, GleamStdlibRunStateError> {
-        Self::try_from_seed_source(|seed| SysRng.try_fill_bytes(seed))
+        Self::try_from_entropy_with_io(Vec::new())
     }
 
     /// Returns the standard-library IO events collected by this run state.
     pub fn io_outputs(&self) -> &[IoOutput] {
-        &self.io_outputs
+        &self.io
     }
 
     /// Takes all collected standard-library IO events, leaving the state empty.
     pub fn take_io_outputs(&mut self) -> Vec<IoOutput> {
-        std::mem::take(&mut self.io_outputs)
+        std::mem::take(&mut self.io)
+    }
+}
+
+impl<Io> GleamStdlibRunState<Io> {
+    /// Creates reproducible standard-library state with a caller-owned IO sink.
+    pub fn from_seed_with_io(seed: [u8; 32], io: Io) -> Self {
+        Self {
+            random: ChaCha12Rng::from_seed(seed),
+            io,
+        }
+    }
+
+    /// Creates standard-library state from system entropy with a caller-owned IO sink.
+    pub fn try_from_entropy_with_io(io: Io) -> Result<Self, GleamStdlibRunStateError> {
+        Self::try_from_seed_source(io, |seed| SysRng.try_fill_bytes(seed))
     }
 
     pub(super) fn random_float(&mut self) -> f64 {
@@ -47,11 +59,12 @@ impl GleamStdlibRunState {
         ((self.random.next_u64() >> 11) as f64) * SCALE
     }
 
-    pub(super) fn io_sink(&mut self) -> &mut Vec<IoOutput> {
-        &mut self.io_outputs
+    pub(super) fn io_sink(&mut self) -> &mut Io {
+        &mut self.io
     }
 
     fn try_from_seed_source<Error>(
+        io: Io,
         fill: impl FnOnce(&mut [u8; 32]) -> Result<(), Error>,
     ) -> Result<Self, GleamStdlibRunStateError>
     where
@@ -59,7 +72,7 @@ impl GleamStdlibRunState {
     {
         let mut seed = [0; 32];
         fill(&mut seed)
-            .map(|()| Self::from_seed(seed))
+            .map(|()| Self::from_seed_with_io(seed, io))
             .map_err(|error| GleamStdlibRunStateError {
                 reason: error.to_string().into(),
             })
@@ -141,9 +154,11 @@ mod tests {
 
     #[test]
     fn entropy_failure_preserves_an_owned_reason() {
-        let error = GleamStdlibRunState::try_from_seed_source(|_| Err(RejectedEntropyError))
-            .err()
-            .expect("rejected entropy should fail");
+        let error = GleamStdlibRunState::try_from_seed_source(Vec::<IoOutput>::new(), |_| {
+            Err(RejectedEntropyError)
+        })
+        .err()
+        .expect("rejected entropy should fail");
 
         assert_eq!(error.reason(), "entropy unavailable");
         assert_eq!(
@@ -165,5 +180,15 @@ mod tests {
 
         assert!((0.0..1.0).contains(&state.random_float()));
         assert!(state.io_outputs().is_empty());
+    }
+
+    #[test]
+    fn caller_owned_io_is_preserved_by_seeded_and_entropy_construction() {
+        let state = GleamStdlibRunState::from_seed_with_io([9; 32], String::from("sink"));
+        assert_eq!(state.io, "sink");
+
+        let state = GleamStdlibRunState::try_from_entropy_with_io(String::from("entropy sink"))
+            .expect("system entropy should initialize caller-owned IO state");
+        assert_eq!(state.io, "entropy sink");
     }
 }

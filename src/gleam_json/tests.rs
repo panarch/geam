@@ -4,14 +4,14 @@ use super::{
     GleamJsonHostProfile, GleamJsonProfile, GleamJsonProfileStores, GleamJsonStores, host_providers,
 };
 use crate::gleam_stdlib::{
-    DictSchema, DynamicSchema, GleamStdlibHostProfile, GleamStdlibRunState, GleamStdlibStores,
-    IoOutput, StoredStringTree, StringTreeSchema,
+    Component as GleamStdlibComponent, DictSchema, DynamicSchema, GleamStdlibHostProfile,
+    GleamStdlibRunState, GleamStdlibStores, IoOutput, StoredStringTree, StringTreeSchema,
 };
 use crate::{
-    ExecutionError, HostExternalEquality, HostExternalHashing, HostExternalInspection,
-    HostExternalStorage, HostModule, HostProfile, HostProvider, HostProviderModule,
-    HostProviderSet, HostedExecution, ModuleSource, PackageSource, compile_typed_host_program,
-    plan_host_program,
+    ExecutionError, HostComponentProfile, HostExternalEquality, HostExternalHashing,
+    HostExternalInspection, HostExternalStorage, HostModule, HostProfile, HostProvider,
+    HostProviderModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
+    compile_typed_host_program, plan_host_program,
 };
 use ecow::EcoString;
 
@@ -28,20 +28,18 @@ impl HostProfile for CustomProfile {
     type ExternalStores = CustomStores;
 }
 
-impl GleamStdlibHostProfile for CustomProfile {
-    type Io = Vec<IoOutput>;
-
-    fn gleam_stdlib_stores(stores: &Self::ExternalStores) -> &GleamStdlibStores {
+impl HostComponentProfile<GleamStdlibComponent> for CustomProfile {
+    fn component_stores(stores: &Self::ExternalStores) -> &GleamStdlibStores {
         &stores.stdlib
     }
 
-    fn gleam_stdlib_run_state(state: &mut Self::RunState) -> &mut GleamStdlibRunState {
+    fn component_state(state: &mut Self::RunState) -> &mut GleamStdlibRunState {
         state
     }
+}
 
-    fn gleam_stdlib_io(state: &mut Self::RunState) -> &mut Self::Io {
-        <crate::gleam_stdlib::GleamStdlibProfile as GleamStdlibHostProfile>::gleam_stdlib_io(state)
-    }
+impl GleamStdlibHostProfile for CustomProfile {
+    type Io = Vec<IoOutput>;
 }
 
 impl GleamJsonHostProfile for CustomProfile {
@@ -184,7 +182,9 @@ fn default_and_custom_profiles_project_independent_stdlib_and_json_stores() {
     let custom = CustomStores::default();
 
     assert!(std::ptr::eq(
-        GleamJsonProfile::gleam_stdlib_stores(&default),
+        <GleamJsonProfile as HostComponentProfile<GleamStdlibComponent>>::component_stores(
+            &default,
+        ),
         &default.stdlib,
     ));
     assert!(std::ptr::eq(
@@ -192,7 +192,7 @@ fn default_and_custom_profiles_project_independent_stdlib_and_json_stores() {
         &default.json,
     ));
     assert!(std::ptr::eq(
-        CustomProfile::gleam_stdlib_stores(&custom),
+        <CustomProfile as HostComponentProfile<GleamStdlibComponent>>::component_stores(&custom),
         &custom.stdlib,
     ));
     assert!(std::ptr::eq(
@@ -240,12 +240,22 @@ fn default_and_custom_profiles_project_independent_stdlib_and_json_stores() {
 
     let mut default_state = GleamStdlibRunState::from_seed([1; 32]);
     let mut custom_state = GleamStdlibRunState::from_seed([2; 32]);
-    let default_projected = GleamJsonProfile::gleam_stdlib_run_state(&mut default_state);
-    assert!(std::ptr::eq(default_projected, &default_state));
-    let custom_projected = CustomProfile::gleam_stdlib_run_state(&mut custom_state);
-    assert!(std::ptr::eq(custom_projected, &custom_state));
-    assert!(GleamJsonProfile::gleam_stdlib_io(&mut default_state).is_empty());
-    assert!(CustomProfile::gleam_stdlib_io(&mut custom_state).is_empty());
+    let default_pointer = &mut default_state as *mut GleamStdlibRunState;
+    assert!(std::ptr::eq(
+        <GleamJsonProfile as HostComponentProfile<GleamStdlibComponent>>::component_state(
+            &mut default_state,
+        ),
+        default_pointer,
+    ));
+    let custom_pointer = &mut custom_state as *mut GleamStdlibRunState;
+    assert!(std::ptr::eq(
+        <CustomProfile as HostComponentProfile<GleamStdlibComponent>>::component_state(
+            &mut custom_state,
+        ),
+        custom_pointer,
+    ));
+    assert!(default_state.io_outputs().is_empty());
+    assert!(custom_state.io_outputs().is_empty());
 }
 
 #[test]

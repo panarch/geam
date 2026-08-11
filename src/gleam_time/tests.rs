@@ -3,11 +3,13 @@ use super::{
     host_providers,
 };
 use crate::gleam_stdlib::{
-    GleamStdlibHostProfile, GleamStdlibRunState, GleamStdlibStores, IoOutput, IoSink,
+    Component as GleamStdlibComponent, GleamStdlibHostProfile, GleamStdlibRunState,
+    GleamStdlibStores, IoOutput, IoSink,
 };
 use crate::{
-    ExecutionError, HostFailure, HostModule, HostProfile, HostProvider, HostProviderSet,
-    HostedExecution, ModuleSource, PackageSource, compile_typed_host_program, plan_host_program,
+    ExecutionError, HostComponentProfile, HostFailure, HostModule, HostProfile, HostProvider,
+    HostProviderSet, HostedExecution, ModuleSource, PackageSource, compile_typed_host_program,
+    plan_host_program,
 };
 use ecow::EcoString;
 use std::collections::VecDeque;
@@ -21,9 +23,8 @@ struct CustomStores {
 }
 
 struct CustomRunState {
-    stdlib: GleamStdlibRunState,
+    stdlib: GleamStdlibRunState<RecordingSink>,
     source: ScriptedSource,
-    io: RecordingSink,
 }
 
 #[derive(Default)]
@@ -62,20 +63,18 @@ impl HostProfile for CustomProfile {
     type ExternalStores = CustomStores;
 }
 
-impl GleamStdlibHostProfile for CustomProfile {
-    type Io = RecordingSink;
-
-    fn gleam_stdlib_stores(stores: &Self::ExternalStores) -> &GleamStdlibStores {
+impl HostComponentProfile<GleamStdlibComponent<RecordingSink>> for CustomProfile {
+    fn component_stores(stores: &Self::ExternalStores) -> &GleamStdlibStores {
         &stores.stdlib
     }
 
-    fn gleam_stdlib_run_state(state: &mut Self::RunState) -> &mut GleamStdlibRunState {
+    fn component_state(state: &mut Self::RunState) -> &mut GleamStdlibRunState<RecordingSink> {
         &mut state.stdlib
     }
+}
 
-    fn gleam_stdlib_io(state: &mut Self::RunState) -> &mut Self::Io {
-        &mut state.io
-    }
+impl GleamStdlibHostProfile for CustomProfile {
+    type Io = RecordingSink;
 }
 
 impl GleamTimeHostProfile for CustomProfile {
@@ -129,27 +128,34 @@ fn default_and_custom_profiles_project_owned_state_stores_source_and_io() {
         ScriptedSource::default(),
     );
     let mut custom_state = CustomRunState {
-        stdlib: GleamStdlibRunState::from_seed([2; 32]),
+        stdlib: GleamStdlibRunState::from_seed_with_io([2; 32], RecordingSink::default()),
         source: ScriptedSource::default(),
-        io: RecordingSink::default(),
     };
 
     assert!(std::ptr::eq(
-        GleamTimeProfile::<ScriptedSource>::gleam_stdlib_stores(&default_stores),
+        <GleamTimeProfile<ScriptedSource> as HostComponentProfile<
+            GleamStdlibComponent,
+        >>::component_stores(&default_stores),
         &default_stores,
     ));
     assert!(std::ptr::eq(
-        CustomProfile::gleam_stdlib_stores(&custom_stores),
+        <CustomProfile as HostComponentProfile<GleamStdlibComponent<RecordingSink>>>::component_stores(
+            &custom_stores,
+        ),
         &custom_stores.stdlib,
     ));
     let default_stdlib = default_state.stdlib() as *const GleamStdlibRunState;
     assert!(std::ptr::eq(
-        GleamTimeProfile::<ScriptedSource>::gleam_stdlib_run_state(&mut default_state),
+        <GleamTimeProfile<ScriptedSource> as HostComponentProfile<
+            GleamStdlibComponent,
+        >>::component_state(&mut default_state),
         default_stdlib,
     ));
-    let custom_stdlib = &custom_state.stdlib as *const GleamStdlibRunState;
+    let custom_stdlib = &custom_state.stdlib as *const GleamStdlibRunState<RecordingSink>;
     assert!(std::ptr::eq(
-        CustomProfile::gleam_stdlib_run_state(&mut custom_state),
+        <CustomProfile as HostComponentProfile<
+            GleamStdlibComponent<RecordingSink>,
+        >>::component_state(&mut custom_state),
         custom_stdlib,
     ));
 
@@ -172,17 +178,11 @@ fn default_and_custom_profiles_project_owned_state_stores_source_and_io() {
     ));
 
     assert!(default_state.stdlib_mut().take_io_outputs().is_empty());
-    assert!(GleamTimeProfile::<ScriptedSource>::gleam_stdlib_io(&mut default_state).is_empty(),);
-    assert!(
-        CustomProfile::gleam_stdlib_io(&mut custom_state)
-            .outputs
-            .is_empty()
-    );
+    assert!(default_state.stdlib().io_outputs().is_empty());
     default_state.source_mut().offsets.push_back(Ok(3600));
 
     assert!(default_state.stdlib().io_outputs().is_empty());
     assert_eq!(default_state.source().offsets.len(), 1);
-    assert!(custom_state.io.outputs.is_empty());
 }
 
 #[test]

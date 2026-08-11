@@ -1,6 +1,6 @@
 use super::parse::{decimal, format_radix, radix};
 use super::schema::{ParseError, ParseOk, ParseResult};
-use crate::gleam_stdlib::GleamStdlibHostProfile;
+use crate::gleam_stdlib::{GleamStdlibHostProfile, GleamStdlibRunState, stdlib_state};
 use crate::{HostCall, HostCallCompletion, HostCallError, HostFailure, HostProvider};
 use ecow::EcoString;
 use num_bigint::{BigInt, Sign};
@@ -13,10 +13,10 @@ impl<Profile> HostProvider<Profile> for IntProvider<Profile>
 where
     Profile: GleamStdlibHostProfile,
 {
-    type State = Profile::RunState;
+    type State = GleamStdlibRunState<Profile::Io>;
 
     fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        state
+        stdlib_state::<Profile>(state)
     }
 }
 
