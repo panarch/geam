@@ -1,5 +1,5 @@
-use super::GleamJsonHostProfile;
 use super::schema::JsonSchema;
+use super::{GleamJsonHostProfile, json_stores};
 use crate::gleam_stdlib::StoredStringTree;
 use crate::{
     HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalStorage,
@@ -25,7 +25,7 @@ where
     type Payload = JsonPayload;
 
     fn store(stores: &Profile::ExternalStores) -> &HostExternalStore<Self::Payload> {
-        &Profile::gleam_json_stores(stores).json.values
+        &json_stores::<Profile>(stores).json.values
     }
 
     fn source_equal(
@@ -48,7 +48,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::{JsonPayload, JsonSchema, JsonStorage};
-    use crate::gleam_json::{GleamJsonHostProfile, GleamJsonProfile, GleamJsonProfileStores};
+    use crate::gleam_json::{GleamJsonProfile, GleamJsonProfileStores, json_stores};
     use crate::gleam_stdlib::StoredStringTree;
     use crate::{
         HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalStorage,
@@ -118,7 +118,7 @@ mod tests {
         let stores = GleamJsonProfileStores::default();
         assert!(std::ptr::eq(
             <JsonStorage as HostExternalStorage<GleamJsonProfile, JsonSchema>>::store(&stores),
-            &GleamJsonProfile::gleam_json_stores(&stores).json.values,
+            &json_stores::<GleamJsonProfile>(&stores).json.values,
         ));
     }
 }

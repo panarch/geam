@@ -12,21 +12,34 @@ use crate::gleam_stdlib::{
     GleamStdlibStores, IoOutput,
 };
 use crate::{
-    BitArrayValue, HostComponentProfile, HostProfile, HostProviderModule, HostRegistrationError,
+    BitArrayValue, HostComponentProfile, HostProfile, HostProviderComponent,
+    HostProviderComponentRegistration, HostProviderModule, HostRegistrationError,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
 
-/// A host profile that exposes the official Gleam JSON and standard-library stores.
-pub trait GleamJsonHostProfile: GleamStdlibHostProfile {
-    /// Projects the JSON external stores from this profile.
-    fn gleam_json_stores(stores: &Self::ExternalStores) -> &GleamJsonStores;
+/// A host profile that composes the official Gleam JSON and standard-library components.
+pub trait GleamJsonHostProfile: GleamStdlibHostProfile + HostComponentProfile<Component> {}
+
+impl<Profile> GleamJsonHostProfile for Profile where
+    Profile: GleamStdlibHostProfile + HostComponentProfile<Component>
+{
 }
 
 /// External value stores used by the official Gleam JSON provider.
 #[derive(Default)]
 pub struct GleamJsonStores {
     json: storage::Stores,
+}
+
+/// The statically composed provider component for the official Gleam JSON package.
+#[derive(Debug, Clone, Copy)]
+pub struct Component;
+
+impl HostProviderComponent for Component {
+    const ID: &'static str = "gleam_json";
+    type Stores = GleamJsonStores;
+    type RunState = ();
 }
 
 /// External stores for the default combined standard-library and JSON profile.
@@ -36,12 +49,35 @@ pub struct GleamJsonProfileStores {
     json: GleamJsonStores,
 }
 
+/// Caller-owned run state for the default combined standard-library and JSON profile.
+pub struct GleamJsonRunState {
+    stdlib: GleamStdlibRunState,
+    json: (),
+}
+
 /// The default profile for composing the official standard-library and JSON providers.
 #[derive(Debug, Clone, Copy)]
 pub struct GleamJsonProfile;
 
+impl GleamJsonRunState {
+    /// Combines caller-owned standard-library state with the stateless JSON component.
+    pub fn new(stdlib: GleamStdlibRunState) -> Self {
+        Self { stdlib, json: () }
+    }
+
+    /// Returns the standard-library state.
+    pub fn stdlib(&self) -> &GleamStdlibRunState {
+        &self.stdlib
+    }
+
+    /// Returns mutable standard-library state.
+    pub fn stdlib_mut(&mut self) -> &mut GleamStdlibRunState {
+        &mut self.stdlib
+    }
+}
+
 impl HostProfile for GleamJsonProfile {
-    type RunState = GleamStdlibRunState;
+    type RunState = GleamJsonRunState;
     type ExternalStores = GleamJsonProfileStores;
 }
 
@@ -51,7 +87,7 @@ impl HostComponentProfile<GleamStdlibComponent> for GleamJsonProfile {
     }
 
     fn component_state(state: &mut Self::RunState) -> &mut GleamStdlibRunState {
-        state
+        &mut state.stdlib
     }
 }
 
@@ -59,9 +95,13 @@ impl GleamStdlibHostProfile for GleamJsonProfile {
     type Io = Vec<IoOutput>;
 }
 
-impl GleamJsonHostProfile for GleamJsonProfile {
-    fn gleam_json_stores(stores: &Self::ExternalStores) -> &GleamJsonStores {
+impl HostComponentProfile<Component> for GleamJsonProfile {
+    fn component_stores(stores: &Self::ExternalStores) -> &GleamJsonStores {
         &stores.json
+    }
+
+    fn component_state(state: &mut Self::RunState) -> &mut () {
+        &mut state.json
     }
 }
 
@@ -70,10 +110,30 @@ pub fn host_providers<Profile>() -> Result<Vec<HostProviderModule<Profile>>, Hos
 where
     Profile: GleamJsonHostProfile,
 {
-    [host_provider::<Profile>]
-        .into_iter()
-        .map(|register| register())
-        .collect()
+    <Component as HostProviderComponentRegistration<Profile>>::providers()
+}
+
+impl<Profile> HostProviderComponentRegistration<Profile> for Component
+where
+    Profile: GleamJsonHostProfile,
+{
+    fn providers() -> Result<Vec<HostProviderModule<Profile>>, HostRegistrationError> {
+        host_provider::<Profile>().map(|provider| vec![provider])
+    }
+}
+
+pub(crate) fn json_stores<Profile>(stores: &Profile::ExternalStores) -> &GleamJsonStores
+where
+    Profile: GleamJsonHostProfile,
+{
+    <Profile as HostComponentProfile<Component>>::component_stores(stores)
+}
+
+pub(crate) fn json_state<Profile>(state: &mut Profile::RunState) -> &mut ()
+where
+    Profile: GleamJsonHostProfile,
+{
+    <Profile as HostComponentProfile<Component>>::component_state(state)
 }
 
 fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>

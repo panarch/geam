@@ -7,9 +7,9 @@ pub(super) use encode::{
     to_string_tree,
 };
 
-use super::GleamJsonHostProfile;
 use super::schema::JsonSchema;
 use super::storage::JsonStorage;
+use super::{GleamJsonHostProfile, json_state};
 use crate::gleam_stdlib::{
     DictExternalStorage, DictSchema, DynamicExternalStorage, DynamicSchema,
     StringTreeExternalStorage, StringTreeSchema,
@@ -23,10 +23,10 @@ impl<Profile> HostProvider<Profile> for JsonProvider<Profile>
 where
     Profile: GleamJsonHostProfile,
 {
-    type State = Profile::RunState;
+    type State = ();
 
     fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        state
+        json_state::<Profile>(state)
     }
 }
 

@@ -1,7 +1,8 @@
 use super::function::JsonProvider;
 use super::storage::JsonStorage;
 use super::{
-    GleamJsonHostProfile, GleamJsonProfile, GleamJsonProfileStores, GleamJsonStores, host_providers,
+    Component, GleamJsonProfile, GleamJsonProfileStores, GleamJsonRunState, GleamJsonStores,
+    host_providers, json_stores,
 };
 use crate::gleam_stdlib::{
     Component as GleamStdlibComponent, DictSchema, DynamicSchema, GleamStdlibHostProfile,
@@ -10,8 +11,8 @@ use crate::gleam_stdlib::{
 use crate::{
     ExecutionError, HostComponentProfile, HostExternalEquality, HostExternalHashing,
     HostExternalInspection, HostExternalStorage, HostModule, HostProfile, HostProvider,
-    HostProviderModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
-    compile_typed_host_program, plan_host_program,
+    HostProviderComponent, HostProviderComponentRegistration, HostProviderModule, HostProviderSet,
+    HostedExecution, ModuleSource, PackageSource, compile_typed_host_program, plan_host_program,
 };
 use ecow::EcoString;
 
@@ -23,8 +24,13 @@ struct CustomStores {
     json: GleamJsonStores,
 }
 
+struct CustomRunState {
+    stdlib: GleamStdlibRunState,
+    json: (),
+}
+
 impl HostProfile for CustomProfile {
-    type RunState = GleamStdlibRunState;
+    type RunState = CustomRunState;
     type ExternalStores = CustomStores;
 }
 
@@ -34,7 +40,7 @@ impl HostComponentProfile<GleamStdlibComponent> for CustomProfile {
     }
 
     fn component_state(state: &mut Self::RunState) -> &mut GleamStdlibRunState {
-        state
+        &mut state.stdlib
     }
 }
 
@@ -42,9 +48,13 @@ impl GleamStdlibHostProfile for CustomProfile {
     type Io = Vec<IoOutput>;
 }
 
-impl GleamJsonHostProfile for CustomProfile {
-    fn gleam_json_stores(stores: &Self::ExternalStores) -> &GleamJsonStores {
+impl HostComponentProfile<Component> for CustomProfile {
+    fn component_stores(stores: &Self::ExternalStores) -> &GleamJsonStores {
         &stores.json
+    }
+
+    fn component_state(state: &mut Self::RunState) -> &mut () {
+        &mut state.json
     }
 }
 
@@ -176,6 +186,10 @@ fn execution_with_modules(
     HostedExecution::try_from_module_plan(plan).expect("synthetic JSON execution should seal")
 }
 
+fn run_state(seed: [u8; 32]) -> GleamJsonRunState {
+    GleamJsonRunState::new(GleamStdlibRunState::from_seed(seed))
+}
+
 #[test]
 fn default_and_custom_profiles_project_independent_stdlib_and_json_stores() {
     let default = GleamJsonProfileStores::default();
@@ -188,7 +202,7 @@ fn default_and_custom_profiles_project_independent_stdlib_and_json_stores() {
         &default.stdlib,
     ));
     assert!(std::ptr::eq(
-        GleamJsonProfile::gleam_json_stores(&default),
+        json_stores::<GleamJsonProfile>(&default),
         &default.json,
     ));
     assert!(std::ptr::eq(
@@ -196,7 +210,7 @@ fn default_and_custom_profiles_project_independent_stdlib_and_json_stores() {
         &custom.stdlib,
     ));
     assert!(std::ptr::eq(
-        CustomProfile::gleam_json_stores(&custom),
+        json_stores::<CustomProfile>(&custom),
         &custom.json,
     ));
     assert!(std::ptr::eq(
@@ -238,30 +252,49 @@ fn default_and_custom_profiles_project_independent_stdlib_and_json_stores() {
         r#""null""#,
     );
 
-    let mut default_state = GleamStdlibRunState::from_seed([1; 32]);
-    let mut custom_state = GleamStdlibRunState::from_seed([2; 32]);
-    let default_pointer = &mut default_state as *mut GleamStdlibRunState;
+    let mut default_state = run_state([1; 32]);
+    let mut custom_state = CustomRunState {
+        stdlib: GleamStdlibRunState::from_seed([2; 32]),
+        json: (),
+    };
+    let default_pointer = default_state.stdlib_mut() as *mut GleamStdlibRunState;
     assert!(std::ptr::eq(
         <GleamJsonProfile as HostComponentProfile<GleamStdlibComponent>>::component_state(
             &mut default_state,
         ),
         default_pointer,
     ));
-    let custom_pointer = &mut custom_state as *mut GleamStdlibRunState;
+    let custom_pointer = &mut custom_state.stdlib as *mut GleamStdlibRunState;
     assert!(std::ptr::eq(
         <CustomProfile as HostComponentProfile<GleamStdlibComponent>>::component_state(
             &mut custom_state,
         ),
         custom_pointer,
     ));
-    assert!(default_state.io_outputs().is_empty());
-    assert!(custom_state.io_outputs().is_empty());
+    let default_json = &mut default_state.json as *mut ();
+    assert!(std::ptr::eq(
+        <GleamJsonProfile as HostComponentProfile<Component>>::component_state(&mut default_state,),
+        default_json,
+    ));
+    let custom_json = &mut custom_state.json as *mut ();
+    assert!(std::ptr::eq(
+        <CustomProfile as HostComponentProfile<Component>>::component_state(&mut custom_state),
+        custom_json,
+    ));
+    assert!(default_state.stdlib().io_outputs().is_empty());
+    assert!(custom_state.stdlib.io_outputs().is_empty());
 }
 
 #[test]
 fn registers_only_the_exact_official_erlang_json_provider_inventory() {
+    assert_eq!(<Component as HostProviderComponent>::ID, "gleam_json");
     let mut providers =
+        <Component as HostProviderComponentRegistration<GleamJsonProfile>>::providers()
+            .expect("JSON component should register");
+    let facade =
         host_providers::<GleamJsonProfile>().expect("official JSON provider should register");
+    assert_eq!(facade.len(), providers.len());
+    assert_eq!(facade[0].module(), providers[0].module());
     assert_eq!(providers.len(), 1);
     let provider = providers
         .pop()
@@ -349,10 +382,7 @@ pub fn main() {
 "#,
     );
     let value = execution
-        .run_main(
-            &mut GleamStdlibRunState::from_seed([0; 32]),
-            &mut Vec::new(),
-        )
+        .run_main(&mut run_state([0; 32]), &mut Vec::new())
         .expect("scalar JSON operations should run");
 
     assert_eq!(
@@ -379,10 +409,7 @@ pub fn main() {
 "#,
     );
     let value = execution
-        .run_main(
-            &mut GleamStdlibRunState::from_seed([0; 32]),
-            &mut Vec::new(),
-        )
+        .run_main(&mut run_state([0; 32]), &mut Vec::new())
         .expect("nested JSON operations should run");
 
     assert_eq!(
@@ -419,10 +446,7 @@ pub fn main() {
 "#,
     );
     let value = execution
-        .run_main(
-            &mut GleamStdlibRunState::from_seed([0; 32]),
-            &mut Vec::new(),
-        )
+        .run_main(&mut run_state([0; 32]), &mut Vec::new())
         .expect("malformed JSON should remain source-level DecodeError values");
 
     assert_eq!(
@@ -450,10 +474,7 @@ pub fn main() {{
         );
         let execution = execution_with_modules(&source, [non_finite]);
         let error = execution
-            .run_main(
-                &mut GleamStdlibRunState::from_seed([0; 32]),
-                &mut Vec::new(),
-            )
+            .run_main(&mut run_state([0; 32]), &mut Vec::new())
             .expect_err("non-finite JSON float should fail");
         let ExecutionError::Host(error) = error else {
             panic!("JSON encoding failure should remain a host failure");
@@ -479,7 +500,7 @@ pub fn main() {
 }
 "#,
         );
-        let mut state = GleamStdlibRunState::from_seed([0; 32]);
+        let mut state = run_state([0; 32]);
         let value = execution
             .run_main(&mut state, &mut Vec::new())
             .expect("JSON value should escape the run");
@@ -501,8 +522,8 @@ pub fn main() {
 }
 "#,
     );
-    let mut first_state = GleamStdlibRunState::from_seed([1; 32]);
-    let mut second_state = GleamStdlibRunState::from_seed([2; 32]);
+    let mut first_state = run_state([1; 32]);
+    let mut second_state = run_state([2; 32]);
 
     let first = execution
         .run_main(&mut first_state, &mut Vec::new())
@@ -539,20 +560,18 @@ pub fn main() {{
     let execution = execution(&source);
 
     assert_eq!(
-        execution.run_main(
-            &mut GleamStdlibRunState::from_seed([0; 32]),
-            &mut Vec::new(),
-        ),
+        execution.run_main(&mut run_state([0; 32]), &mut Vec::new(),),
         Ok(crate::Value::Nil),
     );
 }
 
 #[test]
-fn json_provider_projects_the_complete_run_state() {
-    let mut state = GleamStdlibRunState::from_seed([0; 32]);
+fn json_provider_projects_only_the_json_component_state() {
+    let mut state = run_state([0; 32]);
+    let json = &mut state.json as *mut ();
     let projected = <super::function::JsonProvider<GleamJsonProfile> as HostProvider<
         GleamJsonProfile,
     >>::project(&mut state);
 
-    assert!(std::ptr::eq(projected, &state));
+    assert!(std::ptr::eq(projected, json));
 }
