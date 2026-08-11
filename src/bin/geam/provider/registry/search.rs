@@ -29,6 +29,9 @@ pub(super) fn crate_names(
                 reason: format!("invalid crate name {}", result.id),
             });
         }
+        if !is_discoverable_crate_name(&result.id) {
+            continue;
+        }
         names.insert(result.id);
     }
     Ok(names.into_iter().collect())
@@ -39,6 +42,15 @@ fn valid_crate_name(name: &str) -> bool {
         && name
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+fn is_discoverable_crate_name(name: &str) -> bool {
+    name.split('-').all(|segment| {
+        !segment.is_empty()
+            && segment
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+    })
 }
 
 #[derive(Deserialize)]
@@ -59,13 +71,13 @@ struct SearchMetadata {
 
 #[cfg(test)]
 mod tests {
-    use super::{crate_names, valid_crate_name};
+    use super::{crate_names, is_discoverable_crate_name, valid_crate_name};
     use crate::provider::registry::RegistryDiscoveryError;
 
     #[test]
     fn keeps_only_exact_namespace_candidates_in_deterministic_order() {
         let source = response(
-            7,
+            10,
             &[
                 "other",
                 "geam-images-zed",
@@ -74,6 +86,9 @@ mod tests {
                 "geam-images-alt",
                 "geam-images-alt",
                 "geam_images",
+                "geam-images-alt_provider",
+                "geam-images-Alt",
+                "geam-images--alt",
             ],
         );
 
@@ -119,10 +134,18 @@ mod tests {
     }
 
     #[test]
-    fn validates_crate_name_characters() {
+    fn validates_registry_crate_name_characters() {
         assert!(valid_crate_name("geam_images-2"));
         assert!(!valid_crate_name(""));
         assert!(!valid_crate_name("geam-images-!"));
+    }
+
+    #[test]
+    fn recognizes_discoverable_kebab_case_names() {
+        assert!(is_discoverable_crate_name("geam-images-2"));
+        assert!(!is_discoverable_crate_name("geam_images-2"));
+        assert!(!is_discoverable_crate_name("geam-images-Alt"));
+        assert!(!is_discoverable_crate_name("geam-images--alt"));
     }
 
     fn response(total: usize, crate_names: &[&str]) -> Vec<u8> {

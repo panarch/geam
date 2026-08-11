@@ -684,6 +684,9 @@ mod tests {
         let unversioned =
             parse_registry_specification("geam-images").expect("unversioned crate should parse");
         assert_eq!(unversioned, ("geam-images".to_owned(), None),);
+        let explicitly_named = parse_registry_specification("geam-company_image")
+            .expect("explicit selection should not require the discovery naming convention");
+        assert_eq!(explicitly_named, ("geam-company_image".to_owned(), None));
         let versioned = parse_registry_specification("geam-images@1.2.3")
             .expect("versioned crate should parse");
         assert_eq!(

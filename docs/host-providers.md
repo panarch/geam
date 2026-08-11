@@ -189,6 +189,14 @@ only the crate-root `Component` and the public component contracts. Configured
 dependency initialization and runner-owned capability construction remain
 separate strategies within that graph.
 
+To make a published provider discoverable, derive its Cargo package name from
+the target Gleam package: add the `geam-` prefix and replace underscores with
+hyphens. A provider whose metadata targets `company_image` therefore publishes
+as `geam-company-image`; alternatives may append a kebab-case suffix. The name
+only places the crate in the discovery namespace. Packaged metadata remains the
+authority for the exact `company_image` identity, and explicitly selected
+registry, path, or Git crates may use other names.
+
 Discovery, native-code approval, managed Cargo files, and runtime configuration
 belong to the CLI rather than this SDK. Provider callbacks, stores, and state
 remain governed by the same static ABI whether a runner is generated or written

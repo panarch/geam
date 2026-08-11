@@ -113,8 +113,8 @@ mod tests {
     #[test]
     fn constructs_exact_crates_io_endpoints_and_user_agent() {
         assert_eq!(
-            search_url("geam-company_image"),
-            "https://crates.io/api/v1/crates?q=geam-company_image&per_page=100",
+            search_url("geam-company-image"),
+            "https://crates.io/api/v1/crates?q=geam-company-image&per_page=100",
         );
         assert_eq!(
             index_url("Geam-Images"),

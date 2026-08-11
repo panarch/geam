@@ -58,11 +58,14 @@ separately by [#115](https://github.com/panarch/geam/issues/115).
 Built-in stdlib, JSON, and Time support occupies the first entries in the same
 static component graph as approved dependencies, but is never searched on
 crates.io, added to the managed manifest, approved, or configured. For another
-package with mandatory Erlang externals, Geam searches the reserved
-`geam-<exact-gleam-package>` namespace. It accepts only the exact canonical
-crate name or that name followed by `-`, then verifies the sparse-index version,
-archive checksum, packaged provider metadata, target Gleam package, and
-declared Gleam version range.
+resolved package with mandatory Erlang externals, Geam derives a crates.io
+search name from the Gleam package. A requirement for `company_image` searches
+for `geam-company-image` and considers that exact crate plus kebab-case
+alternatives under `geam-company-image-*`. Before presenting any result, Geam
+verifies the sparse-index version, archive checksum, packaged provider metadata,
+exact `company_image` target, and declared Gleam version range. Explicit
+registry, path, and Git selections bypass discovery naming because the user
+names and approves the crate directly.
 
 Metadata compatibility is not an endorsement. Geam presents verified
 candidates and asks before adding native code. It does not select a new provider
@@ -73,9 +76,9 @@ exact selections remain pinned until changed explicitly.
 Explicit selection is itself approval:
 
 ```sh
-geam provider add geam-company_image@0.3.1
-geam provider add --path ../geam-company_image
-geam provider add --path ../provider-workspace --package geam-company_image
+geam provider add geam-company-image@0.3.1
+geam provider add --path ../geam-company-image
+geam provider add --path ../provider-workspace --package geam-company-image
 geam provider add --git https://example.com/provider.git --rev COMMIT
 geam provider remove company_image
 ```

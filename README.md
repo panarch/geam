@@ -168,8 +168,9 @@ geam run
 plan without initializing provider state or running `main`. `run` reconciles
 the same runner, initializes its approved providers, and executes the package
 module. Provider-backed Hex dependencies are selected explicitly or discovered
-under the reserved `geam-<gleam-package>` crate namespace and require an
-interactive native-code approval before being recorded.
+under a reserved Cargo kebab-case namespace such as
+`company_image -> geam-company-image`, and require an interactive native-code
+approval before being recorded.
 
 Geam owns only a manifest carrying its exact managed marker, `Cargo.lock`, and
 `build/geam/` runner artifacts. It refuses to adopt an existing user Cargo

@@ -102,7 +102,7 @@ pub(in crate::provider) fn discover(
     gleam_package: &str,
     gleam_version: &GleamVersion,
 ) -> Result<Vec<ProviderCandidate>, RegistryDiscoveryError> {
-    let canonical = format!("geam-{gleam_package}");
+    let canonical = canonical_crate_name(gleam_package);
     let crate_names = search::crate_names(&registry.search(&canonical)?, &canonical)?;
     if crate_names.is_empty() {
         return Err(no_candidates(gleam_package, gleam_version, Vec::new()));
@@ -182,6 +182,10 @@ pub(in crate::provider) fn discover(
             .then_with(|| left.crate_name().cmp(right.crate_name()))
     });
     Ok(candidates)
+}
+
+fn canonical_crate_name(gleam_package: &str) -> String {
+    format!("geam-{}", gleam_package.replace('_', "-"))
 }
 
 pub(super) fn protocol(
@@ -316,6 +320,55 @@ mod tests {
                 format!("download:{alternative_url}"),
                 "index:geam-images-zed".to_owned(),
                 format!("download:{second_alternative_url}"),
+            ],
+        );
+    }
+
+    #[test]
+    fn maps_multiword_gleam_packages_to_the_cargo_discovery_namespace() {
+        let provider = provider_archive(
+            "geam-company-image",
+            "1.0.0",
+            "company_image",
+            ">= 1.0.0 and < 2.0.0",
+        );
+        let mut registry = FakeRegistry::new(
+            search_response(
+                3,
+                &[
+                    "geam-company-image",
+                    "geam-company_image",
+                    "geam-company-image-alt_provider",
+                ],
+            ),
+            legacy_configuration(),
+        );
+        registry.add_index(
+            "geam-company-image",
+            index(&[record(
+                "geam-company-image",
+                "1.0.0",
+                &provider.checksum,
+                false,
+            )]),
+        );
+        registry.add_download(
+            legacy_download_url("geam-company-image", "1.0.0"),
+            provider.bytes,
+        );
+
+        let candidates = discover(&registry, "company_image", &GleamVersion::new(1, 0, 0))
+            .expect("the kebab-case provider should be discovered");
+
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].crate_name(), "geam-company-image");
+        assert_eq!(
+            registry.calls(),
+            [
+                "search:geam-company-image",
+                "configuration",
+                "index:geam-company-image",
+                "download:https://downloads.example/geam-company-image/1.0.0/download",
             ],
         );
     }
