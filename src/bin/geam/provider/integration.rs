@@ -5,9 +5,11 @@ use super::reconcile::{
     ProviderReconciler, RegistryProviderDiscovery, SystemApprovedProviderResolver,
 };
 use super::registry::{ProviderRegistry, RegistryAccessError};
+use crate::error::CliError;
 use crate::project::{compile_resolved_project, read_resolved_project};
-use crate::runner::SystemCargo;
-use camino::Utf8PathBuf;
+use crate::runner::CargoLock;
+use camino::{Utf8Path, Utf8PathBuf};
+use flate2::{Compression, write::GzEncoder};
 use semver::Version;
 use sha2::{Digest, Sha256};
 use std::cell::RefCell;
@@ -15,15 +17,14 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::Cursor;
 use std::path::Path;
-use std::process::Command;
 use tempfile::{TempDir, tempdir};
 
 #[test]
-fn reconciles_real_packaged_candidates_into_registry_shaped_runner_inputs() {
+fn reconciles_packaged_candidates_into_registry_shaped_runner_inputs() {
     let fixture = standalone_fixture();
     let project_root = utf8_path(&fixture).join("project");
-    let catalog = package_provider("geam-catalog");
-    let counter = package_provider("geam-counter");
+    let catalog = provider_archive("geam-catalog");
+    let counter = provider_archive("geam-counter");
     let registry = FakeRegistry::new([catalog, counter]);
     let discovery = RegistryProviderDiscovery::new(&registry);
     let resolver = SystemApprovedProviderResolver;
@@ -71,8 +72,8 @@ fn reconciles_real_packaged_candidates_into_registry_shaped_runner_inputs() {
     crate::runner::reconcile_source(&project_root, &managed.provider_aliases())
         .expect("runner source should be generated");
     let manifest_changed = managed.write().expect("managed manifest should be written");
-    crate::runner::reconcile_lock(&project_root, manifest_changed, &SystemCargo)
-        .expect("registry-shaped dependencies should resolve through local patches");
+    crate::runner::reconcile_lock(&project_root, manifest_changed, &RecordingCargo)
+        .expect("registry-shaped dependencies should request a lockfile");
 
     let manifest = fs::read_to_string(project_root.join("Cargo.toml"))
         .expect("managed manifest should be readable");
@@ -111,46 +112,59 @@ fn reconciles_real_packaged_candidates_into_registry_shaped_runner_inputs() {
     );
 }
 
-struct PackagedProvider {
+struct ProviderArchive {
     crate_name: String,
     version: Version,
     bytes: Vec<u8>,
     checksum: String,
 }
 
-fn package_provider(crate_name: &str) -> PackagedProvider {
-    let target = tempdir().expect("package target should be created");
-    let providers = fixture_source().join("providers");
-    let status = Command::new("cargo")
-        .args([
-            "package",
-            "--quiet",
-            "--offline",
-            "--allow-dirty",
-            "--no-verify",
-            "--package",
-            crate_name,
-            "--target-dir",
-        ])
-        .arg(target.path())
-        .current_dir(&providers)
-        .status()
-        .expect("cargo package should start");
-    assert!(status.success());
+fn provider_archive(crate_name: &str) -> ProviderArchive {
+    // Standalone CI verifies Cargo packaging; this unit path keeps registry
+    // reconciliation independent of Cargo's shared download cache.
     let version = Version::new(1, 0, 0);
-    let bytes = fs::read(
-        target
-            .path()
-            .join("package")
-            .join(format!("{crate_name}-{version}.crate")),
+    let manifest = fs::read(
+        fixture_source()
+            .join("providers")
+            .join(crate_name)
+            .join("Cargo.toml"),
     )
-    .expect("packaged provider archive should be readable");
+    .expect("provider manifest should be readable");
+    let encoder = GzEncoder::new(Vec::new(), Compression::default());
+    let mut archive = tar::Builder::new(encoder);
+    let mut header = tar::Header::new_gnu();
+    header.set_mode(0o644);
+    header.set_size(manifest.len() as u64);
+    header.set_cksum();
+    archive
+        .append_data(
+            &mut header,
+            format!("{crate_name}-{version}/Cargo.toml"),
+            manifest.as_slice(),
+        )
+        .expect("provider manifest should enter the archive");
+    let encoder = archive
+        .into_inner()
+        .expect("provider archive should finish writing");
+    let bytes = encoder
+        .finish()
+        .expect("provider archive should finish compressing");
     let checksum = hex::encode(Sha256::digest(&bytes));
-    PackagedProvider {
+    ProviderArchive {
         crate_name: crate_name.to_owned(),
         version,
         bytes,
         checksum,
+    }
+}
+
+struct RecordingCargo;
+
+impl CargoLock for RecordingCargo {
+    fn generate_lockfile(&self, project_root: &Utf8Path) -> Result<(), CliError> {
+        fs::write(project_root.join("Cargo.lock"), "fixture lock\n")
+            .expect("fixture lock should be written");
+        Ok(())
     }
 }
 
@@ -161,7 +175,7 @@ struct FakeRegistry {
 }
 
 impl FakeRegistry {
-    fn new<const N: usize>(providers: [PackagedProvider; N]) -> Self {
+    fn new<const N: usize>(providers: [ProviderArchive; N]) -> Self {
         let mut indexes = BTreeMap::new();
         let mut downloads = BTreeMap::new();
         for provider in providers {
@@ -221,10 +235,6 @@ fn standalone_fixture() -> TempDir {
     let fixture = tempdir().expect("temporary standalone fixture should be created");
     let project = fixture.path().join("project");
     fs::create_dir_all(project.join("src")).expect("project source should be created");
-    copy_directory(
-        &fixture_source().join("providers"),
-        &fixture.path().join("providers"),
-    );
     for package in ["catalog", "counter"] {
         copy_directory(
             &fixture_source().join("project/packages").join(package),
@@ -269,15 +279,6 @@ pub fn main() {
 "#,
     )
     .expect("project source should be written");
-    let geam_path = toml::Value::String(env!("CARGO_MANIFEST_DIR").to_owned()).to_string();
-    fs::create_dir_all(project.join(".cargo")).expect("project Cargo config should be created");
-    fs::write(
-        project.join(".cargo/config.toml"),
-        format!(
-            "[patch.crates-io]\ngeam = {{ path = {geam_path} }}\ngeam-catalog = {{ path = \"../providers/geam-catalog\" }}\ngeam-counter = {{ path = \"../providers/geam-counter\" }}\nstandalone-catalog-domain = {{ path = \"../providers/catalog-domain\" }}\n\n[net]\noffline = true\n",
-        ),
-    )
-    .expect("project Cargo config should be written");
     fixture
 }
 

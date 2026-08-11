@@ -2,8 +2,8 @@ use ecow::EcoString;
 use geam::{
     ExecutionError, HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
     HostProviderComponentInitialization, HostProviderComponentRegistration,
-    HostProviderConfiguration, HostProviderSet, HostedExecution, ModuleSource, PackageSource, Value,
-    compile_typed_host_program, plan_host_program,
+    HostProviderConfiguration, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
+    Value, compile_typed_host_program, plan_host_program,
 };
 use provider_sdk_example_provider::Component;
 use std::collections::BTreeMap;
