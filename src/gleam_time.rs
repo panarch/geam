@@ -8,7 +8,8 @@ use crate::gleam_stdlib::{
     GleamStdlibStores, IoOutput,
 };
 use crate::{
-    HostComponentProfile, HostProfile, HostProvider, HostProviderModule, HostRegistrationError,
+    HostComponentProfile, HostProfile, HostProvider, HostProviderComponent,
+    HostProviderComponentRegistration, HostProviderModule, HostRegistrationError,
 };
 use std::marker::PhantomData;
 use std::time::SystemTime;
@@ -22,13 +23,32 @@ pub trait TimeSource: 'static {
     fn local_offset_seconds(&mut self) -> Result<i32, crate::HostFailure>;
 }
 
-/// A host profile that exposes caller-owned state for the official Gleam Time package.
-pub trait GleamTimeHostProfile: GleamStdlibHostProfile {
+/// A host profile that composes the official Gleam Time and standard-library components.
+pub trait GleamTimeHostProfile:
+    GleamStdlibHostProfile + HostComponentProfile<Component<Self::Source>>
+{
     /// The concrete caller-owned wall-clock source.
     type Source: TimeSource;
+}
 
-    /// Projects the wall-clock source from this profile's run state.
-    fn gleam_time_source(state: &mut Self::RunState) -> &mut Self::Source;
+/// The statically composed provider component for the official Gleam Time package.
+#[derive(Debug, Clone, Copy)]
+pub struct Component<Source = SystemTimeSource>(PhantomData<fn() -> Source>);
+
+impl<Source> HostProviderComponent for Component<Source>
+where
+    Source: TimeSource,
+{
+    const ID: &'static str = "gleam_time";
+    type Stores = ();
+    type RunState = Source;
+}
+
+/// External stores for the default combined standard-library and Time profile.
+#[derive(Default)]
+pub struct GleamTimeProfileStores {
+    stdlib: GleamStdlibStores,
+    time: (),
 }
 
 /// Caller-owned run state for the default Gleam Time profile.
@@ -73,7 +93,7 @@ where
     Source: TimeSource,
 {
     type RunState = GleamTimeRunState<Source>;
-    type ExternalStores = GleamStdlibStores;
+    type ExternalStores = GleamTimeProfileStores;
 }
 
 impl<Source> HostComponentProfile<GleamStdlibComponent> for GleamTimeProfile<Source>
@@ -81,11 +101,24 @@ where
     Source: TimeSource,
 {
     fn component_stores(stores: &Self::ExternalStores) -> &GleamStdlibStores {
-        stores
+        &stores.stdlib
     }
 
     fn component_state(state: &mut Self::RunState) -> &mut GleamStdlibRunState {
         &mut state.stdlib
+    }
+}
+
+impl<Source> HostComponentProfile<Component<Source>> for GleamTimeProfile<Source>
+where
+    Source: TimeSource,
+{
+    fn component_stores(stores: &Self::ExternalStores) -> &() {
+        &stores.time
+    }
+
+    fn component_state(state: &mut Self::RunState) -> &mut Source {
+        &mut state.source
     }
 }
 
@@ -101,10 +134,6 @@ where
     Source: TimeSource,
 {
     type Source = Source;
-
-    fn gleam_time_source(state: &mut Self::RunState) -> &mut Self::Source {
-        &mut state.source
-    }
 }
 
 /// Registers the Rust providers for the official Gleam Time package.
@@ -112,13 +141,30 @@ pub fn host_providers<Profile>() -> Result<Vec<HostProviderModule<Profile>>, Hos
 where
     Profile: GleamTimeHostProfile,
 {
-    [
-        calendar::host_provider::<Profile>,
-        timestamp::host_provider::<Profile>,
-    ]
-    .into_iter()
-    .map(|register| register())
-    .collect()
+    <Component<Profile::Source> as HostProviderComponentRegistration<Profile>>::providers()
+}
+
+impl<Profile, Source> HostProviderComponentRegistration<Profile> for Component<Source>
+where
+    Profile: GleamTimeHostProfile<Source = Source>,
+    Source: TimeSource,
+{
+    fn providers() -> Result<Vec<HostProviderModule<Profile>>, HostRegistrationError> {
+        [
+            calendar::host_provider::<Profile>,
+            timestamp::host_provider::<Profile>,
+        ]
+        .into_iter()
+        .map(|register| register())
+        .collect()
+    }
+}
+
+fn time_state<Profile>(state: &mut Profile::RunState) -> &mut Profile::Source
+where
+    Profile: GleamTimeHostProfile,
+{
+    <Profile as HostComponentProfile<Component<Profile::Source>>>::component_state(state)
 }
 
 pub(super) struct TimeProvider<Profile>(PhantomData<Profile>);
@@ -130,7 +176,7 @@ where
     type State = Profile::Source;
 
     fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        Profile::gleam_time_source(state)
+        time_state::<Profile>(state)
     }
 }
 

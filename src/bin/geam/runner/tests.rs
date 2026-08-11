@@ -60,6 +60,9 @@ fn renders_static_profiles_and_initialization_in_sorted_component_order() {
     assert!(
         source.contains("impl geam::HostComponentProfile<geam::gleam_json::Component> for Profile")
     );
+    assert!(
+        source.contains("impl geam::HostComponentProfile<geam::gleam_time::Component> for Profile")
+    );
     assert!(source.contains("impl geam::gleam_time::GleamTimeHostProfile for Profile"));
     assert!(source.contains(
         "<geam_provider_alpha::Component as geam::HostProviderComponentRegistration<Profile>>::providers()?"

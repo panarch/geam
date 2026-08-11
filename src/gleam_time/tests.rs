@@ -1,6 +1,6 @@
 use super::{
-    GleamTimeHostProfile, GleamTimeProfile, GleamTimeRunState, TimeProvider, TimeSource,
-    host_providers,
+    Component, GleamTimeHostProfile, GleamTimeProfile, GleamTimeProfileStores, GleamTimeRunState,
+    TimeProvider, TimeSource, host_providers,
 };
 use crate::gleam_stdlib::{
     Component as GleamStdlibComponent, GleamStdlibHostProfile, GleamStdlibRunState,
@@ -8,8 +8,8 @@ use crate::gleam_stdlib::{
 };
 use crate::{
     ExecutionError, HostComponentProfile, HostFailure, HostModule, HostProfile, HostProvider,
-    HostProviderSet, HostedExecution, ModuleSource, PackageSource, compile_typed_host_program,
-    plan_host_program,
+    HostProviderComponent, HostProviderComponentRegistration, HostProviderSet, HostedExecution,
+    ModuleSource, PackageSource, compile_typed_host_program, plan_host_program,
 };
 use ecow::EcoString;
 use std::collections::VecDeque;
@@ -20,6 +20,7 @@ struct CustomProfile;
 #[derive(Default)]
 struct CustomStores {
     stdlib: GleamStdlibStores,
+    time: (),
 }
 
 struct CustomRunState {
@@ -77,12 +78,18 @@ impl GleamStdlibHostProfile for CustomProfile {
     type Io = RecordingSink;
 }
 
-impl GleamTimeHostProfile for CustomProfile {
-    type Source = ScriptedSource;
+impl HostComponentProfile<Component<ScriptedSource>> for CustomProfile {
+    fn component_stores(stores: &Self::ExternalStores) -> &() {
+        &stores.time
+    }
 
-    fn gleam_time_source(state: &mut Self::RunState) -> &mut Self::Source {
+    fn component_state(state: &mut Self::RunState) -> &mut ScriptedSource {
         &mut state.source
     }
+}
+
+impl GleamTimeHostProfile for CustomProfile {
+    type Source = ScriptedSource;
 }
 
 const CALENDAR_SOURCE: &str = r#"
@@ -121,7 +128,7 @@ pub fn main() {
 
 #[test]
 fn default_and_custom_profiles_project_owned_state_stores_source_and_io() {
-    let default_stores = GleamStdlibStores::default();
+    let default_stores = GleamTimeProfileStores::default();
     let custom_stores = CustomStores::default();
     let mut default_state = GleamTimeRunState::new(
         GleamStdlibRunState::from_seed([1; 32]),
@@ -136,7 +143,7 @@ fn default_and_custom_profiles_project_owned_state_stores_source_and_io() {
         <GleamTimeProfile<ScriptedSource> as HostComponentProfile<
             GleamStdlibComponent,
         >>::component_stores(&default_stores),
-        &default_stores,
+        &default_stores.stdlib,
     ));
     assert!(std::ptr::eq(
         <CustomProfile as HostComponentProfile<GleamStdlibComponent<RecordingSink>>>::component_stores(
@@ -161,13 +168,29 @@ fn default_and_custom_profiles_project_owned_state_stores_source_and_io() {
 
     let default_source = default_state.source() as *const ScriptedSource;
     assert!(std::ptr::eq(
-        GleamTimeProfile::<ScriptedSource>::gleam_time_source(&mut default_state),
+        <GleamTimeProfile<ScriptedSource> as HostComponentProfile<
+            Component<ScriptedSource>,
+        >>::component_state(&mut default_state),
         default_source,
     ));
     let custom_source = &custom_state.source as *const ScriptedSource;
     assert!(std::ptr::eq(
-        CustomProfile::gleam_time_source(&mut custom_state),
+        <CustomProfile as HostComponentProfile<Component<ScriptedSource>>>::component_state(
+            &mut custom_state,
+        ),
         custom_source,
+    ));
+    assert!(std::ptr::eq(
+        <GleamTimeProfile<ScriptedSource> as HostComponentProfile<
+            Component<ScriptedSource>,
+        >>::component_stores(&default_stores),
+        &default_stores.time,
+    ));
+    assert!(std::ptr::eq(
+        <CustomProfile as HostComponentProfile<Component<ScriptedSource>>>::component_stores(
+            &custom_stores,
+        ),
+        &custom_stores.time,
     ));
     let provider_source = default_state.source() as *const ScriptedSource;
     assert!(std::ptr::eq(
@@ -187,8 +210,21 @@ fn default_and_custom_profiles_project_owned_state_stores_source_and_io() {
 
 #[test]
 fn registers_calendar_then_timestamp_without_external_types() {
-    let providers =
+    assert_eq!(<Component as HostProviderComponent>::ID, "gleam_time");
+    let providers = <Component as HostProviderComponentRegistration<GleamTimeProfile>>::providers()
+        .expect("Time component should register");
+    let facade =
         host_providers::<GleamTimeProfile>().expect("official Time providers should register");
+    assert_eq!(
+        facade
+            .iter()
+            .map(|provider| provider.module().as_str())
+            .collect::<Vec<_>>(),
+        providers
+            .iter()
+            .map(|provider| provider.module().as_str())
+            .collect::<Vec<_>>(),
+    );
 
     assert_eq!(
         providers
