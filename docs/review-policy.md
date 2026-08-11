@@ -227,20 +227,24 @@ family-local parameter layout, and callback adapter together. Planner and
 runtime phases may consume that layout, but must not independently infer the
 same signature or parameter indexing.
 
-Treat an external provider component as a static assembly owner. It owns its
-explicit configuration interpretation, initialization, stores, run state, and
-provider registrations; a concrete aggregate profile only projects those
-owners. Initialization failure belongs before planning and execution. Do not
-move component identity, configuration, mutable state, or initialization into
-canonical plans, graphs, Explain metadata, runtime registries, or host callback
-errors.
+Treat a provider component as the static owner of its stores, run-state type,
+and registrations; a concrete aggregate profile only projects those owners.
+Configured external components own explicit configuration interpretation and
+initialization through the separate initialization contract. Runner-built IO,
+entropy, unit state, and clocks are capability construction, not hidden provider
+configuration. Initialization failure belongs before planning and execution.
+Do not move component identity, configuration, mutable state, or initialization
+into canonical plans, graphs, Explain metadata, runtime registries, or host
+callback errors.
 
 Keep standalone package management outside the read-only project loader.
 Registry access, dependency download, process execution, approval prompts, and
-managed file mutation belong to CLI owners. A generated runner must derive only
-from approved Cargo dependencies and compose concrete components statically;
-ordinary source edits, module selection, and runtime configuration must not
-change its profile.
+managed file mutation belong to CLI owners. A generated runner must compose
+Geam built-ins and approved Cargo dependencies through one ordered static
+component graph. Stores, run state, projections, and registration derive from
+that graph, while configured initialization and runner capability construction
+remain separate owners. Ordinary source edits, module selection, and runtime
+configuration must not change its profile.
 
 Treat first-time native provider selection and incompatible replacement as
 explicit trust boundaries. Verify bounded registry responses, exact archive

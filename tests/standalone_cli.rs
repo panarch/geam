@@ -361,8 +361,31 @@ fn runs_the_canonical_standalone_project_with_independent_path_providers() {
         .find("geam_provider_counter")
         .expect("counter dependency should be generated");
     assert!(catalog < counter);
-    assert!(runner.contains("geam_provider_catalog::Component"));
-    assert!(runner.contains("geam_provider_counter::Component"));
+    let components = [
+        "geam::gleam_stdlib::Component<CliIoSink>",
+        "geam::gleam_json::Component",
+        "geam::gleam_time::Component",
+        "geam_provider_catalog::Component",
+        "geam_provider_counter::Component",
+    ];
+    let mut previous_projection = 0;
+    let mut previous_registration = 0;
+    for component in components {
+        let projection = runner
+            .find(&format!(
+                "impl geam::HostComponentProfile<{component}> for Profile"
+            ))
+            .expect("component projection should be generated");
+        let registration = runner
+            .find(&format!(
+                "<{component} as geam::HostProviderComponentRegistration<Profile>>::providers()?"
+            ))
+            .expect("component registration should be generated");
+        assert!(projection > previous_projection);
+        assert!(registration > previous_registration);
+        previous_projection = projection;
+        previous_registration = registration;
+    }
 
     let root_source = project.join("src/standalone_fixture.gleam");
     let mut source = fs::read_to_string(&root_source).expect("root source should be readable");
@@ -417,6 +440,11 @@ fn runs_the_canonical_standalone_project_with_independent_path_providers() {
             .expect("final IO event should be present");
         assert!(before < echo && echo < after);
     }
+    assert_eq!(
+        fs::read_to_string(project.join("build/geam/runner.rs"))
+            .expect("runtime configuration must not rewrite the generated runner"),
+        runner,
+    );
 
     let alternate = geam_at(
         &project,

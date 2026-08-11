@@ -55,12 +55,14 @@ separately by [#115](https://github.com/panarch/geam/issues/115).
 
 ## Provider Selection
 
-Built-in stdlib, JSON, and Time support is composed directly and is never
-searched on crates.io. For another package with mandatory Erlang externals,
-Geam searches the reserved `geam-<exact-gleam-package>` namespace. It accepts
-only the exact canonical crate name or that name followed by `-`, then verifies
-the sparse-index version, archive checksum, packaged provider metadata, target
-Gleam package, and declared Gleam version range.
+Built-in stdlib, JSON, and Time support occupies the first entries in the same
+static component graph as approved dependencies, but is never searched on
+crates.io, added to the managed manifest, approved, or configured. For another
+package with mandatory Erlang externals, Geam searches the reserved
+`geam-<exact-gleam-package>` namespace. It accepts only the exact canonical
+crate name or that name followed by `-`, then verifies the sparse-index version,
+archive checksum, packaged provider metadata, target Gleam package, and
+declared Gleam version range.
 
 Metadata compatibility is not an endorsement. Geam presents verified
 candidates and asks before adding native code. It does not select a new provider
@@ -108,7 +110,8 @@ metadata, generated Rust source, process-global state, or execution plans.
 - Missing `manifest.toml` or downloaded package source triggers one
   `gleam deps download` retry. Invalid project data and compiler errors do not.
 - Registry and Cargo failures preserve the failed operation, status, and stderr.
-- Provider initialization finishes before planning and execution.
+- Configured provider initialization and runner capability construction finish
+  before planning and execution.
 - Missing registrations and schema mismatches remain hosted linkage errors.
 - IO already emitted before a later source panic or host failure remains visible.
 - OS output failures are CLI output errors, not Gleam execution errors.
