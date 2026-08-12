@@ -3,7 +3,11 @@ use std::path::Path;
 #[cfg(unix)]
 use std::process::Stdio;
 use std::process::{Command, Output};
+use std::sync::OnceLock;
 use tempfile::{TempDir, tempdir};
+
+#[path = "support/workspace_dependencies.rs"]
+mod workspace_dependencies;
 
 #[test]
 fn reports_missing_projects_through_the_binary_boundary() {
@@ -320,10 +324,12 @@ fn refuses_to_adopt_user_owned_cargo_projects() {
 }
 
 #[test]
-#[ignore = "builds the independently patched canonical standalone fixture"]
 fn runs_the_canonical_standalone_project_with_independent_path_providers() {
     let fixture = standalone_fixture();
     let project = fixture.path().join("project");
+    assert!(!fixture.path().join("providers/target").exists());
+    assert!(project.join("build/packages/gleam_stdlib/src").is_dir());
+    assert!(!project.join("build/geam").exists());
 
     for package in ["geam-catalog", "geam-counter"] {
         let add = geam_at(
@@ -675,7 +681,38 @@ fn write_cargo_config(project: &TempDir) {
 fn standalone_fixture() -> TempDir {
     let fixture = tempdir().expect("temporary standalone fixture should be created");
     let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/standalone_cli");
+    static GLEAM_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
+    workspace_dependencies::prepare(
+        &GLEAM_DEPENDENCIES,
+        &source.join("project"),
+        "gleam",
+        &["deps", "download"],
+        "`gleam deps download`",
+    );
+    static PROVIDER_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
+    workspace_dependencies::prepare(
+        &PROVIDER_DEPENDENCIES,
+        &source.join("providers"),
+        "cargo",
+        &["fetch", "--locked", "--config", "net.offline=false"],
+        "`cargo fetch --locked --config net.offline=false`",
+    );
     copy_directory(&source, fixture.path());
+    copy_directory(
+        &source.join("project/build/packages"),
+        &fixture.path().join("project/build/packages"),
+    );
+    for generated in ["Cargo.toml", "Cargo.lock", "Cargo.toml.geam.tmp"] {
+        let path = fixture.path().join("project").join(generated);
+        match fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => panic!(
+                "generated fixture file {} should be removable: {error}",
+                path.display()
+            ),
+        }
+    }
 
     let geam_path = toml::Value::String(env!("CARGO_MANIFEST_DIR").to_owned()).to_string();
     fs::write(
@@ -700,6 +737,9 @@ fn copy_directory(source: &Path, destination: &Path) {
         let source = entry.path();
         let destination = destination.join(entry.file_name());
         if source.is_dir() {
+            if matches!(entry.file_name().to_str(), Some("build") | Some("target")) {
+                continue;
+            }
             copy_directory(&source, &destination);
         } else {
             fs::copy(&source, &destination).expect("fixture file should be copied");

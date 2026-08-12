@@ -40,13 +40,11 @@ const EXPECTED_OUTPUTS: &[(IoStream, &str)] = &[
 ];
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn tracks_official_gleam_io_public_surface() {
     assert_surface("gleam_io", "gleam/io", DEPENDENCIES, &SURFACE);
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_io_with_caller_owned_output() {
     let execution = execution::<GleamStdlibProfile>("gleam_io");
     let mut repeated_state = GleamStdlibRunState::from_seed([7; 32]);
@@ -91,7 +89,6 @@ fn runs_official_gleam_io_with_caller_owned_output() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn preserves_io_and_echo_order_before_a_later_panic() {
     let execution = execution::<RecordingProfile>("gleam_io_order_and_panic");
     let events = Rc::new(RefCell::new(Vec::new()));

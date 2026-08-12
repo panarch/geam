@@ -119,7 +119,6 @@ fn run(root_module: &str) {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn tracks_official_gleam_string_public_surface() {
     assert_surface(
         "gleam_string_basics",
@@ -130,25 +129,21 @@ fn tracks_official_gleam_string_public_surface() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_string_basics() {
     run("gleam_string_basics");
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_string_slicing_and_trimming() {
     run("gleam_string_slice");
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_string_unicode() {
     run("gleam_string_unicode");
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_string_inspection() {
     run("gleam_string_inspect");
 }

@@ -78,7 +78,6 @@ fn run(root_module: &str) {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn tracks_official_gleam_bit_array_public_surface() {
     assert_surface(
         "gleam_bit_array_basics",
@@ -89,13 +88,11 @@ fn tracks_official_gleam_bit_array_public_surface() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_bit_array_basics() {
     run("gleam_bit_array_basics");
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_bit_array_codecs() {
     run("gleam_bit_array_codecs");
 }

@@ -41,13 +41,11 @@ values: fn(List(Option(a))) -> List(a)
 };
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn tracks_official_gleam_option_public_surface() {
     assert_surface("gleam_option", "gleam/option", &["gleam/option"], &SURFACE);
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_option_behavior() {
     let hosts = HostProviderSet::<StatelessHostProfile>::new(Vec::<HostModule>::new())
         .expect("the empty host set should be valid");

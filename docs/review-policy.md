@@ -422,6 +422,9 @@ Only add public planner API integration tests when the public boundary itself is
 the reviewed behavior, not to cover planner implementation branches that belong
 to an owning planner unit test.
 
+Do not commit ignored tests; every test used as coverage, compatibility, or
+support evidence must run normally in a mandatory verification path.
+
 ## Helper And DSL Rules
 
 Test helpers may reduce real repetition and fixture setup, but they must not

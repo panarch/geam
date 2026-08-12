@@ -54,7 +54,6 @@ values: fn(Dict(k, v)) -> List(v)
 };
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn tracks_official_gleam_dict_public_surface() {
     assert_surface(
         "gleam_dict",
@@ -65,7 +64,6 @@ fn tracks_official_gleam_dict_public_surface() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_dict_behavior() {
     let providers =
         host_providers::<GleamStdlibProfile>().expect("official stdlib providers should register");

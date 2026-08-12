@@ -34,19 +34,16 @@ try_map: fn(Response(old_body), fn(old_body) -> Result(new_body, error)) -> Resu
 };
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_http fixture"]
 fn tracks_official_gleam_http_response_public_surface() {
     assert_surface("gleam/http/response", &SURFACE);
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_http fixture"]
 fn runs_official_http_response_construction_and_updates() {
     run_fixture("gleam_http_response_basics");
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_http fixture"]
 fn runs_official_http_response_cookies() {
     run_fixture("gleam_http_response_cookies");
 }

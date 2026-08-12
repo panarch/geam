@@ -62,25 +62,21 @@ fn run(root_module: &str) {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn tracks_official_gleam_uri_public_surface() {
     assert_surface("gleam_uri_parse", "gleam/uri", DEPENDENCIES, &SURFACE);
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_the_unchanged_official_gleam_uri_parser() {
     run("gleam_uri_parse");
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_uri_query_and_percent_codecs() {
     run("gleam_uri_query");
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_uri_operations() {
     run("gleam_uri_operations");
 }

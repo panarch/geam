@@ -62,7 +62,6 @@ fn hosts() -> HostProviderSet<GleamStdlibProfile> {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn tracks_official_gleam_bytes_tree_public_surface() {
     assert_surface(
         "gleam_bytes_tree_basics",
@@ -73,7 +72,6 @@ fn tracks_official_gleam_bytes_tree_public_surface() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_bytes_tree_basics() {
     assert_eq!(
         run_hosted_fixture(
@@ -87,7 +85,6 @@ fn runs_official_gleam_bytes_tree_basics() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_bytes_tree_structure() {
     assert_eq!(
         run_hosted_fixture(

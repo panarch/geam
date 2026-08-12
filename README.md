@@ -195,10 +195,10 @@ compiler-boundary details, and sync policy.
 
 ## Testing
 
-Run the test suite:
+With the Rust toolchain and Gleam `v1.18.1` installed, run the full test suite:
 
 ```sh
-cargo test
+cargo test --locked
 ```
 
 See [docs/testing.md](docs/testing.md) for fixture rules, planner test naming,

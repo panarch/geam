@@ -5,7 +5,6 @@ use super::{
 use std::time::{Duration, UNIX_EPOCH};
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_time fixture"]
 fn preserves_time_source_order_backward_clocks_repeated_runs_and_independent_state() {
     let execution = fixture_execution("gleam_time_effects");
     let expected = fixture_expected("gleam_time_effects");

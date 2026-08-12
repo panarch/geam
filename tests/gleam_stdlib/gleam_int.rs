@@ -86,7 +86,6 @@ to_string: fn(Int) -> String
 };
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn tracks_official_gleam_int_public_surface() {
     assert_surface(
         "gleam_int",
@@ -97,7 +96,6 @@ fn tracks_official_gleam_int_public_surface() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_int_behavior() {
     let providers =
         host_providers::<GleamStdlibProfile>().expect("official stdlib providers should register");

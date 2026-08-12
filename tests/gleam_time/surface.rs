@@ -151,7 +151,6 @@ to_unix_seconds_and_nanoseconds: fn(Timestamp) -> #(Int, Int)
 };
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_time fixture"]
 fn tracks_official_gleam_time_public_surfaces() {
     assert_surface("gleam/time/duration", &DURATION_SURFACE);
     assert_surface("gleam/time/calendar", &CALENDAR_SURFACE);
@@ -159,7 +158,6 @@ fn tracks_official_gleam_time_public_surfaces() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_time fixture"]
 fn tracks_the_complete_resolved_time_project_graph() {
     assert_full_project_graph();
 }

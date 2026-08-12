@@ -33,6 +33,10 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
 
+      - name: Check standalone provider formatting
+        working-directory: tests/fixtures/standalone_cli/providers
+        run: cargo fmt --all --check
+
   clippy:
     name: clippy
     runs-on: ubuntu-latest
@@ -50,9 +54,21 @@ jobs:
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            tests/fixtures/standalone_cli/providers -> target
+
+      - name: Fetch standalone provider dependencies
+        working-directory: tests/fixtures/standalone_cli/providers
+        run: cargo fetch --locked --config net.offline=false
 
       - name: Run clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Run standalone provider clippy
+        working-directory: tests/fixtures/standalone_cli/providers
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
   test:
     name: test
@@ -62,6 +78,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Install Gleam toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          gleam-version: "1.18.1"
+          rebar3-version: "3"
+
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
@@ -70,136 +93,25 @@ jobs:
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            tests/fixtures/standalone_cli/providers -> target
 
       - name: Run tests
-        run: cargo test
-
-      - name: Run locked tests
         run: cargo test --locked
 
-  gleam-stdlib:
-    name: Gleam stdlib
-    runs-on: ubuntu-latest
+      - name: Verify standalone provider packages
+        working-directory: tests/fixtures/standalone_cli/providers
+        run: |
+          cargo package --quiet --offline --allow-dirty --no-verify --locked --package geam-catalog
+          cargo package --quiet --offline --allow-dirty --no-verify --locked --package geam-counter
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Install Gleam toolchain
-        uses: erlef/setup-beam@v1
-        with:
-          otp-version: "29"
-          gleam-version: "1.18.1"
-          rebar3-version: "3"
-
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          cache: false
-          rustflags: ""
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
-
-      - name: Download fixture dependencies
-        working-directory: tests/fixtures/projects/gleam_stdlib
-        run: gleam deps download
-
-      - name: Run Gleam stdlib tests
-        run: cargo test --test gleam_stdlib -- --ignored
-
-  gleam-http:
-    name: Gleam HTTP
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Install Gleam toolchain
-        uses: erlef/setup-beam@v1
-        with:
-          otp-version: "29"
-          gleam-version: "1.18.1"
-          rebar3-version: "3"
-
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          cache: false
-          rustflags: ""
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
-
-      - name: Download fixture dependencies
-        working-directory: tests/fixtures/projects/gleam_http
-        run: gleam deps download
-
-      - name: Run Gleam HTTP tests
-        run: cargo test --test gleam_http -- --ignored
-
-  gleam-json:
-    name: Gleam JSON
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Install Gleam toolchain
-        uses: erlef/setup-beam@v1
-        with:
-          otp-version: "29"
-          gleam-version: "1.18.1"
-          rebar3-version: "3"
-
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          cache: false
-          rustflags: ""
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
-
-      - name: Download fixture dependencies
-        working-directory: tests/fixtures/projects/gleam_json
-        run: gleam deps download
-
-      - name: Run Gleam JSON tests
-        run: cargo test --test gleam_json -- --ignored
-
-  gleam-time:
-    name: Gleam Time
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Install Gleam toolchain
-        uses: erlef/setup-beam@v1
-        with:
-          otp-version: "29"
-          gleam-version: "1.18.1"
-          rebar3-version: "3"
-
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          cache: false
-          rustflags: ""
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
-
-      - name: Download fixture dependencies
-        working-directory: tests/fixtures/projects/gleam_time
-        run: gleam deps download
-
-      - name: Run Gleam Time tests
-        run: cargo test --test gleam_time -- --ignored
+      - name: Verify standalone Gleam packages
+        run: |
+          for package in catalog counter pure_labels; do
+            (cd "tests/fixtures/standalone_cli/project/packages/$package" && gleam export hex-tarball)
+          done
 
   external-provider-sdk:
     name: External Provider SDK
@@ -233,13 +145,13 @@ jobs:
         run: cargo test --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --locked
 
       - name: Run fixture clippy
-        run: cargo clippy --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --all-targets -- -D warnings
+        run: cargo clippy --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --all-targets --locked -- -D warnings
 
       - name: Check fixture coverage
-        run: cargo llvm-cov --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --summary-only --fail-under-lines 100 --fail-under-regions 100
+        run: cargo llvm-cov --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --locked --summary-only --fail-under-lines 100 --fail-under-regions 100
 
-  standalone-cli:
-    name: Standalone CLI
+  coverage:
+    name: coverage
     runs-on: ubuntu-latest
 
     steps:
@@ -256,7 +168,7 @@ jobs:
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          components: rustfmt, clippy
+          components: llvm-tools-preview
           cache: false
           rustflags: ""
 
@@ -267,62 +179,10 @@ jobs:
             . -> target
             tests/fixtures/standalone_cli/providers -> target
 
-      - name: Fetch Rust dependencies
-        run: cargo fetch --locked
-
-      - name: Fetch provider dependencies
-        working-directory: tests/fixtures/standalone_cli/providers
-        run: cargo fetch --locked --config net.offline=false
-
-      - name: Download standalone Gleam dependencies
-        working-directory: tests/fixtures/standalone_cli/project
-        run: gleam deps download
-
-      - name: Run standalone CLI integration
-        run: cargo test --test standalone_cli -- --ignored
-
-      - name: Check provider formatting
-        working-directory: tests/fixtures/standalone_cli/providers
-        run: cargo fmt --all --check
-
-      - name: Run provider clippy
-        working-directory: tests/fixtures/standalone_cli/providers
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
-
-      - name: Verify provider packages
-        working-directory: tests/fixtures/standalone_cli/providers
-        run: |
-          cargo package --quiet --offline --allow-dirty --no-verify --locked --package geam-catalog
-          cargo package --quiet --offline --allow-dirty --no-verify --locked --package geam-counter
-
-      - name: Verify Gleam packages
-        run: |
-          for package in catalog counter pure_labels; do
-            (cd "tests/fixtures/standalone_cli/project/packages/$package" && gleam export hex-tarball)
-          done
-
-  coverage:
-    name: coverage
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: llvm-tools-preview
-          cache: false
-          rustflags: ""
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
-
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov@0.8.7
 
       - name: Check coverage
-        run: cargo llvm-cov --summary-only --fail-under-lines 100 --fail-under-regions 100
+        run: cargo llvm-cov --locked --summary-only --fail-under-lines 100 --fail-under-regions 100
