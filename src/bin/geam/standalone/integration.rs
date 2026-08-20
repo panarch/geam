@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::Cursor;
 use std::path::Path;
+use std::process::Command;
 use tempfile::{TempDir, tempdir};
 
 #[test]
@@ -380,6 +381,7 @@ fn collect_cargo_locks(directory: &Utf8Path, locks: &mut Vec<Utf8PathBuf>) {
 }
 
 fn standalone_fixture() -> TempDir {
+    prepare_provider_dependencies();
     let fixture = tempdir().expect("temporary standalone fixture should be created");
     let project = fixture.path().join("project");
     fs::create_dir_all(project.join("src")).expect("project source should be created");
@@ -466,6 +468,18 @@ pub fn main() {
 
 fn fixture_source() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/standalone_cli")
+}
+
+fn prepare_provider_dependencies() {
+    run_checked(
+        Command::new("cargo")
+            .arg("fetch")
+            .arg("--locked")
+            .arg("--config")
+            .arg("net.offline=false")
+            .current_dir(fixture_source().join("providers")),
+    )
+    .expect("locked standalone provider dependencies should fetch");
 }
 
 fn copy_directory(source: &Path, destination: &Path) {
