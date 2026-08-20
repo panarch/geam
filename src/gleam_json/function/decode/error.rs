@@ -64,6 +64,7 @@ fn normalize_number(number: &[u8]) -> EcoString {
 #[cfg(test)]
 mod tests {
     use super::{DecodeFailure, normalize_number, unicode_sequence};
+    use crate::gleam_json::test_support::{execution, run_state};
     use jiter::{JiterError, JiterErrorType, JsonErrorType};
 
     #[test]
@@ -117,5 +118,42 @@ mod tests {
         assert_eq!(normalize_number(b"-1E+400"), "-1.0e+400");
         assert_eq!(normalize_number(b"1.25e400"), "1.25e400");
         assert_eq!(normalize_number(b"123"), "123");
+    }
+
+    #[test]
+    fn maps_every_json_parse_error_without_turning_it_into_a_host_failure() {
+        let execution = execution(
+            r#"
+pub fn main() {
+  #(
+    decode_to_dynamic(<<>>),
+    decode_to_dynamic(<<91>>),
+    decode_to_dynamic(<<125>>),
+    decode_to_dynamic(<<34, 92, 117, 120, 120, 120, 120, 34>>),
+    decode_to_dynamic(<<34, 92, 117, 68, 56, 48, 48, 34>>),
+    decode_to_dynamic(<<49, 101, 52, 48, 48>>),
+    decode_to_dynamic(<<255>>),
+    decode_to_dynamic(<<116, 114, 117, 101, 32, 102, 97, 108, 115, 101>>),
+    decode_to_dynamic(<<1:size(1)>>),
+    decode_to_dynamic(<<"nul":utf8>>),
+    decode_to_dynamic(<<"tru":utf8>>),
+    decode_to_dynamic(<<"{":utf8>>),
+    decode_to_dynamic(<<"{\"a\":":utf8>>),
+    decode_to_dynamic(<<"1e":utf8>>),
+    decode_to_dynamic(<<"[true":utf8>>),
+    decode_to_dynamic(<<"{\"a\":true":utf8>>),
+    decode_to_dynamic(<<"{\"a\":true,\"b\":":utf8>>),
+  )
+}
+"#,
+        );
+        let value = execution
+            .run_main(&mut run_state([0; 32]), &mut Vec::new())
+            .expect("malformed JSON should remain source-level DecodeError values");
+
+        assert_eq!(
+            value.inspect().to_string(),
+            r#"#(Error(UnexpectedEndOfInput), Error(UnexpectedEndOfInput), Error(UnexpectedByte("0x7D")), Error(UnexpectedSequence("\\uxxxx")), Error(UnexpectedEndOfInput), Error(UnexpectedSequence("1.0e400")), Error(UnexpectedByte("0xFF")), Error(UnexpectedByte("0x66")), Error(UnexpectedByte("")), Error(UnexpectedEndOfInput), Error(UnexpectedEndOfInput), Error(UnexpectedEndOfInput), Error(UnexpectedEndOfInput), Error(UnexpectedEndOfInput), Error(UnexpectedEndOfInput), Error(UnexpectedEndOfInput), Error(UnexpectedEndOfInput))"#,
+        );
     }
 }

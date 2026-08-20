@@ -57,3 +57,21 @@ where
 {
     type Storage = StringTreeExternalStorage;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::JsonProvider;
+    use crate::HostProvider;
+    use crate::gleam_json::GleamJsonProfile;
+    use crate::gleam_json::test_support::run_state;
+
+    #[test]
+    fn projects_only_the_json_component_state() {
+        let mut state = run_state([0; 32]);
+        let json = &mut state.json as *mut ();
+        let projected =
+            <JsonProvider<GleamJsonProfile> as HostProvider<GleamJsonProfile>>::project(&mut state);
+
+        assert!(std::ptr::eq(projected, json));
+    }
+}

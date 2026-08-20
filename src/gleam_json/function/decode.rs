@@ -304,6 +304,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::{DecodeFailure, ParsedNumber, parse_number};
+    use crate::gleam_json::test_support::{execution, run_state};
 
     #[test]
     fn parses_validated_number_tokens_and_maps_defensive_failures() {
@@ -324,6 +325,74 @@ mod tests {
         );
         assert!(
             matches!(parse_number(b"1e400"), Err(DecodeFailure::Sequence(sequence)) if sequence == "1.0e400")
+        );
+    }
+
+    #[test]
+    fn executes_scalar_decoding_through_the_hosted_pipeline() {
+        let execution = execution(
+            r#"
+pub fn main() {
+  #(
+    decode_to_dynamic(<<"null":utf8>>),
+    decode_to_dynamic(<<"true":utf8>>),
+    decode_to_dynamic(<<"\"text\"":utf8>>),
+    decode_to_dynamic(<<"123456789012345678901234567890":utf8>>),
+    decode_to_dynamic(<<"1.25":utf8>>),
+    decode_to_dynamic(<<"[]":utf8>>),
+    decode_to_dynamic(<<"{}":utf8>>),
+  )
+}
+"#,
+        );
+        let value = execution
+            .run_main(&mut run_state([0; 32]), &mut Vec::new())
+            .expect("scalar JSON decoding should run");
+
+        assert_eq!(
+            value.inspect().to_string(),
+            r#"#(Ok(Nil), Ok(True), Ok("text"), Ok(123456789012345678901234567890), Ok(1.25), Ok([]), Ok(dict.from_list([])))"#,
+        );
+    }
+
+    #[test]
+    fn constructs_nested_dynamic_collections_through_the_hosted_pipeline() {
+        let execution = execution(
+            r#"
+pub fn main() {
+  decode_to_dynamic(<<"[1,{\"a\":true,\"a\":false}]":utf8>>)
+}
+"#,
+        );
+        let value = execution
+            .run_main(&mut run_state([0; 32]), &mut Vec::new())
+            .expect("nested JSON decoding should run");
+
+        assert_eq!(
+            value.inspect().to_string(),
+            r#"Ok([1, dict.from_list([#("a", True)])])"#,
+        );
+    }
+
+    #[test]
+    fn deeply_nested_json_parses_and_releases_without_rust_stack_recursion() {
+        let depth = 5_000;
+        let json = format!("{}0{}", "[".repeat(depth), "]".repeat(depth));
+        let source = format!(
+            r#"
+pub fn main() {{
+  case decode_to_dynamic(<<"{json}":utf8>>) {{
+    Ok(_) -> Nil
+    Error(_) -> Nil
+  }}
+}}
+"#,
+        );
+        let execution = execution(&source);
+
+        assert_eq!(
+            execution.run_main(&mut run_state([0; 32]), &mut Vec::new(),),
+            Ok(crate::Value::Nil),
         );
     }
 }
