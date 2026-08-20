@@ -5,6 +5,10 @@ use camino::{Utf8Path, Utf8PathBuf};
 use std::collections::BTreeMap;
 use std::io::IsTerminal;
 
+#[cfg(test)]
+#[path = "standalone/integration.rs"]
+mod integration;
+
 pub(super) fn prepare(project_root: &Utf8Path, module: String) -> Result<(), CliError> {
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();

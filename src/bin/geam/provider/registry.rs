@@ -16,7 +16,7 @@ pub(super) use discovery::{
     CandidateRejection, ProviderCandidate, RegistryDiscoveryError, discover,
 };
 
-pub(super) trait ProviderRegistry {
+pub(crate) trait ProviderRegistry {
     fn search(&self, query: &str) -> Result<Vec<u8>, RegistryAccessError>;
     fn index(&self, crate_name: &str) -> Result<Vec<u8>, RegistryAccessError>;
     fn configuration(&self) -> Result<Vec<u8>, RegistryAccessError>;
@@ -25,7 +25,7 @@ pub(super) trait ProviderRegistry {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{operation} failed: {reason}")]
-pub(super) struct RegistryAccessError {
+pub(crate) struct RegistryAccessError {
     operation: String,
     reason: String,
 }

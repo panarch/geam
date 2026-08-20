@@ -13,14 +13,14 @@ pub(super) trait ProviderApproval {
     ) -> Result<ProviderCandidate, CliError>;
 }
 
-pub(super) struct TerminalApproval<'io> {
+pub(crate) struct TerminalApproval<'io> {
     terminal: bool,
     reader: &'io mut dyn BufRead,
     writer: &'io mut dyn Write,
 }
 
 impl<'io> TerminalApproval<'io> {
-    pub(super) fn new(
+    pub(crate) fn new(
         terminal: bool,
         reader: &'io mut dyn BufRead,
         writer: &'io mut dyn Write,

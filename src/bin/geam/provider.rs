@@ -1,8 +1,5 @@
 #[path = "provider/approval.rs"]
 mod approval;
-#[cfg(test)]
-#[path = "provider/integration.rs"]
-mod integration;
 #[path = "provider/manifest.rs"]
 mod manifest;
 #[path = "provider/metadata.rs"]
@@ -10,13 +7,14 @@ mod metadata;
 #[path = "provider/reconcile.rs"]
 mod reconcile;
 #[path = "provider/registry.rs"]
-mod registry;
+pub(crate) mod registry;
 #[path = "provider/resolution.rs"]
 mod resolution;
 
 use crate::command::{AddProvider, RemoveProvider};
 use crate::error::CliError;
 use crate::project::{ResolvedProject, read_resolved_project};
+pub(crate) use approval::TerminalApproval;
 use camino::Utf8Path;
 pub(super) use manifest::ManagedProject;
 use manifest::ProviderSelection;
@@ -27,7 +25,7 @@ const BUILT_IN_PROVIDER_PACKAGES: [&str; 3] = ["gleam_json", "gleam_stdlib", "gl
 
 pub(super) struct SystemProviderReconciler<'io> {
     registry: registry::CratesIoRegistry,
-    approval: approval::TerminalApproval<'io>,
+    approval: TerminalApproval<'io>,
 }
 
 impl<'io> SystemProviderReconciler<'io> {
@@ -38,7 +36,7 @@ impl<'io> SystemProviderReconciler<'io> {
     ) -> Self {
         Self {
             registry: registry::CratesIoRegistry::default(),
-            approval: approval::TerminalApproval::new(terminal, reader, writer),
+            approval: TerminalApproval::new(terminal, reader, writer),
         }
     }
 }
@@ -51,15 +49,33 @@ impl ProviderSelectionReconciler for SystemProviderReconciler<'_> {
         program: &geam::TypedProgram,
         managed: &mut ManagedProject,
     ) -> Result<(), CliError> {
-        let discovery = reconcile::RegistryProviderDiscovery::new(&self.registry);
-        let resolver = reconcile::SystemApprovedProviderResolver;
-        reconcile::ProviderReconciler::new(&resolver, &discovery, &mut self.approval).reconcile(
+        reconcile_registry(
+            &self.registry,
+            &mut self.approval,
             project_root,
             project,
             program,
             managed,
         )
     }
+}
+
+pub(crate) fn reconcile_registry(
+    registry: &dyn registry::ProviderRegistry,
+    approval: &mut TerminalApproval<'_>,
+    project_root: &Utf8Path,
+    project: &ResolvedProject,
+    program: &geam::TypedProgram,
+    managed: &mut ManagedProject,
+) -> Result<(), CliError> {
+    let discovery = reconcile::RegistryProviderDiscovery::new(registry);
+    let resolver = reconcile::SystemApprovedProviderResolver;
+    reconcile::ProviderReconciler::new(&resolver, &discovery, approval).reconcile(
+        project_root,
+        project,
+        program,
+        managed,
+    )
 }
 
 pub(super) fn add(

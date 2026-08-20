@@ -126,10 +126,12 @@ version-locked stdlib, JSON, and Time dependencies, and two provider-backed path
 packages. Official package source is downloaded outside Git, while the local
 packages remain visible test-owned fixtures. The independent Rust providers
 exercise state, callbacks, external storage, and a compound return through the
-generated static profile. Registry owner tests feed real `cargo package`
-archives through a fake bounded registry, checksum and metadata verification,
-approval, and registry-shaped manifest generation. Fixture-only Cargo patches
-then keep provider acquisition and runner builds local.
+generated static profile. A standalone orchestration test feeds packaged
+provider manifests through a fake bounded registry, checksum and metadata
+verification, and approval, then carries the registry-shaped selections through
+the real root Cargo lock, generated runner check, and runner execution.
+Fixture-only Cargo patches keep acquisition local while preserving the
+production manifest, resolution, build, and execution path.
 
 The normal suite executes the full generated runner with the fixture's locked
 Gleam and Rust dependencies. CI also runs `gleam export hex-tarball` for each
