@@ -80,7 +80,6 @@ fn hosts() -> HostProviderSet<GleamStdlibProfile> {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn tracks_official_gleam_dynamic_decode_public_surface() {
     assert_surface(
         "gleam_dynamic_decode_primitives",
@@ -91,7 +90,6 @@ fn tracks_official_gleam_dynamic_decode_public_surface() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_dynamic_decode_primitives() {
     run_hosted_fixture(
         "gleam_dynamic_decode_primitives",
@@ -102,7 +100,6 @@ fn runs_official_gleam_dynamic_decode_primitives() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_dynamic_decode_collections() {
     run_hosted_fixture(
         "gleam_dynamic_decode_collections",
@@ -113,7 +110,6 @@ fn runs_official_gleam_dynamic_decode_collections() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_dynamic_decode_paths() {
     run_hosted_fixture(
         "gleam_dynamic_decode_paths",
@@ -124,7 +120,6 @@ fn runs_official_gleam_dynamic_decode_paths() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_dynamic_decode_combinators() {
     run_hosted_fixture(
         "gleam_dynamic_decode_combinators",
@@ -135,7 +130,6 @@ fn runs_official_gleam_dynamic_decode_combinators() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_dynamic_decode_recursive_values() {
     run_hosted_fixture(
         "gleam_dynamic_decode_recursive",

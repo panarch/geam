@@ -7,6 +7,7 @@ use crate::host::{
 use crate::plan::{FunctionTemplateId, HostFunctionTemplate, ModuleId};
 use crate::planner::context::FunctionInfo;
 use crate::planner::error::{HostProviderLinkReason, PlanError};
+use crate::planner::host_requirement::requires_erlang_host_provider;
 use crate::planner::type_parameter::TypeParameterScope;
 use ecow::EcoString;
 use gleam_core::ast::TypedFunction;
@@ -24,6 +25,7 @@ pub(super) fn select_erlang_hosted_functions(
         .into_iter()
         .filter(|function| {
             function.implementations.can_run_on_erlang
+                || requires_erlang_host_provider(function)
                 || function
                     .name
                     .as_ref()
@@ -74,14 +76,13 @@ pub(super) fn link_source_functions(
                         });
                         (linked, providers, executable_externals)
                     })
+                } else if requires_erlang_host_provider(&function.function) {
+                    Err(PlanError::MissingHostProvider {
+                        package: package.clone(),
+                        module: module.clone(),
+                        function: name,
+                    })
                 } else if external {
-                    if function.function.body.is_empty() {
-                        return Err(PlanError::MissingHostProvider {
-                            package: package.clone(),
-                            module: module.clone(),
-                            function: name,
-                        });
-                    }
                     executable_externals.insert(name.clone());
                     linked.push(LinkedFunction::ExternalFallback {
                         name,

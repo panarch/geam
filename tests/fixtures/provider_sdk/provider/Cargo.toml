@@ -3,6 +3,11 @@ name = "provider-sdk-example-provider"
 version = "0.1.0"
 edition = "2024"
 
+[package.metadata.geam.provider]
+schema = 1
+gleam-package = "provider_sdk_example"
+gleam-version = ">= 1.0.0 and < 2.0.0"
+
 [dependencies]
 ecow = "=0.2.6"
 geam = { path = "../../../.." }

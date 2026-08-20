@@ -5,6 +5,7 @@ mod dsl;
 mod error;
 mod expression;
 mod function;
+mod host_requirement;
 mod module;
 mod pattern;
 mod statement;
@@ -20,6 +21,7 @@ pub use error::{
     PlanError, RecordUpdateArgumentOrigin, UnsupportedBitArraySegmentReason,
     UnsupportedFunctionReason, UnsupportedPatternKind, UnsupportedTopLevelKind,
 };
+pub use host_requirement::{RequiredHostFunction, required_host_functions};
 pub use module::{plan_host_program, plan_module, plan_module_with_source, plan_program};
 
 #[cfg(test)]

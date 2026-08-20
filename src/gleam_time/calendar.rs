@@ -29,8 +29,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::host_provider;
-    use crate::gleam_time::GleamTimeProfile;
-    use crate::{FunctionType, ValueType};
+    use crate::gleam_stdlib::GleamStdlibRunState;
+    use crate::gleam_time::test_support::{CALENDAR_SOURCE, ScriptedSource, execution};
+    use crate::gleam_time::{GleamTimeProfile, GleamTimeRunState};
+    use crate::{ExecutionError, FunctionType, HostError, HostFailure, InvariantError, ValueType};
 
     #[test]
     fn registers_the_exact_calendar_provider() {
@@ -48,5 +50,55 @@ mod tests {
             functions[0].type_(),
             &FunctionType::new(Vec::new(), ValueType::Int),
         );
+    }
+
+    #[test]
+    fn preserves_local_offset_source_failures() {
+        let source = format!("{CALENDAR_SOURCE}\npub fn main() {{\n  current_offset()\n}}\n",);
+        let execution = execution::<ScriptedSource>(&source, "gleam/time/calendar");
+        let mut state = GleamTimeRunState::new(
+            GleamStdlibRunState::from_seed([4; 32]),
+            ScriptedSource {
+                times: Default::default(),
+                offsets: [Err(HostFailure::new("offset unavailable"))].into(),
+            },
+        );
+        let error = execution
+            .run_main(&mut state, &mut Vec::new())
+            .expect_err("scripted offset failure should remain an execution error");
+        let error = expect_offset_host_error(error);
+
+        assert_eq!(error.package(), "gleam_time");
+        assert_eq!(error.module(), "gleam/time/calendar");
+        assert_eq!(error.function(), "local_time_offset_seconds");
+        assert_eq!(error.failure().message(), "offset unavailable");
+        assert_eq!(
+            error
+                .location()
+                .path()
+                .expect("synthetic offset failure should retain its source path")
+                .as_str(),
+            "src/gleam/time/calendar.gleam",
+        );
+        assert_eq!(error.location().line(), Some(7));
+    }
+
+    #[test]
+    #[should_panic(expected = "scripted offset failure should remain a host error")]
+    fn offset_failure_assertion_rejects_other_execution_errors() {
+        let _ = expect_offset_host_error(ExecutionError::Invariant(
+            InvariantError::ListIndexOutOfBounds {
+                item_type: ValueType::Int,
+                index: 1,
+                length: 0,
+            },
+        ));
+    }
+
+    fn expect_offset_host_error(error: ExecutionError) -> Box<HostError> {
+        let ExecutionError::Host(error) = error else {
+            panic!("scripted offset failure should remain a host error");
+        };
+        error
     }
 }

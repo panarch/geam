@@ -147,17 +147,37 @@ runtime type lookup or a general-purpose materialized value builder.
 ### Static Provider Components
 
 An independently compiled Rust crate can package its provider boundary as a
-`HostProviderComponent`. The component owns its configuration interpretation,
-external stores, caller-owned run state, and source-backed registrations. A
-runner combines selected components into concrete aggregate structs and
-implements static `HostComponentProfile` projections for each component. The
-runtime does not discover components or erase their stores and state.
+`HostProviderComponent`. The component owns its external stores and
+caller-owned run-state types, and registers source-backed providers through its
+component registration implementation. A runner combines selected components
+into concrete aggregate structs and implements static `HostComponentProfile`
+projections for each component. The runtime does not discover components or
+erase their stores and state.
 
-Component initialization consumes explicit owned configuration before source
-planning or execution begins. An initialization failure identifies the
-component and remains a runner assembly error; configuration, component
-identity, and mutable state do not enter ModulePlan, the execution graph,
-Explain metadata, or `ExecutionError`.
+Configured external components implement a separate initialization contract
+that consumes explicit owned configuration before source planning or execution
+begins. An initialization failure identifies the component and remains a runner
+assembly error. Built-in IO, entropy, stateless JSON, and clock state are
+runner-owned capabilities rather than provider configuration. Configuration,
+component identity, and mutable state do not enter ModulePlan, the execution
+graph, Explain metadata, or `ExecutionError`.
+
+The standalone CLI inventories mandatory Erlang externals from the selected
+typed program, reconciles approved provider crates, and generates one concrete
+Cargo runner. Registry discovery and process execution stay outside the
+read-only project loader. First-time native provider selection and incompatible
+replacement require approval; accepted selections are exact Cargo dependencies
+and `Cargo.lock` is the only dependency lock. Source edits and entry-module
+selection do not alter the generated profile while the approved provider set is
+unchanged.
+
+`prepare` compiles, plans, and seals the hosted project without creating
+component state. `run` reads explicit dependency configuration, initializes
+approved Cargo components, constructs built-in runner capabilities, and then
+plans, seals, and executes. Configuration and credentials do not enter generated
+source, Cargo metadata, global state, canonical plans, or runtime values.
+Built-in stdlib, JSON, and Time components use the same static composition and
+registration path while remaining outside registry discovery and approval.
 
 ### Time Sources
 

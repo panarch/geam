@@ -4,11 +4,6 @@ use geam::{
     compile_typed_host_project, compile_typed_project, plan_host_program, plan_program, run_main,
 };
 
-#[path = "support/upstream_surface.rs"]
-mod upstream_surface;
-
-use upstream_surface::{ExpectedSurface, assert_module_surface};
-
 #[path = "gleam_stdlib/gleam_bit_array.rs"]
 mod gleam_bit_array;
 #[path = "gleam_stdlib/gleam_bool.rs"]
@@ -47,6 +42,12 @@ mod gleam_string;
 mod gleam_string_tree;
 #[path = "gleam_stdlib/gleam_uri.rs"]
 mod gleam_uri;
+#[path = "support/upstream_surface.rs"]
+mod upstream_surface;
+#[path = "support/workspace_dependencies.rs"]
+mod workspace_dependencies;
+
+use upstream_surface::{ExpectedSurface, assert_module_surface};
 
 fn assert_surface(
     root_module: &str,
@@ -166,5 +167,15 @@ fn expected_module_order<'name>(
 }
 
 fn project_root() -> Utf8PathBuf {
-    Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/projects/gleam_stdlib")
+    let root =
+        Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/projects/gleam_stdlib");
+    static PREPARED: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
+    workspace_dependencies::prepare(
+        &PREPARED,
+        root.as_std_path(),
+        "gleam",
+        &["deps", "download"],
+        "`gleam deps download`",
+    );
+    root
 }

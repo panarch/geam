@@ -1,7 +1,7 @@
 use super::DynamicSequence;
 use super::schema::{Dynamic, DynamicList, DynamicSchema};
 use super::storage::{DynamicExternalStorage, DynamicPayload, DynamicRepresentation};
-use crate::gleam_stdlib::GleamStdlibHostProfile;
+use crate::gleam_stdlib::{GleamStdlibHostProfile, GleamStdlibRunState, stdlib_state};
 use crate::{
     HostCall, HostCallCompletion, HostCallError, HostConstruction, HostExternal,
     HostExternalBinding, HostList, HostProvider, HostType,
@@ -15,10 +15,10 @@ impl<Profile> HostProvider<Profile> for DynamicProvider<Profile>
 where
     Profile: GleamStdlibHostProfile,
 {
-    type State = Profile::RunState;
+    type State = GleamStdlibRunState<Profile::Io>;
 
     fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        state
+        stdlib_state::<Profile>(state)
     }
 }
 

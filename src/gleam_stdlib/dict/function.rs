@@ -7,7 +7,7 @@ use super::storage::{
     DictEntry, DictExternalStorage, DictPayload, DictPayloadStorage, DictStorage,
     TransientDictExternalStorage, TransientDictPayload,
 };
-use crate::gleam_stdlib::{Dynamic, GleamStdlibHostProfile};
+use crate::gleam_stdlib::{Dynamic, GleamStdlibHostProfile, GleamStdlibRunState, stdlib_state};
 use crate::{
     HostCall, HostCallCompletion, HostCallError, HostCallable, HostConstruction, HostExternal,
     HostExternalBinding, HostExternalPayloadBuilder, HostExternalPayloadView, HostProfile,
@@ -24,10 +24,10 @@ impl<Profile> HostProvider<Profile> for DictProvider<Profile>
 where
     Profile: GleamStdlibHostProfile,
 {
-    type State = Profile::RunState;
+    type State = GleamStdlibRunState<Profile::Io>;
 
     fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        state
+        stdlib_state::<Profile>(state)
     }
 }
 

@@ -67,7 +67,6 @@ fn hosts() -> HostProviderSet<GleamStdlibProfile> {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn tracks_official_gleam_string_tree_public_surface() {
     assert_surface(
         "gleam_string_tree",
@@ -78,7 +77,6 @@ fn tracks_official_gleam_string_tree_public_surface() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_string_tree() {
     let value = run_hosted_fixture(
         "gleam_string_tree",

@@ -165,13 +165,11 @@ fn hosts() -> HostProviderSet<GleamStdlibProfile> {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn tracks_official_gleam_list_public_surface() {
     assert_surface("gleam_list_basics", "gleam/list", DEPENDENCIES, &SURFACE);
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_list_basics() {
     assert_eq!(
         run_hosted_fixture(
@@ -185,7 +183,6 @@ fn runs_official_gleam_list_basics() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_list_transforms() {
     assert_eq!(
         run_hosted_fixture(
@@ -199,7 +196,6 @@ fn runs_official_gleam_list_transforms() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_list_folds() {
     assert_eq!(
         run_hosted_fixture(
@@ -213,7 +209,6 @@ fn runs_official_gleam_list_folds() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_list_pairs() {
     assert_eq!(
         run_hosted_fixture(
@@ -227,7 +222,6 @@ fn runs_official_gleam_list_pairs() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_list_shapes() {
     assert_eq!(
         run_hosted_fixture(
@@ -241,7 +235,6 @@ fn runs_official_gleam_list_shapes() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_list_random_collections() {
     assert_eq!(
         run_hosted_fixture(

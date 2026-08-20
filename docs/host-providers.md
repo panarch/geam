@@ -5,16 +5,17 @@ externals. The crate does not need dynamic loading or a Geam-specific package
 format: a runner adds it as a normal Cargo path, Git, or registry dependency and
 composes it into a concrete hosted profile at compile time.
 
-This boundary is intentionally static. Geam does not discover provider crates,
-parse provider configuration, generate a runner, or choose implementations at
-runtime. Those are future CLI responsibilities built on the contracts described
-here.
+This boundary is intentionally static. The standalone CLI can discover and
+approve provider dependencies, parse explicit configuration, and generate a
+concrete runner, but the resulting Rust program still composes every component
+at compile time. It does not choose or type-erase implementations at runtime.
 
 ## Provider Crate
 
 Each provider crate exports one marker that implements
-`HostProviderComponent`. The component owns its store and run-state types and
-initializes caller-owned state from an explicit, read-only configuration.
+`HostProviderComponent`. The component owns its store and run-state types.
+Provider crates that consume configuration implement the separate
+`HostProviderComponentInitialization` contract.
 
 ```rust
 pub struct Component;
@@ -23,7 +24,9 @@ impl HostProviderComponent for Component {
     const ID: &'static str = "example";
     type Stores = Stores;
     type RunState = RunState;
+}
 
+impl HostProviderComponentInitialization for Component {
     fn initialize(
         configuration: &HostProviderConfiguration,
     ) -> Result<RunState, HostProviderInitializationError> {
@@ -37,6 +40,9 @@ Configuration has no environment-variable lookup, global state, parser, or
 hidden defaults. A runner constructs `HostProviderConfiguration` explicitly.
 Initialization failure names the component and remains an assembly error before
 planning or execution; it is not an `ExecutionError` or host callback failure.
+Geam's built-in stdlib, JSON, and Time components do not implement configured
+initialization: the runner separately constructs their IO, entropy, stateless
+JSON, and clock capabilities.
 
 The same component implements `HostProviderComponentRegistration<Profile>` for
 every concrete profile that projects it. Registration returns source-backed
@@ -67,8 +73,9 @@ part of the provider crate.
 
 ## Runner Profile
 
-A runner combines selected components with ordinary struct fields. The shape is
-the target for future generated code, but it is regular Rust today.
+A runner combines selected components with ordinary struct fields. An embedding
+application can write this regular Rust directly, while the standalone CLI
+emits the same shape for a managed project.
 
 ```rust
 struct Profile;
@@ -104,16 +111,17 @@ impl HostComponentProfile<Component> for Profile {
 
 For multiple components, the aggregate structs add one concrete field and one
 projection implementation per component. No trait object, type-erased map, or
-runtime registry is involved.
+runtime registry is involved. Geam built-ins and approved Cargo dependencies
+use this same field, projection, and registration path; discovery and state
+construction are the parts that differ.
 
 The runner then performs the complete hosted pipeline explicitly:
 
 ```text
-component configuration
--> Component::initialize
--> Component::providers
+Component::providers
 -> HostProviderSet
 -> compile_typed_host_program or compile_typed_host_project
+-> configured Component::initialize and runner capability construction
 -> plan_host_program
 -> HostedExecution::try_from_module_plan
 -> HostedExecution::run_main with aggregate RunState
@@ -171,10 +179,27 @@ the callback capability come from the same type list, so runtime does not need
 signature or permission checks. Generic construction types may refer only to
 type parameters already bound by the function signature.
 
-## Future CLI Boundary
+## Standalone CLI Boundary
 
-A future CLI may resolve provider dependencies, parse configuration, and emit
-the aggregate `Stores`, `RunState`, `Profile`, projections, and initialization
-code shown above. It does not need a new provider ABI to do so. This SDK does
-not itself define discovery metadata, build caching, source generation, or a
-publication workflow.
+The standalone CLI emits one aggregate `Stores`, `RunState`, `Profile`,
+projection, and registration graph for Geam built-ins and approved Cargo
+dependencies. A provider crate advertises one component through
+`[package.metadata.geam.provider]`; the CLI verifies that metadata before
+recording the crate as an ordinary exact Cargo dependency. Generated code uses
+only the crate-root `Component` and the public component contracts. Configured
+dependency initialization and runner-owned capability construction remain
+separate strategies within that graph.
+
+To make a published provider discoverable, derive its Cargo package name from
+the target Gleam package: add the `geam-` prefix and replace underscores with
+hyphens. A provider whose metadata targets `company_image` therefore publishes
+as `geam-company-image`; alternatives may append a kebab-case suffix. The name
+only places the crate in the discovery namespace. Packaged metadata remains the
+authority for the exact `company_image` identity, and explicitly selected
+registry, path, or Git crates may use other names.
+
+Discovery, native-code approval, managed Cargo files, and runtime configuration
+belong to the CLI rather than this SDK. Provider callbacks, stores, and state
+remain governed by the same static ABI whether a runner is generated or written
+by an embedding application. See [standalone execution](standalone.md) for the
+CLI workflow and trust boundary.

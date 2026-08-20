@@ -52,21 +52,15 @@ filesystem module resolution beyond loading the fixture case.
 
 Resolved-project loader behavior is covered by synthetic temporary projects in
 the frontend owner tests. These tests construct Hex, Git, and Local package
-layouts without network access or an installed Gleam CLI. They keep normal
-`cargo test`, locked tests, and coverage hermetic.
+layouts without network access or an installed Gleam CLI, keeping loader owner
+coverage independent of external package acquisition.
 
 The tracked `tests/fixtures/projects/gleam_stdlib` project locks official
-`gleam_stdlib` `v1.0.3` but does not track downloaded package source. Its
-ignored integration test is run separately:
+`gleam_stdlib` `v1.0.3` but does not track downloaded package source. Full test
+and coverage runs automatically download that exact source before executing the
+integration target.
 
-```sh
-cd tests/fixtures/projects/gleam_stdlib
-gleam deps download
-cd ../../../..
-cargo test --test gleam_stdlib -- --ignored
-```
-
-CI prepares this fixture with Gleam `v1.18.1`. Provider-free roots run through
+CI runs these tests with Gleam `v1.18.1`. Provider-free roots run through
 `compile_typed_project -> plan_program -> ExecutionPlan::from_module_plan ->
 run_main`; roots whose selected closure uses registered externals run through
 `compile_typed_host_project -> plan_host_program ->
@@ -82,55 +76,32 @@ loader or providers.
 
 The tracked `tests/fixtures/projects/gleam_http` project independently locks
 official `gleam_http` `v4.3.0` and `gleam_stdlib` `v1.0.3`. It likewise keeps
-downloaded package source out of Git and runs through a separate ignored
-integration target:
-
-```sh
-cd tests/fixtures/projects/gleam_http
-gleam deps download
-cd ../../../..
-cargo test --test gleam_http -- --ignored
-```
+downloaded package source out of Git and downloads the exact locked source
+automatically before the integration target runs.
 
 The HTTP package itself is Pure Gleam and registers no provider. Its selected
 dependency closure reaches provider-backed stdlib modules, so the suite uses
 the hosted resolved-project pipeline with the explicit stdlib provider bundle.
 It fixes the public surface of all five package modules and executes every
-public function. CI owns dependency preparation for this target; normal Cargo
-tests and coverage remain network-free.
+public function.
 
 The tracked `tests/fixtures/projects/gleam_json` project independently locks
-official `gleam_json` `v3.1.0` and `gleam_stdlib` `v1.0.3`. Prepare and run its
-ignored integration target separately:
-
-```sh
-cd tests/fixtures/projects/gleam_json
-gleam deps download
-cd ../../../..
-cargo test --test gleam_json -- --ignored
-```
+official `gleam_json` `v3.1.0` and `gleam_stdlib` `v1.0.3`. Full test and
+coverage runs automatically download its exact locked source before executing
+the integration target.
 
 This target explicitly composes the stdlib and JSON provider bundles, fixes the
-complete public `gleam/json` surface, and executes every public function. The
-normal Cargo suite and coverage remain independent of downloaded package
-source and the Gleam CLI.
+complete public `gleam/json` surface, and executes every public function.
 
 The tracked `tests/fixtures/projects/gleam_time` project independently locks
-official `gleam_time` `v1.8.0` and `gleam_stdlib` `v1.0.3`. Prepare and run its
-ignored integration target separately:
-
-```sh
-cd tests/fixtures/projects/gleam_time
-gleam deps download
-cd ../../../..
-cargo test --test gleam_time -- --ignored
-```
+official `gleam_time` `v1.8.0` and `gleam_stdlib` `v1.0.3`. Full test and
+coverage runs automatically download its exact locked source before executing
+the integration target.
 
 This target explicitly composes the stdlib and Time provider bundles. It fixes
 the complete public surfaces of `gleam/time/duration`, `gleam/time/calendar`,
 and `gleam/time/timestamp`, executes every public function, and supplies a
-deterministic caller-owned clock for system effects. Normal Cargo tests and
-coverage remain independent of downloaded package source and the Gleam CLI.
+deterministic caller-owned clock for system effects.
 
 The independent `tests/fixtures/provider_sdk` Cargo workspace verifies the
 public path-provider boundary without adding its crates to Geam's development
@@ -141,12 +112,31 @@ one executable example.
 
 ```sh
 cargo test --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --locked
-cargo clippy --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --all-targets -- -D warnings
-cargo llvm-cov --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --summary-only --fail-under-lines 100 --fail-under-regions 100
+cargo clippy --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --all-targets --locked -- -D warnings
+cargo llvm-cov --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --locked --summary-only --fail-under-lines 100 --fail-under-regions 100
 ```
 
-This workspace is independently locked and needs neither network access nor a
-Gleam CLI. CI runs it as a separate provider SDK boundary.
+This workspace is independently locked and needs neither a Gleam CLI nor
+downloaded Gleam package source. Its Rust dependencies use Cargo's ordinary
+locked acquisition path. CI runs it as a separate provider SDK boundary.
+
+The tracked `tests/fixtures/standalone_cli` fixture verifies the complete CLI
+assembly boundary. Its Gleam project combines a Pure Gleam path package,
+version-locked stdlib, JSON, and Time dependencies, and two provider-backed path
+packages. Official package source is downloaded outside Git, while the local
+packages remain visible test-owned fixtures. The independent Rust providers
+exercise state, callbacks, external storage, and a compound return through the
+generated static profile. A standalone orchestration test feeds packaged
+provider manifests through a fake bounded registry, checksum and metadata
+verification, and approval, then carries the registry-shaped selections through
+the real root Cargo lock, generated runner check, and runner execution.
+Fixture-only Cargo patches keep acquisition local while preserving the
+production manifest, resolution, build, and execution path.
+
+The normal suite executes the full generated runner with the fixture's locked
+Gleam and Rust dependencies. CI also runs `gleam export hex-tarball` for each
+local Gleam dependency and `cargo package` for both provider crates. No fixture
+package is published.
 
 Source-level rejection fixtures live under categorized
 `tests/fixtures/rejection/**/*.gleam` paths. They are reserved for public
@@ -155,10 +145,10 @@ tests.
 
 ## Commands
 
-Run the normal test suite:
+With the Rust toolchain and Gleam `v1.18.1` installed, run the full test suite:
 
 ```sh
-cargo test
+cargo test --locked
 ```
 
 Planner unit tests use the crate-internal `planner::dsl` expected-plan helpers
@@ -172,7 +162,7 @@ Run formatting and lint checks:
 
 ```sh
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
+cargo clippy --all-targets --locked -- -D warnings
 ```
 
 ## Coverage
@@ -190,7 +180,7 @@ cargo install cargo-llvm-cov --locked
 Run the enforced coverage gate:
 
 ```sh
-cargo llvm-cov --summary-only --fail-under-lines 100 --fail-under-regions 100
+cargo llvm-cov --locked --summary-only --fail-under-lines 100 --fail-under-regions 100
 ```
 
 Geam keeps both line coverage and full-scope region coverage at 100%. Region

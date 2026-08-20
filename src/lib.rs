@@ -27,13 +27,13 @@ pub use host::{
     HostExternalPayloadView, HostExternalSchema, HostExternalStorage, HostExternalStore,
     HostExternalType, HostExternalTypeSchema, HostFailure, HostFunction, HostFunctionSchema,
     HostFunctionType, HostList, HostListType, HostModule, HostProfile, HostProvider,
-    HostProviderComponent, HostProviderComponentRegistration, HostProviderConfiguration,
-    HostProviderConfigurationValue, HostProviderInitializationError, HostProviderModule,
-    HostProviderSet, HostRegistrationError, HostSchemaType, HostStoredDynamic, HostStoredType,
-    HostStoredValue, HostTuple, HostTupleType, HostType, HostTypeAt, HostTypeIndex0,
-    HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter, HostTypeSequence,
-    HostValue, ScopedConstructingHostFunction, ScopedDivergingHostFunction, ScopedHostFunction,
-    StatelessHostProfile,
+    HostProviderComponent, HostProviderComponentInitialization, HostProviderComponentRegistration,
+    HostProviderConfiguration, HostProviderConfigurationValue, HostProviderInitializationError,
+    HostProviderModule, HostProviderSet, HostRegistrationError, HostSchemaType, HostStoredDynamic,
+    HostStoredType, HostStoredValue, HostTuple, HostTupleType, HostType, HostTypeAt,
+    HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter,
+    HostTypeSequence, HostValue, ScopedConstructingHostFunction, ScopedDivergingHostFunction,
+    ScopedHostFunction, StatelessHostProfile,
 };
 pub use plan::execution::{
     ExecutionPlan, ExecutionPlanExplanation, HostSpecializationError,
@@ -48,8 +48,8 @@ pub use plan::{
     StringLocalId, ValueType,
 };
 pub use planner::{
-    ExternalTypeProviderLinkReason, HostProviderLinkReason, PlanError, plan_host_program,
-    plan_module, plan_module_with_source, plan_program,
+    ExternalTypeProviderLinkReason, HostProviderLinkReason, PlanError, RequiredHostFunction,
+    plan_host_program, plan_module, plan_module_with_source, plan_program, required_host_functions,
 };
 pub use runtime::{
     BitArraySegmentPanicReason, BitArrayValue, BitArrayValueLengthError, CustomFieldValue,

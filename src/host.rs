@@ -10,8 +10,9 @@ mod type_;
 mod value;
 
 pub use component::{
-    HostComponentProfile, HostProviderComponent, HostProviderComponentRegistration,
-    HostProviderConfiguration, HostProviderConfigurationValue, HostProviderInitializationError,
+    HostComponentProfile, HostProviderComponent, HostProviderComponentInitialization,
+    HostProviderComponentRegistration, HostProviderConfiguration, HostProviderConfigurationValue,
+    HostProviderInitializationError,
 };
 pub use construction::{HostConstruction, HostConstructions};
 pub use error::HostRegistrationError;

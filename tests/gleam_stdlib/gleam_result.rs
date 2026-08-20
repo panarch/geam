@@ -65,7 +65,6 @@ fn hosts() -> HostProviderSet<GleamStdlibProfile> {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn tracks_official_gleam_result_public_surface() {
     assert_surface(
         "gleam_result_basics",
@@ -76,7 +75,6 @@ fn tracks_official_gleam_result_public_surface() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_result_basics() {
     assert_eq!(
         run_hosted_fixture(
@@ -90,7 +88,6 @@ fn runs_official_gleam_result_basics() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_result_combinators() {
     assert_eq!(
         run_hosted_fixture(

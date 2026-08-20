@@ -227,13 +227,31 @@ family-local parameter layout, and callback adapter together. Planner and
 runtime phases may consume that layout, but must not independently infer the
 same signature or parameter indexing.
 
-Treat an external provider component as a static assembly owner. It owns its
-explicit configuration interpretation, initialization, stores, run state, and
-provider registrations; a concrete aggregate profile only projects those
-owners. Initialization failure belongs before planning and execution. Do not
-move component identity, configuration, mutable state, or initialization into
-canonical plans, graphs, Explain metadata, runtime registries, or host callback
-errors.
+Treat a provider component as the static owner of its stores, run-state type,
+and registrations; a concrete aggregate profile only projects those owners.
+Configured external components own explicit configuration interpretation and
+initialization through the separate initialization contract. Runner-built IO,
+entropy, unit state, and clocks are capability construction, not hidden provider
+configuration. Initialization failure belongs before planning and execution.
+Do not move component identity, configuration, mutable state, or initialization
+into canonical plans, graphs, Explain metadata, runtime registries, or host
+callback errors.
+
+Keep standalone package management outside the read-only project loader.
+Registry access, dependency download, process execution, approval prompts, and
+managed file mutation belong to CLI owners. A generated runner must compose
+Geam built-ins and approved Cargo dependencies through one ordered static
+component graph. Stores, run state, projections, and registration derive from
+that graph, while configured initialization and runner capability construction
+remain separate owners. Ordinary source edits, module selection, and runtime
+configuration must not change its profile.
+
+Treat first-time native provider selection and incompatible replacement as
+explicit trust boundaries. Verify bounded registry responses, exact archive
+checksums, packaged metadata, target Gleam package, and compatibility before
+presenting a candidate. Do not execute provider code before approval, silently
+select in noninteractive use, adopt user-owned Cargo manifests, or introduce a
+second provider lock beside `Cargo.lock`.
 
 Source provider selection must finish before function body planning. Match an
 exact external scheme, preserve a declared Gleam fallback when no provider is
@@ -403,6 +421,9 @@ represented by a dedicated fixture-based integration case.
 Only add public planner API integration tests when the public boundary itself is
 the reviewed behavior, not to cover planner implementation branches that belong
 to an owning planner unit test.
+
+Do not commit ignored tests; every test used as coverage, compatibility, or
+support evidence must run normally in a mandatory verification path.
 
 ## Helper And DSL Rules
 

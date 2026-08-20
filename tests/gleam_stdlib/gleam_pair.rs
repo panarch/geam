@@ -18,13 +18,11 @@ swap: fn(#(a, b)) -> #(b, a)
 };
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn tracks_official_gleam_pair_public_surface() {
     assert_surface("gleam_pair", "gleam/pair", &["gleam/pair"], &SURFACE);
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_pair_behavior() {
     assert_eq!(run_fixture("gleam_pair", &["gleam/pair"]), Value::Nil);
 }

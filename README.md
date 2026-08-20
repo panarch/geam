@@ -125,9 +125,10 @@ read-only resolved-project loader without reparsing selected modules or
 running Gleam CLI.
 
 An ordinary Cargo crate can expose a `HostProviderComponent`, and a runner can
-statically combine its configuration, stores, run state, and provider modules
-into a concrete profile. Initialization happens before planning and execution;
-there is no runtime provider registry or hidden configuration source. See
+statically combine its stores, run state, and provider modules into a concrete
+profile. Explicit configuration initializes configured component state before
+planning and execution; there is no runtime provider registry or hidden
+configuration source. See
 [host provider components](docs/host-providers.md) for the complete path-crate
 composition boundary.
 
@@ -154,6 +155,30 @@ source panics and host failures retain the actual failed source or provider
 identity. See [runtime semantics](docs/runtime-semantics.md) for the ownership,
 re-entry, and sealing rules.
 
+## Standalone Projects
+
+The `geam` binary prepares and runs an ordinary resolved Gleam project:
+
+```sh
+gleam add gleam_json
+geam prepare
+geam run
+```
+
+`prepare` creates a project-local static Cargo runner and verifies its hosted
+plan without initializing provider state or running `main`. `run` reconciles
+the same runner, initializes its approved providers, and executes the package
+module. Provider-backed Hex dependencies are selected explicitly or discovered
+under a reserved Cargo kebab-case namespace such as
+`company_image -> geam-company-image`, and require an interactive native-code
+approval before being recorded.
+
+Geam owns only a manifest carrying its exact managed marker, `Cargo.lock`, and
+`build/geam/` runner artifacts. It refuses to adopt an existing user Cargo
+project. See [standalone execution](docs/standalone.md) for provider commands,
+configuration, generated files, trust boundaries, and the separate embedding
+workflow.
+
 ## Upstream
 
 Current Gleam compiler baseline: `v1.18.1`.
@@ -171,10 +196,10 @@ compiler-boundary details, and sync policy.
 
 ## Testing
 
-Run the test suite:
+With the Rust toolchain and Gleam `v1.18.1` installed, run the full test suite:
 
 ```sh
-cargo test
+cargo test --locked
 ```
 
 See [docs/testing.md](docs/testing.md) for fixture rules, planner test naming,

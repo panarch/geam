@@ -1,5 +1,5 @@
 use super::{IoOutput, IoSink, IoStream};
-use crate::gleam_stdlib::GleamStdlibHostProfile;
+use crate::gleam_stdlib::{GleamStdlibHostProfile, stdlib_state};
 use crate::{HostCall, HostCallCompletion, HostCallError, HostProvider};
 use ecow::EcoString;
 use std::marker::PhantomData;
@@ -13,7 +13,7 @@ where
     type State = Profile::Io;
 
     fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        Profile::gleam_stdlib_io(state)
+        stdlib_state::<Profile>(state).io_sink()
     }
 }
 

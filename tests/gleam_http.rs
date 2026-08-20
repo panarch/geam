@@ -17,6 +17,8 @@ mod response;
 mod service;
 #[path = "support/upstream_surface.rs"]
 mod upstream_surface;
+#[path = "support/workspace_dependencies.rs"]
+mod workspace_dependencies;
 
 use upstream_surface::{ExpectedSurface, assert_module_surface};
 
@@ -115,5 +117,14 @@ fn stdlib_hosts() -> HostProviderSet<GleamStdlibProfile> {
 }
 
 fn project_root() -> Utf8PathBuf {
-    Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/projects/gleam_http")
+    let root = Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/projects/gleam_http");
+    static PREPARED: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
+    workspace_dependencies::prepare(
+        &PREPARED,
+        root.as_std_path(),
+        "gleam",
+        &["deps", "download"],
+        "`gleam deps download`",
+    );
+    root
 }

@@ -52,19 +52,16 @@ to_uri: fn(Request(body)) -> Uri
 };
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_http fixture"]
 fn tracks_official_gleam_http_request_public_surface() {
     assert_surface("gleam/http/request", &SURFACE);
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_http fixture"]
 fn runs_official_http_request_construction_and_updates() {
     run_fixture("gleam_http_request_basics");
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_http fixture"]
 fn runs_official_http_request_headers_and_cookies() {
     run_fixture("gleam_http_request_headers_and_cookies");
 }

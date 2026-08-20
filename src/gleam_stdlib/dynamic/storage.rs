@@ -1,5 +1,5 @@
 use super::schema::DynamicSchema;
-use crate::gleam_stdlib::GleamStdlibHostProfile;
+use crate::gleam_stdlib::{GleamStdlibHostProfile, stdlib_stores};
 use crate::host::HostStoredValueFamily;
 use crate::{
     HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalStorage,
@@ -115,7 +115,7 @@ where
     type Payload = DynamicPayload;
 
     fn store(stores: &Profile::ExternalStores) -> &HostExternalStore<Self::Payload> {
-        &Profile::gleam_stdlib_stores(stores).dynamic.values
+        &stdlib_stores::<Profile>(stores).dynamic.values
     }
 
     fn source_equal(

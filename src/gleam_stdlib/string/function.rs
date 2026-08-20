@@ -8,7 +8,9 @@ pub(super) use self::unicode::{
     from_utf_codepoints, pop_grapheme, unsafe_int_to_utf_codepoint, utf_codepoint_to_int,
 };
 
-use crate::gleam_stdlib::{StringTreeExternalStorage, StringTreeSchema};
+use crate::gleam_stdlib::{
+    GleamStdlibRunState, StringTreeExternalStorage, StringTreeSchema, stdlib_state,
+};
 use crate::{HostExternalBinding, HostProvider};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -20,10 +22,10 @@ impl<Profile> HostProvider<Profile> for StringProvider<Profile>
 where
     Profile: super::super::GleamStdlibHostProfile,
 {
-    type State = Profile::RunState;
+    type State = GleamStdlibRunState<Profile::Io>;
 
     fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        state
+        stdlib_state::<Profile>(state)
     }
 }
 

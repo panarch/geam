@@ -48,13 +48,11 @@ to_string_tree: fn(Json) -> StringTree
 };
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_json fixture"]
 fn tracks_official_gleam_json_public_surface() {
     assert_surface(&SURFACE);
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_json fixture"]
 fn tracks_the_complete_resolved_json_project_graph() {
     assert_full_project_graph();
 }

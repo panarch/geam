@@ -194,6 +194,9 @@ fn encode_float(value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::{encode_float, encode_string};
+    use crate::gleam_json::GleamJsonProfile;
+    use crate::gleam_json::test_support::{execution, execution_with_modules, run_state};
+    use crate::{ExecutionError, HostError, HostModule, InvariantError, ValueType};
 
     #[test]
     fn encodes_strings_with_the_otp_json_escape_set() {
@@ -210,5 +213,111 @@ mod tests {
         assert_eq!(encode_float(1.0e20), "1.0e20");
         assert_eq!(encode_float(1.0e-7), "1.0e-7");
         assert_eq!(encode_float(1.25e20), "1.25e20");
+    }
+
+    #[test]
+    fn executes_scalar_encoding_through_the_hosted_pipeline() {
+        let execution = execution(
+            r#"
+pub fn main() {
+  #(
+    do_to_string(do_string("a\"\n\u{0000}é")),
+    do_to_string(do_bool(True)),
+    do_to_string(do_bool(False)),
+    do_to_string(do_int(123456789012345678901234567890)),
+    do_to_string(do_float(1.0e20)),
+    do_to_string(do_null()),
+    do_to_string(do_preprocessed_array([])),
+    do_to_string(do_object([])),
+  )
+}
+"#,
+        );
+        let value = execution
+            .run_main(&mut run_state([0; 32]), &mut Vec::new())
+            .expect("scalar JSON encoding should run");
+
+        assert_eq!(
+            value.inspect().to_string(),
+            r#"#("\"a\\\"\\n\\u0000é\"", "true", "false", "123456789012345678901234567890", "1.0e20", "null", "[]", "{}")"#,
+        );
+    }
+
+    #[test]
+    fn constructs_nested_json_and_shares_string_tree_output() {
+        let execution = execution(
+            r#"
+pub fn main() {
+  #(
+    do_to_string(do_object([
+      #("a", do_int(1)),
+      #("a", do_int(2)),
+      #("b", do_preprocessed_array([do_bool(True), do_null()])),
+    ])),
+    to_string_tree(do_preprocessed_array([do_int(1), do_string("two")])),
+  )
+}
+"#,
+        );
+        let value = execution
+            .run_main(&mut run_state([0; 32]), &mut Vec::new())
+            .expect("nested JSON construction should run");
+
+        assert_eq!(
+            value.inspect().to_string(),
+            r#"#("{\"a\":1,\"a\":2,\"b\":[true,null]}", string_tree.from_string("[1,\"two\"]"))"#,
+        );
+    }
+
+    #[test]
+    fn rejects_non_finite_float_encoding_as_the_json_host_function() {
+        for (name, value) in [("infinity", f64::INFINITY), ("nan", f64::NAN)] {
+            let non_finite =
+                HostModule::<GleamJsonProfile>::new_for_profile("gleam_json", "host/non_finite")
+                    .expect("non-finite host module should be valid")
+                    .with_function(name, move || value)
+                    .expect("non-finite function should register");
+            let source = format!(
+                r#"
+import host/non_finite
+
+pub fn main() {{
+  do_float(non_finite.{name}())
+}}
+"#,
+            );
+            let execution = execution_with_modules(&source, [non_finite]);
+            let error = execution
+                .run_main(&mut run_state([0; 32]), &mut Vec::new())
+                .expect_err("non-finite JSON float should fail");
+            let error = expect_json_host_error(error);
+
+            assert_eq!(error.package(), "gleam_json");
+            assert_eq!(error.module(), "gleam/json");
+            assert_eq!(error.function(), "do_float");
+            assert_eq!(
+                error.failure().message(),
+                "JSON cannot encode a non-finite Float",
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "JSON encoding failure should remain a host failure")]
+    fn host_failure_assertion_rejects_other_execution_errors() {
+        let _ = expect_json_host_error(ExecutionError::Invariant(
+            InvariantError::ListIndexOutOfBounds {
+                item_type: ValueType::Int,
+                index: 1,
+                length: 0,
+            },
+        ));
+    }
+
+    fn expect_json_host_error(error: ExecutionError) -> Box<HostError> {
+        let ExecutionError::Host(error) = error else {
+            panic!("JSON encoding failure should remain a host failure");
+        };
+        error
     }
 }

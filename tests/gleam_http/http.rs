@@ -66,25 +66,21 @@ scheme_to_string: fn(Scheme) -> String
 };
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_http fixture"]
 fn tracks_official_gleam_http_public_surface() {
     assert_surface("gleam/http", &SURFACE);
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_http fixture"]
 fn runs_official_http_methods_schemes_and_content_disposition() {
     run_fixture("gleam_http_core");
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_http fixture"]
 fn runs_official_http_multipart_parsing() {
     run_fixture("gleam_http_multipart");
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_http fixture"]
 fn runs_official_http_streaming_multipart_continuations() {
     run_fixture("gleam_http_multipart_streaming");
 }

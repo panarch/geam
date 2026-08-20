@@ -68,7 +68,6 @@ truncate: fn(Float) -> Int
 };
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn tracks_official_gleam_float_public_surface() {
     assert_surface(
         "gleam_float",
@@ -79,7 +78,6 @@ fn tracks_official_gleam_float_public_surface() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_float_behavior() {
     let providers =
         host_providers::<GleamStdlibProfile>().expect("official stdlib providers should register");

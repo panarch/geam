@@ -4,7 +4,7 @@ use super::schema::{
 use super::storage::{
     StringTree as StoredStringTree, StringTreeExternalStorage, StringTreePayload,
 };
-use crate::gleam_stdlib::GleamStdlibHostProfile;
+use crate::gleam_stdlib::{GleamStdlibHostProfile, GleamStdlibRunState, stdlib_state};
 use crate::{
     HostCall, HostCallCompletion, HostCallError, HostConstructions, HostCustom, HostExternal,
     HostExternalBinding, HostList, HostProvider,
@@ -20,10 +20,10 @@ impl<Profile> HostProvider<Profile> for StringTreeProvider<Profile>
 where
     Profile: GleamStdlibHostProfile,
 {
-    type State = Profile::RunState;
+    type State = GleamStdlibRunState<Profile::Io>;
 
     fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        state
+        stdlib_state::<Profile>(state)
     }
 }
 

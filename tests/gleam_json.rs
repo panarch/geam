@@ -1,5 +1,7 @@
 use camino::{Utf8Path, Utf8PathBuf};
-use geam::gleam_json::{GleamJsonProfile, host_providers as json_host_providers};
+use geam::gleam_json::{
+    GleamJsonProfile, GleamJsonRunState, host_providers as json_host_providers,
+};
 use geam::gleam_stdlib::{GleamStdlibRunState, host_providers as stdlib_host_providers};
 use geam::{
     HostModule, HostProviderSet, HostedExecution, TypedProgram, Value, compile_typed_host_project,
@@ -16,6 +18,8 @@ mod error;
 mod surface;
 #[path = "support/upstream_surface.rs"]
 mod upstream_surface;
+#[path = "support/workspace_dependencies.rs"]
+mod workspace_dependencies;
 
 use upstream_surface::{ExpectedSurface, assert_module_surface};
 
@@ -62,7 +66,7 @@ fn run_fixture(root_module: &str) -> Value {
     let execution = fixture_execution(root_module);
     let actual = execution
         .run_main(
-            &mut GleamStdlibRunState::from_seed([0; 32]),
+            &mut GleamJsonRunState::new(GleamStdlibRunState::from_seed([0; 32])),
             &mut Vec::new(),
         )
         .expect("official JSON fixture should run");
@@ -74,8 +78,8 @@ fn run_fixture(root_module: &str) -> Value {
 fn run_fixture_repeated(root_module: &str) {
     let expected = fixture_expected(root_module);
     let execution = fixture_execution(root_module);
-    let mut first_state = GleamStdlibRunState::from_seed([1; 32]);
-    let mut second_state = GleamStdlibRunState::from_seed([2; 32]);
+    let mut first_state = GleamJsonRunState::new(GleamStdlibRunState::from_seed([1; 32]));
+    let mut second_state = GleamJsonRunState::new(GleamStdlibRunState::from_seed([2; 32]));
 
     let first = execution
         .run_main(&mut first_state, &mut Vec::new())
@@ -142,5 +146,14 @@ fn json_hosts() -> HostProviderSet<GleamJsonProfile> {
 }
 
 fn project_root() -> Utf8PathBuf {
-    Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/projects/gleam_json")
+    let root = Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/projects/gleam_json");
+    static PREPARED: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
+    workspace_dependencies::prepare(
+        &PREPARED,
+        root.as_std_path(),
+        "gleam",
+        &["deps", "download"],
+        "`gleam deps download`",
+    );
+    root
 }

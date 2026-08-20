@@ -1,5 +1,5 @@
 use super::schema::{DictSchema, StoredKey, StoredValue, TransientDictSchema};
-use crate::gleam_stdlib::GleamStdlibHostProfile;
+use crate::gleam_stdlib::{GleamStdlibHostProfile, stdlib_stores};
 use crate::{
     HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalStorage,
     HostExternalStore, HostStoredValue,
@@ -50,7 +50,7 @@ where
     type Payload = DictPayload;
 
     fn store(stores: &Profile::ExternalStores) -> &HostExternalStore<Self::Payload> {
-        &Profile::gleam_stdlib_stores(stores).dict.dicts
+        &stdlib_stores::<Profile>(stores).dict.dicts
     }
 
     fn source_equal(
@@ -77,7 +77,7 @@ where
     type Payload = TransientDictPayload;
 
     fn store(stores: &Profile::ExternalStores) -> &HostExternalStore<Self::Payload> {
-        &Profile::gleam_stdlib_stores(stores).dict.transients
+        &stdlib_stores::<Profile>(stores).dict.transients
     }
 
     fn source_equal(

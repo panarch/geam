@@ -1,0 +1,11 @@
+name = "standalone_fixture"
+version = "1.0.0"
+
+[dependencies]
+catalog = { path = "packages/catalog" }
+counter = { path = "packages/counter" }
+pure_labels = { path = "packages/pure_labels" }
+
+gleam_json = ">= 3.1.0 and < 3.1.1"
+gleam_stdlib = ">= 1.0.3 and < 1.0.4"
+gleam_time = ">= 1.8.0 and < 1.8.1"

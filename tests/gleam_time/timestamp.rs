@@ -2,7 +2,6 @@ use super::{ScriptedEvent, ScriptedSource, run_fixture};
 use std::time::{Duration, UNIX_EPOCH};
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_time fixture"]
 fn runs_official_timestamp_arithmetic_calendar_and_system_time() {
     run_fixture(
         "gleam_time_timestamp",
@@ -13,7 +12,6 @@ fn runs_official_timestamp_arithmetic_calendar_and_system_time() {
 }
 
 #[test]
-#[ignore = "requires `gleam deps download` in the gleam_time fixture"]
 fn runs_official_rfc3339_formatting_parsing_and_normalization() {
     run_fixture(
         "gleam_time_rfc3339",

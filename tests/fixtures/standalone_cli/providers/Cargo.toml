@@ -1,0 +1,3 @@
+[workspace]
+members = ["catalog-domain", "geam-catalog", "geam-counter"]
+resolver = "3"

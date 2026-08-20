@@ -1,0 +1,7 @@
+/project/Cargo.lock
+/project/Cargo.toml
+/project/Cargo.toml.geam.tmp
+/project/build/
+/project/packages/*/build/
+/project/packages/*/*.tar
+/providers/target/
