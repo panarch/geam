@@ -178,7 +178,7 @@ fn complete_package_identity(
             package: None,
         } => {
             let inspection = clone_git_for_inspection(project_root, &url, rev.as_deref())?;
-            let (package, _) = inspect_workspace(&inspection, None, loader)?;
+            let (package, _) = inspect_workspace(inspection.path(), None, loader)?;
             Ok(ProviderRequest::Git {
                 url,
                 rev,
@@ -442,42 +442,81 @@ fn resolved_dependency<'metadata>(
         })
 }
 
+#[derive(Debug)]
+struct GitInspection {
+    _directory: TempDir,
+    path: Utf8PathBuf,
+}
+
+impl GitInspection {
+    fn from_directory(url: &str, rev: Option<&str>, directory: TempDir) -> Result<Self, CliError> {
+        let path = directory.path().to_path_buf();
+        Self::from_directory_path(url, rev, directory, path)
+    }
+
+    fn from_directory_path(
+        url: &str,
+        rev: Option<&str>,
+        directory: TempDir,
+        path: std::path::PathBuf,
+    ) -> Result<Self, CliError> {
+        let path = canonical_utf8_path(path)?;
+        run_checked(
+            Command::new("git")
+                .arg("clone")
+                .arg("--quiet")
+                .arg("--no-tags")
+                .arg(url)
+                .arg(&path),
+        )?;
+        if let Some(rev) = rev {
+            run_checked(
+                Command::new("git")
+                    .arg("-C")
+                    .arg(&path)
+                    .arg("checkout")
+                    .arg("--quiet")
+                    .arg(rev),
+            )?;
+        }
+        Ok(Self {
+            _directory: directory,
+            path,
+        })
+    }
+
+    fn path(&self) -> &Utf8Path {
+        &self.path
+    }
+}
+
 fn clone_git_for_inspection(
     project_root: &Utf8Path,
     url: &str,
     rev: Option<&str>,
-) -> Result<Utf8PathBuf, CliError> {
+) -> Result<GitInspection, CliError> {
+    clone_git_for_inspection_with(project_root, url, rev, create_git_inspection_directory)
+}
+
+fn clone_git_for_inspection_with(
+    project_root: &Utf8Path,
+    url: &str,
+    rev: Option<&str>,
+    create_directory: fn(&Utf8Path) -> std::io::Result<TempDir>,
+) -> Result<GitInspection, CliError> {
     let parent = project_root.join("build/geam");
-    let directory = parent.join("provider-git-inspection");
-    if directory.exists() {
-        fs::remove_dir_all(&directory).map_err(|error| CliError::FileWrite {
-            path: directory.clone(),
-            error,
-        })?;
-    }
     fs::create_dir_all(&parent).map_err(|error| CliError::FileWrite {
-        path: parent,
+        path: parent.clone(),
         error,
     })?;
-    run_checked(
-        Command::new("git")
-            .arg("clone")
-            .arg("--quiet")
-            .arg("--no-tags")
-            .arg(url)
-            .arg(&directory),
-    )?;
-    if let Some(rev) = rev {
-        run_checked(
-            Command::new("git")
-                .arg("-C")
-                .arg(&directory)
-                .arg("checkout")
-                .arg("--quiet")
-                .arg(rev),
-        )?;
-    }
-    Ok(directory)
+    let directory = create_directory(&parent).map_err(CliError::TemporaryProviderWorkspace)?;
+    GitInspection::from_directory(url, rev, directory)
+}
+
+fn create_git_inspection_directory(parent: &Utf8Path) -> std::io::Result<TempDir> {
+    tempfile::Builder::new()
+        .prefix("geam-provider-git-inspection-")
+        .tempdir_in(parent)
 }
 
 fn canonical_provider_path(path: &Utf8Path) -> Result<Utf8PathBuf, CliError> {
@@ -540,16 +579,17 @@ fn quoted(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        CANDIDATE_ALIAS, CandidateWorkspace, CargoMetadataLoader, CargoMetadataMode,
+        CANDIDATE_ALIAS, CandidateWorkspace, CargoMetadataLoader, CargoMetadataMode, GitInspection,
         ProviderRequest, SystemCargoMetadata, canonical_provider_path,
-        canonical_provider_path_from, clone_git_for_inspection, complete_package_identity,
-        inspect_workspace, parse_metadata_output, parse_registry_specification,
-        resolve_selection_with, resolve_with, resolve_with_candidate, resolved_dependency,
+        canonical_provider_path_from, clone_git_for_inspection, clone_git_for_inspection_with,
+        complete_package_identity, inspect_workspace, parse_metadata_output,
+        parse_registry_specification, resolve_selection_with, resolve_with, resolve_with_candidate,
+        resolved_dependency,
     };
     use crate::command::AddProvider;
     use crate::error::CliError;
     use crate::provider::manifest::{ProviderSelection, ProviderSource};
-    use camino::Utf8PathBuf;
+    use camino::{Utf8Path, Utf8PathBuf};
     use cargo_metadata::Metadata;
     use std::cell::RefCell;
     use std::fs;
@@ -1416,7 +1456,20 @@ mod tests {
         let repository_path = utf8_path(&repository);
         let inspected = clone_git_for_inspection(&project, repository_path.as_str(), Some("HEAD"))
             .expect("local repository should clone");
-        assert!(inspected.join("Cargo.toml").is_file());
+        let inspection_path = inspected.path().to_path_buf();
+        assert!(inspection_path.join("Cargo.toml").is_file());
+        drop(inspected);
+        assert_eq!(
+            inspection_path.parent(),
+            Some(project.join("build/geam").as_path()),
+        );
+        assert!(
+            inspection_path
+                .file_name()
+                .expect("inspection path should have a name")
+                .starts_with("geam-provider-git-inspection-"),
+        );
+        assert!(!inspection_path.exists());
 
         let completed = complete_package_identity(
             &project,
@@ -1429,30 +1482,11 @@ mod tests {
         )
         .expect("Git package should be discovered");
         assert_eq!(completed.crate_name(), Some("geam-images"));
+        assert_git_inspection_removed(&project);
     }
 
     #[test]
     fn preserves_git_inspection_filesystem_and_process_failures() {
-        let blocked_removal = utf8_tempdir();
-        fs::create_dir_all(blocked_removal.join("build/geam"))
-            .expect("inspection parent should be created");
-        fs::write(
-            blocked_removal.join("build/geam/provider-git-inspection"),
-            "not a directory",
-        )
-        .expect("blocking file should be written");
-        let blocked_removal_path = blocked_removal.join("build/geam/provider-git-inspection");
-        let expected_kind = fs::remove_dir_all(&blocked_removal_path)
-            .expect_err("removing a file as a directory should fail")
-            .kind();
-        let error = clone_git_for_inspection(&blocked_removal, "missing", None)
-            .expect_err("non-directory inspection path should fail");
-        assert!(matches!(
-            error,
-            CliError::FileWrite { path, error }
-                if path == blocked_removal_path && error.kind() == expected_kind
-        ));
-
         let blocked_parent = utf8_tempdir();
         fs::write(blocked_parent.join("build"), "not a directory")
             .expect("blocking file should be written");
@@ -1468,19 +1502,27 @@ mod tests {
                 if path == blocked_parent_path && error.kind() == expected_kind
         ));
 
+        let temporary_failure = utf8_tempdir();
+        let error = clone_git_for_inspection_with(&temporary_failure, "missing", None, |_| {
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "fixture Git inspection failure",
+            ))
+        })
+        .expect_err("temporary inspection directory failure should be preserved");
+        assert!(matches!(
+            error,
+            CliError::TemporaryProviderWorkspace(error)
+                if error.kind() == io::ErrorKind::PermissionDenied
+                    && error.to_string() == "fixture Git inspection failure"
+        ));
+        assert_git_inspection_removed(&temporary_failure);
+
         let missing_repository = utf8_tempdir();
-        let missing_inspection = missing_repository.join("build/geam/provider-git-inspection");
-        let missing_clone_command = format!(
-            "git clone --quiet --no-tags /repository/that/does/not/exist {missing_inspection}"
-        );
         let error =
             clone_git_for_inspection(&missing_repository, "/repository/that/does/not/exist", None)
                 .expect_err("missing repository should fail to clone");
-        assert!(matches!(
-            error,
-            CliError::ProcessFailure { command, status: Some(128), stderr }
-                if command == missing_clone_command && stderr.contains("does not exist")
-        ));
+        assert_missing_git_clone(error, &missing_repository);
         let error = complete_package_identity(
             &missing_repository,
             ProviderRequest::Git {
@@ -1491,11 +1533,8 @@ mod tests {
             &SystemCargoMetadata,
         )
         .expect_err("Git clone failure should stop package completion");
-        assert!(matches!(
-            error,
-            CliError::ProcessFailure { command, status: Some(128), stderr }
-                if command == missing_clone_command && stderr.contains("does not exist")
-        ));
+        assert_missing_git_clone(error, &missing_repository);
+        assert_git_inspection_removed(&missing_repository);
 
         let plain = tempdir().expect("plain package should be created");
         fs::create_dir(plain.path().join("src")).expect("source should be created");
@@ -1517,14 +1556,16 @@ mod tests {
             &SystemCargoMetadata,
         )
         .expect_err("metadata-free Git package should be rejected after inspection");
+        let inspection_prefix = format!(
+            "{}/geam-provider-git-inspection-",
+            inspection_project.join("build/geam"),
+        );
         assert!(matches!(
             error,
             CliError::MissingProviderPackage { package }
-                if package
-                    == inspection_project
-                        .join("build/geam/provider-git-inspection")
-                        .as_str()
+                if package.starts_with(&inspection_prefix)
         ));
+        assert_git_inspection_removed(&inspection_project);
 
         let repository = provider_package("geam-images", "images", "1.0.0");
         initialize_git_repository(&repository);
@@ -1532,18 +1573,44 @@ mod tests {
         let project = utf8_tempdir();
         clone_git_for_inspection(&project, repository_path.as_str(), None)
             .expect("repository should clone without an explicit revision");
+        assert_git_inspection_removed(&project);
         let error =
             clone_git_for_inspection(&project, repository_path.as_str(), Some("missing-revision"))
                 .expect_err("missing revision should fail checkout");
-        let checkout_command = format!(
-            "git -C {} checkout --quiet missing-revision",
-            project.join("build/geam/provider-git-inspection")
+        let checkout_prefix = format!(
+            "git -C {}/geam-provider-git-inspection-",
+            project.join("build/geam"),
         );
         assert!(matches!(
             error,
-            CliError::ProcessFailure { command, status: Some(1), stderr }
-                if command == checkout_command && stderr.contains("pathspec")
+            CliError::ProcessFailure {
+                command,
+                status: Some(1),
+                stderr,
+            } if stderr.contains("pathspec")
+                && command.starts_with(&checkout_prefix)
+                && command.ends_with(" checkout --quiet missing-revision")
         ));
+        assert_git_inspection_removed(&project);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn removes_non_utf8_git_inspection_directories_after_rejection() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let directory = tempdir().expect("inspection directory should be created");
+        let directory_path = directory.path().to_path_buf();
+        let path = std::path::PathBuf::from(OsString::from_vec(b"inspection-\xff".to_vec()));
+        let error = GitInspection::from_directory_path("missing", None, directory, path.clone())
+            .expect_err("non-UTF-8 inspection path should be rejected");
+
+        assert!(matches!(
+            error,
+            CliError::NonUtf8Path(actual) if actual == path
+        ));
+        assert!(!directory_path.exists());
     }
 
     #[test]
@@ -1760,6 +1827,29 @@ mod tests {
                 .expect_err("candidate dependency should be absent"),
             CliError::MissingResolvedDependency { alias } if alias == CANDIDATE_ALIAS
         ));
+    }
+
+    fn assert_missing_git_clone(error: CliError, project: &Utf8Path) {
+        let command_prefix = format!(
+            "git clone --quiet --no-tags /repository/that/does/not/exist {}/geam-provider-git-inspection-",
+            project.join("build/geam"),
+        );
+        assert!(matches!(
+            error,
+            CliError::ProcessFailure {
+                command,
+                status: Some(128),
+                stderr,
+            } if stderr.contains("does not exist")
+                && command.starts_with(&command_prefix)
+        ));
+    }
+
+    fn assert_git_inspection_removed(project: &Utf8Path) {
+        let entries = fs::read_dir(project.join("build/geam"))
+            .expect("inspection parent should remain readable")
+            .count();
+        assert_eq!(entries, 0);
     }
 
     fn provider_package(name: &str, gleam_package: &str, range: &str) -> TempDir {
