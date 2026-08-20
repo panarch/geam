@@ -15,9 +15,10 @@ Read the crates in this order:
    `HostProviderComponent`, initializes caller-owned state from explicit
    configuration, registers typed callbacks, binds `Catalog` as opaque external
    storage, and constructs a compound Gleam result.
-3. [`runner`](runner) represents application-owned or future generated code. It
+3. [`runner`](runner) represents application-owned embedding code. It manually
    combines component stores and run state into a concrete `HostProfile`,
-   collects providers, and executes the complete hosted pipeline.
+   collects providers, and executes the complete hosted pipeline through the
+   same static component contract emitted by the standalone CLI.
 
 The Cargo dependency direction is:
 
@@ -52,10 +53,11 @@ From the Geam repository root:
 
 ```sh
 cargo test --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --locked
-cargo clippy --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --all-targets -- -D warnings
+cargo clippy --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --all-targets --locked -- -D warnings
 ```
 
 The fixture is deliberately a separate locked workspace rather than a root
-development dependency. It proves path-based static composition only; provider
-discovery, configuration-file parsing, runner generation, build caching, and
-publication remain future CLI and distribution concerns.
+development dependency. It proves path-based manual embedding and static
+composition only. Standalone discovery, configuration-file parsing, runner
+generation, and build ownership are verified by the standalone CLI fixture
+rather than duplicated here. Cargo publication remains a distribution concern.

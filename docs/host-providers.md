@@ -73,8 +73,9 @@ part of the provider crate.
 
 ## Runner Profile
 
-A runner combines selected components with ordinary struct fields. The shape is
-the target for future generated code, but it is regular Rust today.
+A runner combines selected components with ordinary struct fields. An embedding
+application can write this regular Rust directly, while the standalone CLI
+emits the same shape for a managed project.
 
 ```rust
 struct Profile;

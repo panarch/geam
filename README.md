@@ -125,9 +125,10 @@ read-only resolved-project loader without reparsing selected modules or
 running Gleam CLI.
 
 An ordinary Cargo crate can expose a `HostProviderComponent`, and a runner can
-statically combine its configuration, stores, run state, and provider modules
-into a concrete profile. Initialization happens before planning and execution;
-there is no runtime provider registry or hidden configuration source. See
+statically combine its stores, run state, and provider modules into a concrete
+profile. Explicit configuration initializes configured component state before
+planning and execution; there is no runtime provider registry or hidden
+configuration source. See
 [host provider components](docs/host-providers.md) for the complete path-crate
 composition boundary.
 
