@@ -13,4 +13,4 @@ gleam-version = ">= 1.0.0 and < 2.0.0"
 
 [dependencies]
 ecow = "=0.2.6"
-geam = "=0.1.1"
+geam = "=0.1.2"
