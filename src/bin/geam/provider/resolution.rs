@@ -9,6 +9,7 @@ use semver::Version;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+use tempfile::TempDir;
 
 const CANDIDATE_ALIAS: &str = "provider_candidate";
 
@@ -31,30 +32,7 @@ pub(super) fn resolve_selection(
     project_root: &Utf8Path,
     selection: &super::manifest::ProviderSelection,
 ) -> Result<ProviderMetadata, CliError> {
-    resolve_with(
-        project_root,
-        selection_request(selection),
-        &SystemCargoMetadata,
-    )
-    .map(|resolved| resolved.metadata)
-}
-
-fn selection_request(selection: &super::manifest::ProviderSelection) -> ProviderRequest {
-    match selection.source() {
-        ProviderSource::Registry { version } => ProviderRequest::Registry {
-            crate_name: selection.crate_name().to_owned(),
-            version: Some(version.clone()),
-        },
-        ProviderSource::Path { path } => ProviderRequest::Path {
-            path: path.clone(),
-            package: Some(selection.crate_name().to_owned()),
-        },
-        ProviderSource::Git { url, rev } => ProviderRequest::Git {
-            url: url.clone(),
-            rev: rev.clone(),
-            package: Some(selection.crate_name().to_owned()),
-        },
-    }
+    resolve_selection_with(project_root, selection, &SystemCargoMetadata)
 }
 
 fn resolve_with(
@@ -62,16 +40,40 @@ fn resolve_with(
     request: ProviderRequest,
     loader: &dyn CargoMetadataLoader,
 ) -> Result<ResolvedProvider, CliError> {
+    resolve_with_candidate(project_root, request, loader, CandidateWorkspace::new)
+}
+
+fn resolve_with_candidate(
+    project_root: &Utf8Path,
+    request: ProviderRequest,
+    loader: &dyn CargoMetadataLoader,
+    create_candidate: fn(&ProviderRequest) -> Result<CandidateWorkspace, CliError>,
+) -> Result<ResolvedProvider, CliError> {
     let request = complete_package_identity(project_root, request, loader)?;
-    let candidate_manifest = write_candidate_manifest(project_root, &request)?;
-    let metadata = loader.load(project_root, &candidate_manifest)?;
-    let package = candidate_dependency(&metadata)?;
+    let candidate = create_candidate(&request)?;
+    let metadata = loader.load(
+        project_root,
+        candidate.manifest(),
+        CargoMetadataMode::Resolve,
+    )?;
+    let package = resolved_dependency(&metadata, CANDIDATE_ALIAS)?;
     let provider = ProviderMetadata::from_package(package)?;
     let source = request.provider_source(package);
     Ok(ResolvedProvider {
         metadata: provider,
         source,
     })
+}
+
+fn resolve_selection_with(
+    project_root: &Utf8Path,
+    selection: &super::manifest::ProviderSelection,
+    loader: &dyn CargoMetadataLoader,
+) -> Result<ProviderMetadata, CliError> {
+    let manifest = project_root.join("Cargo.toml");
+    let metadata = loader.load(project_root, &manifest, CargoMetadataMode::Locked)?;
+    let package = resolved_dependency(&metadata, &selection.alias())?;
+    ProviderMetadata::from_package(package)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -195,7 +197,7 @@ fn inspect_workspace(
     if !manifest.is_file() {
         return Err(CliError::MissingProviderManifest { path: manifest });
     }
-    let metadata = loader.load(path, &manifest)?;
+    let metadata = loader.load(path, &manifest, CargoMetadataMode::Workspace)?;
     let workspace = metadata.workspace_packages();
     let package = if let Some(requested) = requested_package {
         workspace
@@ -250,29 +252,68 @@ fn has_provider_metadata(package: &Package) -> bool {
         .is_some()
 }
 
-fn write_candidate_manifest(
-    project_root: &Utf8Path,
-    request: &ProviderRequest,
-) -> Result<Utf8PathBuf, CliError> {
-    let directory = project_root.join("build/geam/provider-candidate");
-    let source_directory = directory.join("src");
-    fs::create_dir_all(&source_directory).map_err(|error| CliError::FileWrite {
-        path: source_directory.clone(),
-        error,
-    })?;
-    let manifest = directory.join("Cargo.toml");
-    let source = format!(
-        "[package]\nname = \"geam-provider-candidate\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[dependencies]\n{CANDIDATE_ALIAS} = {}\n\n[workspace]\nresolver = \"3\"\n",
-        request.dependency_value()?,
-    );
-    fs::write(&manifest, source).map_err(|error| CliError::FileWrite {
-        path: manifest.clone(),
-        error,
-    })?;
-    let main = source_directory.join("main.rs");
-    fs::write(&main, "fn main() {}\n")
-        .map_err(|error| CliError::FileWrite { path: main, error })?;
-    Ok(manifest)
+#[derive(Debug)]
+struct CandidateWorkspace {
+    _directory: TempDir,
+    manifest: Utf8PathBuf,
+}
+
+impl CandidateWorkspace {
+    fn new(request: &ProviderRequest) -> Result<Self, CliError> {
+        Self::new_with(request, create_candidate_directory)
+    }
+
+    fn new_with(
+        request: &ProviderRequest,
+        create_directory: fn() -> std::io::Result<TempDir>,
+    ) -> Result<Self, CliError> {
+        let directory = create_directory().map_err(CliError::TemporaryProviderWorkspace)?;
+        Self::from_directory(request, directory)
+    }
+
+    fn from_directory(request: &ProviderRequest, directory: TempDir) -> Result<Self, CliError> {
+        let path = directory.path().to_path_buf();
+        Self::from_directory_path(request, directory, path)
+    }
+
+    fn from_directory_path(
+        request: &ProviderRequest,
+        directory: TempDir,
+        path: std::path::PathBuf,
+    ) -> Result<Self, CliError> {
+        let root = Utf8PathBuf::from_path_buf(path).map_err(CliError::NonUtf8Path)?;
+        let source_directory = root.join("src");
+        fs::create_dir_all(&source_directory).map_err(|error| CliError::FileWrite {
+            path: source_directory.clone(),
+            error,
+        })?;
+        let manifest = root.join("Cargo.toml");
+        let source = format!(
+            "[package]\nname = \"geam-provider-candidate\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[dependencies]\n{CANDIDATE_ALIAS} = {}\n\n[workspace]\nresolver = \"3\"\n",
+            request.dependency_value()?,
+        );
+        fs::write(&manifest, source).map_err(|error| CliError::FileWrite {
+            path: manifest.clone(),
+            error,
+        })?;
+        let main = source_directory.join("main.rs");
+        fs::write(&main, "fn main() {}\n")
+            .map_err(|error| CliError::FileWrite { path: main, error })?;
+        Ok(Self {
+            _directory: directory,
+            manifest,
+        })
+    }
+
+    fn manifest(&self) -> &Utf8Path {
+        &self.manifest
+    }
+}
+
+fn create_candidate_directory() -> std::io::Result<TempDir> {
+    tempfile::Builder::new()
+        .prefix("geam-provider-candidate-")
+        .tempdir()
 }
 
 impl ProviderRequest {
@@ -306,9 +347,20 @@ impl ProviderRequest {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CargoMetadataMode {
+    Workspace,
+    Resolve,
+    Locked,
+}
+
 trait CargoMetadataLoader {
-    fn load(&self, current_directory: &Utf8Path, manifest: &Utf8Path)
-    -> Result<Metadata, CliError>;
+    fn load(
+        &self,
+        current_directory: &Utf8Path,
+        manifest: &Utf8Path,
+        mode: CargoMetadataMode,
+    ) -> Result<Metadata, CliError>;
 }
 
 struct SystemCargoMetadata;
@@ -318,16 +370,26 @@ impl CargoMetadataLoader for SystemCargoMetadata {
         &self,
         current_directory: &Utf8Path,
         manifest: &Utf8Path,
+        mode: CargoMetadataMode,
     ) -> Result<Metadata, CliError> {
-        let output = run_checked(
-            Command::new("cargo")
-                .arg("metadata")
-                .arg("--format-version")
-                .arg("1")
-                .arg("--manifest-path")
-                .arg(manifest)
-                .current_dir(current_directory),
-        )?;
+        let mut command = Command::new("cargo");
+        command
+            .arg("metadata")
+            .arg("--format-version")
+            .arg("1")
+            .arg("--manifest-path")
+            .arg(manifest)
+            .current_dir(current_directory);
+        match mode {
+            CargoMetadataMode::Workspace => {
+                command.arg("--no-deps");
+            }
+            CargoMetadataMode::Resolve => {}
+            CargoMetadataMode::Locked => {
+                command.arg("--locked");
+            }
+        }
+        let output = run_checked(&mut command)?;
         parse_metadata_output(manifest, &output.stdout)
     }
 }
@@ -341,40 +403,42 @@ fn parse_metadata_output(manifest: &Utf8Path, output: &[u8]) -> Result<Metadata,
     })
 }
 
-fn candidate_dependency(metadata: &Metadata) -> Result<&Package, CliError> {
-    let resolve =
-        metadata
-            .resolve
-            .as_ref()
-            .ok_or_else(|| CliError::MissingCandidateDependency {
-                alias: CANDIDATE_ALIAS.to_owned(),
-            })?;
+fn resolved_dependency<'metadata>(
+    metadata: &'metadata Metadata,
+    alias: &str,
+) -> Result<&'metadata Package, CliError> {
+    let resolve = metadata
+        .resolve
+        .as_ref()
+        .ok_or_else(|| CliError::MissingResolvedDependency {
+            alias: alias.to_owned(),
+        })?;
     let root = resolve
         .root
         .as_ref()
-        .ok_or_else(|| CliError::MissingCandidateDependency {
-            alias: CANDIDATE_ALIAS.to_owned(),
+        .ok_or_else(|| CliError::MissingResolvedDependency {
+            alias: alias.to_owned(),
         })?;
     let root = resolve
         .nodes
         .iter()
         .find(|node| &node.id == root)
-        .ok_or_else(|| CliError::MissingCandidateDependency {
-            alias: CANDIDATE_ALIAS.to_owned(),
+        .ok_or_else(|| CliError::MissingResolvedDependency {
+            alias: alias.to_owned(),
         })?;
     let dependency = root
         .deps
         .iter()
-        .find(|dependency| dependency.name == CANDIDATE_ALIAS)
-        .ok_or_else(|| CliError::MissingCandidateDependency {
-            alias: CANDIDATE_ALIAS.to_owned(),
+        .find(|dependency| dependency.name == alias)
+        .ok_or_else(|| CliError::MissingResolvedDependency {
+            alias: alias.to_owned(),
         })?;
     metadata
         .packages
         .iter()
         .find(|package| package.id == dependency.pkg)
-        .ok_or_else(|| CliError::MissingCandidateDependency {
-            alias: CANDIDATE_ALIAS.to_owned(),
+        .ok_or_else(|| CliError::MissingResolvedDependency {
+            alias: alias.to_owned(),
         })
 }
 
@@ -476,17 +540,20 @@ fn quoted(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        CargoMetadataLoader, ProviderRequest, SystemCargoMetadata, candidate_dependency,
-        canonical_provider_path, canonical_provider_path_from, clone_git_for_inspection,
-        complete_package_identity, inspect_workspace, parse_metadata_output,
-        parse_registry_specification, resolve_with, selection_request, write_candidate_manifest,
+        CANDIDATE_ALIAS, CandidateWorkspace, CargoMetadataLoader, CargoMetadataMode,
+        ProviderRequest, SystemCargoMetadata, canonical_provider_path,
+        canonical_provider_path_from, clone_git_for_inspection, complete_package_identity,
+        inspect_workspace, parse_metadata_output, parse_registry_specification,
+        resolve_selection_with, resolve_with, resolve_with_candidate, resolved_dependency,
     };
     use crate::command::AddProvider;
     use crate::error::CliError;
     use crate::provider::manifest::{ProviderSelection, ProviderSource};
     use camino::Utf8PathBuf;
     use cargo_metadata::Metadata;
+    use std::cell::RefCell;
     use std::fs;
+    use std::io;
     use std::path::Path;
     use std::process::Command;
     use tempfile::{TempDir, tempdir};
@@ -498,6 +565,7 @@ mod tests {
             &self,
             _current_directory: &camino::Utf8Path,
             manifest: &camino::Utf8Path,
+            _mode: CargoMetadataMode,
         ) -> Result<Metadata, CliError> {
             Err(CliError::InvalidCargoMetadata {
                 manifest: manifest.to_path_buf(),
@@ -513,8 +581,28 @@ mod tests {
             &self,
             _current_directory: &camino::Utf8Path,
             _manifest: &camino::Utf8Path,
+            _mode: CargoMetadataMode,
         ) -> Result<Metadata, CliError> {
             Ok(self.0.clone())
+        }
+    }
+
+    struct RecordingFailingLoader {
+        call: RefCell<Option<(Utf8PathBuf, CargoMetadataMode)>>,
+    }
+
+    impl CargoMetadataLoader for RecordingFailingLoader {
+        fn load(
+            &self,
+            _current_directory: &camino::Utf8Path,
+            manifest: &camino::Utf8Path,
+            mode: CargoMetadataMode,
+        ) -> Result<Metadata, CliError> {
+            self.call.replace(Some((manifest.to_path_buf(), mode)));
+            Err(CliError::InvalidCargoMetadata {
+                manifest: manifest.to_path_buf(),
+                reason: "fixture stop".to_owned(),
+            })
         }
     }
 
@@ -728,8 +816,7 @@ mod tests {
     }
 
     #[test]
-    fn renders_all_candidate_dependency_sources_before_resolution() {
-        let project = utf8_tempdir();
+    fn renders_all_candidate_dependency_sources_in_disposable_workspaces() {
         let requests = [
             ProviderRequest::Registry {
                 crate_name: "geam-images".to_owned(),
@@ -763,62 +850,116 @@ mod tests {
             "rev = \"abc123\"",
         ];
         for (request, expected) in requests.into_iter().zip(expected) {
-            let manifest = write_candidate_manifest(&project, &request)
-                .expect("candidate manifest should be written");
-            let source = fs::read_to_string(manifest).expect("manifest should be readable");
+            let candidate =
+                CandidateWorkspace::new(&request).expect("candidate workspace should be written");
+            let directory = candidate
+                .manifest()
+                .parent()
+                .expect("candidate manifest should have a directory")
+                .to_path_buf();
+            let source =
+                fs::read_to_string(candidate.manifest()).expect("manifest should be readable");
             assert!(source.contains(expected), "missing {expected}: {source}");
+            drop(candidate);
+            assert!(!directory.exists());
         }
     }
 
     #[test]
-    fn reconstructs_exact_requests_from_every_recorded_provider_source() {
-        let selections = [
-            (
-                ProviderSelection::new(
-                    "images".to_owned(),
-                    "geam-images".to_owned(),
-                    ProviderSource::Registry {
-                        version: "1.2.3".parse().expect("version should parse"),
-                    },
-                ),
-                ProviderRequest::Registry {
-                    crate_name: "geam-images".to_owned(),
-                    version: Some("1.2.3".parse().expect("version should parse")),
-                },
-            ),
-            (
-                ProviderSelection::new(
-                    "images".to_owned(),
-                    "geam-images".to_owned(),
-                    ProviderSource::Path {
-                        path: "/providers/images".into(),
-                    },
-                ),
-                ProviderRequest::Path {
-                    path: "/providers/images".into(),
-                    package: Some("geam-images".to_owned()),
-                },
-            ),
-            (
-                ProviderSelection::new(
-                    "images".to_owned(),
-                    "geam-images".to_owned(),
-                    ProviderSource::Git {
-                        url: "https://example.com/images.git".to_owned(),
-                        rev: Some("abc123".to_owned()),
-                    },
-                ),
-                ProviderRequest::Git {
-                    url: "https://example.com/images.git".to_owned(),
-                    rev: Some("abc123".to_owned()),
-                    package: Some("geam-images".to_owned()),
-                },
-            ),
-        ];
+    fn preserves_temporary_candidate_directory_creation_failures() {
+        let error = CandidateWorkspace::new_with(&registry_request(), || {
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "fixture temporary-directory failure",
+            ))
+        })
+        .expect_err("temporary directory failure should be preserved");
 
-        for (selection, expected) in selections {
-            assert_eq!(selection_request(&selection), expected);
-        }
+        assert!(matches!(
+            error,
+            CliError::TemporaryProviderWorkspace(ref error)
+                if error.kind() == io::ErrorKind::PermissionDenied
+        ));
+        assert!(matches!(
+            error,
+            CliError::TemporaryProviderWorkspace(ref error)
+                if error.to_string() == "fixture temporary-directory failure"
+        ));
+    }
+
+    #[test]
+    fn propagates_candidate_workspace_failures_from_explicit_resolution() {
+        let project = utf8_tempdir();
+        let error = resolve_with_candidate(&project, registry_request(), &FailingLoader, |_| {
+            Err(CliError::TemporaryProviderWorkspace(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "fixture candidate failure",
+            )))
+        })
+        .err()
+        .expect("candidate construction failure should be preserved");
+
+        assert!(matches!(
+            error,
+            CliError::TemporaryProviderWorkspace(ref error)
+                if error.kind() == io::ErrorKind::PermissionDenied
+        ));
+        assert!(matches!(
+            error,
+            CliError::TemporaryProviderWorkspace(ref error)
+                if error.to_string() == "fixture candidate failure"
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn removes_candidate_workspace_after_each_file_construction_failure() {
+        assert_candidate_file_failure(
+            |root| fs::write(root.join("src"), "blocked").expect("blocker should be written"),
+            "src",
+            io::ErrorKind::AlreadyExists,
+        );
+        assert_candidate_file_failure(
+            |root| {
+                fs::create_dir(root.join("src")).expect("source directory should be created");
+                fs::create_dir(root.join("Cargo.toml"))
+                    .expect("manifest blocker should be created");
+            },
+            "Cargo.toml",
+            io::ErrorKind::IsADirectory,
+        );
+        assert_candidate_file_failure(
+            |root| {
+                fs::create_dir(root.join("src")).expect("source directory should be created");
+                fs::create_dir(root.join("src/main.rs")).expect("source blocker should be created");
+            },
+            "src/main.rs",
+            io::ErrorKind::IsADirectory,
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn removes_non_utf8_candidate_workspace_after_rejection() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let directory = tempdir().expect("candidate directory should be created");
+        let candidate_path = directory.path().to_path_buf();
+        let non_utf8_path = std::path::PathBuf::from(OsString::from_vec(vec![0xff]));
+
+        let error = CandidateWorkspace::from_directory_path(
+            &registry_request(),
+            directory,
+            non_utf8_path.clone(),
+        )
+        .expect_err("non-UTF-8 candidate path should be rejected");
+
+        assert!(matches!(
+            error,
+            CliError::NonUtf8Path(ref path) if path == &non_utf8_path
+        ));
+        assert!(!candidate_path.exists());
     }
 
     #[test]
@@ -842,9 +983,180 @@ mod tests {
         assert_eq!(
             resolved.source,
             ProviderSource::Path {
-                path: provider_path,
+                path: provider_path.clone(),
             },
         );
+        assert!(
+            !provider_path.join("Cargo.lock").exists(),
+            "workspace inspection must not create a provider-owned lock",
+        );
+        assert!(
+            !project.join("build/geam/provider-candidate").exists(),
+            "candidate resolution must not persist a project-owned workspace",
+        );
+    }
+
+    #[test]
+    fn removes_candidate_state_after_metadata_failure_without_touching_the_root_lock() {
+        let project = utf8_tempdir();
+        let root_lock = project.join("Cargo.lock");
+        fs::write(&root_lock, "root lock\n").expect("root lock fixture should be written");
+        let loader = RecordingFailingLoader {
+            call: RefCell::new(None),
+        };
+
+        let error = resolve_with(
+            &project,
+            ProviderRequest::Registry {
+                crate_name: "geam-images".to_owned(),
+                version: None,
+            },
+            &loader,
+        )
+        .err()
+        .expect("metadata failure should be preserved");
+
+        let (manifest, mode) = loader
+            .call
+            .borrow()
+            .clone()
+            .expect("candidate metadata call should be recorded");
+        assert_eq!(mode, CargoMetadataMode::Resolve);
+        assert!(matches!(
+            error,
+            CliError::InvalidCargoMetadata {
+                manifest: error_manifest,
+                reason,
+            } if error_manifest == manifest && reason == "fixture stop"
+        ));
+        assert!(
+            !manifest
+                .parent()
+                .expect("candidate manifest should have a parent")
+                .exists(),
+        );
+        assert_eq!(
+            fs::read_to_string(root_lock).expect("root lock should remain readable"),
+            "root lock\n",
+        );
+    }
+
+    #[test]
+    fn applies_project_cargo_configuration_to_candidate_and_approved_resolution() {
+        let project = utf8_tempdir();
+        let provider = provider_package("geam-images", "images", ">= 2.0.0 and < 3.0.0");
+        let provider_path = utf8_path(&provider);
+        fs::create_dir(project.join(".cargo"))
+            .expect("project Cargo configuration directory should be created");
+        fs::write(
+            project.join(".cargo/config.toml"),
+            format!(
+                "[net]\noffline = true\n\n[patch.crates-io]\ngeam-images = {{ path = {path} }}\n",
+                path = super::quoted(provider_path.as_str()),
+            ),
+        )
+        .expect("project Cargo configuration should be written");
+        let version: semver::Version = "1.2.3".parse().expect("version should parse");
+
+        let resolved = resolve_with(
+            &project,
+            ProviderRequest::Registry {
+                crate_name: "geam-images".to_owned(),
+                version: Some(version.clone()),
+            },
+            &SystemCargoMetadata,
+        )
+        .expect("candidate resolution should use the project Cargo patch");
+        assert_eq!(resolved.metadata.crate_name(), "geam-images");
+        assert_eq!(resolved.metadata.gleam_package(), "images");
+        assert_eq!(
+            resolved.source,
+            ProviderSource::Registry {
+                version: version.clone(),
+            },
+        );
+
+        let manifest = project.join("Cargo.toml");
+        fs::write(
+            &manifest,
+            format!(
+                "[package]\nname = \"fixture-runner\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\n[dependencies]\ngeam_provider_images = {{ package = \"geam-images\", version = \"={version}\" }}\n\n[workspace]\nresolver = \"3\"\n",
+            ),
+        )
+        .expect("managed manifest fixture should be written");
+        fs::create_dir(project.join("src")).expect("runner source directory should be created");
+        fs::write(project.join("src/main.rs"), "fn main() {}\n")
+            .expect("runner source fixture should be written");
+        let status = Command::new("cargo")
+            .arg("generate-lockfile")
+            .arg("--manifest-path")
+            .arg(&manifest)
+            .current_dir(&project)
+            .status()
+            .expect("Cargo should start");
+        assert!(status.success());
+        let root_lock = project.join("Cargo.lock");
+        let lock_before = fs::read(&root_lock).expect("root lock should be readable");
+        let selection = ProviderSelection::new(
+            "images".to_owned(),
+            "geam-images".to_owned(),
+            ProviderSource::Registry { version },
+        );
+
+        let metadata = resolve_selection_with(&project, &selection, &SystemCargoMetadata)
+            .expect("approved provider should resolve from the managed graph");
+
+        assert_eq!(metadata.crate_name(), "geam-images");
+        assert_eq!(metadata.gleam_package(), "images");
+        assert_eq!(
+            fs::read(&root_lock).expect("root lock should remain readable"),
+            lock_before,
+        );
+        fs::remove_file(&root_lock).expect("root lock should be removable");
+        let error = resolve_selection_with(&project, &selection, &SystemCargoMetadata)
+            .expect_err("approved provider resolution must not recreate a missing root lock");
+        assert!(matches!(
+            error,
+            CliError::ProcessFailure {
+                command,
+                status: Some(101),
+                stderr,
+            } if command.contains("cargo metadata")
+                && command.contains("--locked")
+                && stderr.contains("the lock file")
+        ));
+        assert!(!root_lock.exists());
+    }
+
+    #[test]
+    fn preserves_missing_approved_dependency_aliases_from_the_root_graph() {
+        let project = utf8_tempdir();
+        let provider = provider_package("geam-images", "images", "1.0.0");
+        let request = ProviderRequest::Path {
+            path: utf8_path(&provider),
+            package: Some("geam-images".to_owned()),
+        };
+        let candidate =
+            CandidateWorkspace::new(&request).expect("candidate workspace should be written");
+        let metadata = SystemCargoMetadata
+            .load(&project, candidate.manifest(), CargoMetadataMode::Resolve)
+            .expect("candidate metadata should load");
+        let selection = ProviderSelection::new(
+            "images".to_owned(),
+            "geam-images".to_owned(),
+            ProviderSource::Path {
+                path: utf8_path(&provider),
+            },
+        );
+
+        let error = resolve_selection_with(&project, &selection, &FixedLoader(metadata))
+            .expect_err("missing approved dependency alias should be preserved");
+
+        assert!(matches!(
+            error,
+            CliError::MissingResolvedDependency { ref alias }
+                if alias == "geam_provider_images"
+        ));
     }
 
     #[test]
@@ -852,7 +1164,11 @@ mod tests {
         let provider = provider_package("geam-images", "images", "1.0.0");
         let path = utf8_path(&provider);
         let metadata = SystemCargoMetadata
-            .load(&path, &path.join("Cargo.toml"))
+            .load(
+                &path,
+                &path.join("Cargo.toml"),
+                CargoMetadataMode::Workspace,
+            )
             .expect("provider metadata should load");
         let package = metadata
             .packages
@@ -1057,7 +1373,11 @@ mod tests {
             }),
         );
         let mut metadata = SystemCargoMetadata
-            .load(&path, &path.join("Cargo.toml"))
+            .load(
+                &path,
+                &path.join("Cargo.toml"),
+                CargoMetadataMode::Workspace,
+            )
             .expect("provider metadata should load");
         metadata
             .packages
@@ -1073,66 +1393,26 @@ mod tests {
     }
 
     #[test]
-    fn preserves_candidate_manifest_filesystem_failures() {
-        let request = ProviderRequest::Registry {
-            crate_name: "geam-images".to_owned(),
-            version: None,
-        };
-
-        let blocked_directory = utf8_tempdir();
-        fs::write(blocked_directory.join("build"), "blocked")
-            .expect("blocking file should be written");
-        let error = write_candidate_manifest(&blocked_directory, &request)
-            .expect_err("blocked candidate directory should fail");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileWrite {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            }),
-        );
-
-        let blocked_manifest = utf8_tempdir();
-        fs::create_dir_all(blocked_manifest.join("build/geam/provider-candidate/src"))
-            .expect("candidate source should be created");
-        fs::create_dir(blocked_manifest.join("build/geam/provider-candidate/Cargo.toml"))
-            .expect("blocking manifest directory should be created");
-        let error = write_candidate_manifest(&blocked_manifest, &request)
-            .expect_err("blocked candidate manifest should fail");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileWrite {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            }),
-        );
-
-        let blocked_source = utf8_tempdir();
-        fs::create_dir_all(blocked_source.join("build/geam/provider-candidate/src/main.rs"))
-            .expect("blocking source directory should be created");
-        let error = write_candidate_manifest(&blocked_source, &request)
-            .expect_err("blocked candidate source should fail");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileWrite {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            }),
-        );
-
+    fn rejects_candidate_requests_without_a_resolved_package_identity() {
         let unresolved = ProviderRequest::Path {
             path: "/provider".into(),
             package: None,
         };
-        let error = write_candidate_manifest(&utf8_tempdir(), &unresolved)
+        let directory = tempdir().expect("candidate directory should be created");
+        let candidate_path = directory.path().to_path_buf();
+        let error = CandidateWorkspace::from_directory(&unresolved, directory)
             .expect_err("unresolved provider identity should be rejected");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::InvalidCrateSpecification {
-                spec: String::new(),
-                reason: String::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::InvalidCrateSpecification { ref spec, reason: _ }
+                if spec.is_empty()
+        ));
+        assert!(matches!(
+            error,
+            CliError::InvalidCrateSpecification { spec: _, ref reason }
+                if reason == "provider package identity is unresolved"
+        ));
+        assert!(!candidate_path.exists());
     }
 
     #[test]
@@ -1328,32 +1608,15 @@ mod tests {
             }),
         );
 
-        let blocked = utf8_tempdir();
-        fs::write(blocked.join("build"), "blocked").expect("blocking file should be written");
-        let registry = ProviderRequest::Registry {
-            crate_name: "geam-images".to_owned(),
-            version: None,
-        };
-        let error = resolve_with(&blocked, registry, &FailingLoader)
-            .err()
-            .expect("blocked candidate manifest should fail");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileWrite {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            }),
-        );
-
         let provider = provider_package("geam-images", "images", "1.0.0");
         let path_request = ProviderRequest::Path {
             path: utf8_path(&provider),
             package: Some("geam-images".to_owned()),
         };
-        let manifest = write_candidate_manifest(&project, &path_request)
-            .expect("candidate manifest should be written");
+        let candidate =
+            CandidateWorkspace::new(&path_request).expect("candidate manifest should be written");
         let metadata = SystemCargoMetadata
-            .load(&project, &manifest)
+            .load(&project, candidate.manifest(), CargoMetadataMode::Resolve)
             .expect("candidate metadata should load");
         let resolution_request = ProviderRequest::Registry {
             crate_name: "geam-images".to_owned(),
@@ -1371,13 +1634,13 @@ mod tests {
         .expect("missing candidate edge should fail");
         assert_eq!(
             std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::MissingCandidateDependency {
+            std::mem::discriminant(&CliError::MissingResolvedDependency {
                 alias: String::new(),
             }),
         );
 
         let mut invalid_provider = metadata;
-        let candidate = candidate_dependency(&invalid_provider)
+        let candidate = resolved_dependency(&invalid_provider, CANDIDATE_ALIAS)
             .expect("candidate dependency should be present")
             .id
             .clone();
@@ -1404,7 +1667,7 @@ mod tests {
         let project = utf8_tempdir();
         let missing_manifest = project.join("missing.toml");
         let error = SystemCargoMetadata
-            .load(&project, &missing_manifest)
+            .load(&project, &missing_manifest, CargoMetadataMode::Locked)
             .expect_err("missing Cargo manifest should fail metadata resolution");
         assert_eq!(
             std::mem::discriminant(&error),
@@ -1432,13 +1695,13 @@ mod tests {
             path: utf8_path(&provider),
             package: Some("geam-images".to_owned()),
         };
-        let manifest = write_candidate_manifest(&project, &request)
-            .expect("candidate manifest should be written");
+        let candidate =
+            CandidateWorkspace::new(&request).expect("candidate manifest should be written");
         let metadata = SystemCargoMetadata
-            .load(&project, &manifest)
+            .load(&project, candidate.manifest(), CargoMetadataMode::Resolve)
             .expect("candidate metadata should load");
         assert_eq!(
-            candidate_dependency(&metadata)
+            resolved_dependency(&metadata, CANDIDATE_ALIAS)
                 .expect("candidate dependency should be present")
                 .name,
             "geam-images",
@@ -1487,10 +1750,10 @@ mod tests {
 
     fn assert_missing_candidate(metadata: &Metadata) {
         assert_eq!(
-            candidate_dependency(metadata)
+            resolved_dependency(metadata, CANDIDATE_ALIAS)
                 .expect_err("candidate dependency should be absent")
                 .to_string(),
-            "Cargo metadata did not contain the candidate dependency provider_candidate",
+            "Cargo metadata did not contain the resolved dependency provider_candidate",
         );
     }
 
@@ -1563,5 +1826,43 @@ gleam-version = "{range}"
     fn utf8_path(directory: &TempDir) -> Utf8PathBuf {
         Utf8PathBuf::from_path_buf(directory.path().to_path_buf())
             .expect("temporary path should be valid UTF-8")
+    }
+
+    fn registry_request() -> ProviderRequest {
+        ProviderRequest::Registry {
+            crate_name: "geam-images".to_owned(),
+            version: None,
+        }
+    }
+
+    #[cfg(unix)]
+    fn assert_candidate_file_failure(
+        setup: impl FnOnce(&camino::Utf8Path),
+        expected_path: &str,
+        expected_kind: io::ErrorKind,
+    ) {
+        let directory = tempdir().expect("candidate directory should be created");
+        let root = Utf8PathBuf::from_path_buf(directory.path().to_path_buf())
+            .expect("candidate path should be UTF-8");
+        setup(&root);
+
+        let error = CandidateWorkspace::from_directory(&registry_request(), directory)
+            .expect_err("candidate file construction should fail");
+
+        assert!(matches!(
+            error,
+            CliError::FileWrite {
+                ref path,
+                error: _,
+            } if path == &root.join(expected_path)
+        ));
+        assert!(matches!(
+            error,
+            CliError::FileWrite {
+                path: _,
+                ref error,
+            } if error.kind() == expected_kind
+        ));
+        assert!(!root.exists());
     }
 }

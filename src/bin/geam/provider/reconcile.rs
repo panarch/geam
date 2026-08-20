@@ -95,7 +95,6 @@ impl<'a> ProviderReconciler<'a> {
         required_packages: BTreeSet<String>,
         managed: &mut ManagedProject,
     ) -> Result<(), CliError> {
-        managed.retain_packages(&project.package_names());
         let mut compatible = BTreeSet::new();
         let mut pending = BTreeMap::new();
 
@@ -295,6 +294,7 @@ mod tests {
     use std::cell::RefCell;
     use std::collections::{BTreeMap, BTreeSet, VecDeque};
     use std::fs;
+    use std::process::Command;
     use tempfile::{TempDir, tempdir};
 
     #[test]
@@ -432,22 +432,11 @@ mod tests {
     }
 
     #[test]
-    fn prunes_absent_packages_and_rejects_selected_builtins() {
-        let project = resolved_project(&[]);
-        let root = utf8_path(&project);
-        let resolved = read_resolved_project(&root).expect("project should resolve");
+    fn rejects_selected_builtins() {
         let resolver = FixedResolver::new([]);
         let discovery = FixedDiscovery::new([]);
         let mut approval = FixedApproval::new([]);
-        let mut managed =
-            ManagedProject::load(&root, "application").expect("managed project should initialize");
-        managed.replace(selection("removed", "geam-removed", "1.0.0"));
         let mut reconciler = ProviderReconciler::new(&resolver, &discovery, &mut approval);
-        reconciler
-            .reconcile_packages(&root, &resolved, BTreeSet::new(), &mut managed)
-            .expect("absent package should be pruned");
-        assert!(!managed.has_provider("removed"));
-
         let builtin = resolved_project(&[("gleam_json", "3.1.0")]);
         let builtin_root = utf8_path(&builtin);
         let builtin_resolved =
@@ -644,11 +633,31 @@ mod tests {
         let provider = provider_package("geam-images", "images", ">= 1.0.0 and < 2.0.0");
         let project = tempdir().expect("temporary project should be created");
         let root = utf8_path(&project);
+        let provider_path = utf8_path(&provider);
+        fs::create_dir(root.join("src")).expect("runner source directory should be created");
+        fs::write(root.join("src/main.rs"), "fn main() {}\n")
+            .expect("runner source should be written");
+        fs::write(
+            root.join("Cargo.toml"),
+            format!(
+                "[package]\nname = \"fixture-runner\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\n[dependencies]\ngeam_provider_images = {{ package = \"geam-images\", path = {:?} }}\n\n[workspace]\nresolver = \"3\"\n",
+                provider_path.as_str(),
+            ),
+        )
+        .expect("runner manifest should be written");
+        assert!(
+            Command::new("cargo")
+                .arg("generate-lockfile")
+                .current_dir(&root)
+                .status()
+                .expect("Cargo should start")
+                .success(),
+        );
         let selection = ProviderSelection::new(
             "images".to_owned(),
             "geam-images".to_owned(),
             ProviderSource::Path {
-                path: utf8_path(&provider),
+                path: provider_path,
             },
         );
         let metadata = SystemApprovedProviderResolver

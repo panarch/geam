@@ -30,6 +30,9 @@ pub(super) enum CliError {
         error: io::Error,
     },
 
+    #[error("failed to create a temporary provider candidate workspace")]
+    TemporaryProviderWorkspace(#[source] io::Error),
+
     #[error("invalid {kind} at {path}: {reason}")]
     InvalidToml {
         kind: &'static str,
@@ -148,8 +151,8 @@ pub(super) enum CliError {
         status: Option<i32>,
     },
 
-    #[error("Cargo metadata did not contain the candidate dependency {alias}")]
-    MissingCandidateDependency { alias: String },
+    #[error("Cargo metadata did not contain the resolved dependency {alias}")]
+    MissingResolvedDependency { alias: String },
 
     #[error("Cargo returned invalid metadata for {manifest}: {reason}")]
     InvalidCargoMetadata {

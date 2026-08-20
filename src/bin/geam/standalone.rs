@@ -77,6 +77,11 @@ fn reconcile(
     let project = read_resolved_project(project_root)?;
     let typed = compile_resolved_project(project_root, module.to_owned())?;
     let mut managed = ManagedProject::load(project_root, project.root_package())?;
+    managed.retain_packages(&project.package_names());
+    if managed.has_providers() {
+        let manifest_changed = managed.write()?;
+        crate::runner::reconcile_lock(project_root, manifest_changed, lock)?;
+    }
     providers.reconcile(project_root, &project, &typed, &mut managed)?;
     crate::runner::reconcile_source(project_root, &managed.provider_aliases())?;
     let manifest_changed = managed.write()?;
@@ -126,7 +131,7 @@ mod tests {
     use crate::provider::{ManagedProject, ProviderSelectionReconciler};
     use crate::runner::{CargoLock, RunnerChecker, RunnerExecutor};
     use camino::{Utf8Path, Utf8PathBuf};
-    use std::cell::RefCell;
+    use std::cell::{Cell, RefCell};
     use std::fs;
     use tempfile::{TempDir, tempdir};
 
@@ -235,6 +240,35 @@ mod tests {
         }
     }
 
+    struct LockedProviders<'test> {
+        observed: &'test Cell<bool>,
+    }
+
+    impl ProviderSelectionReconciler for LockedProviders<'_> {
+        fn reconcile(
+            &mut self,
+            project_root: &Utf8Path,
+            _project: &ResolvedProject,
+            _program: &geam::TypedProgram,
+            managed: &mut ManagedProject,
+        ) -> Result<(), CliError> {
+            assert_eq!(
+                fs::read_to_string(project_root.join("Cargo.lock"))
+                    .expect("root lock should exist before provider resolution"),
+                "fixture lock\n",
+            );
+            assert!(managed.has_provider("application"));
+            assert!(!managed.has_provider("removed"));
+            assert!(
+                !fs::read_to_string(project_root.join("Cargo.toml"))
+                    .expect("pruned managed manifest should be readable")
+                    .contains("geam_provider_removed"),
+            );
+            self.observed.set(true);
+            Ok(())
+        }
+    }
+
     fn prepare_with(
         project_root: &Utf8Path,
         module: String,
@@ -294,6 +328,128 @@ mod tests {
                 .expect("runner source should remain readable"),
             source,
         );
+    }
+
+    #[test]
+    fn restores_the_root_lock_after_pruning_before_resolving_approved_providers() {
+        let project = project(
+            "application",
+            r#"
+@external(erlang, "native", "required")
+fn required() -> Int
+
+pub fn main() { required() }
+"#,
+        );
+        let root = utf8_path(&project);
+        write_managed_manifest(
+            &root,
+            "geam_provider_application = { package = \"geam-application\", path = \"/application\" }\ngeam_provider_removed = { package = \"geam-removed\", path = \"/removed\" }\n",
+        );
+        let cargo = RecordingCargo::default();
+        let observed = Cell::new(false);
+        let mut providers = LockedProviders {
+            observed: &observed,
+        };
+
+        super::prepare_with(
+            &root,
+            "application".to_owned(),
+            &cargo,
+            &cargo,
+            &mut providers,
+        )
+        .expect("missing root lock should be restored before provider resolution");
+
+        assert!(observed.get());
+        assert_eq!(
+            cargo.operations.borrow().as_slice(),
+            ["lock", "check:application"],
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("Cargo.lock"))
+                .expect("reconciled root lock should remain readable"),
+            "fixture lock\n",
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preserves_pre_resolution_manifest_failures() {
+        let project = project("application", "pub fn main() { 1 }\n");
+        let root = utf8_path(&project);
+        write_managed_manifest(
+            &root,
+            "geam_provider_application = { package = \"geam-application\", path = \"/application\" }\ngeam_provider_removed = { package = \"geam-removed\", path = \"/removed\" }\n",
+        );
+        fs::create_dir(root.join("Cargo.toml.geam.tmp"))
+            .expect("temporary manifest blocker should be created");
+        let cargo = RecordingCargo::default();
+        let observed = Cell::new(false);
+        let mut providers = LockedProviders {
+            observed: &observed,
+        };
+
+        let error = super::prepare_with(
+            &root,
+            "application".to_owned(),
+            &cargo,
+            &cargo,
+            &mut providers,
+        )
+        .expect_err("pruned manifest write failure should stop before provider resolution");
+
+        assert!(matches!(
+            error,
+            CliError::FileWrite {
+                ref path,
+                error: _,
+            } if path == &root.join("Cargo.toml.geam.tmp")
+        ));
+        assert!(matches!(
+            error,
+            CliError::FileWrite {
+                path: _,
+                ref error,
+            } if error.kind() == std::io::ErrorKind::IsADirectory
+        ));
+        assert!(!observed.get());
+        assert!(cargo.operations.borrow().is_empty());
+        assert!(!root.join("Cargo.lock").exists());
+    }
+
+    #[test]
+    fn preserves_pre_resolution_root_lock_failures() {
+        let project = project("application", "pub fn main() { 1 }\n");
+        let root = utf8_path(&project);
+        write_managed_manifest(
+            &root,
+            "geam_provider_application = { package = \"geam-application\", path = \"/application\" }\n",
+        );
+        let observed = Cell::new(false);
+        let mut providers = LockedProviders {
+            observed: &observed,
+        };
+
+        let error = super::prepare_with(
+            &root,
+            "application".to_owned(),
+            &FailingLock,
+            &RecordingCargo::default(),
+            &mut providers,
+        )
+        .expect_err("missing root lock failure should stop before provider resolution");
+
+        assert!(matches!(
+            error,
+            CliError::ProcessFailure {
+                ref command,
+                status: Some(1),
+                ref stderr,
+            } if command == "cargo generate-lockfile" && stderr == "fixture lock failed"
+        ));
+        assert!(!observed.get());
+        assert!(!root.join("Cargo.lock").exists());
     }
 
     #[test]

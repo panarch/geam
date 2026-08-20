@@ -151,6 +151,10 @@ impl ManagedProject {
         self.providers.contains_key(gleam_package)
     }
 
+    pub(crate) fn has_providers(&self) -> bool {
+        !self.providers.is_empty()
+    }
+
     pub(super) fn provider(&self, gleam_package: &str) -> Option<&ProviderSelection> {
         self.providers.get(gleam_package)
     }
