@@ -460,9 +460,15 @@ mod tests {
         let project = resolved_project(&[("images", "1.0.0")]);
         let root = utf8_path(&project);
         let resolved = read_resolved_project(&root).expect("project should resolve");
-        for metadata in [
-            metadata("different-crate", "images", ">= 1.0.0"),
-            metadata("geam-images", "search", ">= 1.0.0"),
+        for (metadata, expected_reason) in [
+            (
+                metadata("different-crate", "images", ">= 1.0.0"),
+                "Cargo resolved package different-crate, expected geam-images",
+            ),
+            (
+                metadata("geam-images", "search", ">= 1.0.0"),
+                "provider targets Gleam package search, expected images",
+            ),
         ] {
             let resolver = FixedResolver::for_selections([("geam-images", metadata)]);
             let discovery = FixedDiscovery::new([]);
@@ -478,8 +484,8 @@ mod tests {
                     BTreeSet::new(),
                     &mut managed,
                 ),
-                Err(CliError::InvalidProviderMetadata { ref package, .. })
-                    if package == "geam-images"
+                Err(CliError::InvalidProviderMetadata { package, reason })
+                    if package == "geam-images" && reason == expected_reason
             ));
         }
 
@@ -496,8 +502,13 @@ mod tests {
                 BTreeSet::from(["images".to_owned()]),
                 &mut managed,
             ),
-            Err(CliError::ProviderCandidatesUnavailable { ref details, .. })
-                if details == "registry returned no candidates"
+            Err(CliError::ProviderCandidatesUnavailable {
+                package,
+                version,
+                details,
+            }) if package == "images"
+                && version == "1.0.0"
+                && details == "registry returned no candidates"
         ));
     }
 
@@ -524,8 +535,8 @@ mod tests {
                 BTreeSet::new(),
                 &mut managed,
             ),
-            Err(CliError::InvalidProviderMetadata { ref reason, .. })
-                if reason == "fixture resolution failure"
+            Err(CliError::InvalidProviderMetadata { package, reason })
+                if package == "geam-images" && reason == "fixture resolution failure"
         ));
         assert_eq!(managed.provider("images"), Some(&original));
 
@@ -541,8 +552,8 @@ mod tests {
                 BTreeSet::from(["images".to_owned()]),
                 &mut managed,
             ),
-            Err(CliError::ProviderRegistryAccess { ref reason, .. })
-                if reason == "fixture discovery failure"
+            Err(CliError::ProviderRegistryAccess { package, reason })
+                if package == "images" && reason == "fixture discovery failure"
         ));
         assert!(!managed.has_provider("images"));
     }
@@ -559,19 +570,26 @@ mod tests {
             CliError::ProviderRegistryAccess { ref package, ref reason }
                 if package == "images" && reason == "search failed: offline"
         ));
-        for error in [
-            RegistryDiscoveryError::Protocol {
-                response: "search",
-                reason: "invalid".to_owned(),
-            },
-            RegistryDiscoveryError::SearchLimit {
-                query: "geam-images".to_owned(),
-                total: 101,
-            },
+        for (error, expected_reason) in [
+            (
+                RegistryDiscoveryError::Protocol {
+                    response: "search",
+                    reason: "invalid".to_owned(),
+                },
+                "provider registry search response is invalid: invalid",
+            ),
+            (
+                RegistryDiscoveryError::SearchLimit {
+                    query: "geam-images".to_owned(),
+                    total: 101,
+                },
+                "provider search for geam-images returned 101 results; use an explicit provider selection",
+            ),
         ] {
             assert!(matches!(
                 discovery_error(package, error),
-                CliError::ProviderRegistryProtocol { package, .. } if package == "images"
+                CliError::ProviderRegistryProtocol { package, reason }
+                    if package == "images" && reason == expected_reason
             ));
         }
         let unavailable = discovery_error(
@@ -591,8 +609,14 @@ mod tests {
         );
         assert!(matches!(
             unavailable,
-            CliError::ProviderCandidatesUnavailable { ref details, .. }
-                if details == "geam-images@1.0.0: bad metadata; geam-images-alt: no usable versions"
+            CliError::ProviderCandidatesUnavailable {
+                package,
+                version,
+                details,
+            } if package == "images"
+                && version == "1.0.0"
+                && details
+                    == "geam-images@1.0.0: bad metadata; geam-images-alt: no usable versions"
         ));
         let absent = discovery_error(
             package,
@@ -604,8 +628,13 @@ mod tests {
         );
         assert!(matches!(
             absent,
-            CliError::ProviderCandidatesUnavailable { ref details, .. }
-                if details == "no matching crates were found"
+            CliError::ProviderCandidatesUnavailable {
+                package,
+                version,
+                details,
+            } if package == "images"
+                && version == "1.0.0"
+                && details == "no matching crates were found"
         ));
     }
 
@@ -615,7 +644,8 @@ mod tests {
         let discovery = RegistryProviderDiscovery::new(&registry);
         assert!(matches!(
             discovery.discover("images", &GleamVersion::new(1, 0, 0)),
-            Err(CliError::ProviderRegistryAccess { ref package, .. }) if package == "images"
+            Err(CliError::ProviderRegistryAccess { package, reason })
+                if package == "images" && reason == "search fixture failed: offline"
         ));
         for error in [
             registry.index("geam-images"),
@@ -623,10 +653,8 @@ mod tests {
             registry.download("https://example.com/archive"),
         ] {
             assert_eq!(
-                error
-                    .expect_err("fixture registry operation should fail")
-                    .to_string(),
-                "unused fixture operation failed: offline",
+                error.expect_err("fixture registry operation should fail"),
+                RegistryAccessError::new("unused fixture operation", "offline"),
             );
         }
 

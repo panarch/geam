@@ -706,13 +706,11 @@ mod tests {
             },
         )
         .expect_err("missing source should be rejected");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::InvalidCrateSpecification {
-                spec: String::new(),
-                reason: String::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::InvalidCrateSpecification { spec, reason }
+                if spec.is_empty() && reason == "one provider source is required"
+        ));
         let error = ProviderRequest::from_command(
             current.as_std_path(),
             AddProvider {
@@ -724,13 +722,12 @@ mod tests {
             },
         )
         .expect_err("missing path should be rejected");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileRead {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::new(std::io::ErrorKind::NotFound, ""),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::FileRead { path, error }
+                if path == current.join("missing")
+                    && error.kind() == std::io::ErrorKind::NotFound
+        ));
     }
 
     #[cfg(unix)]
@@ -751,20 +748,18 @@ mod tests {
             },
         )
         .expect_err("non-UTF-8 current directory should be rejected");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::NonUtf8Path(std::path::PathBuf::new())),
-        );
+        assert!(matches!(
+            error,
+            CliError::NonUtf8Path(path) if path == invalid_current
+        ));
 
-        let error =
-            canonical_provider_path_from(Ok(std::path::PathBuf::from(OsString::from_vec(vec![
-                0xfe,
-            ]))))
+        let invalid_canonical = std::path::PathBuf::from(OsString::from_vec(vec![0xfe]));
+        let error = canonical_provider_path_from(Ok(invalid_canonical.clone()))
             .expect_err("non-UTF-8 canonical path should be rejected");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::NonUtf8Path(std::path::PathBuf::new())),
-        );
+        assert!(matches!(
+            error,
+            CliError::NonUtf8Path(path) if path == invalid_canonical
+        ));
     }
 
     #[test]
@@ -784,15 +779,29 @@ mod tests {
                 Some("1.2.3".parse().expect("version should parse")),
             ),
         );
-        for specification in ["@1.0.0", "geam-images@", "geam-images@^1"] {
+        for (specification, expected_reason, exact) in [
+            ("@1.0.0", "crate name is empty", true),
+            ("geam-images@", "version is empty", true),
+            (
+                "geam-images@^1",
+                "version must be exact Cargo SemVer:",
+                false,
+            ),
+        ] {
             let error = parse_registry_specification(specification)
                 .expect_err("invalid registry specification should be rejected");
-            assert_eq!(
-                std::mem::discriminant(&error),
-                std::mem::discriminant(&CliError::InvalidCrateSpecification {
-                    spec: String::new(),
-                    reason: String::new(),
-                }),
+            assert!(
+                matches!(
+                    &error,
+                    CliError::InvalidCrateSpecification { spec, reason }
+                        if spec == specification
+                            && if exact {
+                                reason == expected_reason
+                            } else {
+                                reason.starts_with(expected_reason) && reason.contains('^')
+                            }
+                ),
+                "expected {expected_reason}: {error}",
             );
         }
 
@@ -877,13 +886,9 @@ mod tests {
 
         assert!(matches!(
             error,
-            CliError::TemporaryProviderWorkspace(ref error)
+            CliError::TemporaryProviderWorkspace(error)
                 if error.kind() == io::ErrorKind::PermissionDenied
-        ));
-        assert!(matches!(
-            error,
-            CliError::TemporaryProviderWorkspace(ref error)
-                if error.to_string() == "fixture temporary-directory failure"
+                    && error.to_string() == "fixture temporary-directory failure"
         ));
     }
 
@@ -901,13 +906,9 @@ mod tests {
 
         assert!(matches!(
             error,
-            CliError::TemporaryProviderWorkspace(ref error)
+            CliError::TemporaryProviderWorkspace(error)
                 if error.kind() == io::ErrorKind::PermissionDenied
-        ));
-        assert!(matches!(
-            error,
-            CliError::TemporaryProviderWorkspace(ref error)
-                if error.to_string() == "fixture candidate failure"
+                    && error.to_string() == "fixture candidate failure"
         ));
     }
 
@@ -1121,8 +1122,10 @@ mod tests {
                 command,
                 status: Some(101),
                 stderr,
-            } if command.contains("cargo metadata")
-                && command.contains("--locked")
+            } if command
+                == format!(
+                    "cargo metadata --format-version 1 --manifest-path {manifest} --locked"
+                )
                 && stderr.contains("the lock file")
         ));
         assert!(!root_lock.exists());
@@ -1253,32 +1256,33 @@ mod tests {
             .expect("workspace path should be valid UTF-8");
         let loader = SystemCargoMetadata;
 
-        assert_eq!(
-            complete_package_identity(
-                &project,
-                ProviderRequest::Path {
-                    path: workspace_path.clone(),
-                    package: None,
-                },
-                &loader,
-            )
-            .expect_err("ambiguous workspace should be rejected")
-            .to_string(),
-            "provider workspace has multiple metadata-bearing packages; use --package with one of: geam-one, geam-two",
-        );
-        assert_eq!(
-            complete_package_identity(
-                &project,
-                ProviderRequest::Path {
-                    path: workspace_path.clone(),
-                    package: Some("missing".to_owned()),
-                },
-                &loader,
-            )
-            .expect_err("unknown explicit package should be rejected")
-            .to_string(),
-            "provider package missing was not found in Cargo metadata",
-        );
+        let error = complete_package_identity(
+            &project,
+            ProviderRequest::Path {
+                path: workspace_path.clone(),
+                package: None,
+            },
+            &loader,
+        )
+        .expect_err("ambiguous workspace should be rejected");
+        assert!(matches!(
+            error,
+            CliError::AmbiguousProviderPackage { packages }
+                if packages == "geam-one, geam-two"
+        ));
+        let error = complete_package_identity(
+            &project,
+            ProviderRequest::Path {
+                path: workspace_path.clone(),
+                package: Some("missing".to_owned()),
+            },
+            &loader,
+        )
+        .expect_err("unknown explicit package should be rejected");
+        assert!(matches!(
+            error,
+            CliError::MissingProviderPackage { package } if package == "missing"
+        ));
 
         let plain = tempdir().expect("plain package should be created");
         fs::create_dir(plain.path().join("src")).expect("source should be created");
@@ -1299,12 +1303,10 @@ mod tests {
             &loader,
         )
         .expect_err("metadata-free workspace should be rejected");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::MissingProviderPackage {
-                package: String::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::MissingProviderPackage { package } if package == plain.as_str()
+        ));
         let error = complete_package_identity(
             &project,
             ProviderRequest::Path {
@@ -1314,13 +1316,12 @@ mod tests {
             &loader,
         )
         .expect_err("explicit non-provider package should be rejected");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::InvalidProviderMetadata {
-                package: String::new(),
-                reason: String::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::InvalidProviderMetadata { package, reason }
+                if package == "plain"
+                    && reason == "missing [package.metadata.geam.provider] table"
+        ));
     }
 
     #[test]
@@ -1354,24 +1355,20 @@ mod tests {
         let project = utf8_tempdir();
         let error = inspect_workspace(&project, None, &FailingLoader)
             .expect_err("missing provider manifest should be rejected");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::MissingProviderManifest {
-                path: Utf8PathBuf::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::MissingProviderManifest { path } if path == project.join("Cargo.toml")
+        ));
 
         let provider = provider_package("geam-images", "images", "1.0.0");
         let path = utf8_path(&provider);
         let error = inspect_workspace(&path, None, &FailingLoader)
             .expect_err("Cargo metadata failure should be preserved");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::InvalidCargoMetadata {
-                manifest: Utf8PathBuf::new(),
-                reason: String::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::InvalidCargoMetadata { manifest, reason }
+                if manifest == path.join("Cargo.toml") && reason == "fixture stop"
+        ));
         let mut metadata = SystemCargoMetadata
             .load(
                 &path,
@@ -1384,12 +1381,13 @@ mod tests {
             .first_mut()
             .expect("provider package should be present")
             .manifest_path = Utf8PathBuf::new();
-        assert_eq!(
+        assert!(matches!(
             inspect_workspace(&path, None, &FixedLoader(metadata))
-                .expect_err("missing package directory should be rejected")
-                .to_string(),
-            "crate geam-images has invalid Geam provider metadata: Cargo manifest has no package directory",
-        );
+                .expect_err("missing package directory should be rejected"),
+            CliError::InvalidProviderMetadata { package, reason }
+                if package == "geam-images"
+                    && reason == "Cargo manifest has no package directory"
+        ));
     }
 
     #[test]
@@ -1404,13 +1402,8 @@ mod tests {
             .expect_err("unresolved provider identity should be rejected");
         assert!(matches!(
             error,
-            CliError::InvalidCrateSpecification { ref spec, reason: _ }
-                if spec.is_empty()
-        ));
-        assert!(matches!(
-            error,
-            CliError::InvalidCrateSpecification { spec: _, ref reason }
-                if reason == "provider package identity is unresolved"
+            CliError::InvalidCrateSpecification { spec, reason }
+                if spec.is_empty() && reason == "provider package identity is unresolved"
         ));
         assert!(!candidate_path.exists());
     }
@@ -1448,41 +1441,46 @@ mod tests {
             "not a directory",
         )
         .expect("blocking file should be written");
+        let blocked_removal_path = blocked_removal.join("build/geam/provider-git-inspection");
+        let expected_kind = fs::remove_dir_all(&blocked_removal_path)
+            .expect_err("removing a file as a directory should fail")
+            .kind();
         let error = clone_git_for_inspection(&blocked_removal, "missing", None)
             .expect_err("non-directory inspection path should fail");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileWrite {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::FileWrite { path, error }
+                if path == blocked_removal_path && error.kind() == expected_kind
+        ));
 
         let blocked_parent = utf8_tempdir();
         fs::write(blocked_parent.join("build"), "not a directory")
             .expect("blocking file should be written");
+        let blocked_parent_path = blocked_parent.join("build/geam");
+        let expected_kind = fs::create_dir_all(&blocked_parent_path)
+            .expect_err("creating a directory below a file should fail")
+            .kind();
         let error = clone_git_for_inspection(&blocked_parent, "missing", None)
             .expect_err("blocked inspection parent should fail");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileWrite {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::FileWrite { path, error }
+                if path == blocked_parent_path && error.kind() == expected_kind
+        ));
 
         let missing_repository = utf8_tempdir();
+        let missing_inspection = missing_repository.join("build/geam/provider-git-inspection");
+        let missing_clone_command = format!(
+            "git clone --quiet --no-tags /repository/that/does/not/exist {missing_inspection}"
+        );
         let error =
             clone_git_for_inspection(&missing_repository, "/repository/that/does/not/exist", None)
                 .expect_err("missing repository should fail to clone");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::ProcessFailure {
-                command: String::new(),
-                status: None,
-                stderr: String::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::ProcessFailure { command, status: Some(128), stderr }
+                if command == missing_clone_command && stderr.contains("does not exist")
+        ));
         let error = complete_package_identity(
             &missing_repository,
             ProviderRequest::Git {
@@ -1493,14 +1491,11 @@ mod tests {
             &SystemCargoMetadata,
         )
         .expect_err("Git clone failure should stop package completion");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::ProcessFailure {
-                command: String::new(),
-                status: None,
-                stderr: String::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::ProcessFailure { command, status: Some(128), stderr }
+                if command == missing_clone_command && stderr.contains("does not exist")
+        ));
 
         let plain = tempdir().expect("plain package should be created");
         fs::create_dir(plain.path().join("src")).expect("source should be created");
@@ -1511,8 +1506,9 @@ mod tests {
         .expect("plain manifest should be written");
         fs::write(plain.path().join("src/lib.rs"), "").expect("source should be written");
         initialize_git_repository(&plain);
+        let inspection_project = utf8_tempdir();
         let error = complete_package_identity(
-            &utf8_tempdir(),
+            &inspection_project,
             ProviderRequest::Git {
                 url: utf8_path(&plain).to_string(),
                 rev: None,
@@ -1521,12 +1517,14 @@ mod tests {
             &SystemCargoMetadata,
         )
         .expect_err("metadata-free Git package should be rejected after inspection");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::MissingProviderPackage {
-                package: String::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::MissingProviderPackage { package }
+                if package
+                    == inspection_project
+                        .join("build/geam/provider-git-inspection")
+                        .as_str()
+        ));
 
         let repository = provider_package("geam-images", "images", "1.0.0");
         initialize_git_repository(&repository);
@@ -1537,39 +1535,42 @@ mod tests {
         let error =
             clone_git_for_inspection(&project, repository_path.as_str(), Some("missing-revision"))
                 .expect_err("missing revision should fail checkout");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::ProcessFailure {
-                command: String::new(),
-                status: None,
-                stderr: String::new(),
-            }),
+        let checkout_command = format!(
+            "git -C {} checkout --quiet missing-revision",
+            project.join("build/geam/provider-git-inspection")
         );
+        assert!(matches!(
+            error,
+            CliError::ProcessFailure { command, status: Some(1), stderr }
+                if command == checkout_command && stderr.contains("pathspec")
+        ));
     }
 
     #[test]
     fn distinguishes_missing_provider_paths_from_missing_manifests() {
         let project = utf8_tempdir();
-        let error = canonical_provider_path(&project.join("missing"))
-            .expect_err("missing provider path should fail");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileRead {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::new(std::io::ErrorKind::NotFound, ""),
-            }),
-        );
+        let missing = project.join("missing");
+        let error =
+            canonical_provider_path(&missing).expect_err("missing provider path should fail");
+        assert!(matches!(
+            error,
+            CliError::FileRead { path, error }
+                if path == missing && error.kind() == io::ErrorKind::NotFound
+        ));
 
         let empty = project.join("empty");
         fs::create_dir(&empty).expect("empty provider directory should be created");
+        let canonical_empty = Utf8PathBuf::from_path_buf(
+            fs::canonicalize(&empty).expect("empty provider directory should canonicalize"),
+        )
+        .expect("canonical provider directory should be valid UTF-8");
         let error = canonical_provider_path(&empty)
             .expect_err("provider directory without Cargo manifest should fail");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::MissingProviderManifest {
-                path: Utf8PathBuf::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::MissingProviderManifest { path }
+                if path == canonical_empty.join("Cargo.toml")
+        ));
     }
 
     #[test]
@@ -1586,9 +1587,17 @@ mod tests {
         .err()
         .expect("failing metadata should be preserved");
 
-        assert!(
-            matches!(error, CliError::InvalidCargoMetadata { reason, .. } if reason == "fixture stop")
-        );
+        assert!(matches!(
+            error,
+            CliError::InvalidCargoMetadata { manifest, reason }
+                if manifest.file_name() == Some("Cargo.toml")
+                    && manifest
+                        .parent()
+                        .is_some_and(|parent| parent.file_name().is_some_and(|name| {
+                            name.starts_with("geam-provider-candidate-")
+                        }))
+                    && reason == "fixture stop"
+        ));
     }
 
     #[test]
@@ -1601,12 +1610,11 @@ mod tests {
         let error = resolve_with(&project, missing, &FailingLoader)
             .err()
             .expect("missing path should fail package completion");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::MissingProviderManifest {
-                path: Utf8PathBuf::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::MissingProviderManifest { path }
+                if path == project.join("missing/Cargo.toml")
+        ));
 
         let provider = provider_package("geam-images", "images", "1.0.0");
         let path_request = ProviderRequest::Path {
@@ -1632,12 +1640,10 @@ mod tests {
         )
         .err()
         .expect("missing candidate edge should fail");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::MissingResolvedDependency {
-                alias: String::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::MissingResolvedDependency { alias } if alias == CANDIDATE_ALIAS
+        ));
 
         let mut invalid_provider = metadata;
         let candidate = resolved_dependency(&invalid_provider, CANDIDATE_ALIAS)
@@ -1653,13 +1659,12 @@ mod tests {
         let error = resolve_with(&project, resolution_request, &FixedLoader(invalid_provider))
             .err()
             .expect("invalid provider metadata should fail");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::InvalidProviderMetadata {
-                package: String::new(),
-                reason: String::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::InvalidProviderMetadata { package, reason }
+                if package == "geam-images"
+                    && reason == "missing [package.metadata.geam.provider] table"
+        ));
     }
 
     #[test]
@@ -1669,22 +1674,23 @@ mod tests {
         let error = SystemCargoMetadata
             .load(&project, &missing_manifest, CargoMetadataMode::Locked)
             .expect_err("missing Cargo manifest should fail metadata resolution");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::ProcessFailure {
-                command: String::new(),
-                status: None,
-                stderr: String::new(),
-            }),
+        let command = format!(
+            "cargo metadata --format-version 1 --manifest-path {missing_manifest} --locked"
         );
+        assert!(matches!(
+            error,
+            CliError::ProcessFailure { command: actual, status: Some(101), stderr }
+                if actual == command && stderr.contains("manifest path")
+        ));
         let parse_reason = cargo_metadata::MetadataCommand::parse("not JSON")
             .expect_err("invalid Cargo output fixture should be rejected");
-        assert_eq!(
-            parse_metadata_output(&missing_manifest, b"not JSON")
-                .expect_err("invalid Cargo output should be rejected")
-                .to_string(),
-            format!("Cargo returned invalid metadata for {missing_manifest}: {parse_reason}"),
-        );
+        let error = parse_metadata_output(&missing_manifest, b"not JSON")
+            .expect_err("invalid Cargo output should be rejected");
+        assert!(matches!(
+            error,
+            CliError::InvalidCargoMetadata { manifest, reason }
+                if manifest == missing_manifest && reason == parse_reason.to_string()
+        ));
     }
 
     #[test]
@@ -1749,12 +1755,11 @@ mod tests {
     }
 
     fn assert_missing_candidate(metadata: &Metadata) {
-        assert_eq!(
+        assert!(matches!(
             resolved_dependency(metadata, CANDIDATE_ALIAS)
-                .expect_err("candidate dependency should be absent")
-                .to_string(),
-            "Cargo metadata did not contain the resolved dependency provider_candidate",
-        );
+                .expect_err("candidate dependency should be absent"),
+            CliError::MissingResolvedDependency { alias } if alias == CANDIDATE_ALIAS
+        ));
     }
 
     fn provider_package(name: &str, gleam_package: &str, range: &str) -> TempDir {
@@ -1851,17 +1856,8 @@ gleam-version = "{range}"
 
         assert!(matches!(
             error,
-            CliError::FileWrite {
-                ref path,
-                error: _,
-            } if path == &root.join(expected_path)
-        ));
-        assert!(matches!(
-            error,
-            CliError::FileWrite {
-                path: _,
-                ref error,
-            } if error.kind() == expected_kind
+            CliError::FileWrite { path, error }
+                if path == root.join(expected_path) && error.kind() == expected_kind
         ));
         assert!(!root.exists());
     }

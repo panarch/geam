@@ -132,39 +132,58 @@ mod tests {
     #[test]
     fn rejects_missing_malformed_and_unknown_metadata() {
         let cases = [
-            ("null", "missing [package.metadata.geam.provider]"),
+            (
+                "null",
+                "missing [package.metadata.geam.provider] table",
+                true,
+            ),
             (
                 r#"{"geam":{"provider":{"schema":"one","gleam-package":"images","gleam-version":"1.0.0"}}}"#,
                 "schema must be an integer",
+                true,
             ),
             (
                 r#"{"geam":{"provider":{"schema":2,"gleam-package":"images","gleam-version":"1.0.0"}}}"#,
                 "unsupported schema 2",
+                true,
             ),
             (
                 r#"{"geam":{"provider":{"schema":1,"gleam-package":"","gleam-version":"1.0.0"}}}"#,
                 "gleam-package must be a non-empty string",
+                true,
             ),
             (
                 r#"{"geam":{"provider":{"schema":1,"gleam-package":"images","gleam-version":1}}}"#,
                 "gleam-version must be a string",
+                true,
             ),
             (
                 r#"{"geam":{"provider":{"schema":1,"gleam-package":"images","gleam-version":"not a range"}}}"#,
                 "invalid Gleam version range",
+                false,
             ),
             (
                 r#"{"geam":{"provider":{"schema":1,"gleam-package":"images","gleam-version":"1.0.0","extra":true}}}"#,
-                "expected exactly schema, gleam-package, and gleam-version fields",
+                "expected exactly schema, gleam-package, and gleam-version fields; found extra, gleam-package, gleam-version, schema",
+                true,
             ),
         ];
 
-        for (source, expected) in cases {
+        for (source, expected, exact) in cases {
             let package = package_with_metadata(source);
             let error = ProviderMetadata::from_package(&package)
                 .expect_err("provider metadata should be rejected");
             assert!(
-                matches!(error, CliError::InvalidProviderMetadata { ref reason, .. } if reason.contains(expected)),
+                matches!(
+                    &error,
+                    CliError::InvalidProviderMetadata { package, reason }
+                        if package == "provider"
+                            && if exact {
+                                reason == expected
+                            } else {
+                                reason.contains(expected)
+                            }
+                ),
                 "expected {expected}: {error}",
             );
         }

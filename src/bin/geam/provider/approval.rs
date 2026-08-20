@@ -262,8 +262,9 @@ mod tests {
             ),
             Err(CliError::ProviderApprovalIo {
                 operation: "read",
-                ..
-            })
+                error,
+            }) if error.kind() == io::ErrorKind::Other
+                && error.to_string() == "fixture read failure"
         ));
 
         let mut input = Cursor::new(b"yes\n");
@@ -278,8 +279,9 @@ mod tests {
             ),
             Err(CliError::ProviderApprovalIo {
                 operation: "write",
-                ..
-            })
+                error,
+            }) if error.kind() == io::ErrorKind::Other
+                && error.to_string() == "fixture write failure"
         ));
     }
 

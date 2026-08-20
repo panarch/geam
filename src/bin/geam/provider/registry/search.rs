@@ -128,8 +128,8 @@ mod tests {
             crate_names(b"{", "geam-images"),
             Err(RegistryDiscoveryError::Protocol {
                 response: "search",
-                ..
-            })
+                reason,
+            }) if reason.contains("EOF")
         ));
     }
 

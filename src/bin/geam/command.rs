@@ -209,27 +209,44 @@ mod tests {
 
     #[test]
     fn rejects_ambiguous_provider_sources_and_options() {
-        for arguments in [
-            vec!["geam", "provider", "add"],
-            vec![
-                "geam",
-                "provider",
-                "add",
-                "geam-images",
-                "--path",
-                "provider",
-            ],
-            vec!["geam", "provider", "add", "--rev", "abc"],
-            vec![
-                "geam",
-                "provider",
-                "add",
-                "geam-images",
-                "--package",
-                "geam-images",
-            ],
+        for (arguments, expected) in [
+            (
+                vec!["geam", "provider", "add"],
+                clap::error::ErrorKind::MissingRequiredArgument,
+            ),
+            (
+                vec![
+                    "geam",
+                    "provider",
+                    "add",
+                    "geam-images",
+                    "--path",
+                    "provider",
+                ],
+                clap::error::ErrorKind::ArgumentConflict,
+            ),
+            (
+                vec!["geam", "provider", "add", "--rev", "abc"],
+                clap::error::ErrorKind::MissingRequiredArgument,
+            ),
+            (
+                vec![
+                    "geam",
+                    "provider",
+                    "add",
+                    "geam-images",
+                    "--package",
+                    "geam-images",
+                ],
+                clap::error::ErrorKind::ArgumentConflict,
+            ),
         ] {
-            assert!(Cli::try_parse_from(arguments).is_err());
+            assert_eq!(
+                Cli::try_parse_from(arguments)
+                    .expect_err("invalid provider command should be rejected")
+                    .kind(),
+                expected,
+            );
         }
     }
 }

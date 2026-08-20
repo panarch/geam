@@ -235,25 +235,28 @@ mod tests {
             .expect("stale fixture lock should be written");
         let error = reconcile_lock(&root, true, &FailingCargo)
             .expect_err("lock failure should be preserved");
-        assert_eq!(
-            error.to_string(),
-            "`cargo generate-lockfile` failed with status Some(1): fixture stop"
-        );
+        assert!(matches!(
+            error,
+            CliError::ProcessFailure { command, status: Some(1), stderr }
+                if command == "cargo generate-lockfile" && stderr == "fixture stop"
+        ));
         assert!(
             !root.join("Cargo.lock").exists(),
             "failed lock generation must leave the next reconciliation recoverable",
         );
 
         fs::create_dir(root.join("Cargo.lock")).expect("blocking lock directory should be created");
+        let lock = root.join("Cargo.lock");
+        let expected_kind = fs::remove_file(&lock)
+            .expect_err("directory should reject file removal")
+            .kind();
         let error = reconcile_lock(&root, true, &FailingCargo)
             .expect_err("an unremovable stale lock should fail before Cargo");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileWrite {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::FileWrite { path, error }
+                if path == lock && error.kind() == expected_kind
+        ));
     }
 
     #[test]
@@ -262,24 +265,31 @@ mod tests {
         let root = Utf8PathBuf::from_path_buf(project.path().to_path_buf())
             .expect("temporary path should be valid UTF-8");
 
-        let errors = [
-            SystemCargo
-                .generate_lockfile(&root)
-                .expect_err("missing manifest should reject lock generation"),
-            SystemCargo
-                .check(&root, "application")
-                .expect_err("missing manifest should reject runner checking"),
-        ];
-        for error in errors {
-            assert_eq!(
-                std::mem::discriminant(&error),
-                std::mem::discriminant(&CliError::ProcessFailure {
-                    command: String::new(),
-                    status: None,
-                    stderr: String::new(),
-                }),
-            );
-            assert!(error.to_string().contains("failed with status Some("));
-        }
+        let generation = SystemCargo
+            .generate_lockfile(&root)
+            .expect_err("missing manifest should reject lock generation");
+        assert!(matches!(
+            generation,
+            CliError::ProcessFailure { command, status: Some(101), stderr }
+                if command
+                    == format!(
+                        "cargo generate-lockfile --manifest-path {}",
+                        root.join("Cargo.toml")
+                    )
+                    && stderr.contains("manifest path")
+        ));
+
+        let check = SystemCargo
+            .check(&root, "application")
+            .expect_err("missing manifest should reject runner checking");
+        assert!(matches!(
+            check,
+            CliError::ProcessFailure { command, status: Some(101), stderr }
+                if command
+                    == format!(
+                        "cargo run --quiet --locked --bin geam-runner -- check {root} application"
+                    )
+                    && stderr.contains("could not find `Cargo.toml`")
+        ));
     }
 }

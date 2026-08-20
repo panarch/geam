@@ -475,12 +475,10 @@ mod tests {
         let error = ManagedProject::load(&root, "application")
             .err()
             .expect("user manifest should be refused");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::UserOwnedCargoManifest {
-                path: Utf8PathBuf::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::UserOwnedCargoManifest { path } if path == root.join("Cargo.toml")
+        ));
 
         fs::write(
             root.join("Cargo.toml"),
@@ -490,16 +488,13 @@ mod tests {
             ),
         )
         .expect("unsupported manifest should be written");
-        assert_eq!(
+        assert!(matches!(
             ManagedProject::load(&root, "application")
                 .err()
-                .expect("unsupported schema should be rejected")
-                .to_string(),
-            format!(
-                "managed Cargo manifest {} uses unsupported runner schema 2",
-                root.join("Cargo.toml"),
-            ),
-        );
+                .expect("unsupported schema should be rejected"),
+            CliError::UnsupportedRunnerSchema { path, schema: 2 }
+                if path == root.join("Cargo.toml")
+        ));
     }
 
     #[test]
@@ -560,21 +555,30 @@ mod tests {
             let error = ManagedProject::load(&root, "application")
                 .err()
                 .expect("managed dependency should be rejected");
-            assert_eq!(
-                error.to_string(),
-                format!("managed Cargo dependency {alias} is malformed: {reason}"),
-            );
+            assert!(matches!(
+                error,
+                CliError::InvalidManagedDependency {
+                    alias: error_alias,
+                    reason: error_reason,
+                } if error_alias == alias && error_reason == reason
+            ));
         }
     }
 
     #[test]
     fn rejects_invalid_managed_toml_and_missing_schema_or_dependencies() {
-        for source in [
-            format!("{}invalid", super::MANAGED_HEADER),
-            format!("{}\n[dependencies]\n", super::MANAGED_HEADER),
-            format!(
-                "{}\n[package.metadata.geam.runner]\nschema = 1\n",
-                super::MANAGED_HEADER,
+        for (source, expected_reason) in [
+            (format!("{}invalid", super::MANAGED_HEADER), None),
+            (
+                format!("{}\n[dependencies]\n", super::MANAGED_HEADER),
+                Some("missing package.metadata.geam.runner.schema"),
+            ),
+            (
+                format!(
+                    "{}\n[package.metadata.geam.runner]\nschema = 1\n",
+                    super::MANAGED_HEADER,
+                ),
+                Some("missing dependencies table"),
             ),
         ] {
             let project = tempdir().expect("temporary project should be created");
@@ -585,14 +589,16 @@ mod tests {
             let error = ManagedProject::load(&root, "application")
                 .err()
                 .expect("invalid managed manifest should be rejected");
-            assert_eq!(
-                std::mem::discriminant(&error),
-                std::mem::discriminant(&CliError::InvalidToml {
-                    kind: "managed Cargo manifest",
-                    path: Utf8PathBuf::new(),
-                    reason: String::new(),
-                }),
-            );
+            assert!(matches!(
+                error,
+                CliError::InvalidToml { kind, path, reason }
+                    if kind == "managed Cargo manifest"
+                        && path == root.join("Cargo.toml")
+                        && expected_reason.map_or_else(
+                            || reason.contains("expected"),
+                            |expected| reason == expected,
+                        )
+            ));
         }
     }
 
@@ -603,16 +609,18 @@ mod tests {
             .expect("temporary path should be valid UTF-8");
         fs::create_dir(unreadable_root.join("Cargo.toml"))
             .expect("manifest directory should be created");
+        let unreadable_path = unreadable_root.join("Cargo.toml");
+        let expected_kind = fs::read_to_string(&unreadable_path)
+            .expect_err("manifest directory should not be readable as a file")
+            .kind();
         let error = ManagedProject::load(&unreadable_root, "application")
             .err()
             .expect("unreadable manifest should fail");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileRead {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::FileRead { path, error }
+                if path == unreadable_path && error.kind() == expected_kind
+        ));
 
         let blocked_read = tempdir().expect("temporary project should be created");
         let blocked_read_root = Utf8PathBuf::from_path_buf(blocked_read.path().to_path_buf())
@@ -621,16 +629,18 @@ mod tests {
             .expect("managed project should initialize");
         fs::create_dir(blocked_read_root.join("Cargo.toml"))
             .expect("manifest directory should be created");
+        let blocked_read_path = blocked_read_root.join("Cargo.toml");
+        let expected_kind = fs::read_to_string(&blocked_read_path)
+            .expect_err("manifest directory should not be readable as a file")
+            .kind();
         let error = blocked_read_managed
             .write()
             .expect_err("unreadable destination should fail");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileRead {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::FileRead { path, error }
+                if path == blocked_read_path && error.kind() == expected_kind
+        ));
 
         let blocked_write = tempdir().expect("temporary project should be created");
         let blocked_write_root = Utf8PathBuf::from_path_buf(blocked_write.path().to_path_buf())
@@ -639,16 +649,18 @@ mod tests {
             .expect("managed project should initialize");
         fs::create_dir(blocked_write_root.join("Cargo.toml.geam.tmp"))
             .expect("temporary manifest directory should be created");
+        let blocked_write_path = blocked_write_root.join("Cargo.toml.geam.tmp");
+        let expected_kind = fs::write(&blocked_write_path, "manifest")
+            .expect_err("temporary manifest directory should reject writes")
+            .kind();
         let error = blocked_write_managed
             .write()
             .expect_err("blocked temporary file should fail");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileWrite {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::FileWrite { path, error }
+                if path == blocked_write_path && error.kind() == expected_kind
+        ));
 
         let rename = tempdir().expect("temporary project should be created");
         let rename_root = Utf8PathBuf::from_path_buf(rename.path().to_path_buf())
@@ -657,15 +669,18 @@ mod tests {
         let destination = rename_root.join("destination");
         fs::write(&temporary, "source").expect("temporary file should be written");
         fs::create_dir(&destination).expect("blocking destination should be created");
+        let probe = rename_root.join("probe");
+        fs::write(&probe, "source").expect("rename probe should be written");
+        let expected_kind = fs::rename(&probe, &destination)
+            .expect_err("directory destination should reject the rename probe")
+            .kind();
         let error = replace_file(&temporary, &destination)
             .expect_err("directory destination should reject replacement");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileWrite {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::FileWrite { path, error }
+                if path == destination && error.kind() == expected_kind
+        ));
 
         #[cfg(unix)]
         {
@@ -689,13 +704,12 @@ mod tests {
             fs::set_permissions(&root, original)
                 .expect("project directory permissions should be restored");
             let error = result.expect_err("atomic replacement should preserve rename failures");
-            assert_eq!(
-                std::mem::discriminant(&error),
-                std::mem::discriminant(&CliError::FileWrite {
-                    path: Utf8PathBuf::new(),
-                    error: std::io::Error::other(""),
-                }),
-            );
+            assert!(matches!(
+                error,
+                CliError::FileWrite { path, error }
+                    if path == root.join("Cargo.toml")
+                        && error.kind() == std::io::ErrorKind::PermissionDenied
+            ));
         }
     }
 }

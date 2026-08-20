@@ -88,13 +88,24 @@ mod tests {
 
     #[test]
     fn rejects_invalid_configuration_and_unsupported_markers() {
-        for source in [b"{".as_slice(), br#"{"dl":"http://example.test"}"#] {
+        for (source, expected, exact) in [
+            (b"{".as_slice(), "EOF", false),
+            (
+                br#"{"dl":"http://example.test"}"#.as_slice(),
+                "download URL must use HTTPS",
+                true,
+            ),
+        ] {
             assert!(matches!(
                 parse(source),
                 Err(RegistryDiscoveryError::Protocol {
                     response: "configuration",
-                    ..
-                })
+                    reason,
+                }) if if exact {
+                    reason == expected
+                } else {
+                    reason.contains(expected)
+                }
             ));
         }
 

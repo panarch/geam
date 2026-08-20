@@ -64,7 +64,7 @@ mod tests {
 
         assert!(matches!(
             error,
-            CliError::ProcessFailure { command, status: Some(_), stderr }
+            CliError::ProcessFailure { command, status: Some(1), stderr }
                 if command == "rustc --definitely-not-a-rustc-option"
                     && stderr.contains("Unrecognized option")
         ));
@@ -77,8 +77,9 @@ mod tests {
 
         assert!(matches!(
             error,
-            CliError::ProcessIo { command, .. }
+            CliError::ProcessIo { command, error }
                 if command == "geam-command-that-does-not-exist"
+                    && error.kind() == std::io::ErrorKind::NotFound
         ));
     }
 
@@ -101,7 +102,7 @@ mod tests {
         .expect_err("inherited process status should be preserved");
         assert!(matches!(
             error,
-            CliError::InheritedProcessFailure { command, status: Some(_) }
+            CliError::InheritedProcessFailure { command, status: Some(1) }
                 if command == "rustc --definitely-not-a-rustc-option"
         ));
 
@@ -109,8 +110,9 @@ mod tests {
             .expect_err("missing inherited process should fail to start");
         assert!(matches!(
             error,
-            CliError::ProcessIo { command, .. }
+            CliError::ProcessIo { command, error }
                 if command == "geam-command-that-does-not-exist"
+                    && error.kind() == std::io::ErrorKind::NotFound
         ));
     }
 }

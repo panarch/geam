@@ -256,12 +256,10 @@ mod tests {
         let directory = tempdir().expect("temporary directory should be created");
         let start = utf8_path(&directory);
         let error = find_project_root(&start).expect_err("project root should be absent");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::ProjectRootNotFound {
-                start: Utf8PathBuf::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::ProjectRootNotFound { start: error_start } if error_start == start
+        ));
     }
 
     #[cfg(unix)]
@@ -271,10 +269,7 @@ mod tests {
 
         let path = std::path::PathBuf::from(std::ffi::OsString::from_vec(vec![0xff]));
         let error = into_utf8_path(path.clone()).expect_err("non-UTF-8 path should fail");
-        assert_eq!(
-            error.to_string(),
-            format!("path is not valid UTF-8: {path:?}")
-        );
+        assert!(matches!(error, CliError::NonUtf8Path(error_path) if error_path == path));
     }
 
     #[test]
@@ -325,41 +320,41 @@ packages = [
     #[test]
     fn rejects_invalid_and_duplicate_project_metadata() {
         let missing = tempdir().expect("temporary directory should be created");
-        let error = entry_module(&utf8_path(&missing), None)
+        let missing_root = utf8_path(&missing);
+        let error = entry_module(&missing_root, None)
             .expect_err("missing package config should be preserved");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileRead {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::new(std::io::ErrorKind::NotFound, ""),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::FileRead { path, error }
+                if path == missing_root.join("gleam.toml")
+                    && error.kind() == std::io::ErrorKind::NotFound
+        ));
 
         let invalid = project("application", "not-a-version", "packages = []\n");
-        let error = read_resolved_project(&utf8_path(&invalid))
+        let invalid_root = utf8_path(&invalid);
+        let error = read_resolved_project(&invalid_root)
             .err()
             .expect("invalid package config should be rejected");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::InvalidToml {
-                kind: "Gleam package config",
-                path: Utf8PathBuf::new(),
-                reason: String::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::InvalidToml { kind, path, reason }
+                if kind == "Gleam package config"
+                    && path == invalid_root.join("gleam.toml")
+                    && reason.contains("version")
+        ));
 
         let invalid_manifest = project("application", "1.0.0", "invalid");
-        let error = read_resolved_project(&utf8_path(&invalid_manifest))
+        let invalid_manifest_root = utf8_path(&invalid_manifest);
+        let error = read_resolved_project(&invalid_manifest_root)
             .err()
             .expect("invalid manifest should be rejected");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::InvalidToml {
-                kind: "Gleam manifest",
-                path: Utf8PathBuf::new(),
-                reason: String::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::InvalidToml { kind, path, reason }
+                if kind == "Gleam manifest"
+                    && path == invalid_manifest_root.join("manifest.toml")
+                    && reason.contains("expected")
+        ));
 
         let duplicate = project(
             "application",
@@ -374,13 +369,13 @@ packages = [
         let error = read_resolved_project(&utf8_path(&duplicate))
             .err()
             .expect("duplicate package should be rejected");
-        assert_eq!(
-            error.to_string(),
-            format!(
-                "invalid Gleam manifest at {}: package application is listed more than once",
-                utf8_path(&duplicate).join("manifest.toml"),
-            ),
-        );
+        assert!(matches!(
+            error,
+            CliError::InvalidToml { kind, path, reason }
+                if kind == "Gleam manifest"
+                    && path == utf8_path(&duplicate).join("manifest.toml")
+                    && reason == "package application is listed more than once"
+        ));
     }
 
     #[test]
@@ -403,14 +398,13 @@ packages = [
         let error = read_resolved_project_with(&utf8_path(&project), &downloader)
             .err()
             .expect("invalid downloaded resolution should be preserved");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::InvalidToml {
-                kind: "Gleam manifest",
-                path: Utf8PathBuf::new(),
-                reason: String::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::InvalidToml { kind, path, reason }
+                if kind == "Gleam manifest"
+                    && path == utf8_path(&project).join("manifest.toml")
+                    && reason.contains("expected")
+        ));
         assert_eq!(downloader.calls.get(), 1);
 
         let project = project_without_manifest("application", "1.0.0");
@@ -429,10 +423,11 @@ packages = [
         let error = read_resolved_project_with(&utf8_path(&project), &FailingDownloader)
             .err()
             .expect("resolved manifest download failure should be preserved");
-        assert_eq!(
-            error.to_string(),
-            "`gleam deps download` failed with status Some(1): fixture failure",
-        );
+        assert!(matches!(
+            error,
+            CliError::ProcessFailure { command, status: Some(1), stderr }
+                if command == "gleam deps download" && stderr == "fixture failure"
+        ));
 
         let project = project_without_manifest("application", "1.0.0");
         let downloader = RecordingDownloader {
@@ -445,25 +440,22 @@ packages = [
             &downloader,
         )
         .expect_err("invalid downloaded manifest should be preserved");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::Project(ProjectError::InvalidManifest {
-                path: Utf8PathBuf::new(),
-                reason: String::new(),
-            })),
-        );
+        assert!(matches!(
+            error,
+            CliError::Project(ProjectError::InvalidManifest { path, reason })
+                if path == utf8_path(&project).join("manifest.toml")
+                    && reason.contains("expected")
+        ));
         assert_eq!(downloader.calls.get(), 1);
 
         fs::write(root.join("manifest.toml"), "invalid").expect("manifest should be replaced");
         let error = compile_resolved_project_with(&root, "application".to_owned(), &downloader)
             .expect_err("invalid manifest should not trigger dependency download");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::Project(ProjectError::InvalidManifest {
-                path: Utf8PathBuf::new(),
-                reason: String::new(),
-            })),
-        );
+        assert!(matches!(
+            error,
+            CliError::Project(ProjectError::InvalidManifest { path, reason })
+                if path == root.join("manifest.toml") && reason.contains("expected")
+        ));
         assert_eq!(downloader.calls.get(), 1);
 
         let project = project_without_manifest("application", "1.0.0");
@@ -473,10 +465,11 @@ packages = [
             &FailingDownloader,
         )
         .expect_err("dependency download failure should be preserved");
-        assert_eq!(
-            error.to_string(),
-            "`gleam deps download` failed with status Some(1): fixture failure",
-        );
+        assert!(matches!(
+            error,
+            CliError::ProcessFailure { command, status: Some(1), stderr }
+                if command == "gleam deps download" && stderr == "fixture failure"
+        ));
     }
 
     #[test]
@@ -512,13 +505,12 @@ packages = [
         let error = downloader
             .download(&utf8_path(&project))
             .expect_err("missing downloader process should be preserved");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::ProcessIo {
-                command: String::new(),
-                error: std::io::Error::new(std::io::ErrorKind::NotFound, ""),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::ProcessIo { command, error }
+                if command == "geam-command-that-does-not-exist"
+                    && error.kind() == std::io::ErrorKind::NotFound
+        ));
     }
 
     #[test]

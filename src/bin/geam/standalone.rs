@@ -388,6 +388,10 @@ pub fn main() { required() }
         );
         fs::create_dir(root.join("Cargo.toml.geam.tmp"))
             .expect("temporary manifest blocker should be created");
+        let blocked_manifest = root.join("Cargo.toml.geam.tmp");
+        let expected_kind = fs::write(&blocked_manifest, "manifest")
+            .expect_err("manifest directory should reject file writes")
+            .kind();
         let cargo = RecordingCargo::default();
         let observed = Cell::new(false);
         let mut providers = LockedProviders {
@@ -405,17 +409,8 @@ pub fn main() { required() }
 
         assert!(matches!(
             error,
-            CliError::FileWrite {
-                ref path,
-                error: _,
-            } if path == &root.join("Cargo.toml.geam.tmp")
-        ));
-        assert!(matches!(
-            error,
-            CliError::FileWrite {
-                path: _,
-                ref error,
-            } if error.kind() == std::io::ErrorKind::IsADirectory
+            CliError::FileWrite { path, error }
+                if path == blocked_manifest && error.kind() == expected_kind
         ));
         assert!(!observed.get());
         assert!(cargo.operations.borrow().is_empty());
@@ -507,10 +502,11 @@ pub fn main() { 1 }
             &cargo,
         )
         .expect_err("invalid configuration should stop before runner execution");
-        assert_eq!(
-            error.to_string(),
-            "provider configuration application is invalid: expected GLEAM_PACKAGE=PATH",
-        );
+        assert!(matches!(
+            error,
+            CliError::InvalidProviderConfiguration { spec, reason }
+                if spec == "application" && reason == "expected GLEAM_PACKAGE=PATH"
+        ));
         assert!(cargo.operations.borrow().is_empty());
     }
 
@@ -527,31 +523,31 @@ pub fn main() { 1 }
 
         let invalid = resolve_provider_configurations(&root, &managed, vec!["images".to_owned()])
             .expect_err("configuration without a path should fail");
-        assert_eq!(
-            invalid.to_string(),
-            "provider configuration images is invalid: expected GLEAM_PACKAGE=PATH",
-        );
+        assert!(matches!(
+            invalid,
+            CliError::InvalidProviderConfiguration { spec, reason }
+                if spec == "images" && reason == "expected GLEAM_PACKAGE=PATH"
+        ));
         for spec in ["=config.toml", "images="] {
-            assert_eq!(
+            assert!(matches!(
                 resolve_provider_configurations(&root, &managed, vec![spec.to_owned()],)
-                    .expect_err("empty configuration part should fail")
-                    .to_string(),
-                format!(
-                    "provider configuration {spec} is invalid: package and path must both be non-empty"
-                ),
-            );
+                    .expect_err("empty configuration part should fail"),
+                CliError::InvalidProviderConfiguration {
+                    spec: error_spec,
+                    reason,
+                } if error_spec == spec && reason == "package and path must both be non-empty"
+            ));
         }
-        assert_eq!(
+        assert!(matches!(
             resolve_provider_configurations(
                 &root,
                 &managed,
                 vec!["search=config.toml".to_owned()],
             )
-            .expect_err("unknown provider configuration should fail")
-            .to_string(),
-            "no selected provider accepts configuration for Gleam package search",
-        );
-        assert_eq!(
+            .expect_err("unknown provider configuration should fail"),
+            CliError::UnknownProviderConfiguration { package } if package == "search"
+        ));
+        assert!(matches!(
             resolve_provider_configurations(
                 &root,
                 &managed,
@@ -560,10 +556,9 @@ pub fn main() { 1 }
                     "images=second.toml".to_owned(),
                 ],
             )
-            .expect_err("duplicate provider configuration should fail")
-            .to_string(),
-            "provider configuration for Gleam package images was supplied more than once",
-        );
+            .expect_err("duplicate provider configuration should fail"),
+            CliError::DuplicateProviderConfiguration { package } if package == "images"
+        ));
         assert_eq!(
             resolve_provider_configurations(
                 &root,
@@ -580,7 +575,7 @@ pub fn main() { 1 }
         let project = project("application", "pub fn main() { 1 }\n");
         let root = utf8_path(&project);
 
-        assert_eq!(
+        assert!(matches!(
             run_with(
                 &root,
                 &root,
@@ -589,10 +584,10 @@ pub fn main() { 1 }
                 &RecordingCargo::default(),
                 &FailingRun,
             )
-            .expect_err("runner failure should be preserved")
-            .to_string(),
-            "`cargo run` failed with status Some(1) after writing its output directly",
-        );
+            .expect_err("runner failure should be preserved"),
+            CliError::InheritedProcessFailure { command, status: Some(1) }
+                if command == "cargo run"
+        ));
     }
 
     #[test]
@@ -625,7 +620,7 @@ pub fn main() { 1 }
             }
         }
 
-        assert_eq!(
+        assert!(matches!(
             super::prepare_with(
                 &root,
                 "application".to_owned(),
@@ -633,10 +628,11 @@ pub fn main() { 1 }
                 &RecordingCargo::default(),
                 &mut FailingProviders,
             )
-            .expect_err("provider reconciliation should fail")
-            .to_string(),
-            "Gleam package application requires native provider approval; run Geam interactively or select it explicitly with `geam provider add geam-application@1.0.0`",
-        );
+            .expect_err("provider reconciliation should fail"),
+            CliError::ProviderApprovalRequired { package, command }
+                if package == "application"
+                    && command == "geam provider add geam-application@1.0.0"
+        ));
         assert!(!root.join("Cargo.toml").exists());
     }
 
@@ -692,17 +688,17 @@ pub fn main() { 1 }
         let project = project("application", "pub fn main() { 1 }\n");
         let root = utf8_path(&project);
 
-        assert_eq!(
+        assert!(matches!(
             prepare_with(
                 &root,
                 "application".to_owned(),
                 &FailingCheck,
                 &FailingCheck
             )
-            .expect_err("runner check failure should be preserved")
-            .to_string(),
-            "`cargo run` failed with status Some(1): fixture check failed",
-        );
+            .expect_err("runner check failure should be preserved"),
+            CliError::ProcessFailure { command, status: Some(1), stderr }
+                if command == "cargo run" && stderr == "fixture check failed"
+        ));
     }
 
     #[test]
@@ -710,37 +706,50 @@ pub fn main() { 1 }
         let invalid_manifest = project("application", "pub fn main() { 1 }\n");
         fs::write(invalid_manifest.path().join("manifest.toml"), "invalid")
             .expect("invalid manifest should be written");
+        let invalid_manifest_root = utf8_path(&invalid_manifest);
         let error = prepare_with(
-            &utf8_path(&invalid_manifest),
+            &invalid_manifest_root,
             "application".to_owned(),
             &RecordingCargo::default(),
             &RecordingCargo::default(),
         )
         .expect_err("invalid resolved project should stop preparation");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::InvalidToml {
-                kind: "",
-                path: Utf8PathBuf::new(),
-                reason: String::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::InvalidToml { kind, path, reason }
+                if kind == "Gleam manifest"
+                    && path == invalid_manifest_root.join("manifest.toml")
+                    && reason.contains("expected")
+        ));
 
         let invalid_source = project("application", "pub fn main( {\n");
+        let invalid_source_root = utf8_path(&invalid_source);
         let error = prepare_with(
-            &utf8_path(&invalid_source),
+            &invalid_source_root,
             "application".to_owned(),
             &RecordingCargo::default(),
             &RecordingCargo::default(),
         )
         .expect_err("invalid source should stop preparation");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::Project(geam::ProjectError::SourceIo {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            })),
-        );
+        assert!(matches!(
+            error,
+            CliError::Project(geam::ProjectError::Frontend(geam::FrontendError::Parse {
+                path,
+                error,
+            })) if path == invalid_source_root.join("src/application.gleam")
+                && error.location == gleam_core::ast::SrcSpan::new(13, 14)
+                && matches!(
+                    &error.error,
+                    gleam_core::parse::error::ParseErrorType::UnexpectedToken {
+                        token: gleam_core::parse::Token::LeftBrace,
+                        expected,
+                        hint: None,
+                    } if expected
+                        .iter()
+                        .map(|value| value.as_str())
+                        .eq(["`)`", "a function parameter"])
+                )
+        ));
 
         let user_manifest = project("application", "pub fn main() { 1 }\n");
         fs::write(user_manifest.path().join("Cargo.toml"), "[workspace]\n")
@@ -752,49 +761,54 @@ pub fn main() { 1 }
             &RecordingCargo::default(),
         )
         .expect_err("user Cargo ownership should stop preparation");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::UserOwnedCargoManifest {
-                path: Utf8PathBuf::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::UserOwnedCargoManifest { path }
+                if path == utf8_path(&user_manifest).join("Cargo.toml")
+        ));
 
         let blocked_source = project("application", "pub fn main() { 1 }\n");
         fs::write(blocked_source.path().join("build"), "blocked")
             .expect("blocking build file should be written");
+        let blocked_source_root = utf8_path(&blocked_source);
+        let blocked_directory = blocked_source_root.join("build/geam");
+        let expected_kind = fs::create_dir_all(&blocked_directory)
+            .expect_err("blocking file should prevent directory creation")
+            .kind();
         let error = prepare_with(
-            &utf8_path(&blocked_source),
+            &blocked_source_root,
             "application".to_owned(),
             &RecordingCargo::default(),
             &RecordingCargo::default(),
         )
         .expect_err("runner source failure should stop preparation");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileWrite {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::FileWrite { path, error }
+                if path == blocked_directory && error.kind() == expected_kind
+        ));
         assert!(!blocked_source.path().join("Cargo.toml").exists());
 
         let blocked_manifest = project("application", "pub fn main() { 1 }\n");
         fs::create_dir(blocked_manifest.path().join("Cargo.toml.geam.tmp"))
             .expect("blocking manifest directory should be created");
+        let blocked_manifest_root = utf8_path(&blocked_manifest);
+        let blocked_manifest_path = blocked_manifest_root.join("Cargo.toml.geam.tmp");
+        let expected_kind = fs::write(&blocked_manifest_path, "manifest")
+            .expect_err("manifest directory should reject file writes")
+            .kind();
         let error = prepare_with(
-            &utf8_path(&blocked_manifest),
+            &blocked_manifest_root,
             "application".to_owned(),
             &RecordingCargo::default(),
             &RecordingCargo::default(),
         )
         .expect_err("manifest failure should stop preparation");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileWrite {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::FileWrite { path, error }
+                if path == blocked_manifest_path && error.kind() == expected_kind
+        ));
         assert!(!blocked_manifest.path().join("Cargo.toml").exists());
 
         let failed_lock = project("application", "pub fn main() { 1 }\n");
@@ -806,10 +820,11 @@ pub fn main() { 1 }
             &RecordingCargo::default(),
         )
         .expect_err("lock failure should stop preparation");
-        assert_eq!(
-            error.to_string(),
-            "`cargo generate-lockfile` failed with status Some(1): fixture lock failed",
-        );
+        assert!(matches!(
+            error,
+            CliError::ProcessFailure { command, status: Some(1), stderr }
+                if command == "cargo generate-lockfile" && stderr == "fixture lock failed"
+        ));
         assert!(root.join("Cargo.toml").is_file());
         assert!(!root.join("Cargo.lock").exists());
     }

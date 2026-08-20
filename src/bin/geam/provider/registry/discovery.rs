@@ -397,24 +397,24 @@ mod tests {
         let error = discover(&registry, "images", &GleamVersion::new(1, 4, 0))
             .expect_err("incompatible providers should be rejected");
 
-        assert!(matches!(
+        assert_eq!(
             error,
             RegistryDiscoveryError::NoCandidates {
-                ref package,
-                ref version,
-                ..
-            } if package == "images" && version == &GleamVersion::new(1, 4, 0)
-        ));
-        assert_eq!(error.rejections().len(), 2);
-        assert_eq!(error.rejections()[0].crate_name(), "geam-images");
-        assert_eq!(error.rejections()[0].version(), Some("2.0.0"));
-        assert_eq!(
-            error.rejections()[0].reason(),
-            "provider metadata targets Gleam package other, expected images",
-        );
-        assert_eq!(
-            error.rejections()[1].reason(),
-            "Gleam 1.4.0 is outside provider range >= 3.0.0 and < 4.0.0",
+                package: "images".to_owned(),
+                version: GleamVersion::new(1, 4, 0),
+                rejections: vec![
+                    CandidateRejection::new(
+                        "geam-images",
+                        Some("2.0.0".to_owned()),
+                        "provider metadata targets Gleam package other, expected images",
+                    ),
+                    CandidateRejection::new(
+                        "geam-images-alt",
+                        Some("3.0.0".to_owned()),
+                        "Gleam 1.4.0 is outside provider range >= 3.0.0 and < 4.0.0",
+                    ),
+                ],
+            },
         );
     }
 

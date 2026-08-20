@@ -221,45 +221,46 @@ mod tests {
     fn rejects_built_in_missing_incompatible_and_duplicate_targets() {
         let project = gleam_project("gleam_stdlib", "1.0.3");
         let provider = provider_package("geam-provider", "gleam_stdlib", "1.0.3");
-        assert_eq!(
+        assert!(matches!(
             add_with(
                 &utf8_path(&project),
                 project.path(),
                 path_command(provider.path(), None),
                 &TestCargo,
             )
-            .expect_err("built-in package should be rejected")
-            .to_string(),
-            "Gleam package gleam_stdlib is provided by Geam and cannot use an external provider",
-        );
+            .expect_err("built-in package should be rejected"),
+            CliError::BuiltInProviderPackage { package } if package == "gleam_stdlib"
+        ));
 
         let project = gleam_project("images", "2.5.0");
         let provider = provider_package("geam-provider", "missing", "1.0.0");
-        assert_eq!(
+        assert!(matches!(
             add_with(
                 &utf8_path(&project),
                 project.path(),
                 path_command(provider.path(), None),
                 &TestCargo,
             )
-            .expect_err("missing package should be rejected")
-            .to_string(),
-            "provider targets Gleam package missing, which is absent from the resolved project",
-        );
+            .expect_err("missing package should be rejected"),
+            CliError::MissingGleamPackage { package } if package == "missing"
+        ));
 
         let project = gleam_project("images", "2.5.0");
         let provider = provider_package("geam-provider", "images", "1.0.0");
-        assert_eq!(
+        assert!(matches!(
             add_with(
                 &utf8_path(&project),
                 project.path(),
                 path_command(provider.path(), None),
                 &TestCargo,
             )
-            .expect_err("incompatible provider should be rejected")
-            .to_string(),
-            "provider geam-provider targets images 2.5.0, which is outside its Gleam range 1.0.0",
-        );
+            .expect_err("incompatible provider should be rejected"),
+            CliError::IncompatibleProvider { provider, package, version, range }
+                if provider == "geam-provider"
+                    && package == "images"
+                    && version == "2.5.0"
+                    && range == "1.0.0"
+        ));
 
         let project = gleam_project("images", "2.5.0");
         let provider = provider_package("geam-images", "images", "2.5.0");
@@ -271,23 +272,22 @@ mod tests {
             &TestCargo,
         )
         .expect("first provider should be selected");
-        assert_eq!(
+        assert!(matches!(
             add_with(
                 &root,
                 project.path(),
                 path_command(provider.path(), None),
                 &TestCargo,
             )
-            .expect_err("duplicate provider should be rejected")
-            .to_string(),
-            "provider for Gleam package images is already selected",
-        );
+            .expect_err("duplicate provider should be rejected"),
+            CliError::ProviderAlreadySelected { package } if package == "images"
+        ));
     }
 
     #[test]
     fn remove_requires_an_existing_selection() {
         let project = gleam_project("images", "1.0.0");
-        assert_eq!(
+        assert!(matches!(
             remove_with(
                 &utf8_path(&project),
                 RemoveProvider {
@@ -295,10 +295,9 @@ mod tests {
                 },
                 &TestCargo,
             )
-            .expect_err("missing provider should be rejected")
-            .to_string(),
-            "no provider is selected for Gleam package images",
-        );
+            .expect_err("missing provider should be rejected"),
+            CliError::ProviderNotSelected { package } if package == "images"
+        ));
     }
 
     #[test]
@@ -315,14 +314,13 @@ mod tests {
             &TestCargo,
         )
         .expect_err("invalid manifest should stop provider add");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::InvalidToml {
-                kind: "Gleam manifest",
-                path: Utf8PathBuf::new(),
-                reason: String::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::InvalidToml { kind, path, reason }
+                if kind == "Gleam manifest"
+                    && path == utf8_path(&invalid_add).join("manifest.toml")
+                    && reason.contains("expected")
+        ));
 
         let invalid_remove = gleam_project("images", "1.0.0");
         fs::write(invalid_remove.path().join("manifest.toml"), "invalid")
@@ -335,14 +333,13 @@ mod tests {
             &TestCargo,
         )
         .expect_err("invalid manifest should stop provider remove");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::InvalidToml {
-                kind: "Gleam manifest",
-                path: Utf8PathBuf::new(),
-                reason: String::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::InvalidToml { kind, path, reason }
+                if kind == "Gleam manifest"
+                    && path == utf8_path(&invalid_remove).join("manifest.toml")
+                    && reason.contains("expected")
+        ));
 
         let user_add = gleam_project("images", "1.0.0");
         fs::write(user_add.path().join("Cargo.toml"), "[workspace]\n")
@@ -354,12 +351,11 @@ mod tests {
             &TestCargo,
         )
         .expect_err("user Cargo manifest should stop provider add");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::UserOwnedCargoManifest {
-                path: Utf8PathBuf::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::UserOwnedCargoManifest { path }
+                if path == utf8_path(&user_add).join("Cargo.toml")
+        ));
 
         let user_remove = gleam_project("images", "1.0.0");
         fs::write(user_remove.path().join("Cargo.toml"), "[workspace]\n")
@@ -372,12 +368,11 @@ mod tests {
             &TestCargo,
         )
         .expect_err("user Cargo manifest should stop provider remove");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::UserOwnedCargoManifest {
-                path: Utf8PathBuf::new(),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::UserOwnedCargoManifest { path }
+                if path == utf8_path(&user_remove).join("Cargo.toml")
+        ));
 
         let unresolved = gleam_project("images", "1.0.0");
         let error = add_with(
@@ -387,13 +382,12 @@ mod tests {
             &TestCargo,
         )
         .expect_err("missing provider path should stop resolution");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileRead {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::new(std::io::ErrorKind::NotFound, ""),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::FileRead { path, error }
+                if path == utf8_path(&unresolved).join("missing")
+                    && error.kind() == std::io::ErrorKind::NotFound
+        ));
     }
 
     #[test]
@@ -402,6 +396,10 @@ mod tests {
         let provider = provider_package("geam-images", "images", "1.0.0");
         fs::create_dir_all(blocked_source.path().join("build/geam/runner.rs"))
             .expect("blocking runner source directory should be created");
+        let blocked_source_path = utf8_path(&blocked_source).join("build/geam/runner.rs");
+        let expected_kind = fs::read_to_string(&blocked_source_path)
+            .expect_err("runner source directory should not be readable as a file")
+            .kind();
         let error = add_with(
             &utf8_path(&blocked_source),
             blocked_source.path(),
@@ -409,18 +407,20 @@ mod tests {
             &TestCargo,
         )
         .expect_err("runner source failure should stop provider add");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileRead {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::FileRead { path, error }
+                if path == blocked_source_path && error.kind() == expected_kind
+        ));
         assert!(!blocked_source.path().join("Cargo.toml").exists());
 
         let blocked_manifest = gleam_project("images", "1.0.0");
         fs::create_dir(blocked_manifest.path().join("Cargo.toml.geam.tmp"))
             .expect("blocking manifest directory should be created");
+        let blocked_manifest_path = utf8_path(&blocked_manifest).join("Cargo.toml.geam.tmp");
+        let expected_kind = fs::write(&blocked_manifest_path, "manifest")
+            .expect_err("manifest directory should reject file writes")
+            .kind();
         let error = add_with(
             &utf8_path(&blocked_manifest),
             blocked_manifest.path(),
@@ -428,13 +428,11 @@ mod tests {
             &TestCargo,
         )
         .expect_err("manifest failure should stop provider add");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileWrite {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::FileWrite { path, error }
+                if path == blocked_manifest_path && error.kind() == expected_kind
+        ));
         assert!(!blocked_manifest.path().join("Cargo.toml").exists());
 
         let failed_lock = gleam_project("images", "1.0.0");
@@ -446,10 +444,11 @@ mod tests {
             &FailingCargoLock,
         )
         .expect_err("lock failure should remain a Cargo process error");
-        assert_eq!(
-            error.to_string(),
-            "`cargo generate-lockfile` failed with status Some(1): fixture lock failed",
-        );
+        assert!(matches!(
+            error,
+            CliError::ProcessFailure { command, status: Some(1), stderr }
+                if command == "cargo generate-lockfile" && stderr == "fixture lock failed"
+        ));
         assert!(
             fs::read_to_string(root.join("Cargo.toml"))
                 .expect("selected manifest should remain readable")
@@ -475,6 +474,10 @@ mod tests {
             .expect("generated source should be removed");
         fs::create_dir(root.join("build/geam/runner.rs"))
             .expect("blocking source directory should be created");
+        let blocked_source_path = root.join("build/geam/runner.rs");
+        let expected_kind = fs::read_to_string(&blocked_source_path)
+            .expect_err("runner source directory should not be readable as a file")
+            .kind();
         let error = remove_with(
             &root,
             RemoveProvider {
@@ -483,13 +486,11 @@ mod tests {
             &TestCargo,
         )
         .expect_err("runner source failure should stop provider removal");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileRead {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::FileRead { path, error }
+                if path == blocked_source_path && error.kind() == expected_kind
+        ));
         assert!(
             fs::read_to_string(root.join("Cargo.toml"))
                 .expect("existing manifest should remain readable")
@@ -507,6 +508,10 @@ mod tests {
         .expect("provider should first be selected");
         fs::create_dir(root.join("Cargo.toml.geam.tmp"))
             .expect("blocking manifest directory should be created");
+        let blocked_manifest_path = root.join("Cargo.toml.geam.tmp");
+        let expected_kind = fs::write(&blocked_manifest_path, "manifest")
+            .expect_err("manifest directory should reject file writes")
+            .kind();
         let error = remove_with(
             &root,
             RemoveProvider {
@@ -515,13 +520,11 @@ mod tests {
             &TestCargo,
         )
         .expect_err("manifest failure should stop provider removal");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileWrite {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::FileWrite { path, error }
+                if path == blocked_manifest_path && error.kind() == expected_kind
+        ));
         assert!(
             fs::read_to_string(root.join("Cargo.toml"))
                 .expect("existing manifest should remain readable")
@@ -545,10 +548,11 @@ mod tests {
             &FailingCargoLock,
         )
         .expect_err("lock failure should remain a Cargo process error");
-        assert_eq!(
-            error.to_string(),
-            "`cargo generate-lockfile` failed with status Some(1): fixture lock failed",
-        );
+        assert!(matches!(
+            error,
+            CliError::ProcessFailure { command, status: Some(1), stderr }
+                if command == "cargo generate-lockfile" && stderr == "fixture lock failed"
+        ));
         assert!(
             !fs::read_to_string(root.join("Cargo.toml"))
                 .expect("updated manifest should remain readable")

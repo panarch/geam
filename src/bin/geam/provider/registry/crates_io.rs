@@ -136,12 +136,19 @@ mod tests {
         );
 
         let response = ureq::http::Response::new(ureq::Body::builder().data(b"large".to_vec()));
-        assert!(read_response::<4>(response).is_err());
-        assert!(
-            CratesIoRegistry::default()
-                .request::<4>("not a URL")
-                .is_err()
+        let oversized = read_response::<4>(response).expect_err("oversized response should fail");
+        assert_eq!(format!("{oversized:?}"), "BodyExceedsLimit(4)");
+        assert_eq!(
+            oversized.to_string(),
+            "the response body is larger than request limit: 4",
         );
+        let invalid_url = CratesIoRegistry::default()
+            .request::<4>("not a URL")
+            .expect_err("invalid request URL should fail");
+        assert!(matches!(
+            invalid_url,
+            Error::Http(error) if error.to_string().contains("invalid uri character")
+        ));
         assert_eq!(
             access("request", Ok(b"body".to_vec()))
                 .expect("successful response should pass through"),

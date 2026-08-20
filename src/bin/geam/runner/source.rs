@@ -79,41 +79,46 @@ mod tests {
         let root = Utf8PathBuf::from_path_buf(blocked.path().to_path_buf())
             .expect("temporary path should be valid UTF-8");
         fs::write(root.join("build"), "blocked").expect("blocking file should be written");
+        let directory = root.join("build/geam");
+        let expected_kind = fs::create_dir_all(&directory)
+            .expect_err("blocking file should prevent directory creation")
+            .kind();
         let error = reconcile_source(&root, &[]).expect_err("blocked runner directory should fail");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileWrite {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::FileWrite { path, error }
+                if path == directory && error.kind() == expected_kind
+        ));
 
         let unreadable = tempdir().expect("temporary project should be created");
         let root = Utf8PathBuf::from_path_buf(unreadable.path().to_path_buf())
             .expect("temporary path should be valid UTF-8");
         fs::create_dir_all(root.join("build/geam/runner.rs"))
             .expect("blocking source directory should be created");
+        let source = root.join("build/geam/runner.rs");
+        let expected_kind = fs::read_to_string(&source)
+            .expect_err("source directory should not be readable as a file")
+            .kind();
         let error = reconcile_source(&root, &[]).expect_err("unreadable runner source should fail");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileRead {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::FileRead { path, error }
+                if path == source && error.kind() == expected_kind
+        ));
 
         let destination = tempdir().expect("temporary destination should be created");
         let path = Utf8PathBuf::from_path_buf(destination.path().to_path_buf())
             .expect("temporary path should be valid UTF-8");
+        let expected_kind = fs::write(&path, "source")
+            .expect_err("directory destination should reject direct writes")
+            .kind();
         let error = write_generated_source(&path, "source".to_owned())
             .expect_err("directory destination should fail");
-        assert_eq!(
-            std::mem::discriminant(&error),
-            std::mem::discriminant(&CliError::FileWrite {
-                path: Utf8PathBuf::new(),
-                error: std::io::Error::other(""),
-            }),
-        );
+        assert!(matches!(
+            error,
+            CliError::FileWrite { path: error_path, error }
+                if error_path == path && error.kind() == expected_kind
+        ));
 
         #[cfg(unix)]
         {
@@ -136,13 +141,12 @@ mod tests {
             fs::set_permissions(&directory, original)
                 .expect("runner directory permissions should be restored");
             let error = result.expect_err("generated source write failure should be preserved");
-            assert_eq!(
-                std::mem::discriminant(&error),
-                std::mem::discriminant(&CliError::FileWrite {
-                    path: Utf8PathBuf::new(),
-                    error: std::io::Error::other(""),
-                }),
-            );
+            assert!(matches!(
+                error,
+                CliError::FileWrite { path, error }
+                    if path == root.join("build/geam/runner.rs")
+                        && error.kind() == std::io::ErrorKind::PermissionDenied
+            ));
         }
     }
 }

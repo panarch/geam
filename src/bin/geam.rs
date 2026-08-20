@@ -73,22 +73,22 @@ mod tests {
         let project = tempdir().expect("temporary project should be created");
         fs::write(project.path().join("gleam.toml"), "invalid")
             .expect("invalid config should be written");
+        let root = Utf8PathBuf::from_path_buf(project.path().to_path_buf())
+            .expect("temporary path should be valid UTF-8");
 
         for arguments in [vec!["geam", "prepare"], vec!["geam", "run"]] {
             let error = run(
                 Cli::try_parse_from(arguments).expect("command should parse"),
-                Utf8PathBuf::from_path_buf(project.path().to_path_buf())
-                    .expect("temporary path should be valid UTF-8"),
+                root.clone(),
             )
             .expect_err("entry resolution should fail");
-            assert_eq!(
-                std::mem::discriminant(&error),
-                std::mem::discriminant(&CliError::InvalidToml {
-                    kind: "Gleam package config",
-                    path: Utf8PathBuf::new(),
-                    reason: String::new(),
-                }),
-            );
+            assert!(matches!(
+                error,
+                CliError::InvalidToml { kind, path, reason }
+                    if kind == "Gleam package config"
+                        && path == root.join("gleam.toml")
+                        && reason.contains("expected")
+            ));
         }
     }
 
@@ -111,6 +111,8 @@ mod tests {
             "pub fn main() { 1 }\n",
         )
         .expect("source should be written");
+        let root = Utf8PathBuf::from_path_buf(project.path().to_path_buf())
+            .expect("temporary path should be valid UTF-8");
 
         for arguments in [
             vec!["geam", "prepare", "--module", "missing"],
@@ -118,17 +120,15 @@ mod tests {
         ] {
             let error = run(
                 Cli::try_parse_from(arguments).expect("command should parse"),
-                Utf8PathBuf::from_path_buf(project.path().to_path_buf())
-                    .expect("temporary path should be valid UTF-8"),
+                root.clone(),
             )
             .expect_err("missing entry module should fail");
-            assert_eq!(
-                std::mem::discriminant(&error),
-                std::mem::discriminant(&CliError::Project(geam::ProjectError::InvalidManifest {
-                    path: Utf8PathBuf::new(),
-                    reason: String::new(),
-                },)),
-            );
+            assert!(matches!(
+                error,
+                CliError::Project(geam::ProjectError::Frontend(
+                    geam::FrontendError::MissingRootModule { package, module }
+                )) if package == "application" && module == "missing"
+            ));
         }
     }
 }

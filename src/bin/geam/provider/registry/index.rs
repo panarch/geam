@@ -127,21 +127,33 @@ mod tests {
     #[test]
     fn rejects_malformed_sparse_index_protocol_data() {
         let cases = [
-            vec![0xff],
-            b"{".to_vec(),
-            index(&[record("other", "1.0.0", &"00".repeat(32), false)]),
-            index(&[
-                record("geam-images", "1.0.0", &"00".repeat(32), false),
-                record("geam-images", "1.0.0", &"11".repeat(32), false),
-            ]),
+            (vec![0xff], "invalid utf-8 sequence", false),
+            (b"{".to_vec(), "EOF", false),
+            (
+                index(&[record("other", "1.0.0", &"00".repeat(32), false)]),
+                "record names crate other, expected geam-images",
+                true,
+            ),
+            (
+                index(&[
+                    record("geam-images", "1.0.0", &"00".repeat(32), false),
+                    record("geam-images", "1.0.0", &"11".repeat(32), false),
+                ]),
+                "duplicate Cargo version record",
+                true,
+            ),
         ];
-        for source in cases {
+        for (source, expected, exact) in cases {
             assert!(matches!(
                 parse("geam-images", &source),
                 Err(RegistryDiscoveryError::Protocol {
                     response: "sparse index",
-                    ..
-                })
+                    reason,
+                }) if if exact {
+                    reason == expected
+                } else {
+                    reason.contains(expected)
+                }
             ));
         }
     }
