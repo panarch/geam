@@ -15,7 +15,7 @@ pub(crate) trait ProviderSelectionReconciler {
         &mut self,
         project_root: &Utf8Path,
         project: &ResolvedProject,
-        program: &geam::TypedProgram,
+        program: &geam_core::TypedProgram,
         managed: &mut ManagedProject,
     ) -> Result<(), CliError>;
 }
@@ -185,10 +185,10 @@ impl ProviderSelectionReconciler for ProviderReconciler<'_> {
         &mut self,
         project_root: &Utf8Path,
         project: &ResolvedProject,
-        program: &geam::TypedProgram,
+        program: &geam_core::TypedProgram,
         managed: &mut ManagedProject,
     ) -> Result<(), CliError> {
-        let required_packages = geam::required_host_functions(program)
+        let required_packages = geam_core::required_host_functions(program)
             .into_iter()
             .map(|requirement| requirement.package().to_string())
             .collect();

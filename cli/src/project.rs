@@ -1,7 +1,7 @@
 use crate::error::CliError;
 use crate::process::run_checked;
 use camino::{Utf8Path, Utf8PathBuf};
-use geam::{ProjectError, TypedProgram, compile_typed_project};
+use geam_core::{ProjectError, TypedProgram, compile_typed_project};
 use gleam_core::config::PackageConfig;
 use gleam_core::manifest::Manifest;
 use hexpm::version::Version;
@@ -207,7 +207,7 @@ mod tests {
     };
     use crate::error::CliError;
     use camino::{Utf8Path, Utf8PathBuf};
-    use geam::ProjectError;
+    use geam_core::ProjectError;
     use std::cell::Cell;
     use std::fs;
     use tempfile::{TempDir, tempdir};

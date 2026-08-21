@@ -179,7 +179,7 @@ impl ProviderSelectionReconciler for RegistryReconciler<'_> {
         &mut self,
         project_root: &Utf8Path,
         project: &ResolvedProject,
-        program: &geam::TypedProgram,
+        program: &geam_core::TypedProgram,
         managed: &mut ManagedProject,
     ) -> Result<(), CliError> {
         let mut approval = TerminalApproval::new(true, &mut self.input, &mut self.prompt);
@@ -455,7 +455,13 @@ pub fn main() {
     .expect("catalog config should be written");
     fs::write(project.join("config/counter.toml"), "start = 3\n")
         .expect("counter config should be written");
-    let geam_path = toml::Value::String(env!("CARGO_MANIFEST_DIR").to_owned()).to_string();
+    let geam_path = toml::Value::String(
+        repository_root()
+            .to_str()
+            .expect("repository path should be valid UTF-8")
+            .to_owned(),
+    )
+    .to_string();
     fs::write(
         project.join(".cargo/config.toml"),
         format!(
@@ -467,7 +473,13 @@ pub fn main() {
 }
 
 fn fixture_source() -> std::path::PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/standalone_cli")
+    repository_root().join("tests/fixtures/standalone_cli")
+}
+
+fn repository_root() -> &'static Path {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("CLI package should be directly inside the repository root")
 }
 
 fn prepare_provider_dependencies() {

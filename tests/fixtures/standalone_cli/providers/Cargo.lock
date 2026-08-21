@@ -1090,37 +1090,11 @@ dependencies = [
 name = "geam"
 version = "0.1.2"
 dependencies = [
- "base64 0.22.1",
- "bitvec",
- "camino",
- "cargo_metadata",
- "clap",
- "ecow",
- "flate2",
+ "geam-cli",
  "geam-core",
- "geam-gleam-core",
- "geam-gleam-hexpm",
  "geam-json",
  "geam-stdlib",
  "geam-time",
- "half",
- "hex",
- "im",
- "miette",
- "num-bigint",
- "num-traits",
- "rand 0.10.0",
- "semver",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tar",
- "tempfile",
- "thiserror 2.0.20",
- "toml 0.9.12+spec-1.1.0",
- "unicode-segmentation",
- "ureq",
- "vec1",
 ]
 
 [[package]]
@@ -1131,6 +1105,32 @@ dependencies = [
  "geam",
  "num-bigint",
  "standalone-catalog-domain",
+]
+
+[[package]]
+name = "geam-cli"
+version = "0.1.2"
+dependencies = [
+ "camino",
+ "cargo_metadata",
+ "clap",
+ "flate2",
+ "geam-core",
+ "geam-gleam-core",
+ "geam-gleam-hexpm",
+ "geam-json",
+ "geam-stdlib",
+ "geam-time",
+ "hex",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tar",
+ "tempfile",
+ "thiserror 2.0.20",
+ "toml 0.9.12+spec-1.1.0",
+ "ureq",
 ]
 
 [[package]]

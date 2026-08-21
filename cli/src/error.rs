@@ -14,7 +14,7 @@ pub(super) enum CliError {
     NonUtf8Path(std::path::PathBuf),
 
     #[error(transparent)]
-    Project(#[from] geam::ProjectError),
+    Project(#[from] geam_core::ProjectError),
 
     #[error("failed to read {path}")]
     FileRead {

@@ -1,14 +1,8 @@
-#[path = "provider/approval.rs"]
 mod approval;
-#[path = "provider/manifest.rs"]
 mod manifest;
-#[path = "provider/metadata.rs"]
 mod metadata;
-#[path = "provider/reconcile.rs"]
 mod reconcile;
-#[path = "provider/registry.rs"]
 pub(crate) mod registry;
-#[path = "provider/resolution.rs"]
 mod resolution;
 
 use crate::command::{AddProvider, RemoveProvider};
@@ -46,7 +40,7 @@ impl ProviderSelectionReconciler for SystemProviderReconciler<'_> {
         &mut self,
         project_root: &Utf8Path,
         project: &ResolvedProject,
-        program: &geam::TypedProgram,
+        program: &geam_core::TypedProgram,
         managed: &mut ManagedProject,
     ) -> Result<(), CliError> {
         reconcile_registry(
@@ -65,7 +59,7 @@ pub(crate) fn reconcile_registry(
     approval: &mut TerminalApproval<'_>,
     project_root: &Utf8Path,
     project: &ResolvedProject,
-    program: &geam::TypedProgram,
+    program: &geam_core::TypedProgram,
     managed: &mut ManagedProject,
 ) -> Result<(), CliError> {
     let discovery = reconcile::RegistryProviderDiscovery::new(registry);

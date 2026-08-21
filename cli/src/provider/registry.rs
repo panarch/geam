@@ -1,14 +1,8 @@
-#[path = "registry/archive.rs"]
 mod archive;
-#[path = "registry/configuration.rs"]
 mod configuration;
-#[path = "registry/crates_io.rs"]
 mod crates_io;
-#[path = "registry/discovery.rs"]
 mod discovery;
-#[path = "registry/index.rs"]
 mod index;
-#[path = "registry/search.rs"]
 mod search;
 
 pub(super) use crates_io::CratesIoRegistry;

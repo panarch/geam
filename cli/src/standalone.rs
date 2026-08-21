@@ -6,7 +6,6 @@ use std::collections::BTreeMap;
 use std::io::IsTerminal;
 
 #[cfg(test)]
-#[path = "standalone/integration.rs"]
 mod integration;
 
 pub(super) fn prepare(project_root: &Utf8Path, module: String) -> Result<(), CliError> {
@@ -237,7 +236,7 @@ mod tests {
             &mut self,
             _project_root: &Utf8Path,
             _project: &ResolvedProject,
-            _program: &geam::TypedProgram,
+            _program: &geam_core::TypedProgram,
             _managed: &mut ManagedProject,
         ) -> Result<(), CliError> {
             Ok(())
@@ -253,7 +252,7 @@ mod tests {
             &mut self,
             project_root: &Utf8Path,
             _project: &ResolvedProject,
-            _program: &geam::TypedProgram,
+            _program: &geam_core::TypedProgram,
             managed: &mut ManagedProject,
         ) -> Result<(), CliError> {
             assert_eq!(
@@ -610,7 +609,7 @@ pub fn main() { 1 }
                 &mut self,
                 _project_root: &Utf8Path,
                 _project: &ResolvedProject,
-                _program: &geam::TypedProgram,
+                _program: &geam_core::TypedProgram,
                 _managed: &mut ManagedProject,
             ) -> Result<(), CliError> {
                 Err(CliError::ProviderApprovalRequired {
@@ -733,7 +732,7 @@ pub fn main() { 1 }
         .expect_err("invalid source should stop preparation");
         assert!(matches!(
             error,
-            CliError::Project(geam::ProjectError::Frontend(geam::FrontendError::Parse {
+            CliError::Project(geam_core::ProjectError::Frontend(geam_core::FrontendError::Parse {
                 path,
                 error,
             })) if path == invalid_source_root.join("src/application.gleam")
