@@ -115,7 +115,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::ScriptedSource;
-    use crate::gleam_time::TimeSource;
+    use crate::TimeSource;
 
     #[test]
     fn scripted_source_reports_exhausted_effect_queues() {

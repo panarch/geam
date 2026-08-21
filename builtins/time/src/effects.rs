@@ -1,6 +1,6 @@
 use super::GleamTimeRunState;
 use super::test_support::{ScriptedSource, execution};
-use crate::gleam_stdlib::GleamStdlibRunState;
+use geam_stdlib::GleamStdlibRunState;
 use std::time::{Duration, UNIX_EPOCH};
 
 const MAIN_SOURCE: &str = r#"

@@ -56,7 +56,7 @@ mod tests {
     use super::{
         SystemTimeSource, current_offset_seconds, map_system_time_zone, split_system_time,
     };
-    use crate::gleam_time::TimeSource;
+    use crate::TimeSource;
     use jiff::{
         Timestamp,
         tz::{TimeZone, offset},

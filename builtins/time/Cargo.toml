@@ -1,0 +1,18 @@
+[package]
+name = "geam-time"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Official Gleam Time providers for Geam"
+license.workspace = true
+repository.workspace = true
+publish = ["crates-io"]
+
+[dependencies]
+geam-core.workspace = true
+geam-stdlib.workspace = true
+jiff.workspace = true
+num-bigint.workspace = true
+
+[dev-dependencies]
+ecow.workspace = true

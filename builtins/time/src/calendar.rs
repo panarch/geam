@@ -29,10 +29,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::host_provider;
-    use crate::gleam_stdlib::GleamStdlibRunState;
-    use crate::gleam_time::test_support::{CALENDAR_SOURCE, ScriptedSource, execution};
-    use crate::gleam_time::{GleamTimeProfile, GleamTimeRunState};
+    use crate::test_support::{CALENDAR_SOURCE, ScriptedSource, execution};
     use crate::{ExecutionError, HostError, HostFailure, InvariantError, ValueType};
+    use crate::{GleamTimeProfile, GleamTimeRunState};
+    use geam_stdlib::GleamStdlibRunState;
 
     #[test]
     fn registers_the_exact_calendar_provider() {

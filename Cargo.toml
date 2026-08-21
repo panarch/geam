@@ -19,8 +19,8 @@ include = [
 ]
 
 [workspace]
-members = [".", "core", "builtins/stdlib", "builtins/json"]
-default-members = [".", "core", "builtins/stdlib", "builtins/json"]
+members = [".", "core", "builtins/stdlib", "builtins/json", "builtins/time"]
+default-members = [".", "core", "builtins/stdlib", "builtins/json", "builtins/time"]
 resolver = "3"
 
 [workspace.package]
@@ -43,6 +43,7 @@ flate2 = "1"
 geam-core = { path = "core", version = "=0.1.2" }
 geam-json = { path = "builtins/json", version = "=0.1.2" }
 geam-stdlib = { path = "builtins/stdlib", version = "=0.1.2" }
+geam-time = { path = "builtins/time", version = "=0.1.2" }
 gleam-core = { package = "geam-gleam-core", version = "=1.18.1-geam.2" }
 gleam-compiler-core = { package = "geam-gleam-core", version = "=1.18.1-geam.2" }
 half = { version = "2.7.1", default-features = false }
@@ -79,12 +80,12 @@ flate2.workspace = true
 geam-core.workspace = true
 geam-json.workspace = true
 geam-stdlib.workspace = true
+geam-time.workspace = true
 gleam-core.workspace = true
 half.workspace = true
 hex.workspace = true
 hexpm.workspace = true
 im.workspace = true
-jiff.workspace = true
 miette.workspace = true
 num-bigint.workspace = true
 num-traits.workspace = true

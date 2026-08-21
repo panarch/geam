@@ -1067,10 +1067,10 @@ dependencies = [
  "geam-gleam-hexpm",
  "geam-json",
  "geam-stdlib",
+ "geam-time",
  "half",
  "hex",
  "im",
- "jiff",
  "miette",
  "num-bigint",
  "num-traits",
@@ -1251,6 +1251,17 @@ dependencies = [
  "num-traits",
  "rand 0.10.0",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "geam-time"
+version = "0.1.2"
+dependencies = [
+ "ecow",
+ "geam-core",
+ "geam-stdlib",
+ "jiff",
+ "num-bigint",
 ]
 
 [[package]]
