@@ -8,12 +8,12 @@ use crate::gleam_json::schema::{
     DynamicDict, DynamicList, JsonDynamicError, JsonDynamicOk, JsonDynamicResult, UnexpectedByte,
     UnexpectedEndOfInput, UnexpectedSequence,
 };
-use crate::gleam_stdlib::{Dynamic, create_dynamic_dict, create_dynamic_value};
 use crate::{
     BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostConstructions, HostExternal,
     HostList,
 };
 use ecow::EcoString;
+use geam_stdlib::provider_support::{Dynamic, create_dynamic_dict, create_dynamic_value};
 use jiter::{Jiter, Peek};
 use num_bigint::BigInt;
 

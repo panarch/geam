@@ -7,15 +7,16 @@ use self::function::{
     do_preprocessed_array, do_string, do_to_string, to_string_tree,
 };
 use self::schema::{DecodeConstructions, Json, JsonDynamicResult, JsonList, ObjectEntries};
-use crate::gleam_stdlib::{
-    Component as GleamStdlibComponent, GleamStdlibHostProfile, GleamStdlibRunState,
-    GleamStdlibStores, IoOutput,
-};
 use crate::{
     BitArrayValue, HostComponentProfile, HostProfile, HostProviderComponent,
     HostProviderComponentRegistration, HostProviderModule, HostRegistrationError,
 };
 use ecow::EcoString;
+use geam_stdlib::provider_support::StringTree;
+use geam_stdlib::{
+    Component as GleamStdlibComponent, GleamStdlibHostProfile, GleamStdlibRunState,
+    GleamStdlibStores, IoOutput,
+};
 use num_bigint::BigInt;
 
 /// A host profile that composes the official Gleam JSON and standard-library components.
@@ -160,12 +161,10 @@ where
             )
         })
         .and_then(|provider| {
-            provider.with_scoped_function::<
-                JsonProvider<Profile>,
-                (Json,),
-                crate::gleam_stdlib::StringTree,
-                _,
-            >("to_string_tree", to_string_tree::<Profile>)
+            provider.with_scoped_function::<JsonProvider<Profile>, (Json,), StringTree, _>(
+                "to_string_tree",
+                to_string_tree::<Profile>,
+            )
         })
         .and_then(|provider| {
             provider.with_scoped_function::<JsonProvider<Profile>, (EcoString,), Json, _>(
@@ -221,8 +220,8 @@ mod tests {
         Component, GleamJsonProfile, GleamJsonProfileStores, GleamJsonRunState, host_providers,
         json_stores,
     };
-    use crate::gleam_stdlib::{Component as GleamStdlibComponent, GleamStdlibRunState};
     use crate::{HostComponentProfile, HostProviderComponent, HostProviderComponentRegistration};
+    use geam_stdlib::{Component as GleamStdlibComponent, GleamStdlibRunState};
 
     #[test]
     #[should_panic(expected = "decode_to_dynamic should return Result")]

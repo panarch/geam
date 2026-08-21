@@ -2,9 +2,9 @@ use super::JsonProvider;
 use crate::gleam_json::GleamJsonHostProfile;
 use crate::gleam_json::schema::{Json, ObjectEntry};
 use crate::gleam_json::storage::JsonPayload;
-use crate::gleam_stdlib::{StoredStringTree, StringTree, StringTreePayload};
 use crate::{HostCall, HostCallCompletion, HostCallError, HostExternal, HostFailure, HostList};
 use ecow::EcoString;
+use geam_stdlib::provider_support::{StoredStringTree, StringTree, StringTreePayload};
 use num_bigint::BigInt;
 
 pub(in crate::gleam_json) fn do_to_string<'call, Profile>(
@@ -26,7 +26,7 @@ where
     Profile: GleamJsonHostProfile,
 {
     let tree = call.external_payload(json).tree.clone();
-    let tree = call.create_external(StringTreePayload { tree });
+    let tree = call.create_external(StringTreePayload::from_stored(tree));
     Ok(call.return_value(tree))
 }
 

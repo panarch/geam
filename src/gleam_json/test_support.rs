@@ -1,16 +1,17 @@
 use super::function::JsonProvider;
 use super::schema::Json;
 use super::{Component, GleamJsonProfile, GleamJsonRunState, GleamJsonStores};
-use crate::gleam_stdlib::{
-    Component as GleamStdlibComponent, DictSchema, DynamicSchema, GleamStdlibHostProfile,
-    GleamStdlibRunState, GleamStdlibStores, IoOutput, StringTreeSchema,
-};
 use crate::{
     HostCall, HostCallCompletion, HostCallError, HostComponentProfile, HostExternal, HostModule,
     HostProfile, HostProviderModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
     compile_typed_host_program, plan_host_program,
 };
 use ecow::EcoString;
+use geam_stdlib::provider_support::{DictSchema, DynamicSchema, StringTreeSchema};
+use geam_stdlib::{
+    Component as GleamStdlibComponent, GleamStdlibHostProfile, GleamStdlibRunState,
+    GleamStdlibStores, IoOutput,
+};
 use num_bigint::BigInt;
 
 pub(super) struct CustomProfile;

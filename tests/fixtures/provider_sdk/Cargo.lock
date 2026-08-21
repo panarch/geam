@@ -1065,6 +1065,7 @@ dependencies = [
  "geam-core",
  "geam-gleam-core",
  "geam-gleam-hexpm",
+ "geam-stdlib",
  "half",
  "hex",
  "im",
@@ -1221,6 +1222,22 @@ dependencies = [
  "im",
  "num-bigint",
  "typed-arena",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "geam-stdlib"
+version = "0.1.2"
+dependencies = [
+ "base64 0.22.1",
+ "bitvec",
+ "ecow",
+ "geam-core",
+ "hex",
+ "im",
+ "num-bigint",
+ "num-traits",
+ "rand 0.10.0",
  "unicode-segmentation",
 ]
 

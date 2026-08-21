@@ -1,4 +1,3 @@
-use crate::gleam_stdlib::{DictOf, Dynamic, DynamicDecodeError, GleamError, GleamOk, GleamResult};
 use crate::{
     HostCustomConstructorAt, HostCustomConstructorDefinition, HostCustomConstructorList,
     HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
@@ -7,6 +6,9 @@ use crate::{
     HostTypeListEnd,
 };
 use ecow::EcoString;
+use geam_stdlib::provider_support::{
+    DictOf, Dynamic, DynamicDecodeError, GleamError, GleamOk, GleamResult,
+};
 
 pub(super) struct JsonSchema;
 

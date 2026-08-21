@@ -10,11 +10,11 @@ pub(super) use encode::{
 use super::schema::JsonSchema;
 use super::storage::JsonStorage;
 use super::{GleamJsonHostProfile, json_state};
-use crate::gleam_stdlib::{
+use crate::{HostExternalBinding, HostProvider};
+use geam_stdlib::provider_support::{
     DictExternalStorage, DictSchema, DynamicExternalStorage, DynamicSchema,
     StringTreeExternalStorage, StringTreeSchema,
 };
-use crate::{HostExternalBinding, HostProvider};
 use std::marker::PhantomData;
 
 pub(super) struct JsonProvider<Profile>(PhantomData<Profile>);

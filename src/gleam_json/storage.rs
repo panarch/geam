@@ -1,11 +1,11 @@
 use super::schema::JsonSchema;
 use super::{GleamJsonHostProfile, json_stores};
-use crate::gleam_stdlib::StoredStringTree;
 use crate::{
     HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalStorage,
     HostExternalStore,
 };
 use ecow::EcoString;
+use geam_stdlib::provider_support::StoredStringTree;
 
 #[derive(Default)]
 pub(super) struct Stores {
@@ -63,7 +63,7 @@ mod tests {
     use crate::HostExternalStorage;
     use crate::gleam_json::test_support::{CustomProfile, CustomStores, execution, run_state};
     use crate::gleam_json::{GleamJsonProfile, GleamJsonProfileStores, json_stores};
-    use crate::gleam_stdlib::StoredStringTree;
+    use geam_stdlib::provider_support::StoredStringTree;
 
     #[test]
     fn delegates_structural_source_semantics_and_canonical_inspection() {
