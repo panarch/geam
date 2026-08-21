@@ -20,3 +20,6 @@ gleam-version = ">= 1.0.0 and < 2.0.0"
 ecow = "=0.2.6"
 geam = "=0.1.2"
 regex = "1.12"
+
+[workspace]
+resolver = "3"
