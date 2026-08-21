@@ -10,12 +10,95 @@ approve provider dependencies, parse explicit configuration, and generate a
 concrete runner, but the resulting Rust program still composes every component
 at compile time. It does not choose or type-erase implementations at runtime.
 
-## Provider Crate
+## Scalar Provider Authoring
+
+A scalar provider declares the same function once in Gleam and once in Rust.
+The Gleam package owns the source-visible function shape:
+
+```gleam
+@external(erlang, "geam_counter", "next")
+pub fn next(label: String) -> String
+```
+
+The Rust provider owns configuration, state, and behavior:
+
+```rust
+use ecow::EcoString;
+use geam::provider::{Configuration, InitializationError};
+
+pub struct RunState {
+    next: i64,
+}
+
+fn initialize(
+    configuration: &Configuration,
+) -> Result<RunState, InitializationError> {
+    let next = configuration
+        .get("start")
+        .and_then(|value| value.as_integer())
+        .ok_or_else(|| {
+            InitializationError::new(
+                "configuration key `start` must be an Integer",
+            )
+        })?;
+
+    Ok(RunState { next })
+}
+
+#[geam::provider(
+    id = "geam-counter",
+    package = "counter",
+    state = RunState,
+    initialize = initialize,
+    modules = [counter],
+)]
+pub struct Component;
+
+#[geam::module(path = "counter")]
+mod counter {
+    use super::{EcoString, RunState};
+
+    #[geam::function]
+    fn next(
+        #[geam::state] state: &mut RunState,
+        label: EcoString,
+    ) -> EcoString {
+        let next = state.next;
+        state.next += 1;
+        format!("{label}:{next}").into()
+    }
+}
+```
+
+`#[geam::state]` is an injected Rust parameter and is not part of the Gleam
+function. The remaining Rust arguments and return type generate the typed host
+schema `fn(String) -> String` through Geam's existing host type contracts. The
+macro does not parse Gleam source or maintain a second Rust-to-Gleam type table.
+The Erlang annotation strings only tell Gleam that an external implementation
+exists; Geam links providers by the source package, module, function, and exact
+scheme.
+
+Validation therefore has two distinct phases. Rust compilation validates the
+macro target, state injection, supported scalar host types, and generated
+component implementation. `geam prepare` then compiles the complete Gleam
+project and links the generated schema against the source declaration. A Rust
+and Gleam signature mismatch remains an exact hosted-linkage error before any
+provider state is initialized or source code executes.
+
+This first authoring slice supports stateful scalar functions. External values,
+custom types, compound values, callbacks, and source `Result` construction
+still use the low-level typed host contracts described below. The completed
+counter is an interface-review checkpoint, not a claim that the authoring API
+for those later capabilities is final.
+
+## Generated Component Boundary
 
 Each provider crate exports one marker that implements
 `HostProviderComponent`. The component owns its store and run-state types.
 Provider crates that consume configuration implement the separate
-`HostProviderComponentInitialization` contract.
+`HostProviderComponentInitialization` contract. Scalar authoring macros
+generate these implementations; the explicit form remains the underlying SDK
+boundary for capabilities outside the first macro slice.
 
 ```rust
 pub struct Component;

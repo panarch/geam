@@ -4,13 +4,22 @@ Geam uses Rust unit tests for compiler-boundary, lowering, and runtime
 milestones.
 
 The root Cargo workspace contains the `geam` facade and binary, `geam-core`,
-`geam-stdlib`, `geam-json`, `geam-time`, and `geam-cli`. Each extracted package
-owns tests for its production protocols. Root integration targets own the
-public `geam::...` facade, official package compatibility, and standalone
-binary behavior; they do not replace package-local owner tests.
+`geam-stdlib`, `geam-json`, `geam-time`, `geam-cli`, and `geam-macros`. Each
+extracted package owns tests for its production protocols. Root integration
+targets own the public `geam::...` facade, official package compatibility, and
+standalone binary behavior; they do not replace package-local owner tests.
 
 For guidance on constructing owner tests, promoting diagnostic probes, and
 closing coverage gaps, see [test-development.md](test-development.md).
+
+`geam-macros` owns parser, diagnostic, expansion, and compile-fail tests for the
+provider authoring attributes. Its integration tests use `geam-core` only as a
+dev-dependency and compile, link, initialize, and run a complete scalar provider
+without adding a production dependency from the proc-macro crate to Geam. The
+standalone `geam-counter` fixture separately consumes the macros through the
+public root `geam` re-export. That consumer acceptance proves packaging,
+generated-runner composition, configuration, and repeated stateful execution;
+it does not replace the macro owner's parser and expansion tests.
 
 The current compiler-boundary and runtime milestones depend on the exact
 `geam-gleam-core` package recorded in the upstream guide. `cargo test` resolves
@@ -168,7 +177,7 @@ With the Rust toolchain and Gleam `v1.18.1` installed, run the full test suite:
 cargo test --workspace --locked
 ```
 
-The workspace's explicit default members are the same six packages, so
+The workspace's explicit default members are the same seven packages, so
 `cargo test --locked` remains equivalent for local use. CI spells out
 `--workspace` so newly added internal packages cannot be omitted implicitly.
 

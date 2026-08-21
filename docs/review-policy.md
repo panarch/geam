@@ -230,6 +230,14 @@ family-local parameter layout, and callback adapter together. Planner and
 runtime phases may consume that layout, but must not independently infer the
 same signature or parameter indexing.
 
+Provider authoring proc macros must derive one static typed registration from
+the Rust declarations visible at the attribute site. They must not parse Gleam
+source, duplicate host type semantics, write generated bindings, or defer
+registration decisions to runtime. The proc-macro crate owns parser,
+diagnostic, expansion, and core-backed compile/link/run tests; consumer provider
+fixtures verify the public re-export and assembly boundary but do not replace
+those owner tests.
+
 Treat a provider component as the static owner of its stores, run-state type,
 and registrations; a concrete aggregate profile only projects those owners.
 Configured external components own explicit configuration interpretation and
