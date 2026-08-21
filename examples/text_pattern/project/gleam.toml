@@ -1,0 +1,7 @@
+name = "text_pattern_example"
+version = "1.0.0"
+description = "Standalone Geam text pattern provider example"
+licences = ["Apache-2.0"]
+
+[dependencies]
+example_text_pattern = { path = "packages/example_text_pattern" }

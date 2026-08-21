@@ -133,6 +133,17 @@ the real root Cargo lock, generated runner check, and runner execution.
 Fixture-only Cargo patches keep acquisition local while preserving the
 production manifest, resolution, build, and execution path.
 
+The [`examples/text_pattern`](../examples/text_pattern) example adds a
+distribution-ready provider baseline. Its path test executes the complete
+provider surface through the managed root lock and generated runner. The
+existing fake-registry orchestration test owns search, sparse-index, checksum,
+archive metadata, approval, registry-shaped dependency, lock, check, and run
+coverage without requiring a fixture crate to be published.
+
+CI formats and lints the example provider as an independent crate and verifies
+its ordinary `cargo package --locked` archive. The provider depends on the
+released `geam 0.1.2` crate rather than a repository path or Git revision.
+
 The normal suite executes the full generated runner with the fixture's locked
 Gleam and Rust dependencies. CI also runs `gleam export hex-tarball` for each
 local Gleam dependency and `cargo package` for both provider crates. No fixture
