@@ -419,10 +419,16 @@ where
 mod tests {
     use super::super::host_provider;
     use super::{DictProvider, insert_first};
-    use crate::gleam_stdlib::{GleamStdlibProfile, GleamStdlibRunState};
+    use crate::gleam_stdlib::{
+        Component as GleamStdlibComponent, GleamStdlibHostProfile, GleamStdlibProfile,
+        GleamStdlibRunState, GleamStdlibStores, IoOutput,
+    };
     use crate::{
-        HostFailure, HostModule, HostProvider, HostProviderSet, HostedExecution, ModuleSource,
-        PackageSource, compile_typed_host_program, plan_host_program,
+        HostCall, HostCallCompletion, HostCallError, HostComponentProfile, HostExternalBinding,
+        HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalSchema,
+        HostExternalStorage, HostExternalStore, HostExternalType, HostFailure, HostModule,
+        HostProfile, HostProvider, HostProviderModule, HostProviderSet, HostedExecution,
+        ModuleSource, PackageSource, compile_typed_host_program, plan_host_program,
     };
     use ecow::EcoString;
     use num_bigint::BigInt;
@@ -507,6 +513,146 @@ fn transient_update_with(
 ) -> TransientDict(key, value)
 "#;
 
+    struct CollisionProfile;
+
+    #[derive(Default)]
+    struct CollisionStores {
+        stdlib: GleamStdlibStores,
+        keys: HostExternalStore<BigInt>,
+    }
+
+    struct CollisionRunState {
+        stdlib: GleamStdlibRunState,
+        keys: (),
+    }
+
+    struct CollisionProvider;
+    struct CollisionSchema;
+    struct CollisionStorage;
+
+    type CollisionKey = HostExternalType<CollisionSchema>;
+
+    impl HostProfile for CollisionProfile {
+        type RunState = CollisionRunState;
+        type ExternalStores = CollisionStores;
+    }
+
+    impl HostComponentProfile<GleamStdlibComponent> for CollisionProfile {
+        fn component_stores(stores: &Self::ExternalStores) -> &GleamStdlibStores {
+            &stores.stdlib
+        }
+
+        fn component_state(state: &mut Self::RunState) -> &mut GleamStdlibRunState {
+            &mut state.stdlib
+        }
+    }
+
+    impl GleamStdlibHostProfile for CollisionProfile {
+        type Io = Vec<IoOutput>;
+    }
+
+    impl HostProvider<CollisionProfile> for CollisionProvider {
+        type State = ();
+
+        fn project(state: &mut CollisionRunState) -> &mut Self::State {
+            &mut state.keys
+        }
+    }
+
+    impl HostExternalSchema for CollisionSchema {
+        const PACKAGE: &'static str = "gleam_stdlib";
+        const MODULE: &'static str = "host/collision";
+        const NAME: &'static str = "CollisionKey";
+        const PARAMETER_COUNT: usize = 0;
+    }
+
+    impl HostExternalStorage<CollisionProfile, CollisionSchema> for CollisionStorage {
+        type Payload = BigInt;
+
+        fn store(stores: &CollisionStores) -> &HostExternalStore<Self::Payload> {
+            &stores.keys
+        }
+
+        fn source_equal(
+            _context: &HostExternalEquality<'_>,
+            left: &Self::Payload,
+            right: &Self::Payload,
+        ) -> bool {
+            left == right
+        }
+
+        fn source_hash(_context: &HostExternalHashing<'_>, _value: &Self::Payload) -> u64 {
+            7
+        }
+
+        fn inspect(_context: &HostExternalInspection<'_>, value: &Self::Payload) -> EcoString {
+            format!("CollisionKey({value})").into()
+        }
+    }
+
+    impl HostExternalBinding<CollisionProfile, CollisionSchema> for CollisionProvider {
+        type Storage = CollisionStorage;
+    }
+
+    fn collision_key<'call>(
+        mut call: HostCall<'call, CollisionProfile, CollisionProvider, CollisionKey>,
+        value: BigInt,
+    ) -> Result<HostCallCompletion<'call, CollisionKey>, HostCallError> {
+        let key = call.create_external(value);
+        Ok(call.return_value(key))
+    }
+
+    fn collision_provider() -> HostProviderModule<CollisionProfile> {
+        HostProviderModule::new("gleam_stdlib", "host/collision")
+            .and_then(HostProviderModule::with_external_type::<CollisionProvider, CollisionSchema>)
+            .and_then(|provider| {
+                provider.with_scoped_function::<CollisionProvider, (BigInt,), CollisionKey, _>(
+                    "new",
+                    collision_key,
+                )
+            })
+            .expect("collision-key provider should register")
+    }
+
+    fn collision_execution(source: &str) -> HostedExecution<CollisionProfile> {
+        const COLLISION_SOURCE: &str = r#"
+pub type CollisionKey
+
+@external(erlang, "host", "new")
+pub fn new(value: Int) -> CollisionKey
+"#;
+
+        let source = format!("{DICT_DECLARATIONS}\n{source}");
+        let providers = [
+            host_provider::<CollisionProfile>().expect("official dict provider should register"),
+            collision_provider(),
+        ];
+        let hosts =
+            HostProviderSet::with_providers(Vec::<HostModule<CollisionProfile>>::new(), providers)
+                .expect("collision test providers should be unique");
+        let typed = compile_typed_host_program(
+            "gleam_stdlib",
+            "gleam/dict",
+            [PackageSource::new(
+                "gleam_stdlib",
+                Vec::<EcoString>::new(),
+                [
+                    ModuleSource::new(
+                        "host/collision",
+                        "src/host/collision.gleam",
+                        COLLISION_SOURCE,
+                    ),
+                    ModuleSource::new("gleam/dict", "src/gleam/dict.gleam", source),
+                ],
+            )],
+            hosts,
+        )
+        .expect("collision-backed dict source should compile");
+        let plan = plan_host_program(typed).expect("collision-backed dict source should plan");
+        HostedExecution::try_from_module_plan(plan)
+            .expect("collision-backed dict execution should seal")
+    }
+
     fn execution(
         source: &str,
         modules: impl IntoIterator<Item = HostModule<GleamStdlibProfile>>,
@@ -589,6 +735,9 @@ pub fn main() {
   let transient_equal = to_transient(do_insert("same", 1, new()))
   assert transient_equal == to_transient(do_insert("same", 1, new()))
   assert transient_equal != to_transient(new())
+  let transient_keys = do_insert(transient_equal, "transient", new())
+  assert get(transient_keys, transient_equal) == Ok("transient")
+  echo transient_equal as "transient"
 
   assert final
     == do_insert("a", 4, do_insert("c", 4, do_insert("d", 5, new())))
@@ -625,16 +774,62 @@ pub fn main() {
 }
 "#;
         let execution = execution(source, [float]);
+        let mut echoes = Vec::new();
         let actual = execution
-            .run_main(
-                &mut GleamStdlibRunState::from_seed([0; 32]),
-                &mut Vec::new(),
-            )
+            .run_main(&mut GleamStdlibRunState::from_seed([0; 32]), &mut echoes)
             .expect("dict operations should run");
 
         assert_eq!(
             actual.inspect().to_string(),
             r#"dict.from_list([#("a", 4), #("c", 4), #("d", 5)])"#,
+        );
+        assert_eq!(echoes.len(), 1);
+        assert_eq!(
+            echoes[0].value().inspect().to_string(),
+            r#"dict.from_list([#("same", 1)])"#,
+        );
+    }
+
+    #[test]
+    fn collision_bucket_deletion_retains_other_entries_through_the_hosted_pipeline() {
+        let execution = collision_execution(
+            r#"
+import host/collision
+
+pub fn main() {
+  let first = collision.new(1)
+  let second = collision.new(2)
+  let collided = do_insert(second, 20, do_insert(first, 10, new()))
+  assert size(collided) == 2
+  let transient = to_transient(collided)
+  let remaining = from_transient(transient_delete(first, transient))
+  assert remaining == do_insert(second, 20, new())
+  remaining
+}
+"#,
+        );
+        let mut state = CollisionRunState {
+            stdlib: GleamStdlibRunState::from_seed([0; 32]),
+            keys: (),
+        };
+        let expected_stdlib = &state.stdlib as *const GleamStdlibRunState;
+        let projected_stdlib =
+            <CollisionProfile as HostComponentProfile<GleamStdlibComponent>>::component_state(
+                &mut state,
+            ) as *mut GleamStdlibRunState;
+        assert_eq!(projected_stdlib.cast_const(), expected_stdlib);
+        let expected_keys = &state.keys as *const ();
+        let projected_keys =
+            <CollisionProvider as HostProvider<CollisionProfile>>::project(&mut state) as *mut ();
+        assert_eq!(projected_keys.cast_const(), expected_keys);
+
+        let actual = execution
+            .run_main(&mut state, &mut Vec::new())
+            .expect("colliding dict key should be removed without dropping its bucket peer");
+
+        assert_eq!(
+            actual.inspect().to_string(),
+            "dict.from_list([#(CollisionKey(2), 20)])",
         );
     }
 

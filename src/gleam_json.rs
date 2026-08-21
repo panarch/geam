@@ -225,6 +225,24 @@ mod tests {
     use crate::{HostComponentProfile, HostProviderComponent, HostProviderComponentRegistration};
 
     #[test]
+    #[should_panic(expected = "decode_to_dynamic should return Result")]
+    fn dynamic_result_assertion_rejects_non_result_types() {
+        assert_dynamic_result(&crate::ValueType::Nil);
+    }
+
+    #[test]
+    #[should_panic(expected = "decode_to_dynamic error should be DecodeError")]
+    fn dynamic_result_assertion_rejects_non_custom_error_types() {
+        assert_decode_error(&crate::ValueType::Nil);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected external type")]
+    fn external_type_assertion_rejects_non_external_types() {
+        assert_external_type(&crate::ValueType::Nil, "package", "module", "Type", &[]);
+    }
+
+    #[test]
     fn default_and_custom_profiles_project_independent_stdlib_and_json_components() {
         let default = GleamJsonProfileStores::default();
         let custom = CustomStores::default();
@@ -328,33 +346,107 @@ mod tests {
             ],
         );
 
-        use crate::host::HostAbiType;
-        let json = <super::schema::Json as HostAbiType>::descriptor().value_type();
-        let dynamic_result =
-            <super::schema::JsonDynamicResult as HostAbiType>::descriptor().value_type();
-        let string_tree =
-            <crate::gleam_stdlib::StringTree as HostAbiType>::descriptor().value_type();
-        let object_entries =
-            <super::schema::ObjectEntries as HostAbiType>::descriptor().value_type();
-        let json_list = <super::schema::JsonList as HostAbiType>::descriptor().value_type();
-        let expected = [
-            (vec![crate::ValueType::BitArray], dynamic_result),
-            (vec![json.clone()], crate::ValueType::String),
-            (vec![json.clone()], string_tree),
-            (vec![crate::ValueType::String], json.clone()),
-            (vec![crate::ValueType::Bool], json.clone()),
-            (vec![crate::ValueType::Int], json.clone()),
-            (vec![crate::ValueType::Float], json.clone()),
-            (Vec::new(), json.clone()),
-            (vec![object_entries], json.clone()),
-            (vec![json_list], json),
-        ];
-        for (function, (arguments, return_)) in provider.functions().zip(expected) {
-            assert!(function.scheme().is_monomorphic());
-            assert_eq!(
-                function.type_(),
-                &crate::FunctionType::new(arguments, return_),
-            );
+        let functions = provider.functions().collect::<Vec<_>>();
+        for function in &functions {
+            assert!(function.scheme().parameters().is_empty());
         }
+
+        let json = functions[7].type_().return_().clone();
+        assert_external_type(&json, "gleam_json", "gleam/json", "Json", &[]);
+        assert_eq!(
+            functions[0].type_().argument_types(),
+            [crate::ValueType::BitArray]
+        );
+        assert_dynamic_result(functions[0].type_().return_());
+        assert_eq!(
+            functions[1].type_().argument_types(),
+            std::slice::from_ref(&json),
+        );
+        assert_eq!(functions[1].type_().return_(), &crate::ValueType::String);
+        assert_eq!(
+            functions[2].type_().argument_types(),
+            std::slice::from_ref(&json),
+        );
+        assert_external_type(
+            functions[2].type_().return_(),
+            "gleam_stdlib",
+            "gleam/string_tree",
+            "StringTree",
+            &[],
+        );
+        assert_eq!(
+            functions[3].type_().argument_types(),
+            [crate::ValueType::String]
+        );
+        assert_eq!(
+            functions[4].type_().argument_types(),
+            [crate::ValueType::Bool]
+        );
+        assert_eq!(
+            functions[5].type_().argument_types(),
+            [crate::ValueType::Int]
+        );
+        assert_eq!(
+            functions[6].type_().argument_types(),
+            [crate::ValueType::Float]
+        );
+        assert!(functions[7].type_().argument_types().is_empty());
+        for function in &functions[3..] {
+            assert_eq!(function.type_().return_(), &json);
+        }
+        assert_eq!(
+            functions[8].type_().argument_types(),
+            [crate::ValueType::List(Box::new(crate::ValueType::Tuple(
+                vec![crate::ValueType::String, json.clone(),]
+            )))],
+        );
+        assert_eq!(
+            functions[9].type_().argument_types(),
+            [crate::ValueType::List(Box::new(json))],
+        );
+    }
+
+    fn assert_dynamic_result(type_: &crate::ValueType) {
+        let crate::ValueType::Custom(result) = type_ else {
+            panic!("decode_to_dynamic should return Result: {type_:?}");
+        };
+        assert_eq!(result.type_name().package(), "");
+        assert_eq!(result.type_name().module(), "gleam");
+        assert_eq!(result.type_name().name(), "Result");
+        assert_eq!(result.arguments().len(), 2);
+        assert_external_type(
+            &result.arguments()[0],
+            "gleam_stdlib",
+            "gleam/dynamic",
+            "Dynamic",
+            &[],
+        );
+        assert_decode_error(&result.arguments()[1]);
+    }
+
+    fn assert_decode_error(type_: &crate::ValueType) {
+        let crate::ValueType::Custom(error) = type_ else {
+            panic!("decode_to_dynamic error should be DecodeError");
+        };
+        assert_eq!(error.type_name().package(), "gleam_json");
+        assert_eq!(error.type_name().module(), "gleam/json");
+        assert_eq!(error.type_name().name(), "DecodeError");
+        assert!(error.arguments().is_empty());
+    }
+
+    fn assert_external_type(
+        type_: &crate::ValueType,
+        package: &str,
+        module: &str,
+        name: &str,
+        arguments: &[crate::ValueType],
+    ) {
+        let crate::ValueType::External(type_) = type_ else {
+            panic!("expected external type {package}::{module}.{name}: {type_:?}");
+        };
+        assert_eq!(type_.type_name().package(), package);
+        assert_eq!(type_.type_name().module(), module);
+        assert_eq!(type_.type_name().name(), name);
+        assert_eq!(type_.arguments(), arguments);
     }
 }

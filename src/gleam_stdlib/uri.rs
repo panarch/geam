@@ -51,7 +51,23 @@ mod tests {
     use super::host_provider;
     use crate::ValueType;
     use crate::gleam_stdlib::GleamStdlibProfile;
-    use crate::plan::{CustomType, CustomTypeName, FunctionType};
+
+    fn assert_result(type_: &ValueType, success: ValueType) {
+        let ValueType::Custom(type_) = type_ else {
+            panic!("URI result should use the prelude Result type: {type_:?}");
+        };
+
+        assert_eq!(type_.type_name().package(), "");
+        assert_eq!(type_.type_name().module(), "gleam");
+        assert_eq!(type_.type_name().name(), "Result");
+        assert_eq!(type_.arguments(), &[success, ValueType::Nil]);
+    }
+
+    #[test]
+    #[should_panic(expected = "URI result should use the prelude Result type")]
+    fn result_assertion_rejects_non_result_types() {
+        assert_result(&ValueType::Nil, ValueType::String);
+    }
 
     #[test]
     fn registers_only_the_bodyless_official_uri_externals() {
@@ -61,53 +77,47 @@ mod tests {
         assert_eq!(provider.package(), "gleam_stdlib");
         assert_eq!(provider.module(), "gleam/uri");
         assert_eq!(provider.external_types().count(), 0);
-        let result = |success| {
-            ValueType::Custom(CustomType::new(
-                CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
-                vec![success, ValueType::Nil],
-            ))
-        };
-        let expected = [
-            (
-                "pop_codeunit",
-                FunctionType::new(
-                    vec![ValueType::String],
-                    ValueType::Tuple(vec![ValueType::Int, ValueType::String]),
-                ),
-            ),
-            (
-                "codeunit_slice",
-                FunctionType::new(
-                    vec![ValueType::String, ValueType::Int, ValueType::Int],
-                    ValueType::String,
-                ),
-            ),
-            (
-                "parse_query",
-                FunctionType::new(
-                    vec![ValueType::String],
-                    result(ValueType::List(Box::new(ValueType::Tuple(vec![
-                        ValueType::String,
-                        ValueType::String,
-                    ])))),
-                ),
-            ),
-            (
-                "percent_encode",
-                FunctionType::new(vec![ValueType::String], ValueType::String),
-            ),
-            (
-                "percent_decode",
-                FunctionType::new(vec![ValueType::String], result(ValueType::String)),
-            ),
-        ];
         let functions = provider.functions().collect::<Vec<_>>();
 
-        assert_eq!(functions.len(), expected.len());
-        for (function, (name, type_)) in functions.into_iter().zip(expected) {
-            assert_eq!(function.name(), name);
-            assert!(function.scheme().is_monomorphic());
-            assert_eq!(function.type_(), &type_);
+        assert_eq!(functions.len(), 5);
+        assert_eq!(
+            functions
+                .iter()
+                .map(|function| function.name().as_str())
+                .collect::<Vec<_>>(),
+            [
+                "pop_codeunit",
+                "codeunit_slice",
+                "parse_query",
+                "percent_encode",
+                "percent_decode",
+            ],
+        );
+        for function in &functions {
+            assert!(function.scheme().parameters().is_empty());
         }
+
+        assert_eq!(functions[0].type_().argument_types(), [ValueType::String]);
+        assert_eq!(
+            functions[0].type_().return_(),
+            &ValueType::Tuple(vec![ValueType::Int, ValueType::String]),
+        );
+        assert_eq!(
+            functions[1].type_().argument_types(),
+            [ValueType::String, ValueType::Int, ValueType::Int],
+        );
+        assert_eq!(functions[1].type_().return_(), &ValueType::String);
+        assert_eq!(functions[2].type_().argument_types(), [ValueType::String]);
+        assert_result(
+            functions[2].type_().return_(),
+            ValueType::List(Box::new(ValueType::Tuple(vec![
+                ValueType::String,
+                ValueType::String,
+            ]))),
+        );
+        assert_eq!(functions[3].type_().argument_types(), [ValueType::String]);
+        assert_eq!(functions[3].type_().return_(), &ValueType::String);
+        assert_eq!(functions[4].type_().argument_types(), [ValueType::String]);
+        assert_result(functions[4].type_().return_(), ValueType::String);
     }
 }

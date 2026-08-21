@@ -2,7 +2,6 @@ use crate::gleam_stdlib::dict::DictOf;
 use crate::gleam_stdlib::dynamic::Dynamic;
 use crate::gleam_stdlib::option::{GleamNone, GleamOption, GleamSome};
 use crate::gleam_stdlib::result::{GleamError, GleamOk, GleamResult};
-use crate::host::HostOpaqueFunctionType;
 use crate::{
     BitArrayValue, HostCustomConstructorAt, HostCustomConstructorDefinition,
     HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList,
@@ -11,6 +10,7 @@ use crate::{
     HostTypeParameter,
 };
 use ecow::EcoString;
+use geam_core::provider_support::HostOpaqueFunctionType;
 use num_bigint::BigInt;
 
 pub(crate) struct DecodeErrorSchema;

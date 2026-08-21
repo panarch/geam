@@ -125,7 +125,7 @@ mod tests {
             ["print", "print_error", "println", "println_error"],
         );
         for function in functions {
-            assert!(function.scheme().is_monomorphic());
+            assert!(function.scheme().parameters().is_empty());
             assert_eq!(
                 function.type_().argument_types(),
                 [crate::ValueType::String],

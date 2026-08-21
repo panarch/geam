@@ -38,7 +38,7 @@ mod tests {
     use crate::gleam_stdlib::GleamStdlibRunState;
     use crate::gleam_time::test_support::{ScriptedSource, TIMESTAMP_SOURCE, execution};
     use crate::gleam_time::{GleamTimeProfile, GleamTimeRunState};
-    use crate::{ExecutionError, FunctionType, HostError, HostFailure, InvariantError, ValueType};
+    use crate::{ExecutionError, HostError, HostFailure, InvariantError, ValueType};
 
     #[test]
     fn registers_the_exact_timestamp_provider() {
@@ -51,13 +51,11 @@ mod tests {
         assert_eq!(provider.external_types().count(), 0);
         assert_eq!(functions.len(), 1);
         assert_eq!(functions[0].name(), "get_system_time");
-        assert!(functions[0].scheme().is_monomorphic());
+        assert!(functions[0].scheme().parameters().is_empty());
+        assert!(functions[0].type_().argument_types().is_empty());
         assert_eq!(
-            functions[0].type_(),
-            &FunctionType::new(
-                Vec::new(),
-                ValueType::Tuple(vec![ValueType::Int, ValueType::Int]),
-            ),
+            functions[0].type_().return_(),
+            &ValueType::Tuple(vec![ValueType::Int, ValueType::Int]),
         );
     }
 

@@ -243,13 +243,16 @@ where
 #[cfg(test)]
 mod tests {
     use super::super::host_provider;
+    use super::super::schema::StringTree;
     use super::StringTreeProvider;
     use crate::gleam_stdlib::{GleamStdlibProfile, GleamStdlibRunState};
     use crate::{
-        HostModule, HostProvider, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
-        compile_typed_host_program, plan_host_program,
+        HostCall, HostCallCompletion, HostCallError, HostExternal, HostModule, HostProvider,
+        HostProviderSet, HostedExecution, ModuleSource, PackageSource, compile_typed_host_program,
+        plan_host_program,
     };
     use ecow::EcoString;
+    use num_bigint::BigInt;
 
     const STRING_TREE_DECLARATIONS: &str = r#"
 pub type StringTree
@@ -297,11 +300,30 @@ pub fn is_equal(left: StringTree, right: StringTree) -> Bool
 
 @external(erlang, "host", "is_empty")
 pub fn is_empty(tree: StringTree) -> Bool
+
+@external(erlang, "host", "test_source_hash")
+fn test_source_hash(tree: StringTree) -> Int
 "#;
+
+    fn source_hash<'call>(
+        call: HostCall<'call, GleamStdlibProfile, StringTreeProvider<GleamStdlibProfile>, BigInt>,
+        tree: HostExternal<'call, StringTree>,
+    ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+        let hash = BigInt::from(call.source_hash::<StringTree>(tree));
+        Ok(call.return_value(hash))
+    }
 
     fn execution(source: &str) -> HostedExecution<GleamStdlibProfile> {
         let source = format!("{STRING_TREE_DECLARATIONS}\n{source}");
         let provider = host_provider::<GleamStdlibProfile>()
+            .and_then(|provider| {
+                provider.with_scoped_function::<
+                    StringTreeProvider<GleamStdlibProfile>,
+                    (StringTree,),
+                    BigInt,
+                    _,
+                >("test_source_hash", source_hash)
+            })
             .expect("official string tree provider should register");
         let typed = compile_typed_host_program(
             "gleam_stdlib",
@@ -359,6 +381,8 @@ pub fn main() {
   assert to_string(replace(from_string("a-b-a"), "a", "x")) == "x-b-x"
   assert to_string(replace(from_string("abc"), "", "x")) == "abc"
   assert is_empty(from_strings([]))
+  assert test_source_hash(segmented) == test_source_hash(from_strings(["a", "b"]))
+  assert test_source_hash(segmented) != test_source_hash(flat)
   appended
 }
 "#,

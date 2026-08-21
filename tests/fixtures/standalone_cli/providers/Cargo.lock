@@ -1097,6 +1097,7 @@ dependencies = [
  "clap",
  "ecow",
  "flate2",
+ "geam-core",
  "geam-gleam-core",
  "geam-gleam-hexpm",
  "half",
@@ -1130,6 +1131,23 @@ dependencies = [
  "geam",
  "num-bigint",
  "standalone-catalog-domain",
+]
+
+[[package]]
+name = "geam-core"
+version = "0.1.2"
+dependencies = [
+ "bitvec",
+ "camino",
+ "ecow",
+ "geam-gleam-core",
+ "half",
+ "im",
+ "miette",
+ "num-bigint",
+ "thiserror 2.0.20",
+ "toml 0.9.12+spec-1.1.0",
+ "vec1",
 ]
 
 [[package]]

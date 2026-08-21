@@ -2,6 +2,7 @@ use super::super::schema::{BitArrayError, BitArrayOk, BitArrayResult};
 use super::BitArrayProvider;
 use crate::gleam_stdlib::GleamStdlibHostProfile;
 use crate::{BitArrayValue, HostCall, HostCallCompletion, HostCallError};
+use geam_core::provider_support::bit_array_byte_slice;
 use num_bigint::{BigInt, Sign};
 use num_traits::ToPrimitive;
 
@@ -26,7 +27,7 @@ where
             start
                 .to_usize()
                 .zip((&end - &start).to_usize())
-                .and_then(|(start, length)| value.byte_slice(start, length))
+                .and_then(|(start, length)| bit_array_byte_slice(&value, start, length))
         } else {
             None
         };

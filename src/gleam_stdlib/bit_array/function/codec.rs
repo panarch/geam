@@ -8,6 +8,7 @@ use base64::engine::general_purpose::{
     GeneralPurpose, GeneralPurposeConfig, STANDARD, STANDARD_NO_PAD,
 };
 use ecow::EcoString;
+use geam_core::provider_support::bit_array_pad_to_bytes;
 
 const ERLANG_BASE64: GeneralPurpose = GeneralPurpose::new(
     &alphabet::STANDARD,
@@ -18,7 +19,7 @@ pub(in crate::gleam_stdlib::bit_array) fn base64_encode(
     value: BitArrayValue,
     padding: bool,
 ) -> EcoString {
-    let value = value.pad_to_bytes();
+    let value = bit_array_pad_to_bytes(&value);
     if padding {
         STANDARD.encode(value.bytes()).into()
     } else {
@@ -40,7 +41,7 @@ where
 }
 
 pub(in crate::gleam_stdlib::bit_array) fn base16_encode(value: BitArrayValue) -> EcoString {
-    hex::encode_upper(value.pad_to_bytes().bytes()).into()
+    hex::encode_upper(bit_array_pad_to_bytes(&value).bytes()).into()
 }
 
 pub(in crate::gleam_stdlib::bit_array) fn base16_decode<'call, Profile>(

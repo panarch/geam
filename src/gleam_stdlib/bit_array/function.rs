@@ -12,6 +12,7 @@ use crate::{
 use bitvec::order::Msb0;
 use bitvec::vec::BitVec;
 use ecow::EcoString;
+use geam_core::provider_support::{bit_array_bits, bit_array_from_bits, bit_array_pad_to_bytes};
 use num_bigint::{BigInt, Sign};
 use std::marker::PhantomData;
 
@@ -41,7 +42,7 @@ pub(super) fn byte_size(value: BitArrayValue) -> BigInt {
 }
 
 pub(super) fn pad_to_bytes(value: BitArrayValue) -> BitArrayValue {
-    value.pad_to_bytes()
+    bit_array_pad_to_bytes(&value)
 }
 
 pub(super) fn unsafe_to_string(value: BitArrayValue) -> Result<EcoString, HostFailure> {
@@ -63,10 +64,10 @@ where
     let mut bits = BitVec::<u8, Msb0>::new();
     let mut index = 0;
     while let Some(value) = call.list_item(values, index) {
-        bits.extend_from_bitslice(value.bits());
+        bits.extend_from_bitslice(bit_array_bits(&value));
         index += 1;
     }
-    Ok(call.return_value(BitArrayValue::from_evaluated(bits)))
+    Ok(call.return_value(bit_array_from_bits(bits)))
 }
 
 pub(super) fn bit_array_to_int_and_size<'call, Profile>(

@@ -186,12 +186,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        StringTree, StringTreeExternalStorage, StringTreeNode, StringTreeNodeKind,
-        StringTreePayload,
-    };
-    use crate::gleam_stdlib::{GleamStdlibProfile, GleamStdlibStores};
-    use crate::{HostExternalEquality, HostExternalHashing, HostExternalStorage};
+    use super::{StringTree, StringTreeNode, StringTreeNodeKind};
     use ecow::EcoString;
     use std::rc::Rc;
 
@@ -249,67 +244,5 @@ mod tests {
         assert_eq!(sequence.flatten(), "");
         assert!(!text.structurally_equal(&sequence));
         assert_ne!(text.structural_hash(), sequence.structural_hash());
-    }
-
-    #[test]
-    fn external_storage_delegates_structural_source_semantics() {
-        type Profile = GleamStdlibProfile;
-
-        let left = StringTreePayload {
-            tree: StringTree::sequence([
-                StringTree::text("a".into()),
-                StringTree::text("b".into()),
-            ]),
-        };
-        let right = StringTreePayload {
-            tree: StringTree::sequence([
-                StringTree::text("a".into()),
-                StringTree::text("b".into()),
-            ]),
-        };
-        let stored_equal =
-            |_: &crate::runtime::StoredRuntimeValue, _: &crate::runtime::StoredRuntimeValue| true;
-        let stored_hash = |_: &crate::runtime::StoredRuntimeValue| 0;
-        let equality = HostExternalEquality::new(&stored_equal);
-        let hashing = HostExternalHashing::new(&stored_hash);
-
-        assert!(<StringTreeExternalStorage as HostExternalStorage<
-            Profile,
-            super::StringTreeSchema,
-        >>::source_equal(&equality, &left, &right,));
-        assert_eq!(
-            <StringTreeExternalStorage as HostExternalStorage<
-                Profile,
-                super::StringTreeSchema,
-            >>::source_hash(&hashing, &left,),
-            <StringTreeExternalStorage as HostExternalStorage<
-                Profile,
-                super::StringTreeSchema,
-            >>::source_hash(
-                &hashing, &right,
-            ),
-        );
-        let stores = GleamStdlibStores::default();
-        let store = <StringTreeExternalStorage as HostExternalStorage<
-            Profile,
-            super::StringTreeSchema,
-        >>::store(&stores);
-        let lease =
-            store.insert(
-                left,
-                <StringTreeExternalStorage as HostExternalStorage<
-                    Profile,
-                    super::StringTreeSchema,
-                >>::source_equal,
-                <StringTreeExternalStorage as HostExternalStorage<
-                    Profile,
-                    super::StringTreeSchema,
-                >>::source_hash,
-                <StringTreeExternalStorage as HostExternalStorage<
-                    Profile,
-                    super::StringTreeSchema,
-                >>::inspect,
-            );
-        assert_eq!(store.view(&lease).tree.flatten(), "ab");
     }
 }

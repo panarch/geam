@@ -1,21 +1,15 @@
-#[cfg(not(target_pointer_width = "64"))]
-compile_error!("geam requires a 64-bit target");
-
-pub mod frontend;
 pub mod gleam_json;
 pub mod gleam_stdlib;
 pub mod gleam_time;
-pub mod host;
-pub mod plan;
-pub mod planner;
-pub mod runtime;
 
-pub use frontend::{
+pub use geam_core::{frontend, host, plan, planner, runtime};
+
+pub use geam_core::frontend::{
     FrontendError, HostedTypedProgram, ModuleSource, PackageSource, ProjectError, TypedProgram,
     compile_typed_host_program, compile_typed_host_project, compile_typed_module,
     compile_typed_package_program, compile_typed_program, compile_typed_project,
 };
-pub use host::{
+pub use geam_core::host::{
     FallibleHostFunction, HostCall, HostCallCompletion, HostCallError, HostCallable,
     HostComponentProfile, HostConstruction, HostConstructions, HostCustom, HostCustomConstructor,
     HostCustomConstructorAt, HostCustomConstructorDefinition, HostCustomConstructorList,
@@ -35,11 +29,11 @@ pub use host::{
     HostTypeSequence, HostValue, ScopedConstructingHostFunction, ScopedDivergingHostFunction,
     ScopedHostFunction, StatelessHostProfile,
 };
-pub use plan::execution::{
+pub use geam_core::plan::execution::{
     ExecutionPlan, ExecutionPlanExplanation, HostSpecializationError,
     HostSpecializationErrorReason, HostedExecution,
 };
-pub use plan::{
+pub use geam_core::plan::{
     BitArrayExpr, BitArrayLocalId, BoolExpr, BoolLocalId, CustomType, CustomTypeName, EchoSite,
     Expr, ExternalType, ExternalTypeDefinition, ExternalTypeName, FunctionTemplate,
     FunctionTemplateId, FunctionType, HostCallSite, HostFunctionTemplate, HostedModulePlan,
@@ -47,11 +41,11 @@ pub use plan::{
     PanicSite, Param, ParamBinding, PlannedModule, SourceContext, SourceSpan, Step, StringExpr,
     StringLocalId, ValueType,
 };
-pub use planner::{
+pub use geam_core::planner::{
     ExternalTypeProviderLinkReason, HostProviderLinkReason, PlanError, RequiredHostFunction,
     plan_host_program, plan_module, plan_module_with_source, plan_program, required_host_functions,
 };
-pub use runtime::{
+pub use geam_core::runtime::{
     BitArraySegmentPanicReason, BitArrayValue, BitArrayValueLengthError, CustomFieldValue,
     CustomValue, EchoLocation, EchoOutput, EchoSink, ExecutionError, ExternalValue,
     ExternalValueIdentity, FunctionValue, HostError, HostLocation, HostOrigin, InvariantError,

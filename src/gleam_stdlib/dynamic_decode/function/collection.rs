@@ -11,6 +11,7 @@ use crate::{
     HostList, HostValue,
 };
 use ecow::EcoString;
+use geam_core::provider_support::sole_custom_fields;
 use num_bigint::BigInt;
 
 pub(in crate::gleam_stdlib::dynamic_decode) fn decode_list<'call, Profile>(
@@ -57,7 +58,7 @@ where
             let mut error_index = 0;
             while let Some(error) = call.list_item(errors, error_index) {
                 let (expected, (found, (path, ()))) =
-                    call.sole_custom_fields::<DecodeErrorConstructor>(error);
+                    sole_custom_fields::<_, _, _, DecodeErrorConstructor>(&mut call, error);
                 let mut updated_path = vec![EcoString::from(index.to_string())];
                 let mut path_index = 0;
                 while let Some(segment) = call.list_item(path, path_index) {

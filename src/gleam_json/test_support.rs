@@ -1,14 +1,17 @@
 use super::function::JsonProvider;
+use super::schema::Json;
 use super::{Component, GleamJsonProfile, GleamJsonRunState, GleamJsonStores};
 use crate::gleam_stdlib::{
     Component as GleamStdlibComponent, DictSchema, DynamicSchema, GleamStdlibHostProfile,
     GleamStdlibRunState, GleamStdlibStores, IoOutput, StringTreeSchema,
 };
 use crate::{
-    HostComponentProfile, HostModule, HostProfile, HostProviderModule, HostProviderSet,
-    HostedExecution, ModuleSource, PackageSource, compile_typed_host_program, plan_host_program,
+    HostCall, HostCallCompletion, HostCallError, HostComponentProfile, HostExternal, HostModule,
+    HostProfile, HostProviderModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
+    compile_typed_host_program, plan_host_program,
 };
 use ecow::EcoString;
+use num_bigint::BigInt;
 
 pub(super) struct CustomProfile;
 
@@ -103,7 +106,18 @@ fn do_object(entries: List(#(String, Json))) -> Json
 
 @external(erlang, "host", "do_preprocessed_array")
 fn do_preprocessed_array(values: List(Json)) -> Json
+
+@external(erlang, "host", "test_source_hash")
+fn test_source_hash(json: Json) -> Int
 "#;
+
+fn json_source_hash<'call>(
+    call: HostCall<'call, GleamJsonProfile, JsonProvider<GleamJsonProfile>, BigInt>,
+    json: HostExternal<'call, Json>,
+) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+    let hash = BigInt::from(call.source_hash::<Json>(json));
+    Ok(call.return_value(hash))
+}
 
 pub(super) fn execution(source: &str) -> HostedExecution<GleamJsonProfile> {
     execution_with_modules(source, Vec::<HostModule<GleamJsonProfile>>::new())
@@ -140,6 +154,13 @@ pub(super) fn execution_with_modules(
                 )
                 .expect("synthetic StringTree declaration should register"),
             super::host_provider::<GleamJsonProfile>()
+                .and_then(|provider| {
+                    provider
+                        .with_scoped_function::<JsonProvider<GleamJsonProfile>, (Json,), BigInt, _>(
+                            "test_source_hash",
+                            json_source_hash,
+                        )
+                })
                 .expect("official JSON provider should register"),
         ];
     let source = format!("{JSON_DECLARATIONS}\n{source}");

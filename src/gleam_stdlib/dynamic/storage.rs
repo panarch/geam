@@ -1,11 +1,11 @@
 use super::schema::DynamicSchema;
 use crate::gleam_stdlib::{GleamStdlibHostProfile, stdlib_stores};
-use crate::host::HostStoredValueFamily;
 use crate::{
     HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalStorage,
     HostExternalStore, HostStoredDynamic,
 };
 use ecow::EcoString;
+use geam_core::provider_support::{HostStoredValueFamily, stored_value_family, stored_value_type};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -44,7 +44,7 @@ pub(crate) enum DynamicRepresentation {
 
 impl DynamicRepresentation {
     pub(super) fn from_value(value: &HostStoredDynamic) -> Self {
-        Self::from_family(value.value_family(), value.value_type())
+        Self::from_family(stored_value_family(value), stored_value_type(value))
     }
 
     pub(super) fn name(self) -> &'static str {
@@ -155,25 +155,31 @@ where
 #[cfg(test)]
 mod tests {
     use super::DynamicRepresentation;
-    use crate::host::HostStoredValueFamily;
-    use crate::{
-        CustomType, CustomTypeName, ExternalType, ExternalTypeName, FunctionType, ValueType,
-    };
+    use crate::ValueType;
+    use crate::gleam_stdlib::GleamStdlibProfile;
+    use geam_core::provider_support::HostStoredValueFamily;
 
     #[test]
     fn classifies_every_runtime_value_family_and_nominal_dictionary() {
-        let dict = ExternalType::new(
-            ExternalTypeName::new("gleam_stdlib".into(), "gleam/dict".into(), "Dict".into()),
-            vec![ValueType::Int, ValueType::String],
-        );
-        let resource = ExternalType::new(
-            ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
-            Vec::new(),
-        );
-        let custom = CustomType::new(
-            CustomTypeName::new("domain".into(), "domain/item".into(), "Item".into()),
-            Vec::new(),
-        );
+        let dict_provider = crate::gleam_stdlib::dict::host_provider::<GleamStdlibProfile>()
+            .expect("official dict provider should register");
+        let dict = dict_provider
+            .functions()
+            .find(|function| function.name() == "new")
+            .expect("dict provider should register new")
+            .type_()
+            .return_()
+            .clone();
+        let string_tree_provider =
+            crate::gleam_stdlib::string_tree::host_provider::<GleamStdlibProfile>()
+                .expect("official string tree provider should register");
+        let resource = string_tree_provider
+            .functions()
+            .find(|function| function.name() == "from_string")
+            .expect("string tree provider should register from_string")
+            .type_()
+            .return_()
+            .clone();
         let cases = [
             (HostStoredValueFamily::Int, ValueType::Int, "Int"),
             (HostStoredValueFamily::Float, ValueType::Float, "Float"),
@@ -190,39 +196,12 @@ mod tests {
             ),
             (HostStoredValueFamily::Bool, ValueType::Bool, "Bool"),
             (HostStoredValueFamily::Nil, ValueType::Nil, "Nil"),
-            (
-                HostStoredValueFamily::Tuple,
-                ValueType::Tuple(vec![ValueType::Int]),
-                "Array",
-            ),
-            (
-                HostStoredValueFamily::List,
-                ValueType::List(Box::new(ValueType::Int)),
-                "List",
-            ),
-            (
-                HostStoredValueFamily::Function,
-                ValueType::Function(Box::new(FunctionType::new(
-                    vec![ValueType::Int],
-                    ValueType::Bool,
-                ))),
-                "Function",
-            ),
-            (
-                HostStoredValueFamily::Custom,
-                ValueType::Custom(custom),
-                "Custom",
-            ),
-            (
-                HostStoredValueFamily::External,
-                ValueType::External(dict),
-                "Dict",
-            ),
-            (
-                HostStoredValueFamily::External,
-                ValueType::External(resource),
-                "External",
-            ),
+            (HostStoredValueFamily::Tuple, ValueType::Nil, "Array"),
+            (HostStoredValueFamily::List, ValueType::Nil, "List"),
+            (HostStoredValueFamily::Function, ValueType::Nil, "Function"),
+            (HostStoredValueFamily::Custom, ValueType::Nil, "Custom"),
+            (HostStoredValueFamily::External, dict, "Dict"),
+            (HostStoredValueFamily::External, resource, "External"),
         ];
 
         for (family, type_, expected) in cases {
