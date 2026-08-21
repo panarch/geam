@@ -1,11 +1,11 @@
 [package]
 name = "geam"
-version = "0.1.2"
-edition = "2024"
-rust-version = "1.96"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
 description = "Experimental Rust-embedded execution runtime for typed Gleam programs"
-license = "Apache-2.0"
-repository = "https://github.com/panarch/geam"
+license.workspace = true
+repository.workspace = true
 readme = "README.md"
 publish = ["crates-io"]
 keywords = ["gleam", "runtime", "interpreter", "embedded"]
@@ -18,7 +18,33 @@ include = [
     "/README.md",
 ]
 
-[dependencies]
+[workspace]
+members = [
+    ".",
+    "core",
+    "cli",
+    "builtins/stdlib",
+    "builtins/json",
+    "builtins/time",
+]
+default-members = [
+    ".",
+    "core",
+    "cli",
+    "builtins/stdlib",
+    "builtins/json",
+    "builtins/time",
+]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.2"
+edition = "2024"
+rust-version = "1.96"
+license = "Apache-2.0"
+repository = "https://github.com/panarch/geam"
+
+[workspace.dependencies]
 base64 = "0.22"
 bitvec = "1.1.1"
 camino = "1"
@@ -28,10 +54,16 @@ clap = { version = "4", features = ["derive"] }
 # does not compile against ecow 0.3.0.
 ecow = "=0.2.6"
 flate2 = "1"
+geam-core = { path = "core", version = "=0.1.2" }
+geam-cli = { path = "cli", version = "=0.1.2" }
+geam-json = { path = "builtins/json", version = "=0.1.2" }
+geam-stdlib = { path = "builtins/stdlib", version = "=0.1.2" }
+geam-time = { path = "builtins/time", version = "=0.1.2" }
 gleam-core = { package = "geam-gleam-core", version = "=1.18.1-geam.2" }
-hexpm = { package = "geam-gleam-hexpm", version = "=1.18.1-geam.2" }
+gleam-compiler-core = { package = "geam-gleam-core", version = "=1.18.1-geam.2" }
 half = { version = "2.7.1", default-features = false }
 hex = "0.4"
+hexpm = { package = "geam-gleam-hexpm", version = "=1.18.1-geam.2" }
 im = "15"
 jiff = "0.2.35"
 jiter = { version = "0.16", default-features = false }
@@ -52,5 +84,17 @@ unicode-segmentation = "1.13"
 ureq = { version = "3", features = ["json"] }
 vec1 = "1"
 
+[dependencies]
+geam-cli.workspace = true
+geam-core.workspace = true
+geam-json.workspace = true
+geam-stdlib.workspace = true
+geam-time.workspace = true
+
 [dev-dependencies]
-miette = { version = "7", features = ["fancy-no-backtrace"] }
+camino.workspace = true
+ecow.workspace = true
+gleam-core.workspace = true
+miette = { workspace = true, features = ["fancy-no-backtrace"] }
+tempfile.workspace = true
+toml.workspace = true

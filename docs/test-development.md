@@ -27,6 +27,11 @@ Integration coverage may execute an owner without documenting its exact
 contract. Conversely, a narrow owner probe may answer a reachability question
 without replacing a readable source example.
 
+When production ownership moves to another crate, move owner tests with it.
+Do not preserve former same-crate private access by publishing a test API;
+cross-crate behavior should use an existing public pipeline, while genuinely
+shared production behavior uses the narrow contract required by its caller.
+
 ## Choose The Strategy
 
 An uncovered path does not always mean that another test is missing. A coverage

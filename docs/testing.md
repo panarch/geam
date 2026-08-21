@@ -3,6 +3,12 @@
 Geam uses Rust unit tests for compiler-boundary, lowering, and runtime
 milestones.
 
+The root Cargo workspace contains the `geam` facade and binary, `geam-core`,
+`geam-stdlib`, `geam-json`, `geam-time`, and `geam-cli`. Each extracted package
+owns tests for its production protocols. Root integration targets own the
+public `geam::...` facade, official package compatibility, and standalone
+binary behavior; they do not replace package-local owner tests.
+
 For guidance on constructing owner tests, promoting diagnostic probes, and
 closing coverage gaps, see [test-development.md](test-development.md).
 
@@ -159,8 +165,12 @@ tests.
 With the Rust toolchain and Gleam `v1.18.1` installed, run the full test suite:
 
 ```sh
-cargo test --locked
+cargo test --workspace --locked
 ```
+
+The workspace's explicit default members are the same six packages, so
+`cargo test --locked` remains equivalent for local use. CI spells out
+`--workspace` so newly added internal packages cannot be omitted implicitly.
 
 Planner unit tests use the crate-internal `planner::dsl` expected-plan helpers
 instead of snapshots, so supported lowering changes update the expected plan
@@ -172,8 +182,8 @@ policy, see [review-policy.md](review-policy.md).
 Run formatting and lint checks:
 
 ```sh
-cargo fmt --check
-cargo clippy --all-targets --locked -- -D warnings
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
 ```
 
 ## Coverage
@@ -191,7 +201,7 @@ cargo install cargo-llvm-cov --locked
 Run the enforced coverage gate:
 
 ```sh
-cargo llvm-cov --locked --summary-only --fail-under-lines 100 --fail-under-regions 100
+cargo llvm-cov --workspace --locked --summary-only --fail-under-lines 100 --fail-under-regions 100
 ```
 
 Geam keeps both line coverage and full-scope region coverage at 100%. Region
@@ -202,13 +212,13 @@ When a coverage gap is hard to explain from the summary alone, split the target
 and inspect LLVM's region and instantiation detail before adding fixtures:
 
 ```sh
-cargo llvm-cov --text --show-instantiations --show-missing-lines
+cargo llvm-cov --workspace --locked --text --show-instantiations --show-missing-lines
 ```
 
 Generate an HTML report:
 
 ```sh
-cargo llvm-cov --html
+cargo llvm-cov --workspace --locked --html
 ```
 
 The HTML report is written to:

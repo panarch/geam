@@ -1090,36 +1090,11 @@ dependencies = [
 name = "geam"
 version = "0.1.2"
 dependencies = [
- "base64 0.22.1",
- "bitvec",
- "camino",
- "cargo_metadata",
- "clap",
- "ecow",
- "flate2",
- "geam-gleam-core",
- "geam-gleam-hexpm",
- "half",
- "hex",
- "im",
- "jiff",
- "jiter",
- "miette",
- "num-bigint",
- "num-traits",
- "rand 0.10.0",
- "ryu",
- "semver",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tar",
- "tempfile",
- "thiserror 2.0.20",
- "toml 0.9.12+spec-1.1.0",
- "unicode-segmentation",
- "ureq",
- "vec1",
+ "geam-cli",
+ "geam-core",
+ "geam-json",
+ "geam-stdlib",
+ "geam-time",
 ]
 
 [[package]]
@@ -1130,6 +1105,49 @@ dependencies = [
  "geam",
  "num-bigint",
  "standalone-catalog-domain",
+]
+
+[[package]]
+name = "geam-cli"
+version = "0.1.2"
+dependencies = [
+ "camino",
+ "cargo_metadata",
+ "clap",
+ "flate2",
+ "geam-core",
+ "geam-gleam-core",
+ "geam-gleam-hexpm",
+ "geam-json",
+ "geam-stdlib",
+ "geam-time",
+ "hex",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tar",
+ "tempfile",
+ "thiserror 2.0.20",
+ "toml 0.9.12+spec-1.1.0",
+ "ureq",
+]
+
+[[package]]
+name = "geam-core"
+version = "0.1.2"
+dependencies = [
+ "bitvec",
+ "camino",
+ "ecow",
+ "geam-gleam-core",
+ "half",
+ "im",
+ "miette",
+ "num-bigint",
+ "thiserror 2.0.20",
+ "toml 0.9.12+spec-1.1.0",
+ "vec1",
 ]
 
 [[package]]
@@ -1257,6 +1275,44 @@ dependencies = [
  "num-bigint",
  "typed-arena",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "geam-json"
+version = "0.1.2"
+dependencies = [
+ "ecow",
+ "geam-core",
+ "geam-stdlib",
+ "jiter",
+ "num-bigint",
+ "ryu",
+]
+
+[[package]]
+name = "geam-stdlib"
+version = "0.1.2"
+dependencies = [
+ "base64 0.22.1",
+ "bitvec",
+ "ecow",
+ "geam-core",
+ "hex",
+ "im",
+ "num-bigint",
+ "num-traits",
+ "rand 0.10.0",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "geam-time"
+version = "0.1.2"
+dependencies = [
+ "geam-core",
+ "geam-stdlib",
+ "jiff",
+ "num-bigint",
 ]
 
 [[package]]

@@ -1,0 +1,17 @@
+[package]
+name = "geam-json"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Official Gleam JSON providers for Geam"
+license.workspace = true
+repository.workspace = true
+publish = ["crates-io"]
+
+[dependencies]
+ecow.workspace = true
+geam-core.workspace = true
+geam-stdlib.workspace = true
+jiter.workspace = true
+num-bigint.workspace = true
+ryu.workspace = true

@@ -1,0 +1,31 @@
+[package]
+name = "geam-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Standalone command implementation for Geam"
+license.workspace = true
+repository.workspace = true
+publish = ["crates-io"]
+
+[dependencies]
+camino.workspace = true
+cargo_metadata.workspace = true
+clap.workspace = true
+flate2.workspace = true
+geam-core.workspace = true
+geam-json.workspace = true
+geam-stdlib.workspace = true
+geam-time.workspace = true
+gleam-core.workspace = true
+hex.workspace = true
+hexpm.workspace = true
+semver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tar.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+ureq.workspace = true

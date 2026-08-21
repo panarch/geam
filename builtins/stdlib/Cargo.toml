@@ -1,0 +1,21 @@
+[package]
+name = "geam-stdlib"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Official Gleam standard-library providers for Geam"
+license.workspace = true
+repository.workspace = true
+publish = ["crates-io"]
+
+[dependencies]
+base64.workspace = true
+bitvec.workspace = true
+ecow.workspace = true
+geam-core.workspace = true
+hex.workspace = true
+im.workspace = true
+num-bigint.workspace = true
+num-traits.workspace = true
+rand.workspace = true
+unicode-segmentation.workspace = true
