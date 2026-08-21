@@ -1100,17 +1100,16 @@ dependencies = [
  "geam-core",
  "geam-gleam-core",
  "geam-gleam-hexpm",
+ "geam-json",
  "geam-stdlib",
  "half",
  "hex",
  "im",
  "jiff",
- "jiter",
  "miette",
  "num-bigint",
  "num-traits",
  "rand 0.10.0",
- "ryu",
  "semver",
  "serde",
  "serde_json",
@@ -1276,6 +1275,18 @@ dependencies = [
  "num-bigint",
  "typed-arena",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "geam-json"
+version = "0.1.2"
+dependencies = [
+ "ecow",
+ "geam-core",
+ "geam-stdlib",
+ "jiter",
+ "num-bigint",
+ "ryu",
 ]
 
 [[package]]

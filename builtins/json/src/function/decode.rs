@@ -2,8 +2,8 @@ mod error;
 
 use self::error::DecodeFailure;
 use super::JsonProvider;
-use crate::gleam_json::GleamJsonHostProfile;
-use crate::gleam_json::schema::{
+use crate::GleamJsonHostProfile;
+use crate::schema::{
     DecodeConstructions, DecodeDictIndex, DecodeDynamicIndex, DecodeErrorIndex, DecodeListIndex,
     DynamicDict, DynamicList, JsonDynamicError, JsonDynamicOk, JsonDynamicResult, UnexpectedByte,
     UnexpectedEndOfInput, UnexpectedSequence,
@@ -17,7 +17,7 @@ use geam_stdlib::provider_support::{Dynamic, create_dynamic_dict, create_dynamic
 use jiter::{Jiter, Peek};
 use num_bigint::BigInt;
 
-pub(in crate::gleam_json) fn decode_to_dynamic<'call, Profile>(
+pub(crate) fn decode_to_dynamic<'call, Profile>(
     mut call: HostCall<'call, Profile, JsonProvider<Profile>, JsonDynamicResult>,
     constructions: HostConstructions<'call, DecodeConstructions>,
     json: BitArrayValue,
@@ -304,7 +304,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::{DecodeFailure, ParsedNumber, parse_number};
-    use crate::gleam_json::test_support::{execution, run_state};
+    use crate::test_support::{execution, run_state};
 
     #[test]
     fn parses_validated_number_tokens_and_maps_defensive_failures() {

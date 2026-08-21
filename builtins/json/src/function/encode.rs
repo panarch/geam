@@ -1,13 +1,13 @@
 use super::JsonProvider;
-use crate::gleam_json::GleamJsonHostProfile;
-use crate::gleam_json::schema::{Json, ObjectEntry};
-use crate::gleam_json::storage::JsonPayload;
+use crate::GleamJsonHostProfile;
+use crate::schema::{Json, ObjectEntry};
+use crate::storage::JsonPayload;
 use crate::{HostCall, HostCallCompletion, HostCallError, HostExternal, HostFailure, HostList};
 use ecow::EcoString;
 use geam_stdlib::provider_support::{StoredStringTree, StringTree, StringTreePayload};
 use num_bigint::BigInt;
 
-pub(in crate::gleam_json) fn do_to_string<'call, Profile>(
+pub(crate) fn do_to_string<'call, Profile>(
     call: HostCall<'call, Profile, JsonProvider<Profile>, EcoString>,
     json: HostExternal<'call, Json>,
 ) -> Result<HostCallCompletion<'call, EcoString>, HostCallError>
@@ -18,7 +18,7 @@ where
     Ok(call.return_value(text))
 }
 
-pub(in crate::gleam_json) fn to_string_tree<'call, Profile>(
+pub(crate) fn to_string_tree<'call, Profile>(
     mut call: HostCall<'call, Profile, JsonProvider<Profile>, StringTree>,
     json: HostExternal<'call, Json>,
 ) -> Result<HostCallCompletion<'call, StringTree>, HostCallError>
@@ -30,7 +30,7 @@ where
     Ok(call.return_value(tree))
 }
 
-pub(in crate::gleam_json) fn do_string<'call, Profile>(
+pub(crate) fn do_string<'call, Profile>(
     mut call: HostCall<'call, Profile, JsonProvider<Profile>, Json>,
     value: EcoString,
 ) -> Result<HostCallCompletion<'call, Json>, HostCallError>
@@ -43,7 +43,7 @@ where
     Ok(call.return_value(json))
 }
 
-pub(in crate::gleam_json) fn do_bool<'call, Profile>(
+pub(crate) fn do_bool<'call, Profile>(
     mut call: HostCall<'call, Profile, JsonProvider<Profile>, Json>,
     value: bool,
 ) -> Result<HostCallCompletion<'call, Json>, HostCallError>
@@ -57,7 +57,7 @@ where
     Ok(call.return_value(json))
 }
 
-pub(in crate::gleam_json) fn do_int<'call, Profile>(
+pub(crate) fn do_int<'call, Profile>(
     mut call: HostCall<'call, Profile, JsonProvider<Profile>, Json>,
     value: BigInt,
 ) -> Result<HostCallCompletion<'call, Json>, HostCallError>
@@ -70,7 +70,7 @@ where
     Ok(call.return_value(json))
 }
 
-pub(in crate::gleam_json) fn do_float<'call, Profile>(
+pub(crate) fn do_float<'call, Profile>(
     mut call: HostCall<'call, Profile, JsonProvider<Profile>, Json>,
     value: f64,
 ) -> Result<HostCallCompletion<'call, Json>, HostCallError>
@@ -86,7 +86,7 @@ where
     Ok(call.return_value(json))
 }
 
-pub(in crate::gleam_json) fn do_null<'call, Profile>(
+pub(crate) fn do_null<'call, Profile>(
     mut call: HostCall<'call, Profile, JsonProvider<Profile>, Json>,
 ) -> Result<HostCallCompletion<'call, Json>, HostCallError>
 where
@@ -98,7 +98,7 @@ where
     Ok(call.return_value(json))
 }
 
-pub(in crate::gleam_json) fn do_object<'call, Profile>(
+pub(crate) fn do_object<'call, Profile>(
     mut call: HostCall<'call, Profile, JsonProvider<Profile>, Json>,
     entries: HostList<'call, ObjectEntry>,
 ) -> Result<HostCallCompletion<'call, Json>, HostCallError>
@@ -124,7 +124,7 @@ where
     Ok(call.return_value(json))
 }
 
-pub(in crate::gleam_json) fn do_preprocessed_array<'call, Profile>(
+pub(crate) fn do_preprocessed_array<'call, Profile>(
     mut call: HostCall<'call, Profile, JsonProvider<Profile>, Json>,
     values: HostList<'call, Json>,
 ) -> Result<HostCallCompletion<'call, Json>, HostCallError>
@@ -194,8 +194,8 @@ fn encode_float(value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::{encode_float, encode_string};
-    use crate::gleam_json::GleamJsonProfile;
-    use crate::gleam_json::test_support::{execution, execution_with_modules, run_state};
+    use crate::GleamJsonProfile;
+    use crate::test_support::{execution, execution_with_modules, run_state};
     use crate::{ExecutionError, HostError, HostModule, InvariantError, ValueType};
 
     #[test]

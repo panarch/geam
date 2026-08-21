@@ -61,9 +61,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::JsonProvider;
+    use crate::GleamJsonProfile;
     use crate::HostProvider;
-    use crate::gleam_json::GleamJsonProfile;
-    use crate::gleam_json::test_support::run_state;
+    use crate::test_support::run_state;
 
     #[test]
     fn projects_only_the_json_component_state() {

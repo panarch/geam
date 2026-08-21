@@ -64,7 +64,7 @@ fn normalize_number(number: &[u8]) -> EcoString {
 #[cfg(test)]
 mod tests {
     use super::{DecodeFailure, normalize_number, unicode_sequence};
-    use crate::gleam_json::test_support::{execution, run_state};
+    use crate::test_support::{execution, run_state};
     use jiter::{JiterError, JiterErrorType, JsonErrorType};
 
     #[test]

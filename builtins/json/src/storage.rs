@@ -61,8 +61,8 @@ where
 mod tests {
     use super::{JsonPayload, JsonSchema, JsonStorage, inspect, source_equal, source_hash};
     use crate::HostExternalStorage;
-    use crate::gleam_json::test_support::{CustomProfile, CustomStores, execution, run_state};
-    use crate::gleam_json::{GleamJsonProfile, GleamJsonProfileStores, json_stores};
+    use crate::test_support::{CustomProfile, CustomStores, execution, run_state};
+    use crate::{GleamJsonProfile, GleamJsonProfileStores, json_stores};
     use geam_stdlib::provider_support::StoredStringTree;
 
     #[test]
