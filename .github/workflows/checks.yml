@@ -111,6 +111,9 @@ jobs:
       - name: Run tests
         run: cargo test --workspace --locked
 
+      - name: Assemble workspace packages
+        run: cargo package --workspace --locked --no-verify
+
       - name: Verify standalone provider packages
         working-directory: tests/fixtures/standalone_cli/providers
         run: |

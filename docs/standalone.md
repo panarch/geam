@@ -86,7 +86,7 @@ example_text_pattern
 
 The example project contains an ordinary local Gleam dependency and no Geam
 mapping metadata. Its provider crate is package-ready but remains unpublished
-until the planned workspace and macro authoring work is complete. The bounded
+while the higher-level macro authoring API is still planned. The bounded
 registry tests separately verify discovery, approval, archive validation, and
 the same production runner path without requiring a published fixture crate.
 
