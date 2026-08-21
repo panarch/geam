@@ -104,6 +104,9 @@ actual callers before assigning a semantic role.
   reads it. Final models must not depend on transformation-only types.
 - Module paths and visibility must match actual production callers. Do not move
   phase-local types across boundaries merely to bypass privacy.
+- A crate boundary does not justify wider visibility. Expose only the smallest
+  cross-crate contract required by an actual production caller; test access is
+  not a production caller.
 - Aggregate roots must not flatten unrelated child domains for convenience.
   Type, module, and field names must distinguish complete owners from
   contained or open structures.

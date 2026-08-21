@@ -31,7 +31,7 @@ jobs:
           rustflags: ""
 
       - name: Check formatting
-        run: cargo fmt --check
+        run: cargo fmt --all --check
 
       - name: Check standalone provider formatting
         working-directory: tests/fixtures/standalone_cli/providers
@@ -69,7 +69,7 @@ jobs:
         run: cargo fetch --locked --config net.offline=false
 
       - name: Run clippy
-        run: cargo clippy --all-targets --locked -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Run standalone provider clippy
         working-directory: tests/fixtures/standalone_cli/providers
@@ -109,7 +109,7 @@ jobs:
             examples/text_pattern/provider -> target
 
       - name: Run tests
-        run: cargo test --locked
+        run: cargo test --workspace --locked
 
       - name: Verify standalone provider packages
         working-directory: tests/fixtures/standalone_cli/providers
@@ -200,4 +200,4 @@ jobs:
           tool: cargo-llvm-cov@0.8.7
 
       - name: Check coverage
-        run: cargo llvm-cov --locked --summary-only --fail-under-lines 100 --fail-under-regions 100
+        run: cargo llvm-cov --workspace --locked --summary-only --fail-under-lines 100 --fail-under-regions 100
