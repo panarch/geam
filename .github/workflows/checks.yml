@@ -37,6 +37,10 @@ jobs:
         working-directory: tests/fixtures/standalone_cli/providers
         run: cargo fmt --all --check
 
+      - name: Check provider authoring example formatting
+        working-directory: examples/text_pattern/provider
+        run: cargo fmt --all --check
+
   clippy:
     name: clippy
     runs-on: ubuntu-latest
@@ -58,6 +62,7 @@ jobs:
           workspaces: |
             . -> target
             tests/fixtures/standalone_cli/providers -> target
+            examples/text_pattern/provider -> target
 
       - name: Fetch standalone provider dependencies
         working-directory: tests/fixtures/standalone_cli/providers
@@ -69,6 +74,10 @@ jobs:
       - name: Run standalone provider clippy
         working-directory: tests/fixtures/standalone_cli/providers
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Run provider authoring example clippy
+        working-directory: examples/text_pattern/provider
+        run: cargo clippy --all-targets --locked -- -D warnings
 
   test:
     name: test
@@ -97,6 +106,7 @@ jobs:
           workspaces: |
             . -> target
             tests/fixtures/standalone_cli/providers -> target
+            examples/text_pattern/provider -> target
 
       - name: Run tests
         run: cargo test --locked
@@ -106,6 +116,10 @@ jobs:
         run: |
           cargo package --quiet --offline --allow-dirty --no-verify --locked --package geam-catalog
           cargo package --quiet --offline --allow-dirty --no-verify --locked --package geam-counter
+
+      - name: Verify provider authoring example package
+        working-directory: examples/text_pattern/provider
+        run: cargo package --locked
 
       - name: Verify standalone Gleam packages
         run: |
@@ -178,6 +192,7 @@ jobs:
           workspaces: |
             . -> target
             tests/fixtures/standalone_cli/providers -> target
+            examples/text_pattern/provider -> target
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@v2

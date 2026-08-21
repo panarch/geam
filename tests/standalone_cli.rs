@@ -300,6 +300,66 @@ nested = true
 }
 
 #[test]
+fn runs_the_documented_text_pattern_provider_from_its_local_path() {
+    let fixture = text_pattern_example();
+    let project = fixture.path().join("project");
+
+    let add = geam_at(&project, ["provider", "add", "--path", "../provider"]);
+    assert!(
+        add.status.success(),
+        "text pattern provider add failed: {}",
+        String::from_utf8_lossy(&add.stderr),
+    );
+
+    let prepare = geam_at(&project, ["prepare"]);
+    assert!(
+        prepare.status.success(),
+        "text pattern prepare failed: {}",
+        String::from_utf8_lossy(&prepare.stderr),
+    );
+    let manifest = fs::read_to_string(project.join("Cargo.toml"))
+        .expect("managed text pattern manifest should be readable");
+    let runner = fs::read_to_string(project.join("build/geam/runner.rs"))
+        .expect("text pattern runner should be readable");
+    let manifest = toml::from_str::<toml::Value>(&manifest)
+        .expect("managed text pattern manifest should be valid TOML");
+    let dependency = manifest["dependencies"]["geam_provider_example_text_pattern"]
+        .as_table()
+        .expect("text pattern dependency should be a table");
+    assert_eq!(
+        dependency["package"].as_str(),
+        Some("geam-example-text-pattern"),
+    );
+    assert_eq!(
+        dependency["path"].as_str(),
+        Some(
+            fs::canonicalize(fixture.path().join("provider"))
+                .expect("text pattern provider should canonicalize")
+                .to_str()
+                .expect("text pattern provider path should be valid UTF-8"),
+        ),
+    );
+    assert!(runner.contains("geam_provider_example_text_pattern::Component"));
+
+    let run = geam_at(&project, ["run"]);
+    assert!(
+        run.status.success(),
+        "text pattern run failed: {}",
+        String::from_utf8_lossy(&run.stderr),
+    );
+    assert!(run.stdout.is_empty());
+    let canonical_project =
+        fs::canonicalize(&project).expect("text pattern project should canonicalize");
+    assert_eq!(
+        String::from_utf8_lossy(&run.stderr),
+        format!(
+            "{}/src/text_pattern_example.gleam:8 compiled pattern\nPattern(\"[A-Za-z]+\")\n",
+            canonical_project.display(),
+        ),
+    );
+}
+
+#[test]
 fn refuses_to_adopt_user_owned_cargo_projects() {
     let project = gleam_project();
     fs::write(
@@ -727,6 +787,42 @@ fn standalone_fixture() -> TempDir {
         format!("[patch.crates-io]\ngeam = {{ path = {geam_path} }}\n\n[net]\noffline = true\n",),
     )
     .expect("provider Cargo config should be written");
+    fixture
+}
+
+fn text_pattern_example() -> TempDir {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/text_pattern");
+    static PROVIDER_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
+    workspace_dependencies::prepare(
+        &PROVIDER_DEPENDENCIES,
+        &source.join("provider"),
+        "cargo",
+        &["fetch", "--locked", "--config", "net.offline=false"],
+        "`cargo fetch --locked --config net.offline=false`",
+    );
+
+    let fixture = tempdir().expect("temporary text pattern fixture should be created");
+    copy_directory(&source, fixture.path());
+    let project = fixture.path().join("project");
+    for generated in ["Cargo.toml", "Cargo.lock", "Cargo.toml.geam.tmp"] {
+        let path = project.join(generated);
+        match fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => panic!(
+                "generated text pattern file {} should be removable: {error}",
+                path.display(),
+            ),
+        }
+    }
+    fs::create_dir_all(project.join(".cargo"))
+        .expect("text pattern Cargo config directory should be created");
+    let geam_path = toml::Value::String(env!("CARGO_MANIFEST_DIR").to_owned()).to_string();
+    fs::write(
+        project.join(".cargo/config.toml"),
+        format!("[patch.crates-io]\ngeam = {{ path = {geam_path} }}\n\n[net]\noffline = true\n",),
+    )
+    .expect("text pattern Cargo config should be written");
     fixture
 }
 

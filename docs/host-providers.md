@@ -71,6 +71,38 @@ projects only this component's state through `HostComponentProfile<Component>`.
 That keeps callback state concrete without making the aggregate runner profile
 part of the provider crate.
 
+## Provider Authoring Example
+
+[`geam-example-text-pattern`](../examples/text_pattern/provider) is a compact
+provider intended to be read as normal crate source. It maps the ordinary
+`example_text_pattern` Gleam package to Rust `regex` without adding package-side
+Geam metadata. The component demonstrates:
+
+- a constructorless `Pattern` external backed by immutable provider storage;
+- source equality, hashing, and canonical inspection for opaque values;
+- `Result(Pattern, CompileError)` construction through sealed intermediate
+  capabilities;
+- scalar arguments and returns plus `List(String)` output; and
+- the explicit stateless component-initialization boundary.
+
+Its Cargo manifest uses the canonical discovery name and schema-1 metadata:
+
+```toml
+[package]
+name = "geam-example-text-pattern"
+
+[package.metadata.geam.provider]
+schema = 1
+gleam-package = "example_text_pattern"
+gleam-version = ">= 1.0.0 and < 2.0.0"
+```
+
+The [complete example](../examples/text_pattern/README.md) executes this crate
+through explicit path selection and packages it with ordinary Cargo tooling.
+Its [provider README](../examples/text_pattern/provider/README.md) also records
+the concrete higher-level authoring target that will replace the current
+low-level declarations before publication.
+
 ## Runner Profile
 
 A runner combines selected components with ordinary struct fields. An embedding

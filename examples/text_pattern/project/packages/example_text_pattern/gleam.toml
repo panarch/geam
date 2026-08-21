@@ -1,0 +1,4 @@
+name = "example_text_pattern"
+version = "1.0.0"
+description = "Typed text patterns backed by a native Geam provider"
+licences = ["Apache-2.0"]

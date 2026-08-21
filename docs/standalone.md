@@ -73,6 +73,23 @@ when stdin is noninteractive, and it asks again before replacing an approved
 provider that no longer supports the resolved Gleam version. Existing compatible
 exact selections remain pinned until changed explicitly.
 
+The repository's [text pattern example](../examples/text_pattern/README.md)
+exercises the same runner through an explicit path selection:
+
+```text
+example_text_pattern
+-> geam provider add --path ../provider
+-> validated provider metadata
+-> exact path dependency and root lock
+-> generated runner check and execution
+```
+
+The example project contains an ordinary local Gleam dependency and no Geam
+mapping metadata. Its provider crate is package-ready but remains unpublished
+until the planned workspace and macro authoring work is complete. The bounded
+registry tests separately verify discovery, approval, archive validation, and
+the same production runner path without requiring a published fixture crate.
+
 Explicit selection is itself approval:
 
 ```sh
