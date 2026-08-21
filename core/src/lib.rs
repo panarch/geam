@@ -5,8 +5,11 @@ pub mod frontend;
 pub mod host;
 pub mod plan;
 pub mod planner;
+pub mod provider;
 pub mod runtime;
 
+#[doc(hidden)]
+pub mod __macro_support;
 #[doc(hidden)]
 pub mod provider_support;
 

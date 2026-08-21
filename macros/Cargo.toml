@@ -1,0 +1,23 @@
+[package]
+name = "geam-macros"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Provider authoring macros for Geam"
+license.workspace = true
+repository.workspace = true
+publish = ["crates-io"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro-crate.workspace = true
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true
+
+[dev-dependencies]
+ecow.workspace = true
+geam-core.workspace = true
+trybuild.workspace = true

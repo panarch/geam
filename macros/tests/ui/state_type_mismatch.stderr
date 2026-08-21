@@ -1,0 +1,17 @@
+error[E0308]: mismatched types
+  --> tests/ui/state_type_mismatch.rs:20:1
+   |
+20 | #[geam_macros::module(path = "counter", crate_path = geam_core)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `&mut OtherState`, found `&mut RunState`
+...
+29 |     fn next(#[geam_macros::state] _: &mut OtherState) -> bool {
+   |        ---- arguments to this function are incorrect
+   |
+   = note: expected mutable reference `&mut OtherState`
+              found mutable reference `&mut RunState`
+note: function defined here
+  --> tests/ui/state_type_mismatch.rs:29:8
+   |
+29 |     fn next(#[geam_macros::state] _: &mut OtherState) -> bool {
+   |        ^^^^                       ------------------
+   = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)
