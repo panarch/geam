@@ -74,7 +74,7 @@ fn reports_project_compilation_failures_through_the_binary_boundary() {
 
 #[test]
 fn prepares_and_runs_pure_projects_without_printing_main_results() {
-    let project = gleam_project();
+    let project = cargo_gleam_project();
 
     let prepare = geam(&project, ["prepare"]);
     assert!(
@@ -781,8 +781,13 @@ fn gleam_project() -> TempDir {
     project
 }
 
+fn cargo_gleam_project() -> TempDir {
+    prepare_cargo_dependencies();
+    gleam_project()
+}
+
 fn provider_backed_project() -> TempDir {
-    let project = gleam_project();
+    let project = cargo_gleam_project();
     fs::write(
         project.path().join("gleam.toml"),
         r#"name = "application"
@@ -852,7 +857,7 @@ pub fn summarize(value: String, transform: fn(String) -> String) -> Summary
 }
 
 fn io_project() -> TempDir {
-    let project = gleam_project();
+    let project = cargo_gleam_project();
     fs::write(
         project.path().join("gleam.toml"),
         r#"name = "application"
@@ -927,6 +932,7 @@ fn write_cargo_config(project: &TempDir) {
 }
 
 fn standalone_fixture() -> TempDir {
+    prepare_cargo_dependencies();
     let fixture = tempdir().expect("temporary standalone fixture should be created");
     let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/standalone_cli");
     static GLEAM_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
@@ -936,14 +942,6 @@ fn standalone_fixture() -> TempDir {
         "gleam",
         &["deps", "download"],
         "`gleam deps download`",
-    );
-    static PROVIDER_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
-    workspace_dependencies::prepare(
-        &PROVIDER_DEPENDENCIES,
-        &source.join("providers"),
-        "cargo",
-        &["fetch", "--locked", "--config", "net.offline=false"],
-        "`cargo fetch --locked --config net.offline=false`",
     );
     copy_directory(&source, fixture.path());
     copy_directory(
@@ -979,49 +977,34 @@ fn standalone_fixture() -> TempDir {
 }
 
 fn run_metrics_example() -> TempDir {
-    static PROVIDER_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
-    provider_example("run_metrics", &PROVIDER_DEPENDENCIES)
+    provider_example("run_metrics")
 }
 
 fn text_tools_example() -> TempDir {
-    static PROVIDER_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
-    provider_example("text_tools", &PROVIDER_DEPENDENCIES)
+    provider_example("text_tools")
 }
 
 fn tag_set_example() -> TempDir {
-    static PROVIDER_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
-    provider_example("tag_set", &PROVIDER_DEPENDENCIES)
+    provider_example("tag_set")
 }
 
 fn request_ids_example() -> TempDir {
-    static PROVIDER_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
-    provider_example("request_ids", &PROVIDER_DEPENDENCIES)
+    provider_example("request_ids")
 }
 
 fn feature_flags_example() -> TempDir {
-    static PROVIDER_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
-    provider_example("feature_flags", &PROVIDER_DEPENDENCIES)
+    provider_example("feature_flags")
 }
 
 fn text_pattern_example() -> TempDir {
-    static PROVIDER_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
-    provider_example("text_pattern", &PROVIDER_DEPENDENCIES)
+    provider_example("text_pattern")
 }
 
-fn provider_example(
-    name: &str,
-    provider_dependencies: &'static OnceLock<Result<(), String>>,
-) -> TempDir {
+fn provider_example(name: &str) -> TempDir {
+    prepare_cargo_dependencies();
     let source = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("examples")
         .join(name);
-    workspace_dependencies::prepare(
-        provider_dependencies,
-        &source.join("provider"),
-        "cargo",
-        &["fetch", "--locked", "--config", "net.offline=false"],
-        "`cargo fetch --locked --config net.offline=false`",
-    );
 
     let fixture = tempdir().expect("temporary provider example fixture should be created");
     copy_directory(&source, fixture.path());
@@ -1048,6 +1031,33 @@ fn provider_example(
     fixture
 }
 
+fn prepare_cargo_dependencies() {
+    const WORKSPACES: [&str; 8] = [
+        "tests/fixtures/provider_sdk",
+        "tests/fixtures/standalone_cli/providers",
+        "examples/text_tools/provider",
+        "examples/tag_set/provider",
+        "examples/request_ids/provider",
+        "examples/feature_flags/provider",
+        "examples/run_metrics/provider",
+        "examples/text_pattern/provider",
+    ];
+    static PREPARED: [OnceLock<Result<(), String>>; WORKSPACES.len()] =
+        [const { OnceLock::new() }; WORKSPACES.len()];
+
+    // No offline Cargo subprocess starts until every tracked provider lock is fetched.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for (prepared, workspace) in PREPARED.iter().zip(WORKSPACES) {
+        workspace_dependencies::prepare(
+            prepared,
+            &root.join(workspace),
+            "cargo",
+            &["fetch", "--locked", "--config", "net.offline=false"],
+            "`cargo fetch --locked --config net.offline=false`",
+        );
+    }
+}
+
 fn copy_directory(source: &Path, destination: &Path) {
     fs::create_dir_all(destination).expect("fixture directory should be created");
     for entry in fs::read_dir(source).expect("fixture directory should be readable") {
@@ -1066,7 +1076,7 @@ fn copy_directory(source: &Path, destination: &Path) {
 }
 
 fn gleam_project_with_dependency(package: &str, version: &str) -> TempDir {
-    let project = gleam_project();
+    let project = cargo_gleam_project();
     fs::write(
         project.path().join("gleam.toml"),
         format!(
