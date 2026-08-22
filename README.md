@@ -176,9 +176,8 @@ approval before being recorded.
 The [provider authoring examples](examples/README.md) start with a stateless
 persistent value, then add default state, read-only state, explicit
 configuration, and manual external semantics. The final text-pattern example
-keeps the advanced low-level baseline for retained Gleam values, custom errors,
-compound results, and list output that remain outside the current macro
-surface.
+keeps the advanced low-level baseline for custom errors, compound results, and
+list output that remain outside the current macro surface.
 
 Geam owns only a manifest carrying its exact managed marker, `Cargo.lock`, and
 `build/geam/` runner artifacts. It refuses to adopt an existing user Cargo
