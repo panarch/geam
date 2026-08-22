@@ -47,7 +47,7 @@ mod counter {
     }
 
     #[geam_macros::function]
-    fn peek(#[geam_macros::state] state: &mut RunState, label: EcoString) -> EcoString {
+    fn peek(#[geam_macros::state] state: &RunState, label: EcoString) -> EcoString {
         render(label, state.next)
     }
 }
@@ -100,7 +100,8 @@ pub fn next(label: String) -> String
 pub fn peek(label: String) -> String
 
 pub fn main() {
-  next("count")
+  let _ = next("count")
+  peek("count")
 }
 "#;
 
@@ -169,6 +170,13 @@ fn macro_authored_schema_preserves_component_module_and_function_order() {
         .type_();
     assert_eq!(next.argument_types(), &[ValueType::String]);
     assert_eq!(next.return_(), &ValueType::String);
+    let peek = providers[0]
+        .functions()
+        .nth(1)
+        .expect("peek schema should be present")
+        .type_();
+    assert_eq!(peek.argument_types(), &[ValueType::String]);
+    assert_eq!(peek.return_(), &ValueType::String);
 }
 
 #[test]
@@ -202,15 +210,15 @@ fn macro_authored_scalar_provider_runs_with_repeated_and_independent_state() {
 
     assert_eq!(
         execution.run_main(&mut first, &mut Vec::new()),
-        Ok(Value::String("count:3".into())),
-    );
-    assert_eq!(
-        execution.run_main(&mut first, &mut Vec::new()),
         Ok(Value::String("count:4".into())),
     );
     assert_eq!(
+        execution.run_main(&mut first, &mut Vec::new()),
+        Ok(Value::String("count:5".into())),
+    );
+    assert_eq!(
         execution.run_main(&mut second, &mut Vec::new()),
-        Ok(Value::String("count:3".into())),
+        Ok(Value::String("count:4".into())),
     );
     assert_eq!(first.component.next, 5);
     assert_eq!(second.component.next, 4);

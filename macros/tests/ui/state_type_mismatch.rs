@@ -26,7 +26,7 @@ mod counter {
     }
 
     #[geam_macros::function]
-    fn next(#[geam_macros::state] _: &mut OtherState) -> bool {
+    fn next(#[geam_macros::state] _: &OtherState) -> bool {
         helper()
     }
 }

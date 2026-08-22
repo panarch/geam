@@ -42,11 +42,17 @@ enum FunctionType {
     External { schema: Ident },
 }
 
+enum StateAccess {
+    None,
+    Shared,
+    Mutable,
+}
+
 struct FunctionModel {
     ident: Ident,
     arguments: Vec<FunctionType>,
     return_: FunctionType,
-    has_state: bool,
+    state: StateAccess,
 }
 
 pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<TokenStream> {
@@ -175,7 +181,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             ident,
             arguments: function_arguments,
             return_,
-            has_state,
+            state,
         } = function;
         let wrapper = format_ident!("__geam_host_{}", ident.unraw());
         let arguments = (0..function_arguments.len())
@@ -198,8 +204,22 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                     let #view = call.external_payload(#argument);
                 })
             });
-        let call_arguments = has_state
-            .then_some(quote!(call.state()))
+        let (state_projection, state_argument) = match state {
+            StateAccess::None => (None, None),
+            StateAccess::Shared => (
+                Some(quote! {
+                    let __geam_state = &*call.state();
+                }),
+                Some(quote!(__geam_state)),
+            ),
+            StateAccess::Mutable => (
+                Some(quote! {
+                    let __geam_state = call.state();
+                }),
+                Some(quote!(__geam_state)),
+            ),
+        };
+        let call_arguments = state_argument
             .into_iter()
             .chain(
                 function_arguments
@@ -247,6 +267,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                 #[allow(unused_mut)]
                 let mut call = call;
                 #(#payload_views)*
+                #state_projection
                 let returned = #ident(#(#call_arguments),*);
                 #complete
             }
@@ -560,7 +581,7 @@ fn validate_function(
     }
     let return_ = classify_return(&rust_return_type, externals)?;
 
-    let mut has_state = false;
+    let mut state = StateAccess::None;
     let mut arguments = Vec::new();
     for (index, argument) in function.sig.inputs.iter_mut().enumerate() {
         let FnArg::Typed(argument) = argument else {
@@ -580,16 +601,14 @@ fn validate_function(
             let Type::Reference(reference) = argument.ty.as_ref() else {
                 return Err(syn::Error::new_spanned(
                     &argument.ty,
-                    "the `#[geam::state]` parameter must be `&mut State`",
+                    "the `#[geam::state]` parameter must be `&State` or `&mut State`",
                 ));
             };
-            if reference.mutability.is_none() {
-                return Err(syn::Error::new_spanned(
-                    &argument.ty,
-                    "the `#[geam::state]` parameter must be `&mut State`",
-                ));
-            }
-            has_state = true;
+            state = if reference.mutability.is_some() {
+                StateAccess::Mutable
+            } else {
+                StateAccess::Shared
+            };
         } else {
             arguments.push(classify_argument(&argument.ty, externals)?);
         }
@@ -605,7 +624,7 @@ fn validate_function(
         ident: function.sig.ident.clone(),
         arguments,
         return_,
-        has_state,
+        state,
     })
 }
 
@@ -880,7 +899,7 @@ mod tests {
     }
 
     #[test]
-    fn state_injection_is_unique_mutable_and_first() {
+    fn state_injection_is_reference_only_unique_and_first() {
         assert_eq!(
             expansion_error(quote!(
                 mod counter {
@@ -901,18 +920,7 @@ mod tests {
                     }
                 }
             )),
-            "the `#[geam::state]` parameter must be `&mut State`",
-        );
-        assert_eq!(
-            expansion_error(quote!(
-                mod counter {
-                    #[geam::function]
-                    fn next(#[geam::state] state: &RunState) -> String {
-                        String::new()
-                    }
-                }
-            )),
-            "the `#[geam::state]` parameter must be `&mut State`",
+            "the `#[geam::state]` parameter must be `&State` or `&mut State`",
         );
         assert_eq!(
             expansion_error(quote!(
@@ -1022,7 +1030,10 @@ mod tests {
                     fn second(value: bool) -> bool { value }
 
                     #[geam::function]
-                    fn stateful(#[geam::state] state: &mut RunState, value: bool) -> bool { value }
+                    fn shared(#[geam::state] state: &RunState, value: bool) -> bool { value }
+
+                    #[geam::function]
+                    fn mutable(#[geam::state] state: &mut RunState, value: bool) -> bool { value }
                 }
             },
         )
@@ -1031,7 +1042,11 @@ mod tests {
 
         assert!(expansion.contains("fn helper"));
         assert!(expansion.contains("const ENABLED"));
-        assert!(expansion.contains("stateful (call . state ()"));
+        assert_eq!(expansion.matches("call . state ()").count(), 2);
+        assert!(expansion.contains("let __geam_state = & * call . state ()"));
+        assert!(expansion.contains("shared (__geam_state , __geam_argument_0)"));
+        assert!(expansion.contains("let __geam_state = call . state ()"));
+        assert!(expansion.contains("mutable (__geam_state , __geam_argument_0)"));
         let first = expansion
             .find("\"first\"")
             .expect("first registration should exist");
@@ -1199,7 +1214,11 @@ mod tests {
                     struct Helper;
 
                     #[geam::function]
-                    fn copy(value: &Metrics, label: EcoString) -> Metrics { value.clone() }
+                    fn copy(
+                        #[geam::state] state: &RunState,
+                        value: &Metrics,
+                        label: EcoString,
+                    ) -> Metrics { value.clone() }
 
                     #[geam::external(name = "Metrics")]
                     #[derive(Clone)]
@@ -1251,6 +1270,10 @@ mod tests {
             )
         );
         assert!(expansion.contains("let __geam_payload_0 = call . external_payload"));
+        assert_eq!(expansion.matches("call . state ()").count(), 1);
+        assert!(
+            expansion.contains("copy (__geam_state , & * __geam_payload_0 , __geam_argument_1)")
+        );
         assert!(expansion.contains("let returned = call . create_external (returned)"));
         assert!(expansion.contains(
             "< super :: Component as geam_core :: __macro_support :: ProviderPackage > :: PACKAGE"

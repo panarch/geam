@@ -167,6 +167,11 @@ is present without `initialize`, empty configuration constructs
 configured provider supplies both `state` and `initialize`; an initializer
 without a state declaration is rejected by the macro.
 
+A function may inject the component state as its first parameter with
+`#[geam::state]`. Use `&RunState` for read-only access and `&mut RunState` for
+mutation. The injected parameter is not part of the Gleam function signature;
+all following parameters remain ordinary source arguments.
+
 ```rust
 pub struct Component;
 
