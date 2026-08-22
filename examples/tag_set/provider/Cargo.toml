@@ -1,0 +1,25 @@
+[package]
+name = "geam-example-tag-set"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+description = "Documentation-oriented persistent tag set provider for Geam"
+license = "Apache-2.0"
+repository = "https://github.com/panarch/geam"
+readme = "README.md"
+publish = ["crates-io"]
+keywords = ["geam", "gleam", "provider", "example"]
+categories = ["development-tools"]
+
+[package.metadata.geam.provider]
+schema = 1
+gleam-package = "example_tag_set"
+gleam-version = ">= 1.0.0 and < 2.0.0"
+
+[dependencies]
+ecow = "=0.2.6"
+geam = "=0.1.2"
+num-bigint = "0.4.6"
+
+[workspace]
+resolver = "3"

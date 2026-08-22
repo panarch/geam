@@ -22,26 +22,13 @@ same shape to this provider should look roughly like the following:
 
 ```rust
 use ecow::EcoString;
-use geam::provider::{
-    Configuration, ExternalPayload, GleamResult, InitializationError,
-};
+use geam::provider::{ExternalPayload, GleamResult};
 use regex::Regex;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-pub struct RunState;
-
-fn initialize(
-    _configuration: &Configuration,
-) -> Result<RunState, InitializationError> {
-    Ok(RunState)
-}
-
 #[geam::provider(
-    id = "geam-example-text-pattern",
     package = "example_text_pattern",
-    state = RunState,
-    initialize = initialize,
     modules = [text_pattern],
 )]
 pub struct Component;
@@ -53,7 +40,7 @@ mod text_pattern {
         Regex,
     };
 
-    #[geam::external(name = "Pattern")]
+    #[geam::external(name = "Pattern", manual)]
     struct Pattern {
         source: EcoString,
         regex: Regex,

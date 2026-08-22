@@ -148,14 +148,15 @@ the real root Cargo lock, generated runner check, and runner execution.
 Fixture-only Cargo patches keep acquisition local while preserving the
 production manifest, resolution, build, and execution path.
 
-The [`examples/run_metrics`](../examples/run_metrics) example is the
-consumer-facing external-value macro acceptance case. Its Gleam entrypoint
-passes an opaque `Metrics` value through four functions and checks persistent
-updates, equivalent independent values, scalar arguments and returns, and
-missing keys. The root binary test follows the documented path add, prepare,
-config-free run, and repeated-run commands against the independently locked
-provider crate. Repository-local Cargo patches select the current checkout
-until the authoring crates are released.
+The [provider authoring examples](../examples) are consumer-facing macro
+acceptance cases. `tag_set` fixes stateless generated external semantics,
+`request_ids` combines mutable and read-only default state, `feature_flags`
+owns configured initialization, and `run_metrics` retains specialized manual
+external semantics. Root binary tests follow each documented path add,
+prepare, run, and repeated-run workflow against independently locked provider
+crates. The complete Gleam entrypoints execute every public example function.
+Repository-local Cargo patches select the current checkout until the authoring
+crates are released.
 
 The [`examples/text_pattern`](../examples/text_pattern) example adds a
 distribution-ready advanced provider baseline. Its path test executes the
@@ -164,17 +165,17 @@ runner. The existing fake-registry orchestration test owns search, sparse-index,
 checksum, archive metadata, approval, registry-shaped dependency, lock, check,
 and run coverage without requiring a fixture crate to be published.
 
-CI formats and lints both independent example providers. It verifies the text
-pattern provider's ordinary `cargo package --locked` archive because that
-provider depends on the released `geam 0.1.2` crate rather than a repository
-path or Git revision. Run metrics instead validates the unreleased public macro
-surface through the repository-local patch and complete standalone execution.
+CI formats, tests, lints, and packages every independent example provider. The
+text-pattern provider continues to exercise the released low-level
+`geam 0.1.2` surface, while the four macro examples select the unreleased
+authoring surface through repository-local patches and complete standalone
+execution.
 
 The normal suite executes the full generated runner with the fixture's locked
 Gleam and Rust dependencies. CI exports the standalone fixture's three local
-Gleam dependencies and the run-metrics Gleam package. It also packages the two
-standalone fixture providers and the advanced text-pattern provider. No fixture
-package is published.
+Gleam dependencies and all five example Gleam packages. It also packages the
+two standalone fixture providers and every example provider. No fixture package
+is published.
 
 Source-level rejection fixtures live under categorized
 `tests/fixtures/rejection/**/*.gleam` paths. They are reserved for public

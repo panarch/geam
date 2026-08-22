@@ -23,11 +23,12 @@ geam run
 
 The local package needs no Geam metadata and is not published to Hex. Its
 provider mapping comes from the Rust crate's Cargo metadata. The provider crate
-is formatted, linted, packaged, and executed in CI, but is intentionally not
-published yet.
+is formatted, tested, linted, packaged, and executed in CI, but is intentionally
+not published yet.
 
-[`provider/README.md`](provider/README.md) records the intended higher-level
-authoring API. The current low-level implementation remains the executable
-baseline until the Geam workspace and proc-macro authoring layer are complete.
-After that migration, this same example can be published and used to complete
-the crates.io discovery flow without `geam provider add`.
+[`provider/README.md`](provider/README.md) records the remaining higher-level
+authoring target. The current macro surface covers its external payload and
+scalar functions, but custom `Result` construction and list returns still keep
+the executable implementation on the low-level SDK. After those capabilities
+are available, this same example can migrate without changing its Gleam API or
+standalone behavior.

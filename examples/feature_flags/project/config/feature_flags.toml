@@ -1,0 +1,2 @@
+environment = "staging"
+enabled = ["new_checkout", "audit_log"]

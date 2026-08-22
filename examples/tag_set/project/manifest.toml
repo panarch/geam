@@ -1,0 +1,6 @@
+packages = [
+  { name = "example_tag_set", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/example_tag_set" },
+]
+
+[requirements]
+example_tag_set = { path = "packages/example_tag_set" }

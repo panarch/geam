@@ -338,6 +338,125 @@ fn runs_the_documented_run_metrics_provider_without_configuration() {
 }
 
 #[test]
+fn runs_the_documented_tag_set_provider_without_configuration() {
+    let fixture = tag_set_example();
+    let project = fixture.path().join("project");
+
+    let add = geam_at(&project, ["provider", "add", "--path", "../provider"]);
+    assert!(
+        add.status.success(),
+        "tag set provider add failed: {}",
+        String::from_utf8_lossy(&add.stderr),
+    );
+
+    let prepare = geam_at(&project, ["prepare"]);
+    assert!(
+        prepare.status.success(),
+        "tag set prepare failed: {}",
+        String::from_utf8_lossy(&prepare.stderr),
+    );
+
+    for _ in 0..2 {
+        let run = geam_at(&project, ["run"]);
+        assert!(
+            run.status.success(),
+            "tag set execution failed: {}",
+            String::from_utf8_lossy(&run.stderr),
+        );
+        assert!(run.stdout.is_empty());
+        assert!(run.stderr.is_empty());
+    }
+}
+
+#[test]
+fn runs_the_documented_request_ids_provider_with_fresh_default_state() {
+    let fixture = request_ids_example();
+    let project = fixture.path().join("project");
+
+    let add = geam_at(&project, ["provider", "add", "--path", "../provider"]);
+    assert!(
+        add.status.success(),
+        "request IDs provider add failed: {}",
+        String::from_utf8_lossy(&add.stderr),
+    );
+
+    let prepare = geam_at(&project, ["prepare"]);
+    assert!(
+        prepare.status.success(),
+        "request IDs prepare failed: {}",
+        String::from_utf8_lossy(&prepare.stderr),
+    );
+
+    for _ in 0..2 {
+        let run = geam_at(&project, ["run"]);
+        assert!(
+            run.status.success(),
+            "request IDs execution failed: {}",
+            String::from_utf8_lossy(&run.stderr),
+        );
+        assert!(run.stdout.is_empty());
+        assert!(run.stderr.is_empty());
+    }
+}
+
+#[test]
+fn runs_the_documented_feature_flags_provider_with_explicit_configuration() {
+    let fixture = feature_flags_example();
+    let project = fixture.path().join("project");
+
+    let add = geam_at(&project, ["provider", "add", "--path", "../provider"]);
+    assert!(
+        add.status.success(),
+        "feature flags provider add failed: {}",
+        String::from_utf8_lossy(&add.stderr),
+    );
+
+    let prepare = geam_at(&project, ["prepare"]);
+    assert!(
+        prepare.status.success(),
+        "feature flags prepare failed: {}",
+        String::from_utf8_lossy(&prepare.stderr),
+    );
+
+    for _ in 0..2 {
+        let run = geam_at(
+            &project,
+            [
+                "run",
+                "--provider-config",
+                "example_feature_flags=config/feature_flags.toml",
+            ],
+        );
+        assert!(
+            run.status.success(),
+            "feature flags execution failed: {}",
+            String::from_utf8_lossy(&run.stderr),
+        );
+        assert!(run.stdout.is_empty());
+        assert!(run.stderr.is_empty());
+    }
+
+    let missing = geam_at(&project, ["run"]);
+    assert!(!missing.status.success());
+    assert!(String::from_utf8_lossy(&missing.stderr).contains(
+        "could not initialize host provider component geam-example-feature-flags: configuration key `environment` must be a String",
+    ));
+
+    let wrong = geam_at(
+        &project,
+        [
+            "run",
+            "--provider-config",
+            "example_feature_flags=config/wrong_enabled.toml",
+        ],
+    );
+    assert!(!wrong.status.success());
+    assert!(String::from_utf8_lossy(&wrong.stderr).contains(
+        "could not initialize host provider component geam-example-feature-flags: configuration key `enabled` must be an Array of Strings",
+    ));
+}
+
+#[test]
 fn runs_the_documented_text_pattern_provider_from_its_local_path() {
     let fixture = text_pattern_example();
     let project = fixture.path().join("project");
@@ -831,6 +950,21 @@ fn standalone_fixture() -> TempDir {
 fn run_metrics_example() -> TempDir {
     static PROVIDER_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
     provider_example("run_metrics", &PROVIDER_DEPENDENCIES)
+}
+
+fn tag_set_example() -> TempDir {
+    static PROVIDER_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
+    provider_example("tag_set", &PROVIDER_DEPENDENCIES)
+}
+
+fn request_ids_example() -> TempDir {
+    static PROVIDER_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
+    provider_example("request_ids", &PROVIDER_DEPENDENCIES)
+}
+
+fn feature_flags_example() -> TempDir {
+    static PROVIDER_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
+    provider_example("feature_flags", &PROVIDER_DEPENDENCIES)
 }
 
 fn text_pattern_example() -> TempDir {

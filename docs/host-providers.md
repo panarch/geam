@@ -10,6 +10,11 @@ approve provider dependencies, parse explicit configuration, and generate a
 concrete runner, but the resulting Rust program still composes every component
 at compile time. It does not choose or type-erase implementations at runtime.
 
+Start with the [provider authoring examples](../examples/README.md). They present
+the stateless, default-state, configured-state, default external, and manual
+external choices as complete Gleam/Rust pairs before this document describes
+the generated and low-level contracts.
+
 ## External Value Provider Authoring
 
 The [run-metrics example](../examples/run_metrics/README.md) gives the Rust

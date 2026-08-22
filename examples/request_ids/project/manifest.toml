@@ -1,0 +1,6 @@
+packages = [
+  { name = "example_request_ids", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/example_request_ids" },
+]
+
+[requirements]
+example_request_ids = { path = "packages/example_request_ids" }

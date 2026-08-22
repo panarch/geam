@@ -1,0 +1,4 @@
+name = "example_tag_set"
+version = "1.0.0"
+description = "Persistent tag sets backed by a native Geam provider"
+licences = ["Apache-2.0"]
