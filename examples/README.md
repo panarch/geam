@@ -6,6 +6,7 @@ low-level SDK only when the macro surface does not yet cover a capability.
 
 | Example | State | Configuration | External semantics | Purpose |
 | --- | --- | --- | --- | --- |
+| [`text_tools`](text_tools/README.md) | None | None | None | One provider implementing three Gleam modules |
 | [`tag_set`](tag_set/README.md) | None | None | Generated | Stateless persistent external value |
 | [`request_ids`](request_ids/README.md) | `Default` | None | None | Mutable and read-only state access |
 | [`feature_flags`](feature_flags/README.md) | Configured | Required | None | Explicit configuration and shared state |
@@ -15,7 +16,7 @@ low-level SDK only when the macro surface does not yet cover a capability.
 The recommended reading order is:
 
 ```text
-tag_set -> request_ids -> feature_flags -> run_metrics -> text_pattern
+text_tools -> tag_set -> request_ids -> feature_flags -> run_metrics -> text_pattern
 ```
 
 Every example keeps the Gleam package and Rust provider separate:
@@ -28,7 +29,7 @@ provider/  independently locked Rust provider crate
 Run a macro-authored example with the same standalone workflow:
 
 ```sh
-cd examples/tag_set/project
+cd examples/text_tools/project
 geam provider add --path ../provider
 geam prepare
 geam run

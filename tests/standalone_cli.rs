@@ -338,6 +338,37 @@ fn runs_the_documented_run_metrics_provider_without_configuration() {
 }
 
 #[test]
+fn runs_the_documented_text_tools_provider_across_three_modules() {
+    let fixture = text_tools_example();
+    let project = fixture.path().join("project");
+
+    let add = geam_at(&project, ["provider", "add", "--path", "../provider"]);
+    assert!(
+        add.status.success(),
+        "text tools provider add failed: {}",
+        String::from_utf8_lossy(&add.stderr),
+    );
+
+    let prepare = geam_at(&project, ["prepare"]);
+    assert!(
+        prepare.status.success(),
+        "text tools prepare failed: {}",
+        String::from_utf8_lossy(&prepare.stderr),
+    );
+
+    for _ in 0..2 {
+        let run = geam_at(&project, ["run"]);
+        assert!(
+            run.status.success(),
+            "text tools execution failed: {}",
+            String::from_utf8_lossy(&run.stderr),
+        );
+        assert!(run.stdout.is_empty());
+        assert!(run.stderr.is_empty());
+    }
+}
+
+#[test]
 fn runs_the_documented_tag_set_provider_without_configuration() {
     let fixture = tag_set_example();
     let project = fixture.path().join("project");
@@ -950,6 +981,11 @@ fn standalone_fixture() -> TempDir {
 fn run_metrics_example() -> TempDir {
     static PROVIDER_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
     provider_example("run_metrics", &PROVIDER_DEPENDENCIES)
+}
+
+fn text_tools_example() -> TempDir {
+    static PROVIDER_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
+    provider_example("text_tools", &PROVIDER_DEPENDENCIES)
 }
 
 fn tag_set_example() -> TempDir {

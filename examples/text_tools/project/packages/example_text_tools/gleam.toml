@@ -1,0 +1,4 @@
+name = "example_text_tools"
+version = "1.0.0"
+description = "Text helpers backed by a multi-module native Geam provider"
+licences = ["Apache-2.0"]

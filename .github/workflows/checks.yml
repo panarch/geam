@@ -39,7 +39,7 @@ jobs:
 
       - name: Check example provider formatting
         run: |
-          for example in tag_set request_ids feature_flags run_metrics text_pattern; do
+          for example in text_tools tag_set request_ids feature_flags run_metrics text_pattern; do
             (cd "examples/$example/provider" && cargo fmt --all --check)
           done
 
@@ -64,6 +64,7 @@ jobs:
           workspaces: |
             . -> target
             tests/fixtures/standalone_cli/providers -> target
+            examples/text_tools/provider -> target
             examples/tag_set/provider -> target
             examples/request_ids/provider -> target
             examples/feature_flags/provider -> target
@@ -83,7 +84,7 @@ jobs:
 
       - name: Run example provider clippy
         run: |
-          for example in tag_set request_ids feature_flags run_metrics text_pattern; do
+          for example in text_tools tag_set request_ids feature_flags run_metrics text_pattern; do
             (cd "examples/$example/provider" && cargo clippy --all-targets --locked -- -D warnings)
           done
 
@@ -114,6 +115,7 @@ jobs:
           workspaces: |
             . -> target
             tests/fixtures/standalone_cli/providers -> target
+            examples/text_tools/provider -> target
             examples/tag_set/provider -> target
             examples/request_ids/provider -> target
             examples/feature_flags/provider -> target
@@ -134,7 +136,7 @@ jobs:
 
       - name: Test and package example providers
         run: |
-          for example in tag_set request_ids feature_flags run_metrics text_pattern; do
+          for example in text_tools tag_set request_ids feature_flags run_metrics text_pattern; do
             (cd "examples/$example/provider" && cargo test --locked)
             (cd "examples/$example/provider" && cargo package --locked)
           done
@@ -142,6 +144,7 @@ jobs:
       - name: Verify example Gleam packages
         run: |
           for package in \
+            text_tools/example_text_tools \
             tag_set/example_tag_set \
             request_ids/example_request_ids \
             feature_flags/example_feature_flags \
@@ -224,6 +227,7 @@ jobs:
           workspaces: |
             . -> target
             tests/fixtures/standalone_cli/providers -> target
+            examples/text_tools/provider -> target
             examples/tag_set/provider -> target
             examples/request_ids/provider -> target
             examples/feature_flags/provider -> target
