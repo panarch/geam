@@ -22,7 +22,7 @@ pub struct Component;
 mod metrics {
     use super::{BTreeMap, BigInt, DefaultHasher, EcoString, ExternalPayload, Hash, Hasher};
 
-    #[geam_macros::external(name = "Metrics")]
+    #[geam_macros::external(name = "Metrics", manual)]
     #[derive(Clone, Default, PartialEq)]
     pub(super) struct Metrics {
         entries: BTreeMap<EcoString, Metric>,

@@ -18,7 +18,7 @@ pub struct Component;
 mod metrics {
     use geam_core::provider::ExternalPayload;
 
-    #[geam_macros::external(name = "Metrics")]
+    #[geam_macros::external(name = "Metrics", manual)]
     struct Metrics;
 
     impl ExternalPayload for Metrics {

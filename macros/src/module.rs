@@ -22,16 +22,24 @@ struct PartialModuleArguments {
 
 struct ExternalArguments {
     name: LitStr,
+    manual: bool,
 }
 
 #[derive(Default)]
 struct PartialExternalArguments {
     name: Option<LitStr>,
+    manual: Option<Ident>,
+}
+
+enum ExternalSemantics {
+    Default,
+    Manual,
 }
 
 struct ExternalModel {
     ident: Ident,
     name: LitStr,
+    semantics: ExternalSemantics,
     schema: Ident,
     storage: Ident,
     store_field: Ident,
@@ -82,6 +90,11 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
         externals.push(ExternalModel {
             ident: payload.ident.clone(),
             name: external.name,
+            semantics: if external.manual {
+                ExternalSemantics::Manual
+            } else {
+                ExternalSemantics::Default
+            },
             schema: format_ident!("__GeamExternalSchema{index}"),
             storage: format_ident!("__GeamExternalStorage{index}"),
             store_field: format_ident!("__geam_external_{index}"),
@@ -100,6 +113,28 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
 
     let module_path = arguments.path;
     let module_ident = &module.ident;
+    let payload_semantics = externals.iter().filter_map(|external| {
+        if matches!(external.semantics, ExternalSemantics::Manual) {
+            return None;
+        }
+        let payload = &external.ident;
+        let source_name = &external.name;
+        Some(quote! {
+            impl #support::ExternalPayload for #payload {
+                fn source_equal(&self, other: &Self) -> bool {
+                    <Self as ::core::cmp::PartialEq>::eq(self, other)
+                }
+
+                fn source_hash(&self) -> u64 {
+                    #support::external_payload_hash(self)
+                }
+
+                fn inspect(&self) -> ::ecow::EcoString {
+                    ::ecow::EcoString::from(::core::concat!(#source_name, "(<opaque>)"))
+                }
+            }
+        })
+    });
     let store_fields = externals.iter().map(|external| {
         let payload = &external.ident;
         let field = &external.store_field;
@@ -305,6 +340,9 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             #(#store_fields)*
         }
     }));
+    for semantics in payload_semantics {
+        items.push(Item::Verbatim(semantics));
+    }
     for schema in schemas {
         items.push(Item::Verbatim(schema));
     }
@@ -411,13 +449,27 @@ impl Parse for ExternalArguments {
         let mut partial = PartialExternalArguments::default();
         while !input.is_empty() {
             let field = input.parse::<Ident>()?;
-            input.parse::<Token![=]>()?;
             match field.to_string().as_str() {
                 "name" => {
+                    input.parse::<Token![=]>()?;
                     if partial.name.replace(input.parse()?).is_some() {
                         return Err(syn::Error::new(
                             field.span(),
                             "duplicate external argument `name`",
+                        ));
+                    }
+                }
+                "manual" => {
+                    if partial.manual.replace(field.clone()).is_some() {
+                        return Err(syn::Error::new(
+                            field.span(),
+                            "duplicate external argument `manual`",
+                        ));
+                    }
+                    if !input.is_empty() && !input.peek(Token![,]) {
+                        return Err(syn::Error::new(
+                            field.span(),
+                            "external argument `manual` does not accept a value",
                         ));
                     }
                 }
@@ -440,7 +492,10 @@ impl Parse for ExternalArguments {
                 "missing required external argument `name`",
             ));
         };
-        Ok(Self { name })
+        Ok(Self {
+            name,
+            manual: partial.manual.is_some(),
+        })
     }
 }
 
@@ -1075,12 +1130,35 @@ mod tests {
     }
 
     #[test]
-    fn external_arguments_require_one_known_name() {
+    fn external_arguments_require_a_name_and_bare_manual_flag() {
+        let automatic = syn::parse2::<ExternalArguments>(quote!(name = "Metrics"))
+            .expect("default semantics should parse");
+        assert_eq!(automatic.name.value(), "Metrics");
+        assert!(!automatic.manual);
+
+        let manual = syn::parse2::<ExternalArguments>(quote!(manual, name = "Metrics"))
+            .expect("manual semantics should parse in either field order");
+        assert_eq!(manual.name.value(), "Metrics");
+        assert!(manual.manual);
+
         let cases = [
             (quote!(), "missing required external argument `name`"),
+            (quote!(manual), "missing required external argument `name`"),
             (
                 quote!(name = "First", name = "Second"),
                 "duplicate external argument `name`",
+            ),
+            (
+                quote!(name = "Metrics", manual, manual),
+                "duplicate external argument `manual`",
+            ),
+            (
+                quote!(name = "Metrics", manual = true),
+                "external argument `manual` does not accept a value",
+            ),
+            (
+                quote!(name = "Metrics", manual("custom")),
+                "external argument `manual` does not accept a value",
             ),
             (
                 quote!(other = "Metrics"),
@@ -1224,7 +1302,7 @@ mod tests {
                     #[derive(Clone)]
                     struct Metrics;
 
-                    #[geam::external(name = "Snapshot")]
+                    #[geam::external(name = "Snapshot", manual)]
                     struct Snapshot;
 
                     #[geam::function]
@@ -1255,6 +1333,15 @@ mod tests {
         assert!(expansion.contains("derive (Clone)"));
         assert!(expansion.contains("HostExternalStore < Metrics >"));
         assert!(expansion.contains("HostExternalStore < Snapshot >"));
+        assert!(
+            expansion.contains("impl geam_core :: __macro_support :: ExternalPayload for Metrics")
+        );
+        assert!(
+            !expansion
+                .contains("impl geam_core :: __macro_support :: ExternalPayload for Snapshot")
+        );
+        assert!(expansion.contains("external_payload_hash (self)"));
+        assert!(expansion.contains("concat ! (\"Metrics\" , \"(<opaque>)\")"));
         assert!(expansion.contains("type Payload = Metrics"));
         assert!(expansion.contains("HostExternalBinding < Profile , __GeamExternalSchema0 >"));
         assert!(expansion.contains("type Storage = __GeamExternalStorage0"));

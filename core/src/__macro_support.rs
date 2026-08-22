@@ -7,6 +7,8 @@ pub use crate::host::{
     HostRegistrationError,
 };
 pub use crate::provider::ExternalPayload;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 /// Package identity shared by provider and module macro expansions.
 pub trait ProviderPackage: HostProviderComponent {
@@ -22,10 +24,26 @@ where
     crate::HostProviderInitializationError::for_component::<Component>(error.reason())
 }
 
+/// Hashes an ordinary Rust payload for generated external source semantics.
+#[doc(hidden)]
+pub fn external_payload_hash<Payload>(payload: &Payload) -> u64
+where
+    Payload: Hash + ?Sized,
+{
+    let mut hasher = DefaultHasher::new();
+    payload.hash(&mut hasher);
+    hasher.finish()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{HostProviderComponent, ProviderPackage, component_initialization_error};
+    use super::{
+        HostProviderComponent, ProviderPackage, component_initialization_error,
+        external_payload_hash,
+    };
     use crate::provider::InitializationError;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
 
     struct Component;
 
@@ -48,5 +66,16 @@ mod tests {
         assert_eq!(error.component_id(), "macro-support");
         assert_eq!(error.reason(), "configuration is incomplete");
         assert_eq!(Component::PACKAGE, "macro_support");
+    }
+
+    #[test]
+    fn external_payload_hash_uses_ordinary_rust_hashing() {
+        let value = ("tag", 7u64);
+        let equal = ("tag", 7u64);
+        let mut expected = DefaultHasher::new();
+        value.hash(&mut expected);
+
+        assert_eq!(external_payload_hash(&value), expected.finish());
+        assert_eq!(external_payload_hash(&value), external_payload_hash(&equal));
     }
 }

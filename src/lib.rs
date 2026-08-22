@@ -14,7 +14,7 @@ pub mod __macro_support {
         HostExternalType, HostProvider, HostProviderComponent, HostProviderComponentInitialization,
         HostProviderComponentRegistration, HostProviderConfiguration,
         HostProviderInitializationError, HostProviderModule, HostRegistrationError,
-        ProviderPackage, component_initialization_error,
+        ProviderPackage, component_initialization_error, external_payload_hash,
     };
 }
 

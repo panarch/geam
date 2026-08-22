@@ -54,7 +54,7 @@ pub struct Component;
 mod metrics {
     use super::*;
 
-    #[geam::external(name = "Metrics")]
+    #[geam::external(name = "Metrics", manual)]
     #[derive(Clone, Default, PartialEq)]
     struct Metrics {
         entries: BTreeMap<EcoString, Metric>,
@@ -124,11 +124,17 @@ mod metrics {
 ```
 
 `#[geam::external]` generates one typed schema, payload store, storage adapter,
-and provider binding. An external source argument is an immutable `&Metrics`
-payload view in Rust; an external source return is an owned `Metrics` that Geam
-seals into the store. `record` therefore returns a persistent update rather than
-mutating the old source value. `ExternalPayload` fixes source equality, hashing,
-and canonical inspection; equal signed-zero totals must share a hash.
+and provider binding. By default it also implements source equality and hashing
+through the payload's `PartialEq` and `Hash` implementations, with sealed
+`TypeName(<opaque>)` inspection. The `manual` flag keeps registration generation
+but leaves `ExternalPayload` to the provider, as above, when source semantics
+need specialized equality, hashing, or inspection. Equal signed-zero totals in
+this example must share a hash.
+
+An external source argument is an immutable `&Metrics` payload view in Rust; an
+external source return is an owned `Metrics` that Geam seals into the store.
+`record` therefore returns a persistent update rather than mutating the old
+source value.
 
 Scalar positions still use Geam's existing host types: `EcoString`, `f64`, and
 `BigInt` correspond to `String`, `Float`, and `Int`. The macro does not parse
