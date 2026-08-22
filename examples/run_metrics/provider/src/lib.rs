@@ -1,19 +1,12 @@
 use ecow::EcoString;
-use geam::provider::{Configuration, ExternalPayload, InitializationError};
+use geam::provider::ExternalPayload;
 use num_bigint::BigInt;
 use std::collections::BTreeMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-fn initialize(_: &Configuration) -> Result<(), InitializationError> {
-    Ok(())
-}
-
 #[geam::provider(
-    id = "geam-example-run-metrics",
     package = "example_run_metrics",
-    state = (),
-    initialize = initialize,
     modules = [metrics],
 )]
 pub struct Component;

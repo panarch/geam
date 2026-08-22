@@ -1,5 +1,5 @@
 use ecow::EcoString;
-use geam_core::provider::{Configuration, ExternalPayload, InitializationError};
+use geam_core::provider::{Configuration, ExternalPayload};
 use geam_core::{
     HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
     HostProviderComponentInitialization, HostProviderComponentRegistration, HostProviderSet,
@@ -11,15 +11,8 @@ use std::collections::BTreeMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-fn initialize(_: &Configuration) -> Result<(), InitializationError> {
-    Ok(())
-}
-
 #[geam_macros::provider(
-    id = "macro-metrics",
     package = "metrics",
-    state = (),
-    initialize = initialize,
     modules = [metrics],
     crate_path = geam_core,
 )]
@@ -211,8 +204,13 @@ fn execution(source: &str) -> Result<HostedExecution<Profile>, PlanError> {
 
 #[test]
 fn macro_authored_external_schema_and_function_shapes_are_exact() {
-    assert_eq!(Component::ID, "macro-metrics");
+    assert_eq!(Component::ID, "geam-macros");
     assert_eq!(Component::initialize(&Configuration::empty()), Ok(()));
+    let configured = Configuration::new(BTreeMap::from([(EcoString::from("unused"), true.into())]));
+    let error = Component::initialize(&configured)
+        .expect_err("default initialization must reject unused configuration");
+    assert_eq!(error.component_id(), "geam-macros");
+    assert_eq!(error.reason(), "provider does not accept configuration");
 
     let providers = providers();
     assert_eq!(providers.len(), 1);

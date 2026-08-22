@@ -8,12 +8,17 @@ use syn::punctuated::Punctuated;
 use syn::{Fields, Ident, Item, ItemStruct, LitStr, Path, Token, Type, Visibility, bracketed};
 
 struct ProviderArguments {
-    id: LitStr,
+    id: Option<LitStr>,
     package: LitStr,
-    state: Type,
-    initialize: Path,
+    initialization: ProviderInitialization,
     modules: Vec<Ident>,
     crate_path: Option<Path>,
+}
+
+enum ProviderInitialization {
+    Unit,
+    Default(Type),
+    Configured { state: Type, initialize: Path },
 }
 
 #[derive(Default)]
@@ -40,11 +45,28 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     let ProviderArguments {
         id,
         package,
-        state,
-        initialize,
+        initialization,
         modules,
         crate_path: _,
     } = arguments;
+    let id = id
+        .map(|id| quote!(#id))
+        .unwrap_or_else(|| quote!(::core::env!("CARGO_PKG_NAME")));
+    let (state, initialization) = match initialization {
+        ProviderInitialization::Unit => default_initialization(quote!(()), &support),
+        ProviderInitialization::Default(state) => {
+            let state = quote!(#state);
+            default_initialization(state, &support)
+        }
+        ProviderInitialization::Configured { state, initialize } => (
+            quote!(#state),
+            quote! {
+                #initialize(configuration).map_err(
+                    #support::component_initialization_error::<Self>,
+                )
+            },
+        ),
+    };
     let module_count = modules.len();
     let store_fields = modules.iter().map(|module| {
         quote! {
@@ -78,9 +100,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                 Self::RunState,
                 #support::HostProviderInitializationError,
             > {
-                #initialize(configuration).map_err(
-                    #support::component_initialization_error::<Self>,
-                )
+                #initialization
             }
         }
 
@@ -100,6 +120,23 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             }
         }
     })
+}
+
+fn default_initialization(state: TokenStream, support: &TokenStream) -> (TokenStream, TokenStream) {
+    let initialization = quote! {
+        if configuration.is_empty() {
+            ::core::result::Result::Ok(
+                <Self::RunState as ::core::default::Default>::default(),
+            )
+        } else {
+            ::core::result::Result::Err(
+                #support::HostProviderInitializationError::for_component::<Self>(
+                    "provider does not accept configuration",
+                ),
+            )
+        }
+    };
+    (state, initialization)
 }
 
 impl Parse for ProviderArguments {
@@ -154,11 +191,24 @@ impl Parse for ProviderArguments {
             }
         }
 
+        let initialization = match (partial.state, partial.initialize) {
+            (None, None) => ProviderInitialization::Unit,
+            (Some(state), None) => ProviderInitialization::Default(state),
+            (Some(state), Some(initialize)) => {
+                ProviderInitialization::Configured { state, initialize }
+            }
+            (None, Some(initialize)) => {
+                return Err(syn::Error::new_spanned(
+                    initialize,
+                    "provider `initialize` requires `state`",
+                ));
+            }
+        };
+
         Ok(Self {
-            id: required(partial.id, "id")?,
+            id: partial.id,
             package: required(partial.package, "package")?,
-            state: required(partial.state, "state")?,
-            initialize: required(partial.initialize, "initialize")?,
+            initialization,
             modules,
             crate_path: partial.crate_path,
         })
@@ -225,51 +275,22 @@ mod tests {
     }
 
     #[test]
-    fn provider_arguments_require_every_owned_identity_and_path() {
+    fn provider_arguments_require_package_modules_and_consistent_initialization() {
         assert_eq!(
-            parse_error(quote!(
-                package = "counter",
-                state = RunState,
-                initialize = initialize,
-                modules = [counter]
-            )),
-            "missing required provider argument `id`",
-        );
-        assert_eq!(
-            parse_error(quote!(
-                id = "counter",
-                state = RunState,
-                initialize = initialize,
-                modules = [counter]
-            )),
+            parse_error(quote!(id = "counter", modules = [counter])),
             "missing required provider argument `package`",
         );
         assert_eq!(
+            parse_error(quote!(package = "counter",)),
+            "missing required provider argument `modules`",
+        );
+        assert_eq!(
             parse_error(quote!(
-                id = "counter",
                 package = "counter",
                 initialize = initialize,
                 modules = [counter]
             )),
-            "missing required provider argument `state`",
-        );
-        assert_eq!(
-            parse_error(quote!(
-                id = "counter",
-                package = "counter",
-                state = RunState,
-                modules = [counter]
-            )),
-            "missing required provider argument `initialize`",
-        );
-        assert_eq!(
-            parse_error(quote!(
-                id = "counter",
-                package = "counter",
-                state = RunState,
-                initialize = initialize
-            )),
-            "missing required provider argument `modules`",
+            "provider `initialize` requires `state`",
         );
     }
 
@@ -587,5 +608,42 @@ mod tests {
                 .contains("impl geam_core :: __macro_support :: ProviderPackage for Component")
         );
         assert!(expansion.contains("const PACKAGE : & 'static str = \"sample\""));
+    }
+
+    #[test]
+    fn provider_expansion_generates_unit_and_default_initialization() {
+        let unit = expand(
+            quote!(
+                package = "sample",
+                modules = [sample],
+                crate_path = geam_core,
+            ),
+            quote!(
+                pub struct Component;
+            ),
+        )
+        .expect("minimal provider should expand")
+        .to_string();
+        assert!(unit.contains("const ID : & 'static str = :: core :: env ! (\"CARGO_PKG_NAME\")"));
+        assert!(unit.contains("type RunState = ()"));
+        assert!(unit.contains("if configuration . is_empty ()"));
+        assert!(unit.contains("< Self :: RunState as :: core :: default :: Default > :: default"));
+        assert!(unit.contains("provider does not accept configuration"));
+
+        let default_state = expand(
+            quote!(
+                package = "sample",
+                state = RunState,
+                modules = [sample],
+                crate_path = geam_core,
+            ),
+            quote!(
+                pub struct Component;
+            ),
+        )
+        .expect("Default-backed provider should expand")
+        .to_string();
+        assert!(default_state.contains("type RunState = RunState"));
+        assert!(default_state.contains("if configuration . is_empty ()"));
     }
 }

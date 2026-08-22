@@ -38,21 +38,14 @@ site as its functions:
 
 ```rust
 use ecow::EcoString;
-use geam::provider::{Configuration, ExternalPayload, InitializationError};
+use geam::provider::ExternalPayload;
 use num_bigint::BigInt;
 use std::collections::BTreeMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-fn initialize(_: &Configuration) -> Result<(), InitializationError> {
-    Ok(())
-}
-
 #[geam::provider(
-    id = "geam-example-run-metrics",
     package = "example_run_metrics",
-    state = (),
-    initialize = initialize,
     modules = [metrics],
 )]
 pub struct Component;
@@ -146,9 +139,9 @@ module, function or type, and exact scheme.
 Rust compilation validates the macro targets, payload trait, borrowing rules,
 and generated typed registrations. `geam prepare` then compiles the complete
 Gleam project and links those schemas against the source declarations before
-initialization or execution. The current authoring interface still requires an
-explicit state and initializer, so this config-free provider uses unit state and
-an empty initializer.
+initialization or execution. A provider with no process-local state or
+configuration omits both declarations; Geam supplies unit state and rejects
+unexpected configuration instead of ignoring it.
 
 The current macro surface supports scalars and non-generic constructorless
 external values whose payloads do not retain Gleam values. Custom types,
@@ -164,6 +157,15 @@ Provider crates that consume configuration implement the separate
 implementations together with module registrations and external stores; the
 explicit form remains the underlying SDK boundary for capabilities outside the
 current macro surface.
+
+The provider component identity defaults to the Cargo package name and can be
+overridden with `id = "..."` when diagnostics need a distinct stable identity.
+This identity is separate from the required Gleam `package` and module paths.
+When `state` is omitted the component uses unit state. When `state = RunState`
+is present without `initialize`, empty configuration constructs
+`RunState::default()`. Both default forms reject non-empty configuration. A
+configured provider supplies both `state` and `initialize`; an initializer
+without a state declaration is rejected by the macro.
 
 ```rust
 pub struct Component;

@@ -1,0 +1,17 @@
+error[E0277]: the trait bound `RunState: std::default::Default` is not satisfied
+ --> tests/ui/provider_default_state_missing_default.rs:3:1
+  |
+3 | / #[geam_macros::provider(
+4 | |     package = "missing_default",
+5 | |     state = RunState,
+6 | |     modules = [missing_default],
+7 | |     crate_path = geam_core,
+8 | | )]
+  | |__^ the trait `std::default::Default` is not implemented for `RunState`
+  |
+  = note: this error originates in the attribute macro `geam_macros::provider` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `RunState` with `#[derive(Default)]`
+  |
+1 + #[derive(Default)]
+2 | struct RunState;
+  |
