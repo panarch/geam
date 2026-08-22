@@ -1,0 +1,11 @@
+error[E0277]: the trait bound `Metrics: ExternalPayload` is not satisfied
+  --> tests/ui/external_missing_payload.rs:20:12
+   |
+20 |     struct Metrics;
+   |            ^^^^^^^ unsatisfied trait bound
+   |
+help: the trait `ExternalPayload` is not implemented for `Metrics`
+  --> tests/ui/external_missing_payload.rs:20:5
+   |
+20 |     struct Metrics;
+   |     ^^^^^^^^^^^^^^

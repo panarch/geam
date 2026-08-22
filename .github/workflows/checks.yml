@@ -37,9 +37,11 @@ jobs:
         working-directory: tests/fixtures/standalone_cli/providers
         run: cargo fmt --all --check
 
-      - name: Check provider authoring example formatting
-        working-directory: examples/text_pattern/provider
-        run: cargo fmt --all --check
+      - name: Check example provider formatting
+        run: |
+          for example in text_tools tag_set request_ids feature_flags run_metrics text_pattern; do
+            (cd "examples/$example/provider" && cargo fmt --all --check)
+          done
 
   clippy:
     name: clippy
@@ -62,6 +64,11 @@ jobs:
           workspaces: |
             . -> target
             tests/fixtures/standalone_cli/providers -> target
+            examples/text_tools/provider -> target
+            examples/tag_set/provider -> target
+            examples/request_ids/provider -> target
+            examples/feature_flags/provider -> target
+            examples/run_metrics/provider -> target
             examples/text_pattern/provider -> target
 
       - name: Fetch standalone provider dependencies
@@ -75,9 +82,11 @@ jobs:
         working-directory: tests/fixtures/standalone_cli/providers
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
-      - name: Run provider authoring example clippy
-        working-directory: examples/text_pattern/provider
-        run: cargo clippy --all-targets --locked -- -D warnings
+      - name: Run example provider clippy
+        run: |
+          for example in text_tools tag_set request_ids feature_flags run_metrics text_pattern; do
+            (cd "examples/$example/provider" && cargo clippy --all-targets --locked -- -D warnings)
+          done
 
   test:
     name: test
@@ -106,6 +115,11 @@ jobs:
           workspaces: |
             . -> target
             tests/fixtures/standalone_cli/providers -> target
+            examples/text_tools/provider -> target
+            examples/tag_set/provider -> target
+            examples/request_ids/provider -> target
+            examples/feature_flags/provider -> target
+            examples/run_metrics/provider -> target
             examples/text_pattern/provider -> target
 
       - name: Run tests
@@ -120,9 +134,27 @@ jobs:
           cargo package --quiet --offline --allow-dirty --no-verify --locked --package geam-catalog
           cargo package --quiet --offline --allow-dirty --no-verify --locked --package geam-counter
 
-      - name: Verify provider authoring example package
-        working-directory: examples/text_pattern/provider
-        run: cargo package --locked
+      - name: Test and package example providers
+        run: |
+          for example in text_tools tag_set request_ids feature_flags run_metrics text_pattern; do
+            (cd "examples/$example/provider" && cargo test --locked)
+            (cd "examples/$example/provider" && cargo package --locked)
+          done
+
+      - name: Verify example Gleam packages
+        run: |
+          for package in \
+            text_tools/example_text_tools \
+            tag_set/example_tag_set \
+            request_ids/example_request_ids \
+            feature_flags/example_feature_flags \
+            run_metrics/example_run_metrics \
+            text_pattern/example_text_pattern
+          do
+            example="${package%%/*}"
+            gleam_package="${package#*/}"
+            (cd "examples/$example/project/packages/$gleam_package" && gleam export hex-tarball)
+          done
 
       - name: Verify standalone Gleam packages
         run: |
@@ -195,6 +227,11 @@ jobs:
           workspaces: |
             . -> target
             tests/fixtures/standalone_cli/providers -> target
+            examples/text_tools/provider -> target
+            examples/tag_set/provider -> target
+            examples/request_ids/provider -> target
+            examples/feature_flags/provider -> target
+            examples/run_metrics/provider -> target
             examples/text_pattern/provider -> target
 
       - name: Install cargo-llvm-cov

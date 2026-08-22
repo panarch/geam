@@ -1,0 +1,7 @@
+name = "text_tools_example"
+version = "1.0.0"
+description = "Standalone Geam multi-module text tools provider example"
+licences = ["Apache-2.0"]
+
+[dependencies]
+example_text_tools = { path = "packages/example_text_tools" }

@@ -1,0 +1,7 @@
+name = "tag_set_example"
+version = "1.0.0"
+description = "Standalone Geam tag set provider example"
+licences = ["Apache-2.0"]
+
+[dependencies]
+example_tag_set = { path = "packages/example_tag_set" }

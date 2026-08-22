@@ -1,0 +1,7 @@
+name = "run_metrics_example"
+version = "1.0.0"
+description = "Standalone Geam run metrics provider example"
+licences = ["Apache-2.0"]
+
+[dependencies]
+example_run_metrics = { path = "packages/example_run_metrics" }

@@ -10,12 +10,178 @@ approve provider dependencies, parse explicit configuration, and generate a
 concrete runner, but the resulting Rust program still composes every component
 at compile time. It does not choose or type-erase implementations at runtime.
 
-## Provider Crate
+Start with the [provider authoring examples](../examples/README.md). They present
+multi-module scalar registration, stateless, default-state, configured-state,
+default external, and manual external choices as complete Gleam/Rust pairs
+before this document describes the generated and low-level contracts.
+
+## External Value Provider Authoring
+
+The [run-metrics example](../examples/run_metrics/README.md) gives the Rust
+provider one constructorless source type and four functions. The Gleam package
+owns the visible value flow:
+
+```gleam
+@external(erlang, "geam_example_run_metrics", "Metrics")
+pub type Metrics
+
+@external(erlang, "geam_example_run_metrics", "new")
+pub fn new() -> Metrics
+
+@external(erlang, "geam_example_run_metrics", "record")
+pub fn record(metrics: Metrics, name: String, value: Float) -> Metrics
+
+@external(erlang, "geam_example_run_metrics", "count")
+pub fn count(metrics: Metrics, name: String) -> Int
+
+@external(erlang, "geam_example_run_metrics", "total")
+pub fn total(metrics: Metrics, name: String) -> Float
+```
+
+The matching Rust module declares the payload and source semantics at the same
+site as its functions:
+
+```rust
+use ecow::EcoString;
+use geam::provider::ExternalPayload;
+use num_bigint::BigInt;
+use std::collections::BTreeMap;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
+#[geam::provider(
+    package = "example_run_metrics",
+    modules = [metrics],
+)]
+pub struct Component;
+
+#[geam::module(path = "example_run_metrics")]
+mod metrics {
+    use super::*;
+
+    #[geam::external(name = "Metrics", manual)]
+    #[derive(Clone, Default, PartialEq)]
+    struct Metrics {
+        entries: BTreeMap<EcoString, Metric>,
+    }
+
+    #[derive(Clone, Default, PartialEq)]
+    struct Metric {
+        count: BigInt,
+        total: f64,
+    }
+
+    impl ExternalPayload for Metrics {
+        fn source_equal(&self, other: &Self) -> bool {
+            self == other
+        }
+
+        fn source_hash(&self) -> u64 {
+            let mut hasher = DefaultHasher::new();
+            for (name, metric) in &self.entries {
+                name.hash(&mut hasher);
+                metric.count.hash(&mut hasher);
+                let total = if metric.total == 0.0 {
+                    0
+                } else {
+                    metric.total.to_bits()
+                };
+                total.hash(&mut hasher);
+            }
+            hasher.finish()
+        }
+
+        fn inspect(&self) -> EcoString {
+            let entries = self.entries.iter().map(|(name, metric)| {
+                let total = if metric.total == 0.0 { 0.0 } else { metric.total };
+                format!("#({name:?}, #({}, {total:?}))", metric.count)
+            }).collect::<Vec<_>>().join(", ");
+            format!("Metrics([{entries}])").into()
+        }
+    }
+
+    #[geam::function]
+    fn new() -> Metrics {
+        Metrics::default()
+    }
+
+    #[geam::function]
+    fn record(metrics: &Metrics, name: EcoString, value: f64) -> Metrics {
+        let mut updated = metrics.clone();
+        let metric = updated.entries.entry(name).or_default();
+        metric.count += 1u8;
+        metric.total += value;
+        updated
+    }
+
+    #[geam::function]
+    fn count(metrics: &Metrics, name: EcoString) -> BigInt {
+        metrics.entries.get(&name)
+            .map(|metric| metric.count.clone())
+            .unwrap_or_default()
+    }
+
+    #[geam::function]
+    fn total(metrics: &Metrics, name: EcoString) -> f64 {
+        metrics.entries.get(&name).map_or(0.0, |metric| metric.total)
+    }
+}
+```
+
+`#[geam::external]` generates one typed schema, payload store, storage adapter,
+and provider binding. By default it also implements source equality and hashing
+through the payload's `PartialEq` and `Hash` implementations, with sealed
+`TypeName(<opaque>)` inspection. The `manual` flag keeps registration generation
+but leaves `ExternalPayload` to the provider, as above, when source semantics
+need specialized equality, hashing, or inspection. Equal signed-zero totals in
+this example must share a hash.
+
+An external source argument is an immutable `&Metrics` payload view in Rust; an
+external source return is an owned `Metrics` that Geam seals into the store.
+`record` therefore returns a persistent update rather than mutating the old
+source value.
+
+Scalar positions still use Geam's existing host types: `EcoString`, `f64`, and
+`BigInt` correspond to `String`, `Float`, and `Int`. The macro does not parse
+Gleam source or maintain another Rust-to-Gleam type table. Erlang annotation
+strings only establish external availability; Geam links by source package,
+module, function or type, and exact scheme.
+
+Rust compilation validates the macro targets, payload trait, borrowing rules,
+and generated typed registrations. `geam prepare` then compiles the complete
+Gleam project and links those schemas against the source declarations before
+initialization or execution. A provider with no process-local state or
+configuration omits both declarations; Geam supplies unit state and rejects
+unexpected configuration instead of ignoring it.
+
+The current macro surface supports scalars and non-generic constructorless
+external values whose payloads do not retain Gleam values. Custom types,
+compound values, callbacks, source `Result` construction, and retained Gleam
+values still use the low-level contracts below.
+
+## Generated Component Boundary
 
 Each provider crate exports one marker that implements
 `HostProviderComponent`. The component owns its store and run-state types.
 Provider crates that consume configuration implement the separate
-`HostProviderComponentInitialization` contract.
+`HostProviderComponentInitialization` contract. Authoring macros generate these
+implementations together with module registrations and external stores; the
+explicit form remains the underlying SDK boundary for capabilities outside the
+current macro surface.
+
+The provider component identity defaults to the Cargo package name and can be
+overridden with `id = "..."` when diagnostics need a distinct stable identity.
+This identity is separate from the required Gleam `package` and module paths.
+When `state` is omitted the component uses unit state. When `state = RunState`
+is present without `initialize`, empty configuration constructs
+`RunState::default()`. Both default forms reject non-empty configuration. A
+configured provider supplies both `state` and `initialize`; an initializer
+without a state declaration is rejected by the macro.
+
+A function may inject the component state as its first parameter with
+`#[geam::state]`. Use `&RunState` for read-only access and `&mut RunState` for
+mutation. The injected parameter is not part of the Gleam function signature;
+all following parameters remain ordinary source arguments.
 
 ```rust
 pub struct Component;
@@ -71,7 +237,7 @@ projects only this component's state through `HostComponentProfile<Component>`.
 That keeps callback state concrete without making the aggregate runner profile
 part of the provider crate.
 
-## Provider Authoring Example
+## Advanced Provider Example
 
 [`geam-example-text-pattern`](../examples/text_pattern/provider) is a compact
 provider intended to be read as normal crate source. It maps the ordinary

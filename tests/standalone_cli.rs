@@ -74,7 +74,7 @@ fn reports_project_compilation_failures_through_the_binary_boundary() {
 
 #[test]
 fn prepares_and_runs_pure_projects_without_printing_main_results() {
-    let project = gleam_project();
+    let project = cargo_gleam_project();
 
     let prepare = geam(&project, ["prepare"]);
     assert!(
@@ -297,6 +297,194 @@ nested = true
         String::from_utf8_lossy(&invalid.stderr)
             .contains("TOML datetime configuration values are unsupported"),
     );
+}
+
+#[test]
+fn runs_the_documented_run_metrics_provider_without_configuration() {
+    let fixture = run_metrics_example();
+    let project = fixture.path().join("project");
+
+    let add = geam_at(&project, ["provider", "add", "--path", "../provider"]);
+    assert!(
+        add.status.success(),
+        "run metrics provider add failed: {}",
+        String::from_utf8_lossy(&add.stderr),
+    );
+
+    let prepare = geam_at(&project, ["prepare"]);
+    assert!(
+        prepare.status.success(),
+        "run metrics prepare failed: {}",
+        String::from_utf8_lossy(&prepare.stderr),
+    );
+
+    let run = geam_at(&project, ["run"]);
+    assert!(
+        run.status.success(),
+        "run metrics execution failed: {}",
+        String::from_utf8_lossy(&run.stderr),
+    );
+    assert!(run.stdout.is_empty());
+    assert!(run.stderr.is_empty());
+
+    let independent_run = geam_at(&project, ["run"]);
+    assert!(
+        independent_run.status.success(),
+        "independent run metrics execution failed: {}",
+        String::from_utf8_lossy(&independent_run.stderr),
+    );
+    assert!(independent_run.stdout.is_empty());
+    assert!(independent_run.stderr.is_empty());
+}
+
+#[test]
+fn runs_the_documented_text_tools_provider_across_three_modules() {
+    let fixture = text_tools_example();
+    let project = fixture.path().join("project");
+
+    let add = geam_at(&project, ["provider", "add", "--path", "../provider"]);
+    assert!(
+        add.status.success(),
+        "text tools provider add failed: {}",
+        String::from_utf8_lossy(&add.stderr),
+    );
+
+    let prepare = geam_at(&project, ["prepare"]);
+    assert!(
+        prepare.status.success(),
+        "text tools prepare failed: {}",
+        String::from_utf8_lossy(&prepare.stderr),
+    );
+
+    for _ in 0..2 {
+        let run = geam_at(&project, ["run"]);
+        assert!(
+            run.status.success(),
+            "text tools execution failed: {}",
+            String::from_utf8_lossy(&run.stderr),
+        );
+        assert!(run.stdout.is_empty());
+        assert!(run.stderr.is_empty());
+    }
+}
+
+#[test]
+fn runs_the_documented_tag_set_provider_without_configuration() {
+    let fixture = tag_set_example();
+    let project = fixture.path().join("project");
+
+    let add = geam_at(&project, ["provider", "add", "--path", "../provider"]);
+    assert!(
+        add.status.success(),
+        "tag set provider add failed: {}",
+        String::from_utf8_lossy(&add.stderr),
+    );
+
+    let prepare = geam_at(&project, ["prepare"]);
+    assert!(
+        prepare.status.success(),
+        "tag set prepare failed: {}",
+        String::from_utf8_lossy(&prepare.stderr),
+    );
+
+    for _ in 0..2 {
+        let run = geam_at(&project, ["run"]);
+        assert!(
+            run.status.success(),
+            "tag set execution failed: {}",
+            String::from_utf8_lossy(&run.stderr),
+        );
+        assert!(run.stdout.is_empty());
+        assert!(run.stderr.is_empty());
+    }
+}
+
+#[test]
+fn runs_the_documented_request_ids_provider_with_fresh_default_state() {
+    let fixture = request_ids_example();
+    let project = fixture.path().join("project");
+
+    let add = geam_at(&project, ["provider", "add", "--path", "../provider"]);
+    assert!(
+        add.status.success(),
+        "request IDs provider add failed: {}",
+        String::from_utf8_lossy(&add.stderr),
+    );
+
+    let prepare = geam_at(&project, ["prepare"]);
+    assert!(
+        prepare.status.success(),
+        "request IDs prepare failed: {}",
+        String::from_utf8_lossy(&prepare.stderr),
+    );
+
+    for _ in 0..2 {
+        let run = geam_at(&project, ["run"]);
+        assert!(
+            run.status.success(),
+            "request IDs execution failed: {}",
+            String::from_utf8_lossy(&run.stderr),
+        );
+        assert!(run.stdout.is_empty());
+        assert!(run.stderr.is_empty());
+    }
+}
+
+#[test]
+fn runs_the_documented_feature_flags_provider_with_explicit_configuration() {
+    let fixture = feature_flags_example();
+    let project = fixture.path().join("project");
+
+    let add = geam_at(&project, ["provider", "add", "--path", "../provider"]);
+    assert!(
+        add.status.success(),
+        "feature flags provider add failed: {}",
+        String::from_utf8_lossy(&add.stderr),
+    );
+
+    let prepare = geam_at(&project, ["prepare"]);
+    assert!(
+        prepare.status.success(),
+        "feature flags prepare failed: {}",
+        String::from_utf8_lossy(&prepare.stderr),
+    );
+
+    for _ in 0..2 {
+        let run = geam_at(
+            &project,
+            [
+                "run",
+                "--provider-config",
+                "example_feature_flags=config/feature_flags.toml",
+            ],
+        );
+        assert!(
+            run.status.success(),
+            "feature flags execution failed: {}",
+            String::from_utf8_lossy(&run.stderr),
+        );
+        assert!(run.stdout.is_empty());
+        assert!(run.stderr.is_empty());
+    }
+
+    let missing = geam_at(&project, ["run"]);
+    assert!(!missing.status.success());
+    assert!(String::from_utf8_lossy(&missing.stderr).contains(
+        "could not initialize host provider component geam-example-feature-flags: configuration key `environment` must be a String",
+    ));
+
+    let wrong = geam_at(
+        &project,
+        [
+            "run",
+            "--provider-config",
+            "example_feature_flags=config/wrong_enabled.toml",
+        ],
+    );
+    assert!(!wrong.status.success());
+    assert!(String::from_utf8_lossy(&wrong.stderr).contains(
+        "could not initialize host provider component geam-example-feature-flags: configuration key `enabled` must be an Array of Strings",
+    ));
 }
 
 #[test]
@@ -593,8 +781,13 @@ fn gleam_project() -> TempDir {
     project
 }
 
+fn cargo_gleam_project() -> TempDir {
+    prepare_cargo_dependencies();
+    gleam_project()
+}
+
 fn provider_backed_project() -> TempDir {
-    let project = gleam_project();
+    let project = cargo_gleam_project();
     fs::write(
         project.path().join("gleam.toml"),
         r#"name = "application"
@@ -664,7 +857,7 @@ pub fn summarize(value: String, transform: fn(String) -> String) -> Summary
 }
 
 fn io_project() -> TempDir {
-    let project = gleam_project();
+    let project = cargo_gleam_project();
     fs::write(
         project.path().join("gleam.toml"),
         r#"name = "application"
@@ -739,6 +932,7 @@ fn write_cargo_config(project: &TempDir) {
 }
 
 fn standalone_fixture() -> TempDir {
+    prepare_cargo_dependencies();
     let fixture = tempdir().expect("temporary standalone fixture should be created");
     let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/standalone_cli");
     static GLEAM_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
@@ -748,14 +942,6 @@ fn standalone_fixture() -> TempDir {
         "gleam",
         &["deps", "download"],
         "`gleam deps download`",
-    );
-    static PROVIDER_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
-    workspace_dependencies::prepare(
-        &PROVIDER_DEPENDENCIES,
-        &source.join("providers"),
-        "cargo",
-        &["fetch", "--locked", "--config", "net.offline=false"],
-        "`cargo fetch --locked --config net.offline=false`",
     );
     copy_directory(&source, fixture.path());
     copy_directory(
@@ -790,18 +976,37 @@ fn standalone_fixture() -> TempDir {
     fixture
 }
 
-fn text_pattern_example() -> TempDir {
-    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/text_pattern");
-    static PROVIDER_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
-    workspace_dependencies::prepare(
-        &PROVIDER_DEPENDENCIES,
-        &source.join("provider"),
-        "cargo",
-        &["fetch", "--locked", "--config", "net.offline=false"],
-        "`cargo fetch --locked --config net.offline=false`",
-    );
+fn run_metrics_example() -> TempDir {
+    provider_example("run_metrics")
+}
 
-    let fixture = tempdir().expect("temporary text pattern fixture should be created");
+fn text_tools_example() -> TempDir {
+    provider_example("text_tools")
+}
+
+fn tag_set_example() -> TempDir {
+    provider_example("tag_set")
+}
+
+fn request_ids_example() -> TempDir {
+    provider_example("request_ids")
+}
+
+fn feature_flags_example() -> TempDir {
+    provider_example("feature_flags")
+}
+
+fn text_pattern_example() -> TempDir {
+    provider_example("text_pattern")
+}
+
+fn provider_example(name: &str) -> TempDir {
+    prepare_cargo_dependencies();
+    let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("examples")
+        .join(name);
+
+    let fixture = tempdir().expect("temporary provider example fixture should be created");
     copy_directory(&source, fixture.path());
     let project = fixture.path().join("project");
     for generated in ["Cargo.toml", "Cargo.lock", "Cargo.toml.geam.tmp"] {
@@ -810,20 +1015,47 @@ fn text_pattern_example() -> TempDir {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => panic!(
-                "generated text pattern file {} should be removable: {error}",
+                "generated provider example file {} should be removable: {error}",
                 path.display(),
             ),
         }
     }
     fs::create_dir_all(project.join(".cargo"))
-        .expect("text pattern Cargo config directory should be created");
+        .expect("provider example Cargo config directory should be created");
     let geam_path = toml::Value::String(env!("CARGO_MANIFEST_DIR").to_owned()).to_string();
     fs::write(
         project.join(".cargo/config.toml"),
         format!("[patch.crates-io]\ngeam = {{ path = {geam_path} }}\n\n[net]\noffline = true\n",),
     )
-    .expect("text pattern Cargo config should be written");
+    .expect("provider example Cargo config should be written");
     fixture
+}
+
+fn prepare_cargo_dependencies() {
+    const WORKSPACES: [&str; 8] = [
+        "tests/fixtures/provider_sdk",
+        "tests/fixtures/standalone_cli/providers",
+        "examples/text_tools/provider",
+        "examples/tag_set/provider",
+        "examples/request_ids/provider",
+        "examples/feature_flags/provider",
+        "examples/run_metrics/provider",
+        "examples/text_pattern/provider",
+    ];
+    static PREPARED: [OnceLock<Result<(), String>>; WORKSPACES.len()] =
+        [const { OnceLock::new() }; WORKSPACES.len()];
+
+    // No offline Cargo subprocess starts until every tracked provider lock is fetched.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for (prepared, workspace) in PREPARED.iter().zip(WORKSPACES) {
+        workspace_dependencies::prepare(
+            prepared,
+            &root.join(workspace),
+            "cargo",
+            &["fetch", "--locked", "--config", "net.offline=false"],
+            "`cargo fetch --locked --config net.offline=false`",
+        );
+    }
 }
 
 fn copy_directory(source: &Path, destination: &Path) {
@@ -844,7 +1076,7 @@ fn copy_directory(source: &Path, destination: &Path) {
 }
 
 fn gleam_project_with_dependency(package: &str, version: &str) -> TempDir {
-    let project = gleam_project();
+    let project = cargo_gleam_project();
     fs::write(
         project.path().join("gleam.toml"),
         format!(

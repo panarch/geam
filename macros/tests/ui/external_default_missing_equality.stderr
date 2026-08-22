@@ -1,0 +1,13 @@
+error[E0277]: can't compare `Metrics` with `Metrics`
+  --> tests/ui/external_default_missing_equality.rs:8:1
+   |
+ 8 | #[geam_macros::module(path = "metrics", crate_path = geam_core)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no implementation for `Metrics == Metrics`
+   |
+   = help: the trait `PartialEq` is not implemented for `Metrics`
+   = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `Metrics` with `#[derive(PartialEq)]`
+   |
+12 +     #[derive(PartialEq)]
+13 |     struct Metrics;
+   |

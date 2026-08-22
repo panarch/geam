@@ -1,0 +1,7 @@
+name = "request_ids_example"
+version = "1.0.0"
+description = "Standalone Geam request ID provider example"
+licences = ["Apache-2.0"]
+
+[dependencies]
+example_request_ids = { path = "packages/example_request_ids" }

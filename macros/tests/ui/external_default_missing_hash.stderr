@@ -1,0 +1,20 @@
+error[E0277]: the trait bound `Metrics: Hash` is not satisfied
+  --> tests/ui/external_default_missing_hash.rs:8:1
+   |
+ 8 | #[geam_macros::module(path = "metrics", crate_path = geam_core)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `Hash` is not implemented for `Metrics`
+   |
+note: required by a bound in `geam_core::__macro_support::external_payload_hash`
+  --> $WORKSPACE/core/src/__macro_support.rs
+   |
+   | pub fn external_payload_hash<Payload>(payload: &Payload) -> u64
+   |        --------------------- required by a bound in this function
+   | where
+   |     Payload: Hash + ?Sized,
+   |              ^^^^ required by this bound in `external_payload_hash`
+   = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `Metrics` with `#[derive(Hash)]`
+   |
+12 +     #[derive(Hash)]
+13 |     struct Metrics;
+   |

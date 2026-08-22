@@ -17,31 +17,36 @@ schema marker types and type-level lists, storage projection, registration, and
 call-scoped construction tokens by hand. Those declarations are useful for
 testing Geam's low-level ABI, but they do not carry text-pattern domain meaning.
 
-The target is for the hand-written provider to look roughly like the following.
-The attribute and helper names below are a design sketch, not a committed API:
+The scalar component and module shape now has a concrete target. Applying the
+same shape to this provider should look roughly like the following:
 
 ```rust
 use ecow::EcoString;
-use geam::provider::{ExternalValue, GleamResult};
+use geam::provider::{ExternalPayload, GleamResult};
 use regex::Regex;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 #[geam::provider(
-    id = "geam-example-text-pattern",
     package = "example_text_pattern",
-    module = "example_text_pattern",
+    modules = [text_pattern],
 )]
-mod text_pattern {
-    use super::*;
+pub struct Component;
 
-    #[geam::external(name = "Pattern")]
+#[geam::module(path = "example_text_pattern")]
+mod text_pattern {
+    use super::{
+        DefaultHasher, EcoString, ExternalPayload, GleamResult, Hash, Hasher,
+        Regex,
+    };
+
+    #[geam::external(name = "Pattern", manual)]
     struct Pattern {
         source: EcoString,
         regex: Regex,
     }
 
-    impl ExternalValue for Pattern {
+    impl ExternalPayload for Pattern {
         fn source_equal(&self, other: &Self) -> bool {
             self.source == other.source
         }
@@ -101,16 +106,24 @@ mod text_pattern {
 }
 ```
 
-The proc macros should generate the current component, schema, registration,
-storage-binding, callback-adapter, and sealed-construction machinery at compile
-time. The provider author should still write the Rust payload and behavior,
-external equality/hash/inspection semantics, configuration and state
-initialization when needed, callback bodies, and explicit failures. The
+`#[geam::provider]`, `#[geam::module]`, scalar `#[geam::function]`, injected
+`#[geam::state]` parameters, `ExternalPayload`, and `#[geam::external]` are now
+implemented. The external-value slice generates the schema, payload store,
+storage binding, and callback adapter for payloads that do not retain Gleam
+values. `GleamResult`, `#[geam::custom]`, and list or compound returns above
+remain a design sketch, so the macros still cannot express this complete
+provider.
+
+Later proc-macro slices should add the remaining custom and sealed-construction
+machinery while retaining the established component/package/module shape. The
+provider author should still write the Rust payload and behavior, external
+equality/hash/inspection semantics, configuration and state initialization when
+needed, callback bodies, and explicit failures. The
 `[package.metadata.geam.provider]` declaration also remains explicit because it
 is the crates.io discovery contract rather than Rust adapter boilerplate.
 
-The macros may be implemented in a separate `geam-macros` workspace crate, but
-`geam` should re-export them so a provider author still has one Geam dependency.
+The macros live in the separate `geam-macros` workspace crate, but `geam`
+re-exports them so a provider author still has one Geam dependency.
 Generated composition must remain static and typed: no dynamic registry,
 runtime reflection, type erasure, hidden configuration, or checked-in generated
 bindings.
