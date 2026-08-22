@@ -9,12 +9,14 @@ pub mod provider {
 pub mod __macro_support {
     pub use geam_core::__macro_support::{
         ExternalPayload, HostCall, HostCallCompletion, HostCallError, HostComponentProfile,
-        HostExternal, HostExternalBinding, HostExternalEquality, HostExternalHashing,
-        HostExternalInspection, HostExternalSchema, HostExternalStorage, HostExternalStore,
-        HostExternalType, HostProvider, HostProviderComponent, HostProviderComponentInitialization,
-        HostProviderComponentRegistration, HostProviderConfiguration,
-        HostProviderInitializationError, HostProviderModule, HostRegistrationError,
-        ProviderPackage, component_initialization_error, external_payload_hash,
+        HostConstructions, HostExternal, HostExternalBinding, HostExternalEquality,
+        HostExternalHashing, HostExternalInspection, HostExternalSchema, HostExternalStorage,
+        HostExternalStore, HostExternalType, HostProvider, HostProviderComponent,
+        HostProviderComponentInitialization, HostProviderComponentRegistration,
+        HostProviderConfiguration, HostProviderInitializationError, HostProviderModule,
+        HostRegistrationError, HostTuple, HostTupleType, HostTypeIndex0, HostTypeIndexNext,
+        HostTypeList, HostTypeListEnd, ProviderPackage, component_initialization_error,
+        external_payload_hash,
     };
 }
 

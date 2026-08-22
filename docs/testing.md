@@ -14,12 +14,12 @@ closing coverage gaps, see [test-development.md](test-development.md).
 
 `geam-macros` owns parser, diagnostic, expansion, compile-fail, and core-backed
 execution tests for the provider authoring attributes. Its integration tests
-use `geam-core` only as a dev-dependency and verify both stateful scalar calls
-and persistent external values without adding a production runtime dependency
-to the proc-macro crate. They fix generated schemas and stores, mixed
-external/scalar signatures, source equality, inspection, escaped payload
-lifetime, and structured linkage mismatch. Consumer fixtures do not replace
-these owner tests.
+use `geam-core` only as a dev-dependency and verify stateful scalar calls,
+recursive native tuples, and persistent external values without adding a
+production runtime dependency to the proc-macro crate. They fix generated
+schemas and stores, mixed tuple/external/scalar signatures, source equality,
+inspection, escaped payload lifetime, and structured linkage mismatch. Consumer
+fixtures do not replace these owner tests.
 
 The current compiler-boundary and runtime milestones depend on the exact
 `geam-gleam-core` package recorded in the upstream guide. `cargo test` resolves
@@ -150,12 +150,13 @@ production manifest, resolution, build, and execution path.
 
 The [provider authoring examples](../examples) are consumer-facing macro
 acceptance cases. `text_tools` maps one stateless provider to three Gleam
-modules, `tag_set` fixes generated external semantics, `request_ids` combines
-mutable and read-only default state, `feature_flags` owns configured
-initialization, and `run_metrics` retains specialized manual external semantics.
-Root binary tests follow each documented path add, prepare, run, and
-repeated-run workflow against independently locked provider crates. The
-complete Gleam entrypoints execute every public example function.
+modules, `value_types` fixes every scalar mapping plus one-, multi-, and
+nested-tuple mapping, `tag_set` fixes generated external semantics,
+`request_ids` combines mutable and read-only default state, `feature_flags` owns
+configured initialization, and `run_metrics` retains specialized manual
+external semantics. Root binary tests follow each documented path add, prepare,
+run, and repeated-run workflow against independently locked provider crates.
+The complete Gleam entrypoints execute every public example function.
 Repository-local Cargo patches select the current checkout until the authoring
 crates are released.
 
@@ -168,13 +169,13 @@ and run coverage without requiring a fixture crate to be published.
 
 CI formats, tests, lints, and packages every independent example provider. The
 text-pattern provider continues to exercise the released low-level
-`geam 0.1.2` surface, while the five macro examples select the unreleased
+`geam 0.1.2` surface, while the six macro examples select the unreleased
 authoring surface through repository-local patches and complete standalone
 execution.
 
 The normal suite executes the full generated runner with the fixture's locked
 Gleam and Rust dependencies. CI exports the standalone fixture's three local
-Gleam dependencies and all six example Gleam packages. It also packages the
+Gleam dependencies and all seven example Gleam packages. It also packages the
 two standalone fixture providers and every example provider. No fixture package
 is published.
 

@@ -11,9 +11,40 @@ concrete runner, but the resulting Rust program still composes every component
 at compile time. It does not choose or type-erase implementations at runtime.
 
 Start with the [provider authoring examples](../examples/README.md). They present
-multi-module scalar registration, stateless, default-state, configured-state,
-default external, and manual external choices as complete Gleam/Rust pairs
-before this document describes the generated and low-level contracts.
+multi-module registration, scalar and tuple value mappings, stateless,
+default-state, configured-state, default external, and manual external choices
+as complete Gleam/Rust pairs before this document describes the generated and
+low-level contracts.
+
+## Value Type Provider Authoring
+
+The [value-types example](../examples/value_types/README.md) is the canonical map
+from Gleam source values to macro-authored Rust signatures. Its scalar module
+maps `String`, `Int`, `Float`, `BitArray`, `UtfCodepoint`, `Bool`, and `Nil` to
+`EcoString`, `BigInt`, `f64`, `BitArrayValue`, `char`, `bool`, and `()`. Its
+tuple module recursively composes those leaves with native Rust tuples. A tuple
+remains one Gleam source argument even when it contains several elements:
+
+```rust
+#[geam::function]
+fn swap(value: (EcoString, BigInt)) -> (BigInt, EcoString) {
+    let (label, count) = value;
+    (count, label)
+}
+
+#[geam::function]
+fn reassociate(
+    value: (EcoString, (BigInt, bool)),
+) -> ((EcoString, BigInt), bool) {
+    let (label, (count, enabled)) = value;
+    ((label, count), enabled)
+}
+```
+
+Rust `(T,)` corresponds to Gleam `#(T)`, while Rust `()` keeps its existing
+Gleam `Nil` meaning. Tuple elements can recursively use the scalar and external
+payload forms supported by the macro; external arguments remain immutable
+payload views and external returns remain owned payloads.
 
 ## External Value Provider Authoring
 
@@ -142,7 +173,8 @@ external source return is an owned `Metrics` that Geam seals into the store.
 source value.
 
 Scalar positions still use Geam's existing host types: `EcoString`, `f64`, and
-`BigInt` correspond to `String`, `Float`, and `Int`. The macro does not parse
+`BigInt` correspond to `String`, `Float`, and `Int`. Native tuples recursively
+compose those scalars and declared external payloads. The macro does not parse
 Gleam source or maintain another Rust-to-Gleam type table. Erlang annotation
 strings only establish external availability; Geam links by source package,
 module, function or type, and exact scheme.
@@ -154,10 +186,11 @@ initialization or execution. A provider with no process-local state or
 configuration omits both declarations; Geam supplies unit state and rejects
 unexpected configuration instead of ignoring it.
 
-The current macro surface supports scalars and non-generic constructorless
-external values whose payloads do not retain Gleam values. Custom types,
-compound values, callbacks, source `Result` construction, and retained Gleam
-values still use the low-level contracts below.
+The current macro surface supports scalars, native tuples composed from
+supported leaves, and non-generic constructorless external values whose
+payloads do not retain Gleam values. Lists, custom types, callbacks, source
+`Result` construction, and retained Gleam values still use the low-level
+contracts below.
 
 ## Generated Component Boundary
 

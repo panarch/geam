@@ -1,0 +1,7 @@
+name = "value_types_example"
+version = "1.0.0"
+description = "Standalone Geam value type provider example"
+licences = ["Apache-2.0"]
+
+[dependencies]
+example_value_types = { path = "packages/example_value_types" }

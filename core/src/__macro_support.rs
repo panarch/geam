@@ -1,10 +1,11 @@
 pub use crate::host::{
-    HostCall, HostCallCompletion, HostCallError, HostComponentProfile, HostExternal,
-    HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
-    HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostProvider,
-    HostProviderComponent, HostProviderComponentInitialization, HostProviderComponentRegistration,
-    HostProviderConfiguration, HostProviderInitializationError, HostProviderModule,
-    HostRegistrationError,
+    HostCall, HostCallCompletion, HostCallError, HostComponentProfile, HostConstructions,
+    HostExternal, HostExternalBinding, HostExternalEquality, HostExternalHashing,
+    HostExternalInspection, HostExternalSchema, HostExternalStorage, HostExternalStore,
+    HostExternalType, HostProvider, HostProviderComponent, HostProviderComponentInitialization,
+    HostProviderComponentRegistration, HostProviderConfiguration, HostProviderInitializationError,
+    HostProviderModule, HostRegistrationError, HostTuple, HostTupleType, HostTypeIndex0,
+    HostTypeIndexNext, HostTypeList, HostTypeListEnd,
 };
 pub use crate::provider::ExternalPayload;
 use std::collections::hash_map::DefaultHasher;

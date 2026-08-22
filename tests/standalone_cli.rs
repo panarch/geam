@@ -369,6 +369,37 @@ fn runs_the_documented_text_tools_provider_across_three_modules() {
 }
 
 #[test]
+fn runs_the_documented_value_types_provider_without_configuration() {
+    let fixture = value_types_example();
+    let project = fixture.path().join("project");
+
+    let add = geam_at(&project, ["provider", "add", "--path", "../provider"]);
+    assert!(
+        add.status.success(),
+        "value types provider add failed: {}",
+        String::from_utf8_lossy(&add.stderr),
+    );
+
+    let prepare = geam_at(&project, ["prepare"]);
+    assert!(
+        prepare.status.success(),
+        "value types prepare failed: {}",
+        String::from_utf8_lossy(&prepare.stderr),
+    );
+
+    for _ in 0..2 {
+        let run = geam_at(&project, ["run"]);
+        assert!(
+            run.status.success(),
+            "value types execution failed: {}",
+            String::from_utf8_lossy(&run.stderr),
+        );
+        assert!(run.stdout.is_empty());
+        assert!(run.stderr.is_empty());
+    }
+}
+
+#[test]
 fn runs_the_documented_tag_set_provider_without_configuration() {
     let fixture = tag_set_example();
     let project = fixture.path().join("project");
@@ -984,6 +1015,10 @@ fn text_tools_example() -> TempDir {
     provider_example("text_tools")
 }
 
+fn value_types_example() -> TempDir {
+    provider_example("value_types")
+}
+
 fn tag_set_example() -> TempDir {
     provider_example("tag_set")
 }
@@ -1032,10 +1067,11 @@ fn provider_example(name: &str) -> TempDir {
 }
 
 fn prepare_cargo_dependencies() {
-    const WORKSPACES: [&str; 8] = [
+    const WORKSPACES: [&str; 9] = [
         "tests/fixtures/provider_sdk",
         "tests/fixtures/standalone_cli/providers",
         "examples/text_tools/provider",
+        "examples/value_types/provider",
         "examples/tag_set/provider",
         "examples/request_ids/provider",
         "examples/feature_flags/provider",

@@ -48,6 +48,7 @@ struct ExternalModel {
 enum FunctionType {
     Scalar(Type),
     External { schema: Ident },
+    Tuple(Vec<FunctionType>),
 }
 
 enum StateAccess {
@@ -61,6 +62,35 @@ struct FunctionModel {
     arguments: Vec<FunctionType>,
     return_: FunctionType,
     state: StateAccess,
+}
+
+struct GeneratedFunction {
+    wrapper: TokenStream,
+    registration: TokenStream,
+}
+
+struct GeneratedValue {
+    statements: TokenStream,
+    value: TokenStream,
+}
+
+struct GeneratedReturn {
+    statements: TokenStream,
+    completion: TokenStream,
+    constructions: Vec<TokenStream>,
+}
+
+#[derive(Default)]
+struct GeneratedNames {
+    next: usize,
+}
+
+impl GeneratedNames {
+    fn next(&mut self, role: &str) -> Ident {
+        let index = self.next;
+        self.next += 1;
+        format_ident!("__geam_{role}_{index}")
+    }
 }
 
 pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<TokenStream> {
@@ -211,121 +241,14 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             }
         }
     });
-    let wrappers = functions.iter().map(|function| {
-        let FunctionModel {
-            ident,
-            arguments: function_arguments,
-            return_,
-            state,
-        } = function;
-        let wrapper = format_ident!("__geam_host_{}", ident.unraw());
-        let arguments = (0..function_arguments.len())
-            .map(|index| format_ident!("__geam_argument_{index}"))
-            .collect::<Vec<_>>();
-        let argument_types = function_arguments
-            .iter()
-            .map(|type_| wrapper_type(type_, &support))
-            .collect::<Vec<_>>();
-        let payload_views = function_arguments
-            .iter()
-            .enumerate()
-            .filter_map(|(index, type_)| {
-                let FunctionType::External { .. } = type_ else {
-                    return None;
-                };
-                let argument = &arguments[index];
-                let view = format_ident!("__geam_payload_{index}");
-                Some(quote! {
-                    let #view = call.external_payload(#argument);
-                })
-            });
-        let (state_projection, state_argument) = match state {
-            StateAccess::None => (None, None),
-            StateAccess::Shared => (
-                Some(quote! {
-                    let __geam_state = &*call.state();
-                }),
-                Some(quote!(__geam_state)),
-            ),
-            StateAccess::Mutable => (
-                Some(quote! {
-                    let __geam_state = call.state();
-                }),
-                Some(quote!(__geam_state)),
-            ),
-        };
-        let call_arguments = state_argument
-            .into_iter()
-            .chain(
-                function_arguments
-                    .iter()
-                    .enumerate()
-                    .map(|(index, type_)| match type_ {
-                        FunctionType::Scalar(_) => {
-                            let argument = &arguments[index];
-                            quote!(#argument)
-                        }
-                        FunctionType::External { .. } => {
-                            let view = format_ident!("__geam_payload_{index}");
-                            quote!(&*#view)
-                        }
-                    }),
-            )
-            .collect::<Vec<_>>();
-        let return_type = host_type(return_, &support);
-        let complete = match return_ {
-            FunctionType::Scalar(_) => quote! {
-                ::core::result::Result::Ok(call.return_value(returned))
-            },
-            FunctionType::External { .. } => quote! {
-                let returned = call.create_external(returned);
-                ::core::result::Result::Ok(call.return_value(returned))
-            },
-        };
-
-        quote! {
-            fn #wrapper<'__geam_call, Profile>(
-                call: #support::HostCall<
-                    '__geam_call,
-                    Profile,
-                    __GeamProvider,
-                    #return_type,
-                >,
-                #(#arguments: #argument_types),*
-            ) -> ::core::result::Result<
-                #support::HostCallCompletion<'__geam_call, #return_type>,
-                #support::HostCallError,
-            >
-            where
-                Profile: #support::HostComponentProfile<super::Component>,
-            {
-                #[allow(unused_mut)]
-                let mut call = call;
-                #(#payload_views)*
-                #state_projection
-                let returned = #ident(#(#call_arguments),*);
-                #complete
-            }
-        }
-    });
-    let registrations = functions.iter().map(|function| {
-        let ident = &function.ident;
-        let name = ident.unraw().to_string();
-        let wrapper = format_ident!("__geam_host_{}", ident.unraw());
-        let arguments = function
-            .arguments
-            .iter()
-            .map(|type_| host_type(type_, &support));
-        let return_type = host_type(&function.return_, &support);
-        quote! {
-            let provider = provider.with_scoped_function::<
-                __GeamProvider,
-                (#(#arguments,)*),
-                #return_type,
-                _,
-            >(#name, #wrapper::<Profile>)?;
-        }
-    });
+    let generated_functions = functions
+        .iter()
+        .map(|function| generate_function(function, &support))
+        .collect::<Vec<_>>();
+    let wrappers = generated_functions.iter().map(|function| &function.wrapper);
+    let registrations = generated_functions
+        .iter()
+        .map(|function| &function.registration);
     let external_registrations = externals.iter().map(|external| {
         let schema = &external.schema;
         quote! {
@@ -367,7 +290,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
         items.push(Item::Verbatim(binding));
     }
     for wrapper in wrappers {
-        items.push(Item::Verbatim(wrapper));
+        items.push(Item::Verbatim(wrapper.clone()));
     }
     let registrar = quote! {
         pub(super) fn __geam_provider_module<Profile>() -> ::core::result::Result<
@@ -391,11 +314,305 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     Ok(quote!(#module))
 }
 
+fn generate_function(function: &FunctionModel, support: &TokenStream) -> GeneratedFunction {
+    let FunctionModel {
+        ident,
+        arguments: function_arguments,
+        return_,
+        state,
+    } = function;
+    let wrapper = format_ident!("__geam_host_{}", ident.unraw());
+    let arguments = (0..function_arguments.len())
+        .map(|index| format_ident!("__geam_argument_{index}"))
+        .collect::<Vec<_>>();
+    let argument_types = function_arguments
+        .iter()
+        .map(|type_| wrapper_type(type_, support))
+        .collect::<Vec<_>>();
+    let mut names = GeneratedNames::default();
+    let decoded_arguments = function_arguments
+        .iter()
+        .zip(&arguments)
+        .map(|(type_, argument)| decode_argument(type_, quote!(#argument), &mut names))
+        .collect::<Vec<_>>();
+    let argument_statements = decoded_arguments
+        .iter()
+        .map(|argument| &argument.statements);
+    let (state_projection, state_argument) = match state {
+        StateAccess::None => (None, None),
+        StateAccess::Shared => (
+            Some(quote! {
+                let __geam_state = &*call.state();
+            }),
+            Some(quote!(__geam_state)),
+        ),
+        StateAccess::Mutable => (
+            Some(quote! {
+                let __geam_state = call.state();
+            }),
+            Some(quote!(__geam_state)),
+        ),
+    };
+    let call_arguments = state_argument
+        .into_iter()
+        .chain(
+            decoded_arguments
+                .iter()
+                .map(|argument| argument.value.clone()),
+        )
+        .collect::<Vec<_>>();
+    let return_type = host_type(return_, support);
+    let generated_return = generate_return(return_, support, &mut names);
+    let return_statements = &generated_return.statements;
+    let completion = &generated_return.completion;
+    let construction_parameter = (!generated_return.constructions.is_empty()).then(|| {
+        let constructions = host_type_token_sequence(&generated_return.constructions, support);
+        quote! {
+            __geam_constructions: #support::HostConstructions<
+                '__geam_call,
+                #constructions,
+            >,
+        }
+    });
+    let wrapper_definition = quote! {
+        fn #wrapper<'__geam_call, Profile>(
+            call: #support::HostCall<
+                '__geam_call,
+                Profile,
+                __GeamProvider,
+                #return_type,
+            >,
+            #construction_parameter
+            #(#arguments: #argument_types,)*
+        ) -> ::core::result::Result<
+            #support::HostCallCompletion<'__geam_call, #return_type>,
+            #support::HostCallError,
+        >
+        where
+            Profile: #support::HostComponentProfile<super::Component>,
+        {
+            #[allow(unused_mut)]
+            let mut call = call;
+            #(#argument_statements)*
+            #state_projection
+            let returned = #ident(#(#call_arguments),*);
+            #return_statements
+            #completion
+        }
+    };
+
+    let name = ident.unraw().to_string();
+    let host_arguments = function_arguments
+        .iter()
+        .map(|type_| host_type(type_, support));
+    let registration = if generated_return.constructions.is_empty() {
+        quote! {
+            let provider = provider.with_scoped_function::<
+                __GeamProvider,
+                (#(#host_arguments,)*),
+                #return_type,
+                _,
+            >(#name, #wrapper::<Profile>)?;
+        }
+    } else {
+        let constructions = host_type_token_sequence(&generated_return.constructions, support);
+        quote! {
+            let provider = provider.with_scoped_function_and_constructions::<
+                __GeamProvider,
+                (#(#host_arguments,)*),
+                #return_type,
+                #constructions,
+                _,
+            >(#name, #wrapper::<Profile>)?;
+        }
+    };
+
+    GeneratedFunction {
+        wrapper: wrapper_definition,
+        registration,
+    }
+}
+
+fn decode_argument(
+    type_: &FunctionType,
+    input: TokenStream,
+    names: &mut GeneratedNames,
+) -> GeneratedValue {
+    match type_ {
+        FunctionType::Scalar(_) => GeneratedValue {
+            statements: TokenStream::new(),
+            value: input,
+        },
+        FunctionType::External { .. } => {
+            let view = names.next("payload");
+            GeneratedValue {
+                statements: quote! {
+                    let #view = call.external_payload(#input);
+                },
+                value: quote!(&*#view),
+            }
+        }
+        FunctionType::Tuple(elements) => {
+            let host_elements = elements
+                .iter()
+                .map(|_| names.next("tuple_element"))
+                .collect::<Vec<_>>();
+            let host_element_tokens = host_elements
+                .iter()
+                .map(|element| quote!(#element))
+                .collect::<Vec<_>>();
+            let host_values = host_value_sequence(&host_element_tokens);
+            let mut statements = quote! {
+                let #host_values = call.tuple_values(#input);
+            };
+            let decoded = elements
+                .iter()
+                .zip(host_elements)
+                .map(|(element, value)| decode_argument(element, quote!(#value), names))
+                .collect::<Vec<_>>();
+            for element in &decoded {
+                statements.extend(element.statements.clone());
+            }
+            let values = decoded.iter().map(|element| &element.value);
+            GeneratedValue {
+                statements,
+                value: quote!((#(#values,)*)),
+            }
+        }
+    }
+}
+
+fn generate_return(
+    type_: &FunctionType,
+    support: &TokenStream,
+    names: &mut GeneratedNames,
+) -> GeneratedReturn {
+    match type_ {
+        FunctionType::Scalar(_) => GeneratedReturn {
+            statements: TokenStream::new(),
+            completion: quote! {
+                ::core::result::Result::Ok(call.return_value(returned))
+            },
+            constructions: Vec::new(),
+        },
+        FunctionType::External { .. } => GeneratedReturn {
+            statements: quote! {
+                let returned = call.create_external(returned);
+            },
+            completion: quote! {
+                ::core::result::Result::Ok(call.return_value(returned))
+            },
+            constructions: Vec::new(),
+        },
+        FunctionType::Tuple(elements) => {
+            let mut constructions = Vec::new();
+            let generated = encode_tuple_elements(
+                elements,
+                quote!(returned),
+                support,
+                names,
+                &mut constructions,
+            );
+            let values = generated.value;
+            GeneratedReturn {
+                statements: generated.statements,
+                completion: quote! {
+                    ::core::result::Result::Ok(call.return_tuple(#values))
+                },
+                constructions,
+            }
+        }
+    }
+}
+
+fn encode_tuple_elements(
+    elements: &[FunctionType],
+    input: TokenStream,
+    support: &TokenStream,
+    names: &mut GeneratedNames,
+    constructions: &mut Vec<TokenStream>,
+) -> GeneratedValue {
+    let native_elements = elements
+        .iter()
+        .map(|_| names.next("returned_element"))
+        .collect::<Vec<_>>();
+    let mut statements = quote! {
+        let (#(#native_elements,)*) = #input;
+    };
+    let encoded = elements
+        .iter()
+        .zip(native_elements)
+        .map(|(element, value)| {
+            encode_intermediate(element, quote!(#value), support, names, constructions)
+        })
+        .collect::<Vec<_>>();
+    for element in &encoded {
+        statements.extend(element.statements.clone());
+    }
+    let values = encoded
+        .iter()
+        .map(|element| element.value.clone())
+        .collect::<Vec<_>>();
+    GeneratedValue {
+        statements,
+        value: host_value_sequence(&values),
+    }
+}
+
+fn encode_intermediate(
+    type_: &FunctionType,
+    input: TokenStream,
+    support: &TokenStream,
+    names: &mut GeneratedNames,
+    constructions: &mut Vec<TokenStream>,
+) -> GeneratedValue {
+    match type_ {
+        FunctionType::Scalar(_) => GeneratedValue {
+            statements: TokenStream::new(),
+            value: input,
+        },
+        FunctionType::External { .. } => {
+            let index = host_index(constructions.len(), support);
+            constructions.push(host_type(type_, support));
+            let value = names.next("returned_external");
+            GeneratedValue {
+                statements: quote! {
+                    let #value = call.construct_external(
+                        __geam_constructions.at::<#index>(),
+                        #input,
+                    );
+                },
+                value: quote!(#value),
+            }
+        }
+        FunctionType::Tuple(elements) => {
+            let mut generated =
+                encode_tuple_elements(elements, input, support, names, constructions);
+            let index = host_index(constructions.len(), support);
+            constructions.push(host_type(type_, support));
+            let value = names.next("returned_tuple");
+            let elements = generated.value;
+            generated.statements.extend(quote! {
+                let #value = call.construct_tuple(
+                    __geam_constructions.at::<#index>(),
+                    #elements,
+                );
+            });
+            generated.value = quote!(#value);
+            generated
+        }
+    }
+}
+
 fn host_type(type_: &FunctionType, support: &TokenStream) -> TokenStream {
     match type_ {
         FunctionType::Scalar(type_) => quote!(#type_),
-        FunctionType::External { schema, .. } => {
+        FunctionType::External { schema } => {
             quote!(#support::HostExternalType<#schema>)
+        }
+        FunctionType::Tuple(elements) => {
+            let elements = host_type_sequence(elements, support);
+            quote!(#support::HostTupleType<#elements>)
         }
     }
 }
@@ -403,10 +620,43 @@ fn host_type(type_: &FunctionType, support: &TokenStream) -> TokenStream {
 fn wrapper_type(type_: &FunctionType, support: &TokenStream) -> TokenStream {
     match type_ {
         FunctionType::Scalar(type_) => quote!(#type_),
-        FunctionType::External { schema, .. } => {
+        FunctionType::External { schema } => {
             quote!(#support::HostExternal<'__geam_call, #support::HostExternalType<#schema>>)
         }
+        FunctionType::Tuple(elements) => {
+            let elements = host_type_sequence(elements, support);
+            quote!(#support::HostTuple<'__geam_call, #elements>)
+        }
     }
+}
+
+fn host_type_sequence(elements: &[FunctionType], support: &TokenStream) -> TokenStream {
+    let elements = elements
+        .iter()
+        .map(|element| host_type(element, support))
+        .collect::<Vec<_>>();
+    host_type_token_sequence(&elements, support)
+}
+
+fn host_type_token_sequence(elements: &[TokenStream], support: &TokenStream) -> TokenStream {
+    elements.iter().rev().fold(
+        quote!(#support::HostTypeListEnd),
+        |tail, head| quote!(#support::HostTypeList<#head, #tail>),
+    )
+}
+
+fn host_value_sequence(values: &[TokenStream]) -> TokenStream {
+    values
+        .iter()
+        .rev()
+        .fold(quote!(()), |tail, head| quote!((#head, #tail)))
+}
+
+fn host_index(index: usize, support: &TokenStream) -> TokenStream {
+    (0..index).fold(
+        quote!(#support::HostTypeIndex0),
+        |index, _| quote!(#support::HostTypeIndexNext<#index>),
+    )
 }
 
 impl Parse for ModuleArguments {
@@ -684,21 +934,31 @@ fn validate_function(
 }
 
 fn classify_argument(type_: &Type, externals: &[ExternalModel]) -> syn::Result<FunctionType> {
-    if let Type::Reference(reference) = type_
-        && let Some(external) = external_type(&reference.elem, externals)
-    {
-        if reference.mutability.is_some() {
+    if let Type::Reference(reference) = type_ {
+        if let Some(external) = external_type(&reference.elem, externals) {
+            if reference.mutability.is_some() {
+                return Err(syn::Error::new_spanned(
+                    type_,
+                    format!(
+                        "external payload `{}` arguments must be immutable references",
+                        external.ident
+                    ),
+                ));
+            }
+            return Ok(FunctionType::External {
+                schema: external.schema.clone(),
+            });
+        }
+        if is_non_empty_tuple(&reference.elem) {
             return Err(syn::Error::new_spanned(
                 type_,
-                format!(
-                    "external payload `{}` arguments must be immutable references",
-                    external.ident
-                ),
+                "tuple arguments must be passed by value",
             ));
         }
-        return Ok(FunctionType::External {
-            schema: external.schema.clone(),
-        });
+        return Err(syn::Error::new_spanned(
+            type_,
+            "provider source arguments may borrow only declared external payloads",
+        ));
     }
     if let Some(external) = external_type(type_, externals) {
         return Err(syn::Error::new_spanned(
@@ -709,19 +969,39 @@ fn classify_argument(type_: &Type, externals: &[ExternalModel]) -> syn::Result<F
             ),
         ));
     }
+    if let Type::Tuple(tuple) = type_
+        && !tuple.elems.is_empty()
+    {
+        let elements = tuple
+            .elems
+            .iter()
+            .map(|element| classify_argument(element, externals))
+            .collect::<syn::Result<Vec<_>>>()?;
+        return Ok(FunctionType::Tuple(elements));
+    }
     Ok(FunctionType::Scalar(type_.clone()))
 }
 
 fn classify_return(type_: &Type, externals: &[ExternalModel]) -> syn::Result<FunctionType> {
-    if let Type::Reference(reference) = type_
-        && let Some(external) = external_type(&reference.elem, externals)
-    {
+    if let Type::Reference(reference) = type_ {
+        if let Some(external) = external_type(&reference.elem, externals) {
+            return Err(syn::Error::new_spanned(
+                type_,
+                format!(
+                    "external payload `{}` returns must be owned",
+                    external.ident
+                ),
+            ));
+        }
+        if is_non_empty_tuple(&reference.elem) {
+            return Err(syn::Error::new_spanned(
+                type_,
+                "tuple returns must be owned",
+            ));
+        }
         return Err(syn::Error::new_spanned(
             type_,
-            format!(
-                "external payload `{}` returns must be owned",
-                external.ident
-            ),
+            "provider source returns must be owned values",
         ));
     }
     if let Some(external) = external_type(type_, externals) {
@@ -729,7 +1009,21 @@ fn classify_return(type_: &Type, externals: &[ExternalModel]) -> syn::Result<Fun
             schema: external.schema.clone(),
         });
     }
+    if let Type::Tuple(tuple) = type_
+        && !tuple.elems.is_empty()
+    {
+        let elements = tuple
+            .elems
+            .iter()
+            .map(|element| classify_return(element, externals))
+            .collect::<syn::Result<Vec<_>>>()?;
+        return Ok(FunctionType::Tuple(elements));
+    }
     Ok(FunctionType::Scalar(type_.clone()))
+}
+
+fn is_non_empty_tuple(type_: &Type) -> bool {
+    matches!(type_, Type::Tuple(tuple) if !tuple.elems.is_empty())
 }
 
 fn external_type<'external>(
@@ -1127,6 +1421,8 @@ mod tests {
 
         assert!(expansion.contains("allow (clippy :: unused_unit)"));
         assert!(expansion.contains("fn record (value : bool) -> ()"));
+        assert!(!expansion.contains("HostTupleType"));
+        assert!(!expansion.contains("HostConstructions"));
     }
 
     #[test]
@@ -1280,6 +1576,187 @@ mod tests {
                 }
             }),
             "external payload `Metrics` returns must be owned",
+        );
+    }
+
+    #[test]
+    fn tuple_arguments_and_returns_reject_borrowed_or_mutable_shapes() {
+        let cases = [
+            (
+                quote! {
+                    mod tuples {
+                        #[geam::function]
+                        fn borrowed(value: &(EcoString, bool)) -> bool { true }
+                    }
+                },
+                "tuple arguments must be passed by value",
+            ),
+            (
+                quote! {
+                    mod tuples {
+                        #[geam::function]
+                        fn borrowed(value: &mut (EcoString, bool)) -> bool { true }
+                    }
+                },
+                "tuple arguments must be passed by value",
+            ),
+            (
+                quote! {
+                    mod tuples {
+                        #[geam::function]
+                        fn borrowed(value: EcoString) -> &(EcoString, bool) { todo!() }
+                    }
+                },
+                "tuple returns must be owned",
+            ),
+            (
+                quote! {
+                    mod tuples {
+                        #[geam::function]
+                        fn borrowed(value: (EcoString, &EcoString)) -> bool { true }
+                    }
+                },
+                "provider source arguments may borrow only declared external payloads",
+            ),
+            (
+                quote! {
+                    mod tuples {
+                        #[geam::function]
+                        fn borrowed(value: EcoString) -> (EcoString, &EcoString) { todo!() }
+                    }
+                },
+                "provider source returns must be owned values",
+            ),
+        ];
+
+        for (item, expected) in cases {
+            assert_eq!(expansion_error(item), expected);
+        }
+    }
+
+    #[test]
+    fn tuple_external_elements_preserve_argument_and_return_ownership() {
+        let cases = [
+            (
+                quote! {
+                    mod tuples {
+                        #[geam::external(name = "Token")]
+                        struct Token;
+
+                        #[geam::function]
+                        fn consume(value: (Token, EcoString)) -> bool { true }
+                    }
+                },
+                "external payload `Token` arguments must be immutable references",
+            ),
+            (
+                quote! {
+                    mod tuples {
+                        #[geam::external(name = "Token")]
+                        struct Token;
+
+                        #[geam::function]
+                        fn consume(value: (&mut Token, EcoString)) -> bool { true }
+                    }
+                },
+                "external payload `Token` arguments must be immutable references",
+            ),
+            (
+                quote! {
+                    mod tuples {
+                        #[geam::external(name = "Token")]
+                        struct Token;
+
+                        #[geam::function]
+                        fn create() -> (&Token, EcoString) { todo!() }
+                    }
+                },
+                "external payload `Token` returns must be owned",
+            ),
+        ];
+
+        for (item, expected) in cases {
+            assert_eq!(expansion_error(item), expected);
+        }
+    }
+
+    #[test]
+    fn top_level_scalar_tuple_returns_need_no_intermediate_constructions() {
+        let expansion = expand(
+            quote!(path = "tuples", crate_path = geam_core),
+            quote! {
+                mod tuples {
+                    #[geam::function]
+                    fn swap(value: (EcoString, BigInt)) -> (BigInt, EcoString) {
+                        let (label, count) = value;
+                        (count, label)
+                    }
+                }
+            },
+        )
+        .expect("top-level scalar tuple should expand")
+        .to_string();
+
+        assert!(expansion.contains("call . return_tuple"));
+        assert!(expansion.contains("with_scoped_function ::"));
+        assert!(!expansion.contains("with_scoped_function_and_constructions"));
+        assert!(!expansion.contains("HostConstructions"));
+    }
+
+    #[test]
+    fn tuple_expansion_uses_native_values_and_sealed_post_order_constructions() {
+        let expansion = expand(
+            quote!(path = "tuples", crate_path = geam_core),
+            quote! {
+                mod tuples {
+                    #[geam::external(name = "Token")]
+                    #[derive(Clone, PartialEq, Eq, Hash)]
+                    struct Token(EcoString);
+
+                    #[geam::function]
+                    fn consume(value: (&Token, (EcoString,))) -> EcoString { value.1.0 }
+
+                    #[geam::function]
+                    fn create(value: EcoString) -> (Token, (EcoString,)) {
+                        (Token(value.clone()), (value,))
+                    }
+
+                    #[geam::function]
+                    fn reassociate(
+                        value: (EcoString, (BigInt, bool)),
+                    ) -> ((EcoString, BigInt), bool) {
+                        let (label, (count, enabled)) = value;
+                        ((label, count), enabled)
+                    }
+
+                    #[geam::function]
+                    fn wide(
+                        value: (bool, bool, bool, bool, bool, bool, bool, bool),
+                    ) -> (bool, bool, bool, bool, bool, bool, bool, bool) {
+                        value
+                    }
+                }
+            },
+        )
+        .expect("native tuple declarations should expand")
+        .to_string();
+
+        assert!(expansion.contains("call . tuple_values (__geam_argument_0)"));
+        assert!(expansion.contains("consume ((& * __geam_payload_"));
+        assert!(expansion.contains("call . return_tuple"));
+        let external = expansion
+            .find("call . construct_external")
+            .expect("tuple external return should be an intermediate construction");
+        let one_tuple = expansion
+            .find("call . construct_tuple")
+            .expect("nested one-tuple should be an intermediate construction");
+        assert!(external < one_tuple);
+        assert!(expansion.contains("HostTypeIndex0"));
+        assert!(expansion.contains("HostTypeIndexNext <"));
+        assert!(expansion.contains("with_scoped_function_and_constructions"));
+        assert!(
+            expansion
+                .contains("HostTupleType < geam_core :: __macro_support :: HostTypeList < bool")
         );
     }
 

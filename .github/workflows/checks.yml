@@ -39,7 +39,7 @@ jobs:
 
       - name: Check example provider formatting
         run: |
-          for example in text_tools tag_set request_ids feature_flags run_metrics text_pattern; do
+          for example in text_tools value_types tag_set request_ids feature_flags run_metrics text_pattern; do
             (cd "examples/$example/provider" && cargo fmt --all --check)
           done
 
@@ -65,6 +65,7 @@ jobs:
             . -> target
             tests/fixtures/standalone_cli/providers -> target
             examples/text_tools/provider -> target
+            examples/value_types/provider -> target
             examples/tag_set/provider -> target
             examples/request_ids/provider -> target
             examples/feature_flags/provider -> target
@@ -84,7 +85,7 @@ jobs:
 
       - name: Run example provider clippy
         run: |
-          for example in text_tools tag_set request_ids feature_flags run_metrics text_pattern; do
+          for example in text_tools value_types tag_set request_ids feature_flags run_metrics text_pattern; do
             (cd "examples/$example/provider" && cargo clippy --all-targets --locked -- -D warnings)
           done
 
@@ -116,6 +117,7 @@ jobs:
             . -> target
             tests/fixtures/standalone_cli/providers -> target
             examples/text_tools/provider -> target
+            examples/value_types/provider -> target
             examples/tag_set/provider -> target
             examples/request_ids/provider -> target
             examples/feature_flags/provider -> target
@@ -136,7 +138,7 @@ jobs:
 
       - name: Test and package example providers
         run: |
-          for example in text_tools tag_set request_ids feature_flags run_metrics text_pattern; do
+          for example in text_tools value_types tag_set request_ids feature_flags run_metrics text_pattern; do
             (cd "examples/$example/provider" && cargo test --locked)
             (cd "examples/$example/provider" && cargo package --locked)
           done
@@ -145,6 +147,7 @@ jobs:
         run: |
           for package in \
             text_tools/example_text_tools \
+            value_types/example_value_types \
             tag_set/example_tag_set \
             request_ids/example_request_ids \
             feature_flags/example_feature_flags \
@@ -228,6 +231,7 @@ jobs:
             . -> target
             tests/fixtures/standalone_cli/providers -> target
             examples/text_tools/provider -> target
+            examples/value_types/provider -> target
             examples/tag_set/provider -> target
             examples/request_ids/provider -> target
             examples/feature_flags/provider -> target

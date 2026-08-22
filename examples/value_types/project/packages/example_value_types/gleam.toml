@@ -1,0 +1,4 @@
+name = "example_value_types"
+version = "1.0.0"
+description = "Scalar and tuple mappings backed by a native Geam provider"
+licences = ["Apache-2.0"]
