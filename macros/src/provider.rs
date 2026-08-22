@@ -46,14 +46,29 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
         crate_path: _,
     } = arguments;
     let module_count = modules.len();
+    let store_fields = modules.iter().map(|module| {
+        quote! {
+            #module: #module::__GeamStores,
+        }
+    });
 
     Ok(quote! {
         #component
 
+        #[doc(hidden)]
+        #[derive(Default)]
+        pub struct Stores {
+            #(#store_fields)*
+        }
+
         impl #support::HostProviderComponent for Component {
             const ID: &'static str = #id;
-            type Stores = ();
+            type Stores = Stores;
             type RunState = #state;
+        }
+
+        impl #support::ProviderPackage for Component {
+            const PACKAGE: &'static str = #package;
         }
 
         impl #support::HostProviderComponentInitialization for Component {
@@ -79,7 +94,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             > {
                 let mut providers = ::std::vec::Vec::with_capacity(#module_count);
                 #(
-                    providers.push(#modules::__geam_provider_module::<Profile>(#package)?);
+                    providers.push(#modules::__geam_provider_module::<Profile>()?);
                 )*
                 ::core::result::Result::Ok(providers)
             }
@@ -564,5 +579,13 @@ mod tests {
             .find("second :: __geam_provider_module")
             .expect("second registration should be generated");
         assert!(first < second);
+        assert!(expansion.contains("pub struct Stores { first : first :: __GeamStores"));
+        assert!(expansion.contains("second : second :: __GeamStores"));
+        assert!(expansion.contains("type Stores = Stores"));
+        assert!(
+            expansion
+                .contains("impl geam_core :: __macro_support :: ProviderPackage for Component")
+        );
+        assert!(expansion.contains("const PACKAGE : & 'static str = \"sample\""));
     }
 }

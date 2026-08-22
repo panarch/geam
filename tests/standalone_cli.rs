@@ -300,6 +300,44 @@ nested = true
 }
 
 #[test]
+fn runs_the_documented_run_metrics_provider_without_configuration() {
+    let fixture = run_metrics_example();
+    let project = fixture.path().join("project");
+
+    let add = geam_at(&project, ["provider", "add", "--path", "../provider"]);
+    assert!(
+        add.status.success(),
+        "run metrics provider add failed: {}",
+        String::from_utf8_lossy(&add.stderr),
+    );
+
+    let prepare = geam_at(&project, ["prepare"]);
+    assert!(
+        prepare.status.success(),
+        "run metrics prepare failed: {}",
+        String::from_utf8_lossy(&prepare.stderr),
+    );
+
+    let run = geam_at(&project, ["run"]);
+    assert!(
+        run.status.success(),
+        "run metrics execution failed: {}",
+        String::from_utf8_lossy(&run.stderr),
+    );
+    assert!(run.stdout.is_empty());
+    assert!(run.stderr.is_empty());
+
+    let independent_run = geam_at(&project, ["run"]);
+    assert!(
+        independent_run.status.success(),
+        "independent run metrics execution failed: {}",
+        String::from_utf8_lossy(&independent_run.stderr),
+    );
+    assert!(independent_run.stdout.is_empty());
+    assert!(independent_run.stderr.is_empty());
+}
+
+#[test]
 fn runs_the_documented_text_pattern_provider_from_its_local_path() {
     let fixture = text_pattern_example();
     let project = fixture.path().join("project");
@@ -790,18 +828,32 @@ fn standalone_fixture() -> TempDir {
     fixture
 }
 
-fn text_pattern_example() -> TempDir {
-    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/text_pattern");
+fn run_metrics_example() -> TempDir {
     static PROVIDER_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
+    provider_example("run_metrics", &PROVIDER_DEPENDENCIES)
+}
+
+fn text_pattern_example() -> TempDir {
+    static PROVIDER_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
+    provider_example("text_pattern", &PROVIDER_DEPENDENCIES)
+}
+
+fn provider_example(
+    name: &str,
+    provider_dependencies: &'static OnceLock<Result<(), String>>,
+) -> TempDir {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("examples")
+        .join(name);
     workspace_dependencies::prepare(
-        &PROVIDER_DEPENDENCIES,
+        provider_dependencies,
         &source.join("provider"),
         "cargo",
         &["fetch", "--locked", "--config", "net.offline=false"],
         "`cargo fetch --locked --config net.offline=false`",
     );
 
-    let fixture = tempdir().expect("temporary text pattern fixture should be created");
+    let fixture = tempdir().expect("temporary provider example fixture should be created");
     copy_directory(&source, fixture.path());
     let project = fixture.path().join("project");
     for generated in ["Cargo.toml", "Cargo.lock", "Cargo.toml.geam.tmp"] {
@@ -810,19 +862,19 @@ fn text_pattern_example() -> TempDir {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => panic!(
-                "generated text pattern file {} should be removable: {error}",
+                "generated provider example file {} should be removable: {error}",
                 path.display(),
             ),
         }
     }
     fs::create_dir_all(project.join(".cargo"))
-        .expect("text pattern Cargo config directory should be created");
+        .expect("provider example Cargo config directory should be created");
     let geam_path = toml::Value::String(env!("CARGO_MANIFEST_DIR").to_owned()).to_string();
     fs::write(
         project.join(".cargo/config.toml"),
         format!("[patch.crates-io]\ngeam = {{ path = {geam_path} }}\n\n[net]\noffline = true\n",),
     )
-    .expect("text pattern Cargo config should be written");
+    .expect("provider example Cargo config should be written");
     fixture
 }
 

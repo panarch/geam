@@ -2,22 +2,24 @@ pub mod gleam_json;
 pub mod gleam_stdlib;
 pub mod gleam_time;
 pub mod provider {
-    pub use geam_core::provider::{Configuration, InitializationError};
+    pub use geam_core::provider::{Configuration, ExternalPayload, InitializationError};
 }
 
 #[doc(hidden)]
 pub mod __macro_support {
     pub use geam_core::__macro_support::{
-        HostCall, HostCallCompletion, HostCallError, HostComponentProfile, HostProvider,
-        HostProviderComponent, HostProviderComponentInitialization,
+        ExternalPayload, HostCall, HostCallCompletion, HostCallError, HostComponentProfile,
+        HostExternal, HostExternalBinding, HostExternalEquality, HostExternalHashing,
+        HostExternalInspection, HostExternalSchema, HostExternalStorage, HostExternalStore,
+        HostExternalType, HostProvider, HostProviderComponent, HostProviderComponentInitialization,
         HostProviderComponentRegistration, HostProviderConfiguration,
         HostProviderInitializationError, HostProviderModule, HostRegistrationError,
-        component_initialization_error,
+        ProviderPackage, component_initialization_error,
     };
 }
 
 pub use geam_core::{frontend, host, plan, planner, runtime};
-pub use geam_macros::{function, module, provider};
+pub use geam_macros::{external, function, module, provider};
 
 pub use geam_core::frontend::{
     FrontendError, HostedTypedProgram, ModuleSource, PackageSource, ProjectError, TypedProgram,

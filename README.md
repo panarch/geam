@@ -173,11 +173,15 @@ under a reserved Cargo kebab-case namespace such as
 `company_image -> geam-company-image`, and require an interactive native-code
 approval before being recorded.
 
-The [text pattern example](examples/text_pattern/README.md) pairs an ordinary
-local Gleam package with an independently packageable Rust provider. It verifies
-explicit path selection, managed Cargo composition, and generated-runner
-execution while retaining the current low-level provider implementation as the
-baseline for the planned macro authoring API.
+The [run-metrics example](examples/run_metrics/README.md) pairs a constructorless
+Gleam `Metrics` type and four functions with a macro-authored Rust provider. It
+shows immutable external payloads, persistent updates, source equality, scalar
+arguments and returns, and generated-runner execution without a configuration
+file.
+
+The [text-pattern example](examples/text_pattern/README.md) keeps the advanced
+low-level baseline for retained Gleam values, custom errors, compound results,
+and list output that remain outside the current macro surface.
 
 Geam owns only a manifest carrying its exact managed marker, `Cargo.lock`, and
 `build/geam/` runner artifacts. It refuses to adopt an existing user Cargo

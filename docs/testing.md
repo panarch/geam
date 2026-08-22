@@ -12,14 +12,14 @@ standalone binary behavior; they do not replace package-local owner tests.
 For guidance on constructing owner tests, promoting diagnostic probes, and
 closing coverage gaps, see [test-development.md](test-development.md).
 
-`geam-macros` owns parser, diagnostic, expansion, and compile-fail tests for the
-provider authoring attributes. Its integration tests use `geam-core` only as a
-dev-dependency and compile, link, initialize, and run a complete scalar provider
-without adding a production dependency from the proc-macro crate to Geam. The
-standalone `geam-counter` fixture separately consumes the macros through the
-public root `geam` re-export. That consumer acceptance proves packaging,
-generated-runner composition, configuration, and repeated stateful execution;
-it does not replace the macro owner's parser and expansion tests.
+`geam-macros` owns parser, diagnostic, expansion, compile-fail, and core-backed
+execution tests for the provider authoring attributes. Its integration tests
+use `geam-core` only as a dev-dependency and verify both stateful scalar calls
+and persistent external values without adding a production runtime dependency
+to the proc-macro crate. They fix generated schemas and stores, mixed
+external/scalar signatures, source equality, inspection, escaped payload
+lifetime, and structured linkage mismatch. Consumer fixtures do not replace
+these owner tests.
 
 The current compiler-boundary and runtime milestones depend on the exact
 `geam-gleam-core` package recorded in the upstream guide. `cargo test` resolves
@@ -148,20 +148,32 @@ the real root Cargo lock, generated runner check, and runner execution.
 Fixture-only Cargo patches keep acquisition local while preserving the
 production manifest, resolution, build, and execution path.
 
-The [`examples/text_pattern`](../examples/text_pattern) example adds a
-distribution-ready provider baseline. Its path test executes the complete
-provider surface through the managed root lock and generated runner. The
-existing fake-registry orchestration test owns search, sparse-index, checksum,
-archive metadata, approval, registry-shaped dependency, lock, check, and run
-coverage without requiring a fixture crate to be published.
+The [`examples/run_metrics`](../examples/run_metrics) example is the
+consumer-facing external-value macro acceptance case. Its Gleam entrypoint
+passes an opaque `Metrics` value through four functions and checks persistent
+updates, equivalent independent values, scalar arguments and returns, and
+missing keys. The root binary test follows the documented path add, prepare,
+config-free run, and repeated-run commands against the independently locked
+provider crate. Repository-local Cargo patches select the current checkout
+until the authoring crates are released.
 
-CI formats and lints the example provider as an independent crate and verifies
-its ordinary `cargo package --locked` archive. The provider depends on the
-released `geam 0.1.2` crate rather than a repository path or Git revision.
+The [`examples/text_pattern`](../examples/text_pattern) example adds a
+distribution-ready advanced provider baseline. Its path test executes the
+complete low-level provider surface through the managed root lock and generated
+runner. The existing fake-registry orchestration test owns search, sparse-index,
+checksum, archive metadata, approval, registry-shaped dependency, lock, check,
+and run coverage without requiring a fixture crate to be published.
+
+CI formats and lints both independent example providers. It verifies the text
+pattern provider's ordinary `cargo package --locked` archive because that
+provider depends on the released `geam 0.1.2` crate rather than a repository
+path or Git revision. Run metrics instead validates the unreleased public macro
+surface through the repository-local patch and complete standalone execution.
 
 The normal suite executes the full generated runner with the fixture's locked
-Gleam and Rust dependencies. CI also runs `gleam export hex-tarball` for each
-local Gleam dependency and `cargo package` for both provider crates. No fixture
+Gleam and Rust dependencies. CI exports the standalone fixture's three local
+Gleam dependencies and the run-metrics Gleam package. It also packages the two
+standalone fixture providers and the advanced text-pattern provider. No fixture
 package is published.
 
 Source-level rejection fixtures live under categorized

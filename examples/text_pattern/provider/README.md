@@ -23,7 +23,7 @@ same shape to this provider should look roughly like the following:
 ```rust
 use ecow::EcoString;
 use geam::provider::{
-    Configuration, ExternalValue, GleamResult, InitializationError,
+    Configuration, ExternalPayload, GleamResult, InitializationError,
 };
 use regex::Regex;
 use std::collections::hash_map::DefaultHasher;
@@ -49,7 +49,7 @@ pub struct Component;
 #[geam::module(path = "example_text_pattern")]
 mod text_pattern {
     use super::{
-        DefaultHasher, EcoString, ExternalValue, GleamResult, Hash, Hasher,
+        DefaultHasher, EcoString, ExternalPayload, GleamResult, Hash, Hasher,
         Regex,
     };
 
@@ -59,7 +59,7 @@ mod text_pattern {
         regex: Regex,
     }
 
-    impl ExternalValue for Pattern {
+    impl ExternalPayload for Pattern {
         fn source_equal(&self, other: &Self) -> bool {
             self.source == other.source
         }
@@ -119,15 +119,16 @@ mod text_pattern {
 }
 ```
 
-`#[geam::provider]`, `#[geam::module]`, scalar `#[geam::function]`, and injected
-`#[geam::state]` parameters are implemented by the first authoring slice. The
-`ExternalValue`, `GleamResult`, `#[geam::external]`, and `#[geam::custom]`
-surfaces above remain a design sketch: the scalar macros cannot yet express
-this provider's opaque values, custom error, list return, or compound result.
+`#[geam::provider]`, `#[geam::module]`, scalar `#[geam::function]`, injected
+`#[geam::state]` parameters, `ExternalPayload`, and `#[geam::external]` are now
+implemented. The external-value slice generates the schema, payload store,
+storage binding, and callback adapter for payloads that do not retain Gleam
+values. `GleamResult`, `#[geam::custom]`, and list or compound returns above
+remain a design sketch, so the macros still cannot express this complete
+provider.
 
-Later proc-macro slices should generate the current external schema,
-storage-binding, callback-adapter, and sealed-construction machinery at compile
-time while retaining the established component/package/module shape. The
+Later proc-macro slices should add the remaining custom and sealed-construction
+machinery while retaining the established component/package/module shape. The
 provider author should still write the Rust payload and behavior, external
 equality/hash/inspection semantics, configuration and state initialization when
 needed, callback bodies, and explicit failures. The

@@ -41,6 +41,10 @@ jobs:
         working-directory: examples/text_pattern/provider
         run: cargo fmt --all --check
 
+      - name: Check external value provider example formatting
+        working-directory: examples/run_metrics/provider
+        run: cargo fmt --all --check
+
   clippy:
     name: clippy
     runs-on: ubuntu-latest
@@ -62,6 +66,7 @@ jobs:
           workspaces: |
             . -> target
             tests/fixtures/standalone_cli/providers -> target
+            examples/run_metrics/provider -> target
             examples/text_pattern/provider -> target
 
       - name: Fetch standalone provider dependencies
@@ -77,6 +82,10 @@ jobs:
 
       - name: Run provider authoring example clippy
         working-directory: examples/text_pattern/provider
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Run external value provider example clippy
+        working-directory: examples/run_metrics/provider
         run: cargo clippy --all-targets --locked -- -D warnings
 
   test:
@@ -123,6 +132,10 @@ jobs:
       - name: Verify provider authoring example package
         working-directory: examples/text_pattern/provider
         run: cargo package --locked
+
+      - name: Verify external value provider Gleam package
+        working-directory: examples/run_metrics/project/packages/example_run_metrics
+        run: gleam export hex-tarball
 
       - name: Verify standalone Gleam packages
         run: |

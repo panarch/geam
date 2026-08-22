@@ -65,7 +65,7 @@ mod labels {
 struct Profile;
 
 #[derive(Default)]
-struct Stores {
+struct ProfileStores {
     component: <Component as HostProviderComponent>::Stores,
 }
 
@@ -75,7 +75,7 @@ struct ProfileState {
 
 impl HostProfile for Profile {
     type RunState = ProfileState;
-    type ExternalStores = Stores;
+    type ExternalStores = ProfileStores;
 }
 
 impl HostComponentProfile<Component> for Profile {

@@ -20,4 +20,5 @@ syn.workspace = true
 [dev-dependencies]
 ecow.workspace = true
 geam-core.workspace = true
+num-bigint.workspace = true
 trybuild.workspace = true

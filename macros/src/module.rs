@@ -1,10 +1,12 @@
 use crate::path::support_path;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
+use std::collections::BTreeSet;
 use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream};
 use syn::{
-    Attribute, FnArg, Ident, Item, ItemFn, ItemMod, LitStr, Meta, Path, ReturnType, Token, Type,
+    Attribute, FnArg, Ident, Item, ItemFn, ItemMod, ItemStruct, LitStr, Meta, Path, ReturnType,
+    Token, Type, TypePath,
 };
 
 struct ModuleArguments {
@@ -18,10 +20,32 @@ struct PartialModuleArguments {
     crate_path: Option<Path>,
 }
 
+struct ExternalArguments {
+    name: LitStr,
+}
+
+#[derive(Default)]
+struct PartialExternalArguments {
+    name: Option<LitStr>,
+}
+
+struct ExternalModel {
+    ident: Ident,
+    name: LitStr,
+    schema: Ident,
+    storage: Ident,
+    store_field: Ident,
+}
+
+enum FunctionType {
+    Scalar(Type),
+    External { schema: Ident },
+}
+
 struct FunctionModel {
     ident: Ident,
-    argument_types: Vec<Type>,
-    return_type: Type,
+    arguments: Vec<FunctionType>,
+    return_: FunctionType,
     has_state: bool,
 }
 
@@ -32,33 +56,177 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     let inline_module_error =
         syn::Error::new_spanned(&module, "`#[geam::module]` requires an inline Rust module");
     let (_, items) = module.content.as_mut().ok_or(inline_module_error)?;
+    let mut externals = Vec::new();
+    let mut source_names = BTreeSet::new();
+    for item in items.iter_mut() {
+        let Item::Struct(payload) = item else {
+            continue;
+        };
+        let Some(external) = take_external_marker(&mut payload.attrs)? else {
+            continue;
+        };
+        validate_external(payload)?;
+        if !source_names.insert(external.name.value()) {
+            return Err(syn::Error::new(
+                external.name.span(),
+                format!("duplicate external source type `{}`", external.name.value()),
+            ));
+        }
+        let index = externals.len();
+        externals.push(ExternalModel {
+            ident: payload.ident.clone(),
+            name: external.name,
+            schema: format_ident!("__GeamExternalSchema{index}"),
+            storage: format_ident!("__GeamExternalStorage{index}"),
+            store_field: format_ident!("__geam_external_{index}"),
+        });
+    }
+
     let mut functions = Vec::new();
     for item in items.iter_mut() {
         let Item::Fn(function) = item else {
             continue;
         };
         if take_marker(&mut function.attrs, "function")? {
-            functions.push(validate_function(function)?);
+            functions.push(validate_function(function, &externals)?);
         }
     }
 
     let module_path = arguments.path;
+    let module_ident = &module.ident;
+    let store_fields = externals.iter().map(|external| {
+        let payload = &external.ident;
+        let field = &external.store_field;
+        quote! {
+            #field: #support::HostExternalStore<#payload>,
+        }
+    });
+    let schemas = externals.iter().map(|external| {
+        let payload = &external.ident;
+        let source_name = &external.name;
+        let schema = &external.schema;
+        let storage = &external.storage;
+        let store_field = &external.store_field;
+        quote! {
+            struct #schema;
+
+            impl #support::HostExternalSchema for #schema {
+                const PACKAGE: &'static str =
+                    <super::Component as #support::ProviderPackage>::PACKAGE;
+                const MODULE: &'static str = #module_path;
+                const NAME: &'static str = #source_name;
+                const PARAMETER_COUNT: usize = 0;
+            }
+
+            struct #storage;
+
+            impl<Profile> #support::HostExternalStorage<Profile, #schema> for #storage
+            where
+                Profile: #support::HostComponentProfile<super::Component>,
+            {
+                type Payload = #payload;
+
+                fn store(
+                    stores: &Profile::ExternalStores,
+                ) -> &#support::HostExternalStore<Self::Payload> {
+                    &<Profile as #support::HostComponentProfile<super::Component>>::component_stores(
+                        stores,
+                    ).#module_ident.#store_field
+                }
+
+                fn source_equal(
+                    _context: &#support::HostExternalEquality<'_>,
+                    left: &Self::Payload,
+                    right: &Self::Payload,
+                ) -> bool {
+                    <#payload as #support::ExternalPayload>::source_equal(left, right)
+                }
+
+                fn source_hash(
+                    _context: &#support::HostExternalHashing<'_>,
+                    value: &Self::Payload,
+                ) -> u64 {
+                    <#payload as #support::ExternalPayload>::source_hash(value)
+                }
+
+                fn inspect(
+                    _context: &#support::HostExternalInspection<'_>,
+                    value: &Self::Payload,
+                ) -> ::ecow::EcoString {
+                    <#payload as #support::ExternalPayload>::inspect(value)
+                }
+            }
+        }
+    });
+    let bindings = externals.iter().map(|external| {
+        let schema = &external.schema;
+        let storage = &external.storage;
+        quote! {
+            impl<Profile> #support::HostExternalBinding<Profile, #schema> for __GeamProvider
+            where
+                Profile: #support::HostComponentProfile<super::Component>,
+            {
+                type Storage = #storage;
+            }
+        }
+    });
     let wrappers = functions.iter().map(|function| {
         let FunctionModel {
             ident,
-            argument_types,
-            return_type,
+            arguments: function_arguments,
+            return_,
             has_state,
         } = function;
         let wrapper = format_ident!("__geam_host_{}", ident.unraw());
-        let arguments = (0..argument_types.len())
+        let arguments = (0..function_arguments.len())
             .map(|index| format_ident!("__geam_argument_{index}"))
             .collect::<Vec<_>>();
+        let argument_types = function_arguments
+            .iter()
+            .map(|type_| wrapper_type(type_, &support))
+            .collect::<Vec<_>>();
+        let payload_views = function_arguments
+            .iter()
+            .enumerate()
+            .filter_map(|(index, type_)| {
+                let FunctionType::External { .. } = type_ else {
+                    return None;
+                };
+                let argument = &arguments[index];
+                let view = format_ident!("__geam_payload_{index}");
+                Some(quote! {
+                    let #view = call.external_payload(#argument);
+                })
+            });
         let call_arguments = has_state
             .then_some(quote!(call.state()))
             .into_iter()
-            .chain(arguments.iter().map(|argument| quote!(#argument)))
+            .chain(
+                function_arguments
+                    .iter()
+                    .enumerate()
+                    .map(|(index, type_)| match type_ {
+                        FunctionType::Scalar(_) => {
+                            let argument = &arguments[index];
+                            quote!(#argument)
+                        }
+                        FunctionType::External { .. } => {
+                            let view = format_ident!("__geam_payload_{index}");
+                            quote!(&*#view)
+                        }
+                    }),
+            )
             .collect::<Vec<_>>();
+        let return_type = host_type(return_, &support);
+        let complete = match return_ {
+            FunctionType::Scalar(_) => quote! {
+                ::core::result::Result::Ok(call.return_value(returned))
+            },
+            FunctionType::External { .. } => quote! {
+                let returned = call.create_external(returned);
+                ::core::result::Result::Ok(call.return_value(returned))
+            },
+        };
 
         quote! {
             fn #wrapper<'__geam_call, Profile>(
@@ -78,8 +246,9 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             {
                 #[allow(unused_mut)]
                 let mut call = call;
+                #(#payload_views)*
                 let returned = #ident(#(#call_arguments),*);
-                ::core::result::Result::Ok(call.return_value(returned))
+                #complete
             }
         }
     });
@@ -87,8 +256,11 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
         let ident = &function.ident;
         let name = ident.unraw().to_string();
         let wrapper = format_ident!("__geam_host_{}", ident.unraw());
-        let arguments = &function.argument_types;
-        let return_type = &function.return_type;
+        let arguments = function
+            .arguments
+            .iter()
+            .map(|type_| host_type(type_, &support));
+        let return_type = host_type(&function.return_, &support);
         quote! {
             let provider = provider.with_scoped_function::<
                 __GeamProvider,
@@ -98,7 +270,23 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             >(#name, #wrapper::<Profile>)?;
         }
     });
+    let external_registrations = externals.iter().map(|external| {
+        let schema = &external.schema;
+        quote! {
+            let provider = provider.with_external_type::<__GeamProvider, #schema>()?;
+        }
+    });
 
+    items.push(Item::Verbatim(quote! {
+        #[doc(hidden)]
+        #[derive(Default)]
+        pub(super) struct __GeamStores {
+            #(#store_fields)*
+        }
+    }));
+    for schema in schemas {
+        items.push(Item::Verbatim(schema));
+    }
     items.push(Item::Verbatim(quote! {
         struct __GeamProvider;
     }));
@@ -116,20 +304,25 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             }
         }
     }));
+    for binding in bindings {
+        items.push(Item::Verbatim(binding));
+    }
     for wrapper in wrappers {
         items.push(Item::Verbatim(wrapper));
     }
     let registrar = quote! {
-        pub(super) fn __geam_provider_module<Profile>(
-            package: &'static str,
-        ) -> ::core::result::Result<
+        pub(super) fn __geam_provider_module<Profile>() -> ::core::result::Result<
             #support::HostProviderModule<Profile>,
             #support::HostRegistrationError,
         >
         where
             Profile: #support::HostComponentProfile<super::Component>,
         {
-            let provider = #support::HostProviderModule::<Profile>::new(package, #module_path)?;
+            let provider = #support::HostProviderModule::<Profile>::new(
+                <super::Component as #support::ProviderPackage>::PACKAGE,
+                #module_path,
+            )?;
+            #(#external_registrations)*
             #(#registrations)*
             ::core::result::Result::Ok(provider)
         }
@@ -137,6 +330,24 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     items.push(Item::Verbatim(registrar));
 
     Ok(quote!(#module))
+}
+
+fn host_type(type_: &FunctionType, support: &TokenStream) -> TokenStream {
+    match type_ {
+        FunctionType::Scalar(type_) => quote!(#type_),
+        FunctionType::External { schema, .. } => {
+            quote!(#support::HostExternalType<#schema>)
+        }
+    }
+}
+
+fn wrapper_type(type_: &FunctionType, support: &TokenStream) -> TokenStream {
+    match type_ {
+        FunctionType::Scalar(type_) => quote!(#type_),
+        FunctionType::External { schema, .. } => {
+            quote!(#support::HostExternal<'__geam_call, #support::HostExternalType<#schema>>)
+        }
+    }
 }
 
 impl Parse for ModuleArguments {
@@ -161,15 +372,54 @@ impl Parse for ModuleArguments {
             input.parse::<Token![,]>()?;
         }
 
+        let Some(path) = partial.path else {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "missing required module argument `path`",
+            ));
+        };
         Ok(Self {
-            path: partial.path.ok_or_else(|| {
-                syn::Error::new(
-                    proc_macro2::Span::call_site(),
-                    "missing required module argument `path`",
-                )
-            })?,
+            path,
             crate_path: partial.crate_path,
         })
+    }
+}
+
+impl Parse for ExternalArguments {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let mut partial = PartialExternalArguments::default();
+        while !input.is_empty() {
+            let field = input.parse::<Ident>()?;
+            input.parse::<Token![=]>()?;
+            match field.to_string().as_str() {
+                "name" => {
+                    if partial.name.replace(input.parse()?).is_some() {
+                        return Err(syn::Error::new(
+                            field.span(),
+                            "duplicate external argument `name`",
+                        ));
+                    }
+                }
+                _ => {
+                    return Err(syn::Error::new(
+                        field.span(),
+                        format!("unknown external argument `{field}`"),
+                    ));
+                }
+            }
+            if input.is_empty() {
+                break;
+            }
+            input.parse::<Token![,]>()?;
+        }
+
+        let Some(name) = partial.name else {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "missing required external argument `name`",
+            ));
+        };
+        Ok(Self { name })
     }
 }
 
@@ -214,7 +464,58 @@ fn take_marker(attributes: &mut Vec<Attribute>, name: &str) -> syn::Result<bool>
     Ok(found)
 }
 
-fn validate_function(function: &mut ItemFn) -> syn::Result<FunctionModel> {
+fn take_external_marker(attributes: &mut Vec<Attribute>) -> syn::Result<Option<ExternalArguments>> {
+    let mut retained = Vec::with_capacity(attributes.len());
+    let mut found = None;
+    for attribute in std::mem::take(attributes) {
+        if !is_marker(&attribute, "external") {
+            retained.push(attribute);
+            continue;
+        }
+        if found.is_some() {
+            return Err(syn::Error::new_spanned(
+                attribute,
+                "duplicate `#[geam::external]` attribute",
+            ));
+        }
+        let arguments = match &attribute.meta {
+            Meta::List(_) => attribute.parse_args::<ExternalArguments>()?,
+            Meta::Path(_) => syn::parse2::<ExternalArguments>(TokenStream::new())?,
+            Meta::NameValue(_) => {
+                return Err(syn::Error::new_spanned(
+                    attribute,
+                    "`#[geam::external]` requires `name = \"...\"` arguments",
+                ));
+            }
+        };
+        found = Some(arguments);
+    }
+    *attributes = retained;
+    Ok(found)
+}
+
+fn is_marker(attribute: &Attribute, name: &str) -> bool {
+    attribute
+        .path()
+        .segments
+        .last()
+        .is_some_and(|segment| segment.ident == name)
+}
+
+fn validate_external(payload: &ItemStruct) -> syn::Result<()> {
+    if !payload.generics.params.is_empty() || payload.generics.where_clause.is_some() {
+        return Err(syn::Error::new_spanned(
+            &payload.generics,
+            "external payload structs must not have generics",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_function(
+    function: &mut ItemFn,
+    externals: &[ExternalModel],
+) -> syn::Result<FunctionModel> {
     if function.sig.constness.is_some() {
         return Err(syn::Error::new_spanned(
             function.sig.constness,
@@ -251,10 +552,16 @@ fn validate_function(function: &mut ItemFn) -> syn::Result<FunctionModel> {
             "provider functions require an explicit return type",
         ));
     };
-    let return_type = (**return_type).clone();
+    let rust_return_type = (**return_type).clone();
+    if matches!(&rust_return_type, Type::Tuple(tuple) if tuple.elems.is_empty()) {
+        function
+            .attrs
+            .push(syn::parse_quote!(#[allow(clippy::unused_unit)]));
+    }
+    let return_ = classify_return(&rust_return_type, externals)?;
 
     let mut has_state = false;
-    let mut argument_types = Vec::new();
+    let mut arguments = Vec::new();
     for (index, argument) in function.sig.inputs.iter_mut().enumerate() {
         let FnArg::Typed(argument) = argument else {
             return Err(syn::Error::new_spanned(
@@ -284,10 +591,10 @@ fn validate_function(function: &mut ItemFn) -> syn::Result<FunctionModel> {
             }
             has_state = true;
         } else {
-            argument_types.push((*argument.ty).clone());
+            arguments.push(classify_argument(&argument.ty, externals)?);
         }
     }
-    if argument_types.len() > 7 {
+    if arguments.len() > 7 {
         return Err(syn::Error::new_spanned(
             &function.sig.inputs,
             "provider functions support at most seven source arguments",
@@ -296,15 +603,75 @@ fn validate_function(function: &mut ItemFn) -> syn::Result<FunctionModel> {
 
     Ok(FunctionModel {
         ident: function.sig.ident.clone(),
-        argument_types,
-        return_type,
+        arguments,
+        return_,
         has_state,
     })
 }
 
+fn classify_argument(type_: &Type, externals: &[ExternalModel]) -> syn::Result<FunctionType> {
+    if let Type::Reference(reference) = type_
+        && let Some(external) = external_type(&reference.elem, externals)
+    {
+        if reference.mutability.is_some() {
+            return Err(syn::Error::new_spanned(
+                type_,
+                format!(
+                    "external payload `{}` arguments must be immutable references",
+                    external.ident
+                ),
+            ));
+        }
+        return Ok(FunctionType::External {
+            schema: external.schema.clone(),
+        });
+    }
+    if let Some(external) = external_type(type_, externals) {
+        return Err(syn::Error::new_spanned(
+            type_,
+            format!(
+                "external payload `{}` arguments must be immutable references",
+                external.ident
+            ),
+        ));
+    }
+    Ok(FunctionType::Scalar(type_.clone()))
+}
+
+fn classify_return(type_: &Type, externals: &[ExternalModel]) -> syn::Result<FunctionType> {
+    if let Type::Reference(reference) = type_
+        && let Some(external) = external_type(&reference.elem, externals)
+    {
+        return Err(syn::Error::new_spanned(
+            type_,
+            format!(
+                "external payload `{}` returns must be owned",
+                external.ident
+            ),
+        ));
+    }
+    if let Some(external) = external_type(type_, externals) {
+        return Ok(FunctionType::External {
+            schema: external.schema.clone(),
+        });
+    }
+    Ok(FunctionType::Scalar(type_.clone()))
+}
+
+fn external_type<'external>(
+    type_: &Type,
+    externals: &'external [ExternalModel],
+) -> Option<&'external ExternalModel> {
+    let Type::Path(TypePath { qself: None, path }) = type_ else {
+        return None;
+    };
+    let ident = path.get_ident()?;
+    externals.iter().find(|external| &external.ident == ident)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ModuleArguments, expand};
+    use super::{ExternalArguments, ModuleArguments, expand};
     use quote::quote;
 
     fn expansion_error(item: proc_macro2::TokenStream) -> String {
@@ -672,5 +1039,246 @@ mod tests {
             .find("\"second\"")
             .expect("second registration should exist");
         assert!(first < second);
+    }
+
+    #[test]
+    fn explicit_unit_returns_preserve_nil_shape_without_clippy_conflict() {
+        let expansion = expand(
+            quote!(path = "counter", crate_path = geam_core),
+            quote! {
+                mod counter {
+                    #[geam::function]
+                    fn record(value: bool) -> () {}
+                }
+            },
+        )
+        .expect("explicit unit return should expand")
+        .to_string();
+
+        assert!(expansion.contains("allow (clippy :: unused_unit)"));
+        assert!(expansion.contains("fn record (value : bool) -> ()"));
+    }
+
+    #[test]
+    fn external_arguments_require_one_known_name() {
+        let cases = [
+            (quote!(), "missing required external argument `name`"),
+            (
+                quote!(name = "First", name = "Second"),
+                "duplicate external argument `name`",
+            ),
+            (
+                quote!(other = "Metrics"),
+                "unknown external argument `other`",
+            ),
+            (quote!(= "Metrics"), "expected identifier"),
+            (quote!(name "Metrics"), "expected `=`"),
+            (quote!(name = Metrics), "expected string literal"),
+            (quote!(name = "Metrics" other = "Value"), "expected `,`"),
+        ];
+
+        for (arguments, expected) in cases {
+            assert_eq!(
+                syn::parse2::<ExternalArguments>(arguments)
+                    .err()
+                    .expect("external arguments should be rejected")
+                    .to_string(),
+                expected,
+            );
+        }
+    }
+
+    #[test]
+    fn external_declarations_are_struct_only_non_generic_and_unique() {
+        assert_eq!(
+            expansion_error(quote! {
+                mod counter {
+                    #[geam::external(name = "Metrics")]
+                    struct Metrics<T>(T);
+                }
+            }),
+            "external payload structs must not have generics",
+        );
+        assert_eq!(
+            expansion_error(quote! {
+                mod counter {
+                    #[geam::external(name = "Metrics")]
+                    struct First;
+
+                    #[geam::external(name = "Metrics")]
+                    struct Second;
+                }
+            }),
+            "duplicate external source type `Metrics`",
+        );
+        assert_eq!(
+            expansion_error(quote! {
+                mod counter {
+                    #[geam::external]
+                    struct Metrics;
+                }
+            }),
+            "missing required external argument `name`",
+        );
+        assert_eq!(
+            expansion_error(quote! {
+                mod counter {
+                    #[geam::external(name)]
+                    struct Metrics;
+                }
+            }),
+            "expected `=`",
+        );
+        assert_eq!(
+            expansion_error(quote! {
+                mod counter {
+                    #[geam::external = "Metrics"]
+                    struct Metrics;
+                }
+            }),
+            "`#[geam::external]` requires `name = \"...\"` arguments",
+        );
+        assert_eq!(
+            expansion_error(quote! {
+                mod counter {
+                    #[geam::external(name = "First")]
+                    #[geam::external(name = "Second")]
+                    struct Metrics;
+                }
+            }),
+            "duplicate `#[geam::external]` attribute",
+        );
+    }
+
+    #[test]
+    fn external_function_arguments_are_borrowed_and_returns_are_owned() {
+        assert_eq!(
+            expansion_error(quote! {
+                mod counter {
+                    #[geam::external(name = "Metrics")]
+                    struct Metrics;
+
+                    #[geam::function]
+                    fn count(metrics: Metrics) -> bool { true }
+                }
+            }),
+            "external payload `Metrics` arguments must be immutable references",
+        );
+        assert_eq!(
+            expansion_error(quote! {
+                mod counter {
+                    #[geam::external(name = "Metrics")]
+                    struct Metrics;
+
+                    #[geam::function]
+                    fn count(metrics: &mut Metrics) -> bool { true }
+                }
+            }),
+            "external payload `Metrics` arguments must be immutable references",
+        );
+        assert_eq!(
+            expansion_error(quote! {
+                mod counter {
+                    #[geam::external(name = "Metrics")]
+                    struct Metrics;
+
+                    #[geam::function]
+                    fn current(metrics: &Metrics) -> &Metrics { metrics }
+                }
+            }),
+            "external payload `Metrics` returns must be owned",
+        );
+    }
+
+    #[test]
+    fn external_expansion_preserves_type_and_function_declaration_order() {
+        let expansion = expand(
+            quote!(path = "metrics", crate_path = geam_core),
+            quote! {
+                mod metrics {
+                    struct Helper;
+
+                    #[geam::function]
+                    fn copy(value: &Metrics, label: EcoString) -> Metrics { value.clone() }
+
+                    #[geam::external(name = "Metrics")]
+                    #[derive(Clone)]
+                    struct Metrics;
+
+                    #[geam::external(name = "Snapshot")]
+                    struct Snapshot;
+
+                    #[geam::function]
+                    fn snapshot(value: &Metrics) -> Snapshot { Snapshot }
+                }
+            },
+        )
+        .expect("external module should expand")
+        .to_string();
+
+        let metrics = expansion
+            .find("with_external_type :: < __GeamProvider , __GeamExternalSchema0 >")
+            .expect("Metrics registration should exist");
+        let snapshot = expansion
+            .find("with_external_type :: < __GeamProvider , __GeamExternalSchema1 >")
+            .expect("Snapshot registration should exist");
+        let copy = expansion
+            .find("\"copy\"")
+            .expect("copy registration should exist");
+        let snapshot_function = expansion
+            .find("\"snapshot\"")
+            .expect("snapshot registration should exist");
+
+        assert!(metrics < snapshot);
+        assert!(snapshot < copy);
+        assert!(copy < snapshot_function);
+        assert!(expansion.contains("struct Helper"));
+        assert!(expansion.contains("derive (Clone)"));
+        assert!(expansion.contains("HostExternalStore < Metrics >"));
+        assert!(expansion.contains("HostExternalStore < Snapshot >"));
+        assert!(expansion.contains("type Payload = Metrics"));
+        assert!(expansion.contains("HostExternalBinding < Profile , __GeamExternalSchema0 >"));
+        assert!(expansion.contains("type Storage = __GeamExternalStorage0"));
+        assert!(expansion.contains(
+            "< Metrics as geam_core :: __macro_support :: ExternalPayload > :: source_equal"
+        ));
+        assert!(expansion.contains(
+            "< Metrics as geam_core :: __macro_support :: ExternalPayload > :: source_hash"
+        ));
+        assert!(
+            expansion.contains(
+                "< Metrics as geam_core :: __macro_support :: ExternalPayload > :: inspect"
+            )
+        );
+        assert!(expansion.contains("let __geam_payload_0 = call . external_payload"));
+        assert!(expansion.contains("let returned = call . create_external (returned)"));
+        assert!(expansion.contains(
+            "< super :: Component as geam_core :: __macro_support :: ProviderPackage > :: PACKAGE"
+        ));
+    }
+
+    #[test]
+    fn only_bare_declared_payload_types_receive_external_adapters() {
+        let expansion = expand(
+            quote!(path = "metrics", crate_path = geam_core),
+            quote! {
+                mod metrics {
+                    #[geam::external(name = "Metrics")]
+                    struct Metrics;
+
+                    #[geam::function]
+                    fn wrapped(value: Wrapper<Metrics>) -> bool { true }
+
+                    #[geam::function]
+                    fn associated(value: <Metrics as Trait>::Value) -> bool { true }
+                }
+            },
+        )
+        .expect("non-bare types should remain owned by the host type system")
+        .to_string();
+
+        assert!(expansion.contains("Wrapper < Metrics >"));
+        assert!(expansion.contains("< Metrics as Trait > :: Value"));
+        assert!(!expansion.contains("call . external_payload"));
     }
 }
