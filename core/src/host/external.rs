@@ -8,8 +8,8 @@ use std::marker::PhantomData;
 
 pub(crate) use crate::provider_support::HostStoredValueFamily;
 pub use dynamic::HostStoredDynamic;
-pub(crate) use store::ExternalPayloadLease;
 pub use store::HostExternalStore;
+pub(crate) use store::{ExternalPayloadLease, ExternalPayloadView};
 pub use stored::{
     HostExternalPayloadBuilder, HostExternalPayloadView, HostStoredType, HostStoredValue,
 };

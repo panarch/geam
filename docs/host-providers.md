@@ -11,7 +11,7 @@ concrete runner, but the resulting Rust program still composes every component
 at compile time. It does not choose or type-erase implementations at runtime.
 
 Start with the [provider authoring examples](../examples/README.md). They present
-multi-module registration, scalar and tuple value mappings, stateless,
+multi-module registration, scalar, tuple, and List value mappings, stateless,
 default-state, configured-state, default external, and manual external choices
 as complete Gleam/Rust pairs before this document describes the generated and
 low-level contracts.
@@ -22,8 +22,9 @@ The [value-types example](../examples/value_types/README.md) is the canonical ma
 from Gleam source values to macro-authored Rust signatures. Its scalar module
 maps `String`, `Int`, `Float`, `BitArray`, `UtfCodepoint`, `Bool`, and `Nil` to
 `EcoString`, `BigInt`, `f64`, `BitArrayValue`, `char`, `bool`, and `()`. Its
-tuple module recursively composes those leaves with native Rust tuples. A tuple
-remains one Gleam source argument even when it contains several elements:
+tuple module recursively composes those leaves with native Rust tuples, and its
+List module provides lazy indexed views plus explicit new-list construction. A
+tuple remains one Gleam source argument even when it contains several elements:
 
 ```rust
 #[geam::function]
@@ -45,6 +46,39 @@ Rust `(T,)` corresponds to Gleam `#(T)`, while Rust `()` keeps its existing
 Gleam `Nil` meaning. Tuple elements can recursively use the scalar and external
 payload forms supported by the macro; external arguments remain immutable
 payload views and external returns remain owned payloads.
+
+A top-level Gleam `List(T)` argument maps to opaque `geam::List<T>`. Retaining
+that view and asking for its length are O(1); `get` decodes only the requested
+item. Returning a received `geam::List<T>` passes through the original runtime
+List, while returning `Vec<T>` constructs one new source List:
+
+```rust
+#[geam::function]
+fn first_or(
+    values: geam::List<EcoString>,
+    fallback: EcoString,
+) -> EcoString {
+    values.get(0).unwrap_or(fallback)
+}
+
+#[geam::function]
+fn identity(values: geam::List<BigInt>) -> geam::List<BigInt> {
+    values
+}
+
+#[geam::function]
+fn reverse(values: geam::List<EcoString>) -> Vec<EcoString> {
+    (0..values.len())
+        .rev()
+        .map(|index| values.get(index).expect("index comes from the List length"))
+        .collect()
+}
+```
+
+List items currently support scalar and external leaves plus recursive tuples
+of those leaves. External items are opaque guards that dereference to the
+provider payload without cloning it. Nested Lists and Lists inside tuples remain
+outside this authoring slice.
 
 ## External Value Provider Authoring
 
@@ -187,10 +221,10 @@ configuration omits both declarations; Geam supplies unit state and rejects
 unexpected configuration instead of ignoring it.
 
 The current macro surface supports scalars, native tuples composed from
-supported leaves, and non-generic constructorless external values whose
-payloads do not retain Gleam values. Lists, custom types, callbacks, source
-`Result` construction, and retained Gleam values still use the low-level
-contracts below.
+supported leaves, top-level Lists with lazy item access or Vec construction,
+and non-generic constructorless external values whose payloads do not retain
+Gleam values. Custom types, callbacks, source `Result` construction, nested
+Lists, and retained Gleam values still use the low-level contracts below.
 
 ## Generated Component Boundary
 

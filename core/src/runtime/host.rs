@@ -4,7 +4,9 @@ mod scoped;
 pub(super) use self::invoke::{invoke_never, invoke_value};
 
 use self::scoped::ScopedValues;
-pub(crate) use self::scoped::StoredRuntimeValue;
+pub(crate) use self::scoped::{
+    StoredRuntimeList, StoredRuntimeListItem, StoredRuntimeListTupleItems, StoredRuntimeValue,
+};
 use crate::host::{
     ExternalPayloadLease, HostCallArguments, HostCallRuntime, HostCustomArgumentSlot,
     HostCustomToken, HostExternalArgumentSlot, HostExternalToken, HostFunctionArgumentSlot,
@@ -426,6 +428,13 @@ where
         let value = self.scoped.value_from_scoped(value);
         let type_ = value.value_type(self.plan.value_metadata());
         StoredRuntimeValue::new(value, type_)
+    }
+
+    fn retain_list(&self, value: HostListToken) -> StoredRuntimeList {
+        StoredRuntimeList::new(
+            self.scoped.list_value(value),
+            self.state.lists().clone_handle(),
+        )
     }
 
     fn restore_stored(&mut self, value: &StoredRuntimeValue) -> HostValueToken {

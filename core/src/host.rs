@@ -16,7 +16,7 @@ pub use component::{
 };
 pub use construction::{HostConstruction, HostConstructions};
 pub use error::HostRegistrationError;
-pub(crate) use external::{ExternalPayloadLease, HostStoredValueFamily};
+pub(crate) use external::{ExternalPayloadLease, ExternalPayloadView, HostStoredValueFamily};
 pub use external::{
     HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
     HostExternalPayloadBuilder, HostExternalPayloadView, HostExternalSchema, HostExternalStorage,

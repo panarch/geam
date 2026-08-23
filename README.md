@@ -174,11 +174,11 @@ under a reserved Cargo kebab-case namespace such as
 approval before being recorded.
 
 The [provider authoring examples](examples/README.md) start with a stateless
-provider spanning three Gleam modules, then collect supported scalar and tuple
-value mappings before showing persistent values, default state, read-only state,
-explicit configuration, and manual external semantics. The final text-pattern
-example keeps the advanced low-level baseline for custom errors, compound
-results, and list output that remain outside the current macro surface.
+provider spanning three Gleam modules, then collect supported scalar, tuple,
+and lazy List value mappings before showing persistent values, default state,
+read-only state, explicit configuration, and manual external semantics. The
+final text-pattern example keeps the advanced low-level baseline for custom
+errors and compound results that remain outside the current macro surface.
 
 Geam owns only a manifest carrying its exact managed marker, `Cargo.lock`, and
 `build/geam/` runner artifacts. It refuses to adopt an existing user Cargo

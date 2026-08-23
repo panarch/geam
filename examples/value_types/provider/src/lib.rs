@@ -4,7 +4,7 @@ use num_bigint::BigInt;
 
 #[geam::provider(
     package = "example_value_types",
-    modules = [scalars, tuples],
+    modules = [scalars, tuples, lists],
 )]
 pub struct Component;
 
@@ -78,5 +78,43 @@ mod tuples {
     fn reassociate(value: (EcoString, (BigInt, bool))) -> ((EcoString, BigInt), bool) {
         let (label, (count, enabled)) = value;
         ((label, count), enabled)
+    }
+}
+
+#[geam::module(path = "example_value_types/lists")]
+mod lists {
+    use super::{BigInt, EcoString};
+
+    #[geam::function]
+    fn length(values: geam::List<BigInt>) -> BigInt {
+        values.len().into()
+    }
+
+    #[geam::function]
+    fn first_or(values: geam::List<EcoString>, fallback: EcoString) -> EcoString {
+        values.get(0).unwrap_or(fallback)
+    }
+
+    #[geam::function]
+    fn identity(values: geam::List<BigInt>) -> geam::List<BigInt> {
+        values
+    }
+
+    #[geam::function]
+    fn reverse(values: geam::List<EcoString>) -> Vec<EcoString> {
+        (0..values.len())
+            .rev()
+            .map(|index| values.get(index).expect("index comes from the List length"))
+            .collect()
+    }
+
+    #[geam::function]
+    fn labels(values: geam::List<(EcoString, BigInt)>) -> Vec<EcoString> {
+        (0..values.len())
+            .map(|index| {
+                let (label, _) = values.get(index).expect("index comes from the List length");
+                label
+            })
+            .collect()
     }
 }

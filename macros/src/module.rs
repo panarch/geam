@@ -5,8 +5,8 @@ use std::collections::BTreeSet;
 use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream};
 use syn::{
-    Attribute, FnArg, Ident, Item, ItemFn, ItemMod, ItemStruct, LitStr, Meta, Path, ReturnType,
-    Token, Type, TypePath,
+    Attribute, FnArg, GenericArgument, GenericParam, Ident, Item, ItemFn, ItemMod, ItemStruct,
+    LitStr, Meta, Path, PathArguments, ReturnType, Token, Type, TypePath,
 };
 
 struct ModuleArguments {
@@ -45,10 +45,38 @@ struct ExternalModel {
     store_field: Ident,
 }
 
-enum FunctionType {
+#[derive(Clone)]
+enum ProviderValueType {
     Scalar(Type),
-    External { schema: Ident },
-    Tuple(Vec<FunctionType>),
+    External {
+        payload: Ident,
+        schema: Ident,
+        store_field: Ident,
+    },
+    Tuple(Vec<ProviderValueType>),
+}
+
+#[derive(Clone)]
+struct CollectionType {
+    source: Type,
+    item: Type,
+    value: ProviderValueType,
+}
+
+struct ListType {
+    collection: CollectionType,
+    decoder: Ident,
+}
+
+enum FunctionArgumentType {
+    Value(Box<ProviderValueType>),
+    List(Box<ListType>),
+}
+
+enum FunctionReturnType {
+    Value(ProviderValueType),
+    List(ListType),
+    Vec(CollectionType),
 }
 
 enum StateAccess {
@@ -59,9 +87,22 @@ enum StateAccess {
 
 struct FunctionModel {
     ident: Ident,
-    arguments: Vec<FunctionType>,
-    return_: FunctionType,
+    arguments: Vec<FunctionArgumentType>,
+    return_: FunctionReturnType,
     state: StateAccess,
+}
+
+struct ListDecoderModel {
+    ident: Ident,
+    item: Type,
+    value: ProviderValueType,
+    key: String,
+}
+
+struct ListExternalAccess {
+    payload: Ident,
+    schema: Ident,
+    field: Ident,
 }
 
 struct GeneratedFunction {
@@ -132,12 +173,14 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     }
 
     let mut functions = Vec::new();
+    let mut list_decoders = Vec::new();
     for item in items.iter_mut() {
         let Item::Fn(function) = item else {
             continue;
         };
         if take_marker(&mut function.attrs, "function")? {
-            functions.push(validate_function(function, &externals)?);
+            let model = validate_function(function, &externals, &mut list_decoders, &support)?;
+            functions.push(model);
         }
     }
 
@@ -241,6 +284,10 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             }
         }
     });
+    let generated_list_decoders = list_decoders
+        .iter()
+        .map(|decoder| generate_list_decoder(decoder, &support))
+        .collect::<Vec<_>>();
     let generated_functions = functions
         .iter()
         .map(|function| generate_function(function, &support))
@@ -289,6 +336,9 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     for binding in bindings {
         items.push(Item::Verbatim(binding));
     }
+    for decoder in generated_list_decoders {
+        items.push(Item::Verbatim(decoder));
+    }
     for wrapper in wrappers {
         items.push(Item::Verbatim(wrapper.clone()));
     }
@@ -327,7 +377,7 @@ fn generate_function(function: &FunctionModel, support: &TokenStream) -> Generat
         .collect::<Vec<_>>();
     let argument_types = function_arguments
         .iter()
-        .map(|type_| wrapper_type(type_, support))
+        .map(|type_| wrapper_argument_type(type_, support))
         .collect::<Vec<_>>();
     let mut names = GeneratedNames::default();
     let decoded_arguments = function_arguments
@@ -361,7 +411,7 @@ fn generate_function(function: &FunctionModel, support: &TokenStream) -> Generat
                 .map(|argument| argument.value.clone()),
         )
         .collect::<Vec<_>>();
-    let return_type = host_type(return_, support);
+    let return_type = host_return_type(return_, support);
     let generated_return = generate_return(return_, support, &mut names);
     let return_statements = &generated_return.statements;
     let completion = &generated_return.completion;
@@ -404,7 +454,7 @@ fn generate_function(function: &FunctionModel, support: &TokenStream) -> Generat
     let name = ident.unraw().to_string();
     let host_arguments = function_arguments
         .iter()
-        .map(|type_| host_type(type_, support));
+        .map(|type_| host_argument_type(type_, support));
     let registration = if generated_return.constructions.is_empty() {
         quote! {
             let provider = provider.with_scoped_function::<
@@ -434,16 +484,36 @@ fn generate_function(function: &FunctionModel, support: &TokenStream) -> Generat
 }
 
 fn decode_argument(
-    type_: &FunctionType,
+    type_: &FunctionArgumentType,
     input: TokenStream,
     names: &mut GeneratedNames,
 ) -> GeneratedValue {
     match type_ {
-        FunctionType::Scalar(_) => GeneratedValue {
+        FunctionArgumentType::Value(type_) => decode_value_argument(type_, input, names),
+        FunctionArgumentType::List(list) => {
+            let decoder_value = list_decoder_value(&list.decoder, &list.collection.value);
+            let value = names.next("list");
+            GeneratedValue {
+                statements: quote! {
+                    let #value = call.provider_list(#input, #decoder_value);
+                },
+                value: quote!(#value),
+            }
+        }
+    }
+}
+
+fn decode_value_argument(
+    type_: &ProviderValueType,
+    input: TokenStream,
+    names: &mut GeneratedNames,
+) -> GeneratedValue {
+    match type_ {
+        ProviderValueType::Scalar(_) => GeneratedValue {
             statements: TokenStream::new(),
             value: input,
         },
-        FunctionType::External { .. } => {
+        ProviderValueType::External { .. } => {
             let view = names.next("payload");
             GeneratedValue {
                 statements: quote! {
@@ -452,7 +522,7 @@ fn decode_argument(
                 value: quote!(&*#view),
             }
         }
-        FunctionType::Tuple(elements) => {
+        ProviderValueType::Tuple(elements) => {
             let host_elements = elements
                 .iter()
                 .map(|_| names.next("tuple_element"))
@@ -468,7 +538,7 @@ fn decode_argument(
             let decoded = elements
                 .iter()
                 .zip(host_elements)
-                .map(|(element, value)| decode_argument(element, quote!(#value), names))
+                .map(|(element, value)| decode_value_argument(element, quote!(#value), names))
                 .collect::<Vec<_>>();
             for element in &decoded {
                 statements.extend(element.statements.clone());
@@ -483,19 +553,65 @@ fn decode_argument(
 }
 
 fn generate_return(
-    type_: &FunctionType,
+    type_: &FunctionReturnType,
     support: &TokenStream,
     names: &mut GeneratedNames,
 ) -> GeneratedReturn {
     match type_ {
-        FunctionType::Scalar(_) => GeneratedReturn {
+        FunctionReturnType::Value(type_) => generate_value_return(type_, support, names),
+        FunctionReturnType::List(_) => GeneratedReturn {
+            statements: quote! {
+                let returned = returned.__geam_into_context().into_host();
+            },
+            completion: quote! {
+                ::core::result::Result::Ok(call.return_value(returned))
+            },
+            constructions: Vec::new(),
+        },
+        FunctionReturnType::Vec(list) => {
+            let mut constructions = Vec::new();
+            let item = names.next("returned_list_item");
+            let generated = encode_intermediate(
+                &list.value,
+                quote!(#item),
+                support,
+                names,
+                &mut constructions,
+            );
+            let statements = generated.statements;
+            let value = generated.value;
+            let values = names.next("returned_list_values");
+            GeneratedReturn {
+                statements: quote! {
+                    let mut #values = ::std::vec::Vec::with_capacity(returned.len());
+                    for #item in returned {
+                        #statements
+                        #values.push(#value);
+                    }
+                },
+                completion: quote! {
+                    ::core::result::Result::Ok(call.return_list(#values))
+                },
+                constructions,
+            }
+        }
+    }
+}
+
+fn generate_value_return(
+    type_: &ProviderValueType,
+    support: &TokenStream,
+    names: &mut GeneratedNames,
+) -> GeneratedReturn {
+    match type_ {
+        ProviderValueType::Scalar(_) => GeneratedReturn {
             statements: TokenStream::new(),
             completion: quote! {
                 ::core::result::Result::Ok(call.return_value(returned))
             },
             constructions: Vec::new(),
         },
-        FunctionType::External { .. } => GeneratedReturn {
+        ProviderValueType::External { .. } => GeneratedReturn {
             statements: quote! {
                 let returned = call.create_external(returned);
             },
@@ -504,7 +620,7 @@ fn generate_return(
             },
             constructions: Vec::new(),
         },
-        FunctionType::Tuple(elements) => {
+        ProviderValueType::Tuple(elements) => {
             let mut constructions = Vec::new();
             let generated = encode_tuple_elements(
                 elements,
@@ -526,7 +642,7 @@ fn generate_return(
 }
 
 fn encode_tuple_elements(
-    elements: &[FunctionType],
+    elements: &[ProviderValueType],
     input: TokenStream,
     support: &TokenStream,
     names: &mut GeneratedNames,
@@ -560,20 +676,20 @@ fn encode_tuple_elements(
 }
 
 fn encode_intermediate(
-    type_: &FunctionType,
+    type_: &ProviderValueType,
     input: TokenStream,
     support: &TokenStream,
     names: &mut GeneratedNames,
     constructions: &mut Vec<TokenStream>,
 ) -> GeneratedValue {
     match type_ {
-        FunctionType::Scalar(_) => GeneratedValue {
+        ProviderValueType::Scalar(_) => GeneratedValue {
             statements: TokenStream::new(),
             value: input,
         },
-        FunctionType::External { .. } => {
+        ProviderValueType::External { .. } => {
             let index = host_index(constructions.len(), support);
-            constructions.push(host_type(type_, support));
+            constructions.push(host_value_type(type_, support));
             let value = names.next("returned_external");
             GeneratedValue {
                 statements: quote! {
@@ -585,11 +701,11 @@ fn encode_intermediate(
                 value: quote!(#value),
             }
         }
-        FunctionType::Tuple(elements) => {
+        ProviderValueType::Tuple(elements) => {
             let mut generated =
                 encode_tuple_elements(elements, input, support, names, constructions);
             let index = host_index(constructions.len(), support);
-            constructions.push(host_type(type_, support));
+            constructions.push(host_value_type(type_, support));
             let value = names.next("returned_tuple");
             let elements = generated.value;
             generated.statements.extend(quote! {
@@ -604,36 +720,70 @@ fn encode_intermediate(
     }
 }
 
-fn host_type(type_: &FunctionType, support: &TokenStream) -> TokenStream {
+fn host_argument_type(type_: &FunctionArgumentType, support: &TokenStream) -> TokenStream {
     match type_ {
-        FunctionType::Scalar(type_) => quote!(#type_),
-        FunctionType::External { schema } => {
+        FunctionArgumentType::Value(type_) => host_value_type(type_, support),
+        FunctionArgumentType::List(list) => {
+            let item = host_value_type(&list.collection.value, support);
+            quote!(#support::HostListType<#item>)
+        }
+    }
+}
+
+fn host_return_type(type_: &FunctionReturnType, support: &TokenStream) -> TokenStream {
+    match type_ {
+        FunctionReturnType::Value(type_) => host_value_type(type_, support),
+        FunctionReturnType::List(list) => {
+            let item = host_value_type(&list.collection.value, support);
+            quote!(#support::HostListType<#item>)
+        }
+        FunctionReturnType::Vec(list) => {
+            let item = host_value_type(&list.value, support);
+            quote!(#support::HostListType<#item>)
+        }
+    }
+}
+
+fn host_value_type(type_: &ProviderValueType, support: &TokenStream) -> TokenStream {
+    match type_ {
+        ProviderValueType::Scalar(type_) => quote!(#type_),
+        ProviderValueType::External { schema, .. } => {
             quote!(#support::HostExternalType<#schema>)
         }
-        FunctionType::Tuple(elements) => {
-            let elements = host_type_sequence(elements, support);
+        ProviderValueType::Tuple(elements) => {
+            let elements = host_value_type_sequence(elements, support);
             quote!(#support::HostTupleType<#elements>)
         }
     }
 }
 
-fn wrapper_type(type_: &FunctionType, support: &TokenStream) -> TokenStream {
+fn wrapper_argument_type(type_: &FunctionArgumentType, support: &TokenStream) -> TokenStream {
     match type_ {
-        FunctionType::Scalar(type_) => quote!(#type_),
-        FunctionType::External { schema } => {
+        FunctionArgumentType::Value(type_) => wrapper_value_type(type_, support),
+        FunctionArgumentType::List(list) => {
+            let item = host_value_type(&list.collection.value, support);
+            quote!(#support::HostList<'__geam_call, #item>)
+        }
+    }
+}
+
+fn wrapper_value_type(type_: &ProviderValueType, support: &TokenStream) -> TokenStream {
+    match type_ {
+        ProviderValueType::Scalar(type_) => quote!(#type_),
+        ProviderValueType::External { schema, .. } => {
             quote!(#support::HostExternal<'__geam_call, #support::HostExternalType<#schema>>)
         }
-        FunctionType::Tuple(elements) => {
-            let elements = host_type_sequence(elements, support);
+        ProviderValueType::Tuple(elements) => {
+            let elements = host_value_type_sequence(elements, support);
             quote!(#support::HostTuple<'__geam_call, #elements>)
         }
     }
 }
 
-fn host_type_sequence(elements: &[FunctionType], support: &TokenStream) -> TokenStream {
+fn host_value_type_sequence(elements: &[ProviderValueType], support: &TokenStream) -> TokenStream {
     let elements = elements
         .iter()
-        .map(|element| host_type(element, support))
+        .map(|element| host_value_type(element, support))
         .collect::<Vec<_>>();
     host_type_token_sequence(&elements, support)
 }
@@ -657,6 +807,219 @@ fn host_index(index: usize, support: &TokenStream) -> TokenStream {
         quote!(#support::HostTypeIndex0),
         |index, _| quote!(#support::HostTypeIndexNext<#index>),
     )
+}
+
+fn register_list_decoder(list: &CollectionType, decoders: &mut Vec<ListDecoderModel>) -> Ident {
+    let key = provider_value_key(&list.value);
+    if let Some(decoder) = decoders
+        .iter()
+        .find(|decoder: &&ListDecoderModel| decoder.key == key)
+    {
+        return decoder.ident.clone();
+    }
+    let index = decoders.len();
+    let ident = format_ident!("__GeamListDecoder{index}");
+    decoders.push(ListDecoderModel {
+        ident: ident.clone(),
+        item: list.item.clone(),
+        value: list.value.clone(),
+        key,
+    });
+    ident
+}
+
+fn validate_list_return(function: &FunctionModel) -> syn::Result<()> {
+    if let FunctionReturnType::List(returned) = &function.return_
+        && !function.arguments.iter().any(|argument| {
+            matches!(
+                argument,
+                FunctionArgumentType::List(argument)
+                    if provider_value_key(&argument.collection.value)
+                        == provider_value_key(&returned.collection.value)
+            )
+        })
+    {
+        return Err(syn::Error::new_spanned(
+            &returned.collection.source,
+            "a returned geam::List<T> must match a List argument",
+        ));
+    }
+    Ok(())
+}
+
+fn provider_value_key(type_: &ProviderValueType) -> String {
+    match type_ {
+        ProviderValueType::Scalar(type_) => format!("scalar:{}", quote!(#type_)),
+        ProviderValueType::External { schema, .. } => format!("external:{schema}"),
+        ProviderValueType::Tuple(elements) => format!(
+            "tuple:({})",
+            elements
+                .iter()
+                .map(provider_value_key)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+    }
+}
+
+fn generate_list_decoder(decoder: &ListDecoderModel, support: &TokenStream) -> TokenStream {
+    let ident = &decoder.ident;
+    let item = &decoder.item;
+    let accesses = list_external_accesses(&decoder.value);
+    let fields = accesses.iter().map(|access| {
+        let field = &access.field;
+        let payload = &access.payload;
+        quote!(#field: #support::ProviderExternalPayloadAccess<#payload>,)
+    });
+    let definition = if accesses.is_empty() {
+        quote!(struct #ident;)
+    } else {
+        quote! {
+            struct #ident {
+                #(#fields)*
+            }
+        }
+    };
+    let mut names = GeneratedNames::default();
+    let decoded = decode_list_item(&decoder.value, quote!(__geam_value), &mut names);
+    let statements = decoded.statements;
+    let value = decoded.value;
+    let view = list_item_view_type(&decoder.value, support);
+    quote! {
+        #definition
+
+        impl #support::ProviderListItemDecoder<#item> for #ident {
+            type View = #view;
+
+            fn decode(
+                &self,
+                __geam_value: #support::ProviderListItemValue<'_>,
+            ) -> Self::View {
+                #statements
+                #value
+            }
+        }
+    }
+}
+
+fn list_decoder_value(ident: &Ident, value: &ProviderValueType) -> TokenStream {
+    let accesses = list_external_accesses(value);
+    if accesses.is_empty() {
+        quote!(#ident)
+    } else {
+        let fields = accesses.iter().map(|access| {
+            let field = &access.field;
+            let schema = &access.schema;
+            quote!(#field: call.provider_external_payload_access::<#schema>(),)
+        });
+        quote! {
+            #ident {
+                #(#fields)*
+            }
+        }
+    }
+}
+
+fn list_external_accesses(type_: &ProviderValueType) -> Vec<ListExternalAccess> {
+    fn collect(type_: &ProviderValueType, accesses: &mut Vec<ListExternalAccess>) {
+        match type_ {
+            ProviderValueType::Scalar(_) => {}
+            ProviderValueType::External {
+                payload,
+                schema,
+                store_field,
+            } => {
+                if accesses.iter().any(|access| access.schema == *schema) {
+                    return;
+                }
+                accesses.push(ListExternalAccess {
+                    payload: payload.clone(),
+                    schema: schema.clone(),
+                    field: store_field.clone(),
+                });
+            }
+            ProviderValueType::Tuple(elements) => {
+                for element in elements {
+                    collect(element, accesses);
+                }
+            }
+        }
+    }
+
+    let mut accesses = Vec::new();
+    collect(type_, &mut accesses);
+    accesses
+}
+
+fn decode_list_item(
+    type_: &ProviderValueType,
+    input: TokenStream,
+    names: &mut GeneratedNames,
+) -> GeneratedValue {
+    match type_ {
+        ProviderValueType::Scalar(type_) => GeneratedValue {
+            statements: TokenStream::new(),
+            value: quote!(#input.into_scalar::<#type_>()),
+        },
+        ProviderValueType::External { store_field, .. } => GeneratedValue {
+            statements: TokenStream::new(),
+            value: quote!(#input.into_external(&self.#store_field)),
+        },
+        ProviderValueType::Tuple(elements) => {
+            let tuple = names.next("list_tuple");
+            let decoded_elements = elements
+                .iter()
+                .map(|_| names.next("decoded_list_tuple_element"))
+                .collect::<Vec<_>>();
+            let mut statements = quote! {
+                let mut #tuple = #input.into_tuple();
+            };
+            for (index, (element, decoded)) in
+                elements.iter().zip(&decoded_elements).enumerate().rev()
+            {
+                let host = names.next("list_tuple_element");
+                let generated = decode_list_item(element, quote!(#host), names);
+                let generated_statements = generated.statements;
+                let generated_value = generated.value;
+                statements.extend(quote! {
+                    let #host = #tuple.take_item(#index);
+                    #generated_statements
+                    let #decoded = #generated_value;
+                });
+            }
+            GeneratedValue {
+                statements,
+                value: quote!((#(#decoded_elements,)*)),
+            }
+        }
+    }
+}
+
+fn list_item_view_type(type_: &ProviderValueType, support: &TokenStream) -> TokenStream {
+    match type_ {
+        ProviderValueType::Scalar(type_) => quote!(#type_),
+        ProviderValueType::External { payload, .. } => {
+            quote!(#support::ProviderExternalItem<#payload>)
+        }
+        ProviderValueType::Tuple(elements) => {
+            let elements = elements
+                .iter()
+                .map(|element| list_item_view_type(element, support));
+            quote!((#(#elements,)*))
+        }
+    }
+}
+
+fn list_signature_type(list: &ListType, support: &TokenStream) -> Type {
+    let item = &list.collection.item;
+    let host_item = host_value_type(&list.collection.value, support);
+    let decoder = &list.decoder;
+    syn::parse_quote! {
+        #support::List<
+            #item,
+            #support::ProviderListContext<'__geam_list, #host_item, #decoder>,
+        >
+    }
 }
 
 impl Parse for ModuleArguments {
@@ -841,6 +1204,8 @@ fn validate_external(payload: &ItemStruct) -> syn::Result<()> {
 fn validate_function(
     function: &mut ItemFn,
     externals: &[ExternalModel],
+    list_decoders: &mut Vec<ListDecoderModel>,
+    support: &TokenStream,
 ) -> syn::Result<FunctionModel> {
     if function.sig.constness.is_some() {
         return Err(syn::Error::new_spanned(
@@ -884,10 +1249,11 @@ fn validate_function(
             .attrs
             .push(syn::parse_quote!(#[allow(clippy::unused_unit)]));
     }
-    let return_ = classify_return(&rust_return_type, externals)?;
+    let return_ = classify_return(&rust_return_type, externals, list_decoders)?;
 
     let mut state = StateAccess::None;
     let mut arguments = Vec::new();
+    let mut has_list = false;
     for (index, argument) in function.sig.inputs.iter_mut().enumerate() {
         let FnArg::Typed(argument) = argument else {
             return Err(syn::Error::new_spanned(
@@ -915,7 +1281,12 @@ fn validate_function(
                 StateAccess::Shared
             };
         } else {
-            arguments.push(classify_argument(&argument.ty, externals)?);
+            let type_ = classify_argument(&argument.ty, externals, list_decoders)?;
+            if let FunctionArgumentType::List(list) = &type_ {
+                *argument.ty = list_signature_type(list, support);
+                has_list = true;
+            }
+            arguments.push(type_);
         }
     }
     if arguments.len() > 7 {
@@ -925,15 +1296,105 @@ fn validate_function(
         ));
     }
 
-    Ok(FunctionModel {
+    let model = FunctionModel {
         ident: function.sig.ident.clone(),
         arguments,
         return_,
         state,
-    })
+    };
+    validate_list_return(&model)?;
+    if let FunctionReturnType::List(list) = &model.return_ {
+        function.sig.output = ReturnType::Type(
+            Token![->](proc_macro2::Span::call_site()),
+            Box::new(list_signature_type(list, support)),
+        );
+        has_list = true;
+    }
+    if has_list {
+        function
+            .sig
+            .generics
+            .params
+            .push(GenericParam::Lifetime(syn::parse_quote!('__geam_list)));
+    }
+    Ok(model)
 }
 
-fn classify_argument(type_: &Type, externals: &[ExternalModel]) -> syn::Result<FunctionType> {
+fn classify_argument(
+    type_: &Type,
+    externals: &[ExternalModel],
+    list_decoders: &mut Vec<ListDecoderModel>,
+) -> syn::Result<FunctionArgumentType> {
+    if let Type::Reference(reference) = type_ {
+        if is_collection(&reference.elem, "List") {
+            return Err(syn::Error::new_spanned(
+                type_,
+                "geam::List<T> arguments must be passed by value",
+            ));
+        }
+        if is_collection(&reference.elem, "Vec") {
+            return Err(syn::Error::new_spanned(
+                type_,
+                "Vec<T> arguments are not supported; use geam::List<T>",
+            ));
+        }
+        if let Some(external) = external_type(&reference.elem, externals) {
+            if reference.mutability.is_some() {
+                return Err(syn::Error::new_spanned(
+                    type_,
+                    format!(
+                        "external payload `{}` arguments must be immutable references",
+                        external.ident
+                    ),
+                ));
+            }
+            return Ok(FunctionArgumentType::Value(Box::new(
+                ProviderValueType::External {
+                    payload: external.ident.clone(),
+                    schema: external.schema.clone(),
+                    store_field: external.store_field.clone(),
+                },
+            )));
+        }
+        if is_non_empty_tuple(&reference.elem) {
+            return Err(syn::Error::new_spanned(
+                type_,
+                "tuple arguments must be passed by value",
+            ));
+        }
+        return Err(syn::Error::new_spanned(
+            type_,
+            "provider source arguments may borrow only declared external payloads",
+        ));
+    }
+    if let Some(item) = collection_item(type_, "List")? {
+        let value = classify_collection_item(&item, externals, "List")?;
+        let collection = CollectionType {
+            source: type_.clone(),
+            item,
+            value,
+        };
+        let decoder = register_list_decoder(&collection, list_decoders);
+        return Ok(FunctionArgumentType::List(Box::new(ListType {
+            collection,
+            decoder,
+        })));
+    }
+    if collection_item(type_, "Vec")?.is_some() {
+        return Err(syn::Error::new_spanned(
+            type_,
+            "Vec<T> arguments are not supported; use geam::List<T>",
+        ));
+    }
+    Ok(FunctionArgumentType::Value(Box::new(
+        classify_argument_value(type_, externals)?,
+    )))
+}
+
+fn classify_argument_value(
+    type_: &Type,
+    externals: &[ExternalModel],
+) -> syn::Result<ProviderValueType> {
     if let Type::Reference(reference) = type_ {
         if let Some(external) = external_type(&reference.elem, externals) {
             if reference.mutability.is_some() {
@@ -945,19 +1406,27 @@ fn classify_argument(type_: &Type, externals: &[ExternalModel]) -> syn::Result<F
                     ),
                 ));
             }
-            return Ok(FunctionType::External {
+            return Ok(ProviderValueType::External {
+                payload: external.ident.clone(),
                 schema: external.schema.clone(),
+                store_field: external.store_field.clone(),
             });
-        }
-        if is_non_empty_tuple(&reference.elem) {
-            return Err(syn::Error::new_spanned(
-                type_,
-                "tuple arguments must be passed by value",
-            ));
         }
         return Err(syn::Error::new_spanned(
             type_,
             "provider source arguments may borrow only declared external payloads",
+        ));
+    }
+    if is_collection(type_, "List") {
+        return Err(syn::Error::new_spanned(
+            type_,
+            "geam::List<T> is supported only as a top-level source argument",
+        ));
+    }
+    if is_collection(type_, "Vec") {
+        return Err(syn::Error::new_spanned(
+            type_,
+            "Vec<T> arguments are not supported; use geam::List<T>",
         ));
     }
     if let Some(external) = external_type(type_, externals) {
@@ -975,15 +1444,31 @@ fn classify_argument(type_: &Type, externals: &[ExternalModel]) -> syn::Result<F
         let elements = tuple
             .elems
             .iter()
-            .map(|element| classify_argument(element, externals))
+            .map(|element| classify_argument_value(element, externals))
             .collect::<syn::Result<Vec<_>>>()?;
-        return Ok(FunctionType::Tuple(elements));
+        return Ok(ProviderValueType::Tuple(elements));
     }
-    Ok(FunctionType::Scalar(type_.clone()))
+    Ok(ProviderValueType::Scalar(type_.clone()))
 }
 
-fn classify_return(type_: &Type, externals: &[ExternalModel]) -> syn::Result<FunctionType> {
+fn classify_return(
+    type_: &Type,
+    externals: &[ExternalModel],
+    list_decoders: &mut Vec<ListDecoderModel>,
+) -> syn::Result<FunctionReturnType> {
     if let Type::Reference(reference) = type_ {
+        if is_collection(&reference.elem, "List") {
+            return Err(syn::Error::new_spanned(
+                type_,
+                "geam::List<T> returns must be owned",
+            ));
+        }
+        if is_collection(&reference.elem, "Vec") {
+            return Err(syn::Error::new_spanned(
+                type_,
+                "Vec<T> returns must be owned",
+            ));
+        }
         if let Some(external) = external_type(&reference.elem, externals) {
             return Err(syn::Error::new_spanned(
                 type_,
@@ -1004,9 +1489,62 @@ fn classify_return(type_: &Type, externals: &[ExternalModel]) -> syn::Result<Fun
             "provider source returns must be owned values",
         ));
     }
+    if let Some(item) = collection_item(type_, "List")? {
+        let value = classify_collection_item(&item, externals, "List")?;
+        let collection = CollectionType {
+            source: type_.clone(),
+            item,
+            value,
+        };
+        let decoder = register_list_decoder(&collection, list_decoders);
+        return Ok(FunctionReturnType::List(ListType {
+            collection,
+            decoder,
+        }));
+    }
+    if let Some(item) = collection_item(type_, "Vec")? {
+        let value = classify_collection_item(&item, externals, "Vec")?;
+        return Ok(FunctionReturnType::Vec(CollectionType {
+            source: type_.clone(),
+            item,
+            value,
+        }));
+    }
+    Ok(FunctionReturnType::Value(classify_return_value(
+        type_, externals,
+    )?))
+}
+
+fn classify_return_value(
+    type_: &Type,
+    externals: &[ExternalModel],
+) -> syn::Result<ProviderValueType> {
+    if let Type::Reference(reference) = type_ {
+        if let Some(external) = external_type(&reference.elem, externals) {
+            return Err(syn::Error::new_spanned(
+                type_,
+                format!(
+                    "external payload `{}` returns must be owned",
+                    external.ident
+                ),
+            ));
+        }
+        return Err(syn::Error::new_spanned(
+            type_,
+            "provider source returns must be owned values",
+        ));
+    }
+    if is_collection(type_, "List") || is_collection(type_, "Vec") {
+        return Err(syn::Error::new_spanned(
+            type_,
+            "List and Vec values are supported only as top-level source returns",
+        ));
+    }
     if let Some(external) = external_type(type_, externals) {
-        return Ok(FunctionType::External {
+        return Ok(ProviderValueType::External {
+            payload: external.ident.clone(),
             schema: external.schema.clone(),
+            store_field: external.store_field.clone(),
         });
     }
     if let Type::Tuple(tuple) = type_
@@ -1015,11 +1553,93 @@ fn classify_return(type_: &Type, externals: &[ExternalModel]) -> syn::Result<Fun
         let elements = tuple
             .elems
             .iter()
-            .map(|element| classify_return(element, externals))
+            .map(|element| classify_return_value(element, externals))
             .collect::<syn::Result<Vec<_>>>()?;
-        return Ok(FunctionType::Tuple(elements));
+        return Ok(ProviderValueType::Tuple(elements));
     }
-    Ok(FunctionType::Scalar(type_.clone()))
+    Ok(ProviderValueType::Scalar(type_.clone()))
+}
+
+fn classify_collection_item(
+    type_: &Type,
+    externals: &[ExternalModel],
+    collection: &str,
+) -> syn::Result<ProviderValueType> {
+    if let Type::Reference(reference) = type_ {
+        if let Some(external) = external_type(&reference.elem, externals) {
+            return Err(syn::Error::new_spanned(
+                type_,
+                format!(
+                    "{collection} item external payload `{}` must be owned",
+                    external.ident
+                ),
+            ));
+        }
+        return Err(syn::Error::new_spanned(
+            type_,
+            format!("{collection} items must be owned values"),
+        ));
+    }
+    if is_collection(type_, "List") || is_collection(type_, "Vec") {
+        return Err(syn::Error::new_spanned(
+            type_,
+            "nested List and Vec item values are not supported",
+        ));
+    }
+    if let Some(external) = external_type(type_, externals) {
+        return Ok(ProviderValueType::External {
+            payload: external.ident.clone(),
+            schema: external.schema.clone(),
+            store_field: external.store_field.clone(),
+        });
+    }
+    if let Type::Tuple(tuple) = type_
+        && !tuple.elems.is_empty()
+    {
+        let elements = tuple
+            .elems
+            .iter()
+            .map(|element| classify_collection_item(element, externals, collection))
+            .collect::<syn::Result<Vec<_>>>()?;
+        return Ok(ProviderValueType::Tuple(elements));
+    }
+    Ok(ProviderValueType::Scalar(type_.clone()))
+}
+
+fn collection_item(type_: &Type, name: &str) -> syn::Result<Option<Type>> {
+    let Type::Path(TypePath { qself: None, path }) = type_ else {
+        return Ok(None);
+    };
+    let Some(segment) = path.segments.last().filter(|segment| segment.ident == name) else {
+        return Ok(None);
+    };
+    let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return Err(syn::Error::new_spanned(
+            type_,
+            format!("{name} requires exactly one type argument"),
+        ));
+    };
+    let Some(GenericArgument::Type(item)) = arguments.args.first() else {
+        return Err(syn::Error::new_spanned(
+            type_,
+            format!("{name} requires exactly one type argument"),
+        ));
+    };
+    if arguments.args.len() != 1 {
+        return Err(syn::Error::new_spanned(
+            type_,
+            format!("{name} requires exactly one type argument"),
+        ));
+    }
+    Ok(Some(item.clone()))
+}
+
+fn is_collection(type_: &Type, name: &str) -> bool {
+    matches!(
+        type_,
+        Type::Path(TypePath { qself: None, path })
+            if path.segments.last().is_some_and(|segment| segment.ident == name)
+    )
 }
 
 fn is_non_empty_tuple(type_: &Type) -> bool {
@@ -1678,6 +2298,348 @@ mod tests {
         for (item, expected) in cases {
             assert_eq!(expansion_error(item), expected);
         }
+    }
+
+    #[test]
+    fn list_and_vec_ownership_diagnostics_are_exact() {
+        let cases = [
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn borrowed(values: &geam::List<BigInt>) -> bool { true }
+                    }
+                },
+                "geam::List<T> arguments must be passed by value",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn borrowed(values: &mut geam::List<BigInt>) -> bool { true }
+                    }
+                },
+                "geam::List<T> arguments must be passed by value",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn input(values: Vec<BigInt>) -> bool { true }
+                    }
+                },
+                "Vec<T> arguments are not supported; use geam::List<T>",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn input(values: Vec) -> bool { true }
+                    }
+                },
+                "Vec requires exactly one type argument",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn borrowed(values: &Vec<BigInt>) -> bool { true }
+                    }
+                },
+                "Vec<T> arguments are not supported; use geam::List<T>",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn borrowed(value: &BigInt) -> bool { true }
+                    }
+                },
+                "provider source arguments may borrow only declared external payloads",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn borrowed() -> &geam::List<BigInt> { todo!() }
+                    }
+                },
+                "geam::List<T> returns must be owned",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn borrowed() -> &Vec<BigInt> { todo!() }
+                    }
+                },
+                "Vec<T> returns must be owned",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn borrowed() -> &BigInt { todo!() }
+                    }
+                },
+                "provider source returns must be owned values",
+            ),
+        ];
+
+        for (item, expected) in cases {
+            assert_eq!(expansion_error(item), expected);
+        }
+    }
+
+    #[test]
+    fn list_item_diagnostics_reject_borrowed_external_and_nested_collections() {
+        let cases = [
+            (
+                quote! {
+                    mod lists {
+                        #[geam::external(name = "Token")]
+                        struct Token;
+
+                        #[geam::function]
+                        fn input(values: geam::List<&Token>) -> bool { true }
+                    }
+                },
+                "List item external payload `Token` must be owned",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::external(name = "Token")]
+                        struct Token;
+
+                        #[geam::function]
+                        fn output() -> Vec<&Token> { Vec::new() }
+                    }
+                },
+                "Vec item external payload `Token` must be owned",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn output() -> geam::List<&BigInt> { todo!() }
+                    }
+                },
+                "List items must be owned values",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn input(values: geam::List<&BigInt>) -> bool { true }
+                    }
+                },
+                "List items must be owned values",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn nested(values: geam::List<geam::List<BigInt>>) -> bool { true }
+                    }
+                },
+                "nested List and Vec item values are not supported",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn nested(values: geam::List<(BigInt, &BigInt)>) -> bool { true }
+                    }
+                },
+                "List items must be owned values",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn nested(values: (geam::List<BigInt>, bool)) -> bool { true }
+                    }
+                },
+                "geam::List<T> is supported only as a top-level source argument",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn nested(values: (Vec<BigInt>, bool)) -> bool { true }
+                    }
+                },
+                "Vec<T> arguments are not supported; use geam::List<T>",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn nested() -> (Vec<BigInt>, bool) { (Vec::new(), true) }
+                    }
+                },
+                "List and Vec values are supported only as top-level source returns",
+            ),
+        ];
+
+        for (item, expected) in cases {
+            assert_eq!(expansion_error(item), expected);
+        }
+    }
+
+    #[test]
+    fn list_type_arguments_and_pass_through_are_validated_at_expansion() {
+        let cases = [
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn missing(values: geam::List) -> bool { true }
+                    }
+                },
+                "List requires exactly one type argument",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn missing() -> geam::List { todo!() }
+                    }
+                },
+                "List requires exactly one type argument",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn multiple() -> Vec<BigInt, bool> { todo!() }
+                    }
+                },
+                "Vec requires exactly one type argument",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn multiple(values: geam::List<BigInt, bool>) -> bool { true }
+                    }
+                },
+                "List requires exactly one type argument",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn non_type(values: geam::List<'static>) -> bool { true }
+                    }
+                },
+                "List requires exactly one type argument",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn fabricated() -> geam::List<BigInt> { todo!() }
+                    }
+                },
+                "a returned geam::List<T> must match a List argument",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::function]
+                        fn changed(values: geam::List<BigInt>) -> geam::List<bool> { todo!() }
+                    }
+                },
+                "a returned geam::List<T> must match a List argument",
+            ),
+        ];
+
+        for (item, expected) in cases {
+            assert_eq!(expansion_error(item), expected);
+        }
+    }
+
+    #[test]
+    fn list_expansion_decodes_lazily_and_distinguishes_pass_through_from_vec_construction() {
+        let expansion = expand(
+            quote!(path = "lists", crate_path = geam_core),
+            quote! {
+                mod lists {
+                    #[geam::function]
+                    fn identity(values: geam::List<BigInt>) -> geam::List<BigInt> {
+                        values
+                    }
+
+                    #[geam::function]
+                    fn reverse(values: geam::List<BigInt>) -> Vec<BigInt> {
+                        (0..values.len())
+                            .rev()
+                            .map(|index| values.get(index).unwrap())
+                            .collect()
+                    }
+                }
+            },
+        )
+        .expect("List pass-through and Vec construction should expand")
+        .to_string();
+
+        assert_eq!(expansion.matches("struct __GeamListDecoder0").count(), 1);
+        assert!(!expansion.contains("__GeamListDecoder1"));
+        assert_eq!(expansion.matches("call . provider_list").count(), 2);
+        assert_eq!(expansion.matches("call . return_list").count(), 1);
+        assert_eq!(
+            expansion.matches("call . return_value (returned)").count(),
+            1
+        );
+        assert_eq!(
+            expansion
+                .matches("with_scoped_function_and_constructions")
+                .count(),
+            0,
+        );
+        assert_eq!(expansion.matches("with_scoped_function :: <").count(), 2);
+        assert!(expansion.contains("ProviderListContext < '__geam_list"));
+        assert!(expansion.contains("__geam_value . into_scalar :: < BigInt > ()"));
+    }
+
+    #[test]
+    fn list_external_and_tuple_decoders_reuse_static_store_access_and_construction_tokens() {
+        let expansion = expand(
+            quote!(path = "lists", crate_path = geam_core),
+            quote! {
+                mod lists {
+                    #[geam::external(name = "Token")]
+                    #[derive(PartialEq, Eq, Hash)]
+                    struct Token(EcoString);
+
+                    #[geam::function]
+                    fn labels(values: geam::List<(EcoString, Token, Token)>) -> Vec<EcoString> {
+                        Vec::new()
+                    }
+
+                    #[geam::function]
+                    fn created() -> Vec<(EcoString, Token)> {
+                        Vec::new()
+                    }
+                }
+            },
+        )
+        .expect("external tuple List items should expand")
+        .to_string();
+
+        assert_eq!(
+            expansion
+                .matches("call . provider_external_payload_access")
+                .count(),
+            1,
+        );
+        assert!(expansion.contains("ProviderExternalItem < Token >"));
+        assert!(expansion.contains("into_external (& self . __geam_external_0)"));
+        assert_eq!(expansion.matches("call . construct_external").count(), 1);
+        assert_eq!(expansion.matches("call . construct_tuple").count(), 1);
+        assert_eq!(expansion.matches("call . return_list").count(), 2);
     }
 
     #[test]

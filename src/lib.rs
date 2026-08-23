@@ -11,15 +11,18 @@ pub mod __macro_support {
         ExternalPayload, HostCall, HostCallCompletion, HostCallError, HostComponentProfile,
         HostConstructions, HostExternal, HostExternalBinding, HostExternalEquality,
         HostExternalHashing, HostExternalInspection, HostExternalSchema, HostExternalStorage,
-        HostExternalStore, HostExternalType, HostProvider, HostProviderComponent,
-        HostProviderComponentInitialization, HostProviderComponentRegistration,
-        HostProviderConfiguration, HostProviderInitializationError, HostProviderModule,
-        HostRegistrationError, HostTuple, HostTupleType, HostTypeIndex0, HostTypeIndexNext,
-        HostTypeList, HostTypeListEnd, ProviderPackage, component_initialization_error,
-        external_payload_hash,
+        HostExternalStore, HostExternalType, HostList, HostListType, HostProvider,
+        HostProviderComponent, HostProviderComponentInitialization,
+        HostProviderComponentRegistration, HostProviderConfiguration,
+        HostProviderInitializationError, HostProviderModule, HostRegistrationError, HostTuple,
+        HostTupleType, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, List,
+        ProviderExternalItem, ProviderExternalPayloadAccess, ProviderListContext,
+        ProviderListItemDecoder, ProviderListItemValue, ProviderPackage,
+        component_initialization_error, external_payload_hash,
     };
 }
 
+pub use geam_core::List;
 pub use geam_core::{frontend, host, plan, planner, runtime};
 pub use geam_macros::{external, function, module, provider};
 

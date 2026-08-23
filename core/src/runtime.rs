@@ -10,7 +10,9 @@ mod profile;
 mod state;
 mod value;
 
-pub(crate) use host::StoredRuntimeValue;
+pub(crate) use host::{
+    StoredRuntimeList, StoredRuntimeListItem, StoredRuntimeListTupleItems, StoredRuntimeValue,
+};
 
 pub use echo::{EchoLocation, EchoOutput, EchoSink};
 pub use error::{

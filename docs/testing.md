@@ -15,11 +15,12 @@ closing coverage gaps, see [test-development.md](test-development.md).
 `geam-macros` owns parser, diagnostic, expansion, compile-fail, and core-backed
 execution tests for the provider authoring attributes. Its integration tests
 use `geam-core` only as a dev-dependency and verify stateful scalar calls,
-recursive native tuples, and persistent external values without adding a
-production runtime dependency to the proc-macro crate. They fix generated
-schemas and stores, mixed tuple/external/scalar signatures, source equality,
-inspection, escaped payload lifetime, and structured linkage mismatch. Consumer
-fixtures do not replace these owner tests.
+recursive native tuples, lazy Lists, and persistent external values without
+adding a production runtime dependency to the proc-macro crate. They fix
+generated schemas and stores, mixed tuple/external/scalar List items,
+pass-through versus Vec construction, source equality, inspection, escaped
+payload lifetime, and structured linkage mismatch. Consumer fixtures do not
+replace these owner tests.
 
 The current compiler-boundary and runtime milestones depend on the exact
 `geam-gleam-core` package recorded in the upstream guide. `cargo test` resolves
@@ -151,11 +152,12 @@ production manifest, resolution, build, and execution path.
 The [provider authoring examples](../examples) are consumer-facing macro
 acceptance cases. `text_tools` maps one stateless provider to three Gleam
 modules, `value_types` fixes every scalar mapping plus one-, multi-, and
-nested-tuple mapping, `tag_set` fixes generated external semantics,
-`request_ids` combines mutable and read-only default state, `feature_flags` owns
-configured initialization, and `run_metrics` retains specialized manual
-external semantics. Root binary tests follow each documented path add, prepare,
-run, and repeated-run workflow against independently locked provider crates.
+nested-tuple mapping and lazy top-level Lists, and `tag_set` fixes generated
+external semantics. `request_ids` combines mutable and read-only default state,
+`feature_flags` owns configured initialization, and `run_metrics` retains
+specialized manual external semantics. Root binary tests follow each documented
+path add, prepare, run, and repeated-run workflow against independently locked
+provider crates.
 The complete Gleam entrypoints execute every public example function.
 Repository-local Cargo patches select the current checkout until the authoring
 crates are released.

@@ -54,6 +54,10 @@ impl EvaluatedBitArray {
         self.value.clone()
     }
 
+    pub(in crate::runtime) fn into_value(self) -> crate::BitArrayValue {
+        self.value
+    }
+
     pub(in crate::runtime) fn from_value(value: crate::BitArrayValue) -> Self {
         Self { value }
     }

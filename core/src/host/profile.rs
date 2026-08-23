@@ -6,6 +6,9 @@ use crate::host::{
     HostListArgumentSlot, HostListType, HostStoredValue, HostTuple, HostTupleArgumentSlot,
     HostTupleType, HostType, HostTypeSequence, HostValue, HostValueArgumentSlot,
 };
+use crate::provider::{
+    List, ProviderExternalPayloadAccess, ProviderListContext, ProviderListItemDecoder,
+};
 use std::marker::PhantomData;
 
 mod runtime;
@@ -150,6 +153,35 @@ where
         self.runtime
             .list_item(value.token, index)
             .map(|token| crate::host::type_::from_token::<Item, Profile>(self.runtime, token))
+    }
+
+    #[doc(hidden)]
+    pub fn provider_list<Item, HostItem, Decoder>(
+        &self,
+        value: HostList<'call, HostItem>,
+        decoder: Decoder,
+    ) -> List<Item, ProviderListContext<'call, HostItem, Decoder>>
+    where
+        HostItem: HostType,
+        Decoder: ProviderListItemDecoder<Item>,
+    {
+        let retained = self.runtime.retain_list(value.token);
+        ProviderListContext::new(value, retained, decoder).into_list()
+    }
+
+    #[doc(hidden)]
+    pub fn provider_external_payload_access<Schema>(
+        &self,
+    ) -> ProviderExternalPayloadAccess<BoundExternalPayload<Profile, Provider, Schema>>
+    where
+        Schema: HostExternalSchema,
+        Provider: HostExternalBinding<Profile, Schema>,
+    {
+        ProviderExternalPayloadAccess::new(
+            BoundExternalStorage::<Profile, Provider, Schema>::store(
+                self.runtime.external_stores(),
+            ),
+        )
     }
 
     /// Constructs a list authorized by one registered construction token.
@@ -562,10 +594,21 @@ mod tests {
         HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
         HostValueFamily, HostValueToken, StatelessHostProfile,
     };
+    use crate::provider::{ProviderListItemDecoder, ProviderListItemValue};
     use ecow::EcoString;
     use num_bigint::BigInt;
 
     struct Counter;
+
+    struct IntListDecoder;
+
+    impl ProviderListItemDecoder<BigInt> for IntListDecoder {
+        type View = BigInt;
+
+        fn decode(&self, value: ProviderListItemValue) -> Self::View {
+            value.into_scalar()
+        }
+    }
 
     impl HostProvider<TestHostProfile> for Counter {
         type State = usize;
@@ -783,6 +826,39 @@ mod tests {
         assert_eq!(list.family, HostValueFamily::List);
         assert_eq!(tuple.family, HostValueFamily::Tuple);
         assert_eq!(custom.family, HostValueFamily::Custom);
+        assert_eq!(runtime.list_builds(), 2);
+    }
+
+    #[test]
+    fn returning_an_existing_list_does_not_build_a_new_list() {
+        type List = HostListType<BigInt>;
+
+        let mut state = TestRunState::default();
+        {
+            let arguments = CallArguments::new(Vec::new(), Vec::new());
+            let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
+            let existing = HostList::<BigInt>::new(HostListToken::Stored(0));
+            let retained = HostCall::<TestHostProfile, Counter, List>::new(&mut runtime)
+                .provider_list(existing, IntListDecoder);
+
+            assert_eq!(retained.len(), 1);
+            assert_eq!(retained.get(0), Some(BigInt::from(1)));
+        }
+
+        let arguments = CallArguments::new(Vec::new(), Vec::new());
+        let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
+        let existing = HostList::<BigInt>::new(HostListToken::Stored(0));
+
+        let returned = HostCall::<TestHostProfile, Counter, List>::new(&mut runtime)
+            .return_value(existing)
+            .token;
+
+        assert_eq!(returned.family, HostValueFamily::List);
+        assert_eq!(runtime.list_builds(), 0);
+
+        HostCall::<TestHostProfile, Counter, List>::new(&mut runtime)
+            .return_list([BigInt::from(1), BigInt::from(2)]);
+        assert_eq!(runtime.list_builds(), 1);
     }
 
     #[test]

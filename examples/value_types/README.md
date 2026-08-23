@@ -2,11 +2,11 @@
 
 This stateless, configuration-free provider is the curated map between Gleam
 source values and the Rust types accepted by Geam's authoring macros. It keeps
-scalar and tuple declarations in separate modules so each mapping can be read
-without unrelated provider state, configuration, or external-value semantics.
-As the macro gains more value families, this example grows with focused sibling
-modules; state, configuration, and other provider capabilities stay in their
-own semantic examples.
+scalar, tuple, and List declarations in separate modules so each mapping can be
+read without unrelated provider state, configuration, or external-value
+semantics. As the macro gains more value families, this example grows with
+focused sibling modules; state, configuration, and other provider capabilities
+stay in their own semantic examples.
 
 ## Scalars
 
@@ -73,7 +73,43 @@ fn reassociate(
 }
 ```
 
-Run both modules through the generated standalone runner:
+## Lists
+
+The List module distinguishes retained source Lists from newly constructed
+ones:
+
+```gleam
+pub fn length(values: List(Int)) -> Int
+pub fn first_or(values: List(String), fallback: String) -> String
+pub fn identity(values: List(Int)) -> List(Int)
+pub fn reverse(values: List(String)) -> List(String)
+pub fn labels(values: List(#(String, Int))) -> List(String)
+```
+
+Rust receives an opaque `geam::List<T>` view. `len` does not decode an item,
+and `get` decodes only the requested index. Returning the view preserves the
+original Gleam List handle; returning `Vec<T>` constructs one new Gleam List:
+
+```rust
+#[geam::function]
+fn identity(values: geam::List<BigInt>) -> geam::List<BigInt> {
+    values
+}
+
+#[geam::function]
+fn reverse(values: geam::List<EcoString>) -> Vec<EcoString> {
+    (0..values.len())
+        .rev()
+        .map(|index| values.get(index).expect("index comes from the List length"))
+        .collect()
+}
+```
+
+List items currently compose the supported scalar and tuple mappings. The view
+is intentionally not an eager `Vec`: provider code chooses whether to inspect
+zero, one, or every item.
+
+Run all three modules through the generated standalone runner:
 
 ```sh
 cd examples/value_types/project
@@ -83,12 +119,13 @@ geam run
 ```
 
 A successful run produces no output. The entrypoint executes every public
-function and checks all scalar mappings plus one-, two-, three-element, and
-nested tuple values.
+function and checks all scalar mappings, one-, two-, three-element and nested
+tuples, plus empty, indexed, pass-through, reversed, and tuple-item Lists.
 
 Read
 [`project/packages/example_value_types/src/example_value_types/scalars.gleam`](project/packages/example_value_types/src/example_value_types/scalars.gleam),
 [`project/packages/example_value_types/src/example_value_types/tuples.gleam`](project/packages/example_value_types/src/example_value_types/tuples.gleam),
+[`project/packages/example_value_types/src/example_value_types/lists.gleam`](project/packages/example_value_types/src/example_value_types/lists.gleam),
 [`provider/src/lib.rs`](provider/src/lib.rs), and
 [`project/src/value_types_example.gleam`](project/src/value_types_example.gleam)
 together.

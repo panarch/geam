@@ -1,6 +1,15 @@
 use ecow::EcoString;
 use std::fmt::{self, Display, Formatter};
 
+mod list;
+
+pub use list::List;
+#[doc(hidden)]
+pub use list::{
+    ProviderExternalItem, ProviderExternalPayloadAccess, ProviderListContext,
+    ProviderListItemDecoder, ProviderListItemValue,
+};
+
 pub type Configuration = crate::HostProviderConfiguration;
 
 /// Source-visible semantics for one immutable Rust-owned external payload.

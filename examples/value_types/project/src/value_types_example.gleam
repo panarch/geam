@@ -1,3 +1,4 @@
+import example_value_types/lists
 import example_value_types/scalars
 import example_value_types/tuples
 
@@ -20,4 +21,18 @@ pub fn main() {
   assert tuples.rotate(#("ready", 1.5, True)) == #(True, "ready", 1.5)
 
   assert tuples.reassociate(#("jobs", #(4, False))) == #(#("jobs", 4), False)
+
+  assert lists.length([]) == 0
+  assert lists.length([1, 2, 3]) == 3
+  assert lists.first_or([], "fallback") == "fallback"
+  assert lists.first_or(["first", "second"], "fallback") == "first"
+
+  let numbers = [1, 2, 3]
+  assert lists.identity(numbers) == numbers
+  assert lists.reverse(["first", "second", "third"]) == [
+    "third",
+    "second",
+    "first",
+  ]
+  assert lists.labels([#("alpha", 1), #("beta", 2)]) == ["alpha", "beta"]
 }

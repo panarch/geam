@@ -504,6 +504,12 @@ impl Default for RuntimeListStorage {
 }
 
 impl RuntimeListStorage {
+    pub(in crate::runtime) fn clone_handle(&self) -> Self {
+        Self {
+            storage: Rc::clone(&self.storage),
+        }
+    }
+
     pub(in crate::runtime) fn drain_releases(&mut self) {
         self.storage.drain_releases();
     }

@@ -65,6 +65,12 @@ impl<Payload> HostExternalStore<Payload>
 where
     Payload: 'static,
 {
+    pub(crate) fn clone_handle(&self) -> Self {
+        Self {
+            values: Rc::clone(&self.values),
+        }
+    }
+
     pub(crate) fn insert(
         &self,
         value: Payload,
