@@ -1,5 +1,8 @@
 use crate::host::{ExternalPayloadView, HostExternalStore, HostList, HostType};
-use crate::runtime::{StoredRuntimeList, StoredRuntimeListItem, StoredRuntimeListTupleItems};
+use crate::runtime::{
+    StoredRuntimeList, StoredRuntimeListCustomFields, StoredRuntimeListItem,
+    StoredRuntimeListTupleItems,
+};
 use std::marker::PhantomData;
 use std::ops::Deref;
 
@@ -21,6 +24,13 @@ pub struct MissingListContext;
 #[doc(hidden)]
 pub struct ProviderListContext<'call, HostItem, Decoder> {
     host: HostList<'call, HostItem>,
+    retained: StoredRuntimeList,
+    decoder: Decoder,
+}
+
+/// An input-only retained List nested inside another source value.
+#[doc(hidden)]
+pub struct ProviderInputListContext<Decoder> {
     retained: StoredRuntimeList,
     decoder: Decoder,
 }
@@ -51,10 +61,35 @@ pub struct ProviderExternalItem<Payload> {
     value: ExternalPayloadView<Payload>,
 }
 
+/// Profile-independent decoder for one scalar List item.
+#[doc(hidden)]
+#[derive(Clone, Copy)]
+pub struct ProviderScalarListDecoder<Scalar>(PhantomData<fn() -> Scalar>);
+
+/// Profile-independent decoder for one external List item.
+#[doc(hidden)]
+pub struct ProviderExternalListDecoder<Payload> {
+    access: ProviderExternalPayloadAccess<Payload>,
+}
+
+impl<Payload: 'static> Clone for ProviderExternalListDecoder<Payload> {
+    fn clone(&self) -> Self {
+        Self {
+            access: self.access.clone(),
+        }
+    }
+}
+
 /// A consuming view over the elements of one runtime tuple List item.
 #[doc(hidden)]
 pub struct ProviderListTupleItems<'value> {
     values: StoredRuntimeListTupleItems<'value>,
+}
+
+/// A consuming view over one runtime custom value stored in a List.
+#[doc(hidden)]
+pub struct ProviderListCustomFields<'value> {
+    fields: StoredRuntimeListCustomFields<'value>,
 }
 
 impl<'call, Item, HostItem, Decoder> List<Item, ProviderListContext<'call, HostItem, Decoder>>
@@ -81,6 +116,27 @@ where
     #[doc(hidden)]
     pub fn __geam_into_context(self) -> ProviderListContext<'call, HostItem, Decoder> {
         self.context
+    }
+}
+
+impl<Item, Decoder> List<Item, ProviderInputListContext<Decoder>>
+where
+    Decoder: ProviderListItemDecoder<Item>,
+{
+    /// Returns the nested List length without decoding an item.
+    #[expect(
+        clippy::len_without_is_empty,
+        reason = "the provider List slice intentionally exposes only len and get"
+    )]
+    pub fn len(&self) -> usize {
+        self.context.retained.len()
+    }
+
+    /// Decodes only the nested List item at `index`.
+    pub fn get(&self, index: usize) -> Option<Decoder::View> {
+        self.context.retained.decode_item(index, |value| {
+            self.context.decoder.decode(ProviderListItemValue { value })
+        })
     }
 }
 
@@ -113,6 +169,15 @@ where
     }
 }
 
+impl<Decoder> ProviderInputListContext<Decoder> {
+    pub(crate) fn new<Item>(retained: StoredRuntimeList, decoder: Decoder) -> List<Item, Self> {
+        List {
+            context: Self { retained, decoder },
+            item: PhantomData,
+        }
+    }
+}
+
 impl<'value> ProviderListItemValue<'value> {
     #[doc(hidden)]
     #[allow(private_bounds)]
@@ -142,6 +207,24 @@ impl<'value> ProviderListItemValue<'value> {
             values: self.value.into_tuple_items(),
         }
     }
+
+    #[doc(hidden)]
+    pub fn into_custom(self) -> ProviderListCustomFields<'value> {
+        ProviderListCustomFields {
+            fields: self.value.into_custom_fields(),
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn into_list<Item, Decoder>(
+        self,
+        decoder: Decoder,
+    ) -> List<Item, ProviderInputListContext<Decoder>>
+    where
+        Decoder: ProviderListItemDecoder<Item>,
+    {
+        ProviderInputListContext::new(self.value.into_list(), decoder)
+    }
 }
 
 impl ProviderListTupleItems<'_> {
@@ -149,6 +232,20 @@ impl ProviderListTupleItems<'_> {
     pub fn take_item(&mut self, index: usize) -> ProviderListItemValue<'_> {
         ProviderListItemValue {
             value: self.values.take_item(index),
+        }
+    }
+}
+
+impl ProviderListCustomFields<'_> {
+    #[doc(hidden)]
+    pub fn constructor(&self) -> usize {
+        self.fields.constructor()
+    }
+
+    #[doc(hidden)]
+    pub fn take_field(&mut self, index: usize) -> ProviderListItemValue<'_> {
+        ProviderListItemValue {
+            value: self.fields.take_field(index),
         }
     }
 }
@@ -161,11 +258,56 @@ impl<Payload: 'static> ProviderExternalPayloadAccess<Payload> {
     }
 }
 
+impl<Payload: 'static> Clone for ProviderExternalPayloadAccess<Payload> {
+    fn clone(&self) -> Self {
+        Self {
+            store: self.store.clone_handle(),
+        }
+    }
+}
+
 impl<Payload> Deref for ProviderExternalItem<Payload> {
     type Target = Payload;
 
     fn deref(&self) -> &Self::Target {
         &self.value
+    }
+}
+
+impl<Payload> ProviderExternalItem<Payload> {
+    pub(crate) fn new(value: ExternalPayloadView<Payload>) -> Self {
+        Self { value }
+    }
+}
+
+impl<Scalar> ProviderScalarListDecoder<Scalar> {
+    pub(crate) fn new() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<Scalar> ProviderListItemDecoder<Scalar> for ProviderScalarListDecoder<Scalar>
+where
+    Scalar: ProviderListScalar,
+{
+    type View = Scalar;
+
+    fn decode(&self, value: ProviderListItemValue<'_>) -> Self::View {
+        value.into_scalar()
+    }
+}
+
+impl<Payload: 'static> ProviderExternalListDecoder<Payload> {
+    pub fn new(access: ProviderExternalPayloadAccess<Payload>) -> Self {
+        Self { access }
+    }
+}
+
+impl<Payload: 'static> ProviderListItemDecoder<Payload> for ProviderExternalListDecoder<Payload> {
+    type View = ProviderExternalItem<Payload>;
+
+    fn decode(&self, value: ProviderListItemValue<'_>) -> Self::View {
+        value.into_external(&self.access)
     }
 }
 

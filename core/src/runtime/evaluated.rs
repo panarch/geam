@@ -85,6 +85,14 @@ impl EvaluatedCustomValue {
     pub(in crate::runtime) fn fields(&self) -> &[EvaluatedValue] {
         &self.fields
     }
+
+    pub(in crate::runtime) fn take_fields(&mut self) -> Box<[EvaluatedValue]> {
+        std::mem::take(&mut self.fields)
+    }
+
+    pub(in crate::runtime) fn into_fields(self) -> (CustomConstructorId, Box<[EvaluatedValue]>) {
+        (self.constructor, self.fields)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

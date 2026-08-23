@@ -1,0 +1,31 @@
+error[E0277]: the trait bound `i64: host::type_::custom::field::CustomFieldType` is not satisfied
+  --> tests/ui/unsupported_custom_field.rs:12:14
+   |
+12 |         Code(i64),
+   |              ^^^ the trait `host::type_::custom::field::AtomicCustomFieldType` is not implemented for `i64`
+   |
+help: the trait `host::type_::custom::field::AtomicCustomFieldType` is implemented for `f64`
+  --> $WORKSPACE/core/src/host/type_/custom/field.rs
+   |
+   | impl AtomicCustomFieldType for f64 {}
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: required for `i64` to implement `host::type_::custom::field::CustomFieldType`
+note: required by a bound in `geam_core::HostCustomField::Type`
+  --> $WORKSPACE/core/src/host/type_/custom.rs
+   |
+   |     type Type: CustomFieldType;
+   |                ^^^^^^^^^^^^^^^ required by this bound in `HostCustomField::Type`
+
+error[E0277]: the trait bound `i64: host::type_::custom::field::AtomicCustomFieldType` is not satisfied
+ --> tests/ui/unsupported_custom_field.rs:8:1
+  |
+8 | #[geam_macros::module(path = "customs", crate_path = geam_core)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `host::type_::custom::field::AtomicCustomFieldType` is not implemented for `i64`
+  |
+help: the trait `host::type_::custom::field::AtomicCustomFieldType` is implemented for `f64`
+ --> $WORKSPACE/core/src/host/type_/custom/field.rs
+  |
+  | impl AtomicCustomFieldType for f64 {}
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = note: required for `i64` to implement `host::type_::custom::field::ResolveCustomFieldType<HostTypeListEnd>`
+  = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)

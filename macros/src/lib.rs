@@ -1,5 +1,6 @@
 use proc_macro::TokenStream;
 
+mod custom;
 mod external;
 mod module;
 mod path;
@@ -22,6 +23,13 @@ pub fn module(arguments: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn external(arguments: TokenStream, item: TokenStream) -> TokenStream {
     external::expand(arguments.into(), item.into())
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+#[proc_macro_attribute]
+pub fn custom(arguments: TokenStream, item: TokenStream) -> TokenStream {
+    custom::expand(arguments.into(), item.into())
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }

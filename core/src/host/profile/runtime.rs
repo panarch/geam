@@ -34,6 +34,7 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile> {
     fn tuple_values(&mut self, value: HostTupleToken) -> Box<[HostValueToken]>;
     fn custom_constructor(&self, value: HostCustomToken) -> usize;
     fn custom_fields(&mut self, value: HostCustomToken) -> Box<[HostValueToken]>;
+    fn take_custom_fields(&mut self, value: HostCustomToken) -> Box<[HostValueToken]>;
     fn invoke(
         &mut self,
         function: HostFunctionToken,
@@ -253,6 +254,10 @@ pub(crate) mod test {
         }
 
         fn custom_fields(&mut self, _value: HostCustomToken) -> Box<[HostValueToken]> {
+            Box::new([])
+        }
+
+        fn take_custom_fields(&mut self, _value: HostCustomToken) -> Box<[HostValueToken]> {
             Box::new([])
         }
 

@@ -1,13 +1,24 @@
 use ecow::EcoString;
 use std::fmt::{self, Display, Formatter};
 
+mod codec;
 mod list;
+
+#[doc(hidden)]
+pub use codec::{
+    ProviderConstruction, ProviderConstructionIndex0, ProviderConstructionIndexNext,
+    ProviderConstructionList, ProviderConstructionRequirementAt, ProviderConstructionRequirements,
+    ProviderConstructions, ProviderExternalCodec, ProviderInputValue, ProviderListInputCodec,
+    ProviderListInputValue, ProviderNoConstructions, ProviderOutputValue, ProviderRootOutputValue,
+    ProviderValue,
+};
 
 pub use list::List;
 #[doc(hidden)]
 pub use list::{
-    ProviderExternalItem, ProviderExternalPayloadAccess, ProviderListContext,
-    ProviderListItemDecoder, ProviderListItemValue,
+    ProviderExternalItem, ProviderExternalListDecoder, ProviderExternalPayloadAccess,
+    ProviderInputListContext, ProviderListContext, ProviderListCustomFields,
+    ProviderListItemDecoder, ProviderListItemValue, ProviderScalarListDecoder,
 };
 
 pub type Configuration = crate::HostProviderConfiguration;

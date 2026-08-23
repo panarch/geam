@@ -9,22 +9,32 @@ pub mod provider {
 pub mod __macro_support {
     pub use geam_core::__macro_support::{
         ExternalPayload, HostCall, HostCallCompletion, HostCallError, HostComponentProfile,
-        HostConstructions, HostExternal, HostExternalBinding, HostExternalEquality,
-        HostExternalHashing, HostExternalInspection, HostExternalSchema, HostExternalStorage,
-        HostExternalStore, HostExternalType, HostList, HostListType, HostProvider,
-        HostProviderComponent, HostProviderComponentInitialization,
+        HostConstruction, HostConstructions, HostCustom, HostCustomConstructorAt,
+        HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
+        HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomIndex0,
+        HostCustomIndexNext, HostCustomSchema, HostCustomType, HostExternal, HostExternalBinding,
+        HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalSchema,
+        HostExternalStorage, HostExternalStore, HostExternalType, HostList, HostListType,
+        HostProfile, HostProvider, HostProviderComponent, HostProviderComponentInitialization,
         HostProviderComponentRegistration, HostProviderConfiguration,
         HostProviderInitializationError, HostProviderModule, HostRegistrationError, HostTuple,
-        HostTupleType, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, List,
-        ProviderExternalItem, ProviderExternalPayloadAccess, ProviderListContext,
-        ProviderListItemDecoder, ProviderListItemValue, ProviderPackage,
+        HostTupleType, HostType, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
+        List, NoCustomInput, ProviderConstruction, ProviderConstructionIndex0,
+        ProviderConstructionIndexNext, ProviderConstructionList, ProviderConstructionRequirementAt,
+        ProviderConstructionRequirements, ProviderConstructions, ProviderCustomDeclaration,
+        ProviderCustomInputDeclaration, ProviderExternalCodec, ProviderExternalItem,
+        ProviderExternalListDecoder, ProviderExternalPayloadAccess, ProviderInputListContext,
+        ProviderInputValue, ProviderListContext, ProviderListCustomFields, ProviderListInputCodec,
+        ProviderListInputValue, ProviderListItemDecoder, ProviderListItemValue,
+        ProviderModuleRegistration, ProviderNoConstructions, ProviderOutputValue, ProviderPackage,
+        ProviderRootOutputValue, ProviderScalarListDecoder, ProviderValue,
         component_initialization_error, external_payload_hash,
     };
 }
 
 pub use geam_core::List;
 pub use geam_core::{frontend, host, plan, planner, runtime};
-pub use geam_macros::{external, function, module, provider};
+pub use geam_macros::{custom, external, function, module, provider};
 
 pub use geam_core::frontend::{
     FrontendError, HostedTypedProgram, ModuleSource, PackageSource, ProjectError, TypedProgram,

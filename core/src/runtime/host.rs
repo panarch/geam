@@ -5,7 +5,8 @@ pub(super) use self::invoke::{invoke_never, invoke_value};
 
 use self::scoped::ScopedValues;
 pub(crate) use self::scoped::{
-    StoredRuntimeList, StoredRuntimeListItem, StoredRuntimeListTupleItems, StoredRuntimeValue,
+    StoredRuntimeList, StoredRuntimeListCustomFields, StoredRuntimeListItem,
+    StoredRuntimeListTupleItems, StoredRuntimeValue,
 };
 use crate::host::{
     ExternalPayloadLease, HostCallArguments, HostCallRuntime, HostCustomArgumentSlot,
@@ -290,6 +291,16 @@ where
     fn custom_fields(&mut self, value: HostCustomToken) -> Box<[HostValueToken]> {
         self.scoped
             .custom_fields(value)
+            .into_iter()
+            .map(|value| self.scoped.push(value))
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+    }
+
+    fn take_custom_fields(&mut self, value: HostCustomToken) -> Box<[HostValueToken]> {
+        self.scoped
+            .take_custom_fields(value)
+            .into_vec()
             .into_iter()
             .map(|value| self.scoped.push(value))
             .collect::<Vec<_>>()

@@ -56,11 +56,20 @@ pub(crate) struct StoredRuntimeList {
 pub(crate) struct StoredRuntimeListItem<'value> {
     values: &'value mut ScopedValues,
     token: HostValueToken,
+    storage: RuntimeListStorage,
 }
 
 pub(crate) struct StoredRuntimeListTupleItems<'value> {
     item_values: &'value mut ScopedValues,
     values: Vec<EvaluatedValue>,
+    storage: RuntimeListStorage,
+}
+
+pub(crate) struct StoredRuntimeListCustomFields<'value> {
+    constructor: usize,
+    item_values: &'value mut ScopedValues,
+    values: Vec<EvaluatedValue>,
+    storage: RuntimeListStorage,
 }
 
 impl StoredRuntimeValue {
@@ -125,7 +134,7 @@ impl StoredRuntimeList {
         self.item_reads.set(self.item_reads.get() + 1);
         let value = self.storage.evaluated_value_at(&self.value, index)?;
         let mut item_values = self.item_values.borrow_mut();
-        let item = StoredRuntimeListItem::new(&mut item_values, value);
+        let item = StoredRuntimeListItem::new(&mut item_values, value, &self.storage);
         Some(decode(item))
     }
 
@@ -145,9 +154,17 @@ impl StoredRuntimeList {
 }
 
 impl<'value> StoredRuntimeListItem<'value> {
-    fn new(values: &'value mut ScopedValues, value: EvaluatedValue) -> Self {
+    fn new(
+        values: &'value mut ScopedValues,
+        value: EvaluatedValue,
+        storage: &RuntimeListStorage,
+    ) -> Self {
         let token = values.push(value);
-        Self { values, token }
+        Self {
+            values,
+            token,
+            storage: storage.clone_handle(),
+        }
     }
 
     pub(crate) fn into_int(self) -> BigInt {
@@ -186,13 +203,50 @@ impl<'value> StoredRuntimeListItem<'value> {
         StoredRuntimeListTupleItems {
             values: self.values.take_tuple(self.token),
             item_values: self.values,
+            storage: self.storage,
+        }
+    }
+
+    pub(crate) fn into_list(self) -> StoredRuntimeList {
+        let value = self
+            .values
+            .list_value(self.values.list_tokens[self.token.index]);
+        StoredRuntimeList::new(value, self.storage)
+    }
+
+    pub(crate) fn into_custom_fields(self) -> StoredRuntimeListCustomFields<'value> {
+        let custom = self.values.take_custom(self.token);
+        let (constructor, fields) = custom.into_fields();
+        StoredRuntimeListCustomFields {
+            constructor: constructor.index(),
+            values: fields.into_vec(),
+            item_values: self.values,
+            storage: self.storage,
         }
     }
 }
 
 impl<'value> StoredRuntimeListTupleItems<'value> {
     pub(crate) fn take_item(&mut self, index: usize) -> StoredRuntimeListItem<'_> {
-        StoredRuntimeListItem::new(self.item_values, self.values.swap_remove(index))
+        StoredRuntimeListItem::new(
+            self.item_values,
+            self.values.swap_remove(index),
+            &self.storage,
+        )
+    }
+}
+
+impl<'value> StoredRuntimeListCustomFields<'value> {
+    pub(crate) fn constructor(&self) -> usize {
+        self.constructor
+    }
+
+    pub(crate) fn take_field(&mut self, index: usize) -> StoredRuntimeListItem<'_> {
+        StoredRuntimeListItem::new(
+            self.item_values,
+            self.values.swap_remove(index),
+            &self.storage,
+        )
     }
 }
 
@@ -742,6 +796,10 @@ impl ScopedValues {
         self.tuples.swap_remove(value.index)
     }
 
+    fn take_custom(&mut self, value: HostValueToken) -> EvaluatedCustomValue {
+        self.customs.swap_remove(value.index)
+    }
+
     pub(super) fn tuple_len(&self, value: HostTupleToken) -> usize {
         self.tuples[value.0].len()
     }
@@ -756,6 +814,10 @@ impl ScopedValues {
 
     pub(super) fn custom_fields(&self, value: HostCustomToken) -> Vec<EvaluatedValue> {
         self.customs[value.0].fields().to_vec()
+    }
+
+    pub(super) fn take_custom_fields(&mut self, value: HostCustomToken) -> Box<[EvaluatedValue]> {
+        self.customs[value.0].take_fields()
     }
 
     pub(super) fn function(&self, value: HostFunctionToken) -> InvocableFunctionValue {
@@ -794,8 +856,10 @@ impl ScopedValues {
 #[cfg(test)]
 mod tests {
     use super::{ScopedValues, StoredRuntimeListItem, StoredRuntimeValue};
+    use crate::host::HostCustomToken;
     use crate::host::test::{StatelessTestProvider, TestTypeParameter, stateless_identity};
-    use crate::runtime::{EvaluatedBitArray, EvaluatedValue};
+    use crate::runtime::state::list::RuntimeListStorage;
+    use crate::runtime::{EvaluatedBitArray, EvaluatedCustomValue, EvaluatedValue};
     use crate::{
         BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostList, HostListType,
         HostModule, HostProviderModule, HostProviderSet, HostTupleType, HostTypeList,
@@ -821,35 +885,46 @@ mod tests {
     fn stored_list_items_decode_every_supported_scalar_family() {
         let bits = BitArrayValue::from_bytes(vec![1]);
         let mut values = ScopedValues::default();
+        let storage = RuntimeListStorage::default();
 
         assert_eq!(
-            StoredRuntimeListItem::new(&mut values, EvaluatedValue::Int(7.into())).into_int(),
+            StoredRuntimeListItem::new(&mut values, EvaluatedValue::Int(7.into()), &storage)
+                .into_int(),
             BigInt::from(7),
         );
         assert_eq!(
-            StoredRuntimeListItem::new(&mut values, EvaluatedValue::Float(1.5)).into_float(),
+            StoredRuntimeListItem::new(&mut values, EvaluatedValue::Float(1.5), &storage)
+                .into_float(),
             1.5,
         );
         assert_eq!(
-            StoredRuntimeListItem::new(&mut values, EvaluatedValue::String("text".into()))
-                .into_string(),
+            StoredRuntimeListItem::new(
+                &mut values,
+                EvaluatedValue::String("text".into()),
+                &storage,
+            )
+            .into_string(),
             EcoString::from("text"),
         );
         assert_eq!(
             StoredRuntimeListItem::new(
                 &mut values,
                 EvaluatedValue::BitArray(EvaluatedBitArray::from_value(bits.clone())),
+                &storage,
             )
             .into_bit_array(),
             bits,
         );
         assert_eq!(
-            StoredRuntimeListItem::new(&mut values, EvaluatedValue::UtfCodepoint('A'))
+            StoredRuntimeListItem::new(&mut values, EvaluatedValue::UtfCodepoint('A'), &storage,)
                 .into_utf_codepoint(),
             'A',
         );
-        assert!(StoredRuntimeListItem::new(&mut values, EvaluatedValue::Bool(true)).into_bool());
-        StoredRuntimeListItem::new(&mut values, EvaluatedValue::Nil).into_nil();
+        assert!(
+            StoredRuntimeListItem::new(&mut values, EvaluatedValue::Bool(true), &storage)
+                .into_bool()
+        );
+        StoredRuntimeListItem::new(&mut values, EvaluatedValue::Nil, &storage).into_nil();
     }
 
     #[test]
@@ -872,8 +947,10 @@ mod tests {
         );
 
         let mut values = ScopedValues::default();
-        let retained = StoredRuntimeListItem::new(&mut values, EvaluatedValue::External(external))
-            .into_external_lease();
+        let storage = RuntimeListStorage::default();
+        let retained =
+            StoredRuntimeListItem::new(&mut values, EvaluatedValue::External(external), &storage)
+                .into_external_lease();
         assert_eq!(retained.id(), lease.id());
         let stored_equal = |_: &StoredRuntimeValue, _: &StoredRuntimeValue| false;
         let stored_hash = |_: &StoredRuntimeValue| 0;
@@ -891,12 +968,76 @@ mod tests {
                 EvaluatedValue::Int(1.into()),
                 EvaluatedValue::String("second".into()),
             ]),
+            &storage,
         )
         .into_tuple_items();
         let second = tuple.take_item(1).into_string();
         let first = tuple.take_item(0).into_int();
         assert_eq!(first, BigInt::from(1),);
         assert_eq!(second, EcoString::from("second"));
+    }
+
+    #[test]
+    fn stored_list_custom_fields_preserve_constructor_order_and_nested_list_storage() {
+        let plan = crate::runtime::plan_src(
+            "pub type Item { Item(Int, List(Int)) } pub fn values() { [2] } pub fn main() { Item(1, values()) }",
+        );
+        let mut storage = RuntimeListStorage::default();
+        let nested = storage.int(plan.int_list_function_id(0).type_id(), vec![2.into()]);
+        let custom = EvaluatedCustomValue::from_fields(
+            plan.custom_constructor_id(0, 0),
+            vec![
+                EvaluatedValue::Int(1.into()),
+                EvaluatedValue::List(nested.into()),
+            ]
+            .into_boxed_slice(),
+        );
+        let mut values = ScopedValues::default();
+
+        let mut fields =
+            StoredRuntimeListItem::new(&mut values, EvaluatedValue::Custom(custom), &storage)
+                .into_custom_fields();
+
+        assert_eq!(fields.constructor(), 0);
+        let nested = fields.take_field(1).into_list();
+        assert_eq!(nested.len(), 1);
+        assert_eq!(
+            nested.decode_item(0, |item| item.into_int()),
+            Some(BigInt::from(2)),
+        );
+        assert_eq!(fields.take_field(0).into_int(), BigInt::from(1));
+    }
+
+    #[test]
+    fn taking_custom_fields_preserves_other_scoped_custom_tokens() {
+        let plan = crate::runtime::plan_src(
+            "pub type Item { First(Int) Second(String) } pub fn main() { #(First(7), Second(\"kept\")) }",
+        );
+        let first = EvaluatedCustomValue::from_fields(
+            plan.custom_constructor_id(0, 0),
+            vec![EvaluatedValue::Int(7.into())].into_boxed_slice(),
+        );
+        let second = EvaluatedCustomValue::from_fields(
+            plan.custom_constructor_id(0, 1),
+            vec![EvaluatedValue::String("kept".into())].into_boxed_slice(),
+        );
+        let mut values = ScopedValues::default();
+        values.push_custom(first);
+        values.push_custom(second);
+
+        assert_eq!(
+            values.take_custom_fields(HostCustomToken(0)).as_ref(),
+            &[EvaluatedValue::Int(7.into())],
+        );
+        assert!(values.custom_fields(HostCustomToken(0)).is_empty());
+        assert_eq!(
+            values.custom_constructor(HostCustomToken(1)),
+            plan.custom_constructor_id(0, 1).index(),
+        );
+        assert_eq!(
+            values.custom_fields(HostCustomToken(1)),
+            vec![EvaluatedValue::String("kept".into())],
+        );
     }
 
     #[test]

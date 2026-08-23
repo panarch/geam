@@ -1,3 +1,4 @@
+import example_value_types/customs
 import example_value_types/lists
 import example_value_types/scalars
 import example_value_types/tuples
@@ -35,4 +36,12 @@ pub fn main() {
     "first",
   ]
   assert lists.labels([#("alpha", 1), #("beta", 2)]) == ["alpha", "beta"]
+
+  assert customs.describe(customs.pending()) == "pending"
+  assert customs.describe(customs.named("compile")) == "named:compile"
+  assert customs.describe(customs.scheduled("retry", 3)) == "scheduled:retry:3"
+  assert customs.describe(customs.prioritized()) == "priority:high"
+  assert customs.describe(customs.tagged("first", "second")) == "tags:2:first"
+  assert customs.first_priority([]) == "missing"
+  assert customs.first_priority([customs.normal(), customs.high()]) == "normal"
 }

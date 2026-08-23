@@ -11,10 +11,10 @@ concrete runner, but the resulting Rust program still composes every component
 at compile time. It does not choose or type-erase implementations at runtime.
 
 Start with the [provider authoring examples](../examples/README.md). They present
-multi-module registration, scalar, tuple, and List value mappings, stateless,
-default-state, configured-state, default external, and manual external choices
-as complete Gleam/Rust pairs before this document describes the generated and
-low-level contracts.
+multi-module registration, scalar, tuple, List, and custom value mappings,
+stateless, default-state, configured-state, default external, and manual
+external choices as complete Gleam/Rust pairs before this document describes
+the generated and low-level contracts.
 
 ## Value Type Provider Authoring
 
@@ -75,10 +75,55 @@ fn reverse(values: geam::List<EcoString>) -> Vec<EcoString> {
 }
 ```
 
-List items currently support scalar and external leaves plus recursive tuples
-of those leaves. External items are opaque guards that dereference to the
+List items currently support scalar, external, and custom leaves plus recursive
+tuples of those leaves. External items are opaque guards that dereference to the
 provider payload without cloning it. Nested Lists and Lists inside tuples remain
 outside this authoring slice.
+
+## Custom Value Provider Authoring
+
+An ordinary Gleam custom type maps to one Rust output enum and, when existing
+source values are accepted, one explicit generated input enum:
+
+```gleam
+pub type Job {
+  Pending
+  Named(String)
+  Scheduled(label: String, attempt: Int)
+  Prioritized(Priority)
+  Tags(List(String))
+}
+```
+
+```rust
+#[geam::custom(input = JobInput)]
+enum Job {
+    Pending,
+    Named(EcoString),
+    Scheduled { label: EcoString, attempt: BigInt },
+    Prioritized(Priority),
+    Tags(Vec<EcoString>),
+}
+
+#[geam::function]
+fn describe(job: JobInput) -> EcoString {
+    // Match the source constructors directly.
+    todo!()
+}
+```
+
+The owned `Job` form constructs a new source value. `JobInput` decodes only the
+active constructor and is call-scoped; nested custom fields use the nested
+declaration's input form. A Gleam List field is a lazy `geam::List<T>` in the
+generated input enum and a `Vec<T>` in the owned output enum. Unit, tuple, and
+named variants preserve lexical constructor order and Rust field names become
+Gleam field labels.
+
+The declaration protocol is static across sibling modules and provider crates.
+The consuming macro refers to the declaring type's sealed schema and codec; it
+does not inspect source files, compare runtime type names, or copy external
+payloads. An output-only enum omits `input = ...`, and using it as a source
+argument produces a diagnostic that asks for an explicit input type.
 
 ## External Value Provider Authoring
 
@@ -222,9 +267,10 @@ unexpected configuration instead of ignoring it.
 
 The current macro surface supports scalars, native tuples composed from
 supported leaves, top-level Lists with lazy item access or Vec construction,
-and non-generic constructorless external values whose payloads do not retain
-Gleam values. Custom types, callbacks, source `Result` construction, nested
-Lists, and retained Gleam values still use the low-level contracts below.
+non-recursive custom values, and non-generic constructorless external values
+whose payloads do not retain Gleam values. Callbacks, source `Result`
+construction, nested Lists, and retained Gleam values still use the low-level
+contracts below.
 
 ## Generated Component Boundary
 

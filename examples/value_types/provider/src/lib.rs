@@ -4,7 +4,7 @@ use num_bigint::BigInt;
 
 #[geam::provider(
     package = "example_value_types",
-    modules = [scalars, tuples, lists],
+    modules = [scalars, tuples, lists, customs],
 )]
 pub struct Component;
 
@@ -116,5 +116,92 @@ mod lists {
                 label
             })
             .collect()
+    }
+}
+
+#[geam::module(path = "example_value_types/customs")]
+mod customs {
+    use super::{BigInt, EcoString};
+
+    #[geam::custom(input = PriorityInput)]
+    enum Priority {
+        Low,
+        Normal,
+        High,
+    }
+
+    #[geam::custom(input = JobInput)]
+    enum Job {
+        Pending,
+        Named(EcoString),
+        Scheduled { label: EcoString, attempt: BigInt },
+        Prioritized(Priority),
+        Tags(Vec<EcoString>),
+    }
+
+    #[geam::function]
+    fn low() -> Priority {
+        Priority::Low
+    }
+
+    #[geam::function]
+    fn normal() -> Priority {
+        Priority::Normal
+    }
+
+    #[geam::function]
+    fn high() -> Priority {
+        Priority::High
+    }
+
+    #[geam::function]
+    fn pending() -> Job {
+        Job::Pending
+    }
+
+    #[geam::function]
+    fn named(label: EcoString) -> Job {
+        Job::Named(label)
+    }
+
+    #[geam::function]
+    fn scheduled(label: EcoString, attempt: BigInt) -> Job {
+        Job::Scheduled { label, attempt }
+    }
+
+    #[geam::function]
+    fn prioritized() -> Job {
+        Job::Prioritized(Priority::High)
+    }
+
+    #[geam::function]
+    fn tagged(first: EcoString, second: EcoString) -> Job {
+        Job::Tags(vec![first, second])
+    }
+
+    #[geam::function]
+    fn describe(job: JobInput) -> EcoString {
+        match job {
+            JobInput::Pending => "pending".into(),
+            JobInput::Named(label) => format!("named:{label}").into(),
+            JobInput::Scheduled { label, attempt } => format!("scheduled:{label}:{attempt}").into(),
+            JobInput::Prioritized(PriorityInput::Low) => "priority:low".into(),
+            JobInput::Prioritized(PriorityInput::Normal) => "priority:normal".into(),
+            JobInput::Prioritized(PriorityInput::High) => "priority:high".into(),
+            JobInput::Tags(tags) => {
+                let first = tags.get(0).unwrap_or_else(|| "empty".into());
+                format!("tags:{}:{first}", tags.len()).into()
+            }
+        }
+    }
+
+    #[geam::function]
+    fn first_priority(values: geam::List<PriorityInput>) -> EcoString {
+        match values.get(0) {
+            Some(PriorityInput::Low) => "low".into(),
+            Some(PriorityInput::Normal) => "normal".into(),
+            Some(PriorityInput::High) => "high".into(),
+            None => "missing".into(),
+        }
     }
 }

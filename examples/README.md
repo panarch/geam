@@ -7,7 +7,7 @@ low-level SDK only when the macro surface does not yet cover a capability.
 | Example | State | Configuration | External semantics | Purpose |
 | --- | --- | --- | --- | --- |
 | [`text_tools`](text_tools/README.md) | None | None | None | One provider implementing three Gleam modules |
-| [`value_types`](value_types/README.md) | None | None | None | Scalar, recursive tuple, and lazy List mapping |
+| [`value_types`](value_types/README.md) | None | None | None | Scalar, tuple, lazy List, and custom value mapping |
 | [`tag_set`](tag_set/README.md) | None | None | Generated | Stateless persistent external value |
 | [`request_ids`](request_ids/README.md) | `Default` | None | None | Mutable and read-only state access |
 | [`feature_flags`](feature_flags/README.md) | Configured | Required | None | Explicit configuration and shared state |

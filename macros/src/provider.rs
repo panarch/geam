@@ -107,6 +107,10 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
         impl<Profile> #support::HostProviderComponentRegistration<Profile> for Component
         where
             Profile: #support::HostComponentProfile<Self>,
+            #(
+                #modules::__GeamModule:
+                    #support::ProviderModuleRegistration<Profile>,
+            )*
         {
             fn providers() -> ::core::result::Result<
                 ::std::vec::Vec<#support::HostProviderModule<Profile>>,
@@ -114,7 +118,10 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             > {
                 let mut providers = ::std::vec::Vec::with_capacity(#module_count);
                 #(
-                    providers.push(#modules::__geam_provider_module::<Profile>()?);
+                    providers.push(
+                        <#modules::__GeamModule as
+                            #support::ProviderModuleRegistration<Profile>>::module()?,
+                    );
                 )*
                 ::core::result::Result::Ok(providers)
             }
@@ -594,12 +601,15 @@ mod tests {
         .to_string();
 
         let first = expansion
-            .find("first :: __geam_provider_module")
+            .find("first :: __GeamModule as")
             .expect("first registration should be generated");
         let second = expansion
-            .find("second :: __geam_provider_module")
+            .find("second :: __GeamModule as")
             .expect("second registration should be generated");
         assert!(first < second);
+        assert!(expansion.contains(
+            "first :: __GeamModule : geam_core :: __macro_support :: ProviderModuleRegistration < Profile >"
+        ));
         assert!(expansion.contains("pub struct Stores { first : first :: __GeamStores"));
         assert!(expansion.contains("second : second :: __GeamStores"));
         assert!(expansion.contains("type Stores = Stores"));
