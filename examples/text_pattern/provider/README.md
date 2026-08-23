@@ -107,12 +107,13 @@ mod text_pattern {
 ```
 
 `#[geam::provider]`, `#[geam::module]`, scalar `#[geam::function]`, injected
-`#[geam::state]` parameters, `ExternalPayload`, and `#[geam::external]` are now
+`#[geam::call]` parameters, `ExternalPayload`, and `#[geam::external]` are now
 implemented. The external-value slice generates the schema, payload store,
 storage binding, and callback adapter for payloads that do not retain Gleam
-values. The `Vec<EcoString>` return above now maps to one newly constructed
-Gleam List. `GleamResult` and `#[geam::custom]` remain a design sketch, so the
-macros still cannot express this complete provider.
+values. The `Vec<EcoString>` return above maps to one newly constructed Gleam
+List, while Rust `Result` and `#[geam::custom]` now express the source result
+and compile error. This fixture intentionally remains the low-level SDK example
+until the completed macro surface replaces its manual typed-host declarations.
 
 Later proc-macro slices should add the remaining custom and sealed-construction
 machinery while retaining the established component/package/module shape. The

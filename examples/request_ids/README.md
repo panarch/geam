@@ -6,10 +6,10 @@ The Rust signatures distinguish mutation from observation:
 
 ```rust
 #[geam::function]
-fn next(#[geam::state] state: &mut RunState) -> EcoString;
+fn next(#[geam::call] call: &mut Call<RunState>) -> EcoString;
 
 #[geam::function]
-fn issued(#[geam::state] state: &RunState) -> BigInt;
+fn issued(#[geam::call] call: &Call<RunState>) -> BigInt;
 ```
 
 The complete Gleam API is:

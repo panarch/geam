@@ -291,10 +291,18 @@ is present without `initialize`, empty configuration constructs
 configured provider supplies both `state` and `initialize`; an initializer
 without a state declaration is rejected by the macro.
 
-A function may inject the component state as its first parameter with
-`#[geam::state]`. Use `&RunState` for read-only access and `&mut RunState` for
-mutation. The injected parameter is not part of the Gleam function signature;
-all following parameters remain ordinary source arguments.
+A function may inject its active provider call as the first parameter with
+`#[geam::call]`. Use `&Call<RunState>` for read-only state access and
+`&mut Call<RunState>` for mutation or call-scoped capabilities. Read state with
+`call.state()` and mutate it with `call.state_mut()`. The injected parameter is
+not part of the Gleam function signature; all following parameters remain
+ordinary source arguments.
+
+A provider function that can stop execution returns `HostResult<T>` and creates
+the failure with `HostFailure::new(reason)`. This outer envelope is not part of
+the Gleam function shape. Rust `Result<T, E>` remains the source-visible Gleam
+`Result(T, E)`, so recoverable source errors and host execution failures cannot
+be confused.
 
 ```rust
 pub struct Component;

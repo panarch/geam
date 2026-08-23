@@ -1,4 +1,4 @@
-use geam_core::provider::{Configuration, InitializationError};
+use geam_core::provider::{Call, Configuration, InitializationError};
 
 pub struct RunState;
 struct OtherState;
@@ -19,14 +19,14 @@ pub struct Component;
 
 #[geam_macros::module(path = "counter", crate_path = geam_core)]
 mod counter {
-    use super::OtherState;
+    use super::{Call, OtherState};
 
     fn helper() -> bool {
         true
     }
 
     #[geam_macros::function]
-    fn next(#[geam_macros::state] _: &OtherState) -> bool {
+    fn next(#[geam_macros::call] _: &Call<OtherState>) -> bool {
         helper()
     }
 }

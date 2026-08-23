@@ -1,5 +1,5 @@
 use ecow::EcoString;
-use geam::provider::{Configuration, InitializationError};
+use geam::provider::{Call, Configuration, InitializationError};
 
 pub struct RunState {
     next: i64,
@@ -24,10 +24,11 @@ pub struct Component;
 
 #[geam::module(path = "counter")]
 mod counter {
-    use super::{EcoString, RunState};
+    use super::{Call, EcoString, RunState};
 
     #[geam::function]
-    fn next(#[geam::state] state: &mut RunState, label: EcoString) -> EcoString {
+    fn next(#[geam::call] call: &mut Call<RunState>, label: EcoString) -> EcoString {
+        let state = call.state_mut();
         let next = state.next;
         state.next += 1;
         format!("{label}:{next}").into()

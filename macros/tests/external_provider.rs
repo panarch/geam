@@ -78,7 +78,7 @@ mod metrics {
     }
 
     #[geam_macros::function]
-    fn count(#[geam_macros::state] _state: &(), metrics: &Metrics, name: EcoString) -> BigInt {
+    fn count(metrics: &Metrics, name: EcoString) -> BigInt {
         metrics
             .entries
             .get(&name)

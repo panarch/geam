@@ -1,5 +1,5 @@
 use ecow::EcoString;
-use geam_core::provider::Configuration;
+use geam_core::provider::{Call, Configuration};
 use geam_core::{
     HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
     HostProviderComponentInitialization, HostProviderComponentRegistration, HostProviderSet,
@@ -23,7 +23,7 @@ pub struct Component;
 
 #[geam_macros::module(path = "tuples", crate_path = geam_core)]
 mod tuples {
-    use super::{BigInt, EcoString, RunState};
+    use super::{BigInt, Call, EcoString, RunState};
 
     #[geam_macros::external(name = "Tag")]
     #[derive(Clone, PartialEq, Eq, Hash)]
@@ -41,16 +41,17 @@ mod tuples {
 
     #[geam_macros::function]
     fn reassociate(
-        #[geam_macros::state] state: &mut RunState,
+        #[geam_macros::call] call: &mut Call<RunState>,
         (label, (count, enabled)): (EcoString, (BigInt, bool)),
     ) -> ((EcoString, BigInt), bool) {
+        let state = call.state_mut();
         state.transformations += 1;
         ((label, count), enabled)
     }
 
     #[geam_macros::function]
-    fn issued(#[geam_macros::state] state: &RunState) -> (BigInt,) {
-        (state.transformations.into(),)
+    fn issued(#[geam_macros::call] call: &Call<RunState>) -> (BigInt,) {
+        (call.state().transformations.into(),)
     }
 }
 

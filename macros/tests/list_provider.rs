@@ -1,5 +1,6 @@
 use ecow::EcoString;
 use geam_core::BitArrayValue;
+use geam_core::provider::{Call, HostResult};
 use geam_core::{
     HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
     HostProviderComponentRegistration, HostProviderSet, HostedExecution, ModuleSource,
@@ -25,7 +26,9 @@ pub struct Component;
 
 #[geam_macros::module(path = "lists", crate_path = geam_core)]
 mod lists {
-    use super::{BigInt, BitArrayValue, EcoString, Ordering, PAYLOAD_CLONES, RunState};
+    use super::{
+        BigInt, BitArrayValue, Call, EcoString, HostResult, Ordering, PAYLOAD_CLONES, RunState,
+    };
 
     #[geam_macros::external(name = "Tag")]
     #[derive(PartialEq, Eq, Hash)]
@@ -111,27 +114,33 @@ mod lists {
 
     #[geam_macros::function]
     fn choose(
-        #[geam_macros::state] state: &mut RunState,
+        #[geam_macros::call] call: &mut Call<RunState>,
         first: geam_core::List<BigInt>,
         second: geam_core::List<BigInt>,
         choose_second: bool,
     ) -> geam_core::List<BigInt> {
+        let state = call.state_mut();
         state.selections += 1;
         if choose_second { second } else { first }
     }
 
     #[geam_macros::function]
-    fn selections(#[geam_macros::state] state: &RunState) -> BigInt {
-        state.selections.into()
+    fn selections(#[geam_macros::call] call: &Call<RunState>) -> BigInt {
+        call.state().selections.into()
     }
 
     #[geam_macros::function]
     fn combined_length(
-        #[geam_macros::state] state: &RunState,
+        #[geam_macros::call] call: &Call<RunState>,
         numbers: geam_core::List<BigInt>,
         labels: geam_core::List<EcoString>,
     ) -> BigInt {
-        (state.selections + numbers.len() + labels.len()).into()
+        (call.state().selections + numbers.len() + labels.len()).into()
+    }
+
+    #[geam_macros::function]
+    fn try_identity(values: geam_core::List<BigInt>) -> HostResult<geam_core::List<BigInt>> {
+        Ok(values)
     }
 }
 
@@ -213,6 +222,9 @@ pub fn selections() -> Int
 @external(erlang, "macro_lists", "combined_length")
 pub fn combined_length(numbers: List(Int), labels: List(String)) -> Int
 
+@external(erlang, "macro_lists", "try_identity")
+pub fn try_identity(values: List(Int)) -> List(Int)
+
 pub fn main() {
   let numbers = [1, 2, 3]
   let assert <<codepoint:utf8_codepoint>> = <<"A":utf8>>
@@ -232,6 +244,7 @@ pub fn main() {
     choose([1], [2, 3], True),
     selections(),
     combined_length([1, 2], ["a", "b", "c"]),
+    try_identity(numbers),
   )
 }
 "#;
@@ -284,6 +297,7 @@ fn macro_authored_list_schema_preserves_item_shapes() {
             "choose",
             "selections",
             "combined_length",
+            "try_identity",
         ],
     );
     assert_eq!(
@@ -364,6 +378,14 @@ fn macro_authored_list_schema_preserves_item_shapes() {
             ValueType::List(Box::new(ValueType::String)),
         ],
     );
+    assert_eq!(
+        functions[14].type_().argument_types(),
+        &[ValueType::List(Box::new(ValueType::Int))],
+    );
+    assert_eq!(
+        functions[14].type_().return_(),
+        &ValueType::List(Box::new(ValueType::Int)),
+    );
 }
 
 #[test]
@@ -398,6 +420,7 @@ fn macro_authored_lists_execute_lazily_and_construct_vec_returns() {
         chosen,
         selections,
         combined_length,
+        try_identity,
     ] = values.as_slice()
     else {
         panic!("List provider should return every List result: {values:?}");
@@ -454,6 +477,7 @@ fn macro_authored_lists_execute_lazily_and_construct_vec_returns() {
     );
     assert_eq!(selections, &Value::Int(1.into()));
     assert_eq!(combined_length, &Value::Int(6.into()));
+    assert_eq!(try_identity, identity);
     assert_eq!(state_selections, 1);
     assert_eq!(PAYLOAD_CLONES.load(Ordering::SeqCst), 0);
 }

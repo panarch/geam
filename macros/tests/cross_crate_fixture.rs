@@ -14,8 +14,12 @@ fn sibling_crate_fixture_compiles_links_and_runs() {
         .args(["test", "--workspace", "--locked", "--quiet"])
         .arg("--manifest-path")
         .arg(&manifest)
-        .env("CARGO_TARGET_DIR", target);
+        .env("CARGO_TARGET_DIR", &target);
     remove_nested_cargo_instrumentation(&mut command);
+    command.env(
+        "LLVM_PROFILE_FILE",
+        target.join("nested-coverage-%m-%p.profraw"),
+    );
     let output = command
         .output()
         .expect("cross-crate fixture Cargo process should start");

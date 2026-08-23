@@ -1,10 +1,15 @@
 use ecow::EcoString;
 use std::fmt::{self, Display, Formatter};
 
+mod call;
 mod codec;
 mod list;
 mod prelude;
 
+pub use crate::HostFailure;
+pub use call::{Call, HostResult};
+#[doc(hidden)]
+pub use call::{ProviderActiveCall, ProviderCallPlaceholder, ProviderSharedCall};
 #[doc(hidden)]
 pub use codec::{
     ProviderConstruction, ProviderConstructionIndex0, ProviderConstructionIndexNext,

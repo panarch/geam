@@ -2,13 +2,15 @@ pub mod gleam_json;
 pub mod gleam_stdlib;
 pub mod gleam_time;
 pub mod provider {
-    pub use geam_core::provider::{Configuration, ExternalPayload, InitializationError};
+    pub use geam_core::provider::{
+        Call, Configuration, ExternalPayload, HostFailure, HostResult, InitializationError,
+    };
 }
 
 #[doc(hidden)]
 pub mod __macro_support {
     pub use geam_core::__macro_support::{
-        ExternalPayload, HostCall, HostCallCompletion, HostCallError, HostComponentProfile,
+        Call, ExternalPayload, HostCall, HostCallCompletion, HostCallError, HostComponentProfile,
         HostConstruction, HostConstructions, HostCustom, HostCustomConstructorAt,
         HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
         HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomIndex0,
@@ -17,10 +19,11 @@ pub mod __macro_support {
         HostExternalStorage, HostExternalStore, HostExternalType, HostList, HostListType,
         HostProfile, HostProvider, HostProviderComponent, HostProviderComponentInitialization,
         HostProviderComponentRegistration, HostProviderConfiguration,
-        HostProviderInitializationError, HostProviderModule, HostRegistrationError, HostTuple,
-        HostTupleType, HostType, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
-        List, NoCustomInput, ProviderConstruction, ProviderConstructionIndex0,
-        ProviderConstructionIndexNext, ProviderConstructionList, ProviderConstructionRequirementAt,
+        HostProviderInitializationError, HostProviderModule, HostRegistrationError, HostResult,
+        HostTuple, HostTupleType, HostType, HostTypeIndex0, HostTypeIndexNext, HostTypeList,
+        HostTypeListEnd, List, NoCustomInput, ProviderActiveCall, ProviderCallPlaceholder,
+        ProviderConstruction, ProviderConstructionIndex0, ProviderConstructionIndexNext,
+        ProviderConstructionList, ProviderConstructionRequirementAt,
         ProviderConstructionRequirements, ProviderConstructions, ProviderCustomDeclaration,
         ProviderCustomInputDeclaration, ProviderError, ProviderExternalCodec, ProviderExternalItem,
         ProviderExternalListDecoder, ProviderExternalPayloadAccess, ProviderInputListContext,
@@ -28,8 +31,8 @@ pub mod __macro_support {
         ProviderListInputValue, ProviderListItemDecoder, ProviderListItemValue,
         ProviderModuleRegistration, ProviderNoConstructions, ProviderNone, ProviderOk,
         ProviderOption, ProviderOutputValue, ProviderPackage, ProviderResult,
-        ProviderRootOutputValue, ProviderScalarListDecoder, ProviderSome, ProviderValue,
-        component_initialization_error, external_payload_hash,
+        ProviderRootOutputValue, ProviderScalarListDecoder, ProviderSharedCall, ProviderSome,
+        ProviderValue, component_initialization_error, external_payload_hash,
     };
 }
 

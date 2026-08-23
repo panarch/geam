@@ -13,9 +13,10 @@ pub use crate::host::{
 };
 pub use crate::provider::ExternalPayload;
 pub use crate::provider::{
-    List, ProviderExternalItem, ProviderExternalListDecoder, ProviderExternalPayloadAccess,
-    ProviderInputListContext, ProviderListContext, ProviderListCustomFields,
-    ProviderListItemDecoder, ProviderListItemValue, ProviderScalarListDecoder,
+    Call, HostResult, List, ProviderActiveCall, ProviderCallPlaceholder, ProviderExternalItem,
+    ProviderExternalListDecoder, ProviderExternalPayloadAccess, ProviderInputListContext,
+    ProviderListContext, ProviderListCustomFields, ProviderListItemDecoder, ProviderListItemValue,
+    ProviderScalarListDecoder, ProviderSharedCall,
 };
 pub use crate::provider::{
     ProviderConstruction, ProviderConstructionIndex0, ProviderConstructionIndexNext,

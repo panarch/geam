@@ -121,7 +121,7 @@ enum FunctionReturnType {
     Vec(CollectionType),
 }
 
-enum StateAccess {
+enum CallAccess {
     None,
     Shared,
     Mutable,
@@ -131,7 +131,8 @@ struct FunctionModel {
     ident: Ident,
     arguments: Vec<FunctionArgumentType>,
     return_: FunctionReturnType,
-    state: StateAccess,
+    call: CallAccess,
+    host_result: bool,
 }
 
 struct ListDecoderModel {
@@ -1487,7 +1488,8 @@ fn generate_function(
         ident,
         arguments: function_arguments,
         return_,
-        state,
+        call: call_access,
+        host_result,
     } = function;
     let wrapper = format_ident!("__geam_host_{}", ident.unraw());
     let arguments = (0..function_arguments.len())
@@ -1517,22 +1519,27 @@ fn generate_function(
     let argument_statements = decoded_arguments
         .iter()
         .map(|argument| &argument.statements);
-    let (state_projection, state_argument) = match state {
-        StateAccess::None => (None, None),
-        StateAccess::Shared => (
+    let (call_setup, call_argument, call_recovery) = match call_access {
+        CallAccess::None => (None, None, None),
+        CallAccess::Shared => (
             Some(quote! {
                 let __geam_state = &*call.state();
+                let __geam_provider_call = #support::Call::from_shared_state(__geam_state);
             }),
-            Some(quote!(__geam_state)),
+            Some(quote!(&__geam_provider_call)),
+            None,
         ),
-        StateAccess::Mutable => (
+        CallAccess::Mutable => (
             Some(quote! {
-                let __geam_state = call.state();
+                let mut __geam_provider_call = #support::Call::from_host_call(call);
             }),
-            Some(quote!(__geam_state)),
+            Some(quote!(&mut __geam_provider_call)),
+            Some(quote! {
+                let mut call = __geam_provider_call.into_host_call();
+            }),
         ),
     };
-    let call_arguments = state_argument
+    let call_arguments = call_argument
         .into_iter()
         .chain(
             decoded_arguments
@@ -1540,6 +1547,11 @@ fn generate_function(
                 .map(|argument| argument.value.clone()),
         )
         .collect::<Vec<_>>();
+    let host_result_unwrap = host_result.then(|| {
+        quote! {
+            let returned = returned?;
+        }
+    });
     let generated_return = generate_return(
         return_,
         customs,
@@ -1607,8 +1619,10 @@ fn generate_function(
             let mut call = call;
             #construction_setup
             #(#argument_statements)*
-            #state_projection
+            #call_setup
             let returned = #ident(#(#call_arguments),*);
+            #call_recovery
+            #host_result_unwrap
             #return_statements
             #completion
         }
@@ -3793,7 +3807,12 @@ fn validate_function(
             "provider functions require an explicit return type",
         ));
     };
-    let rust_return_type = (**return_type).clone();
+    let declared_return_type = (**return_type).clone();
+    let host_result = host_result_value(&declared_return_type)?;
+    let rust_return_type = host_result
+        .as_ref()
+        .map(|(value, _)| value.clone())
+        .unwrap_or_else(|| declared_return_type.clone());
     if matches!(&rust_return_type, Type::Tuple(tuple) if tuple.elems.is_empty()) {
         function
             .attrs
@@ -3801,9 +3820,10 @@ fn validate_function(
     }
     let return_ = classify_return(&rust_return_type, externals, customs, list_decoders)?;
 
-    let mut state = StateAccess::None;
+    let mut call = CallAccess::None;
     let mut arguments = Vec::new();
     let mut has_list = false;
+    let host_return = host_return_type(&return_, customs, support);
     for (index, argument) in function.sig.inputs.iter_mut().enumerate() {
         let FnArg::Typed(argument) = argument else {
             return Err(syn::Error::new_spanned(
@@ -3811,26 +3831,52 @@ fn validate_function(
                 "provider functions must be free functions",
             ));
         };
-        let is_state = take_marker(&mut argument.attrs, "state")?;
-        if is_state {
+        let is_call = take_marker(&mut argument.attrs, "call")?;
+        if is_call {
             if index != 0 {
                 return Err(syn::Error::new_spanned(
                     argument,
-                    "the `#[geam::state]` parameter must be first",
+                    "the `#[geam::call]` parameter must be first",
                 ));
             }
-            let Type::Reference(reference) = argument.ty.as_ref() else {
+            let (mutable, state, call_type) = call_parameter(&argument.ty)?;
+            if mutable {
+                let call_type = call_context_type(
+                    &call_type,
+                    &state,
+                    syn::parse_quote! {
+                        #support::ProviderActiveCall<
+                            '__geam_call,
+                            __GeamProfile,
+                            __GeamProvider,
+                            #host_return,
+                        >
+                    },
+                );
+                *argument.ty = syn::parse_quote! {
+                    &mut #call_type
+                };
+                call = CallAccess::Mutable;
+            } else {
+                let call_type = call_context_type(
+                    &call_type,
+                    &state,
+                    syn::parse_quote! {
+                        #support::ProviderSharedCall<'__geam_call, #state>
+                    },
+                );
+                *argument.ty = syn::parse_quote! {
+                    &#call_type
+                };
+                call = CallAccess::Shared;
+            }
+        } else {
+            if is_call_type(&argument.ty) {
                 return Err(syn::Error::new_spanned(
                     &argument.ty,
-                    "the `#[geam::state]` parameter must be `&State` or `&mut State`",
+                    "Call<State> parameters require `#[geam::call]`",
                 ));
-            };
-            state = if reference.mutability.is_some() {
-                StateAccess::Mutable
-            } else {
-                StateAccess::Shared
-            };
-        } else {
+            }
             let type_ = classify_argument(&argument.ty, externals, customs, list_decoders)?;
             if let FunctionArgumentType::List(list) = &type_ {
                 *argument.ty = list_signature_type(list, customs, support);
@@ -3854,15 +3900,28 @@ fn validate_function(
         ident: function.sig.ident.clone(),
         arguments,
         return_,
-        state,
+        call,
+        host_result: host_result.is_some(),
     };
     validate_list_return(&model)?;
     if let FunctionReturnType::List(list) = &model.return_ {
-        function.sig.output = ReturnType::Type(
-            Token![->](proc_macro2::Span::call_site()),
-            Box::new(list_signature_type(list, customs, support)),
-        );
+        let list = list_signature_type(list, customs, support);
+        let output = if let Some((_, host_result)) = &host_result {
+            let host_result = collection_type_with_item(host_result, &list);
+            syn::parse_quote!(#host_result)
+        } else {
+            list
+        };
+        function.sig.output =
+            ReturnType::Type(Token![->](proc_macro2::Span::call_site()), Box::new(output));
         has_list = true;
+    }
+    if !matches!(model.call, CallAccess::None) {
+        function
+            .sig
+            .generics
+            .params
+            .push(GenericParam::Lifetime(syn::parse_quote!('__geam_call)));
     }
     if has_list {
         function
@@ -3870,6 +3929,21 @@ fn validate_function(
             .generics
             .params
             .push(GenericParam::Lifetime(syn::parse_quote!('__geam_list)));
+    }
+    if matches!(model.call, CallAccess::Mutable) {
+        function
+            .sig
+            .generics
+            .params
+            .push(GenericParam::Type(syn::parse_quote!(__GeamProfile)));
+        function
+            .sig
+            .generics
+            .make_where_clause()
+            .predicates
+            .push(syn::parse_quote! {
+                __GeamProfile: #support::HostComponentProfile<super::Component>
+            });
     }
     Ok(model)
 }
@@ -3883,6 +3957,47 @@ fn contains_source_wrapper(type_: &ProviderValueType) -> bool {
         | ProviderValueType::External { .. }
         | ProviderValueType::Custom { .. } => false,
     }
+}
+
+fn call_parameter(type_: &Type) -> syn::Result<(bool, Type, TypePath)> {
+    let Type::Reference(reference) = type_ else {
+        return Err(syn::Error::new_spanned(
+            type_,
+            "the `#[geam::call]` parameter must be `&Call<State>` or `&mut Call<State>`",
+        ));
+    };
+    let Some((state, call_type)) = collection_item_with_path(&reference.elem, "Call")? else {
+        return Err(syn::Error::new_spanned(
+            type_,
+            "the `#[geam::call]` parameter must be `&Call<State>` or `&mut Call<State>`",
+        ));
+    };
+    Ok((reference.mutability.is_some(), state, call_type))
+}
+
+fn call_context_type(call_type: &TypePath, state: &Type, context: Type) -> TypePath {
+    let mut call_type = call_type.clone();
+    for segment in call_type.path.segments.iter_mut().rev().take(1) {
+        segment.arguments = PathArguments::AngleBracketed(syn::parse_quote!(<#state, #context>));
+    }
+    call_type
+}
+
+fn collection_type_with_item(collection: &TypePath, item: &Type) -> TypePath {
+    let mut collection = collection.clone();
+    for segment in collection.path.segments.iter_mut().rev().take(1) {
+        segment.arguments = PathArguments::AngleBracketed(syn::parse_quote!(<#item>));
+    }
+    collection
+}
+
+fn is_call_type(type_: &Type) -> bool {
+    let type_ = if let Type::Reference(reference) = type_ {
+        &reference.elem
+    } else {
+        type_
+    };
+    is_collection(type_, "Call")
 }
 
 fn classify_argument(
@@ -4403,6 +4518,10 @@ fn classify_collection_output_item(
 }
 
 fn collection_item(type_: &Type, name: &str) -> syn::Result<Option<Type>> {
+    Ok(collection_item_with_path(type_, name)?.map(|(item, _)| item))
+}
+
+fn collection_item_with_path(type_: &Type, name: &str) -> syn::Result<Option<(Type, TypePath)>> {
     let Type::Path(TypePath { qself: None, path }) = type_ else {
         return Ok(None);
     };
@@ -4427,10 +4546,22 @@ fn collection_item(type_: &Type, name: &str) -> syn::Result<Option<Type>> {
             format!("{name} requires exactly one type argument"),
         ));
     }
-    Ok(Some(item.clone()))
+    Ok(Some((
+        item.clone(),
+        TypePath {
+            qself: None,
+            path: path.clone(),
+        },
+    )))
 }
 
 fn source_wrapper(type_: &Type) -> syn::Result<SourceWrapper<'_>> {
+    if host_result_value(type_)?.is_some() {
+        return Err(syn::Error::new_spanned(
+            type_,
+            "HostResult<T> is supported only as the outer provider return",
+        ));
+    }
     let Type::Path(TypePath { qself: None, path }) = type_ else {
         return Ok(SourceWrapper::Other);
     };
@@ -4452,7 +4583,16 @@ fn source_wrapper(type_: &Type) -> syn::Result<SourceWrapper<'_>> {
                     Some(GenericArgument::Type(success)),
                     Some(GenericArgument::Type(failure)),
                     None,
-                ) => Ok(SourceWrapper::Result { success, failure }),
+                ) => {
+                    if is_type_named(failure, "HostFailure") {
+                        Err(syn::Error::new_spanned(
+                            type_,
+                            "Result<T, HostFailure> is not a source Result; use HostResult<T>",
+                        ))
+                    } else {
+                        Ok(SourceWrapper::Result { success, failure })
+                    }
+                }
                 _ => Err(syn::Error::new_spanned(
                     type_,
                     "Result requires exactly 2 type arguments",
@@ -4479,6 +4619,18 @@ fn source_wrapper(type_: &Type) -> syn::Result<SourceWrapper<'_>> {
         )),
         SourceWrapperArguments::Other => Ok(SourceWrapper::Other),
     }
+}
+
+fn host_result_value(type_: &Type) -> syn::Result<Option<(Type, TypePath)>> {
+    collection_item_with_path(type_, "HostResult")
+}
+
+fn is_type_named(type_: &Type, name: &str) -> bool {
+    matches!(
+        type_,
+        Type::Path(TypePath { qself: None, path })
+            if path.segments.last().is_some_and(|segment| segment.ident == name)
+    )
 }
 
 fn is_collection(type_: &Type, name: &str) -> bool {
@@ -4725,54 +4877,98 @@ mod tests {
     }
 
     #[test]
-    fn state_injection_is_reference_only_unique_and_first() {
+    fn call_injection_is_reference_only_unique_and_first() {
         assert_eq!(
             expansion_error(quote!(
                 mod counter {
                     #[geam::function]
-                    fn next(label: String, #[geam::state] state: &mut RunState) -> String {
+                    fn next(label: String, #[geam::call] call: &mut Call<RunState>) -> String {
                         label
                     }
                 }
             )),
-            "the `#[geam::state]` parameter must be first",
+            "the `#[geam::call]` parameter must be first",
         );
         assert_eq!(
             expansion_error(quote!(
                 mod counter {
                     #[geam::function]
-                    fn next(#[geam::state] state: RunState) -> String {
+                    fn next(#[geam::call] call: Call<RunState>) -> String {
                         String::new()
                     }
                 }
             )),
-            "the `#[geam::state]` parameter must be `&State` or `&mut State`",
+            "the `#[geam::call]` parameter must be `&Call<State>` or `&mut Call<State>`",
         );
         assert_eq!(
             expansion_error(quote!(
                 mod counter {
                     #[geam::function]
-                    fn next(#[geam::state(value)] state: &mut RunState) -> String {
+                    fn next(#[geam::call(value)] call: &mut Call<RunState>) -> String {
                         String::new()
                     }
                 }
             )),
-            "`#[geam::state]` does not accept arguments",
+            "`#[geam::call]` does not accept arguments",
         );
         assert_eq!(
             expansion_error(quote!(
                 mod counter {
                     #[geam::function]
                     fn next(
-                        #[geam::state]
-                        #[geam::state]
-                        state: &mut RunState,
+                        #[geam::call]
+                        #[geam::call]
+                        call: &mut Call<RunState>,
                     ) -> String {
                         String::new()
                     }
                 }
             )),
-            "duplicate `#[geam::state]` attribute",
+            "duplicate `#[geam::call]` attribute",
+        );
+        assert_eq!(
+            expansion_error(quote!(
+                mod counter {
+                    #[geam::function]
+                    fn next(call: &Call<RunState>) -> String {
+                        String::new()
+                    }
+                }
+            )),
+            "Call<State> parameters require `#[geam::call]`",
+        );
+        assert_eq!(
+            expansion_error(quote!(
+                mod counter {
+                    #[geam::function]
+                    fn next(#[geam::call] call: &Other) -> String {
+                        String::new()
+                    }
+                }
+            )),
+            "the `#[geam::call]` parameter must be `&Call<State>` or `&mut Call<State>`",
+        );
+        assert_eq!(
+            expansion_error(quote!(
+                mod counter {
+                    #[geam::function]
+                    fn next(#[geam::call] call: &Call) -> String {
+                        String::new()
+                    }
+                }
+            )),
+            "Call requires exactly one type argument",
+        );
+        assert_eq!(
+            expansion_error(quote!(
+                mod counter {
+                    #[geam::function]
+                    fn next(#[geam::call] call: &Call<RunState, Other>) -> String {
+                        String::new()
+                    }
+                }
+            )),
+            "Call requires exactly one type argument",
         );
     }
 
@@ -4856,10 +5052,10 @@ mod tests {
                     fn second(value: bool) -> bool { value }
 
                     #[geam::function]
-                    fn shared(#[geam::state] state: &RunState, value: bool) -> bool { value }
+                    fn shared(#[geam::call] call: &Call<RunState>, value: bool) -> bool { value }
 
                     #[geam::function]
-                    fn mutable(#[geam::state] state: &mut RunState, value: bool) -> bool { value }
+                    fn mutable(#[geam::call] call: &mut Call<RunState>, value: bool) -> bool { value }
                 }
             },
         )
@@ -4868,11 +5064,13 @@ mod tests {
 
         assert!(expansion.contains("fn helper"));
         assert!(expansion.contains("const ENABLED"));
-        assert_eq!(expansion.matches("call . state ()").count(), 2);
+        assert_eq!(expansion.matches("call . state ()").count(), 1);
         assert!(expansion.contains("let __geam_state = & * call . state ()"));
-        assert!(expansion.contains("shared (__geam_state , __geam_argument_0)"));
-        assert!(expansion.contains("let __geam_state = call . state ()"));
-        assert!(expansion.contains("mutable (__geam_state , __geam_argument_0)"));
+        assert!(expansion.contains("Call :: from_shared_state (__geam_state)"));
+        assert!(expansion.contains("shared (& __geam_provider_call , __geam_argument_0)"));
+        assert!(expansion.contains("Call :: from_host_call (call)"));
+        assert!(expansion.contains("mutable (& mut __geam_provider_call , __geam_argument_0)"));
+        assert!(expansion.contains("__geam_provider_call . into_host_call ()"));
         let first = expansion
             .find("\"first\"")
             .expect("first registration should exist");
@@ -6112,7 +6310,7 @@ mod tests {
 
                     #[geam::function]
                     fn copy(
-                        #[geam::state] state: &RunState,
+                        #[geam::call] call: &Call<RunState>,
                         value: &Metrics,
                         label: EcoString,
                     ) -> Metrics { value.clone() }
@@ -6177,8 +6375,11 @@ mod tests {
         );
         assert!(expansion.contains("let __geam_payload_0 = call . external_payload"));
         assert_eq!(expansion.matches("call . state ()").count(), 1);
+        assert!(expansion.contains("Call :: from_shared_state (__geam_state)"));
         assert!(
-            expansion.contains("copy (__geam_state , & * __geam_payload_0 , __geam_argument_1)")
+            expansion.contains(
+                "copy (& __geam_provider_call , & * __geam_payload_0 , __geam_argument_1)"
+            )
         );
         assert!(expansion.contains("let returned = call . create_external (returned)"));
         assert!(expansion.contains(
@@ -6791,5 +6992,97 @@ mod tests {
         for (item, expected) in cases {
             assert_eq!(expansion_error(item), expected);
         }
+    }
+
+    #[test]
+    fn host_result_is_only_the_outer_execution_envelope() {
+        let cases = [
+            (
+                quote! {
+                    mod values {
+                        #[geam::function]
+                        fn inspect(value: HostResult<BigInt>) -> bool { true }
+                    }
+                },
+                "HostResult<T> is supported only as the outer provider return",
+            ),
+            (
+                quote! {
+                    mod values {
+                        #[geam::function]
+                        fn inspect() -> (HostResult<BigInt>, bool) { todo!() }
+                    }
+                },
+                "HostResult<T> is supported only as the outer provider return",
+            ),
+            (
+                quote! {
+                    mod values {
+                        #[geam::function]
+                        fn inspect() -> Result<BigInt, HostFailure> { todo!() }
+                    }
+                },
+                "Result<T, HostFailure> is not a source Result; use HostResult<T>",
+            ),
+            (
+                quote! {
+                    mod values {
+                        #[geam::function]
+                        fn inspect() -> HostResult { todo!() }
+                    }
+                },
+                "HostResult requires exactly one type argument",
+            ),
+            (
+                quote! {
+                    mod values {
+                        #[geam::function]
+                        fn inspect() -> HostResult<BigInt, Problem> { todo!() }
+                    }
+                },
+                "HostResult requires exactly one type argument",
+            ),
+            (
+                quote! {
+                    mod values {
+                        #[geam::function]
+                        fn inspect() -> (HostResult, bool) { todo!() }
+                    }
+                },
+                "HostResult requires exactly one type argument",
+            ),
+        ];
+
+        for (item, expected) in cases {
+            assert_eq!(expansion_error(item), expected);
+        }
+
+        let expansion = expand(
+            quote!(path = "values", crate_path = geam_core),
+            quote! {
+                mod values {
+                    #[geam::custom]
+                    enum Problem { Invalid }
+
+                    #[geam::function]
+                    fn inspect() -> HostResult<Result<BigInt, Problem>> { todo!() }
+
+                    #[geam::function]
+                    fn keep(
+                        values: geam_core::List<BigInt>,
+                    ) -> HostResult<geam_core::List<BigInt>> { Ok(values) }
+                }
+            },
+        )
+        .expect("HostResult should wrap an ordinary source Result")
+        .to_string();
+
+        assert!(expansion.contains("let returned = returned ?"));
+        assert!(expansion.contains("ProviderResult <"));
+        assert!(
+            expansion.contains(
+                "HostResult < geam_core :: __macro_support :: List < BigInt , geam_core :: __macro_support :: ProviderListContext < '__geam_list"
+            )
+        );
     }
 }

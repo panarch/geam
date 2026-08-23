@@ -1,9 +1,9 @@
 use ecow::EcoString;
-use geam_core::provider::{Configuration, InitializationError};
+use geam_core::provider::{Call, Configuration, HostResult, InitializationError};
 use geam_core::{
-    HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
-    HostProviderComponentInitialization, HostProviderComponentRegistration, HostProviderSet,
-    HostedExecution, ModuleSource, PackageSource, PlanError, Value, ValueType,
+    ExecutionError, HostComponentProfile, HostFailure, HostModule, HostProfile,
+    HostProviderComponent, HostProviderComponentInitialization, HostProviderComponentRegistration,
+    HostProviderSet, HostedExecution, ModuleSource, PackageSource, PlanError, Value, ValueType,
     compile_typed_host_program, plan_host_program,
 };
 use std::collections::BTreeMap;
@@ -33,22 +33,40 @@ pub struct Component;
 
 #[geam_macros::module(path = "counter", crate_path = geam_core)]
 mod counter {
-    use super::{EcoString, RunState};
+    use super::{Call, EcoString, HostFailure, HostResult, RunState};
 
     fn render(label: EcoString, next: i64) -> EcoString {
         format!("{label}:{next}").into()
     }
 
     #[geam_macros::function]
-    fn next(#[geam_macros::state] state: &mut RunState, label: EcoString) -> EcoString {
+    fn next(#[geam_macros::call] call: &mut Call<RunState>, label: EcoString) -> EcoString {
+        let state = call.state_mut();
         let next = state.next;
         state.next += 1;
         render(label, next)
     }
 
     #[geam_macros::function]
-    fn peek(#[geam_macros::state] state: &RunState, label: EcoString) -> EcoString {
-        render(label, state.next)
+    fn peek(#[geam_macros::call] call: &Call<RunState>, label: EcoString) -> EcoString {
+        render(label, call.state().next)
+    }
+
+    #[geam_macros::function]
+    fn try_peek(
+        #[geam_macros::call] call: &Call<RunState>,
+        label: EcoString,
+    ) -> HostResult<EcoString> {
+        Ok(render(label, call.state().next))
+    }
+
+    #[geam_macros::function]
+    fn stop(
+        #[geam_macros::call] call: &mut Call<RunState>,
+        label: EcoString,
+    ) -> HostResult<EcoString> {
+        let next = call.state_mut().next;
+        Err(HostFailure::new(format!("{label}:{next}")).into())
     }
 }
 
@@ -99,9 +117,15 @@ pub fn next(label: String) -> String
 @external(erlang, "macro_counter", "peek")
 pub fn peek(label: String) -> String
 
+@external(erlang, "macro_counter", "try_peek")
+pub fn try_peek(label: String) -> String
+
+@external(erlang, "macro_counter", "stop")
+pub fn stop(label: String) -> String
+
 pub fn main() {
   let _ = next("count")
-  peek("count")
+  try_peek("count")
 }
 "#;
 
@@ -152,7 +176,7 @@ fn macro_authored_schema_preserves_component_module_and_function_order() {
             .functions()
             .map(|function| function.name().as_str())
             .collect::<Vec<_>>(),
-        vec!["next", "peek"],
+        vec!["next", "peek", "try_peek", "stop"],
     );
     assert_eq!(providers[1].package().as_str(), "counter");
     assert_eq!(providers[1].module().as_str(), "counter/labels");
@@ -177,6 +201,10 @@ fn macro_authored_schema_preserves_component_module_and_function_order() {
         .type_();
     assert_eq!(peek.argument_types(), &[ValueType::String]);
     assert_eq!(peek.return_(), &ValueType::String);
+    for function in providers[0].functions().skip(2) {
+        assert_eq!(function.type_().argument_types(), &[ValueType::String]);
+        assert_eq!(function.type_().return_(), &ValueType::String);
+    }
 }
 
 #[test]
@@ -222,6 +250,50 @@ fn macro_authored_scalar_provider_runs_with_repeated_and_independent_state() {
     );
     assert_eq!(first.component.next, 5);
     assert_eq!(second.component.next, 4);
+}
+
+#[test]
+fn host_result_preserves_provider_failure_outside_the_source_shape() {
+    let failing_source = COUNTER_SOURCE.replace(
+        "  let _ = next(\"count\")\n  try_peek(\"count\")",
+        "  stop(\"count\")",
+    );
+    let hosts = HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), providers())
+        .expect("macro-authored modules should be unique");
+    let typed = compile_typed_host_program(
+        "counter",
+        "counter",
+        [PackageSource::new(
+            "counter",
+            Vec::<&str>::new(),
+            [
+                ModuleSource::new("counter", "src/counter.gleam", failing_source),
+                ModuleSource::new("counter/labels", "src/counter/labels.gleam", LABELS_SOURCE),
+            ],
+        )],
+        hosts,
+    )
+    .expect("host failure source should compile");
+    let plan = plan_host_program(typed).expect("HostResult must not alter the source scheme");
+    let execution =
+        HostedExecution::try_from_module_plan(plan).expect("host failure source should seal");
+    let mut state = ProfileState {
+        component: Component::initialize(&configuration(3)).expect("state should initialize"),
+    };
+
+    let error = execution
+        .run_main(&mut state, &mut Vec::new())
+        .expect_err("HostResult failure should stop execution");
+    let ExecutionError::Host(error) = error else {
+        panic!("HostResult failure should remain a hosted execution error");
+    };
+    assert_eq!(error.package(), "counter");
+    assert_eq!(error.module(), "counter");
+    assert_eq!(error.function(), "stop");
+    assert_eq!(error.failure().message(), "count:3");
+    assert_eq!(error.signature().argument_types(), &[ValueType::String]);
+    assert_eq!(error.signature().return_(), &ValueType::String);
+    assert_eq!(state.component.next, 3);
 }
 
 #[test]

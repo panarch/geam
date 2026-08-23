@@ -1,5 +1,5 @@
 use ecow::EcoString;
-use geam::provider::{Configuration, InitializationError};
+use geam::provider::{Call, Configuration, InitializationError};
 use std::collections::BTreeSet;
 
 pub struct RunState {
@@ -45,16 +45,16 @@ pub struct Component;
 
 #[geam::module(path = "example_feature_flags")]
 mod feature_flags {
-    use super::{EcoString, RunState};
+    use super::{Call, EcoString, RunState};
 
     #[geam::function]
-    fn environment(#[geam::state] state: &RunState) -> EcoString {
-        state.environment.clone()
+    fn environment(#[geam::call] call: &Call<RunState>) -> EcoString {
+        call.state().environment.clone()
     }
 
     #[geam::function]
-    fn enabled(#[geam::state] state: &RunState, name: EcoString) -> bool {
-        state.enabled.contains(&name)
+    fn enabled(#[geam::call] call: &Call<RunState>, name: EcoString) -> bool {
+        call.state().enabled.contains(&name)
     }
 }
 
