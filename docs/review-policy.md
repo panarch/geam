@@ -230,13 +230,45 @@ family-local parameter layout, and callback adapter together. Planner and
 runtime phases may consume that layout, but must not independently infer the
 same signature or parameter indexing.
 
-Provider authoring proc macros must derive one static typed registration from
-the Rust declarations visible at the attribute site. They must not parse Gleam
-source, duplicate host type semantics, write generated bindings, or defer
-registration decisions to runtime. The proc-macro crate owns parser,
-diagnostic, expansion, and core-backed compile/link/run tests; consumer provider
-fixtures verify the public re-export and assembly boundary but do not replace
-those owner tests.
+Provider authoring proc macros are a compile-time authoring layer over the
+existing typed host boundary, not a second host ABI. Apply these rules when
+adding or reviewing macro-supported value and function shapes:
+
+- Derive one static schema, registration, callback adapter, state projection,
+  and exact construction-capability set from Rust declarations visible at the
+  attribute site. Use the core host type and construction contracts rather than
+  maintaining a second Rust-to-Gleam type table in the macro crate.
+- Reject unsupported Rust declaration shapes during macro expansion or Rust
+  type checking. A disagreement with the separately compiled Gleam declaration
+  remains an exact hosted-linkage error; do not make the macro parse Gleam
+  source, inspect project files, or weaken linkage into runtime shape checks.
+- Keep registration, type selection, arity, storage binding, and construction
+  permission static. Do not introduce runtime inventories, reflection, trait
+  objects, `Any`, downcasts, string dispatch, generated binding files, or build
+  scripts to implement authoring convenience.
+- Macro-generated adapters must preserve the ownership and cost model of the
+  low-level typed host path. Retain or pass through existing runtime handles
+  when the public mapping promises a view or identity; decode lazy values only
+  when requested; and construct a newly returned source container exactly once.
+  Do not add eager whole-value materialization, whole-container preconversion,
+  payload or item clones, or reconstruction of pass-through values. Narrow
+  call-scoped guards and reference-counted handle retention are allowed when
+  they preserve those payload and container guarantees.
+- Author-facing signatures may use Rust-native values and narrow Geam wrappers,
+  but must not expose low-level host calls, storage adapters, construction
+  tokens, or runtime values as routine authoring syntax. Hidden macro support
+  exports contain only the production contracts required by generated code.
+- Syntactic defaults must have one compile-time meaning and must not hide
+  configuration, mutable state, environment lookup, or runtime fallback. Keep
+  runner-supplied IO, entropy, and clock construction under runner or component
+  ownership instead of adding built-in exceptions to the ordinary external
+  provider interface.
+
+The proc-macro crate owns parser, diagnostic, expansion, and core-backed
+compile/link/run tests while keeping Geam runtime crates out of its normal
+dependency graph. Those tests must prove the generated typed boundary and its
+cost-sensitive behavior, not only token text. Consumer provider fixtures verify
+the public re-export and assembly boundary but do not replace macro owner tests.
 
 Treat a provider component as the static owner of its stores, run-state type,
 and registrations; a concrete aggregate profile only projects those owners.
