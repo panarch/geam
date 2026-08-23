@@ -22,12 +22,13 @@ pub mod __macro_support {
         List, NoCustomInput, ProviderConstruction, ProviderConstructionIndex0,
         ProviderConstructionIndexNext, ProviderConstructionList, ProviderConstructionRequirementAt,
         ProviderConstructionRequirements, ProviderConstructions, ProviderCustomDeclaration,
-        ProviderCustomInputDeclaration, ProviderExternalCodec, ProviderExternalItem,
+        ProviderCustomInputDeclaration, ProviderError, ProviderExternalCodec, ProviderExternalItem,
         ProviderExternalListDecoder, ProviderExternalPayloadAccess, ProviderInputListContext,
         ProviderInputValue, ProviderListContext, ProviderListCustomFields, ProviderListInputCodec,
         ProviderListInputValue, ProviderListItemDecoder, ProviderListItemValue,
-        ProviderModuleRegistration, ProviderNoConstructions, ProviderOutputValue, ProviderPackage,
-        ProviderRootOutputValue, ProviderScalarListDecoder, ProviderValue,
+        ProviderModuleRegistration, ProviderNoConstructions, ProviderNone, ProviderOk,
+        ProviderOption, ProviderOutputValue, ProviderPackage, ProviderResult,
+        ProviderRootOutputValue, ProviderScalarListDecoder, ProviderSome, ProviderValue,
         component_initialization_error, external_payload_hash,
     };
 }

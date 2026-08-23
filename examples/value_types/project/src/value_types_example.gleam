@@ -1,5 +1,6 @@
 import example_value_types/customs
 import example_value_types/lists
+import example_value_types/results
 import example_value_types/scalars
 import example_value_types/tuples
 
@@ -44,4 +45,12 @@ pub fn main() {
   assert customs.describe(customs.tagged("first", "second")) == "tags:2:first"
   assert customs.first_priority([]) == "missing"
   assert customs.first_priority([customs.normal(), customs.high()]) == "normal"
+
+  assert results.describe(results.parse("42")) == "ok:42"
+  assert results.describe(results.parse("")) == "error:empty"
+  assert results.describe(results.parse("bad")) == "error:bad"
+  assert results.describe_option(results.optional(7, True)) == "some:kept:7"
+  assert results.describe_option(results.optional(7, False)) == "none"
+  assert results.first([]) == "missing"
+  assert results.first(results.samples()) == "ok:3"
 }

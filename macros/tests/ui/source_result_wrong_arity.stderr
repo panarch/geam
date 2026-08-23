@@ -1,0 +1,5 @@
+error: Result requires exactly 2 type arguments
+ --> tests/ui/source_result_wrong_arity.rs:6:21
+  |
+6 |     fn invalid() -> Result<BigInt> {
+  |                     ^^^^^^^^^^^^^^

@@ -5,3 +5,4 @@ licences = ["Apache-2.0"]
 
 [dependencies]
 example_value_types = { path = "packages/example_value_types" }
+gleam_stdlib = ">= 1.0.3 and < 1.0.4"

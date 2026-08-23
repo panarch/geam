@@ -2,10 +2,10 @@
 
 This stateless, configuration-free provider is the curated map between Gleam
 source values and the Rust types accepted by Geam's authoring macros. It keeps
-scalar, tuple, List, and custom declarations in separate modules so each
-mapping can be read without unrelated provider state, configuration, or
-external-value semantics. As the macro gains more value families, this example
-grows with focused sibling modules; state, configuration, and other provider
+scalar, tuple, List, custom, Result, and Option declarations in separate modules
+so each mapping can be read without unrelated provider state, configuration,
+or external-value semantics. As the macro gains more value families, this
+example grows with focused sibling modules; state, configuration, and other provider
 capabilities stay in their own semantic examples.
 
 ## Scalars
@@ -109,6 +109,28 @@ List items currently compose the supported scalar and tuple mappings. The view
 is intentionally not an eager `Vec`: provider code chooses whether to inspect
 zero, one, or every item.
 
+## Result And Option
+
+Rust's standard `Result<T, E>` and `Option<T>` map directly to Gleam's standard
+source types. Output positions use owned values, while input positions apply
+the same directional custom decoding used elsewhere:
+
+```rust
+#[geam::function]
+fn parse(value: EcoString) -> Result<BigInt, ParseError> {
+    // ...
+}
+
+#[geam::function]
+fn describe(value: Result<BigInt, ParseErrorInput>) -> EcoString {
+    // ...
+}
+```
+
+The mapping composes recursively with tuples and custom values. A List of
+Result values remains a lazy `geam::List`; returning `Vec<Result<...>>` builds
+one new source List.
+
 ## Custom Values
 
 The custom module maps ordinary Gleam custom types to Rust enums. The enum used
@@ -132,7 +154,7 @@ Nested custom values use their generated input type, and a source `List` field
 is a lazy `geam::List` view in `JobInput`; the output enum uses `Vec` only when
 constructing a new source List.
 
-Run all four modules through the generated standalone runner:
+Run all five modules through the generated standalone runner:
 
 ```sh
 cd examples/value_types/project
@@ -143,14 +165,16 @@ geam run
 
 A successful run produces no output. The entrypoint executes every public
 function and checks all scalar mappings, one-, two-, three-element and nested
-tuples, empty, indexed, pass-through, reversed and tuple-item Lists, plus unit,
-tuple, named, nested and List-bearing custom constructors.
+tuples, empty, indexed, pass-through, reversed and tuple-item Lists, unit,
+tuple, named, nested and List-bearing custom constructors, plus source Result
+and Option values.
 
 Read
 [`project/packages/example_value_types/src/example_value_types/scalars.gleam`](project/packages/example_value_types/src/example_value_types/scalars.gleam),
 [`project/packages/example_value_types/src/example_value_types/tuples.gleam`](project/packages/example_value_types/src/example_value_types/tuples.gleam),
 [`project/packages/example_value_types/src/example_value_types/lists.gleam`](project/packages/example_value_types/src/example_value_types/lists.gleam),
 [`project/packages/example_value_types/src/example_value_types/customs.gleam`](project/packages/example_value_types/src/example_value_types/customs.gleam),
+[`project/packages/example_value_types/src/example_value_types/results.gleam`](project/packages/example_value_types/src/example_value_types/results.gleam),
 [`provider/src/lib.rs`](provider/src/lib.rs), and
 [`project/src/value_types_example.gleam`](project/src/value_types_example.gleam)
 together.

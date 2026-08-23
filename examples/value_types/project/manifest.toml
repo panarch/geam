@@ -1,6 +1,16 @@
+# Do not manually edit this file, it is managed by Gleam.
+#
+# This file locks the dependency versions used, to make your build
+# deterministic and to prevent unexpected versions from being included
+# in your application.
+#
+# You should check this file into your source control repository.
+
 packages = [
-  { name = "example_value_types", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/example_value_types" },
+  { name = "example_value_types", version = "1.0.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], source = "local", path = "packages/example_value_types" },
+  { name = "gleam_stdlib", version = "1.0.3", build_tools = ["gleam"], requirements = [], otp_app = "gleam_stdlib", source = "hex", outer_checksum = "1F543AFBA5D33DA493E6087F4E4C4F20D899411343512686C98A8ABB2963CF22" },
 ]
 
 [requirements]
 example_value_types = { path = "packages/example_value_types" }
+gleam_stdlib = { version = ">= 1.0.3 and < 1.0.4" }

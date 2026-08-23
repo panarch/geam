@@ -154,9 +154,9 @@ production manifest, resolution, build, and execution path.
 The [provider authoring examples](../examples) are consumer-facing macro
 acceptance cases. `text_tools` maps one stateless provider to three Gleam
 modules, `value_types` fixes every scalar mapping plus one-, multi-, and
-nested-tuple mapping, lazy top-level Lists, and directional custom values, and
-`tag_set` fixes generated external semantics. `request_ids` combines mutable
-and read-only default state,
+nested-tuple mapping, lazy top-level Lists, directional custom values, and
+standard source Result/Option values, and `tag_set` fixes generated external
+semantics. `request_ids` combines mutable and read-only default state,
 `feature_flags` owns configured initialization, and `run_metrics` retains
 specialized manual external semantics. Root binary tests follow each documented
 path add, prepare, run, and repeated-run workflow against independently locked

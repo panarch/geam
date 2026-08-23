@@ -2,3 +2,6 @@ name = "example_value_types"
 version = "1.0.0"
 description = "Scalar, tuple, List, and custom mappings backed by a native Geam provider"
 licences = ["Apache-2.0"]
+
+[dependencies]
+gleam_stdlib = ">= 1.0.3 and < 1.0.4"

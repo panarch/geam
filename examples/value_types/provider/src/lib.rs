@@ -4,7 +4,7 @@ use num_bigint::BigInt;
 
 #[geam::provider(
     package = "example_value_types",
-    modules = [scalars, tuples, lists, customs],
+    modules = [scalars, tuples, lists, customs, results],
 )]
 pub struct Component;
 
@@ -203,5 +203,60 @@ mod customs {
             Some(PriorityInput::High) => "high".into(),
             None => "missing".into(),
         }
+    }
+}
+
+#[geam::module(path = "example_value_types/results")]
+mod results {
+    use super::{BigInt, EcoString};
+
+    #[geam::custom(input = ParseErrorInput)]
+    enum ParseError {
+        Empty,
+        Invalid(EcoString),
+    }
+
+    #[geam::function]
+    fn parse(value: EcoString) -> Result<BigInt, ParseError> {
+        if value.is_empty() {
+            Err(ParseError::Empty)
+        } else {
+            value
+                .parse::<i64>()
+                .map(BigInt::from)
+                .map_err(|_| ParseError::Invalid(value))
+        }
+    }
+
+    #[geam::function]
+    fn describe(value: Result<BigInt, ParseErrorInput>) -> EcoString {
+        match value {
+            Ok(value) => format!("ok:{value}").into(),
+            Err(ParseErrorInput::Empty) => "error:empty".into(),
+            Err(ParseErrorInput::Invalid(value)) => format!("error:{value}").into(),
+        }
+    }
+
+    #[geam::function]
+    fn optional(value: BigInt, keep: bool) -> Option<(EcoString, BigInt)> {
+        keep.then(|| ("kept".into(), value))
+    }
+
+    #[geam::function]
+    fn describe_option(value: Option<(EcoString, BigInt)>) -> EcoString {
+        value.map_or_else(
+            || "none".into(),
+            |(label, value)| format!("some:{label}:{value}").into(),
+        )
+    }
+
+    #[geam::function]
+    fn first(values: geam::List<Result<BigInt, ParseErrorInput>>) -> EcoString {
+        values.get(0).map_or_else(|| "missing".into(), describe)
+    }
+
+    #[geam::function]
+    fn samples() -> Vec<Result<BigInt, ParseError>> {
+        vec![Ok(3.into()), Err(ParseError::Empty)]
     }
 }

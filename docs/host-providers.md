@@ -11,10 +11,10 @@ concrete runner, but the resulting Rust program still composes every component
 at compile time. It does not choose or type-erase implementations at runtime.
 
 Start with the [provider authoring examples](../examples/README.md). They present
-multi-module registration, scalar, tuple, List, and custom value mappings,
-stateless, default-state, configured-state, default external, and manual
-external choices as complete Gleam/Rust pairs before this document describes
-the generated and low-level contracts.
+multi-module registration, scalar, tuple, List, custom, Result, and Option value
+mappings, stateless, default-state, configured-state, default external, and
+manual external choices as complete Gleam/Rust pairs before this document
+describes the generated and low-level contracts.
 
 ## Value Type Provider Authoring
 
@@ -267,10 +267,10 @@ unexpected configuration instead of ignoring it.
 
 The current macro surface supports scalars, native tuples composed from
 supported leaves, top-level Lists with lazy item access or Vec construction,
-non-recursive custom values, and non-generic constructorless external values
-whose payloads do not retain Gleam values. Callbacks, source `Result`
-construction, nested Lists, and retained Gleam values still use the low-level
-contracts below.
+non-recursive custom values, Rust `Result`/`Option` mapped to their standard
+source types, and non-generic constructorless external values whose payloads do
+not retain Gleam values. Callbacks, nested Lists, and retained Gleam values
+still use the low-level contracts below.
 
 ## Generated Component Boundary
 

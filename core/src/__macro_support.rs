@@ -20,9 +20,10 @@ pub use crate::provider::{
 pub use crate::provider::{
     ProviderConstruction, ProviderConstructionIndex0, ProviderConstructionIndexNext,
     ProviderConstructionList, ProviderConstructionRequirementAt, ProviderConstructionRequirements,
-    ProviderConstructions, ProviderExternalCodec, ProviderInputValue, ProviderListInputCodec,
-    ProviderListInputValue, ProviderNoConstructions, ProviderOutputValue, ProviderRootOutputValue,
-    ProviderValue,
+    ProviderConstructions, ProviderError, ProviderExternalCodec, ProviderInputValue,
+    ProviderListInputCodec, ProviderListInputValue, ProviderNoConstructions, ProviderNone,
+    ProviderOk, ProviderOption, ProviderOutputValue, ProviderResult, ProviderRootOutputValue,
+    ProviderSome, ProviderValue,
 };
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};

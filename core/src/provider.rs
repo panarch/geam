@@ -3,6 +3,7 @@ use std::fmt::{self, Display, Formatter};
 
 mod codec;
 mod list;
+mod prelude;
 
 #[doc(hidden)]
 pub use codec::{
@@ -19,6 +20,11 @@ pub use list::{
     ProviderExternalItem, ProviderExternalListDecoder, ProviderExternalPayloadAccess,
     ProviderInputListContext, ProviderListContext, ProviderListCustomFields,
     ProviderListItemDecoder, ProviderListItemValue, ProviderScalarListDecoder,
+};
+#[doc(hidden)]
+pub use prelude::{
+    ProviderError, ProviderNone, ProviderOk, ProviderOption, ProviderOptionSchema, ProviderResult,
+    ProviderResultSchema, ProviderSome,
 };
 
 pub type Configuration = crate::HostProviderConfiguration;

@@ -1,7 +1,7 @@
 use super::{
     CollectionType, DeclaredInput, ExternalModel, ListDecoderModel, ListType, ProviderValueType,
-    collection_item, external_type, is_collection, is_marker, is_qualified_type_path,
-    register_list_decoder,
+    SourceWrapper, collection_item, external_type, is_collection, is_marker,
+    is_qualified_type_path, register_list_decoder, source_wrapper,
 };
 use quote::format_ident;
 use std::collections::BTreeSet;
@@ -158,8 +158,8 @@ pub(super) fn collect_custom_declarations(
             Some(register_list_decoder(
                 &CollectionType {
                     source: item.clone(),
-                    item,
-                    value: ProviderValueType::Custom { index },
+                    item: item.clone(),
+                    value: ProviderValueType::Custom { index, rust: item },
                 },
                 list_decoders,
             ))
@@ -372,6 +372,20 @@ fn classify_custom_value(
             "List values are not supported inside custom tuple fields",
         ));
     }
+    match source_wrapper(type_)? {
+        SourceWrapper::Result { success, failure } => {
+            return Ok(ProviderValueType::Result {
+                success: Box::new(classify_custom_value(success, headers, externals)?),
+                failure: Box::new(classify_custom_value(failure, headers, externals)?),
+            });
+        }
+        SourceWrapper::Option { value } => {
+            return Ok(ProviderValueType::Option {
+                value: Box::new(classify_custom_value(value, headers, externals)?),
+            });
+        }
+        SourceWrapper::Other => {}
+    }
     if let Some(external) = external_type(type_, externals) {
         return Ok(ProviderValueType::External {
             payload: external.ident.clone(),
@@ -380,7 +394,10 @@ fn classify_custom_value(
         });
     }
     if let Some((index, _)) = custom_header_output_type(type_, headers) {
-        return Ok(ProviderValueType::Custom { index });
+        return Ok(ProviderValueType::Custom {
+            index,
+            rust: type_.clone(),
+        });
     }
     if let Some(header) = custom_header_input_type(type_, headers) {
         return Err(syn::Error::new_spanned(
@@ -488,12 +505,17 @@ fn validate_custom_cycles(customs: &[CustomModel]) -> syn::Result<()> {
 fn custom_dependencies(custom: &CustomModel) -> Vec<usize> {
     fn collect(type_: &ProviderValueType, output: &mut Vec<usize>) {
         match type_ {
-            ProviderValueType::Custom { index } => output.push(*index),
+            ProviderValueType::Custom { index, .. } => output.push(*index),
             ProviderValueType::Tuple(elements) => {
                 for element in elements {
                     collect(element, output);
                 }
             }
+            ProviderValueType::Result { success, failure } => {
+                collect(success, output);
+                collect(failure, output);
+            }
+            ProviderValueType::Option { value } => collect(value, output),
             ProviderValueType::Scalar(_)
             | ProviderValueType::Declared { .. }
             | ProviderValueType::External { .. } => {}
