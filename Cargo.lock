@@ -1266,6 +1266,7 @@ dependencies = [
  "bitvec",
  "ecow",
  "geam-core",
+ "geam-macros",
  "hex",
  "im",
  "num-bigint",

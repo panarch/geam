@@ -13,6 +13,7 @@ base64.workspace = true
 bitvec.workspace = true
 ecow.workspace = true
 geam-core.workspace = true
+geam-macros.workspace = true
 hex.workspace = true
 im.workspace = true
 num-bigint.workspace = true

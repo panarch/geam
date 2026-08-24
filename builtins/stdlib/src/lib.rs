@@ -84,6 +84,13 @@ where
     type RunState = GleamStdlibRunState<Io>;
 }
 
+impl<Io> geam_core::__macro_support::ProviderPackage for Component<Io>
+where
+    Io: IoSink + 'static,
+{
+    const PACKAGE: &'static str = "gleam_stdlib";
+}
+
 /// The default profile for using only the official Gleam standard library providers.
 #[derive(Debug, Clone, Copy)]
 pub struct GleamStdlibProfile;

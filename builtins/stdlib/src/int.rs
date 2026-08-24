@@ -1,61 +1,84 @@
 mod function;
 mod parse;
-mod schema;
 
-use self::function::{
-    IntProvider, bitwise_and, bitwise_exclusive_or, bitwise_not, bitwise_or, bitwise_shift_left,
-    bitwise_shift_right, do_base_parse, do_to_base_string, parse, to_float, to_string,
-};
-use self::schema::ParseResult;
-use super::GleamStdlibHostProfile;
+use super::{Component, GleamStdlibHostProfile};
 use crate::{HostProviderModule, HostRegistrationError};
 use ecow::EcoString;
+use geam_core::provider::HostResult;
 use num_bigint::BigInt;
+
+#[geam_macros::module(
+    path = "gleam/int",
+    crate_path = geam_core,
+    profile = crate::GleamStdlibHostProfile,
+    component = crate::Component<Profile::Io>,
+)]
+mod provider {
+    use super::{BigInt, EcoString, HostResult, function};
+
+    #[geam_macros::function]
+    fn parse(source: EcoString) -> Result<BigInt, ()> {
+        function::parse(source)
+    }
+
+    #[geam_macros::function]
+    fn do_base_parse(source: EcoString, base: BigInt) -> Result<BigInt, ()> {
+        function::do_base_parse(source, base)
+    }
+
+    #[geam_macros::function]
+    fn to_string(value: BigInt) -> EcoString {
+        function::to_string(value)
+    }
+
+    #[geam_macros::function]
+    fn do_to_base_string(value: BigInt, base: BigInt) -> HostResult<EcoString> {
+        function::do_to_base_string(value, base).map_err(Into::into)
+    }
+
+    #[geam_macros::function]
+    fn to_float(value: BigInt) -> HostResult<f64> {
+        function::to_float(value).map_err(Into::into)
+    }
+
+    #[geam_macros::function]
+    fn bitwise_and(left: BigInt, right: BigInt) -> BigInt {
+        function::bitwise_and(left, right)
+    }
+
+    #[geam_macros::function]
+    fn bitwise_not(value: BigInt) -> BigInt {
+        function::bitwise_not(value)
+    }
+
+    #[geam_macros::function]
+    fn bitwise_or(left: BigInt, right: BigInt) -> BigInt {
+        function::bitwise_or(left, right)
+    }
+
+    #[geam_macros::function]
+    fn bitwise_exclusive_or(left: BigInt, right: BigInt) -> BigInt {
+        function::bitwise_exclusive_or(left, right)
+    }
+
+    #[geam_macros::function]
+    fn bitwise_shift_left(value: BigInt, shift: BigInt) -> HostResult<BigInt> {
+        function::bitwise_shift_left(value, shift).map_err(Into::into)
+    }
+
+    #[geam_macros::function]
+    fn bitwise_shift_right(value: BigInt, shift: BigInt) -> HostResult<BigInt> {
+        function::bitwise_shift_right(value, shift).map_err(Into::into)
+    }
+}
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
     Profile: GleamStdlibHostProfile,
 {
-    HostProviderModule::new("gleam_stdlib", "gleam/int")
-        .and_then(|provider| {
-            provider.with_scoped_function::<IntProvider<Profile>, (EcoString,), ParseResult, _>(
-                "parse",
-                parse::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider
-                .with_scoped_function::<IntProvider<Profile>, (EcoString, BigInt), ParseResult, _>(
-                    "do_base_parse",
-                    do_base_parse::<Profile>,
-                )
-        })
-        .and_then(|provider| provider.with_function("to_string", to_string))
-        .and_then(|provider| {
-            provider.with_fallible_function::<(BigInt, BigInt), EcoString, _>(
-                "do_to_base_string",
-                do_to_base_string,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_fallible_function::<(BigInt,), f64, _>("to_float", to_float)
-        })
-        .and_then(|provider| provider.with_function("bitwise_and", bitwise_and))
-        .and_then(|provider| provider.with_function("bitwise_not", bitwise_not))
-        .and_then(|provider| provider.with_function("bitwise_or", bitwise_or))
-        .and_then(|provider| provider.with_function("bitwise_exclusive_or", bitwise_exclusive_or))
-        .and_then(|provider| {
-            provider.with_fallible_function::<(BigInt, BigInt), BigInt, _>(
-                "bitwise_shift_left",
-                bitwise_shift_left,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_fallible_function::<(BigInt, BigInt), BigInt, _>(
-                "bitwise_shift_right",
-                bitwise_shift_right,
-            )
-        })
+    <provider::__GeamModule as geam_core::__macro_support::ProviderModuleRegistration<
+        Profile,
+    >>::module()
 }
 
 #[cfg(test)]

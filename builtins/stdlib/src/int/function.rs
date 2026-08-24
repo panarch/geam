@@ -1,50 +1,14 @@
 use super::parse::{decimal, format_radix, radix};
-use super::schema::{ParseError, ParseOk, ParseResult};
-use crate::{GleamStdlibHostProfile, GleamStdlibRunState, stdlib_state};
-use crate::{HostCall, HostCallCompletion, HostCallError, HostFailure, HostProvider};
+use crate::HostFailure;
 use ecow::EcoString;
 use num_bigint::{BigInt, Sign};
 use num_traits::ToPrimitive;
-use std::marker::PhantomData;
-
-pub(super) struct IntProvider<Profile>(PhantomData<Profile>);
-
-impl<Profile> HostProvider<Profile> for IntProvider<Profile>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    type State = GleamStdlibRunState<Profile::Io>;
-
-    fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        stdlib_state::<Profile>(state)
-    }
+pub(super) fn parse(source: EcoString) -> Result<BigInt, ()> {
+    decimal(&source).ok_or(())
 }
 
-pub(super) fn parse<'call, Profile>(
-    call: HostCall<'call, Profile, IntProvider<Profile>, ParseResult>,
-    source: EcoString,
-) -> Result<HostCallCompletion<'call, ParseResult>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    Ok(match decimal(&source) {
-        Some(value) => call.return_custom::<ParseOk>((value, ())),
-        None => call.return_custom::<ParseError>(((), ())),
-    })
-}
-
-pub(super) fn do_base_parse<'call, Profile>(
-    call: HostCall<'call, Profile, IntProvider<Profile>, ParseResult>,
-    source: EcoString,
-    base: BigInt,
-) -> Result<HostCallCompletion<'call, ParseResult>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    Ok(match radix(&source, &base) {
-        Some(value) => call.return_custom::<ParseOk>((value, ())),
-        None => call.return_custom::<ParseError>(((), ())),
-    })
+pub(super) fn do_base_parse(source: EcoString, base: BigInt) -> Result<BigInt, ()> {
+    radix(&source, &base).ok_or(())
 }
 
 pub(super) fn to_string(value: BigInt) -> EcoString {
@@ -106,15 +70,16 @@ pub(super) fn bitwise_shift_right(value: BigInt, shift: BigInt) -> Result<BigInt
 mod tests {
     use super::super::host_provider;
     use super::{
-        IntProvider, bitwise_and, bitwise_exclusive_or, bitwise_not, bitwise_or,
-        bitwise_shift_left, bitwise_shift_right, do_to_base_string, to_float, to_string,
+        bitwise_and, bitwise_exclusive_or, bitwise_not, bitwise_or, bitwise_shift_left,
+        bitwise_shift_right, do_to_base_string, to_float, to_string,
+    };
+    use crate::{
+        ExecutionError, HostFailure, HostModule, HostProviderSet, HostedExecution, ModuleSource,
+        PackageSource, ValueType, compile_typed_host_program, plan_host_program,
     };
     use crate::{GleamStdlibProfile, GleamStdlibRunState};
-    use crate::{
-        HostFailure, HostModule, HostProvider, HostProviderSet, HostedExecution, ModuleSource,
-        PackageSource, compile_typed_host_program, plan_host_program,
-    };
     use ecow::EcoString;
+    use geam_core::{HostError, InvariantError};
     use num_bigint::BigInt;
 
     const INT_DECLARATIONS: &str = r#"
@@ -177,17 +142,6 @@ pub fn bitwise_shift_right(value: Int, shift: Int) -> Int
         .expect("synthetic int source should compile");
         let plan = plan_host_program(typed).expect("synthetic int source should plan");
         HostedExecution::try_from_module_plan(plan).expect("synthetic int execution should seal")
-    }
-
-    #[test]
-    fn projects_the_complete_stdlib_run_state() {
-        let mut state = GleamStdlibRunState::from_seed([0; 32]);
-        let projected =
-            <IntProvider<GleamStdlibProfile> as HostProvider<GleamStdlibProfile>>::project(
-                &mut state,
-            );
-
-        assert!(std::ptr::eq(projected, &state));
     }
 
     #[test]
@@ -270,5 +224,67 @@ pub fn main() {
                 "bit shift count cannot be represented by this host"
             )),
         );
+    }
+
+    #[test]
+    fn preserves_checked_integer_failures_through_the_host_adapter() {
+        let huge = "1".repeat(400);
+        let cases = [
+            (
+                "do_to_base_string(1, 1)".to_owned(),
+                "do_to_base_string",
+                "base must be an Int from 2 through 36",
+            ),
+            (
+                format!("to_float({huge})"),
+                "to_float",
+                "Int cannot be represented as a finite Float",
+            ),
+            (
+                format!("bitwise_shift_left(1, {huge})"),
+                "bitwise_shift_left",
+                "bit shift count cannot be represented by this host",
+            ),
+            (
+                format!("bitwise_shift_right(1, -{huge})"),
+                "bitwise_shift_right",
+                "bit shift count cannot be represented by this host",
+            ),
+        ];
+
+        for (call, function, message) in cases {
+            let execution = execution(&format!("pub fn main() {{ {call} }}"));
+            let error = execution
+                .run_main(
+                    &mut GleamStdlibRunState::from_seed([0; 32]),
+                    &mut Vec::new(),
+                )
+                .expect_err("checked integer conversion should fail");
+            let error = expect_integer_host_error(error);
+
+            assert_eq!(error.package(), "gleam_stdlib");
+            assert_eq!(error.module(), "gleam/int");
+            assert_eq!(error.function(), function);
+            assert_eq!(error.failure().message(), message);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "checked integer conversion should remain a host failure")]
+    fn integer_host_failure_assertion_rejects_other_execution_errors() {
+        let _ = expect_integer_host_error(ExecutionError::Invariant(
+            InvariantError::ListIndexOutOfBounds {
+                item_type: ValueType::Int,
+                index: 1,
+                length: 0,
+            },
+        ));
+    }
+
+    fn expect_integer_host_error(error: ExecutionError) -> Box<HostError> {
+        let ExecutionError::Host(error) = error else {
+            panic!("checked integer conversion should remain a host failure");
+        };
+        error
     }
 }
