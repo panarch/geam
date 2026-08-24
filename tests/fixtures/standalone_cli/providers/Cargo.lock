@@ -1322,6 +1322,7 @@ name = "geam-time"
 version = "0.1.2"
 dependencies = [
  "geam-core",
+ "geam-macros",
  "geam-stdlib",
  "jiff",
  "num-bigint",

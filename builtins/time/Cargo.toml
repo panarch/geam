@@ -10,6 +10,7 @@ publish = ["crates-io"]
 
 [dependencies]
 geam-core.workspace = true
+geam-macros.workspace = true
 geam-stdlib.workspace = true
 jiff.workspace = true
 num-bigint.workspace = true

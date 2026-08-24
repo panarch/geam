@@ -1,35 +1,32 @@
 use super::source::split_system_time;
-use super::{GleamTimeHostProfile, TimeProvider, TimeSource};
-use crate::{
-    HostCall, HostCallCompletion, HostCallError, HostProviderModule, HostRegistrationError,
-    HostTupleType, HostTypeList, HostTypeListEnd,
-};
+use super::{Component, GleamTimeHostProfile, TimeSource};
+use crate::{HostProviderModule, HostRegistrationError};
+use geam_core::provider::{Call, HostResult};
 use num_bigint::BigInt;
 
-type TimestampPartsElements = HostTypeList<BigInt, HostTypeList<BigInt, HostTypeListEnd>>;
-type TimestampParts = HostTupleType<TimestampPartsElements>;
+#[geam_macros::module(
+    path = "gleam/time/timestamp",
+    crate_path = geam_core,
+    profile = crate::GleamTimeHostProfile,
+    component = crate::Component<Profile::Source>,
+)]
+mod provider {
+    use super::{BigInt, Call, HostResult, TimeSource, split_system_time};
+
+    #[geam_macros::function(profile = Profile)]
+    fn get_system_time(
+        #[geam_macros::call] call: &mut Call<Profile::Source>,
+    ) -> HostResult<(BigInt, BigInt)> {
+        let time = call.state_mut().system_time()?;
+        Ok(split_system_time(time))
+    }
+}
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
     Profile: GleamTimeHostProfile,
 {
-    HostProviderModule::new("gleam_time", "gleam/time/timestamp").and_then(|provider| {
-        provider.with_scoped_function::<TimeProvider<Profile>, (), TimestampParts, _>(
-            "get_system_time",
-            get_system_time::<Profile>,
-        )
-    })
-}
-
-fn get_system_time<'call, Profile>(
-    mut call: HostCall<'call, Profile, TimeProvider<Profile>, TimestampParts>,
-) -> Result<HostCallCompletion<'call, TimestampParts>, HostCallError>
-where
-    Profile: GleamTimeHostProfile,
-{
-    let time = call.state().system_time()?;
-    let (seconds, nanoseconds) = split_system_time(time);
-    Ok(call.return_tuple((seconds, (nanoseconds, ()))))
+    provider::__geam_module::<Profile>()
 }
 
 #[cfg(test)]

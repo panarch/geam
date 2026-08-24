@@ -9,9 +9,8 @@ pub(crate) use geam_core::{
     ModuleSource, PackageSource, ValueType, compile_typed_host_program, plan_host_program,
 };
 pub(crate) use geam_core::{
-    HostCall, HostCallCompletion, HostCallError, HostComponentProfile, HostFailure, HostProfile,
-    HostProvider, HostProviderComponent, HostProviderComponentRegistration, HostProviderModule,
-    HostRegistrationError, HostTupleType, HostTypeList, HostTypeListEnd,
+    HostComponentProfile, HostFailure, HostProfile, HostProviderComponent,
+    HostProviderComponentRegistration, HostProviderModule, HostRegistrationError,
 };
 use geam_stdlib::{
     Component as GleamStdlibComponent, GleamStdlibHostProfile, GleamStdlibRunState,
@@ -48,6 +47,13 @@ where
     const ID: &'static str = "gleam_time";
     type Stores = ();
     type RunState = Source;
+}
+
+impl<Source> geam_core::__macro_support::ProviderPackage for Component<Source>
+where
+    Source: TimeSource,
+{
+    const PACKAGE: &'static str = "gleam_time";
 }
 
 /// External stores for the default combined standard-library and Time profile.
@@ -166,26 +172,6 @@ where
     }
 }
 
-pub(crate) struct TimeProvider<Profile>(PhantomData<Profile>);
-
-impl<Profile> HostProvider<Profile> for TimeProvider<Profile>
-where
-    Profile: GleamTimeHostProfile,
-{
-    type State = Profile::Source;
-
-    fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        time_state::<Profile>(state)
-    }
-}
-
-fn time_state<Profile>(state: &mut Profile::RunState) -> &mut Profile::Source
-where
-    Profile: GleamTimeHostProfile,
-{
-    <Profile as HostComponentProfile<Component<Profile::Source>>>::component_state(state)
-}
-
 #[cfg(test)]
 mod effects;
 #[cfg(test)]
@@ -195,12 +181,10 @@ mod test_support;
 mod tests {
     use super::test_support::ScriptedSource;
     use super::{
-        Component, GleamTimeProfile, GleamTimeProfileStores, GleamTimeRunState, TimeProvider,
-        host_providers,
+        Component, GleamTimeProfile, GleamTimeProfileStores, GleamTimeRunState, host_providers,
     };
     use crate::{
-        HostComponentProfile, HostProfile, HostProvider, HostProviderComponent,
-        HostProviderComponentRegistration,
+        HostComponentProfile, HostProfile, HostProviderComponent, HostProviderComponentRegistration,
     };
     use geam_stdlib::{
         Component as GleamStdlibComponent, GleamStdlibHostProfile, GleamStdlibRunState,
@@ -323,14 +307,6 @@ mod tests {
             ),
             &custom_stores.time,
         ));
-        let provider_source = default_state.source() as *const ScriptedSource;
-        assert!(std::ptr::eq(
-            <TimeProvider<GleamTimeProfile<ScriptedSource>> as HostProvider<
-                GleamTimeProfile<ScriptedSource>,
-            >>::project(&mut default_state),
-            provider_source,
-        ));
-
         assert!(default_state.stdlib_mut().take_io_outputs().is_empty());
         assert!(default_state.stdlib().io_outputs().is_empty());
         default_state.source_mut().offsets.push_back(Ok(3600));
