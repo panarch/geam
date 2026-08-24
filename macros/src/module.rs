@@ -16,6 +16,7 @@ struct ModuleArguments {
     path: LitStr,
     crate_path: Option<Path>,
     profile: ModuleProfile,
+    stores: Option<Path>,
 }
 
 #[derive(Default)]
@@ -24,6 +25,7 @@ struct PartialModuleArguments {
     crate_path: Option<Path>,
     profile: Option<Path>,
     component: Option<Type>,
+    stores: Option<Path>,
 }
 
 enum ModuleProfile {
@@ -390,6 +392,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     let mut module = syn::parse2::<ItemMod>(item)?;
     let support = support_path(arguments.crate_path.as_ref())?;
     let has_explicit_profile = matches!(&arguments.profile, ModuleProfile::Explicit { .. });
+    let profile_visibility = has_explicit_profile.then(|| quote!(pub(super)));
     let (profile_bound, component) = match &arguments.profile {
         ModuleProfile::Component => (
             quote!(#support::HostComponentProfile<super::Component>),
@@ -430,6 +433,26 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             store_field: format_ident!("__geam_external_{index}"),
         });
     }
+    match (&arguments.profile, &arguments.stores, externals.is_empty()) {
+        (ModuleProfile::Explicit { .. }, None, false) => {
+            return Err(syn::Error::new_spanned(
+                &module.ident,
+                "built-in modules with external declarations require a `stores` projection",
+            ));
+        }
+        (ModuleProfile::Explicit { .. }, Some(stores), true) => {
+            return Err(syn::Error::new_spanned(
+                stores,
+                "module `stores` is used only by external declarations",
+            ));
+        }
+        _ => {}
+    }
+    let (stores_visibility, storage_visibility) = if arguments.stores.is_some() {
+        (quote!(pub), quote!(pub))
+    } else {
+        (quote!(pub(super)), quote!())
+    };
 
     let mut list_decoders = Vec::new();
     let custom_declarations =
@@ -459,6 +482,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
         }
     }
 
+    let stores_projection = arguments.stores.as_ref();
     let module_path = arguments.path;
     let module_ident = &module.ident;
     let payload_semantics = externals.iter().filter_map(|external| {
@@ -496,6 +520,17 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
         let schema = &external.schema;
         let storage = &external.storage;
         let store_field = &external.store_field;
+        let store = if let Some(stores) = stores_projection {
+            quote! {
+                &#stores::<Profile>(stores).#store_field
+            }
+        } else {
+            quote! {
+                &<Profile as #support::HostComponentProfile<#component>>::component_stores(
+                    stores,
+                ).#module_ident.#store_field
+            }
+        };
         quote! {
             #[doc(hidden)]
             pub struct #schema;
@@ -616,7 +651,8 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                 }
             }
 
-            struct #storage;
+            #[doc(hidden)]
+            #storage_visibility struct #storage;
 
             impl<Profile> #support::HostExternalStorage<Profile, #schema> for #storage
             where
@@ -627,9 +663,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                 fn store(
                     stores: &Profile::ExternalStores,
                 ) -> &#support::HostExternalStore<Self::Payload> {
-                    &<Profile as #support::HostComponentProfile<#component>>::component_stores(
-                        stores,
-                    ).#module_ident.#store_field
+                    #store
                 }
 
                 fn source_equal(
@@ -703,7 +737,6 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             let provider = provider.with_external_type::<__GeamProvider, #schema>()?;
         }
     });
-    let profile_visibility = has_explicit_profile.then(|| quote!(pub(super)));
     items.push(Item::Verbatim(quote! {
         #profile_visibility trait __GeamModuleProfile: #profile_bound {}
 
@@ -715,7 +748,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     items.push(Item::Verbatim(quote! {
         #[doc(hidden)]
         #[derive(Default)]
-        pub(super) struct __GeamStores {
+        #stores_visibility struct __GeamStores {
             #(#store_fields)*
         }
     }));
@@ -729,7 +762,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
         items.push(Item::Verbatim(declaration));
     }
     items.push(Item::Verbatim(quote! {
-        struct __GeamProvider;
+        #profile_visibility struct __GeamProvider;
     }));
     items.push(Item::Verbatim(quote! {
         impl<Profile> #support::HostProvider<Profile> for __GeamProvider
@@ -4217,6 +4250,7 @@ impl Parse for ModuleArguments {
                 "crate_path" => set_once(&mut partial.crate_path, input.parse()?, &field)?,
                 "profile" => set_once(&mut partial.profile, input.parse()?, &field)?,
                 "component" => set_once(&mut partial.component, input.parse()?, &field)?,
+                "stores" => set_once(&mut partial.stores, input.parse()?, &field)?,
                 _ => {
                     return Err(syn::Error::new(
                         field.span(),
@@ -4263,10 +4297,19 @@ impl Parse for ModuleArguments {
                 ));
             }
         };
+        if matches!(profile, ModuleProfile::Component)
+            && let Some(stores) = &partial.stores
+        {
+            return Err(syn::Error::new_spanned(
+                stores,
+                "module `stores` requires `profile` and `component`",
+            ));
+        }
         Ok(Self {
             path,
             crate_path: partial.crate_path,
             profile,
+            stores: partial.stores,
         })
     }
 }
@@ -5793,6 +5836,16 @@ mod tests {
         assert_eq!(
             syn::parse2::<ModuleArguments>(quote!(
                 path = "counter",
+                stores = crate::counter_stores
+            ))
+            .err()
+            .expect("stores without a built-in profile should fail")
+            .to_string(),
+            "module `stores` requires `profile` and `component`",
+        );
+        assert_eq!(
+            syn::parse2::<ModuleArguments>(quote!(
+                path = "counter",
                 profile = crate::First,
                 profile = crate::Second
             ))
@@ -5825,6 +5878,17 @@ mod tests {
         assert_eq!(
             syn::parse2::<ModuleArguments>(quote!(
                 path = "counter",
+                stores = crate::first_stores,
+                stores = crate::second_stores
+            ))
+            .err()
+            .expect("duplicate stores projection should fail")
+            .to_string(),
+            "duplicate module argument `stores`",
+        );
+        assert_eq!(
+            syn::parse2::<ModuleArguments>(quote!(
+                path = "counter",
                 profile = crate::Profile,
                 component = crate::Component<Profile::Io>
             ))
@@ -5837,9 +5901,10 @@ mod tests {
             path = "counter",
             crate_path = geam_core,
             profile = crate::Profile,
-            component = crate::Component<Profile::Io>
+            component = crate::Component<Profile::Io>,
+            stores = crate::counter_stores
         ))
-        .expect("explicit built-in profile and component should parse together");
+        .expect("explicit built-in profile, component, and stores should parse together");
     }
 
     #[test]
@@ -5863,6 +5928,10 @@ mod tests {
             (
                 quote!(path = "counter", component =),
                 "unexpected end of input, expected one of: `for`, parentheses, `fn`, `unsafe`, `extern`, identifier, `::`, `<`, `dyn`, square brackets, `*`, `&`, `!`, `impl`, `_`, lifetime",
+            ),
+            (
+                quote!(path = "counter", stores = "counter"),
+                "expected identifier",
             ),
         ];
 
@@ -5912,6 +5981,74 @@ mod tests {
         assert!(expansion.contains("Profile : crate :: BuiltInProfile"));
         assert!(expansion.contains("next :: < Profile >"));
         assert!(!expansion.contains("__GeamProfile"));
+        assert!(
+            expansion
+                .contains("# [doc (hidden)] # [derive (Default)] pub (super) struct __GeamStores")
+        );
+    }
+
+    #[test]
+    fn explicit_external_modules_require_one_static_store_projection() {
+        let item = quote! {
+            mod token {
+                #[geam::external(name = "Token")]
+                #[derive(PartialEq, Eq, Hash)]
+                struct Token;
+            }
+        };
+        let missing = expand(
+            quote!(
+                path = "token",
+                crate_path = geam_core,
+                profile = crate::BuiltInProfile,
+                component = crate::Component<Profile::Io>
+            ),
+            item.clone(),
+        )
+        .expect_err("built-in external storage must have an explicit projection");
+        assert_eq!(
+            missing.to_string(),
+            "built-in modules with external declarations require a `stores` projection",
+        );
+
+        let unused = expand(
+            quote!(
+                path = "token",
+                crate_path = geam_core,
+                profile = crate::BuiltInProfile,
+                component = crate::Component<Profile::Io>,
+                stores = crate::token_stores
+            ),
+            quote!(
+                mod token {}
+            ),
+        )
+        .expect_err("store projections without external declarations should fail");
+        assert_eq!(
+            unused.to_string(),
+            "module `stores` is used only by external declarations",
+        );
+
+        let expansion = expand(
+            quote!(
+                path = "token",
+                crate_path = geam_core,
+                profile = crate::BuiltInProfile,
+                component = crate::Component<Profile::Io>,
+                stores = crate::token_stores
+            ),
+            item,
+        )
+        .expect("one explicit store projection should expand")
+        .to_string();
+        assert!(
+            expansion
+                .contains("& crate :: token_stores :: < Profile > (stores) . __geam_external_0")
+        );
+        assert!(
+            expansion.contains("# [doc (hidden)] # [derive (Default)] pub struct __GeamStores")
+        );
+        assert!(expansion.contains("# [doc (hidden)] pub struct __GeamExternalStorage0"));
     }
 
     #[test]

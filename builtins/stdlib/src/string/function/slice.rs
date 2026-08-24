@@ -1,7 +1,4 @@
-use super::super::schema::{Direction, StringList};
-use super::StringProvider;
-use crate::GleamStdlibHostProfile;
-use crate::{HostCall, HostCallCompletion, HostCallError, HostCustom, HostFailure};
+use crate::HostFailure;
 use ecow::EcoString;
 use num_bigint::{BigInt, Sign};
 use num_traits::ToPrimitive;
@@ -49,37 +46,22 @@ pub(in crate::string) fn unsafe_byte_slice(
         .ok_or_else(|| HostFailure::new("string byte slice is outside UTF-8 boundaries"))
 }
 
-pub(in crate::string) fn erl_split<'call, Profile>(
-    call: HostCall<'call, Profile, StringProvider<Profile>, StringList>,
-    string: EcoString,
-    pattern: EcoString,
-) -> Result<HostCallCompletion<'call, StringList>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    let parts = match string.split_once(pattern.as_str()) {
+pub(in crate::string) fn erl_split(string: EcoString, pattern: EcoString) -> Vec<EcoString> {
+    match string.split_once(pattern.as_str()) {
         Some((first, rest)) if !pattern.is_empty() => {
             vec![EcoString::from(first), EcoString::from(rest)]
         }
         _ => vec![string],
-    };
-    Ok(call.return_list(parts))
+    }
 }
 
-pub(in crate::string) fn erl_trim<'call, Profile>(
-    call: HostCall<'call, Profile, StringProvider<Profile>, EcoString>,
-    string: EcoString,
-    direction: HostCustom<'call, Direction>,
-) -> Result<HostCallCompletion<'call, EcoString>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    let value = if call.custom_constructor(direction) == 0 {
+pub(in crate::string) fn erl_trim(string: EcoString, leading: bool) -> EcoString {
+    if leading {
         string.trim_start_matches(is_pattern_whitespace)
     } else {
         string.trim_end_matches(is_pattern_whitespace)
-    };
-    Ok(call.return_value(value.into()))
+    }
+    .into()
 }
 
 fn is_pattern_whitespace(codepoint: char) -> bool {

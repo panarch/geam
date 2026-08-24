@@ -1,108 +1,160 @@
 mod function;
-mod schema;
 
-use self::function::{
-    StringProvider, byte_size, contains, crop, do_inspect, ends_with, erl_split, erl_trim,
-    from_utf_codepoints, grapheme_slice, length, less_than, lowercase, pop_grapheme, remove_prefix,
-    remove_suffix, starts_with, unsafe_byte_slice, unsafe_int_to_utf_codepoint, uppercase,
-    utf_codepoint_to_int,
-};
-use self::schema::{
-    Direction, InspectValue, PopConstructions, PopResult, StringList, UtfCodepointList,
-};
-use super::GleamStdlibHostProfile;
+use super::{Component, GleamStdlibHostProfile, GleamStdlibRunState};
 use crate::{HostProviderModule, HostRegistrationError};
 use ecow::EcoString;
+use geam_core::provider::{Call, HostResult, Value};
 use num_bigint::BigInt;
+
+#[geam_macros::module(
+    path = "gleam/string",
+    crate_path = geam_core,
+    profile = crate::GleamStdlibHostProfile,
+    component = crate::Component<Profile::Io>,
+)]
+mod provider {
+    use super::{BigInt, Call, EcoString, GleamStdlibRunState, HostResult, Value, function};
+    use crate::string_tree;
+
+    #[geam_macros::custom(input = DirectionInput)]
+    #[allow(dead_code)]
+    pub(super) enum Direction {
+        Leading,
+        Trailing,
+    }
+
+    #[geam_macros::function]
+    fn length(string: EcoString) -> BigInt {
+        function::length(string)
+    }
+
+    #[geam_macros::function]
+    fn lowercase(string: EcoString) -> EcoString {
+        function::lowercase(string)
+    }
+
+    #[geam_macros::function]
+    fn uppercase(string: EcoString) -> EcoString {
+        function::uppercase(string)
+    }
+
+    #[geam_macros::function]
+    fn less_than(left: EcoString, right: EcoString) -> bool {
+        function::less_than(left, right)
+    }
+
+    #[geam_macros::function]
+    fn grapheme_slice(string: EcoString, index: BigInt, length: BigInt) -> HostResult<EcoString> {
+        function::grapheme_slice(string, index, length).map_err(Into::into)
+    }
+
+    #[geam_macros::function]
+    fn unsafe_byte_slice(
+        string: EcoString,
+        index: BigInt,
+        length: BigInt,
+    ) -> HostResult<EcoString> {
+        function::unsafe_byte_slice(string, index, length).map_err(Into::into)
+    }
+
+    #[geam_macros::function]
+    fn crop(string: EcoString, substring: EcoString) -> EcoString {
+        function::crop(string, substring)
+    }
+
+    #[geam_macros::function]
+    fn contains(haystack: EcoString, needle: EcoString) -> bool {
+        function::contains(haystack, needle)
+    }
+
+    #[geam_macros::function]
+    fn starts_with(string: EcoString, prefix: EcoString) -> bool {
+        function::starts_with(string, prefix)
+    }
+
+    #[geam_macros::function]
+    fn ends_with(string: EcoString, suffix: EcoString) -> bool {
+        function::ends_with(string, suffix)
+    }
+
+    #[geam_macros::function]
+    fn erl_split(string: EcoString, pattern: EcoString) -> Vec<EcoString> {
+        function::erl_split(string, pattern)
+    }
+
+    #[geam_macros::function]
+    fn erl_trim(string: EcoString, direction: DirectionInput) -> EcoString {
+        function::erl_trim(string, matches!(direction, DirectionInput::Leading))
+    }
+
+    #[geam_macros::function]
+    fn pop_grapheme(string: EcoString) -> Result<(EcoString, EcoString), ()> {
+        function::pop_grapheme(string)
+    }
+
+    #[geam_macros::function]
+    fn unsafe_int_to_utf_codepoint(value: BigInt) -> HostResult<char> {
+        function::unsafe_int_to_utf_codepoint(value).map_err(Into::into)
+    }
+
+    #[geam_macros::function]
+    fn from_utf_codepoints(values: geam_core::provider::List<char>) -> EcoString {
+        let mut string = String::new();
+        let mut index = 0;
+        while let Some(value) = values.get(index) {
+            string.push(value);
+            index += 1;
+        }
+        string.into()
+    }
+
+    #[geam_macros::function]
+    fn utf_codepoint_to_int(value: char) -> BigInt {
+        function::utf_codepoint_to_int(value)
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn do_inspect<Item>(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        value: Value<Item>,
+    ) -> string_tree::StringTreePayload {
+        function::do_inspect(call.inspect(&value))
+    }
+
+    #[geam_macros::function]
+    fn byte_size(string: EcoString) -> BigInt {
+        function::byte_size(string)
+    }
+
+    #[geam_macros::function]
+    fn remove_prefix(string: EcoString, prefix: EcoString) -> EcoString {
+        function::remove_prefix(string, prefix)
+    }
+
+    #[geam_macros::function]
+    fn remove_suffix(string: EcoString, suffix: EcoString) -> EcoString {
+        function::remove_suffix(string, suffix)
+    }
+}
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
     Profile: GleamStdlibHostProfile,
 {
-    HostProviderModule::new("gleam_stdlib", "gleam/string")
-        .and_then(|provider| provider.with_function("length", length))
-        .and_then(|provider| provider.with_function("lowercase", lowercase))
-        .and_then(|provider| provider.with_function("uppercase", uppercase))
-        .and_then(|provider| provider.with_function("less_than", less_than))
-        .and_then(|provider| {
-            provider.with_fallible_function::<(EcoString, BigInt, BigInt), EcoString, _>(
-                "grapheme_slice",
-                grapheme_slice,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_fallible_function::<(EcoString, BigInt, BigInt), EcoString, _>(
-                "unsafe_byte_slice",
-                unsafe_byte_slice,
-            )
-        })
-        .and_then(|provider| provider.with_function("crop", crop))
-        .and_then(|provider| provider.with_function("contains", contains))
-        .and_then(|provider| provider.with_function("starts_with", starts_with))
-        .and_then(|provider| provider.with_function("ends_with", ends_with))
-        .and_then(|provider| {
-            provider.with_scoped_function::<
-                StringProvider<Profile>,
-                (EcoString, EcoString),
-                StringList,
-                _,
-            >("erl_split", erl_split::<Profile>)
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<
-                StringProvider<Profile>,
-                (EcoString, Direction),
-                EcoString,
-                _,
-            >("erl_trim", erl_trim::<Profile>)
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function_and_constructions::<
-                StringProvider<Profile>,
-                (EcoString,),
-                PopResult,
-                PopConstructions,
-                _,
-            >("pop_grapheme", pop_grapheme::<Profile>)
-        })
-        .and_then(|provider| {
-            provider.with_fallible_function::<(BigInt,), char, _>(
-                "unsafe_int_to_utf_codepoint",
-                unsafe_int_to_utf_codepoint,
-            )
-        })
-        .and_then(|provider| {
-            provider
-                .with_scoped_function::<StringProvider<Profile>, (UtfCodepointList,), EcoString, _>(
-                    "from_utf_codepoints",
-                    from_utf_codepoints::<Profile>,
-                )
-        })
-        .and_then(|provider| provider.with_function("utf_codepoint_to_int", utf_codepoint_to_int))
-        .and_then(|provider| {
-            provider.with_scoped_function::<
-                StringProvider<Profile>,
-                (InspectValue,),
-                super::string_tree::StringTree,
-                _,
-            >("do_inspect", do_inspect::<Profile>)
-        })
-        .and_then(|provider| provider.with_function("byte_size", byte_size))
-        .and_then(|provider| provider.with_function("remove_prefix", remove_prefix))
-        .and_then(|provider| provider.with_function("remove_suffix", remove_suffix))
+    provider::__geam_module::<Profile>()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::function::StringProvider;
     use super::host_provider;
-    use crate::string_tree::StringTreeSchema;
-    use crate::{GleamStdlibProfile, GleamStdlibRunState};
+    use crate::string_tree::{self, STRING_TREE_DECLARATIONS};
     use crate::{
-        HostModule, HostProviderModule, HostProviderSet, HostedExecution, ModuleSource,
-        PackageSource, compile_typed_host_program, plan_host_program,
+        ExecutionError, HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
+        ValueType, compile_typed_host_program, plan_host_program,
     };
+    use crate::{GleamStdlibProfile, GleamStdlibRunState};
     use ecow::EcoString;
+    use geam_core::{HostError, InvariantError};
 
     const STRING_DECLARATIONS: &str = r#"
 import gleam/string_tree.{type StringTree}
@@ -177,6 +229,39 @@ fn remove_prefix(string: String, prefix: String) -> String
 fn remove_suffix(string: String, suffix: String) -> String
 "#;
 
+    fn execution(source: &str) -> HostedExecution<GleamStdlibProfile> {
+        let source = format!("{STRING_DECLARATIONS}\n{source}");
+        let string_tree = string_tree::host_provider::<GleamStdlibProfile>()
+            .expect("official string tree provider should register");
+        let string = host_provider::<GleamStdlibProfile>()
+            .expect("official string provider should register");
+        let hosts = HostProviderSet::with_providers(
+            Vec::<HostModule<GleamStdlibProfile>>::new(),
+            [string_tree, string],
+        )
+        .expect("string providers should be unique");
+        let typed = compile_typed_host_program(
+            "gleam_stdlib",
+            "gleam/string",
+            [PackageSource::new(
+                "gleam_stdlib",
+                Vec::<EcoString>::new(),
+                [
+                    ModuleSource::new(
+                        "gleam/string_tree",
+                        "src/gleam/string_tree.gleam",
+                        STRING_TREE_DECLARATIONS,
+                    ),
+                    ModuleSource::new("gleam/string", "src/gleam/string.gleam", source),
+                ],
+            )],
+            hosts,
+        )
+        .expect("synthetic string source should compile");
+        let plan = plan_host_program(typed).expect("synthetic string source should plan");
+        HostedExecution::try_from_module_plan(plan).expect("string execution should seal")
+    }
+
     #[test]
     fn registers_the_exact_official_string_provider_inventory() {
         let provider = host_provider::<GleamStdlibProfile>()
@@ -217,10 +302,9 @@ fn remove_suffix(string: String, suffix: String) -> String
 
     #[test]
     fn executes_every_string_provider_through_the_hosted_pipeline() {
-        let source = format!(
-            r#"{STRING_DECLARATIONS}
-
-pub fn main() {{
+        let execution = execution(
+            r#"
+pub fn main() {
   assert length("A👍🏽é") == 3
   assert lowercase("Gleam İ") == "gleam i̇"
   assert uppercase("Gleam ß") == "GLEAM SS"
@@ -246,46 +330,9 @@ pub fn main() {{
   let inspected = do_inspect(#(1, "one"))
   let _ = do_inspect(Person(name: "Kim"))
   inspected
-}}
+}
 "#,
         );
-        let string_tree =
-            HostProviderModule::<GleamStdlibProfile>::new("gleam_stdlib", "gleam/string_tree")
-                .and_then(
-                    HostProviderModule::with_external_type::<
-                        StringProvider<GleamStdlibProfile>,
-                        StringTreeSchema,
-                    >,
-                )
-                .expect("synthetic StringTree storage should register");
-        let string = host_provider::<GleamStdlibProfile>()
-            .expect("official string provider should register");
-        let hosts = HostProviderSet::with_providers(
-            Vec::<HostModule<GleamStdlibProfile>>::new(),
-            [string_tree, string],
-        )
-        .expect("synthetic string providers should be unique");
-        let typed = compile_typed_host_program(
-            "gleam_stdlib",
-            "gleam/string",
-            [PackageSource::new(
-                "gleam_stdlib",
-                Vec::<EcoString>::new(),
-                [
-                    ModuleSource::new(
-                        "gleam/string_tree",
-                        "src/gleam/string_tree.gleam",
-                        "pub type StringTree",
-                    ),
-                    ModuleSource::new("gleam/string", "src/gleam/string.gleam", source),
-                ],
-            )],
-            hosts,
-        )
-        .expect("synthetic string source should compile");
-        let plan = plan_host_program(typed).expect("synthetic string source should plan");
-        let execution =
-            HostedExecution::try_from_module_plan(plan).expect("string execution should seal");
         let value = execution
             .run_main(
                 &mut GleamStdlibRunState::from_seed([0; 32]),
@@ -297,5 +344,60 @@ pub fn main() {{
             value.inspect().to_string(),
             r##"string_tree.from_string("#(1, \"one\")")"##,
         );
+    }
+
+    #[test]
+    fn preserves_host_failures_through_the_generated_string_adapters() {
+        let cases = [
+            (
+                r#"pub fn main() { grapheme_slice("abc", -1, 1) }"#,
+                "grapheme_slice",
+                "string grapheme slice requires non-negative bounds",
+            ),
+            (
+                r#"pub fn main() { unsafe_byte_slice("👍", 1, 1) }"#,
+                "unsafe_byte_slice",
+                "string byte slice is outside UTF-8 boundaries",
+            ),
+            (
+                r#"pub fn main() { unsafe_int_to_utf_codepoint(-1) }"#,
+                "unsafe_int_to_utf_codepoint",
+                "integer is not a valid Unicode codepoint",
+            ),
+        ];
+
+        for (source, function, reason) in cases {
+            let error = execution(source)
+                .run_main(
+                    &mut GleamStdlibRunState::from_seed([0; 32]),
+                    &mut Vec::new(),
+                )
+                .expect_err("invalid string input should fail");
+            let error = expect_string_host_error(error);
+
+            assert_eq!(error.package(), "gleam_stdlib");
+            assert_eq!(error.module(), "gleam/string");
+            assert_eq!(error.function(), function);
+            assert_eq!(error.failure().message(), reason);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid string input should remain a host failure")]
+    fn string_host_failure_assertion_rejects_other_execution_errors() {
+        let _ = expect_string_host_error(ExecutionError::Invariant(
+            InvariantError::ListIndexOutOfBounds {
+                item_type: ValueType::String,
+                index: 1,
+                length: 0,
+            },
+        ));
+    }
+
+    fn expect_string_host_error(error: ExecutionError) -> Box<HostError> {
+        let ExecutionError::Host(error) = error else {
+            panic!("invalid string input should remain a host failure");
+        };
+        error
     }
 }

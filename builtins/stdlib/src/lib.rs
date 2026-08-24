@@ -1,16 +1,15 @@
 pub(crate) use geam_core::{
     BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostCallable, HostComponentProfile,
-    HostConstruction, HostConstructions, HostCustom, HostCustomConstructorAt,
-    HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
-    HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomIndex0,
-    HostCustomSchema, HostCustomType, HostExternal, HostExternalBinding, HostExternalEquality,
-    HostExternalHashing, HostExternalInspection, HostExternalPayloadBuilder,
-    HostExternalPayloadView, HostExternalSchema, HostExternalStorage, HostExternalStore,
-    HostExternalType, HostFailure, HostFunctionType, HostList, HostListType, HostProfile,
-    HostProvider, HostProviderComponent, HostProviderComponentRegistration, HostProviderModule,
-    HostRegistrationError, HostStoredDynamic, HostStoredType, HostStoredValue, HostTupleType,
-    HostType, HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
-    HostTypeParameter, HostTypeSequence, HostValue, ValueType,
+    HostConstruction, HostConstructions, HostCustomConstructorAt, HostCustomConstructorDefinition,
+    HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList,
+    HostCustomFieldListEnd, HostCustomIndex0, HostCustomSchema, HostCustomType, HostExternal,
+    HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
+    HostExternalPayloadBuilder, HostExternalPayloadView, HostExternalSchema, HostExternalStorage,
+    HostExternalStore, HostExternalType, HostFailure, HostFunctionType, HostList, HostListType,
+    HostProfile, HostProvider, HostProviderComponent, HostProviderComponentRegistration,
+    HostProviderModule, HostRegistrationError, HostStoredDynamic, HostStoredType, HostStoredValue,
+    HostTupleType, HostType, HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeList,
+    HostTypeListEnd, HostTypeParameter, HostTypeSequence, HostValue, ValueType,
 };
 #[cfg(test)]
 pub(crate) use geam_core::{
@@ -40,7 +39,6 @@ pub use run_state::{GleamStdlibRunState, GleamStdlibRunStateError};
 
 pub(crate) use dict::{DictExternalStorage, DictSchema};
 pub(crate) use dynamic::{Dynamic, DynamicExternalStorage, DynamicSchema};
-pub(crate) use string_tree::{StringTreeExternalStorage, StringTreeSchema};
 
 /// Narrow implementation contract used by sibling official provider packages.
 #[doc(hidden)]

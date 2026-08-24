@@ -349,9 +349,10 @@ mod tests {
     };
     use crate::host::{ExternalTestProfile, ExternalTestRunState};
     use crate::{
-        HostCall, HostCallCompletion, HostCallError, HostCallable, HostExternal, HostListType,
-        HostModule, HostProviderModule, HostProviderSet, HostTypeListEnd, HostedExecution,
-        ModuleSource, PackageSource, Value, compile_typed_host_program, plan_host_program,
+        HostCall, HostCallCompletion, HostCallError, HostCallable, HostConstructions, HostExternal,
+        HostListType, HostModule, HostProviderModule, HostProviderSet, HostTypeIndex0,
+        HostTypeList, HostTypeListEnd, HostedExecution, ModuleSource, PackageSource, Value,
+        compile_typed_host_program, plan_host_program,
     };
     use ecow::EcoString;
     use num_bigint::BigInt;
@@ -383,6 +384,24 @@ mod tests {
         ) -> Result<HostCallCompletion<'call, HostListType<RuntimeHostCounter>>, HostCallError>
         {
             Ok(call.return_list([counter, counter]))
+        }
+
+        fn construct_list_item<'call>(
+            mut call: HostCall<
+                'call,
+                ExternalTestProfile,
+                RuntimeCounterProvider,
+                HostListType<RuntimeHostCounter>,
+            >,
+            constructions: HostConstructions<
+                'call,
+                HostTypeList<RuntimeHostCounter, HostTypeListEnd>,
+            >,
+            value: BigInt,
+        ) -> Result<HostCallCompletion<'call, HostListType<RuntimeHostCounter>>, HostCallError>
+        {
+            let counter = call.construct_external(constructions.at::<HostTypeIndex0>(), value);
+            Ok(call.return_list([counter]))
         }
 
         fn invoke_counter<'call>(
@@ -435,6 +454,14 @@ mod tests {
                 duplicate,
             )
             .expect("external list constructor should be valid")
+            .with_scoped_function_and_constructions::<
+                RuntimeCounterProvider,
+                (BigInt,),
+                HostListType<RuntimeHostCounter>,
+                HostTypeList<RuntimeHostCounter, HostTypeListEnd>,
+                _,
+            >("construct_list_item", construct_list_item)
+            .expect("intermediate external constructor should be valid")
             .with_scoped_function::<
                 RuntimeCounterProvider,
                 (RuntimeCounterCallable, BigInt),
@@ -461,6 +488,9 @@ fn new_counter(value: Int) -> Counter
 
 @external(erlang, "host", "duplicate")
 fn duplicate(counter: Counter) -> List(Counter)
+
+@external(erlang, "host", "construct_list_item")
+fn construct_list_item(value: Int) -> List(Counter)
 
 @external(erlang, "host", "invoke_counter")
 fn invoke_counter(function: fn(Int) -> Counter, value: Int) -> Counter
@@ -521,6 +551,7 @@ pub fn main() {
     capture_codepoints(),
   ) as "captures"
   echo #(values, more_values) as "lists"
+  echo construct_list_item(8) as "constructed list"
   echo callback_counter as "callback"
   echo #(
     list_function_counter,
@@ -557,7 +588,7 @@ pub fn main() {
             .expect("external runtime source should execute");
 
         assert_eq!(returned.inspect().to_string(), "Counter(1)");
-        assert_eq!(echoes.len(), 8);
+        assert_eq!(echoes.len(), 9);
         assert_eq!(
             echoes[0].value().inspect().to_string(),
             "#(//fn(a) { ... }, //fn(a) { ... }, //fn() { ... })",
@@ -574,12 +605,13 @@ pub fn main() {
             echoes[3].value().inspect().to_string(),
             "#([Counter(2), Counter(2)], [Counter(3), Counter(3)])",
         );
-        assert_eq!(echoes[4].value().inspect().to_string(), "Counter(4)");
+        assert_eq!(echoes[4].value().inspect().to_string(), "[Counter(8)]");
+        assert_eq!(echoes[5].value().inspect().to_string(), "Counter(4)");
         assert_eq!(
-            echoes[5].value().inspect().to_string(),
+            echoes[6].value().inspect().to_string(),
             "#(Counter(5), Counter(6), Counter(7))",
         );
-        assert_eq!(echoes[6].value().inspect().to_string(), "[]");
-        assert_eq!(echoes[7].value(), &Value::Bool(true));
+        assert_eq!(echoes[7].value().inspect().to_string(), "[]");
+        assert_eq!(echoes[8].value(), &Value::Bool(true));
     }
 }

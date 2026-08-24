@@ -1,29 +1,8 @@
-use super::schema::StringTreeSchema;
-use crate::{GleamStdlibHostProfile, stdlib_stores};
-use crate::{
-    HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalStorage,
-    HostExternalStore,
-};
 use ecow::EcoString;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::mem;
 use std::rc::Rc;
-
-#[derive(Default)]
-pub(crate) struct Stores {
-    values: HostExternalStore<StringTreePayload>,
-}
-
-pub struct StringTreePayload {
-    pub(crate) tree: StringTree,
-}
-
-impl StringTreePayload {
-    pub fn from_stored(tree: StringTree) -> Self {
-        Self { tree }
-    }
-}
 
 #[derive(Clone)]
 pub struct StringTree {
@@ -158,35 +137,6 @@ fn take_children(kind: &mut StringTreeNodeKind) -> Vec<Rc<StringTreeNode>> {
     match mem::replace(kind, StringTreeNodeKind::Text(EcoString::new())) {
         StringTreeNodeKind::Text(_) => Vec::new(),
         StringTreeNodeKind::Sequence(children) => children.into_vec(),
-    }
-}
-
-pub struct StringTreeExternalStorage;
-
-impl<Profile> HostExternalStorage<Profile, StringTreeSchema> for StringTreeExternalStorage
-where
-    Profile: GleamStdlibHostProfile,
-{
-    type Payload = StringTreePayload;
-
-    fn store(stores: &Profile::ExternalStores) -> &HostExternalStore<Self::Payload> {
-        &stdlib_stores::<Profile>(stores).string_tree.values
-    }
-
-    fn source_equal(
-        _context: &HostExternalEquality<'_>,
-        left: &Self::Payload,
-        right: &Self::Payload,
-    ) -> bool {
-        left.tree.structurally_equal(&right.tree)
-    }
-
-    fn source_hash(_context: &HostExternalHashing<'_>, value: &Self::Payload) -> u64 {
-        value.tree.structural_hash()
-    }
-
-    fn inspect(_context: &HostExternalInspection<'_>, value: &Self::Payload) -> EcoString {
-        value.tree.inspect()
     }
 }
 
