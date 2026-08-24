@@ -12,12 +12,13 @@ low-level SDK only when the macro surface does not yet cover a capability.
 | [`request_ids`](request_ids/README.md) | `Default` | None | None | Mutable and read-only state access |
 | [`feature_flags`](feature_flags/README.md) | Configured | Required | None | Explicit configuration and shared state |
 | [`run_metrics`](run_metrics/README.md) | None | None | Manual | Specialized equality, hashing, and inspection |
+| [`call_tracing`](call_tracing/README.md) | `Default` | None | None | Typed callback invocation and same-component re-entry |
 | [`text_pattern`](text_pattern/README.md) | Explicit low-level component | None | Manual | Capabilities outside the current macro surface |
 
 The recommended reading order is:
 
 ```text
-text_tools -> value_types -> tag_set -> request_ids -> feature_flags -> run_metrics -> text_pattern
+text_tools -> value_types -> tag_set -> request_ids -> feature_flags -> run_metrics -> call_tracing -> text_pattern
 ```
 
 Every example keeps the Gleam package and Rust provider separate:

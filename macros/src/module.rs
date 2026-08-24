@@ -9,7 +9,7 @@ use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream};
 use syn::{
     Attribute, FnArg, GenericArgument, GenericParam, Ident, Item, ItemFn, ItemMod, ItemStruct,
-    LitStr, Meta, Path, PathArguments, ReturnType, Token, Type, TypePath,
+    LitStr, Meta, Path, PathArguments, ReturnType, Token, Type, TypeBareFn, TypePath,
 };
 
 struct ModuleArguments {
@@ -71,6 +71,14 @@ struct GenericValueType {
     host: GenericHostType,
 }
 
+struct CallbackType {
+    signature: TypeBareFn,
+    path: TypePath,
+    arguments: Vec<FunctionReturnType>,
+    return_: Box<FunctionInputType>,
+    codec: Ident,
+}
+
 struct ClassifiedGenericHostType {
     host: GenericHostType,
     instantiated: Type,
@@ -108,6 +116,7 @@ struct GenericParameterScope {
 }
 
 struct FunctionGeneric {
+    ident: Ident,
     index: usize,
 }
 
@@ -212,10 +221,15 @@ struct ListType {
     decoder: Ident,
 }
 
-enum FunctionArgumentType {
+enum FunctionInputType {
     Value(Box<ProviderValueType>),
     Generic(Box<GenericValueType>),
     List(Box<ListType>),
+}
+
+enum FunctionArgumentType {
+    Input(FunctionInputType),
+    Callback(Box<CallbackType>),
 }
 
 enum FunctionReturnType {
@@ -258,8 +272,16 @@ struct ListDeclaredAccess {
 }
 
 struct GeneratedFunction {
+    callback_codecs: Vec<TokenStream>,
     wrapper: TokenStream,
     registration: TokenStream,
+    bounds: Vec<TokenStream>,
+}
+
+struct GeneratedCallback {
+    definition: TokenStream,
+    requirements: TokenStream,
+    has_constructions: bool,
     bounds: Vec<TokenStream>,
 }
 
@@ -289,6 +311,19 @@ struct OutputEnvironment<'model> {
 struct OutputState<'output> {
     names: &'output mut GeneratedNames,
     constructions: &'output mut Vec<GeneratedConstruction>,
+}
+
+enum GenericInputSource {
+    Declared,
+    Instantiated,
+}
+
+struct InputEnvironment<'model> {
+    customs: &'model [CustomModel],
+    support: &'model TokenStream,
+    return_type: &'model TokenStream,
+    function_generics: &'model [FunctionGeneric],
+    generic_source: GenericInputSource,
 }
 
 #[derive(Default)]
@@ -381,7 +416,7 @@ impl GenericParameterScope {
                     ),
                 ));
             };
-            generics.push(FunctionGeneric { index });
+            generics.push(FunctionGeneric { ident, index });
         }
         Ok(generics)
     }
@@ -727,6 +762,9 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
         .flat_map(|function| function.bounds.iter().cloned())
         .filter(|bound| module_bound_keys.insert(bound.to_string()))
         .collect::<Vec<_>>();
+    let callback_codecs = generated_functions
+        .iter()
+        .flat_map(|function| function.callback_codecs.iter());
     let wrappers = generated_functions.iter().map(|function| &function.wrapper);
     let registrations = generated_functions
         .iter()
@@ -781,6 +819,9 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     }
     for decoder in generated_list_decoders {
         items.push(Item::Verbatim(decoder));
+    }
+    for codec in callback_codecs {
+        items.push(Item::Verbatim(codec.clone()));
     }
     for wrapper in wrappers {
         items.push(Item::Verbatim(wrapper.clone()));
@@ -1741,6 +1782,184 @@ fn host_custom_index(index: usize, support: &TokenStream) -> TokenStream {
     output
 }
 
+fn generate_callback_codec(
+    callback: &CallbackType,
+    generics: &[FunctionGeneric],
+    customs: &[CustomModel],
+    support: &TokenStream,
+    outer_return: &TokenStream,
+) -> GeneratedCallback {
+    let codec = &callback.codec;
+    let generic_idents = generics
+        .iter()
+        .map(|generic| generic.ident.clone())
+        .collect::<Vec<_>>();
+    let codec_type = callback_codec_type(codec, generic_idents.iter().map(|ident| quote!(#ident)));
+    let host_arguments = callback_host_arguments(callback, customs, support);
+    let host_return = host_input_type(&callback.return_, customs, support);
+    let rust_arguments = callback
+        .arguments
+        .iter()
+        .map(|argument| callback_output_signature_type(argument, customs, support))
+        .collect::<Vec<_>>();
+    let rust_return = callback_input_signature_type(&callback.return_, customs, support);
+    let argument_names = (0..callback.arguments.len())
+        .map(|index| format_ident!("__geam_callback_argument_{index}"))
+        .collect::<Vec<_>>();
+    let mut names = GeneratedNames::default();
+    let mut constructions = Vec::new();
+    let environment = OutputEnvironment {
+        customs,
+        support,
+        provider: &quote!(__GeamProvider),
+        return_type: outer_return,
+    };
+    let encoded_arguments = callback
+        .arguments
+        .iter()
+        .zip(&argument_names)
+        .map(|(type_, argument)| {
+            encode_callback_argument(
+                type_,
+                quote!(#argument),
+                &environment,
+                &mut names,
+                &mut constructions,
+            )
+        })
+        .collect::<Vec<_>>();
+    let argument_statements = encoded_arguments
+        .iter()
+        .map(|argument| &argument.statements);
+    let argument_values = encoded_arguments
+        .iter()
+        .map(|argument| argument.value.clone())
+        .collect::<Vec<_>>();
+    let host_values = host_value_sequence(&argument_values);
+    let unused_unit = callback
+        .arguments
+        .is_empty()
+        .then(|| quote!(#[allow(clippy::unused_unit)]));
+    let requirements = provider_requirement_sequence(&constructions, support);
+    let construction_setup = if constructions.is_empty() {
+        TokenStream::new()
+    } else {
+        provider_construction_bindings(&constructions, quote!(constructions), support)
+    };
+    let input_environment = InputEnvironment {
+        customs,
+        support,
+        return_type: outer_return,
+        function_generics: &[],
+        generic_source: GenericInputSource::Declared,
+    };
+    let decoded_return = decode_input(
+        &callback.return_,
+        quote!(value),
+        &input_environment,
+        &mut names,
+    );
+    let return_statements = decoded_return.statements;
+    let returned = decoded_return.value;
+
+    let mut bounds = Vec::new();
+    for argument in &callback.arguments {
+        collect_function_return_bounds(argument, customs, support, outer_return, &mut bounds);
+    }
+    collect_function_input_type_bounds(
+        &callback.return_,
+        customs,
+        support,
+        outer_return,
+        &mut bounds,
+    );
+    if !constructions.is_empty() {
+        bounds.push(quote! {
+            #requirements: #support::ProviderConstructionRequirements
+        });
+        bounds.extend(provider_requirement_selection_bounds(
+            &requirements,
+            &constructions,
+            support,
+        ));
+    }
+    let mut bound_keys = BTreeSet::new();
+    bounds.retain(|bound| bound_keys.insert(bound.to_string()));
+
+    let codec_definition = if generic_idents.is_empty() {
+        quote!(struct #codec;)
+    } else {
+        quote! {
+            struct #codec<#(#generic_idents),*>(
+                ::core::marker::PhantomData<fn() -> (#(#generic_idents,)*)>,
+            );
+        }
+    };
+    let definition = quote! {
+        #[doc(hidden)]
+        #[allow(non_camel_case_types)]
+        #codec_definition
+
+        impl<'__geam_call, #(#generic_idents,)* Profile>
+            #support::ProviderCallbackCodec<
+                '__geam_call,
+                Profile,
+                __GeamProvider,
+                #outer_return,
+            > for #codec_type
+        where
+            Profile: __GeamModuleProfile,
+            #(#bounds,)*
+        {
+            type HostArguments = #host_arguments;
+            type HostReturn = #host_return;
+            type Arguments = (#(#rust_arguments,)*);
+            type Returned = #rust_return;
+            type Requirements = #requirements;
+
+            #unused_unit
+            fn into_host_arguments(
+                arguments: Self::Arguments,
+                mut call: &mut #support::HostCall<
+                    '__geam_call,
+                    Profile,
+                    __GeamProvider,
+                    #outer_return,
+                >,
+                constructions: &#support::ProviderConstructions<
+                    '__geam_call,
+                    Self::Requirements,
+                >,
+            ) -> <Self::HostArguments as #support::HostTypeSequence>::Values<'__geam_call> {
+                let (#(#argument_names,)*) = arguments;
+                #construction_setup
+                #(#argument_statements)*
+                #host_values
+            }
+
+            fn from_host_return(
+                value: <Self::HostReturn as #support::HostType>::Value<'__geam_call>,
+                mut call: &mut #support::HostCall<
+                    '__geam_call,
+                    Profile,
+                    __GeamProvider,
+                    #outer_return,
+                >,
+            ) -> Self::Returned {
+                #return_statements
+                #returned
+            }
+        }
+    };
+
+    GeneratedCallback {
+        definition,
+        requirements,
+        has_constructions: !constructions.is_empty(),
+        bounds,
+    }
+}
+
 fn generate_function(
     function: &FunctionModel,
     customs: &[CustomModel],
@@ -1766,17 +1985,64 @@ fn generate_function(
     let mut names = GeneratedNames::default();
     let return_type = host_return_type(return_, customs, support);
     let mut codec_bounds = function_codec_bounds(function, customs, support, &return_type);
-    let decoded_arguments = function_arguments
+    let generated_callbacks = function_arguments
         .iter()
-        .zip(&arguments)
-        .map(|(type_, argument)| {
-            decode_argument(
-                type_,
-                quote!(#argument),
+        .map(|argument| match argument {
+            FunctionArgumentType::Callback(callback) => Some(generate_callback_codec(
+                callback,
+                generics,
                 customs,
                 support,
                 &return_type,
+            )),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    for callback in generated_callbacks.iter().flatten() {
+        codec_bounds.extend(callback.bounds.iter().cloned());
+    }
+    let mut generated_return = generate_return(
+        return_,
+        customs,
+        support,
+        &quote!(__GeamProvider),
+        &return_type,
+        &mut names,
+    );
+    let mut constructions = Vec::new();
+    let mut callback_construction_bindings = Vec::with_capacity(function_arguments.len());
+    for callback in &generated_callbacks {
+        let binding = callback.as_ref().and_then(|callback| {
+            callback.has_constructions.then(|| {
+                let binding = names.next("callback_constructions");
+                constructions.push(GeneratedConstruction {
+                    requirement: callback.requirements.clone(),
+                    binding: binding.clone(),
+                });
+                binding
+            })
+        });
+        callback_construction_bindings.push(binding);
+    }
+    constructions.append(&mut generated_return.constructions);
+    let input_environment = InputEnvironment {
+        customs,
+        support,
+        return_type: &return_type,
+        function_generics: generics,
+        generic_source: GenericInputSource::Instantiated,
+    };
+    let decoded_arguments = function_arguments
+        .iter()
+        .zip(&arguments)
+        .zip(&callback_construction_bindings)
+        .map(|((type_, argument), callback_constructions)| {
+            decode_argument(
+                type_,
+                quote!(#argument),
+                &input_environment,
                 &mut names,
+                callback_constructions.as_ref(),
             )
         })
         .collect::<Vec<_>>();
@@ -1830,28 +2096,20 @@ fn generate_function(
         }
         (false, false) => quote!(#ident::<#(#generic_arguments),*>),
     };
-    let generated_return = generate_return(
-        return_,
-        customs,
-        support,
-        &quote!(__GeamProvider),
-        &return_type,
-        &mut names,
-    );
     let return_statements = &generated_return.statements;
     let completion = &generated_return.completion;
-    let requirements = provider_requirement_sequence(&generated_return.constructions, support);
-    if !generated_return.constructions.is_empty() {
+    let requirements = provider_requirement_sequence(&constructions, support);
+    if !constructions.is_empty() {
         codec_bounds.push(quote! {
             #requirements: #support::ProviderConstructionRequirements
         });
         codec_bounds.extend(provider_requirement_selection_bounds(
             &requirements,
-            &generated_return.constructions,
+            &constructions,
             support,
         ));
     }
-    let construction_parameter = (!generated_return.constructions.is_empty()).then(|| {
+    let construction_parameter = (!constructions.is_empty()).then(|| {
         quote! {
             __geam_constructions: #support::HostConstructions<
                 '__geam_call,
@@ -1861,9 +2119,9 @@ fn generate_function(
             >,
         }
     });
-    let construction_setup = (!generated_return.constructions.is_empty()).then(|| {
+    let construction_setup = (!constructions.is_empty()).then(|| {
         let bindings = provider_construction_bindings(
-            &generated_return.constructions,
+            &constructions,
             quote!(&__geam_provider_constructions),
             support,
         );
@@ -1910,7 +2168,7 @@ fn generate_function(
     let host_arguments = function_arguments
         .iter()
         .map(|type_| host_argument_type(type_, customs, support));
-    let registration = if generated_return.constructions.is_empty() {
+    let registration = if constructions.is_empty() {
         quote! {
             let provider = provider.with_scoped_function::<
                 __GeamProvider,
@@ -1934,6 +2192,11 @@ fn generate_function(
     };
 
     GeneratedFunction {
+        callback_codecs: generated_callbacks
+            .into_iter()
+            .flatten()
+            .map(|callback| callback.definition)
+            .collect(),
         wrapper: wrapper_definition,
         registration,
         bounds: codec_bounds,
@@ -1949,19 +2212,14 @@ fn function_codec_bounds(
     let mut bounds = Vec::new();
     for argument in &function.arguments {
         match argument {
-            FunctionArgumentType::Value(type_) => {
-                collect_function_input_bounds(type_, customs, support, return_type, &mut bounds);
-            }
-            FunctionArgumentType::Generic(_) => {}
-            FunctionArgumentType::List(list) => {
-                for access in list_declared_accesses(&list.collection.value, customs) {
-                    let type_ = access.type_;
-                    bounds.push(quote! {
-                        <#type_ as #support::ProviderValue>::ListInput:
-                            #support::ProviderListInputCodec<Profile>
-                    });
-                }
-            }
+            FunctionArgumentType::Input(input) => collect_function_input_type_bounds(
+                input,
+                customs,
+                support,
+                return_type,
+                &mut bounds,
+            ),
+            FunctionArgumentType::Callback(_) => {}
         }
     }
     collect_function_return_bounds(
@@ -2026,6 +2284,30 @@ fn collect_function_input_bounds(
             });
         }
         ProviderValueType::Scalar(_) | ProviderValueType::External { .. } => {}
+    }
+}
+
+fn collect_function_input_type_bounds(
+    type_: &FunctionInputType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+    return_type: &TokenStream,
+    bounds: &mut Vec<TokenStream>,
+) {
+    match type_ {
+        FunctionInputType::Value(type_) => {
+            collect_function_input_bounds(type_, customs, support, return_type, bounds);
+        }
+        FunctionInputType::Generic(_) => {}
+        FunctionInputType::List(list) => {
+            for access in list_declared_accesses(&list.collection.value, customs) {
+                let type_ = access.type_;
+                bounds.push(quote! {
+                    <#type_ as #support::ProviderValue>::ListInput:
+                        #support::ProviderListInputCodec<Profile>
+                });
+            }
+        }
     }
 }
 
@@ -2148,17 +2430,75 @@ fn collect_function_output_intermediate_bounds(
 fn decode_argument(
     type_: &FunctionArgumentType,
     input: TokenStream,
-    customs: &[CustomModel],
-    support: &TokenStream,
-    return_type: &TokenStream,
+    environment: &InputEnvironment<'_>,
     names: &mut GeneratedNames,
+    callback_constructions: Option<&Ident>,
 ) -> GeneratedValue {
     match type_ {
-        FunctionArgumentType::Value(type_) => {
+        FunctionArgumentType::Input(type_) => decode_input(type_, input, environment, names),
+        FunctionArgumentType::Callback(callback) => {
+            let InputEnvironment {
+                support,
+                return_type,
+                function_generics,
+                ..
+            } = environment;
+            let value = names.next("callback");
+            let codec = callback_codec_type(
+                &callback.codec,
+                function_generics.iter().map(|generic| {
+                    let index = generic.index;
+                    quote!(#support::HostTypeParameter<#index>)
+                }),
+            );
+            let constructions = if let Some(constructions) = callback_constructions {
+                quote!(#constructions)
+            } else {
+                quote!(#support::ProviderConstructions::<
+                    #support::ProviderNoConstructions,
+                >::none())
+            };
+            GeneratedValue {
+                statements: quote! {
+                    let #value = #support::Callback::<
+                        _,
+                        #support::ProviderCallbackContext<
+                            '__geam_call,
+                            Profile,
+                            __GeamProvider,
+                            #return_type,
+                            #codec,
+                        >,
+                    >::from_host(#input, #constructions);
+                },
+                value: quote!(#value),
+            }
+        }
+    }
+}
+
+fn decode_input(
+    type_: &FunctionInputType,
+    input: TokenStream,
+    environment: &InputEnvironment<'_>,
+    names: &mut GeneratedNames,
+) -> GeneratedValue {
+    let InputEnvironment {
+        customs,
+        support,
+        return_type,
+        generic_source,
+        ..
+    } = environment;
+    match type_ {
+        FunctionInputType::Value(type_) => {
             decode_value_argument(type_, input, customs, support, return_type, names, false)
         }
-        FunctionArgumentType::Generic(value) => {
-            let source = instantiated_generic_source_type(value);
+        FunctionInputType::Generic(value) => {
+            let source = match generic_source {
+                GenericInputSource::Declared => value.source.clone(),
+                GenericInputSource::Instantiated => instantiated_generic_source_type(value),
+            };
             let host = generic_host_type(&value.host, customs, support);
             let value = names.next("generic_input");
             GeneratedValue {
@@ -2171,7 +2511,7 @@ fn decode_argument(
                 value: quote!(#value),
             }
         }
-        FunctionArgumentType::List(list) => {
+        FunctionInputType::List(list) => {
             let decoder_value =
                 list_decoder_value(&list.decoder, &list.collection.value, customs, support);
             let value = names.next("list");
@@ -3251,15 +3591,52 @@ fn encode_function_output_intermediate(
     }
 }
 
+fn encode_callback_argument(
+    type_: &FunctionReturnType,
+    input: TokenStream,
+    environment: &OutputEnvironment<'_>,
+    names: &mut GeneratedNames,
+    constructions: &mut Vec<GeneratedConstruction>,
+) -> GeneratedValue {
+    match type_ {
+        FunctionReturnType::Generic(_) => GeneratedValue {
+            statements: TokenStream::new(),
+            value: quote!(#input.into_host()),
+        },
+        FunctionReturnType::List(_) => GeneratedValue {
+            statements: TokenStream::new(),
+            value: quote!(#input.__geam_into_context().into_host()),
+        },
+        FunctionReturnType::Value(value) => {
+            let mut state = OutputState {
+                names,
+                constructions,
+            };
+            encode_function_output_intermediate(value, input, environment, &mut state)
+        }
+    }
+}
+
 fn host_argument_type(
     type_: &FunctionArgumentType,
     customs: &[CustomModel],
     support: &TokenStream,
 ) -> TokenStream {
     match type_ {
-        FunctionArgumentType::Value(type_) => host_value_type(type_, customs, support),
-        FunctionArgumentType::Generic(value) => generic_host_type(&value.host, customs, support),
-        FunctionArgumentType::List(list) => {
+        FunctionArgumentType::Input(type_) => host_input_type(type_, customs, support),
+        FunctionArgumentType::Callback(callback) => callback_host_type(callback, customs, support),
+    }
+}
+
+fn host_input_type(
+    type_: &FunctionInputType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+) -> TokenStream {
+    match type_ {
+        FunctionInputType::Value(type_) => host_value_type(type_, customs, support),
+        FunctionInputType::Generic(value) => generic_host_type(&value.host, customs, support),
+        FunctionInputType::List(list) => {
             let item = host_value_type(&list.collection.value, customs, support);
             quote!(#support::HostListType<#item>)
         }
@@ -3432,16 +3809,56 @@ fn wrapper_argument_type(
     support: &TokenStream,
 ) -> TokenStream {
     match type_ {
-        FunctionArgumentType::Value(type_) => wrapper_value_type(type_, customs, support),
-        FunctionArgumentType::Generic(value) => {
+        FunctionArgumentType::Input(type_) => wrapper_input_type(type_, customs, support),
+        FunctionArgumentType::Callback(callback) => {
+            let arguments = callback_host_arguments(callback, customs, support);
+            let return_ = host_input_type(&callback.return_, customs, support);
+            quote!(#support::HostCallable<'__geam_call, #arguments, #return_>)
+        }
+    }
+}
+
+fn wrapper_input_type(
+    type_: &FunctionInputType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+) -> TokenStream {
+    match type_ {
+        FunctionInputType::Value(type_) => wrapper_value_type(type_, customs, support),
+        FunctionInputType::Generic(value) => {
             let host = generic_host_type(&value.host, customs, support);
             quote!(<#host as #support::HostType>::Value<'__geam_call>)
         }
-        FunctionArgumentType::List(list) => {
+        FunctionInputType::List(list) => {
             let item = host_value_type(&list.collection.value, customs, support);
             quote!(#support::HostList<'__geam_call, #item>)
         }
     }
+}
+
+fn callback_host_type(
+    callback: &CallbackType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+) -> TokenStream {
+    let arguments = callback_host_arguments(callback, customs, support);
+    let return_ = host_input_type(&callback.return_, customs, support);
+    quote!(#support::HostFunctionType<#arguments, #return_>)
+}
+
+fn callback_host_arguments(
+    callback: &CallbackType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+) -> TokenStream {
+    callback
+        .arguments
+        .iter()
+        .rev()
+        .fold(quote!(#support::HostTypeListEnd), |tail, argument| {
+            let argument = host_return_type(argument, customs, support);
+            quote!(#support::HostTypeList<#argument, #tail>)
+        })
 }
 
 fn wrapper_value_type(
@@ -3613,7 +4030,7 @@ fn validate_list_return(function: &FunctionModel) -> syn::Result<()> {
         && !function.arguments.iter().any(|argument| {
             matches!(
                 argument,
-                FunctionArgumentType::List(argument)
+                FunctionArgumentType::Input(FunctionInputType::List(argument))
                     if provider_value_key(&argument.collection.value)
                         == provider_value_key(&returned.collection.value)
             )
@@ -4225,14 +4642,122 @@ fn generic_value_signature_type(
     let source = &value.source;
     let host = generic_host_type(&value.host, customs, support);
     let mut path = value.path.clone();
-    path.path
-        .segments
-        .last_mut()
-        .expect("Value path must contain one segment")
-        .arguments = PathArguments::AngleBracketed(syn::parse_quote! {
-        <#source, #support::ProviderValueContext<'__geam_call, #host>>
-    });
+    for segment in path.path.segments.iter_mut().rev().take(1) {
+        segment.arguments = PathArguments::AngleBracketed(syn::parse_quote! {
+            <#source, #support::ProviderValueContext<'__geam_call, #host>>
+        });
+    }
     Type::Path(path)
+}
+
+fn callback_signature_type(
+    callback: &CallbackType,
+    generics: &[Ident],
+    profile: &TokenStream,
+    return_type: &TokenStream,
+    support: &TokenStream,
+) -> Type {
+    let signature = &callback.signature;
+    let codec = callback_codec_type(&callback.codec, generics.iter().map(|ident| quote!(#ident)));
+    let mut path = callback.path.clone();
+    for segment in path.path.segments.iter_mut().rev().take(1) {
+        segment.arguments = PathArguments::AngleBracketed(syn::parse_quote! {
+            <
+                #signature,
+                #support::ProviderCallbackContext<
+                    '__geam_call,
+                    #profile,
+                    __GeamProvider,
+                    #return_type,
+                    #codec,
+                >,
+            >
+        });
+    }
+    Type::Path(path)
+}
+
+fn callback_codec_type(
+    codec: &Ident,
+    arguments: impl IntoIterator<Item = TokenStream>,
+) -> TokenStream {
+    let arguments = arguments.into_iter().collect::<Vec<_>>();
+    if arguments.is_empty() {
+        quote!(#codec)
+    } else {
+        quote!(#codec<#(#arguments),*>)
+    }
+}
+
+fn callback_output_signature_type(
+    type_: &FunctionReturnType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+) -> Type {
+    match type_ {
+        FunctionReturnType::Value(value) => function_output_rust_type(value),
+        FunctionReturnType::Generic(value) => generic_value_signature_type(value, customs, support),
+        FunctionReturnType::List(list) => callback_list_signature_type(list, customs, support),
+    }
+}
+
+fn callback_input_signature_type(
+    type_: &FunctionInputType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+) -> Type {
+    match type_ {
+        FunctionInputType::Value(value) => provider_input_signature_type(value, support),
+        FunctionInputType::Generic(value) => generic_value_signature_type(value, customs, support),
+        FunctionInputType::List(list) => callback_list_signature_type(list, customs, support),
+    }
+}
+
+fn callback_list_signature_type(
+    list: &ListType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+) -> Type {
+    let item = &list.collection.item;
+    let host_item = host_value_type(&list.collection.value, customs, support);
+    let decoder = &list.decoder;
+    syn::parse_quote! {
+        #support::List<
+            #item,
+            #support::ProviderListContext<'__geam_call, #host_item, #decoder>,
+        >
+    }
+}
+
+fn function_output_rust_type(type_: &FunctionOutputValueType) -> Type {
+    match type_ {
+        FunctionOutputValueType::Value(value) => match value.as_ref() {
+            FunctionOutputLeafType::Scalar(type_)
+            | FunctionOutputLeafType::Declared { type_, .. } => type_.clone(),
+            FunctionOutputLeafType::External { payload, .. } => syn::parse_quote!(#payload),
+            FunctionOutputLeafType::Custom { rust, .. } => rust.clone(),
+        },
+        FunctionOutputValueType::Tuple(elements) => {
+            let elements = elements
+                .iter()
+                .map(function_output_rust_type)
+                .collect::<Vec<_>>();
+            syn::parse_quote!((#(#elements,)*))
+        }
+        FunctionOutputValueType::Result { success, failure } => {
+            let success = function_output_rust_type(success);
+            let failure = function_output_rust_type(failure);
+            syn::parse_quote!(::core::result::Result<#success, #failure>)
+        }
+        FunctionOutputValueType::Option { value } => {
+            let value = function_output_rust_type(value);
+            syn::parse_quote!(::core::option::Option<#value>)
+        }
+        FunctionOutputValueType::Vec(collection) => {
+            let value = function_output_rust_type(&collection.value);
+            syn::parse_quote!(::std::vec::Vec<#value>)
+        }
+    }
 }
 
 fn instantiated_generic_source_type(value: &GenericValueType) -> Type {
@@ -4652,26 +5177,51 @@ fn validate_function(
                 ));
             }
             reject_unwrapped_generic(&argument.ty, &generic_scope)?;
-            let type_ = classify_argument(
+            let callback_index = arguments.len();
+            let type_ = if let Some(callback) = callback_type(
                 &argument.ty,
+                &function.sig.ident,
+                callback_index,
                 externals,
                 customs,
                 list_decoders,
                 &mut generic_scope,
                 support,
-            )?;
+            )? {
+                FunctionArgumentType::Callback(Box::new(callback))
+            } else {
+                FunctionArgumentType::Input(classify_input(
+                    &argument.ty,
+                    externals,
+                    customs,
+                    list_decoders,
+                    &mut generic_scope,
+                    support,
+                )?)
+            };
             match &type_ {
-                FunctionArgumentType::List(list) => {
+                FunctionArgumentType::Input(FunctionInputType::List(list)) => {
                     *argument.ty = list_signature_type(list, customs, support);
                     has_list = true;
                 }
-                FunctionArgumentType::Generic(value) => {
+                FunctionArgumentType::Input(FunctionInputType::Generic(value)) => {
                     *argument.ty = generic_value_signature_type(value, customs, support);
                 }
-                FunctionArgumentType::Value(value) if contains_source_wrapper(value) => {
+                FunctionArgumentType::Callback(callback) => {
+                    *argument.ty = callback_signature_type(
+                        callback,
+                        &generic_scope.declared,
+                        &active_profile,
+                        &host_return,
+                        support,
+                    );
+                }
+                FunctionArgumentType::Input(FunctionInputType::Value(value))
+                    if contains_source_wrapper(value) =>
+                {
                     *argument.ty = provider_input_signature_type(value, support);
                 }
-                FunctionArgumentType::Value(_) => {}
+                FunctionArgumentType::Input(FunctionInputType::Value(_)) => {}
             }
             arguments.push(type_);
         }
@@ -4693,6 +5243,12 @@ fn validate_function(
         host_result: host_result.is_some(),
         profile: profile.is_some(),
     };
+    if function_contains_callback(&model) && !matches!(model.call, CallAccess::Mutable) {
+        return Err(syn::Error::new_spanned(
+            &function.sig.inputs,
+            "Callback arguments require a first `#[geam::call]` parameter using `&mut Call<State>`",
+        ));
+    }
     validate_list_return(&model)?;
     if let FunctionReturnType::List(list) = &model.return_ {
         let list = list_signature_type(list, customs, support);
@@ -4716,7 +5272,10 @@ fn validate_function(
         function.sig.output =
             ReturnType::Type(Token![->](proc_macro2::Span::call_site()), Box::new(output));
     }
-    if !matches!(model.call, CallAccess::None) || function_contains_generic_value(&model) {
+    if !matches!(model.call, CallAccess::None)
+        || function_contains_generic_value(&model)
+        || function_contains_callback(&model)
+    {
         prepend_function_lifetime(&mut function.sig.generics, syn::parse_quote!('__geam_call));
     }
     if has_list {
@@ -4775,11 +5334,21 @@ fn function_contains_generic_value(function: &FunctionModel) -> bool {
         return true;
     }
     for argument in &function.arguments {
-        if matches!(argument, FunctionArgumentType::Generic(_)) {
+        if matches!(
+            argument,
+            FunctionArgumentType::Input(FunctionInputType::Generic(_))
+        ) {
             return true;
         }
     }
     false
+}
+
+fn function_contains_callback(function: &FunctionModel) -> bool {
+    function
+        .arguments
+        .iter()
+        .any(|argument| matches!(argument, FunctionArgumentType::Callback(_)))
 }
 
 fn call_parameter(type_: &Type) -> syn::Result<(bool, Type, TypePath)> {
@@ -4927,6 +5496,102 @@ fn generic_value_type(
     }))
 }
 
+#[allow(clippy::too_many_arguments)]
+fn callback_type(
+    type_: &Type,
+    function: &Ident,
+    argument_index: usize,
+    externals: &[ExternalModel],
+    customs: &[CustomModel],
+    list_decoders: &mut Vec<ListDecoderModel>,
+    generics: &mut GenericParameterScope,
+    support: &TokenStream,
+) -> syn::Result<Option<CallbackType>> {
+    if let Type::Reference(reference) = type_
+        && is_collection(&reference.elem, "Callback")
+    {
+        return Err(syn::Error::new_spanned(
+            type_,
+            "Callback arguments must be passed by value",
+        ));
+    }
+    let Some((signature, path)) = collection_item_with_path(type_, "Callback")? else {
+        return Ok(None);
+    };
+    let Type::BareFn(signature) = signature else {
+        return Err(syn::Error::new_spanned(
+            type_,
+            "Callback<T> requires a safe non-variadic Rust fn signature",
+        ));
+    };
+    if signature.lifetimes.is_some()
+        || signature.unsafety.is_some()
+        || signature.abi.is_some()
+        || signature.variadic.is_some()
+    {
+        return Err(syn::Error::new_spanned(
+            &signature,
+            "Callback<T> requires a safe non-variadic Rust fn signature without lifetimes",
+        ));
+    }
+    if signature.inputs.len() > 7 {
+        return Err(syn::Error::new_spanned(
+            &signature.inputs,
+            "provider callbacks support at most seven source arguments",
+        ));
+    }
+
+    // Source function parameters are indexed from the return shape first.
+    let return_type = match &signature.output {
+        ReturnType::Default => syn::parse_quote!(()),
+        ReturnType::Type(_, type_) => (**type_).clone(),
+    };
+    if is_collection(&return_type, "Callback") {
+        return Err(syn::Error::new_spanned(
+            &return_type,
+            "callbacks returned by a callback are opaque values; use Value<fn(...) -> ...>",
+        ));
+    }
+    let return_ = classify_input(
+        &return_type,
+        externals,
+        customs,
+        list_decoders,
+        generics,
+        support,
+    )?;
+
+    let mut arguments = Vec::with_capacity(signature.inputs.len());
+    for argument in &signature.inputs {
+        if is_collection(&argument.ty, "Callback") {
+            return Err(syn::Error::new_spanned(
+                &argument.ty,
+                "callback arguments that are functions must use Value<fn(...) -> ...>",
+            ));
+        }
+        arguments.push(classify_return(
+            &argument.ty,
+            externals,
+            customs,
+            list_decoders,
+            generics,
+            support,
+        )?);
+    }
+
+    Ok(Some(CallbackType {
+        signature,
+        path,
+        arguments,
+        return_: Box::new(return_),
+        codec: format_ident!(
+            "__GeamCallbackCodec_{}_{}",
+            function.unraw(),
+            argument_index,
+        ),
+    }))
+}
+
 fn classify_generic_host_type(
     type_: &Type,
     generics: &mut GenericParameterScope,
@@ -5034,6 +5699,12 @@ fn classify_generic_host_type(
                 "opaque source function shapes must use safe non-variadic Rust fn syntax",
             ));
         }
+        let return_type = match &function.output {
+            ReturnType::Default => syn::parse_quote!(()),
+            ReturnType::Type(_, type_) => (**type_).clone(),
+        };
+        let return_type =
+            classify_generic_host_type(&return_type, generics, externals, customs, support)?;
         let mut host_arguments = Vec::with_capacity(function.inputs.len());
         let mut instantiated_arguments = Vec::with_capacity(function.inputs.len());
         for argument in &function.inputs {
@@ -5042,12 +5713,6 @@ fn classify_generic_host_type(
             host_arguments.push(argument.host);
             instantiated_arguments.push(argument.instantiated);
         }
-        let return_type = match &function.output {
-            ReturnType::Default => syn::parse_quote!(()),
-            ReturnType::Type(_, type_) => (**type_).clone(),
-        };
-        let return_type =
-            classify_generic_host_type(&return_type, generics, externals, customs, support)?;
         let instantiated_return = &return_type.instantiated;
         return Ok(ClassifiedGenericHostType {
             host: GenericHostType::Function {
@@ -5119,14 +5784,14 @@ fn generic_host_contains_parameter(type_: &GenericHostType) -> bool {
     }
 }
 
-fn classify_argument(
+fn classify_input(
     type_: &Type,
     externals: &[ExternalModel],
     customs: &[CustomModel],
     list_decoders: &mut Vec<ListDecoderModel>,
     generics: &mut GenericParameterScope,
     support: &TokenStream,
-) -> syn::Result<FunctionArgumentType> {
+) -> syn::Result<FunctionInputType> {
     if let Type::Reference(reference) = type_ {
         if is_collection(&reference.elem, "List") {
             return Err(syn::Error::new_spanned(
@@ -5150,7 +5815,7 @@ fn classify_argument(
                     ),
                 ));
             }
-            return Ok(FunctionArgumentType::Value(Box::new(
+            return Ok(FunctionInputType::Value(Box::new(
                 ProviderValueType::External {
                     payload: external.ident.clone(),
                     schema: external.schema.clone(),
@@ -5165,7 +5830,7 @@ fn classify_argument(
             ));
         }
         if reference.mutability.is_none() && is_qualified_type_path(&reference.elem) {
-            return Ok(FunctionArgumentType::Value(Box::new(
+            return Ok(FunctionInputType::Value(Box::new(
                 ProviderValueType::Declared {
                     type_: (*reference.elem).clone(),
                     input: DeclaredInput::BorrowedExternal,
@@ -5178,7 +5843,7 @@ fn classify_argument(
         ));
     }
     if let Some(value) = generic_value_type(type_, generics, externals, customs, support)? {
-        return Ok(FunctionArgumentType::Generic(Box::new(value)));
+        return Ok(FunctionInputType::Generic(Box::new(value)));
     }
     if let Some(item) = collection_item(type_, "List")? {
         let value = classify_collection_input_item(&item, externals, customs, "List")?;
@@ -5188,7 +5853,7 @@ fn classify_argument(
             value,
         };
         let decoder = register_list_decoder(&collection, list_decoders);
-        return Ok(FunctionArgumentType::List(Box::new(ListType {
+        return Ok(FunctionInputType::List(Box::new(ListType {
             collection,
             decoder,
         })));
@@ -5199,9 +5864,9 @@ fn classify_argument(
             "Vec<T> arguments are not supported; use geam::List<T>",
         ));
     }
-    Ok(FunctionArgumentType::Value(Box::new(
-        classify_argument_value(type_, externals, customs, generics, support)?,
-    )))
+    Ok(FunctionInputType::Value(Box::new(classify_argument_value(
+        type_, externals, customs, generics, support,
+    )?)))
 }
 
 fn classify_argument_value(
@@ -6300,6 +6965,249 @@ mod tests {
             )),
             "Call requires exactly one type argument",
         );
+    }
+
+    #[test]
+    fn callback_shape_and_active_call_diagnostics_are_exact() {
+        let cases = [
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn invoke(callback: Callback<fn() -> bool>) -> bool { true }
+                    }
+                },
+                "Callback arguments require a first `#[geam::call]` parameter using `&mut Call<State>`",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn invoke(
+                            #[geam::call] call: &Call<RunState>,
+                            callback: Callback<fn() -> bool>,
+                        ) -> bool { true }
+                    }
+                },
+                "Callback arguments require a first `#[geam::call]` parameter using `&mut Call<State>`",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn invoke(
+                            #[geam::call] call: &mut Call<RunState>,
+                            callback: &Callback<fn() -> bool>,
+                        ) -> bool { true }
+                    }
+                },
+                "Callback arguments must be passed by value",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn invoke(
+                            #[geam::call] call: &mut Call<RunState>,
+                            callback: Callback<bool>,
+                        ) -> bool { true }
+                    }
+                },
+                "Callback<T> requires a safe non-variadic Rust fn signature",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn invoke(
+                            #[geam::call] call: &mut Call<RunState>,
+                            callback: Callback<unsafe fn() -> bool>,
+                        ) -> bool { true }
+                    }
+                },
+                "Callback<T> requires a safe non-variadic Rust fn signature without lifetimes",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn invoke(
+                            #[geam::call] call: &mut Call<RunState>,
+                            callback: Callback<fn(
+                                bool, bool, bool, bool, bool, bool, bool, bool,
+                            ) -> bool>,
+                        ) -> bool { true }
+                    }
+                },
+                "provider callbacks support at most seven source arguments",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn invoke(
+                            #[geam::call] call: &mut Call<RunState>,
+                            callback: Callback<fn() -> Callback<fn() -> bool>>,
+                        ) -> bool { true }
+                    }
+                },
+                "callbacks returned by a callback are opaque values; use Value<fn(...) -> ...>",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn invoke(
+                            #[geam::call] call: &mut Call<RunState>,
+                            callback: Callback<fn(Callback<fn() -> bool>) -> bool>,
+                        ) -> bool { true }
+                    }
+                },
+                "callback arguments that are functions must use Value<fn(...) -> ...>",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn invoke(
+                            #[geam::call] call: &mut Call<RunState>,
+                            callback: Callback<bool, bool>,
+                        ) -> bool { true }
+                    }
+                },
+                "Callback requires exactly one type argument",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn invoke(
+                            #[geam::call] call: &mut Call<RunState>,
+                            callback: Callback<fn() -> List>,
+                        ) -> bool { true }
+                    }
+                },
+                "List requires exactly one type argument",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn invoke(
+                            #[geam::call] call: &mut Call<RunState>,
+                            callback: Callback<fn(Vec) -> bool>,
+                        ) -> bool { true }
+                    }
+                },
+                "Vec requires exactly one type argument",
+            ),
+        ];
+
+        for (item, expected) in cases {
+            assert_eq!(expansion_error(item), expected);
+        }
+    }
+
+    #[test]
+    fn callbacks_generate_one_static_directional_codec_and_callable_abi() {
+        let expansion = expand(
+            quote!(path = "callbacks", crate_path = geam_core),
+            quote! {
+                mod callbacks {
+                    #[geam::external(name = "Token")]
+                    struct Token;
+
+                    #[geam::custom(input = StatusInput)]
+                    enum Status {
+                        Ready(String),
+                    }
+
+                    #[geam::function]
+                    fn around<Item>(
+                        #[geam::call] call: &mut Call<RunState>,
+                        callback: Callback<fn(Value<Item>, Token, Status) -> Value<Item>>,
+                    ) -> HostResult<Value<Item>> {
+                        todo!()
+                    }
+                }
+            },
+        )
+        .expect("typed callback declaration should expand")
+        .to_string();
+
+        assert!(expansion.contains("struct __GeamCallbackCodec_around_0 < Item >"));
+        assert!(expansion.contains("ProviderCallbackCodec < '__geam_call"));
+        assert!(
+            expansion.contains("type HostArguments = geam_core :: __macro_support :: HostTypeList")
+        );
+        assert!(expansion.contains(
+            "type HostReturn = geam_core :: __macro_support :: HostTypeParameter < 0usize >"
+        ));
+        assert!(expansion.contains("HostFunctionType <"));
+        assert!(!expansion.contains("HostOpaqueFunctionType < geam_core :: __macro_support :: HostTypeList < geam_core :: __macro_support :: HostExternalType"));
+        assert!(expansion.contains("call . construct_external_with_binding"));
+        assert!(expansion.contains("ProviderOutputValue"));
+        assert!(expansion.contains("__geam_callback_argument_0 . into_host ()"));
+        assert!(
+            expansion.contains(
+                "Callback :: < _ , geam_core :: __macro_support :: ProviderCallbackContext"
+            )
+        );
+        assert!(expansion.contains("with_scoped_function_and_constructions"));
+    }
+
+    #[test]
+    fn callback_native_compounds_and_lists_keep_directional_rust_signatures() {
+        let expansion = expand(
+            quote!(path = "callbacks", crate_path = geam_core),
+            quote! {
+                mod callbacks {
+                    #[geam::external(name = "Token")]
+                    struct Token;
+
+                    #[geam::custom(input = StatusInput)]
+                    enum Status {
+                        Ready(String),
+                    }
+
+                    #[geam::function]
+                    fn invoke(
+                        #[geam::call] call: &mut Call<RunState>,
+                        callback: Callback<fn(
+                            ((String, Token), other::Payload),
+                            Result<String, Status>,
+                            Option<String>,
+                            List<Token>,
+                            Vec<(Token, other::Payload)>,
+                            other::Payload,
+                        ) -> List<Token>>,
+                        values: List<Token>,
+                    ) -> bool {
+                        todo!()
+                    }
+
+                    #[geam::function]
+                    fn notify(
+                        #[geam::call] call: &mut Call<RunState>,
+                        callback: Callback<fn()>,
+                    ) -> bool {
+                        todo!()
+                    }
+                }
+            },
+        )
+        .expect("native compound callback declaration should expand")
+        .to_string();
+
+        assert!(expansion.contains(
+            "type Arguments = (((String , Token ,) , other :: Payload ,) , :: core :: result :: Result < String , Status > , :: core :: option :: Option < String > , geam_core :: __macro_support :: List < Token"
+        ));
+        assert!(expansion.contains(":: std :: vec :: Vec < (Token , other :: Payload ,) >"));
+        assert!(expansion.contains("other :: Payload"));
+        assert!(expansion.contains("type Returned = geam_core :: __macro_support :: List < Token"));
+        assert!(expansion.contains("__geam_into_context () . into_host ()"));
+        assert!(expansion.contains("ProviderListInputCodec < Profile >"));
+        assert!(expansion.contains("type HostReturn = ()"));
     }
 
     #[test]

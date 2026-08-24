@@ -1,0 +1,7 @@
+name = "call_tracing_example"
+version = "1.0.0"
+description = "Standalone Geam callback tracing provider example"
+licences = ["Apache-2.0"]
+
+[dependencies]
+example_call_tracing = { path = "packages/example_call_tracing" }

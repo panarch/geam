@@ -39,7 +39,7 @@ jobs:
 
       - name: Check example provider formatting
         run: |
-          for example in text_tools value_types tag_set request_ids feature_flags run_metrics text_pattern; do
+          for example in text_tools value_types tag_set request_ids feature_flags run_metrics call_tracing text_pattern; do
             (cd "examples/$example/provider" && cargo fmt --all --check)
           done
 
@@ -70,6 +70,7 @@ jobs:
             examples/request_ids/provider -> target
             examples/feature_flags/provider -> target
             examples/run_metrics/provider -> target
+            examples/call_tracing/provider -> target
             examples/text_pattern/provider -> target
 
       - name: Fetch standalone provider dependencies
@@ -85,7 +86,7 @@ jobs:
 
       - name: Run example provider clippy
         run: |
-          for example in text_tools value_types tag_set request_ids feature_flags run_metrics text_pattern; do
+          for example in text_tools value_types tag_set request_ids feature_flags run_metrics call_tracing text_pattern; do
             (cd "examples/$example/provider" && cargo clippy --all-targets --locked -- -D warnings)
           done
 
@@ -122,6 +123,7 @@ jobs:
             examples/request_ids/provider -> target
             examples/feature_flags/provider -> target
             examples/run_metrics/provider -> target
+            examples/call_tracing/provider -> target
             examples/text_pattern/provider -> target
 
       - name: Run tests
@@ -138,7 +140,7 @@ jobs:
 
       - name: Test and package example providers
         run: |
-          for example in text_tools value_types tag_set request_ids feature_flags run_metrics text_pattern; do
+          for example in text_tools value_types tag_set request_ids feature_flags run_metrics call_tracing text_pattern; do
             (cd "examples/$example/provider" && cargo test --locked)
             (cd "examples/$example/provider" && cargo package --locked)
           done
@@ -152,6 +154,7 @@ jobs:
             request_ids/example_request_ids \
             feature_flags/example_feature_flags \
             run_metrics/example_run_metrics \
+            call_tracing/example_call_tracing \
             text_pattern/example_text_pattern
           do
             example="${package%%/*}"
@@ -236,6 +239,7 @@ jobs:
             examples/request_ids/provider -> target
             examples/feature_flags/provider -> target
             examples/run_metrics/provider -> target
+            examples/call_tracing/provider -> target
             examples/text_pattern/provider -> target
 
       - name: Install cargo-llvm-cov

@@ -462,6 +462,37 @@ fn runs_the_documented_request_ids_provider_with_fresh_default_state() {
 }
 
 #[test]
+fn runs_the_documented_call_tracing_provider_with_fresh_callback_state() {
+    let fixture = call_tracing_example();
+    let project = fixture.path().join("project");
+
+    let add = geam_at(&project, ["provider", "add", "--path", "../provider"]);
+    assert!(
+        add.status.success(),
+        "call tracing provider add failed: {}",
+        String::from_utf8_lossy(&add.stderr),
+    );
+
+    let prepare = geam_at(&project, ["prepare"]);
+    assert!(
+        prepare.status.success(),
+        "call tracing prepare failed: {}",
+        String::from_utf8_lossy(&prepare.stderr),
+    );
+
+    for _ in 0..2 {
+        let run = geam_at(&project, ["run"]);
+        assert!(
+            run.status.success(),
+            "call tracing execution failed: {}",
+            String::from_utf8_lossy(&run.stderr),
+        );
+        assert!(run.stdout.is_empty());
+        assert!(run.stderr.is_empty());
+    }
+}
+
+#[test]
 fn runs_the_documented_feature_flags_provider_with_explicit_configuration() {
     let fixture = feature_flags_example();
     let project = fixture.path().join("project");
@@ -1027,6 +1058,10 @@ fn request_ids_example() -> TempDir {
     provider_example("request_ids")
 }
 
+fn call_tracing_example() -> TempDir {
+    provider_example("call_tracing")
+}
+
 fn feature_flags_example() -> TempDir {
     provider_example("feature_flags")
 }
@@ -1067,13 +1102,14 @@ fn provider_example(name: &str) -> TempDir {
 }
 
 fn prepare_cargo_dependencies() {
-    const WORKSPACES: [&str; 9] = [
+    const WORKSPACES: [&str; 10] = [
         "tests/fixtures/provider_sdk",
         "tests/fixtures/standalone_cli/providers",
         "examples/text_tools/provider",
         "examples/value_types/provider",
         "examples/tag_set/provider",
         "examples/request_ids/provider",
+        "examples/call_tracing/provider",
         "examples/feature_flags/provider",
         "examples/run_metrics/provider",
         "examples/text_pattern/provider",

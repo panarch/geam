@@ -1,0 +1,4 @@
+name = "example_call_tracing"
+version = "1.0.0"
+description = "Typed callback tracing backed by a native Geam provider"
+licences = ["Apache-2.0"]

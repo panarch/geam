@@ -268,9 +268,35 @@ unexpected configuration instead of ignoring it.
 The current macro surface supports scalars, native tuples composed from
 supported leaves, top-level Lists with lazy item access or Vec construction,
 non-recursive custom values, Rust `Result`/`Option` mapped to their standard
-source types, and non-generic constructorless external values whose payloads do
-not retain Gleam values. Callbacks, nested Lists, and retained Gleam values
-still use the low-level contracts below.
+source types, non-generic constructorless external values whose payloads do not
+retain Gleam values, and typed callbacks. Nested Lists and retained Gleam
+values still use the low-level contracts below.
+
+## Typed Callback Invocation
+
+[`call_tracing`](../examples/call_tracing/README.md) separates opaque function
+pass-through from invocation. `Value<fn(...) -> ...>` remains an opaque source
+handle; `Callback<fn(...) -> ...>` grants one active `&mut Call` permission to
+invoke the function:
+
+```rust
+fn around<Item>(
+    #[geam::call] call: &mut Call<RunState>,
+    callback: Callback<fn() -> Value<Item>>,
+) -> HostResult<Value<Item>> {
+    call.state_mut().entries.push("before".into());
+    let returned = call.invoke(callback, ())?;
+    call.state_mut().entries.push("after".into());
+    Ok(returned)
+}
+```
+
+Callback arguments use provider output types and callback results use provider
+input views. The generated adapter registers any required constructions once,
+then invokes the existing typed host ABI without materializing generic values.
+`Call::invoke` preserves nested source panics and provider failures. A live
+state borrow prevents callback re-entry through Rust's borrow checker, so state
+must be released before invoking source code.
 
 ## Generated Component Boundary
 

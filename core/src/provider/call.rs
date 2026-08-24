@@ -1,4 +1,6 @@
-use super::{ProviderValueContext, Value};
+use super::{
+    Callback, ProviderCallbackCodec, ProviderCallbackContext, ProviderValueContext, Value,
+};
 use crate::{HostCall, HostCallError, HostProfile, HostProvider, HostType};
 use ecow::EcoString;
 use std::marker::PhantomData;
@@ -103,6 +105,21 @@ where
         self.context.call.inspect::<Host>(value.host())
     }
 
+    /// Invokes one typed Gleam callback within this active provider call.
+    pub fn invoke<Signature, Codec>(
+        &mut self,
+        callback: Callback<
+            Signature,
+            ProviderCallbackContext<'call, Profile, Provider, Return, Codec>,
+        >,
+        arguments: Codec::Arguments,
+    ) -> HostResult<Codec::Returned>
+    where
+        Codec: ProviderCallbackCodec<'call, Profile, Provider, Return>,
+    {
+        callback.invoke(&mut self.context.call, arguments)
+    }
+
     #[doc(hidden)]
     pub fn from_host_call(call: HostCall<'call, Profile, Provider, Return>) -> Self {
         Self {
@@ -123,9 +140,16 @@ mod tests {
     use crate::host::CallArguments;
     use crate::host::HostCallErrorKind;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
-    use crate::host::{HostTypeParameter, HostValue, HostValueFamily, HostValueToken};
-    use crate::provider::{ProviderValueContext, Value};
+    use crate::host::{
+        HostCallable, HostFunctionToken, HostScopedValue, HostTypeList, HostTypeListEnd,
+        HostTypeParameter, HostValue, HostValueFamily, HostValueToken,
+    };
+    use crate::provider::{
+        Callback, ProviderCallbackCodec, ProviderCallbackContext, ProviderConstructions,
+        ProviderNoConstructions, ProviderValueContext, Value,
+    };
     use crate::{HostCall, HostFailure, HostProvider};
+    use num_bigint::BigInt;
 
     struct Provider;
 
@@ -134,6 +158,31 @@ mod tests {
 
         fn project(state: &mut TestRunState) -> &mut Self::State {
             state
+        }
+    }
+
+    struct IntCallbackCodec;
+
+    impl<'call> ProviderCallbackCodec<'call, TestHostProfile, Provider, BigInt> for IntCallbackCodec {
+        type HostArguments = HostTypeList<BigInt, HostTypeListEnd>;
+        type HostReturn = BigInt;
+        type Arguments = (BigInt,);
+        type Returned = BigInt;
+        type Requirements = ProviderNoConstructions;
+
+        fn into_host_arguments(
+            arguments: Self::Arguments,
+            _call: &mut HostCall<'call, TestHostProfile, Provider, BigInt>,
+            _constructions: &ProviderConstructions<'call, Self::Requirements>,
+        ) -> <Self::HostArguments as crate::HostTypeSequence>::Values<'call> {
+            (arguments.0, ())
+        }
+
+        fn from_host_return(
+            value: <Self::HostReturn as crate::HostType>::Value<'call>,
+            _call: &mut HostCall<'call, TestHostProfile, Provider, BigInt>,
+        ) -> Self::Returned {
+            value
         }
     }
 
@@ -199,5 +248,29 @@ mod tests {
         assert!(!call.equal(&left, &right));
         assert_eq!(call.source_hash(&left), 17);
         assert_eq!(call.inspect(&left), "inspected");
+    }
+
+    #[test]
+    fn active_call_invokes_one_static_callback_codec() {
+        type Context<'call> =
+            ProviderCallbackContext<'call, TestHostProfile, Provider, BigInt, IntCallbackCodec>;
+        let mut state = TestRunState::default();
+        let mut runtime =
+            TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
+        let host_call = HostCall::<TestHostProfile, Provider, BigInt>::new(&mut runtime);
+        let mut call = Call::from_host_call(host_call);
+        let constructions = ProviderConstructions::none();
+        let constructions = Clone::clone(&constructions);
+        let callback = Callback::<fn(BigInt) -> BigInt, Context<'_>>::from_host(
+            HostCallable::new(HostFunctionToken(3)),
+            constructions,
+        );
+        let callback = Clone::clone(&callback);
+
+        let returned = call
+            .invoke(callback, (BigInt::from(7),))
+            .expect("typed callback should invoke through the active call");
+        assert_eq!(returned, BigInt::from(0));
+        assert_eq!(runtime.completed(), Some(&HostScopedValue::Int(7.into())));
     }
 }

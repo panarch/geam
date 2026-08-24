@@ -2,6 +2,7 @@ use ecow::EcoString;
 use std::fmt::{self, Display, Formatter};
 
 mod call;
+mod callback;
 mod codec;
 mod list;
 mod prelude;
@@ -11,6 +12,9 @@ pub use crate::HostFailure;
 pub use call::{Call, HostResult};
 #[doc(hidden)]
 pub use call::{ProviderActiveCall, ProviderCallPlaceholder, ProviderSharedCall};
+pub use callback::Callback;
+#[doc(hidden)]
+pub use callback::{MissingCallbackContext, ProviderCallbackCodec, ProviderCallbackContext};
 #[doc(hidden)]
 pub use codec::{
     ProviderConstruction, ProviderConstructionIndex0, ProviderConstructionIndexNext,

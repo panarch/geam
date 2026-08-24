@@ -1,31 +1,32 @@
 pub use crate::host::{
-    HostCall, HostCallCompletion, HostCallError, HostComponentProfile, HostConstruction,
-    HostConstructions, HostCustom, HostCustomConstructorAt, HostCustomConstructorDefinition,
-    HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList,
-    HostCustomFieldListEnd, HostCustomIndex0, HostCustomIndexNext, HostCustomSchema,
-    HostCustomType, HostExternal, HostExternalBinding, HostExternalEquality, HostExternalHashing,
-    HostExternalInspection, HostExternalSchema, HostExternalStorage, HostExternalStore,
-    HostExternalType, HostList, HostListType, HostProfile, HostProvider, HostProviderComponent,
+    HostCall, HostCallCompletion, HostCallError, HostCallable, HostComponentProfile,
+    HostConstruction, HostConstructions, HostCustom, HostCustomConstructorAt,
+    HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
+    HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomIndex0,
+    HostCustomIndexNext, HostCustomSchema, HostCustomType, HostExternal, HostExternalBinding,
+    HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalSchema,
+    HostExternalStorage, HostExternalStore, HostExternalType, HostFunctionType, HostList,
+    HostListType, HostProfile, HostProvider, HostProviderComponent,
     HostProviderComponentInitialization, HostProviderComponentRegistration,
     HostProviderConfiguration, HostProviderInitializationError, HostProviderModule,
     HostRegistrationError, HostTuple, HostTupleType, HostType, HostTypeIndex0, HostTypeIndexNext,
-    HostTypeList, HostTypeListEnd, HostTypeParameter,
+    HostTypeList, HostTypeListEnd, HostTypeParameter, HostTypeSequence,
 };
 pub use crate::provider::ExternalPayload;
 pub use crate::provider::{
-    Call, HostResult, List, MissingValueContext, ProviderActiveCall, ProviderCallPlaceholder,
-    ProviderExternalItem, ProviderExternalListDecoder, ProviderExternalPayloadAccess,
-    ProviderInputListContext, ProviderListContext, ProviderListCustomFields,
-    ProviderListItemDecoder, ProviderListItemValue, ProviderScalarListDecoder, ProviderSharedCall,
-    ProviderValueContext, Value,
+    Call, Callback, HostResult, List, MissingCallbackContext, MissingValueContext,
+    ProviderActiveCall, ProviderCallPlaceholder, ProviderExternalItem, ProviderExternalListDecoder,
+    ProviderExternalPayloadAccess, ProviderInputListContext, ProviderListContext,
+    ProviderListCustomFields, ProviderListItemDecoder, ProviderListItemValue,
+    ProviderScalarListDecoder, ProviderSharedCall, ProviderValueContext, Value,
 };
 pub use crate::provider::{
-    ProviderConstruction, ProviderConstructionIndex0, ProviderConstructionIndexNext,
-    ProviderConstructionList, ProviderConstructionRequirementAt, ProviderConstructionRequirements,
-    ProviderConstructions, ProviderError, ProviderExternalCodec, ProviderInputValue,
-    ProviderListInputCodec, ProviderListInputValue, ProviderNoConstructions, ProviderNone,
-    ProviderOk, ProviderOption, ProviderOutputValue, ProviderResult, ProviderRootOutputValue,
-    ProviderSome, ProviderValue,
+    ProviderCallbackCodec, ProviderCallbackContext, ProviderConstruction,
+    ProviderConstructionIndex0, ProviderConstructionIndexNext, ProviderConstructionList,
+    ProviderConstructionRequirementAt, ProviderConstructionRequirements, ProviderConstructions,
+    ProviderError, ProviderExternalCodec, ProviderInputValue, ProviderListInputCodec,
+    ProviderListInputValue, ProviderNoConstructions, ProviderNone, ProviderOk, ProviderOption,
+    ProviderOutputValue, ProviderResult, ProviderRootOutputValue, ProviderSome, ProviderValue,
 };
 pub use crate::provider_support::HostOpaqueFunctionType;
 use std::collections::hash_map::DefaultHasher;

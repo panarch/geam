@@ -158,9 +158,10 @@ nested-tuple mapping, lazy top-level Lists, directional custom values, and
 standard source Result/Option values, and `tag_set` fixes generated external
 semantics. `request_ids` combines mutable and read-only default state,
 `feature_flags` owns configured initialization, and `run_metrics` retains
-specialized manual external semantics. Root binary tests follow each documented
-path add, prepare, run, and repeated-run workflow against independently locked
-provider crates.
+specialized manual external semantics. `call_tracing` verifies typed callback
+return identity, same-component re-entry, exact state ordering, and fresh state
+on repeated runs. Root binary tests follow each documented path add, prepare,
+run, and repeated-run workflow against independently locked provider crates.
 The complete Gleam entrypoints execute every public example function.
 Repository-local Cargo patches select the current checkout until the authoring
 crates are released.
@@ -174,7 +175,7 @@ and run coverage without requiring a fixture crate to be published.
 
 CI formats, tests, lints, and packages every independent example provider. The
 text-pattern provider continues to exercise the released low-level
-`geam 0.1.2` surface, while the six macro examples select the unreleased
+`geam 0.1.2` surface, while the seven macro examples select the unreleased
 authoring surface through repository-local patches and complete standalone
 execution.
 
