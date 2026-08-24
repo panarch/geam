@@ -5,6 +5,7 @@ mod call;
 mod codec;
 mod list;
 mod prelude;
+mod value;
 
 pub use crate::HostFailure;
 pub use call::{Call, HostResult};
@@ -31,6 +32,9 @@ pub use prelude::{
     ProviderError, ProviderNone, ProviderOk, ProviderOption, ProviderOptionSchema, ProviderResult,
     ProviderResultSchema, ProviderSome,
 };
+pub use value::Value;
+#[doc(hidden)]
+pub use value::{MissingValueContext, ProviderValueContext};
 
 pub type Configuration = crate::HostProviderConfiguration;
 

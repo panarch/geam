@@ -4,7 +4,7 @@ use crate::path::support_path;
 use custom_value::*;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, quote_spanned};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream};
 use syn::{
@@ -59,6 +59,54 @@ struct ExternalModel {
     schema: Ident,
     storage: Ident,
     store_field: Ident,
+}
+
+#[derive(Clone)]
+struct GenericValueType {
+    source: Type,
+    instantiated: Type,
+    path: TypePath,
+    host: GenericHostType,
+}
+
+struct ClassifiedGenericHostType {
+    host: GenericHostType,
+    instantiated: Type,
+}
+
+#[derive(Clone)]
+enum GenericHostType {
+    Parameter {
+        index: usize,
+    },
+    Scalar(Type),
+    Declared(Type),
+    External {
+        schema: Ident,
+    },
+    Custom {
+        index: usize,
+    },
+    Tuple(Vec<GenericHostType>),
+    List(Box<GenericHostType>),
+    Result {
+        success: Box<GenericHostType>,
+        failure: Box<GenericHostType>,
+    },
+    Option(Box<GenericHostType>),
+    Function {
+        arguments: Vec<GenericHostType>,
+        return_: Box<GenericHostType>,
+    },
+}
+
+struct GenericParameterScope {
+    declared: Vec<Ident>,
+    indices: BTreeMap<String, usize>,
+}
+
+struct FunctionGeneric {
+    index: usize,
 }
 
 #[derive(Clone)]
@@ -126,10 +174,12 @@ struct FunctionOutputCollectionType {
 
 enum SourceWrapper<'type_> {
     Result {
+        path: &'type_ TypePath,
         success: &'type_ Type,
         failure: &'type_ Type,
     },
     Option {
+        path: &'type_ TypePath,
         value: &'type_ Type,
     },
     Other,
@@ -162,11 +212,13 @@ struct ListType {
 
 enum FunctionArgumentType {
     Value(Box<ProviderValueType>),
+    Generic(Box<GenericValueType>),
     List(Box<ListType>),
 }
 
 enum FunctionReturnType {
     Value(FunctionOutputValueType),
+    Generic(Box<GenericValueType>),
     List(Box<ListType>),
 }
 
@@ -178,6 +230,7 @@ enum CallAccess {
 
 struct FunctionModel {
     ident: Ident,
+    generics: Vec<FunctionGeneric>,
     arguments: Vec<FunctionArgumentType>,
     return_: FunctionReturnType,
     call: CallAccess,
@@ -246,6 +299,89 @@ impl GeneratedNames {
         let index = self.next;
         self.next += 1;
         format_ident!("__geam_{role}_{index}")
+    }
+}
+
+impl GenericParameterScope {
+    fn new(generics: &syn::Generics) -> syn::Result<Self> {
+        if let Some(where_clause) = &generics.where_clause {
+            return Err(syn::Error::new_spanned(
+                where_clause,
+                "provider functions must not have where clauses",
+            ));
+        }
+
+        let mut declared = Vec::new();
+        for parameter in &generics.params {
+            let parameter = match parameter {
+                GenericParam::Type(parameter) => parameter,
+                GenericParam::Lifetime(parameter) => {
+                    return Err(syn::Error::new_spanned(
+                        parameter,
+                        "provider functions must not have lifetime generics",
+                    ));
+                }
+                GenericParam::Const(parameter) => {
+                    return Err(syn::Error::new_spanned(
+                        parameter,
+                        "provider functions must not have const generics",
+                    ));
+                }
+            };
+            if !parameter.bounds.is_empty() {
+                return Err(syn::Error::new_spanned(
+                    &parameter.bounds,
+                    "provider function type generics must not have bounds",
+                ));
+            }
+            if parameter.default.is_some() {
+                return Err(syn::Error::new_spanned(
+                    parameter,
+                    "provider function type generics must not have defaults",
+                ));
+            }
+            declared.push(parameter.ident.clone());
+        }
+
+        Ok(Self {
+            declared,
+            indices: BTreeMap::new(),
+        })
+    }
+
+    fn declared_ident(&self, type_: &Type) -> Option<Ident> {
+        let Type::Path(TypePath { qself: None, path }) = type_ else {
+            return None;
+        };
+        let ident = path.get_ident()?;
+        for declared in &self.declared {
+            if declared == ident {
+                return Some(declared.clone());
+            }
+        }
+        None
+    }
+
+    fn parameter_index(&mut self, ident: Ident) -> usize {
+        let key = ident.to_string();
+        let next = self.indices.len();
+        *self.indices.entry(key).or_insert(next)
+    }
+
+    fn finish(self) -> syn::Result<Vec<FunctionGeneric>> {
+        let mut generics = Vec::with_capacity(self.declared.len());
+        for ident in self.declared {
+            let Some(index) = self.indices.get(&ident.to_string()).copied() else {
+                return Err(syn::Error::new_spanned(
+                    &ident,
+                    format!(
+                        "generic parameter `{ident}` must appear inside a Value<...> source shape"
+                    ),
+                ));
+            };
+            generics.push(FunctionGeneric { index });
+        }
+        Ok(generics)
     }
 }
 
@@ -1579,6 +1715,7 @@ fn generate_function(
 ) -> GeneratedFunction {
     let FunctionModel {
         ident,
+        generics,
         arguments: function_arguments,
         return_,
         call: call_access,
@@ -1646,10 +1783,19 @@ fn generate_function(
             let returned = returned?;
         }
     });
-    let function = if *profile {
-        quote!(#ident::<Profile>)
-    } else {
-        quote!(#ident)
+    let mut generic_arguments = Vec::with_capacity(generics.len());
+    for generic in generics {
+        let index = generic.index;
+        generic_arguments.push(quote!(#support::HostTypeParameter<#index>));
+    }
+    let function = match (generic_arguments.is_empty(), *profile) {
+        (true, true) => quote!(#ident::<Profile>),
+        (true, false) => quote!(#ident),
+        (false, true) => quote!(#ident::<#(#generic_arguments,)* Profile>),
+        (false, false) if matches!(call_access, CallAccess::Mutable) => {
+            quote!(#ident::<#(#generic_arguments,)* Profile>)
+        }
+        (false, false) => quote!(#ident::<#(#generic_arguments),*>),
     };
     let generated_return = generate_return(
         return_,
@@ -1773,6 +1919,7 @@ fn function_codec_bounds(
             FunctionArgumentType::Value(type_) => {
                 collect_function_input_bounds(type_, customs, support, return_type, &mut bounds);
             }
+            FunctionArgumentType::Generic(_) => {}
             FunctionArgumentType::List(list) => {
                 for access in list_declared_accesses(&list.collection.value, customs) {
                     let type_ = access.type_;
@@ -1883,7 +2030,7 @@ fn collect_function_return_bounds(
             return_type,
             bounds,
         ),
-        FunctionReturnType::List(_) => {}
+        FunctionReturnType::Generic(_) | FunctionReturnType::List(_) => {}
     }
 }
 
@@ -1976,6 +2123,20 @@ fn decode_argument(
     match type_ {
         FunctionArgumentType::Value(type_) => {
             decode_value_argument(type_, input, customs, support, return_type, names, false)
+        }
+        FunctionArgumentType::Generic(value) => {
+            let source = instantiated_generic_source_type(value);
+            let host = generic_host_type(&value.host, customs, support);
+            let value = names.next("generic_input");
+            GeneratedValue {
+                statements: quote! {
+                    let #value = #support::Value::<
+                        #source,
+                        #support::ProviderValueContext<'__geam_call, #host>,
+                    >::from_host(#input);
+                },
+                value: quote!(#value),
+            }
         }
         FunctionArgumentType::List(list) => {
             let decoder_value =
@@ -2216,6 +2377,15 @@ fn generate_return(
     names: &mut GeneratedNames,
 ) -> GeneratedReturn {
     match type_ {
+        FunctionReturnType::Generic(_) => GeneratedReturn {
+            statements: quote! {
+                let returned = returned.into_host();
+            },
+            completion: quote! {
+                ::core::result::Result::Ok(call.return_value(returned))
+            },
+            constructions: Vec::new(),
+        },
         FunctionReturnType::Value(type_) => {
             generate_function_value_return(type_, customs, support, provider, return_type, names)
         }
@@ -3055,6 +3225,7 @@ fn host_argument_type(
 ) -> TokenStream {
     match type_ {
         FunctionArgumentType::Value(type_) => host_value_type(type_, customs, support),
+        FunctionArgumentType::Generic(value) => generic_host_type(&value.host, customs, support),
         FunctionArgumentType::List(list) => {
             let item = host_value_type(&list.collection.value, customs, support);
             quote!(#support::HostListType<#item>)
@@ -3069,6 +3240,7 @@ fn host_return_type(
 ) -> TokenStream {
     match type_ {
         FunctionReturnType::Value(type_) => function_output_host_type(type_, customs, support),
+        FunctionReturnType::Generic(value) => generic_host_type(&value.host, customs, support),
         FunctionReturnType::List(list) => {
             let item = host_value_type(&list.collection.value, customs, support);
             quote!(#support::HostListType<#item>)
@@ -3152,6 +3324,61 @@ fn host_value_type(
     }
 }
 
+fn generic_host_type(
+    type_: &GenericHostType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+) -> TokenStream {
+    match type_ {
+        GenericHostType::Parameter { index } => {
+            quote!(#support::HostTypeParameter<#index>)
+        }
+        GenericHostType::Scalar(type_) => quote!(#type_),
+        GenericHostType::Declared(type_) => {
+            quote!(<#type_ as #support::ProviderValue>::Host)
+        }
+        GenericHostType::External { schema } => {
+            quote!(#support::HostExternalType<#schema>)
+        }
+        GenericHostType::Custom { index } => {
+            let schema = &customs[*index].schema;
+            quote!(#support::HostCustomType<#schema>)
+        }
+        GenericHostType::Tuple(elements) => {
+            let mut host_elements = Vec::with_capacity(elements.len());
+            for element in elements {
+                host_elements.push(generic_host_type(element, customs, support));
+            }
+            let elements = host_type_token_sequence(&host_elements, support);
+            quote!(#support::HostTupleType<#elements>)
+        }
+        GenericHostType::List(item) => {
+            let item = generic_host_type(item, customs, support);
+            quote!(#support::HostListType<#item>)
+        }
+        GenericHostType::Result {
+            success, failure, ..
+        } => {
+            let success = generic_host_type(success, customs, support);
+            let failure = generic_host_type(failure, customs, support);
+            quote!(#support::ProviderResult<#success, #failure>)
+        }
+        GenericHostType::Option(value) => {
+            let value = generic_host_type(value, customs, support);
+            quote!(#support::ProviderOption<#value>)
+        }
+        GenericHostType::Function { arguments, return_ } => {
+            let mut host_arguments = Vec::with_capacity(arguments.len());
+            for argument in arguments {
+                host_arguments.push(generic_host_type(argument, customs, support));
+            }
+            let arguments = host_type_token_sequence(&host_arguments, support);
+            let return_ = generic_host_type(return_, customs, support);
+            quote!(#support::HostOpaqueFunctionType<#arguments, #return_>)
+        }
+    }
+}
+
 fn host_custom_field_type(
     type_: &CustomFieldValueType,
     customs: &[CustomModel],
@@ -3173,6 +3400,10 @@ fn wrapper_argument_type(
 ) -> TokenStream {
     match type_ {
         FunctionArgumentType::Value(type_) => wrapper_value_type(type_, customs, support),
+        FunctionArgumentType::Generic(value) => {
+            let host = generic_host_type(&value.host, customs, support);
+            quote!(<#host as #support::HostType>::Value<'__geam_call>)
+        }
         FunctionArgumentType::List(list) => {
             let item = host_value_type(&list.collection.value, customs, support);
             quote!(#support::HostList<'__geam_call, #item>)
@@ -3953,6 +4184,28 @@ fn provider_input_signature_type(type_: &ProviderValueType, support: &TokenStrea
     }
 }
 
+fn generic_value_signature_type(
+    value: &GenericValueType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+) -> Type {
+    let source = &value.source;
+    let host = generic_host_type(&value.host, customs, support);
+    let mut path = value.path.clone();
+    path.path
+        .segments
+        .last_mut()
+        .expect("Value path must contain one segment")
+        .arguments = PathArguments::AngleBracketed(syn::parse_quote! {
+        <#source, #support::ProviderValueContext<'__geam_call, #host>>
+    });
+    Type::Path(path)
+}
+
+fn instantiated_generic_source_type(value: &GenericValueType) -> Type {
+    value.instantiated.clone()
+}
+
 impl Parse for ModuleArguments {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let mut partial = PartialModuleArguments::default();
@@ -4256,12 +4509,7 @@ fn validate_function(
             "provider functions must use the ordinary Rust ABI",
         ));
     }
-    if !function.sig.generics.params.is_empty() || function.sig.generics.where_clause.is_some() {
-        return Err(syn::Error::new_spanned(
-            &function.sig.generics,
-            "provider functions must not have generics",
-        ));
-    }
+    let mut generic_scope = GenericParameterScope::new(&function.sig.generics)?;
     let profile = match (arguments.profile, module_profile) {
         (None, _) => None,
         (Some(profile), Some(bound)) => Some((profile, bound)),
@@ -4284,12 +4532,20 @@ fn validate_function(
         .as_ref()
         .map(|(value, _)| value.clone())
         .unwrap_or_else(|| declared_return_type.clone());
+    reject_unwrapped_generic(&rust_return_type, &generic_scope)?;
     if matches!(&rust_return_type, Type::Tuple(tuple) if tuple.elems.is_empty()) {
         function
             .attrs
             .push(syn::parse_quote!(#[allow(clippy::unused_unit)]));
     }
-    let return_ = classify_return(&rust_return_type, externals, customs, list_decoders)?;
+    let return_ = classify_return(
+        &rust_return_type,
+        externals,
+        customs,
+        list_decoders,
+        &mut generic_scope,
+        support,
+    )?;
 
     let mut call = CallAccess::None;
     let mut arguments = Vec::new();
@@ -4352,14 +4608,27 @@ fn validate_function(
                     "Call<State> parameters require `#[geam::call]`",
                 ));
             }
-            let type_ = classify_argument(&argument.ty, externals, customs, list_decoders)?;
-            if let FunctionArgumentType::List(list) = &type_ {
-                *argument.ty = list_signature_type(list, customs, support);
-                has_list = true;
-            } else if let FunctionArgumentType::Value(value) = &type_
-                && contains_source_wrapper(value)
-            {
-                *argument.ty = provider_input_signature_type(value, support);
+            reject_unwrapped_generic(&argument.ty, &generic_scope)?;
+            let type_ = classify_argument(
+                &argument.ty,
+                externals,
+                customs,
+                list_decoders,
+                &mut generic_scope,
+                support,
+            )?;
+            match &type_ {
+                FunctionArgumentType::List(list) => {
+                    *argument.ty = list_signature_type(list, customs, support);
+                    has_list = true;
+                }
+                FunctionArgumentType::Generic(value) => {
+                    *argument.ty = generic_value_signature_type(value, customs, support);
+                }
+                FunctionArgumentType::Value(value) if contains_source_wrapper(value) => {
+                    *argument.ty = provider_input_signature_type(value, support);
+                }
+                FunctionArgumentType::Value(_) => {}
             }
             arguments.push(type_);
         }
@@ -4371,8 +4640,10 @@ fn validate_function(
         ));
     }
 
+    let generics = generic_scope.finish()?;
     let model = FunctionModel {
         ident: function.sig.ident.clone(),
+        generics,
         arguments,
         return_,
         call,
@@ -4391,20 +4662,22 @@ fn validate_function(
         function.sig.output =
             ReturnType::Type(Token![->](proc_macro2::Span::call_site()), Box::new(output));
         has_list = true;
+    } else if let FunctionReturnType::Generic(value) = &model.return_ {
+        let output = generic_value_signature_type(value, customs, support);
+        let output = if let Some((_, host_result)) = &host_result {
+            let host_result = collection_type_with_item(host_result, &output);
+            syn::parse_quote!(#host_result)
+        } else {
+            output
+        };
+        function.sig.output =
+            ReturnType::Type(Token![->](proc_macro2::Span::call_site()), Box::new(output));
     }
-    if !matches!(model.call, CallAccess::None) {
-        function
-            .sig
-            .generics
-            .params
-            .push(GenericParam::Lifetime(syn::parse_quote!('__geam_call)));
+    if !matches!(model.call, CallAccess::None) || function_contains_generic_value(&model) {
+        prepend_function_lifetime(&mut function.sig.generics, syn::parse_quote!('__geam_call));
     }
     if has_list {
-        function
-            .sig
-            .generics
-            .params
-            .push(GenericParam::Lifetime(syn::parse_quote!('__geam_list)));
+        prepend_function_lifetime(&mut function.sig.generics, syn::parse_quote!('__geam_list));
     }
     if let Some((profile, bound)) = &profile {
         function
@@ -4437,6 +4710,12 @@ fn validate_function(
     Ok(model)
 }
 
+fn prepend_function_lifetime(generics: &mut syn::Generics, lifetime: syn::LifetimeParam) {
+    let existing = std::mem::take(&mut generics.params);
+    generics.params.push(GenericParam::Lifetime(lifetime));
+    generics.params.extend(existing);
+}
+
 fn contains_source_wrapper(type_: &ProviderValueType) -> bool {
     match type_ {
         ProviderValueType::Result { .. } | ProviderValueType::Option { .. } => true,
@@ -4446,6 +4725,18 @@ fn contains_source_wrapper(type_: &ProviderValueType) -> bool {
         | ProviderValueType::External { .. }
         | ProviderValueType::Custom { .. } => false,
     }
+}
+
+fn function_contains_generic_value(function: &FunctionModel) -> bool {
+    if matches!(function.return_, FunctionReturnType::Generic(_)) {
+        return true;
+    }
+    for argument in &function.arguments {
+        if matches!(argument, FunctionArgumentType::Generic(_)) {
+            return true;
+        }
+    }
+    false
 }
 
 fn call_parameter(type_: &Type) -> syn::Result<(bool, Type, TypePath)> {
@@ -4480,6 +4771,14 @@ fn collection_type_with_item(collection: &TypePath, item: &Type) -> TypePath {
     collection
 }
 
+fn collection_type_with_items(collection: &TypePath, items: &[Type]) -> TypePath {
+    let mut collection = collection.clone();
+    for segment in collection.path.segments.iter_mut().rev().take(1) {
+        segment.arguments = PathArguments::AngleBracketed(syn::parse_quote!(<#(#items),*>));
+    }
+    collection
+}
+
 fn is_call_type(type_: &Type) -> bool {
     let type_ = if let Type::Reference(reference) = type_ {
         &reference.elem
@@ -4489,11 +4788,301 @@ fn is_call_type(type_: &Type) -> bool {
     is_collection(type_, "Call")
 }
 
+fn reject_unwrapped_generic(type_: &Type, generics: &GenericParameterScope) -> syn::Result<()> {
+    if let Some(ident) = find_unwrapped_generic(type_, generics) {
+        return Err(syn::Error::new_spanned(
+            type_,
+            format!("generic source type `{ident}` must be written as Value<{ident}>",),
+        ));
+    }
+    Ok(())
+}
+
+fn find_unwrapped_generic(type_: &Type, generics: &GenericParameterScope) -> Option<Ident> {
+    if is_type_application_named(type_, "Value") {
+        return None;
+    }
+    if let Some(ident) = generics.declared_ident(type_) {
+        return Some(ident);
+    }
+
+    if let Type::BareFn(function) = type_ {
+        for argument in &function.inputs {
+            if let Some(ident) = find_unwrapped_generic(&argument.ty, generics) {
+                return Some(ident);
+            }
+        }
+        if let ReturnType::Type(_, return_) = &function.output {
+            return find_unwrapped_generic(return_, generics);
+        }
+        return None;
+    }
+    if let Type::Paren(paren) = type_ {
+        return find_unwrapped_generic(&paren.elem, generics);
+    }
+    if let Type::Path(path) = type_ {
+        for segment in &path.path.segments {
+            if let PathArguments::AngleBracketed(arguments) = &segment.arguments {
+                for argument in &arguments.args {
+                    if let GenericArgument::Type(type_) = argument
+                        && let Some(ident) = find_unwrapped_generic(type_, generics)
+                    {
+                        return Some(ident);
+                    }
+                }
+            }
+        }
+        return None;
+    }
+    if let Type::Reference(reference) = type_ {
+        return find_unwrapped_generic(&reference.elem, generics);
+    }
+    if let Type::Tuple(tuple) = type_ {
+        for element in &tuple.elems {
+            if let Some(ident) = find_unwrapped_generic(element, generics) {
+                return Some(ident);
+            }
+        }
+        return None;
+    }
+    None
+}
+
+fn generic_value_type(
+    type_: &Type,
+    generics: &mut GenericParameterScope,
+    externals: &[ExternalModel],
+    customs: &[CustomModel],
+    support: &TokenStream,
+) -> syn::Result<Option<GenericValueType>> {
+    let is_value_application = is_type_application_named(type_, "Value");
+    if !is_value_application
+        && (external_type(type_, externals).is_some()
+            || custom_output_type(type_, customs).is_some()
+            || custom_input_model(type_, customs).is_some()
+            || is_qualified_type_path(type_))
+    {
+        return Ok(None);
+    }
+    let Some((source, path)) = collection_item_with_path(type_, "Value")? else {
+        return Ok(None);
+    };
+    let classified = classify_generic_host_type(&source, generics, externals, customs, support)?;
+    if !generic_host_contains_parameter(&classified.host)
+        && !matches!(classified.host, GenericHostType::Function { .. })
+    {
+        return Err(syn::Error::new_spanned(
+            type_,
+            "Value<T> is reserved for generic source shapes and opaque function values; use the concrete provider type directly",
+        ));
+    }
+    Ok(Some(GenericValueType {
+        source,
+        instantiated: classified.instantiated,
+        path,
+        host: classified.host,
+    }))
+}
+
+fn classify_generic_host_type(
+    type_: &Type,
+    generics: &mut GenericParameterScope,
+    externals: &[ExternalModel],
+    customs: &[CustomModel],
+    support: &TokenStream,
+) -> syn::Result<ClassifiedGenericHostType> {
+    if let Some(ident) = generics.declared_ident(type_) {
+        let index = generics.parameter_index(ident);
+        return Ok(ClassifiedGenericHostType {
+            host: GenericHostType::Parameter { index },
+            instantiated: syn::parse_quote!(#support::HostTypeParameter<#index>),
+        });
+    }
+    if let Type::Reference(_) = type_ {
+        return Err(syn::Error::new_spanned(
+            type_,
+            "Value<...> source shapes must not contain Rust references",
+        ));
+    }
+    if is_type_application_named(type_, "Value") {
+        return Err(syn::Error::new_spanned(
+            type_,
+            "Value<...> must not be nested inside another Value",
+        ));
+    }
+    if let Some((item, path)) = collection_item_with_path(type_, "List")? {
+        let item = classify_generic_host_type(&item, generics, externals, customs, support)?;
+        return Ok(ClassifiedGenericHostType {
+            instantiated: Type::Path(collection_type_with_item(&path, &item.instantiated)),
+            host: GenericHostType::List(Box::new(item.host)),
+        });
+    }
+    if collection_item(type_, "Vec")?.is_some() {
+        return Err(syn::Error::new_spanned(
+            type_,
+            "Vec<T> is not a source type inside Value<...>; use geam::List<T>",
+        ));
+    }
+    match source_wrapper(type_)? {
+        SourceWrapper::Result {
+            path,
+            success,
+            failure,
+        } => {
+            let success =
+                classify_generic_host_type(success, generics, externals, customs, support)?;
+            let failure =
+                classify_generic_host_type(failure, generics, externals, customs, support)?;
+            let instantiated = collection_type_with_items(
+                path,
+                &[success.instantiated.clone(), failure.instantiated.clone()],
+            );
+            return Ok(ClassifiedGenericHostType {
+                instantiated: Type::Path(instantiated),
+                host: GenericHostType::Result {
+                    success: Box::new(success.host),
+                    failure: Box::new(failure.host),
+                },
+            });
+        }
+        SourceWrapper::Option { path, value } => {
+            let value = classify_generic_host_type(value, generics, externals, customs, support)?;
+            return Ok(ClassifiedGenericHostType {
+                instantiated: Type::Path(collection_type_with_item(path, &value.instantiated)),
+                host: GenericHostType::Option(Box::new(value.host)),
+            });
+        }
+        SourceWrapper::Other => {}
+    }
+    if let Some(external) = external_type(type_, externals) {
+        return Ok(ClassifiedGenericHostType {
+            instantiated: type_.clone(),
+            host: GenericHostType::External {
+                schema: external.schema.clone(),
+            },
+        });
+    }
+    if let Type::Tuple(tuple) = type_
+        && !tuple.elems.is_empty()
+    {
+        let mut host_elements = Vec::with_capacity(tuple.elems.len());
+        let mut instantiated_elements = Vec::with_capacity(tuple.elems.len());
+        for element in &tuple.elems {
+            let element =
+                classify_generic_host_type(element, generics, externals, customs, support)?;
+            host_elements.push(element.host);
+            instantiated_elements.push(element.instantiated);
+        }
+        return Ok(ClassifiedGenericHostType {
+            host: GenericHostType::Tuple(host_elements),
+            instantiated: syn::parse_quote!((#(#instantiated_elements,)*)),
+        });
+    }
+    if let Type::BareFn(function) = type_ {
+        if function.lifetimes.is_some() {
+            return Err(syn::Error::new_spanned(
+                function,
+                "opaque source function shapes must not declare lifetimes",
+            ));
+        }
+        if function.unsafety.is_some() || function.abi.is_some() || function.variadic.is_some() {
+            return Err(syn::Error::new_spanned(
+                function,
+                "opaque source function shapes must use safe non-variadic Rust fn syntax",
+            ));
+        }
+        let mut host_arguments = Vec::with_capacity(function.inputs.len());
+        let mut instantiated_arguments = Vec::with_capacity(function.inputs.len());
+        for argument in &function.inputs {
+            let argument =
+                classify_generic_host_type(&argument.ty, generics, externals, customs, support)?;
+            host_arguments.push(argument.host);
+            instantiated_arguments.push(argument.instantiated);
+        }
+        let return_type = match &function.output {
+            ReturnType::Default => syn::parse_quote!(()),
+            ReturnType::Type(_, type_) => (**type_).clone(),
+        };
+        let return_type =
+            classify_generic_host_type(&return_type, generics, externals, customs, support)?;
+        let instantiated_return = &return_type.instantiated;
+        return Ok(ClassifiedGenericHostType {
+            host: GenericHostType::Function {
+                arguments: host_arguments,
+                return_: Box::new(return_type.host),
+            },
+            instantiated: syn::parse_quote! {
+                fn(#(#instantiated_arguments),*) -> #instantiated_return
+            },
+        });
+    }
+    if let Some((index, _)) = custom_input_model(type_, customs) {
+        return Ok(ClassifiedGenericHostType {
+            instantiated: type_.clone(),
+            host: GenericHostType::Custom { index },
+        });
+    }
+    if let Type::Path(TypePath { qself: None, path }) = type_
+        && path.segments.len() > 1
+    {
+        for segment in &path.segments {
+            if !matches!(segment.arguments, PathArguments::None) {
+                return Err(syn::Error::new_spanned(
+                    type_,
+                    "generic declared source types are not supported inside Value<...>",
+                ));
+            }
+        }
+        return Ok(ClassifiedGenericHostType {
+            host: GenericHostType::Declared(type_.clone()),
+            instantiated: type_.clone(),
+        });
+    }
+    Ok(ClassifiedGenericHostType {
+        host: GenericHostType::Scalar(type_.clone()),
+        instantiated: type_.clone(),
+    })
+}
+
+fn generic_host_contains_parameter(type_: &GenericHostType) -> bool {
+    match type_ {
+        GenericHostType::Parameter { .. } => true,
+        GenericHostType::Tuple(elements) => {
+            for element in elements {
+                if generic_host_contains_parameter(element) {
+                    return true;
+                }
+            }
+            false
+        }
+        GenericHostType::List(item) | GenericHostType::Option(item) => {
+            generic_host_contains_parameter(item)
+        }
+        GenericHostType::Result {
+            success, failure, ..
+        } => generic_host_contains_parameter(success) || generic_host_contains_parameter(failure),
+        GenericHostType::Function { arguments, return_ } => {
+            for argument in arguments {
+                if generic_host_contains_parameter(argument) {
+                    return true;
+                }
+            }
+            generic_host_contains_parameter(return_)
+        }
+        GenericHostType::Scalar(_)
+        | GenericHostType::Declared(_)
+        | GenericHostType::External { .. }
+        | GenericHostType::Custom { .. } => false,
+    }
+}
+
 fn classify_argument(
     type_: &Type,
     externals: &[ExternalModel],
     customs: &[CustomModel],
     list_decoders: &mut Vec<ListDecoderModel>,
+    generics: &mut GenericParameterScope,
+    support: &TokenStream,
 ) -> syn::Result<FunctionArgumentType> {
     if let Type::Reference(reference) = type_ {
         if is_collection(&reference.elem, "List") {
@@ -4545,6 +5134,9 @@ fn classify_argument(
             "provider source arguments may borrow only declared external payloads",
         ));
     }
+    if let Some(value) = generic_value_type(type_, generics, externals, customs, support)? {
+        return Ok(FunctionArgumentType::Generic(Box::new(value)));
+    }
     if let Some(item) = collection_item(type_, "List")? {
         let value = classify_collection_input_item(&item, externals, customs, "List")?;
         let collection = CollectionType {
@@ -4565,7 +5157,7 @@ fn classify_argument(
         ));
     }
     Ok(FunctionArgumentType::Value(Box::new(
-        classify_argument_value(type_, externals, customs)?,
+        classify_argument_value(type_, externals, customs, generics, support)?,
     )))
 }
 
@@ -4573,7 +5165,15 @@ fn classify_argument_value(
     type_: &Type,
     externals: &[ExternalModel],
     customs: &[CustomModel],
+    generics: &mut GenericParameterScope,
+    support: &TokenStream,
 ) -> syn::Result<ProviderValueType> {
+    if generic_value_type(type_, generics, externals, customs, support)?.is_some() {
+        return Err(syn::Error::new_spanned(
+            type_,
+            "Value<...> must be the complete source argument",
+        ));
+    }
     if let Type::Reference(reference) = type_ {
         if let Some(external) = external_type(&reference.elem, externals) {
             if reference.mutability.is_some() {
@@ -4615,15 +5215,23 @@ fn classify_argument_value(
         ));
     }
     match source_wrapper(type_)? {
-        SourceWrapper::Result { success, failure } => {
+        SourceWrapper::Result {
+            success, failure, ..
+        } => {
             return Ok(ProviderValueType::Result {
-                success: Box::new(classify_argument_value(success, externals, customs)?),
-                failure: Box::new(classify_argument_value(failure, externals, customs)?),
+                success: Box::new(classify_argument_value(
+                    success, externals, customs, generics, support,
+                )?),
+                failure: Box::new(classify_argument_value(
+                    failure, externals, customs, generics, support,
+                )?),
             });
         }
-        SourceWrapper::Option { value } => {
+        SourceWrapper::Option { value, .. } => {
             return Ok(ProviderValueType::Option {
-                value: Box::new(classify_argument_value(value, externals, customs)?),
+                value: Box::new(classify_argument_value(
+                    value, externals, customs, generics, support,
+                )?),
             });
         }
         SourceWrapper::Other => {}
@@ -4640,11 +5248,12 @@ fn classify_argument_value(
     if let Type::Tuple(tuple) = type_
         && !tuple.elems.is_empty()
     {
-        let elements = tuple
-            .elems
-            .iter()
-            .map(|element| classify_argument_value(element, externals, customs))
-            .collect::<syn::Result<Vec<_>>>()?;
+        let mut elements = Vec::with_capacity(tuple.elems.len());
+        for element in &tuple.elems {
+            elements.push(classify_argument_value(
+                element, externals, customs, generics, support,
+            )?);
+        }
         return Ok(ProviderValueType::Tuple(elements));
     }
     if let Some((index, custom)) = custom_input_model(type_, customs) {
@@ -4682,7 +5291,12 @@ fn classify_return(
     externals: &[ExternalModel],
     customs: &[CustomModel],
     list_decoders: &mut Vec<ListDecoderModel>,
+    generics: &mut GenericParameterScope,
+    support: &TokenStream,
 ) -> syn::Result<FunctionReturnType> {
+    if let Some(value) = generic_value_type(type_, generics, externals, customs, support)? {
+        return Ok(FunctionReturnType::Generic(Box::new(value)));
+    }
     if let Type::Reference(reference) = type_ {
         if is_collection(&reference.elem, "List") {
             return Err(syn::Error::new_spanned(
@@ -4730,7 +5344,7 @@ fn classify_return(
         })));
     }
     if let Some(item) = collection_item(type_, "Vec")? {
-        let value = classify_function_output_value(&item, externals, customs)?;
+        let value = classify_function_output_value(&item, externals, customs, generics, support)?;
         return Ok(FunctionReturnType::Value(FunctionOutputValueType::Vec(
             FunctionOutputCollectionType {
                 value: Box::new(value),
@@ -4738,7 +5352,7 @@ fn classify_return(
         )));
     }
     Ok(FunctionReturnType::Value(classify_function_output_value(
-        type_, externals, customs,
+        type_, externals, customs, generics, support,
     )?))
 }
 
@@ -4746,7 +5360,15 @@ fn classify_function_output_value(
     type_: &Type,
     externals: &[ExternalModel],
     customs: &[CustomModel],
+    generics: &mut GenericParameterScope,
+    support: &TokenStream,
 ) -> syn::Result<FunctionOutputValueType> {
+    if generic_value_type(type_, generics, externals, customs, support)?.is_some() {
+        return Err(syn::Error::new_spanned(
+            type_,
+            "Value<...> must be the complete source return",
+        ));
+    }
     if let Type::Reference(reference) = type_ {
         if let Some(external) = external_type(&reference.elem, externals) {
             return Err(syn::Error::new_spanned(
@@ -4769,21 +5391,29 @@ fn classify_function_output_value(
         ));
     }
     if let Some(item) = collection_item(type_, "Vec")? {
-        let value = classify_function_output_value(&item, externals, customs)?;
+        let value = classify_function_output_value(&item, externals, customs, generics, support)?;
         return Ok(FunctionOutputValueType::Vec(FunctionOutputCollectionType {
             value: Box::new(value),
         }));
     }
     match source_wrapper(type_)? {
-        SourceWrapper::Result { success, failure } => {
+        SourceWrapper::Result {
+            success, failure, ..
+        } => {
             return Ok(FunctionOutputValueType::Result {
-                success: Box::new(classify_function_output_value(success, externals, customs)?),
-                failure: Box::new(classify_function_output_value(failure, externals, customs)?),
+                success: Box::new(classify_function_output_value(
+                    success, externals, customs, generics, support,
+                )?),
+                failure: Box::new(classify_function_output_value(
+                    failure, externals, customs, generics, support,
+                )?),
             });
         }
-        SourceWrapper::Option { value } => {
+        SourceWrapper::Option { value, .. } => {
             return Ok(FunctionOutputValueType::Option {
-                value: Box::new(classify_function_output_value(value, externals, customs)?),
+                value: Box::new(classify_function_output_value(
+                    value, externals, customs, generics, support,
+                )?),
             });
         }
         SourceWrapper::Other => {}
@@ -4800,11 +5430,12 @@ fn classify_function_output_value(
     if let Type::Tuple(tuple) = type_
         && !tuple.elems.is_empty()
     {
-        let elements = tuple
-            .elems
-            .iter()
-            .map(|element| classify_function_output_value(element, externals, customs))
-            .collect::<syn::Result<Vec<_>>>()?;
+        let mut elements = Vec::with_capacity(tuple.elems.len());
+        for element in &tuple.elems {
+            elements.push(classify_function_output_value(
+                element, externals, customs, generics, support,
+            )?);
+        }
         return Ok(FunctionOutputValueType::Tuple(elements));
     }
     if let Some((index, _)) = custom_output_type_with_index(type_, customs) {
@@ -4844,6 +5475,14 @@ fn classify_collection_input_item(
     customs: &[CustomModel],
     collection: &str,
 ) -> syn::Result<ProviderValueType> {
+    if is_type_application_named(type_, "Value") {
+        return Err(syn::Error::new_spanned(
+            type_,
+            format!(
+                "Value<...> cannot be a {collection} item; wrap the complete generic source shape in Value<...>"
+            ),
+        ));
+    }
     if let Type::Reference(reference) = type_ {
         if let Some(external) = external_type(&reference.elem, externals) {
             return Err(syn::Error::new_spanned(
@@ -4866,7 +5505,9 @@ fn classify_collection_input_item(
         ));
     }
     match source_wrapper(type_)? {
-        SourceWrapper::Result { success, failure } => {
+        SourceWrapper::Result {
+            success, failure, ..
+        } => {
             return Ok(ProviderValueType::Result {
                 success: Box::new(classify_collection_input_item(
                     success, externals, customs, collection,
@@ -4876,7 +5517,7 @@ fn classify_collection_input_item(
                 )?),
             });
         }
-        SourceWrapper::Option { value } => {
+        SourceWrapper::Option { value, .. } => {
             return Ok(ProviderValueType::Option {
                 value: Box::new(classify_collection_input_item(
                     value, externals, customs, collection,
@@ -4976,11 +5617,11 @@ fn source_wrapper(type_: &Type) -> syn::Result<SourceWrapper<'_>> {
             "HostResult<T> is supported only as the outer provider return",
         ));
     }
-    let Type::Path(TypePath { qself: None, path }) = type_ else {
+    let Type::Path(type_path @ TypePath { qself: None, .. }) = type_ else {
         return Ok(SourceWrapper::Other);
     };
     let mut arguments = SourceWrapperArguments::Other;
-    for segment in &path.segments {
+    for segment in &type_path.path.segments {
         arguments = if segment.ident == "Result" {
             SourceWrapperArguments::Result(&segment.arguments)
         } else if segment.ident == "Option" {
@@ -5004,7 +5645,11 @@ fn source_wrapper(type_: &Type) -> syn::Result<SourceWrapper<'_>> {
                             "Result<T, HostFailure> is not a source Result; use HostResult<T>",
                         ))
                     } else {
-                        Ok(SourceWrapper::Result { success, failure })
+                        Ok(SourceWrapper::Result {
+                            path: type_path,
+                            success,
+                            failure,
+                        })
                     }
                 }
                 _ => Err(syn::Error::new_spanned(
@@ -5016,7 +5661,10 @@ fn source_wrapper(type_: &Type) -> syn::Result<SourceWrapper<'_>> {
         SourceWrapperArguments::Option(PathArguments::AngleBracketed(arguments)) => {
             let mut arguments = arguments.args.iter();
             match (arguments.next(), arguments.next()) {
-                (Some(GenericArgument::Type(value)), None) => Ok(SourceWrapper::Option { value }),
+                (Some(GenericArgument::Type(value)), None) => Ok(SourceWrapper::Option {
+                    path: type_path,
+                    value,
+                }),
                 _ => Err(syn::Error::new_spanned(
                     type_,
                     "Option requires exactly 1 type argument",
@@ -5055,6 +5703,15 @@ fn is_collection(type_: &Type, name: &str) -> bool {
     )
 }
 
+fn is_type_application_named(type_: &Type, name: &str) -> bool {
+    let Type::Path(TypePath { qself: None, path }) = type_ else {
+        return false;
+    };
+    path.segments.last().is_some_and(|segment| {
+        segment.ident == name && matches!(segment.arguments, PathArguments::AngleBracketed(_))
+    })
+}
+
 fn is_non_empty_tuple(type_: &Type) -> bool {
     matches!(type_, Type::Tuple(tuple) if !tuple.elems.is_empty())
 }
@@ -5080,10 +5737,11 @@ fn external_type<'external>(
 #[cfg(test)]
 mod tests {
     use super::{
-        ExternalArguments, ModuleArguments, classify_collection_input_item, expand,
-        list_item_view_type, provider_value_key,
+        ExternalArguments, GenericParameterScope, ModuleArguments, classify_collection_input_item,
+        expand, find_unwrapped_generic, list_item_view_type, provider_value_key,
     };
     use quote::quote;
+    use syn::{ItemFn, Type};
 
     fn expansion_error(item: proc_macro2::TokenStream) -> String {
         expand(quote!(path = "counter", crate_path = geam_core), item)
@@ -5360,7 +6018,7 @@ mod tests {
                         }
                     }
                 ),
-                "provider functions must not have generics",
+                "generic parameter `T` must appear inside a Value<...> source shape",
             ),
             (
                 quote!(
@@ -5374,7 +6032,7 @@ mod tests {
                         }
                     }
                 ),
-                "provider functions must not have generics",
+                "provider functions must not have where clauses",
             ),
             (
                 quote!(
@@ -5690,6 +6348,607 @@ mod tests {
             .find("\"second\"")
             .expect("second registration should exist");
         assert!(first < second);
+    }
+
+    #[test]
+    fn generic_value_expansion_preserves_author_generics_and_return_first_indices() {
+        let expansion = expand(
+            quote!(path = "generic_values", crate_path = geam_core),
+            quote! {
+                mod generic_values {
+                    fn helper() {}
+
+                    #[geam::external(name = "Token")]
+                    struct Token;
+
+                    #[geam::custom(input = ProblemInput)]
+                    enum Problem {
+                        Missing,
+                    }
+
+                    #[geam::function]
+                    fn select<First, Second>(
+                        first: Value<First>,
+                        second: Value<Second>,
+                    ) -> Value<Second> {
+                        let _ = first;
+                        second
+                    }
+
+                    #[geam::function]
+                    fn concrete<Item>(value: Value<(Item, EcoString)>) -> Value<(Item, EcoString)> {
+                        value
+                    }
+
+                    #[geam::function]
+                    fn declared<Item>(
+                        value: Value<(Item, sibling::MarkerInput)>,
+                    ) -> Value<(Item, sibling::MarkerInput)> {
+                        value
+                    }
+
+                    #[geam::function]
+                    fn external<Item>(
+                        value: Value<(Item, Token)>,
+                    ) -> Value<(Item, Token)> {
+                        value
+                    }
+
+                    #[geam::function]
+                    fn custom<Item>(
+                        value: Value<(Item, ProblemInput)>,
+                    ) -> Value<(Item, ProblemInput)> {
+                        value
+                    }
+
+                    #[geam::function]
+                    fn fallible<Item>(value: Value<Item>) -> HostResult<Value<Item>> {
+                        Ok(value)
+                    }
+
+                    #[geam::function]
+                    fn nullary<Item>(value: Value<fn() -> Item>) -> Value<fn() -> Item> {
+                        value
+                    }
+
+                    #[geam::function]
+                    fn unary<Item>(value: Value<fn(Item) -> bool>) -> Value<fn(Item) -> bool> {
+                        value
+                    }
+
+                    #[geam::function]
+                    fn binary<Item>(
+                        value: Value<fn(bool, Item) -> bool>,
+                    ) -> Value<fn(bool, Item) -> bool> {
+                        value
+                    }
+
+                    #[geam::function]
+                    fn nullary_unit(value: Value<fn()>) -> Value<fn()> {
+                        value
+                    }
+
+                    #[geam::function]
+                    fn list_value<Item>(value: Value<List<Item>>) -> Value<List<Item>> {
+                        value
+                    }
+
+                    #[geam::function]
+                    fn failure_value<Item>(
+                        value: Value<Result<EcoString, Item>>,
+                    ) -> Value<Result<EcoString, Item>> {
+                        value
+                    }
+
+                    #[geam::function]
+                    fn optional<Item>(
+                        value: Value<Option<Item>>,
+                    ) -> Value<Option<Item>> {
+                        value
+                    }
+
+                    #[geam::function]
+                    fn mutable<Item>(
+                        #[geam::call] call: &mut Call<RunState>,
+                        value: Value<Item>,
+                    ) -> Value<Item> {
+                        let _ = call;
+                        value
+                    }
+
+                    #[geam::function]
+                    fn present<Item>(value: Value<Item>) -> bool {
+                        let _ = value;
+                        true
+                    }
+                }
+            },
+        )
+        .expect("generic source values should expand");
+        let module = syn::parse2::<syn::ItemMod>(expansion.clone())
+            .expect("expanded provider module should remain valid Rust syntax");
+        let (_, items) = module.content.expect("expanded module must remain inline");
+        let function = items
+            .iter()
+            .find_map(|item| match item {
+                syn::Item::Fn(function) if function.sig.ident == "select" => Some(function),
+                _ => None,
+            })
+            .expect("author function should remain in the expanded module");
+        let generic_names = function
+            .sig
+            .generics
+            .type_params()
+            .map(|parameter| parameter.ident.to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(generic_names, ["First", "Second"]);
+        assert_eq!(function.sig.generics.lifetimes().count(), 1);
+
+        let expansion = expansion.to_string();
+        assert!(expansion.contains(
+            "select :: < geam_core :: __macro_support :: HostTypeParameter < 1usize > , geam_core :: __macro_support :: HostTypeParameter < 0usize > >"
+        ));
+        assert!(expansion.contains(
+            "< sibling :: MarkerInput as geam_core :: __macro_support :: ProviderValue > :: Host"
+        ));
+        assert!(expansion.contains("__GeamExternalSchema0"));
+        assert!(expansion.contains("__GeamCustom0Constructor0"));
+        assert!(expansion.contains("let returned = returned ?"));
+        assert!(!expansion.contains("HostConstructions"));
+    }
+
+    #[test]
+    fn generic_value_expansion_composes_with_explicit_profiles() {
+        let expansion = expand(
+            quote!(
+                path = "generic_values",
+                crate_path = geam_core,
+                profile = crate::BuiltInProfile,
+                component = crate::Component<Profile::Io>
+            ),
+            quote! {
+                mod generic_values {
+                    #[geam::function(profile = Profile)]
+                    fn identity<Item>(value: Value<Item>) -> Value<Item> {
+                        value
+                    }
+                }
+            },
+        )
+        .expect("generic source values should compose with a built-in profile")
+        .to_string();
+
+        assert!(expansion.contains(
+            "identity :: < geam_core :: __macro_support :: HostTypeParameter < 0usize > , Profile >"
+        ));
+    }
+
+    #[test]
+    fn generic_value_declaration_diagnostics_are_exact() {
+        let cases = [
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<'value>(value: Value<bool>) -> Value<bool> { value }
+                    }
+                },
+                "provider functions must not have lifetime generics",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<const INDEX: usize>(value: bool) -> bool { value }
+                    }
+                },
+                "provider functions must not have const generics",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item: Clone>(value: Value<Item>) -> Value<Item> { value }
+                    }
+                },
+                "provider function type generics must not have bounds",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item = bool>(value: Value<Item>) -> Value<Item> { value }
+                    }
+                },
+                "provider function type generics must not have defaults",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<Item>) -> Value<Item>
+                        where
+                            Item: Clone,
+                        {
+                            value
+                        }
+                    }
+                },
+                "provider functions must not have where clauses",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Item) -> Value<Item> { todo!() }
+                    }
+                },
+                "generic source type `Item` must be written as Value<Item>",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn invoke<Item>(callback: fn(bool, Item) -> bool) -> Value<Item> {
+                            todo!()
+                        }
+                    }
+                },
+                "generic source type `Item` must be written as Value<Item>",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn invoke<Item>(callback: fn(Item) -> bool) -> Value<Item> { todo!() }
+                    }
+                },
+                "generic source type `Item` must be written as Value<Item>",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn invoke<Item>(callback: fn() -> Item) -> Value<Item> { todo!() }
+                    }
+                },
+                "generic source type `Item` must be written as Value<Item>",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Option<Item>) -> Value<Item> { todo!() }
+                    }
+                },
+                "generic source type `Item` must be written as Value<Item>",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: (bool, Item)) -> Value<Item> { todo!() }
+                    }
+                },
+                "generic source type `Item` must be written as Value<Item>",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: (Item)) -> Value<Item> { todo!() }
+                    }
+                },
+                "generic source type `Item` must be written as Value<Item>",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<Item>) -> Item { todo!() }
+                    }
+                },
+                "generic source type `Item` must be written as Value<Item>",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn constant<Item>(value: bool) -> bool { value }
+                    }
+                },
+                "generic parameter `Item` must appear inside a Value<...> source shape",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity(value: Value<bool>) -> Value<bool> { value }
+                    }
+                },
+                "Value<T> is reserved for generic source shapes and opaque function values; use the concrete provider type directly",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity(value: Value<(EcoString, bool)>) -> bool { true }
+                    }
+                },
+                "Value<T> is reserved for generic source shapes and opaque function values; use the concrete provider type directly",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<Value<Item>>) -> Value<Item> { todo!() }
+                    }
+                },
+                "Value<...> must not be nested inside another Value",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<&Item>) -> Value<Item> { todo!() }
+                    }
+                },
+                "Value<...> source shapes must not contain Rust references",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<Option<&Item>>) -> bool { true }
+                    }
+                },
+                "Value<...> source shapes must not contain Rust references",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<Vec<Item>>) -> Value<Item> { todo!() }
+                    }
+                },
+                "Vec<T> is not a source type inside Value<...>; use geam::List<T>",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<sibling::Box<Item>>) -> Value<Item> {
+                            todo!()
+                        }
+                    }
+                },
+                "generic declared source types are not supported inside Value<...>",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(values: geam::List<Value<Item>>) -> bool { true }
+                    }
+                },
+                "Value<...> cannot be a List item; wrap the complete generic source shape in Value<...>",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: (Value<Item>, bool)) -> bool { true }
+                    }
+                },
+                "Value<...> must be the complete source argument",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<Item>) -> Option<Value<Item>> { todo!() }
+                    }
+                },
+                "Value<...> must be the complete source return",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity(value: Value) -> bool { true }
+                    }
+                },
+                "Value requires exactly one type argument",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<First, Second>(value: Value<First, Second>) -> bool { true }
+                    }
+                },
+                "Value requires exactly one type argument",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<for<'value> fn(Item) -> Item>) -> bool {
+                            true
+                        }
+                    }
+                },
+                "opaque source function shapes must not declare lifetimes",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<unsafe fn(Item) -> Item>) -> bool { true }
+                    }
+                },
+                "opaque source function shapes must use safe non-variadic Rust fn syntax",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<List<&Item>>) -> bool { true }
+                    }
+                },
+                "Value<...> source shapes must not contain Rust references",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<Result<&Item, Item>>) -> bool { true }
+                    }
+                },
+                "Value<...> source shapes must not contain Rust references",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<Result<Item, &Item>>) -> bool { true }
+                    }
+                },
+                "Value<...> source shapes must not contain Rust references",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<fn() -> &Item>) -> bool { true }
+                    }
+                },
+                "Value<...> source shapes must not contain Rust references",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<sibling::Box<Item, bool>>) -> bool { true }
+                    }
+                },
+                "generic declared source types are not supported inside Value<...>",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<List>) -> Value<Item> { todo!() }
+                    }
+                },
+                "List requires exactly one type argument",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<Vec>) -> Value<Item> { todo!() }
+                    }
+                },
+                "Vec requires exactly one type argument",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<Result>) -> Value<Item> { todo!() }
+                    }
+                },
+                "Result requires exactly 2 type arguments",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<(Item, &Item)>) -> bool { true }
+                    }
+                },
+                "Value<...> source shapes must not contain Rust references",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<fn(&Item) -> Item>) -> bool { true }
+                    }
+                },
+                "Value<...> source shapes must not contain Rust references",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<List<EcoString>>) -> Value<Item> { todo!() }
+                    }
+                },
+                "Value<T> is reserved for generic source shapes and opaque function values; use the concrete provider type directly",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<Option<EcoString>>) -> Value<Item> { todo!() }
+                    }
+                },
+                "Value<T> is reserved for generic source shapes and opaque function values; use the concrete provider type directly",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<Result<EcoString, bool>>) -> Value<Item> { todo!() }
+                    }
+                },
+                "Value<T> is reserved for generic source shapes and opaque function values; use the concrete provider type directly",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: (Value<&Item>, bool)) -> bool { true }
+                    }
+                },
+                "Value<...> source shapes must not contain Rust references",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn identity<Item>(value: Value<Item>) -> Option<Value<&Item>> { todo!() }
+                    }
+                },
+                "Value<...> source shapes must not contain Rust references",
+            ),
+        ];
+
+        for (item, expected) in cases {
+            assert_eq!(expansion_error(item), expected);
+        }
+    }
+
+    #[test]
+    fn generic_parameter_scan_ignores_shapes_without_declared_parameters() {
+        let function: ItemFn = syn::parse_quote! {
+            fn identity<Item>() {}
+        };
+        let generics = GenericParameterScope::new(&function.sig.generics)
+            .expect("ordinary type generics should define a scan scope");
+        let types: [Type; 4] = [
+            syn::parse_quote!(fn()),
+            syn::parse_quote!(Option<bool>),
+            syn::parse_quote!((bool,)),
+            syn::parse_quote!(!),
+        ];
+
+        for type_ in types {
+            assert_eq!(find_unwrapped_generic(&type_, &generics), None);
+        }
     }
 
     #[test]

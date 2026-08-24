@@ -373,13 +373,15 @@ fn classify_custom_value(
         ));
     }
     match source_wrapper(type_)? {
-        SourceWrapper::Result { success, failure } => {
+        SourceWrapper::Result {
+            success, failure, ..
+        } => {
             return Ok(ProviderValueType::Result {
                 success: Box::new(classify_custom_value(success, headers, externals)?),
                 failure: Box::new(classify_custom_value(failure, headers, externals)?),
             });
         }
-        SourceWrapper::Option { value } => {
+        SourceWrapper::Option { value, .. } => {
             return Ok(ProviderValueType::Option {
                 value: Box::new(classify_custom_value(value, headers, externals)?),
             });

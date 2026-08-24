@@ -3,7 +3,7 @@ pub mod gleam_stdlib;
 pub mod gleam_time;
 pub mod provider {
     pub use geam_core::provider::{
-        Call, Configuration, ExternalPayload, HostFailure, HostResult, InitializationError,
+        Call, Configuration, ExternalPayload, HostFailure, HostResult, InitializationError, Value,
     };
 }
 
@@ -17,11 +17,12 @@ pub mod __macro_support {
         HostCustomIndexNext, HostCustomSchema, HostCustomType, HostExternal, HostExternalBinding,
         HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalSchema,
         HostExternalStorage, HostExternalStore, HostExternalType, HostList, HostListType,
-        HostProfile, HostProvider, HostProviderComponent, HostProviderComponentInitialization,
-        HostProviderComponentRegistration, HostProviderConfiguration,
-        HostProviderInitializationError, HostProviderModule, HostRegistrationError, HostResult,
-        HostTuple, HostTupleType, HostType, HostTypeIndex0, HostTypeIndexNext, HostTypeList,
-        HostTypeListEnd, List, NoCustomInput, ProviderActiveCall, ProviderCallPlaceholder,
+        HostOpaqueFunctionType, HostProfile, HostProvider, HostProviderComponent,
+        HostProviderComponentInitialization, HostProviderComponentRegistration,
+        HostProviderConfiguration, HostProviderInitializationError, HostProviderModule,
+        HostRegistrationError, HostResult, HostTuple, HostTupleType, HostType, HostTypeIndex0,
+        HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter, List,
+        MissingValueContext, NoCustomInput, ProviderActiveCall, ProviderCallPlaceholder,
         ProviderConstruction, ProviderConstructionIndex0, ProviderConstructionIndexNext,
         ProviderConstructionList, ProviderConstructionRequirementAt,
         ProviderConstructionRequirements, ProviderConstructions, ProviderCustomDeclaration,
@@ -32,7 +33,8 @@ pub mod __macro_support {
         ProviderModuleRegistration, ProviderNoConstructions, ProviderNone, ProviderOk,
         ProviderOption, ProviderOutputValue, ProviderPackage, ProviderResult,
         ProviderRootOutputValue, ProviderScalarListDecoder, ProviderSharedCall, ProviderSome,
-        ProviderValue, component_initialization_error, external_payload_hash,
+        ProviderValue, ProviderValueContext, Value, component_initialization_error,
+        external_payload_hash,
     };
 }
 

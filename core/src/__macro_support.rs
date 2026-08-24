@@ -9,14 +9,15 @@ pub use crate::host::{
     HostProviderComponentInitialization, HostProviderComponentRegistration,
     HostProviderConfiguration, HostProviderInitializationError, HostProviderModule,
     HostRegistrationError, HostTuple, HostTupleType, HostType, HostTypeIndex0, HostTypeIndexNext,
-    HostTypeList, HostTypeListEnd,
+    HostTypeList, HostTypeListEnd, HostTypeParameter,
 };
 pub use crate::provider::ExternalPayload;
 pub use crate::provider::{
-    Call, HostResult, List, ProviderActiveCall, ProviderCallPlaceholder, ProviderExternalItem,
-    ProviderExternalListDecoder, ProviderExternalPayloadAccess, ProviderInputListContext,
-    ProviderListContext, ProviderListCustomFields, ProviderListItemDecoder, ProviderListItemValue,
-    ProviderScalarListDecoder, ProviderSharedCall,
+    Call, HostResult, List, MissingValueContext, ProviderActiveCall, ProviderCallPlaceholder,
+    ProviderExternalItem, ProviderExternalListDecoder, ProviderExternalPayloadAccess,
+    ProviderInputListContext, ProviderListContext, ProviderListCustomFields,
+    ProviderListItemDecoder, ProviderListItemValue, ProviderScalarListDecoder, ProviderSharedCall,
+    ProviderValueContext, Value,
 };
 pub use crate::provider::{
     ProviderConstruction, ProviderConstructionIndex0, ProviderConstructionIndexNext,
@@ -26,6 +27,7 @@ pub use crate::provider::{
     ProviderOk, ProviderOption, ProviderOutputValue, ProviderResult, ProviderRootOutputValue,
     ProviderSome, ProviderValue,
 };
+pub use crate::provider_support::HostOpaqueFunctionType;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 

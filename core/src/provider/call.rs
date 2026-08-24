@@ -1,4 +1,6 @@
+use super::{ProviderValueContext, Value};
 use crate::{HostCall, HostCallError, HostProfile, HostProvider, HostType};
+use ecow::EcoString;
 use std::marker::PhantomData;
 
 /// Access to provider-owned state and active-call capabilities.
@@ -61,6 +63,46 @@ where
         self.context.call.state()
     }
 
+    /// Compares two generic values with Gleam source equality semantics.
+    pub fn equal<Type, Host>(
+        &self,
+        left: &Value<Type, ProviderValueContext<'call, Host>>,
+        right: &Value<Type, ProviderValueContext<'call, Host>>,
+    ) -> bool
+    where
+        Host: HostType,
+        Host::Value<'call>: Clone,
+    {
+        self.context.call.equal::<Host>(left.host(), right.host())
+    }
+
+    /// Hashes a generic call-scoped value consistently with source equality.
+    ///
+    /// The result is an execution-local lookup key, not a stable serialized
+    /// value.
+    pub fn source_hash<Type, Host>(
+        &self,
+        value: &Value<Type, ProviderValueContext<'call, Host>>,
+    ) -> u64
+    where
+        Host: HostType,
+        Host::Value<'call>: Clone,
+    {
+        self.context.call.source_hash::<Host>(value.host())
+    }
+
+    /// Returns the canonical source-facing inspection of a generic value.
+    pub fn inspect<Type, Host>(
+        &self,
+        value: &Value<Type, ProviderValueContext<'call, Host>>,
+    ) -> EcoString
+    where
+        Host: HostType,
+        Host::Value<'call>: Clone,
+    {
+        self.context.call.inspect::<Host>(value.host())
+    }
+
     #[doc(hidden)]
     pub fn from_host_call(call: HostCall<'call, Profile, Provider, Return>) -> Self {
         Self {
@@ -81,6 +123,8 @@ mod tests {
     use crate::host::CallArguments;
     use crate::host::HostCallErrorKind;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
+    use crate::host::{HostTypeParameter, HostValue, HostValueFamily, HostValueToken};
+    use crate::provider::{ProviderValueContext, Value};
     use crate::{HostCall, HostFailure, HostProvider};
 
     struct Provider;
@@ -135,5 +179,25 @@ mod tests {
                 .into_kind(),
             HostCallErrorKind::Failure(HostFailure::new("provider unavailable")),
         );
+    }
+
+    #[test]
+    fn active_call_owns_generic_source_semantics_without_materializing_values() {
+        type Parameter = HostTypeParameter<0>;
+        let mut state = TestRunState::default();
+        let mut runtime =
+            TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
+        let host = HostValue::<Parameter>::new(HostValueToken {
+            family: HostValueFamily::String,
+            index: 2,
+        });
+        let left = Value::<Parameter, ProviderValueContext<'_, Parameter>>::from_host(host);
+        let right = Value::<Parameter, ProviderValueContext<'_, Parameter>>::from_host(host);
+        let host_call = HostCall::<TestHostProfile, Provider, bool>::new(&mut runtime);
+        let call = Call::from_host_call(host_call);
+
+        assert!(!call.equal(&left, &right));
+        assert_eq!(call.source_hash(&left), 17);
+        assert_eq!(call.inspect(&left), "inspected");
     }
 }
