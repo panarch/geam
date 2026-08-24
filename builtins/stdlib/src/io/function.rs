@@ -1,74 +1,41 @@
 use super::{IoOutput, IoSink, IoStream};
-use crate::{GleamStdlibHostProfile, stdlib_state};
-use crate::{HostCall, HostCallCompletion, HostCallError, HostProvider};
 use ecow::EcoString;
-use std::marker::PhantomData;
 
-pub(super) struct IoProvider<Profile>(PhantomData<Profile>);
-
-impl<Profile> HostProvider<Profile> for IoProvider<Profile>
+pub(super) fn print<Io>(io: &mut Io, text: EcoString)
 where
-    Profile: GleamStdlibHostProfile,
+    Io: IoSink,
 {
-    type State = Profile::Io;
-
-    fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        stdlib_state::<Profile>(state).io_sink()
-    }
+    emit(io, IoStream::Stdout, text);
 }
 
-pub(super) fn print<'call, Profile>(
-    call: HostCall<'call, Profile, IoProvider<Profile>, ()>,
-    text: EcoString,
-) -> Result<HostCallCompletion<'call, ()>, HostCallError>
+pub(super) fn print_error<Io>(io: &mut Io, text: EcoString)
 where
-    Profile: GleamStdlibHostProfile,
+    Io: IoSink,
 {
-    emit(call, IoStream::Stdout, text)
+    emit(io, IoStream::Stderr, text);
 }
 
-pub(super) fn print_error<'call, Profile>(
-    call: HostCall<'call, Profile, IoProvider<Profile>, ()>,
-    text: EcoString,
-) -> Result<HostCallCompletion<'call, ()>, HostCallError>
+pub(super) fn println<Io>(io: &mut Io, mut text: EcoString)
 where
-    Profile: GleamStdlibHostProfile,
-{
-    emit(call, IoStream::Stderr, text)
-}
-
-pub(super) fn println<'call, Profile>(
-    call: HostCall<'call, Profile, IoProvider<Profile>, ()>,
-    mut text: EcoString,
-) -> Result<HostCallCompletion<'call, ()>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
+    Io: IoSink,
 {
     text.push('\n');
-    emit(call, IoStream::Stdout, text)
+    emit(io, IoStream::Stdout, text);
 }
 
-pub(super) fn println_error<'call, Profile>(
-    call: HostCall<'call, Profile, IoProvider<Profile>, ()>,
-    mut text: EcoString,
-) -> Result<HostCallCompletion<'call, ()>, HostCallError>
+pub(super) fn println_error<Io>(io: &mut Io, mut text: EcoString)
 where
-    Profile: GleamStdlibHostProfile,
+    Io: IoSink,
 {
     text.push('\n');
-    emit(call, IoStream::Stderr, text)
+    emit(io, IoStream::Stderr, text);
 }
 
-fn emit<'call, Profile>(
-    mut call: HostCall<'call, Profile, IoProvider<Profile>, ()>,
-    stream: IoStream,
-    text: EcoString,
-) -> Result<HostCallCompletion<'call, ()>, HostCallError>
+fn emit<Io>(io: &mut Io, stream: IoStream, text: EcoString)
 where
-    Profile: GleamStdlibHostProfile,
+    Io: IoSink,
 {
-    call.state().emit(IoOutput::new(stream, text));
-    Ok(call.return_value(()))
+    io.emit(IoOutput::new(stream, text));
 }
 
 #[cfg(test)]

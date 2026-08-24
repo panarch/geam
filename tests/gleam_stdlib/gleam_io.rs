@@ -117,11 +117,13 @@ fn preserves_io_and_echo_order_before_a_later_panic() {
         events.borrow().as_slice(),
         [
             RecordedEvent::Io(IoStream::Stdout, "before".into()),
+            RecordedEvent::Io(IoStream::Stdout, "stdout line\n".into()),
             RecordedEvent::Echo {
                 message: Some("between".into()),
                 value: "Nil".into(),
             },
             RecordedEvent::Io(IoStream::Stderr, "after".into()),
+            RecordedEvent::Io(IoStream::Stderr, "stderr line\n".into()),
         ],
     );
 }

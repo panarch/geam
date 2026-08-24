@@ -92,9 +92,7 @@ pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, Ho
 where
     Profile: GleamStdlibHostProfile,
 {
-    <provider::__GeamModule as geam_core::__macro_support::ProviderModuleRegistration<
-        Profile,
-    >>::module()
+    provider::__geam_module::<Profile>()
 }
 
 #[cfg(test)]

@@ -3,7 +3,7 @@ mod custom_value;
 use crate::path::support_path;
 use custom_value::*;
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
+use quote::{format_ident, quote, quote_spanned};
 use std::collections::BTreeSet;
 use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream};
@@ -253,6 +253,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     let arguments = syn::parse2::<ModuleArguments>(arguments)?;
     let mut module = syn::parse2::<ItemMod>(item)?;
     let support = support_path(arguments.crate_path.as_ref())?;
+    let has_explicit_profile = matches!(&arguments.profile, ModuleProfile::Explicit { .. });
     let (profile_bound, component) = match &arguments.profile {
         ModuleProfile::Component => (
             quote!(#support::HostComponentProfile<super::Component>),
@@ -566,8 +567,9 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             let provider = provider.with_external_type::<__GeamProvider, #schema>()?;
         }
     });
+    let profile_visibility = has_explicit_profile.then(|| quote!(pub(super)));
     items.push(Item::Verbatim(quote! {
-        trait __GeamModuleProfile: #profile_bound {}
+        #profile_visibility trait __GeamModuleProfile: #profile_bound {}
 
         impl<Profile> __GeamModuleProfile for Profile
         where
@@ -614,25 +616,44 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     for wrapper in wrappers {
         items.push(Item::Verbatim(wrapper.clone()));
     }
-    let registrar = quote! {
-        pub(super) struct __GeamModule;
-
-        impl<Profile> #support::ProviderModuleRegistration<Profile> for __GeamModule
-        where
-            Profile: __GeamModuleProfile,
-            #(#module_bounds,)*
-        {
-            fn module() -> ::core::result::Result<
+    let registration = quote! {
+        let provider = #support::HostProviderModule::<Profile>::new(
+            <super::Component as #support::ProviderPackage>::PACKAGE,
+            #module_path,
+        )?;
+        #(#external_registrations)*
+        #(#registrations)*
+        ::core::result::Result::Ok(provider)
+    };
+    let module_span = module.ident.span();
+    let registrar = if has_explicit_profile {
+        quote_spanned! {module_span=>
+            pub(super) fn __geam_module<Profile>() -> ::core::result::Result<
                 #support::HostProviderModule<Profile>,
                 #support::HostRegistrationError,
-            > {
-                let provider = #support::HostProviderModule::<Profile>::new(
-                    <super::Component as #support::ProviderPackage>::PACKAGE,
-                    #module_path,
-                )?;
-                #(#external_registrations)*
-                #(#registrations)*
-                ::core::result::Result::Ok(provider)
+            >
+            where
+                Profile: __GeamModuleProfile,
+                #(#module_bounds,)*
+            {
+                #registration
+            }
+        }
+    } else {
+        quote_spanned! {module_span=>
+            pub(super) struct __GeamModule;
+
+            impl<Profile> #support::ProviderModuleRegistration<Profile> for __GeamModule
+            where
+                Profile: __GeamModuleProfile,
+                #(#module_bounds,)*
+            {
+                fn module() -> ::core::result::Result<
+                    #support::HostProviderModule<Profile>,
+                    #support::HostRegistrationError,
+                > {
+                    #registration
+                }
             }
         }
     };
@@ -5221,7 +5242,11 @@ mod tests {
         .expect("built-in profile wiring should expand")
         .to_string();
 
-        assert!(expansion.contains("trait __GeamModuleProfile : crate :: BuiltInProfile"));
+        assert!(
+            expansion.contains("pub (super) trait __GeamModuleProfile : crate :: BuiltInProfile")
+        );
+        assert!(expansion.contains("pub (super) fn __geam_module < Profile >"));
+        assert!(!expansion.contains("ProviderModuleRegistration"));
         assert!(expansion.contains(
             "Profile as geam_core :: __macro_support :: HostComponentProfile < crate :: Component < Profile :: Io > >> :: component_state"
         ));
