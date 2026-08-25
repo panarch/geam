@@ -1,7 +1,10 @@
+use super::list_model::register_list_decoder;
+use super::type_syntax::{
+    collection_item, external_type, is_collection, is_qualified_type_path, source_wrapper,
+};
 use super::{
     CollectionType, ExternalModel, ListDecoderModel, ListType, SourceWrapper, StaticValueType,
-    collection_item, external_type, is_collection, is_marker, is_qualified_type_path,
-    register_list_decoder, source_wrapper,
+    is_marker,
 };
 use quote::format_ident;
 use std::collections::BTreeSet;
@@ -51,6 +54,13 @@ pub(super) enum CustomFields {
     Unit,
     Unnamed(Vec<CustomFieldModel>),
     Named(Vec<CustomFieldModel>),
+}
+
+pub(super) fn custom_field_models(fields: &CustomFields) -> &[CustomFieldModel] {
+    match fields {
+        CustomFields::Unit => &[],
+        CustomFields::Unnamed(fields) | CustomFields::Named(fields) => fields,
+    }
 }
 
 pub(super) struct CustomFieldModel {
