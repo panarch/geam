@@ -1,8 +1,8 @@
 # Provider Authoring Examples
 
 These examples pair ordinary Gleam packages with independently locked Rust
-provider crates. Start with the smallest authoring surface and move toward the
-low-level SDK only when the macro surface does not yet cover a capability.
+provider crates. Start with the smallest authoring surface, then combine the
+same static macros into stateful, retained, callback, and advanced providers.
 
 | Example | State | Configuration | External semantics | Purpose |
 | --- | --- | --- | --- | --- |
@@ -14,7 +14,7 @@ low-level SDK only when the macro surface does not yet cover a capability.
 | [`run_metrics`](run_metrics/README.md) | None | None | Manual | Specialized equality, hashing, and inspection |
 | [`call_tracing`](call_tracing/README.md) | `Default` | None | None | Typed callback invocation and same-component re-entry |
 | [`generic_box`](generic_box/README.md) | None | None | Retained generic | Persistent generic source values and callback mapping |
-| [`text_pattern`](text_pattern/README.md) | Explicit low-level component | None | Manual | Capabilities outside the current macro surface |
+| [`text_pattern`](text_pattern/README.md) | None | None | Manual | Regex-backed external, custom error, Result, and List output |
 
 The recommended reading order is:
 

@@ -170,17 +170,18 @@ Repository-local Cargo patches select the current checkout until the authoring
 crates are released.
 
 The [`examples/text_pattern`](../examples/text_pattern) example adds a
-distribution-ready advanced provider baseline. Its path test executes the
-complete low-level provider surface through the managed root lock and generated
-runner. The existing fake-registry orchestration test owns search, sparse-index,
-checksum, archive metadata, approval, registry-shaped dependency, lock, check,
-and run coverage without requiring a fixture crate to be published.
+distribution-ready advanced macro provider. Its path test executes manual
+external semantics, a custom error, source Result, and List output through the
+managed root lock and generated runner. The existing fake-registry
+orchestration test owns search, sparse-index, checksum, archive metadata,
+approval, registry-shaped dependency, lock, check, and run coverage without
+requiring a fixture crate to be published.
 
 CI formats, tests, lints, and packages every independent example provider. The
-text-pattern provider continues to exercise the released low-level
-`geam 0.1.2` surface, while the eight macro examples select the unreleased
-authoring surface through repository-local patches and complete standalone
-execution.
+nine macro examples select the current unreleased authoring surface through
+repository-local patches and complete standalone execution. The independent
+Provider SDK fixture remains the canonical low-level typed-host ABI acceptance
+owner.
 
 The normal suite executes the full generated runner with the fixture's locked
 Gleam and Rust dependencies. CI exports the standalone fixture's three local

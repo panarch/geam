@@ -3,14 +3,18 @@
 Geam publishes seven lockstep crates from one workspace:
 
 ```text
-geam-core
--> geam-stdlib
--> geam-json   geam-time
-       \         /
-        geam-cli
-           -> geam
+geam-core + geam-macros
+  -> geam-stdlib
 
-geam-macros -------> geam
+geam-core + geam-macros + geam-stdlib
+  -> geam-json
+  -> geam-time
+
+geam-core + geam-stdlib + geam-json + geam-time
+  -> geam-cli
+
+geam-core + geam-macros + built-ins + geam-cli
+  -> geam
 ```
 
 The root `geam` crate remains the public facade and owns the installable

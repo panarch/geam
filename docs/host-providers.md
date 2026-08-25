@@ -269,8 +269,8 @@ The current macro surface supports scalars, native tuples composed from
 supported leaves, top-level Lists with lazy item access or Vec construction,
 non-recursive custom values, Rust `Result`/`Option` mapped to their standard
 source types, constructorless external values, generic retained values, and
-typed callbacks. Nested Lists and existential retained values remain advanced
-or low-level boundaries.
+typed callbacks. Existential retained values use the explicit
+`provider::advanced` API; nested Lists remain unsupported.
 
 ## Typed Callback Invocation
 
@@ -360,9 +360,9 @@ Each provider crate exports one marker that implements
 `HostProviderComponent`. The component owns its store and run-state types.
 Provider crates that consume configuration implement the separate
 `HostProviderComponentInitialization` contract. Authoring macros generate these
-implementations together with module registrations and external stores; the
-explicit form remains the underlying SDK boundary for capabilities outside the
-macro surface.
+implementations together with module registrations and external stores. The
+explicit typed-host form remains the low-level SDK boundary and its canonical
+fixture, rather than boilerplate required by ordinary provider authors.
 
 The provider component identity defaults to the Cargo package name and can be
 overridden with `id = "..."` when diagnostics need a distinct stable identity.
@@ -449,10 +449,9 @@ Geam metadata. The component demonstrates:
 
 - a constructorless `Pattern` external backed by immutable provider storage;
 - source equality, hashing, and canonical inspection for opaque values;
-- `Result(Pattern, CompileError)` construction through sealed intermediate
-  capabilities;
+- a named `CompileError` custom value and ordinary Rust `Result` mapping;
 - scalar arguments and returns plus `List(String)` output; and
-- the explicit stateless component-initialization boundary.
+- generated stateless component initialization and typed registration.
 
 Its Cargo manifest uses the canonical discovery name and schema-1 metadata:
 
@@ -468,9 +467,9 @@ gleam-version = ">= 1.0.0 and < 2.0.0"
 
 The [complete example](../examples/text_pattern/README.md) executes this crate
 through explicit path selection and packages it with ordinary Cargo tooling.
-Its [provider README](../examples/text_pattern/provider/README.md) also records
-the concrete higher-level authoring target that will replace the current
-low-level declarations before publication.
+Its [provider README](../examples/text_pattern/provider/README.md) explains the
+complete macro-authored Rust mapping and why `Pattern` owns manual source
+semantics.
 
 ## Runner Profile
 
