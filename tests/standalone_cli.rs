@@ -493,6 +493,37 @@ fn runs_the_documented_call_tracing_provider_with_fresh_callback_state() {
 }
 
 #[test]
+fn runs_the_documented_generic_box_provider_with_persistent_values() {
+    let fixture = generic_box_example();
+    let project = fixture.path().join("project");
+
+    let add = geam_at(&project, ["provider", "add", "--path", "../provider"]);
+    assert!(
+        add.status.success(),
+        "generic box provider add failed: {}",
+        String::from_utf8_lossy(&add.stderr),
+    );
+
+    let prepare = geam_at(&project, ["prepare"]);
+    assert!(
+        prepare.status.success(),
+        "generic box prepare failed: {}",
+        String::from_utf8_lossy(&prepare.stderr),
+    );
+
+    for _ in 0..2 {
+        let run = geam_at(&project, ["run"]);
+        assert!(
+            run.status.success(),
+            "generic box execution failed: {}",
+            String::from_utf8_lossy(&run.stderr),
+        );
+        assert!(run.stdout.is_empty());
+        assert!(run.stderr.is_empty());
+    }
+}
+
+#[test]
 fn runs_the_documented_feature_flags_provider_with_explicit_configuration() {
     let fixture = feature_flags_example();
     let project = fixture.path().join("project");
@@ -1062,6 +1093,10 @@ fn call_tracing_example() -> TempDir {
     provider_example("call_tracing")
 }
 
+fn generic_box_example() -> TempDir {
+    provider_example("generic_box")
+}
+
 fn feature_flags_example() -> TempDir {
     provider_example("feature_flags")
 }
@@ -1102,7 +1137,7 @@ fn provider_example(name: &str) -> TempDir {
 }
 
 fn prepare_cargo_dependencies() {
-    const WORKSPACES: [&str; 10] = [
+    const WORKSPACES: [&str; 11] = [
         "tests/fixtures/provider_sdk",
         "tests/fixtures/standalone_cli/providers",
         "examples/text_tools/provider",
@@ -1110,6 +1145,7 @@ fn prepare_cargo_dependencies() {
         "examples/tag_set/provider",
         "examples/request_ids/provider",
         "examples/call_tracing/provider",
+        "examples/generic_box/provider",
         "examples/feature_flags/provider",
         "examples/run_metrics/provider",
         "examples/text_pattern/provider",

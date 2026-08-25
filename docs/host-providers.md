@@ -13,8 +13,8 @@ at compile time. It does not choose or type-erase implementations at runtime.
 Start with the [provider authoring examples](../examples/README.md). They present
 multi-module registration, scalar, tuple, List, custom, Result, and Option value
 mappings, stateless, default-state, configured-state, default external, and
-manual external choices as complete Gleam/Rust pairs before this document
-describes the generated and low-level contracts.
+manual external choices plus generic retention as complete Gleam/Rust pairs
+before this document describes the generated and low-level contracts.
 
 ## Value Type Provider Authoring
 
@@ -268,9 +268,9 @@ unexpected configuration instead of ignoring it.
 The current macro surface supports scalars, native tuples composed from
 supported leaves, top-level Lists with lazy item access or Vec construction,
 non-recursive custom values, Rust `Result`/`Option` mapped to their standard
-source types, non-generic constructorless external values whose payloads do not
-retain Gleam values, and typed callbacks. Nested Lists and retained Gleam
-values still use the low-level contracts below.
+source types, constructorless external values, generic retained values, and
+typed callbacks. Nested Lists and existential retained values remain advanced
+or low-level boundaries.
 
 ## Typed Callback Invocation
 
@@ -298,6 +298,62 @@ then invokes the existing typed host ABI without materializing generic values.
 state borrow prevents callback re-entry through Rust's borrow checker, so state
 must be released before invoking source code.
 
+## Generic Values And Retention
+
+[`generic_box`](../examples/generic_box/README.md) shows the ordinary generic
+retention path. `Value<Item>` is an opaque value for the current call;
+`Stored<Item>` is the non-cloneable field of one source-visible external
+payload. The external declaration fixes the source parameter position once, so
+`Box(Int)` and `Box(String)` share one Rust external store while each restore
+uses its exact specialization:
+
+```rust
+#[geam::external(
+    name = "Box",
+    parameters = [Item],
+    input = BoxInput,
+)]
+pub struct BoxValue<Item> {
+    #[geam::stored]
+    value: Stored<Item>,
+}
+
+fn get<Item>(
+    #[geam::call] call: &mut Call<()>,
+    boxed: BoxInput<Item>,
+) -> Value<Item> {
+    call.restore(boxed.value())
+}
+```
+
+`Call::store` retains the existing runtime value without converting it to an
+eager Rust representation. `Call::restore` recreates only a call-scoped typed
+handle. Neither operation clones the source payload, and returning an old box
+does not reconstruct its external value.
+
+Providers with a persistent Rust collection of retained entries use the
+explicit advanced form instead of pretending that collection is a generic Rust
+payload:
+
+```rust
+#[geam::external(
+    name = "PriorityQueue",
+    parameters = [Item],
+    input = PriorityQueueInput,
+    payload = PriorityQueuePayload,
+    manual,
+)]
+pub struct PriorityQueue<Item>;
+```
+
+The non-generic payload stores
+`provider::advanced::Retained<PriorityQueuePayload, Index0>` inside its own
+immutable persistent structure. The generated input exposes the payload and a
+typed `stored_item` selector; source equality, hashing, and inspection are
+implemented with the narrow `RetainedExternalPayload` operation contexts.
+This advanced form exposes no runtime type name, downcast, mutable graph, or
+per-specialization store.
+
 ## Generated Component Boundary
 
 Each provider crate exports one marker that implements
@@ -306,7 +362,7 @@ Provider crates that consume configuration implement the separate
 `HostProviderComponentInitialization` contract. Authoring macros generate these
 implementations together with module registrations and external stores; the
 explicit form remains the underlying SDK boundary for capabilities outside the
-current macro surface.
+macro surface.
 
 The provider component identity defaults to the Cargo package name and can be
 overridden with `id = "..."` when diagnostics need a distinct stable identity.

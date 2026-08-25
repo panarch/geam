@@ -1,11 +1,13 @@
 use ecow::EcoString;
 use std::fmt::{self, Display, Formatter};
 
+pub mod advanced;
 mod call;
 mod callback;
 mod codec;
 mod list;
 mod prelude;
+mod stored;
 mod value;
 
 pub use crate::HostFailure;
@@ -35,6 +37,13 @@ pub use list::{
 pub use prelude::{
     ProviderError, ProviderNone, ProviderOk, ProviderOption, ProviderOptionSchema, ProviderResult,
     ProviderResultSchema, ProviderSome,
+};
+pub use stored::Stored;
+#[doc(hidden)]
+pub use stored::{
+    MissingExternalInputContext, MissingExternalOutputContext, MissingStoredContext,
+    ProviderExternalInputContext, ProviderExternalOutput, ProviderStoredInput,
+    ProviderStoredOutput, ProviderStoredOwner,
 };
 pub use value::Value;
 #[doc(hidden)]

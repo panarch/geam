@@ -15,8 +15,9 @@ closing coverage gaps, see [test-development.md](test-development.md).
 `geam-macros` owns parser, diagnostic, expansion, compile-fail, and core-backed
 execution tests for the provider authoring attributes. Its integration tests
 use `geam-core` only as a dev-dependency and verify stateful scalar calls,
-recursive native tuples, lazy Lists, directional custom values, and persistent
-external values without adding a production runtime dependency to the
+recursive native tuples, lazy Lists, directional custom values, generic
+retention in simple and persistent-collection payloads, and external values
+without adding a production runtime dependency to the
 proc-macro crate. They fix generated schemas and stores, constructor and field
 metadata, mixed custom/external/scalar List items, pass-through versus Vec
 construction, source equality, inspection, escaped payload lifetime, and
@@ -160,9 +161,11 @@ semantics. `request_ids` combines mutable and read-only default state,
 `feature_flags` owns configured initialization, and `run_metrics` retains
 specialized manual external semantics. `call_tracing` verifies typed callback
 return identity, same-component re-entry, exact state ordering, and fresh state
-on repeated runs. Root binary tests follow each documented path add, prepare,
-run, and repeated-run workflow against independently locked provider crates.
-The complete Gleam entrypoints execute every public example function.
+on repeated runs. `generic_box` verifies typed retention, cross-type
+replacement, source semantics, and callback mapping without materialization.
+Root binary tests follow each documented path add, prepare, run, and
+repeated-run workflow against independently locked provider crates. The
+complete Gleam entrypoints execute every public example function.
 Repository-local Cargo patches select the current checkout until the authoring
 crates are released.
 
@@ -175,13 +178,13 @@ and run coverage without requiring a fixture crate to be published.
 
 CI formats, tests, lints, and packages every independent example provider. The
 text-pattern provider continues to exercise the released low-level
-`geam 0.1.2` surface, while the seven macro examples select the unreleased
+`geam 0.1.2` surface, while the eight macro examples select the unreleased
 authoring surface through repository-local patches and complete standalone
 execution.
 
 The normal suite executes the full generated runner with the fixture's locked
 Gleam and Rust dependencies. CI exports the standalone fixture's three local
-Gleam dependencies and all seven example Gleam packages. It also packages the
+Gleam dependencies and all nine example Gleam packages. It also packages the
 two standalone fixture providers and every example provider. No fixture package
 is published.
 

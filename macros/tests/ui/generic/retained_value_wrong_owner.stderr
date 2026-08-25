@@ -1,0 +1,8 @@
+error[E0308]: mismatched types
+  --> tests/ui/generic/retained_value_wrong_owner.rs:78:44
+   |
+78 |         let stored = first.stored_item(|_| &second.payload().value);
+   |                                            ^^^^^^^^^^^^^^^^^^^^^^^ expected `&Retained<FirstPayload, HostTypeIndex0>`, found `&Retained<SecondPayload, HostTypeIndex0>`
+   |
+   = note: expected reference `&Retained<FirstPayload, HostTypeIndex0>`
+              found reference `&Retained<SecondPayload, HostTypeIndex0>`

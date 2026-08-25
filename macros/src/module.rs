@@ -7,9 +7,10 @@ use quote::{format_ident, quote, quote_spanned};
 use std::collections::{BTreeMap, BTreeSet};
 use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream};
+use syn::punctuated::Punctuated;
 use syn::{
-    Attribute, FnArg, GenericArgument, GenericParam, Ident, Item, ItemFn, ItemMod, ItemStruct,
-    LitStr, Meta, Path, PathArguments, ReturnType, Token, Type, TypeBareFn, TypePath,
+    Attribute, Fields, FnArg, GenericArgument, GenericParam, Ident, Item, ItemFn, ItemMod,
+    ItemStruct, LitStr, Meta, Path, PathArguments, ReturnType, Token, Type, TypeBareFn, TypePath,
 };
 
 struct ModuleArguments {
@@ -41,12 +42,18 @@ struct FunctionArguments {
 struct ExternalArguments {
     name: LitStr,
     manual: bool,
+    parameters: Vec<Ident>,
+    input: Option<Ident>,
+    payload: Option<Type>,
 }
 
 #[derive(Default)]
 struct PartialExternalArguments {
     name: Option<LitStr>,
     manual: Option<Ident>,
+    parameters: Option<Vec<Ident>>,
+    input: Option<Ident>,
+    payload: Option<Type>,
 }
 
 enum ExternalSemantics {
@@ -61,6 +68,34 @@ struct ExternalModel {
     schema: Ident,
     storage: Ident,
     store_field: Ident,
+    generic: Option<GenericExternalModel>,
+}
+
+struct GenericExternalModel {
+    parameters: Vec<Ident>,
+    input: Ident,
+    visibility: syn::Visibility,
+    storage: GenericExternalStorage,
+}
+
+#[derive(Clone)]
+enum GenericExternalStorage {
+    StoredFields {
+        payload: Ident,
+        owner: Ident,
+        fields: Vec<StoredExternalField>,
+    },
+    ManualPayload {
+        payload: Type,
+    },
+}
+
+#[derive(Clone)]
+struct StoredExternalField {
+    ident: Ident,
+    parameter: Ident,
+    parameter_index: usize,
+    index: TokenStream,
 }
 
 #[derive(Clone)]
@@ -79,6 +114,16 @@ struct CallbackType {
     codec: Ident,
 }
 
+struct GenericExternalType {
+    output: Ident,
+    input: Ident,
+    schema: Ident,
+    storage: GenericExternalStorage,
+    source_arguments: Vec<Type>,
+    arguments: Vec<ClassifiedGenericHostType>,
+}
+
+#[derive(Clone)]
 struct ClassifiedGenericHostType {
     host: GenericHostType,
     instantiated: Type,
@@ -224,6 +269,7 @@ struct ListType {
 enum FunctionInputType {
     Value(Box<ProviderValueType>),
     Generic(Box<GenericValueType>),
+    External(Box<GenericExternalType>),
     List(Box<ListType>),
 }
 
@@ -235,6 +281,7 @@ enum FunctionArgumentType {
 enum FunctionReturnType {
     Value(FunctionOutputValueType),
     Generic(Box<GenericValueType>),
+    External(Box<GenericExternalType>),
     List(Box<ListType>),
 }
 
@@ -313,6 +360,7 @@ struct OutputState<'output> {
     constructions: &'output mut Vec<GeneratedConstruction>,
 }
 
+#[derive(Clone, Copy)]
 enum GenericInputSource {
     Declared,
     Instantiated,
@@ -438,8 +486,31 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     let inline_module_error =
         syn::Error::new_spanned(&module, "`#[geam::module]` requires an inline Rust module");
     let (_, items) = module.content.as_mut().ok_or(inline_module_error)?;
+    let provider_type_names = items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Struct(item)
+                if item
+                    .attrs
+                    .iter()
+                    .any(|attribute| is_marker(attribute, "external")) =>
+            {
+                Some(item.ident.unraw().to_string())
+            }
+            Item::Enum(item)
+                if item
+                    .attrs
+                    .iter()
+                    .any(|attribute| is_marker(attribute, "custom")) =>
+            {
+                Some(item.ident.unraw().to_string())
+            }
+            _ => None,
+        })
+        .collect::<BTreeSet<_>>();
     let mut externals = Vec::new();
     let mut source_names = BTreeSet::new();
+    let mut generated_input_names = BTreeSet::new();
     for item in items.iter_mut() {
         let Item::Struct(payload) = item else {
             continue;
@@ -447,7 +518,6 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
         let Some(external) = take_external_marker(&mut payload.attrs)? else {
             continue;
         };
-        validate_external(payload)?;
         if !source_names.insert(external.name.value()) {
             return Err(syn::Error::new(
                 external.name.span(),
@@ -455,18 +525,24 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             ));
         }
         let index = externals.len();
-        externals.push(ExternalModel {
-            ident: payload.ident.clone(),
-            name: external.name,
-            semantics: if external.manual {
-                ExternalSemantics::Manual
-            } else {
-                ExternalSemantics::Default
-            },
-            schema: format_ident!("__GeamExternalSchema{index}"),
-            storage: format_ident!("__GeamExternalStorage{index}"),
-            store_field: format_ident!("__geam_external_{index}"),
-        });
+        if let Some(input) = &external.input {
+            let input_name = input.unraw().to_string();
+            if provider_type_names.contains(&input_name) {
+                return Err(syn::Error::new(
+                    input.span(),
+                    format!(
+                        "generated external input type `{input}` conflicts with provider value type `{input}`"
+                    ),
+                ));
+            }
+            if !generated_input_names.insert(input_name) {
+                return Err(syn::Error::new(
+                    input.span(),
+                    format!("duplicate generated input type `{input}`"),
+                ));
+            }
+        }
+        externals.push(build_external_model(index, payload, external, &support)?);
     }
     match (&arguments.profile, &arguments.stores, externals.is_empty()) {
         (ModuleProfile::Explicit { .. }, None, false) => {
@@ -490,8 +566,14 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     };
 
     let mut list_decoders = Vec::new();
-    let custom_declarations =
-        collect_custom_declarations(items, &mut source_names, &externals, &mut list_decoders)?;
+    let custom_declarations = collect_custom_declarations(
+        items,
+        &mut source_names,
+        &mut generated_input_names,
+        &provider_type_names,
+        &externals,
+        &mut list_decoders,
+    )?;
     let customs = custom_declarations.models;
     let custom_list_decoders = custom_declarations.list_decoders;
 
@@ -521,7 +603,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     let module_path = arguments.path;
     let module_ident = &module.ident;
     let payload_semantics = externals.iter().filter_map(|external| {
-        if matches!(external.semantics, ExternalSemantics::Manual) {
+        if external.generic.is_some() || matches!(external.semantics, ExternalSemantics::Manual) {
             return None;
         }
         let payload = &external.ident;
@@ -536,14 +618,24 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                     #support::external_payload_hash(self)
                 }
 
-                fn inspect(&self) -> ::ecow::EcoString {
-                    ::ecow::EcoString::from(::core::concat!(#source_name, "(<opaque>)"))
+                fn inspect(&self) -> #support::EcoString {
+                    #support::EcoString::from(::core::concat!(#source_name, "(<opaque>)"))
                 }
             }
         })
     });
     let store_fields = externals.iter().map(|external| {
-        let payload = &external.ident;
+        let payload = external
+            .generic
+            .as_ref()
+            .map(|generic| match &generic.storage {
+                GenericExternalStorage::StoredFields { payload, .. } => quote!(#payload),
+                GenericExternalStorage::ManualPayload { payload } => quote!(#payload),
+            })
+            .unwrap_or_else(|| {
+                let payload = &external.ident;
+                quote!(#payload)
+            });
         let field = &external.store_field;
         quote! {
             #field: #support::HostExternalStore<#payload>,
@@ -566,6 +658,298 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                 ).#module_ident.#store_field
             }
         };
+        if let Some(generic) = &external.generic {
+            let parameter_count = generic.parameters.len();
+            let parameters = &generic.parameters;
+            let input = &generic.input;
+            let visibility = &generic.visibility;
+            match &generic.storage {
+                GenericExternalStorage::StoredFields {
+                    payload: generic_payload,
+                    owner,
+                    fields,
+                } => {
+                    let payload_fields = fields.iter().map(|field| {
+                        let ident = &field.ident;
+                        let index = &field.index;
+                        quote!(#ident: #support::HostStoredValue<#support::HostStoredType<#index>>)
+                    });
+                    let input_accessors = fields.iter().map(|field| {
+                        let ident = &field.ident;
+                        let parameter = &field.parameter;
+                        let index = &field.index;
+                        quote! {
+                            #visibility fn #ident(&self) -> #support::Stored<
+                                #parameter,
+                                #support::ProviderStoredInput<
+                                    '_,
+                                    #owner,
+                                    #index,
+                                    <__GeamArguments as #support::HostTypeAt<#index>>::Type,
+                                >,
+                            >
+                            where
+                                __GeamArguments: #support::HostTypeAt<#index>,
+                            {
+                                #support::Stored::from_input(&self.__geam_context.payload().#ident)
+                            }
+                        }
+                    });
+                    let equal_fields = fields.iter().map(|field| {
+                        let ident = &field.ident;
+                        quote!(context.stored_values_equal(&left.#ident, &right.#ident))
+                    });
+                    let hash_fields = fields.iter().map(|field| {
+                        let ident = &field.ident;
+                        quote!(context.stored_value_hash(&value.#ident))
+                    });
+                    return quote! {
+                        #[doc(hidden)]
+                        pub struct #schema;
+
+                        impl #support::HostExternalSchema for #schema {
+                            const PACKAGE: &'static str =
+                                <super::Component as #support::ProviderPackage>::PACKAGE;
+                            const MODULE: &'static str = #module_path;
+                            const NAME: &'static str = #source_name;
+                            const PARAMETER_COUNT: usize = #parameter_count;
+                        }
+
+                        #[doc(hidden)]
+                        pub struct #owner;
+
+                        impl #support::ProviderStoredOwner for #owner {}
+
+                        #[doc(hidden)]
+                        pub struct #generic_payload {
+                            #(#payload_fields,)*
+                        }
+
+                        #visibility struct #input<
+                            #(#parameters,)*
+                            __GeamContext = #support::MissingExternalInputContext,
+                        > {
+                            __geam_context: __GeamContext,
+                            __geam_parameters: ::core::marker::PhantomData<
+                                fn() -> (#(#parameters,)*)
+                            >,
+                        }
+
+                        impl<'__geam_call, #(#parameters,)* __GeamArguments>
+                            #input<
+                                #(#parameters,)*
+                                #support::ProviderExternalInputContext<
+                                    '__geam_call,
+                                    #generic_payload,
+                                    __GeamArguments,
+                                >,
+                            >
+                        where
+                            __GeamArguments: #support::HostTypeSequence,
+                        {
+                            fn __geam_from_host(
+                                context: #support::ProviderExternalInputContext<
+                                    '__geam_call,
+                                    #generic_payload,
+                                    __GeamArguments,
+                                >,
+                            ) -> Self {
+                                Self {
+                                    __geam_context: context,
+                                    __geam_parameters: ::core::marker::PhantomData,
+                                }
+                            }
+
+                            #(#input_accessors)*
+                        }
+
+                        #[doc(hidden)]
+                        #storage_visibility struct #storage;
+
+                        impl<Profile> #support::HostExternalStorage<Profile, #schema> for #storage
+                        where
+                            Profile: __GeamModuleProfile,
+                        {
+                            type Payload = #generic_payload;
+
+                            fn store(
+                                stores: &Profile::ExternalStores,
+                            ) -> &#support::HostExternalStore<Self::Payload> {
+                                #store
+                            }
+
+                            fn source_equal(
+                                context: &#support::HostExternalEquality<'_>,
+                                left: &Self::Payload,
+                                right: &Self::Payload,
+                            ) -> bool {
+                                true #(&& #equal_fields)*
+                            }
+
+                            fn source_hash(
+                                context: &#support::HostExternalHashing<'_>,
+                                value: &Self::Payload,
+                            ) -> u64 {
+                                #support::external_payload_hash(&(#(#hash_fields,)*))
+                            }
+
+                            fn inspect(
+                                _context: &#support::HostExternalInspection<'_>,
+                                _value: &Self::Payload,
+                            ) -> #support::EcoString {
+                                #support::EcoString::from(::core::concat!(#source_name, "(<opaque>)"))
+                            }
+                        }
+                    };
+                }
+                GenericExternalStorage::ManualPayload { payload: retained_payload } => {
+                    let output = &external.ident;
+                    let retained_accessors = parameters.iter().enumerate().map(|(index, parameter)| {
+                        let method = retained_parameter_accessor(parameter);
+                        let index = host_type_index(index, &support);
+                        quote! {
+                            fn #method<'__geam_value>(
+                                &'__geam_value self,
+                                select: impl ::core::ops::FnOnce(
+                                    &'__geam_value #retained_payload,
+                                ) -> &'__geam_value #support::Retained<#retained_payload, #index>,
+                            ) -> #support::Stored<
+                                #parameter,
+                                #support::ProviderStoredInput<
+                                    '__geam_value,
+                                    #retained_payload,
+                                    #index,
+                                    <__GeamArguments as #support::HostTypeAt<#index>>::Type,
+                                >,
+                            >
+                            where
+                                __GeamArguments: #support::HostTypeAt<#index>,
+                            {
+                                #support::Stored::from_retained(select(self.__geam_context.payload()))
+                            }
+                        }
+                    });
+                    return quote! {
+                        #[doc(hidden)]
+                        pub struct #schema;
+
+                        impl #support::HostExternalSchema for #schema {
+                            const PACKAGE: &'static str =
+                                <super::Component as #support::ProviderPackage>::PACKAGE;
+                            const MODULE: &'static str = #module_path;
+                            const NAME: &'static str = #source_name;
+                            const PARAMETER_COUNT: usize = #parameter_count;
+                        }
+
+                        impl<#(#parameters,)*> #output<#(#parameters,)*> {
+                            fn from_payload(
+                                payload: #retained_payload,
+                            ) -> #output<
+                                #(#parameters,)*
+                                #support::ProviderExternalOutput<#retained_payload>,
+                            > {
+                                #output {
+                                    __geam_context: #support::ProviderExternalOutput::new(payload),
+                                    __geam_parameters: ::core::marker::PhantomData,
+                                }
+                            }
+                        }
+
+                        impl #support::ProviderStoredOwner for #retained_payload {}
+
+                        #visibility struct #input<
+                            #(#parameters,)*
+                            __GeamContext = #support::MissingExternalInputContext,
+                        > {
+                            __geam_context: __GeamContext,
+                            __geam_parameters: ::core::marker::PhantomData<
+                                fn() -> (#(#parameters,)*)
+                            >,
+                        }
+
+                        impl<'__geam_call, #(#parameters,)* __GeamArguments>
+                            #input<
+                                #(#parameters,)*
+                                #support::ProviderExternalInputContext<
+                                    '__geam_call,
+                                    #retained_payload,
+                                    __GeamArguments,
+                                >,
+                            >
+                        where
+                            __GeamArguments: #support::HostTypeSequence,
+                        {
+                            fn __geam_from_host(
+                                context: #support::ProviderExternalInputContext<
+                                    '__geam_call,
+                                    #retained_payload,
+                                    __GeamArguments,
+                                >,
+                            ) -> Self {
+                                Self {
+                                    __geam_context: context,
+                                    __geam_parameters: ::core::marker::PhantomData,
+                                }
+                            }
+
+                            fn payload(&self) -> &#retained_payload {
+                                self.__geam_context.payload()
+                            }
+
+                            #(#retained_accessors)*
+                        }
+
+                        #[doc(hidden)]
+                        #storage_visibility struct #storage;
+
+                        impl<Profile> #support::HostExternalStorage<Profile, #schema> for #storage
+                        where
+                            Profile: __GeamModuleProfile,
+                        {
+                            type Payload = #retained_payload;
+
+                            fn store(
+                                stores: &Profile::ExternalStores,
+                            ) -> &#support::HostExternalStore<Self::Payload> {
+                                #store
+                            }
+
+                            fn source_equal(
+                                context: &#support::HostExternalEquality<'_>,
+                                left: &Self::Payload,
+                                right: &Self::Payload,
+                            ) -> bool {
+                                <#retained_payload as #support::RetainedExternalPayload>::source_equal(
+                                    left,
+                                    context,
+                                    right,
+                                )
+                            }
+
+                            fn source_hash(
+                                context: &#support::HostExternalHashing<'_>,
+                                value: &Self::Payload,
+                            ) -> u64 {
+                                <#retained_payload as #support::RetainedExternalPayload>::source_hash(
+                                    value,
+                                    context,
+                                )
+                            }
+
+                            fn inspect(
+                                context: &#support::HostExternalInspection<'_>,
+                                value: &Self::Payload,
+                            ) -> #support::EcoString {
+                                <#retained_payload as #support::RetainedExternalPayload>::inspect(
+                                    value,
+                                    context,
+                                )
+                            }
+                        }
+                    };
+                }
+            }
+        }
         quote! {
             #[doc(hidden)]
             pub struct #schema;
@@ -719,7 +1103,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                 fn inspect(
                     _context: &#support::HostExternalInspection<'_>,
                     value: &Self::Payload,
-                ) -> ::ecow::EcoString {
+                ) -> #support::EcoString {
                     <#payload as #support::ExternalPayload>::inspect(value)
                 }
             }
@@ -2299,6 +2683,7 @@ fn collect_function_input_type_bounds(
             collect_function_input_bounds(type_, customs, support, return_type, bounds);
         }
         FunctionInputType::Generic(_) => {}
+        FunctionInputType::External(_) => {}
         FunctionInputType::List(list) => {
             for access in list_declared_accesses(&list.collection.value, customs) {
                 let type_ = access.type_;
@@ -2345,7 +2730,9 @@ fn collect_function_return_bounds(
             return_type,
             bounds,
         ),
-        FunctionReturnType::Generic(_) | FunctionReturnType::List(_) => {}
+        FunctionReturnType::Generic(_)
+        | FunctionReturnType::External(_)
+        | FunctionReturnType::List(_) => {}
     }
 }
 
@@ -2507,6 +2894,21 @@ fn decode_input(
                         #source,
                         #support::ProviderValueContext<'__geam_call, #host>,
                     >::from_host(#input);
+                },
+                value: quote!(#value),
+            }
+        }
+        FunctionInputType::External(external) => {
+            let value = names.next("external_input");
+            let payload = names.next("external_payload");
+            let input_type =
+                generic_external_input_signature_type(external, customs, support, *generic_source);
+            GeneratedValue {
+                statements: quote! {
+                    let #payload = call.external_payload(#input);
+                    let #value: #input_type = <#input_type>::__geam_from_host(
+                        #support::ProviderExternalInputContext::from_host(#payload),
+                    );
                 },
                 value: quote!(#value),
             }
@@ -2759,6 +3161,21 @@ fn generate_return(
             },
             constructions: Vec::new(),
         },
+        FunctionReturnType::External(external) => {
+            let generated = generate_generic_external_payload(external, quote!(returned), names);
+            let statements = generated.statements;
+            let payload = generated.value;
+            GeneratedReturn {
+                statements: quote! {
+                    #statements
+                    let returned = call.create_external_with_binding::<#provider>(#payload);
+                },
+                completion: quote! {
+                    ::core::result::Result::Ok(call.return_value(returned))
+                },
+                constructions: Vec::new(),
+            }
+        }
         FunctionReturnType::Value(type_) => {
             generate_function_value_return(type_, customs, support, provider, return_type, names)
         }
@@ -3603,6 +4020,37 @@ fn encode_callback_argument(
             statements: TokenStream::new(),
             value: quote!(#input.into_host()),
         },
+        FunctionReturnType::External(external) => {
+            let generated = generate_generic_external_payload(external, input, names);
+            let statements = generated.statements;
+            let payload = generated.value;
+            let host =
+                generic_external_host_type(external, environment.customs, environment.support);
+            let construction =
+                register_host_construction(host, environment.support, names, constructions);
+            let value = names.next("returned_external");
+            let provider = environment.provider;
+            let schema = &external.schema;
+            let arguments = external
+                .arguments
+                .iter()
+                .map(|argument| {
+                    generic_host_type(&argument.host, environment.customs, environment.support)
+                })
+                .collect::<Vec<_>>();
+            let arguments = host_type_token_sequence(&arguments, environment.support);
+            GeneratedValue {
+                statements: quote! {
+                    #statements
+                    let #value = call.construct_external_with_binding::<
+                        #provider,
+                        #schema,
+                        #arguments,
+                    >(#construction.token(), #payload);
+                },
+                value: quote!(#value),
+            }
+        }
         FunctionReturnType::List(_) => GeneratedValue {
             statements: TokenStream::new(),
             value: quote!(#input.__geam_into_context().into_host()),
@@ -3636,6 +4084,9 @@ fn host_input_type(
     match type_ {
         FunctionInputType::Value(type_) => host_value_type(type_, customs, support),
         FunctionInputType::Generic(value) => generic_host_type(&value.host, customs, support),
+        FunctionInputType::External(external) => {
+            generic_external_host_type(external, customs, support)
+        }
         FunctionInputType::List(list) => {
             let item = host_value_type(&list.collection.value, customs, support);
             quote!(#support::HostListType<#item>)
@@ -3651,6 +4102,9 @@ fn host_return_type(
     match type_ {
         FunctionReturnType::Value(type_) => function_output_host_type(type_, customs, support),
         FunctionReturnType::Generic(value) => generic_host_type(&value.host, customs, support),
+        FunctionReturnType::External(external) => {
+            generic_external_host_type(external, customs, support)
+        }
         FunctionReturnType::List(list) => {
             let item = host_value_type(&list.collection.value, customs, support);
             quote!(#support::HostListType<#item>)
@@ -3828,6 +4282,10 @@ fn wrapper_input_type(
         FunctionInputType::Generic(value) => {
             let host = generic_host_type(&value.host, customs, support);
             quote!(<#host as #support::HostType>::Value<'__geam_call>)
+        }
+        FunctionInputType::External(external) => {
+            let host = generic_external_host_type(external, customs, support);
+            quote!(#support::HostExternal<'__geam_call, #host>)
         }
         FunctionInputType::List(list) => {
             let item = host_value_type(&list.collection.value, customs, support);
@@ -4650,6 +5108,128 @@ fn generic_value_signature_type(
     Type::Path(path)
 }
 
+fn generic_external_host_type(
+    external: &GenericExternalType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+) -> TokenStream {
+    let arguments = external
+        .arguments
+        .iter()
+        .map(|argument| generic_host_type(&argument.host, customs, support))
+        .collect::<Vec<_>>();
+    let arguments = host_type_token_sequence(&arguments, support);
+    let schema = &external.schema;
+    quote!(#support::HostExternalType<#schema, #arguments>)
+}
+
+fn generate_generic_external_payload(
+    external: &GenericExternalType,
+    input: TokenStream,
+    names: &mut GeneratedNames,
+) -> GeneratedValue {
+    let output = &external.output;
+    let payload = names.next("external_payload");
+    match &external.storage {
+        GenericExternalStorage::StoredFields {
+            payload: payload_type,
+            fields,
+            ..
+        } => {
+            let fields = fields
+                .iter()
+                .map(|field| {
+                    let ident = &field.ident;
+                    let value = names.next("stored_field");
+                    (ident, value)
+                })
+                .collect::<Vec<_>>();
+            let patterns = fields.iter().map(|(ident, value)| quote!(#ident: #value));
+            let values = fields
+                .iter()
+                .map(|(ident, value)| quote!(#ident: #value.into_host()));
+            GeneratedValue {
+                statements: quote! {
+                    let #output { #(#patterns,)* } = #input;
+                    let #payload = #payload_type { #(#values,)* };
+                },
+                value: quote!(#payload),
+            }
+        }
+        GenericExternalStorage::ManualPayload { .. } => {
+            let context = names.next("external_output");
+            GeneratedValue {
+                statements: quote! {
+                    let #output { __geam_context: #context, .. } = #input;
+                    let #payload = #context.into_payload();
+                },
+                value: quote!(#payload),
+            }
+        }
+    }
+}
+
+fn generic_external_input_signature_type(
+    external: &GenericExternalType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+    source: GenericInputSource,
+) -> Type {
+    let mut arguments = match source {
+        GenericInputSource::Declared => external.source_arguments.clone(),
+        GenericInputSource::Instantiated => external
+            .arguments
+            .iter()
+            .map(|argument| argument.instantiated.clone())
+            .collect(),
+    };
+    let host_arguments = external
+        .arguments
+        .iter()
+        .map(|argument| generic_host_type(&argument.host, customs, support))
+        .collect::<Vec<_>>();
+    let host_arguments = host_type_token_sequence(&host_arguments, support);
+    let payload = match &external.storage {
+        GenericExternalStorage::StoredFields { payload, .. } => quote!(#payload),
+        GenericExternalStorage::ManualPayload { payload } => quote!(#payload),
+    };
+    arguments.push(syn::parse_quote! {
+        #support::ProviderExternalInputContext<'__geam_call, #payload, #host_arguments>
+    });
+    let input = &external.input;
+    syn::parse_quote!(#input<#(#arguments),*>)
+}
+
+fn generic_external_output_signature_type(
+    external: &GenericExternalType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+) -> Type {
+    let mut arguments = external.source_arguments.clone();
+    match &external.storage {
+        GenericExternalStorage::StoredFields { owner, fields, .. } => {
+            for field in fields {
+                let index = &field.index;
+                let host = generic_host_type(
+                    &external.arguments[field.parameter_index].host,
+                    customs,
+                    support,
+                );
+                arguments.push(syn::parse_quote! {
+                    #support::ProviderStoredOutput<'__geam_call, #owner, #index, #host>
+                });
+            }
+        }
+        GenericExternalStorage::ManualPayload { payload } => {
+            arguments.push(syn::parse_quote! {
+                #support::ProviderExternalOutput<#payload>
+            });
+        }
+    }
+    let output = &external.output;
+    syn::parse_quote!(#output<#(#arguments),*>)
+}
+
 fn callback_signature_type(
     callback: &CallbackType,
     generics: &[Ident],
@@ -4697,6 +5277,9 @@ fn callback_output_signature_type(
     match type_ {
         FunctionReturnType::Value(value) => function_output_rust_type(value),
         FunctionReturnType::Generic(value) => generic_value_signature_type(value, customs, support),
+        FunctionReturnType::External(external) => {
+            generic_external_output_signature_type(external, customs, support)
+        }
         FunctionReturnType::List(list) => callback_list_signature_type(list, customs, support),
     }
 }
@@ -4709,6 +5292,12 @@ fn callback_input_signature_type(
     match type_ {
         FunctionInputType::Value(value) => provider_input_signature_type(value, support),
         FunctionInputType::Generic(value) => generic_value_signature_type(value, customs, support),
+        FunctionInputType::External(external) => generic_external_input_signature_type(
+            external,
+            customs,
+            support,
+            GenericInputSource::Declared,
+        ),
         FunctionInputType::List(list) => callback_list_signature_type(list, customs, support),
     }
 }
@@ -4771,11 +5360,46 @@ impl Parse for ModuleArguments {
             let field = input.parse::<Ident>()?;
             input.parse::<Token![=]>()?;
             match field.to_string().as_str() {
-                "path" => set_once(&mut partial.path, input.parse()?, &field)?,
-                "crate_path" => set_once(&mut partial.crate_path, input.parse()?, &field)?,
-                "profile" => set_once(&mut partial.profile, input.parse()?, &field)?,
-                "component" => set_once(&mut partial.component, input.parse()?, &field)?,
-                "stores" => set_once(&mut partial.stores, input.parse()?, &field)?,
+                "path" => {
+                    if partial.path.replace(input.parse()?).is_some() {
+                        return Err(syn::Error::new(
+                            field.span(),
+                            format!("duplicate module argument `{field}`"),
+                        ));
+                    }
+                }
+                "crate_path" => {
+                    if partial.crate_path.replace(input.parse()?).is_some() {
+                        return Err(syn::Error::new(
+                            field.span(),
+                            format!("duplicate module argument `{field}`"),
+                        ));
+                    }
+                }
+                "profile" => {
+                    if partial.profile.replace(input.parse()?).is_some() {
+                        return Err(syn::Error::new(
+                            field.span(),
+                            format!("duplicate module argument `{field}`"),
+                        ));
+                    }
+                }
+                "component" => {
+                    if partial.component.replace(input.parse()?).is_some() {
+                        return Err(syn::Error::new(
+                            field.span(),
+                            format!("duplicate module argument `{field}`"),
+                        ));
+                    }
+                }
+                "stores" => {
+                    if partial.stores.replace(input.parse()?).is_some() {
+                        return Err(syn::Error::new(
+                            field.span(),
+                            format!("duplicate module argument `{field}`"),
+                        ));
+                    }
+                }
                 _ => {
                     return Err(syn::Error::new(
                         field.span(),
@@ -4899,6 +5523,38 @@ impl Parse for ExternalArguments {
                         ));
                     }
                 }
+                "parameters" => {
+                    input.parse::<Token![=]>()?;
+                    let content;
+                    syn::bracketed!(content in input);
+                    let parameters = Punctuated::<Ident, Token![,]>::parse_terminated(&content)?
+                        .into_iter()
+                        .collect::<Vec<_>>();
+                    if partial.parameters.replace(parameters).is_some() {
+                        return Err(syn::Error::new(
+                            field.span(),
+                            "duplicate external argument `parameters`",
+                        ));
+                    }
+                }
+                "input" => {
+                    input.parse::<Token![=]>()?;
+                    if partial.input.replace(input.parse()?).is_some() {
+                        return Err(syn::Error::new(
+                            field.span(),
+                            "duplicate external argument `input`",
+                        ));
+                    }
+                }
+                "payload" => {
+                    input.parse::<Token![=]>()?;
+                    if partial.payload.replace(input.parse()?).is_some() {
+                        return Err(syn::Error::new(
+                            field.span(),
+                            "duplicate external argument `payload`",
+                        ));
+                    }
+                }
                 _ => {
                     return Err(syn::Error::new(
                         field.span(),
@@ -4921,18 +5577,11 @@ impl Parse for ExternalArguments {
         Ok(Self {
             name,
             manual: partial.manual.is_some(),
+            parameters: partial.parameters.unwrap_or_default(),
+            input: partial.input,
+            payload: partial.payload,
         })
     }
-}
-
-fn set_once<Value>(slot: &mut Option<Value>, value: Value, field: &Ident) -> syn::Result<()> {
-    if slot.replace(value).is_some() {
-        return Err(syn::Error::new(
-            field.span(),
-            format!("duplicate module argument `{field}`"),
-        ));
-    }
-    Ok(())
 }
 
 fn take_marker(attributes: &mut Vec<Attribute>, name: &str) -> syn::Result<bool> {
@@ -5034,14 +5683,304 @@ fn is_marker(attribute: &Attribute, name: &str) -> bool {
         .is_some_and(|segment| segment.ident == name)
 }
 
-fn validate_external(payload: &ItemStruct) -> syn::Result<()> {
-    if !payload.generics.params.is_empty() || payload.generics.where_clause.is_some() {
-        return Err(syn::Error::new_spanned(
-            &payload.generics,
-            "external payload structs must not have generics",
-        ));
+fn build_external_model(
+    index: usize,
+    payload: &mut ItemStruct,
+    arguments: ExternalArguments,
+    support: &TokenStream,
+) -> syn::Result<ExternalModel> {
+    let generic = if arguments.parameters.is_empty() {
+        if arguments.input.is_some() {
+            return Err(syn::Error::new_spanned(
+                arguments.input,
+                "external argument `input` requires non-empty `parameters`",
+            ));
+        }
+        if arguments.payload.is_some() {
+            return Err(syn::Error::new_spanned(
+                arguments.payload,
+                "external argument `payload` requires non-empty `parameters`",
+            ));
+        }
+        if !payload.generics.params.is_empty() || payload.generics.where_clause.is_some() {
+            return Err(syn::Error::new_spanned(
+                &payload.generics,
+                "external payload structs must not have generics; declare `parameters = [...]` for retained generic externals",
+            ));
+        }
+        for field in &mut payload.fields {
+            if take_marker(&mut field.attrs, "stored")? {
+                return Err(syn::Error::new_spanned(
+                    field,
+                    "`#[geam::stored]` fields require non-empty external `parameters`",
+                ));
+            }
+        }
+        None
+    } else {
+        let Some(input) = arguments.input.clone() else {
+            return Err(syn::Error::new_spanned(
+                &payload.ident,
+                "generic external declarations require `input = Type`",
+            ));
+        };
+        if payload.generics.where_clause.is_some() {
+            return Err(syn::Error::new_spanned(
+                &payload.generics,
+                "generic external declarations must not have where clauses",
+            ));
+        }
+        let mut declared = Vec::new();
+        for parameter in &payload.generics.params {
+            let GenericParam::Type(parameter) = parameter else {
+                return Err(syn::Error::new_spanned(
+                    parameter,
+                    "generic external declarations support only type parameters",
+                ));
+            };
+            if !parameter.bounds.is_empty() || parameter.default.is_some() {
+                return Err(syn::Error::new_spanned(
+                    parameter,
+                    "generic external type parameters must not have bounds or defaults",
+                ));
+            }
+            declared.push(parameter.ident.clone());
+        }
+        if declared != arguments.parameters {
+            return Err(syn::Error::new_spanned(
+                &payload.generics,
+                "external `parameters` must list every Rust type parameter once in declaration order",
+            ));
+        }
+        let mut unique = BTreeSet::new();
+        for parameter in &arguments.parameters {
+            if !unique.insert(parameter.unraw().to_string()) {
+                return Err(syn::Error::new(
+                    parameter.span(),
+                    format!("duplicate external parameter `{parameter}`"),
+                ));
+            }
+        }
+        if let Some(explicit_payload) = arguments.payload.clone() {
+            let mut retained_accessors = BTreeSet::new();
+            for parameter in &arguments.parameters {
+                let accessor = retained_parameter_accessor(parameter);
+                if !retained_accessors.insert(accessor.to_string()) {
+                    return Err(syn::Error::new(
+                        parameter.span(),
+                        format!(
+                            "external parameter `{parameter}` generates duplicate retained accessor `{accessor}`"
+                        ),
+                    ));
+                }
+            }
+            if !arguments.manual {
+                return Err(syn::Error::new_spanned(
+                    &explicit_payload,
+                    "generic external `payload` requires bare `manual` semantics",
+                ));
+            }
+            let Type::Path(TypePath {
+                qself: None,
+                path: payload_path,
+            }) = &explicit_payload
+            else {
+                return Err(syn::Error::new_spanned(
+                    &explicit_payload,
+                    "generic external `payload` must be a non-generic type path",
+                ));
+            };
+            if payload_path
+                .segments
+                .iter()
+                .any(|segment| !matches!(segment.arguments, PathArguments::None))
+            {
+                return Err(syn::Error::new_spanned(
+                    &explicit_payload,
+                    "generic external `payload` must be a non-generic type path",
+                ));
+            }
+            if !matches!(payload.fields, Fields::Unit) {
+                return Err(syn::Error::new_spanned(
+                    &payload.fields,
+                    "generic external declarations with an explicit payload require a unit marker struct",
+                ));
+            }
+            let context = format_ident!("__GeamExternalContext");
+            let parameters = &arguments.parameters;
+            payload
+                .generics
+                .params
+                .push(GenericParam::Type(syn::parse_quote! {
+                    #context = #support::MissingExternalOutputContext
+                }));
+            payload.fields = Fields::Named(syn::parse_quote!({
+                __geam_context: #context,
+                __geam_parameters: ::core::marker::PhantomData<fn() -> (#(#parameters,)*)>,
+            }));
+            payload.semi_token = None;
+            Some(GenericExternalModel {
+                parameters: arguments.parameters.clone(),
+                input,
+                visibility: payload.vis.clone(),
+                storage: GenericExternalStorage::ManualPayload {
+                    payload: explicit_payload,
+                },
+            })
+        } else {
+            if arguments.manual {
+                return Err(syn::Error::new_spanned(
+                    &payload.ident,
+                    "generic external `manual` semantics require an explicit retained `payload = Type`",
+                ));
+            }
+            let Fields::Named(fields) = &mut payload.fields else {
+                return Err(syn::Error::new_spanned(
+                    &payload.fields,
+                    "generic external declarations require named `#[geam::stored]` fields",
+                ));
+            };
+            if fields.named.is_empty() {
+                return Err(syn::Error::new_spanned(
+                    &payload.ident,
+                    "generic external declarations require at least one `#[geam::stored]` field",
+                ));
+            }
+            let mut stored_fields = Vec::with_capacity(fields.named.len());
+            let mut used = BTreeSet::new();
+            for (field_index, field) in fields.named.iter_mut().enumerate() {
+                if !take_marker(&mut field.attrs, "stored")? {
+                    return Err(syn::Error::new_spanned(
+                        field,
+                        "generic external fields must be marked `#[geam::stored]`",
+                    ));
+                }
+                let Some((stored, mut stored_path)) =
+                    collection_item_with_path(&field.ty, "Stored")?
+                else {
+                    return Err(syn::Error::new_spanned(
+                        &field.ty,
+                        "`#[geam::stored]` fields must use `Stored<Parameter>`",
+                    ));
+                };
+                let Type::Path(TypePath { qself: None, path }) = stored else {
+                    return Err(syn::Error::new_spanned(
+                        &field.ty,
+                        "`#[geam::stored]` fields must name one declared external parameter",
+                    ));
+                };
+                let Some(parameter) = path.get_ident().cloned() else {
+                    return Err(syn::Error::new_spanned(
+                        path,
+                        "`#[geam::stored]` fields must name one declared external parameter",
+                    ));
+                };
+                let Some(parameter_index) = arguments
+                    .parameters
+                    .iter()
+                    .position(|declared| declared == &parameter)
+                else {
+                    return Err(syn::Error::new_spanned(
+                        parameter,
+                        "`#[geam::stored]` fields must name one declared external parameter",
+                    ));
+                };
+                used.insert(parameter_index);
+                let context = format_ident!("__GeamStoredContext{field_index}");
+                for segment in stored_path.path.segments.iter_mut().rev().take(1) {
+                    segment.arguments =
+                        PathArguments::AngleBracketed(syn::parse_quote!(<#parameter, #context>));
+                }
+                field.ty = Type::Path(stored_path);
+                let Some(ident) = field.ident.clone() else {
+                    return Err(syn::Error::new_spanned(
+                        field,
+                        "generic external declarations require named `#[geam::stored]` fields",
+                    ));
+                };
+                stored_fields.push(StoredExternalField {
+                    ident,
+                    parameter,
+                    parameter_index,
+                    index: host_type_index(parameter_index, support),
+                });
+                payload
+                    .generics
+                    .params
+                    .push(GenericParam::Type(syn::parse_quote! {
+                        #context = #support::MissingStoredContext
+                    }));
+            }
+            for (parameter_index, parameter) in arguments.parameters.iter().enumerate() {
+                if !used.contains(&parameter_index) {
+                    return Err(syn::Error::new(
+                        parameter.span(),
+                        format!(
+                            "external parameter `{parameter}` must own at least one `#[geam::stored]` field"
+                        ),
+                    ));
+                }
+            }
+            let generated_payload = format_ident!("__GeamExternalPayload{index}");
+            let generated_owner = format_ident!("__GeamExternalOwner{index}");
+            Some(GenericExternalModel {
+                parameters: arguments.parameters.clone(),
+                input,
+                visibility: payload.vis.clone(),
+                storage: GenericExternalStorage::StoredFields {
+                    payload: generated_payload,
+                    owner: generated_owner,
+                    fields: stored_fields,
+                },
+            })
+        }
+    };
+
+    Ok(ExternalModel {
+        ident: payload.ident.clone(),
+        name: arguments.name,
+        semantics: if arguments.manual {
+            ExternalSemantics::Manual
+        } else {
+            ExternalSemantics::Default
+        },
+        schema: format_ident!("__GeamExternalSchema{index}"),
+        storage: format_ident!("__GeamExternalStorage{index}"),
+        store_field: format_ident!("__geam_external_{index}"),
+        generic,
+    })
+}
+
+fn host_type_index(index: usize, support: &TokenStream) -> TokenStream {
+    let mut value = quote!(#support::HostTypeIndex0);
+    for _ in 0..index {
+        value = quote!(#support::HostTypeIndexNext<#value>);
     }
-    Ok(())
+    value
+}
+
+fn retained_parameter_accessor(parameter: &Ident) -> Ident {
+    let span = parameter.span();
+    let parameter = parameter.unraw().to_string();
+    let characters = parameter.chars().collect::<Vec<_>>();
+    let mut suffix = String::with_capacity(parameter.len());
+    for (index, character) in characters.iter().copied().enumerate() {
+        let previous_is_lowercase = index
+            .checked_sub(1)
+            .and_then(|previous| characters.get(previous))
+            .is_some_and(|previous| previous.is_ascii_lowercase() || previous.is_ascii_digit());
+        let next_is_lowercase = characters
+            .get(index + 1)
+            .is_some_and(char::is_ascii_lowercase);
+        if character.is_ascii_uppercase()
+            && index > 0
+            && (previous_is_lowercase || next_is_lowercase)
+        {
+            suffix.push('_');
+        }
+        suffix.push(character.to_ascii_lowercase());
+    }
+    format_ident!("stored_{}", suffix, span = span,)
 }
 
 fn validate_function(
@@ -5100,7 +6039,7 @@ fn validate_function(
         .as_ref()
         .map(|(value, _)| value.clone())
         .unwrap_or_else(|| declared_return_type.clone());
-    reject_unwrapped_generic(&rust_return_type, &generic_scope)?;
+    reject_unwrapped_generic(&rust_return_type, &generic_scope, externals)?;
     if matches!(&rust_return_type, Type::Tuple(tuple) if tuple.elems.is_empty()) {
         function
             .attrs
@@ -5176,7 +6115,6 @@ fn validate_function(
                     "Call<State> parameters require `#[geam::call]`",
                 ));
             }
-            reject_unwrapped_generic(&argument.ty, &generic_scope)?;
             let callback_index = arguments.len();
             let type_ = if let Some(callback) = callback_type(
                 &argument.ty,
@@ -5190,6 +6128,7 @@ fn validate_function(
             )? {
                 FunctionArgumentType::Callback(Box::new(callback))
             } else {
+                reject_unwrapped_generic(&argument.ty, &generic_scope, externals)?;
                 FunctionArgumentType::Input(classify_input(
                     &argument.ty,
                     externals,
@@ -5206,6 +6145,14 @@ fn validate_function(
                 }
                 FunctionArgumentType::Input(FunctionInputType::Generic(value)) => {
                     *argument.ty = generic_value_signature_type(value, customs, support);
+                }
+                FunctionArgumentType::Input(FunctionInputType::External(external)) => {
+                    *argument.ty = generic_external_input_signature_type(
+                        external,
+                        customs,
+                        support,
+                        GenericInputSource::Declared,
+                    );
                 }
                 FunctionArgumentType::Callback(callback) => {
                     *argument.ty = callback_signature_type(
@@ -5271,9 +6218,20 @@ fn validate_function(
         };
         function.sig.output =
             ReturnType::Type(Token![->](proc_macro2::Span::call_site()), Box::new(output));
+    } else if let FunctionReturnType::External(external) = &model.return_ {
+        let output = generic_external_output_signature_type(external, customs, support);
+        let output = if let Some((_, host_result)) = &host_result {
+            let host_result = collection_type_with_item(host_result, &output);
+            syn::parse_quote!(#host_result)
+        } else {
+            output
+        };
+        function.sig.output =
+            ReturnType::Type(Token![->](proc_macro2::Span::call_site()), Box::new(output));
     }
     if !matches!(model.call, CallAccess::None)
         || function_contains_generic_value(&model)
+        || function_contains_call_scoped_generic_external(&model)
         || function_contains_callback(&model)
     {
         prepend_function_lifetime(&mut function.sig.generics, syn::parse_quote!('__geam_call));
@@ -5344,6 +6302,22 @@ fn function_contains_generic_value(function: &FunctionModel) -> bool {
     false
 }
 
+fn function_contains_call_scoped_generic_external(function: &FunctionModel) -> bool {
+    if matches!(
+        &function.return_,
+        FunctionReturnType::External(external)
+            if matches!(external.storage, GenericExternalStorage::StoredFields { .. })
+    ) {
+        return true;
+    }
+    function.arguments.iter().any(|argument| {
+        matches!(
+            argument,
+            FunctionArgumentType::Input(FunctionInputType::External(_))
+        )
+    })
+}
+
 fn function_contains_callback(function: &FunctionModel) -> bool {
     function
         .arguments
@@ -5400,7 +6374,14 @@ fn is_call_type(type_: &Type) -> bool {
     is_collection(type_, "Call")
 }
 
-fn reject_unwrapped_generic(type_: &Type, generics: &GenericParameterScope) -> syn::Result<()> {
+fn reject_unwrapped_generic(
+    type_: &Type,
+    generics: &GenericParameterScope,
+    externals: &[ExternalModel],
+) -> syn::Result<()> {
+    if is_generic_external_application(type_, externals) {
+        return Ok(());
+    }
     if let Some(ident) = find_unwrapped_generic(type_, generics) {
         return Err(syn::Error::new_spanned(
             type_,
@@ -5408,6 +6389,22 @@ fn reject_unwrapped_generic(type_: &Type, generics: &GenericParameterScope) -> s
         ));
     }
     Ok(())
+}
+
+fn is_generic_external_application(type_: &Type, externals: &[ExternalModel]) -> bool {
+    let Type::Path(TypePath { qself: None, path }) = type_ else {
+        return false;
+    };
+    if path.segments.len() != 1 {
+        return false;
+    }
+    let ident = &path.segments[0].ident;
+    externals.iter().any(|external| {
+        external
+            .generic
+            .as_ref()
+            .is_some_and(|generic| &external.ident == ident || &generic.input == ident)
+    })
 }
 
 fn find_unwrapped_generic(type_: &Type, generics: &GenericParameterScope) -> Option<Ident> {
@@ -5552,6 +6549,7 @@ fn callback_type(
             "callbacks returned by a callback are opaque values; use Value<fn(...) -> ...>",
         ));
     }
+    reject_unwrapped_generic(&return_type, generics, externals)?;
     let return_ = classify_input(
         &return_type,
         externals,
@@ -5569,6 +6567,7 @@ fn callback_type(
                 "callback arguments that are functions must use Value<fn(...) -> ...>",
             ));
         }
+        reject_unwrapped_generic(&argument.ty, generics, externals)?;
         arguments.push(classify_return(
             &argument.ty,
             externals,
@@ -5609,13 +6608,13 @@ fn classify_generic_host_type(
     if let Type::Reference(_) = type_ {
         return Err(syn::Error::new_spanned(
             type_,
-            "Value<...> source shapes must not contain Rust references",
+            "generic source shapes must not contain Rust references",
         ));
     }
     if is_type_application_named(type_, "Value") {
         return Err(syn::Error::new_spanned(
             type_,
-            "Value<...> must not be nested inside another Value",
+            "Value<...> wrappers must not be nested inside generic source shapes",
         ));
     }
     if let Some((item, path)) = collection_item_with_path(type_, "List")? {
@@ -5628,7 +6627,7 @@ fn classify_generic_host_type(
     if collection_item(type_, "Vec")?.is_some() {
         return Err(syn::Error::new_spanned(
             type_,
-            "Vec<T> is not a source type inside Value<...>; use geam::List<T>",
+            "Vec<T> is not a generic source type; use geam::List<T>",
         ));
     }
     match source_wrapper(type_)? {
@@ -5737,7 +6736,7 @@ fn classify_generic_host_type(
             if !matches!(segment.arguments, PathArguments::None) {
                 return Err(syn::Error::new_spanned(
                     type_,
-                    "generic declared source types are not supported inside Value<...>",
+                    "generic declared source types are not supported inside generic source shapes",
                 ));
             }
         }
@@ -5792,6 +6791,22 @@ fn classify_input(
     generics: &mut GenericParameterScope,
     support: &TokenStream,
 ) -> syn::Result<FunctionInputType> {
+    if let Some(external) =
+        generic_external_type(type_, true, externals, generics, customs, support)?
+    {
+        return Ok(FunctionInputType::External(Box::new(external)));
+    }
+    if let Some(external) =
+        generic_external_type(type_, false, externals, generics, customs, support)?
+    {
+        return Err(syn::Error::new_spanned(
+            type_,
+            format!(
+                "generic external output `{}` cannot be used as input; use `{}<...>`",
+                external.output, external.input,
+            ),
+        ));
+    }
     if let Type::Reference(reference) = type_ {
         if is_collection(&reference.elem, "List") {
             return Err(syn::Error::new_spanned(
@@ -6002,6 +7017,22 @@ fn classify_return(
     generics: &mut GenericParameterScope,
     support: &TokenStream,
 ) -> syn::Result<FunctionReturnType> {
+    if let Some(external) =
+        generic_external_type(type_, false, externals, generics, customs, support)?
+    {
+        return Ok(FunctionReturnType::External(Box::new(external)));
+    }
+    if let Some(external) =
+        generic_external_type(type_, true, externals, generics, customs, support)?
+    {
+        return Err(syn::Error::new_spanned(
+            type_,
+            format!(
+                "generic external input `{}` cannot be returned; return `{}<...>`",
+                external.input, external.output,
+            ),
+        ));
+    }
     if let Some(value) = generic_value_type(type_, generics, externals, customs, support)? {
         return Ok(FunctionReturnType::Generic(Box::new(value)));
     }
@@ -6442,11 +7473,82 @@ fn external_type<'external>(
     externals.iter().find(|external| &external.ident == ident)
 }
 
+fn generic_external_type(
+    type_: &Type,
+    input: bool,
+    externals: &[ExternalModel],
+    generics: &mut GenericParameterScope,
+    customs: &[CustomModel],
+    support: &TokenStream,
+) -> syn::Result<Option<GenericExternalType>> {
+    let Type::Path(TypePath { qself: None, path }) = type_ else {
+        return Ok(None);
+    };
+    if path.segments.len() != 1 {
+        return Ok(None);
+    }
+    let segment = &path.segments[0];
+    let Some((external, generic)) = externals.iter().find_map(|external| {
+        let generic = external.generic.as_ref()?;
+        let matches = if input {
+            generic.input == segment.ident
+        } else {
+            external.ident == segment.ident
+        };
+        matches.then_some((external, generic))
+    }) else {
+        return Ok(None);
+    };
+    let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return Err(syn::Error::new_spanned(
+            type_,
+            format!(
+                "generic external `{}` requires exactly {} type arguments",
+                segment.ident,
+                generic.parameters.len(),
+            ),
+        ));
+    };
+    let mut classified = Vec::with_capacity(arguments.args.len());
+    let mut source_arguments = Vec::with_capacity(arguments.args.len());
+    for argument in &arguments.args {
+        let GenericArgument::Type(argument) = argument else {
+            return Err(syn::Error::new_spanned(
+                argument,
+                "generic external arguments must be source types",
+            ));
+        };
+        source_arguments.push(argument.clone());
+        classified.push(classify_generic_host_type(
+            argument, generics, externals, customs, support,
+        )?);
+    }
+    if classified.len() != generic.parameters.len() {
+        return Err(syn::Error::new_spanned(
+            type_,
+            format!(
+                "generic external `{}` requires exactly {} type arguments",
+                segment.ident,
+                generic.parameters.len(),
+            ),
+        ));
+    }
+    Ok(Some(GenericExternalType {
+        output: external.ident.clone(),
+        input: generic.input.clone(),
+        schema: external.schema.clone(),
+        storage: generic.storage.clone(),
+        source_arguments,
+        arguments: classified,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        ExternalArguments, GenericParameterScope, ModuleArguments, classify_collection_input_item,
-        expand, find_unwrapped_generic, list_item_view_type, provider_value_key,
+        ExternalArguments, GenericParameterScope, ModuleArguments, build_external_model,
+        classify_collection_input_item, expand, find_unwrapped_generic, list_item_view_type,
+        provider_value_key, retained_parameter_accessor,
     };
     use quote::quote;
     use syn::{ItemFn, Type};
@@ -7101,6 +8203,30 @@ mod tests {
                 },
                 "Vec requires exactly one type argument",
             ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn invoke<Item>(
+                            #[geam::call] call: &mut Call<RunState>,
+                            callback: Callback<fn() -> Item>,
+                        ) -> bool { true }
+                    }
+                },
+                "generic source type `Item` must be written as Value<Item>",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn invoke<Item>(
+                            #[geam::call] call: &mut Call<RunState>,
+                            callback: Callback<fn(Item) -> bool>,
+                        ) -> bool { true }
+                    }
+                },
+                "generic source type `Item` must be written as Value<Item>",
+            ),
         ];
 
         for (item, expected) in cases {
@@ -7730,7 +8856,7 @@ mod tests {
                         fn identity<Item>(value: Value<Value<Item>>) -> Value<Item> { todo!() }
                     }
                 },
-                "Value<...> must not be nested inside another Value",
+                "Value<...> wrappers must not be nested inside generic source shapes",
             ),
             (
                 quote! {
@@ -7739,7 +8865,7 @@ mod tests {
                         fn identity<Item>(value: Value<&Item>) -> Value<Item> { todo!() }
                     }
                 },
-                "Value<...> source shapes must not contain Rust references",
+                "generic source shapes must not contain Rust references",
             ),
             (
                 quote! {
@@ -7748,7 +8874,7 @@ mod tests {
                         fn identity<Item>(value: Value<Option<&Item>>) -> bool { true }
                     }
                 },
-                "Value<...> source shapes must not contain Rust references",
+                "generic source shapes must not contain Rust references",
             ),
             (
                 quote! {
@@ -7757,7 +8883,7 @@ mod tests {
                         fn identity<Item>(value: Value<Vec<Item>>) -> Value<Item> { todo!() }
                     }
                 },
-                "Vec<T> is not a source type inside Value<...>; use geam::List<T>",
+                "Vec<T> is not a generic source type; use geam::List<T>",
             ),
             (
                 quote! {
@@ -7768,7 +8894,7 @@ mod tests {
                         }
                     }
                 },
-                "generic declared source types are not supported inside Value<...>",
+                "generic declared source types are not supported inside generic source shapes",
             ),
             (
                 quote! {
@@ -7842,7 +8968,7 @@ mod tests {
                         fn identity<Item>(value: Value<List<&Item>>) -> bool { true }
                     }
                 },
-                "Value<...> source shapes must not contain Rust references",
+                "generic source shapes must not contain Rust references",
             ),
             (
                 quote! {
@@ -7851,7 +8977,7 @@ mod tests {
                         fn identity<Item>(value: Value<Result<&Item, Item>>) -> bool { true }
                     }
                 },
-                "Value<...> source shapes must not contain Rust references",
+                "generic source shapes must not contain Rust references",
             ),
             (
                 quote! {
@@ -7860,7 +8986,7 @@ mod tests {
                         fn identity<Item>(value: Value<Result<Item, &Item>>) -> bool { true }
                     }
                 },
-                "Value<...> source shapes must not contain Rust references",
+                "generic source shapes must not contain Rust references",
             ),
             (
                 quote! {
@@ -7869,7 +8995,7 @@ mod tests {
                         fn identity<Item>(value: Value<fn() -> &Item>) -> bool { true }
                     }
                 },
-                "Value<...> source shapes must not contain Rust references",
+                "generic source shapes must not contain Rust references",
             ),
             (
                 quote! {
@@ -7878,7 +9004,7 @@ mod tests {
                         fn identity<Item>(value: Value<sibling::Box<Item, bool>>) -> bool { true }
                     }
                 },
-                "generic declared source types are not supported inside Value<...>",
+                "generic declared source types are not supported inside generic source shapes",
             ),
             (
                 quote! {
@@ -7914,7 +9040,7 @@ mod tests {
                         fn identity<Item>(value: Value<(Item, &Item)>) -> bool { true }
                     }
                 },
-                "Value<...> source shapes must not contain Rust references",
+                "generic source shapes must not contain Rust references",
             ),
             (
                 quote! {
@@ -7923,7 +9049,7 @@ mod tests {
                         fn identity<Item>(value: Value<fn(&Item) -> Item>) -> bool { true }
                     }
                 },
-                "Value<...> source shapes must not contain Rust references",
+                "generic source shapes must not contain Rust references",
             ),
             (
                 quote! {
@@ -7959,7 +9085,7 @@ mod tests {
                         fn identity<Item>(value: (Value<&Item>, bool)) -> bool { true }
                     }
                 },
-                "Value<...> source shapes must not contain Rust references",
+                "generic source shapes must not contain Rust references",
             ),
             (
                 quote! {
@@ -7968,7 +9094,7 @@ mod tests {
                         fn identity<Item>(value: Value<Item>) -> Option<Value<&Item>> { todo!() }
                     }
                 },
-                "Value<...> source shapes must not contain Rust references",
+                "generic source shapes must not contain Rust references",
             ),
         ];
 
@@ -8022,11 +9148,45 @@ mod tests {
             .expect("default semantics should parse");
         assert_eq!(automatic.name.value(), "Metrics");
         assert!(!automatic.manual);
+        assert!(automatic.parameters.is_empty());
+        assert!(automatic.input.is_none());
+        assert!(automatic.payload.is_none());
 
         let manual = syn::parse2::<ExternalArguments>(quote!(manual, name = "Metrics"))
             .expect("manual semantics should parse in either field order");
         assert_eq!(manual.name.value(), "Metrics");
         assert!(manual.manual);
+
+        let generic = syn::parse2::<ExternalArguments>(quote!(
+            name = "Box",
+            parameters = [Item, Metadata],
+            input = BoxInput,
+        ))
+        .expect("generic retained arguments should parse");
+        assert_eq!(
+            generic
+                .parameters
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            ["Item", "Metadata"],
+        );
+        assert_eq!(generic.input.expect("input should be retained"), "BoxInput");
+
+        let retained = syn::parse2::<ExternalArguments>(quote!(
+            name = "Queue",
+            parameters = [Item],
+            input = QueueInput,
+            payload = storage::QueuePayload,
+            manual,
+        ))
+        .expect("advanced retained arguments should parse");
+        assert!(retained.manual);
+        let retained_payload = retained.payload.expect("payload should be retained");
+        assert_eq!(
+            quote!(#retained_payload).to_string(),
+            "storage :: QueuePayload",
+        );
 
         let cases = [
             (quote!(), "missing required external argument `name`"),
@@ -8048,12 +9208,43 @@ mod tests {
                 "external argument `manual` does not accept a value",
             ),
             (
+                quote!(name = "Box", parameters = [Item], parameters = [Other]),
+                "duplicate external argument `parameters`",
+            ),
+            (
+                quote!(name = "Box", input = First, input = Second),
+                "duplicate external argument `input`",
+            ),
+            (
+                quote!(name = "Box", payload = First, payload = Second),
+                "duplicate external argument `payload`",
+            ),
+            (
                 quote!(other = "Metrics"),
                 "unknown external argument `other`",
             ),
             (quote!(= "Metrics"), "expected identifier"),
             (quote!(name "Metrics"), "expected `=`"),
             (quote!(name = Metrics), "expected string literal"),
+            (quote!(name = "Box", parameters[Item]), "expected `=`"),
+            (
+                quote!(name = "Box", parameters = Item),
+                "expected square brackets",
+            ),
+            (
+                quote!(name = "Box", parameters = ["Item"]),
+                "expected identifier",
+            ),
+            (quote!(name = "Box", input BoxInput), "expected `=`"),
+            (
+                quote!(name = "Box", input = "BoxInput"),
+                "expected identifier",
+            ),
+            (quote!(name = "Box", payload QueuePayload), "expected `=`"),
+            (
+                quote!(name = "Box", payload = const),
+                "expected one of: `for`, parentheses, `fn`, `unsafe`, `extern`, identifier, `::`, `<`, `dyn`, square brackets, `*`, `&`, `!`, `impl`, `_`, lifetime",
+            ),
             (quote!(name = "Metrics" other = "Value"), "expected `,`"),
         ];
 
@@ -8069,6 +9260,912 @@ mod tests {
     }
 
     #[test]
+    fn retained_parameter_accessors_follow_rust_snake_case() {
+        assert_eq!(
+            retained_parameter_accessor(&syn::parse_quote!(Item)),
+            "stored_item"
+        );
+        assert_eq!(
+            retained_parameter_accessor(&syn::parse_quote!(EntryValue)),
+            "stored_entry_value",
+        );
+        assert_eq!(
+            retained_parameter_accessor(&syn::parse_quote!(URLValue)),
+            "stored_url_value",
+        );
+    }
+
+    #[test]
+    fn generic_external_declarations_require_one_static_stored_contract() {
+        let cases = [
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(name = "Box", input = BoxInput)]
+                        struct BoxValue;
+                    }
+                },
+                "external argument `input` requires non-empty `parameters`",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(name = "Box", payload = Payload)]
+                        struct BoxValue;
+                    }
+                },
+                "external argument `payload` requires non-empty `parameters`",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(name = "Box", parameters = [Item])]
+                        struct BoxValue<Item> {
+                            #[geam::stored]
+                            value: Stored<Item>,
+                        }
+                    }
+                },
+                "generic external declarations require `input = Type`",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Box",
+                            parameters = [Item],
+                            input = BoxInput,
+                            manual,
+                        )]
+                        struct BoxValue<Item> {
+                            #[geam::stored]
+                            value: Stored<Item>,
+                        }
+                    }
+                },
+                "generic external `manual` semantics require an explicit retained `payload = Type`",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Queue",
+                            parameters = [Item],
+                            input = QueueInput,
+                            payload = QueuePayload,
+                        )]
+                        struct Queue<Item>;
+                    }
+                },
+                "generic external `payload` requires bare `manual` semantics",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Queue",
+                            parameters = [Item],
+                            input = QueueInput,
+                            payload = QueuePayload<Item>,
+                            manual,
+                        )]
+                        struct Queue<Item>;
+                    }
+                },
+                "generic external `payload` must be a non-generic type path",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Queue",
+                            parameters = [Item],
+                            input = QueueInput,
+                            payload = (QueuePayload, OtherPayload),
+                            manual,
+                        )]
+                        struct Queue<Item>;
+                    }
+                },
+                "generic external `payload` must be a non-generic type path",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Queue",
+                            parameters = [Item],
+                            input = QueueInput,
+                            payload = QueuePayload,
+                            manual,
+                        )]
+                        struct Queue<Item> { marker: PhantomData<Item> }
+                    }
+                },
+                "generic external declarations with an explicit payload require a unit marker struct",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Box",
+                            parameters = [Item],
+                            input = BoxInput,
+                        )]
+                        struct BoxValue<'a> {
+                            #[geam::stored]
+                            value: Stored<Item>,
+                        }
+                    }
+                },
+                "generic external declarations support only type parameters",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Box",
+                            parameters = [Item],
+                            input = BoxInput,
+                        )]
+                        struct BoxValue<Item: Clone> {
+                            #[geam::stored]
+                            value: Stored<Item>,
+                        }
+                    }
+                },
+                "generic external type parameters must not have bounds or defaults",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Box",
+                            parameters = [Other],
+                            input = BoxInput,
+                        )]
+                        struct BoxValue<Item> {
+                            #[geam::stored]
+                            value: Stored<Item>,
+                        }
+                    }
+                },
+                "external `parameters` must list every Rust type parameter once in declaration order",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Box",
+                            parameters = [Item, Item],
+                            input = BoxInput,
+                        )]
+                        struct BoxValue<Item, Other> {
+                            #[geam::stored]
+                            value: Stored<Item>,
+                        }
+                    }
+                },
+                "external `parameters` must list every Rust type parameter once in declaration order",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Box",
+                            parameters = [Item],
+                            input = BoxInput,
+                        )]
+                        struct BoxValue<Item>(Stored<Item>);
+                    }
+                },
+                "generic external declarations require named `#[geam::stored]` fields",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Box",
+                            parameters = [Item],
+                            input = BoxInput,
+                        )]
+                        struct BoxValue<Item> {}
+                    }
+                },
+                "generic external declarations require at least one `#[geam::stored]` field",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Box",
+                            parameters = [Item],
+                            input = BoxInput,
+                        )]
+                        struct BoxValue<Item> {
+                            value: Stored<Item>,
+                        }
+                    }
+                },
+                "generic external fields must be marked `#[geam::stored]`",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Box",
+                            parameters = [Item],
+                            input = BoxInput,
+                        )]
+                        struct BoxValue<Item> {
+                            #[geam::stored]
+                            value: Item,
+                        }
+                    }
+                },
+                "`#[geam::stored]` fields must use `Stored<Parameter>`",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Box",
+                            parameters = [Item],
+                            input = BoxInput,
+                        )]
+                        struct BoxValue<Item> {
+                            #[geam::stored]
+                            value: Stored<Vec<Item>>,
+                        }
+                    }
+                },
+                "`#[geam::stored]` fields must name one declared external parameter",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Pair",
+                            parameters = [Left, Right],
+                            input = PairInput,
+                        )]
+                        struct Pair<Left, Right> {
+                            #[geam::stored]
+                            left: Stored<Left>,
+                        }
+                    }
+                },
+                "external parameter `Right` must own at least one `#[geam::stored]` field",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(name = "Token")]
+                        struct Token {
+                            #[geam::stored]
+                            value: Stored<Item>,
+                        }
+                    }
+                },
+                "`#[geam::stored]` fields require non-empty external `parameters`",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(name = "Token")]
+                        struct Token {
+                            #[geam::stored(value)]
+                            value: bool,
+                        }
+                    }
+                },
+                "`#[geam::stored]` does not accept arguments",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Box",
+                            parameters = [Item],
+                            input = BoxInput,
+                        )]
+                        struct BoxValue<Item> {
+                            #[geam::stored(value)]
+                            value: Stored<Item>,
+                        }
+                    }
+                },
+                "`#[geam::stored]` does not accept arguments",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Box",
+                            parameters = [Item],
+                            input = BoxInput,
+                        )]
+                        struct BoxValue<Item> {
+                            #[geam::stored]
+                            value: Stored<Item, Item>,
+                        }
+                    }
+                },
+                "Stored requires exactly one type argument",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Box",
+                            parameters = [Item],
+                            input = BoxInput,
+                        )]
+                        struct BoxValue<Item>
+                        where
+                            Item: Sized,
+                        {
+                            #[geam::stored]
+                            value: Stored<Item>,
+                        }
+                    }
+                },
+                "generic external declarations must not have where clauses",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Box",
+                            parameters = [Item, Item],
+                            input = BoxInput,
+                        )]
+                        struct BoxValue<Item, Item> {
+                            #[geam::stored]
+                            value: Stored<Item>,
+                        }
+                    }
+                },
+                "duplicate external parameter `Item`",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Box",
+                            parameters = [Item],
+                            input = BoxInput,
+                        )]
+                        struct BoxValue<Item> {
+                            #[geam::stored]
+                            value: Stored<(Item,)>,
+                        }
+                    }
+                },
+                "`#[geam::stored]` fields must name one declared external parameter",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Box",
+                            parameters = [Item],
+                            input = BoxInput,
+                        )]
+                        struct BoxValue<Item> {
+                            #[geam::stored]
+                            value: Stored<Other>,
+                        }
+                    }
+                },
+                "`#[geam::stored]` fields must name one declared external parameter",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        struct QueuePayload;
+
+                        #[geam::external(
+                            name = "Queue",
+                            parameters = [URLValue, UrlValue],
+                            input = QueueInput,
+                            payload = QueuePayload,
+                            manual,
+                        )]
+                        struct Queue<URLValue, UrlValue>;
+                    }
+                },
+                "external parameter `UrlValue` generates duplicate retained accessor `stored_url_value`",
+            ),
+        ];
+
+        for (item, expected) in cases {
+            assert_eq!(expansion_error(item), expected);
+        }
+    }
+
+    #[test]
+    fn generic_external_named_field_identity_is_validated_at_the_syn_boundary() {
+        let mut payload = syn::parse2::<syn::ItemStruct>(quote! {
+            struct BoxValue<Item> {
+                #[geam::stored]
+                value: Stored<Item>,
+            }
+        })
+        .expect("generic external payload should parse");
+        payload
+            .fields
+            .iter_mut()
+            .next()
+            .expect("fixture should have one field")
+            .ident = None;
+        let arguments = syn::parse2::<ExternalArguments>(quote! {
+            name = "Box",
+            parameters = [Item],
+            input = BoxInput,
+        })
+        .expect("generic external arguments should parse");
+
+        assert_eq!(
+            build_external_model(0, &mut payload, arguments, &quote!(geam_core))
+                .err()
+                .expect("missing named-field identity should fail")
+                .to_string(),
+            "generic external declarations require named `#[geam::stored]` fields",
+        );
+    }
+
+    #[test]
+    fn generic_external_functions_keep_call_access_optional() {
+        let expansion = expand(
+            quote!(path = "generic", crate_path = geam_core),
+            quote! {
+                mod generic {
+                    #[geam::external(
+                        name = "Box",
+                        parameters = [Item],
+                        input = BoxInput,
+                    )]
+                    struct BoxValue<Item> {
+                        #[geam::stored]
+                        value: Stored<Item>,
+                    }
+
+                    #[geam::function]
+                    fn present<Item>(boxed: BoxInput<Item>) -> bool {
+                        let _ = boxed;
+                        true
+                    }
+
+                    #[geam::function]
+                    fn present_with_state<Item>(
+                        #[geam::call] call: &Call<RunState>,
+                        boxed: BoxInput<Item>,
+                    ) -> bool {
+                        let _ = (call, boxed);
+                        true
+                    }
+                }
+            },
+        )
+        .expect("generic external inputs should not require mutable call access")
+        .to_string();
+
+        assert!(expansion.contains("fn present < '__geam_call , Item >"));
+        assert!(expansion.contains("fn present_with_state < '__geam_call , Item >"));
+        assert!(expansion.contains("Call :: from_shared_state"));
+    }
+
+    #[test]
+    fn generic_external_callbacks_keep_input_and_output_directions_distinct() {
+        let expansion = expand(
+            quote!(path = "generic", crate_path = geam_core),
+            quote! {
+                mod generic {
+                    #[geam::external(
+                        name = "Box",
+                        parameters = [Item],
+                        input = BoxInput,
+                    )]
+                    struct BoxValue<Item> {
+                        #[geam::stored]
+                        value: Stored<Item>,
+                    }
+
+                    #[geam::function]
+                    fn output_only<Item>() -> BoxValue<Item> { todo!() }
+
+                    #[geam::function]
+                    fn send<Input, Output>(
+                        #[geam::call] call: &mut Call<()>,
+                        value: Value<Input>,
+                        callback: Callback<fn(BoxValue<Input>) -> Value<Output>>,
+                    ) -> HostResult<Value<Output>> { todo!() }
+
+                    #[geam::function]
+                    fn receive<Item>(
+                        #[geam::call] call: &mut Call<()>,
+                        callback: Callback<fn() -> BoxInput<Item>>,
+                    ) -> HostResult<Value<Item>> { todo!() }
+                }
+            },
+        )
+        .expect("generic external callbacks should expand")
+        .to_string();
+
+        assert!(expansion.contains("fn output_only < '__geam_call , Item >"));
+        assert!(expansion.contains("construct_external_with_binding"));
+        assert!(expansion.contains("ProviderExternalInputContext < '__geam_call"));
+        assert!(expansion.contains("fn send < '__geam_call"));
+        assert!(expansion.contains("fn receive < '__geam_call"));
+    }
+
+    #[test]
+    fn generic_external_functions_require_directional_types() {
+        let declaration = quote! {
+            #[geam::external(
+                name = "Box",
+                parameters = [Item],
+                input = BoxInput,
+            )]
+            struct BoxValue<Item> {
+                #[geam::stored]
+                value: Stored<Item>,
+            }
+        };
+        let cases = [
+            (
+                quote! {
+                    mod generic {
+                        #declaration
+                        #[geam::function]
+                        fn wrong<Item>(
+                            #[geam::call] call: &mut Call<()>,
+                            boxed: BoxValue<Item>,
+                        ) -> Value<Item> { todo!() }
+                    }
+                },
+                "generic external output `BoxValue` cannot be used as input; use `BoxInput<...>`",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #declaration
+                        #[geam::function]
+                        fn wrong<Item>(
+                            #[geam::call] call: &mut Call<()>,
+                            boxed: BoxInput<Item>,
+                        ) -> BoxInput<Item> { todo!() }
+                    }
+                },
+                "generic external input `BoxInput` cannot be returned; return `BoxValue<...>`",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #declaration
+                        #[geam::function]
+                        fn wrong(
+                            #[geam::call] call: &mut Call<()>,
+                            boxed: BoxInput,
+                        ) -> bool { true }
+                    }
+                },
+                "generic external `BoxInput` requires exactly 1 type arguments",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #declaration
+                        #[geam::function]
+                        fn wrong<Item, Other>(
+                            #[geam::call] call: &mut Call<()>,
+                            boxed: BoxInput<Item, Other>,
+                        ) -> bool { true }
+                    }
+                },
+                "generic external `BoxInput` requires exactly 1 type arguments",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #declaration
+                        #[geam::function]
+                        fn wrong(
+                            boxed: BoxInput<'static>,
+                        ) -> bool { true }
+                    }
+                },
+                "generic external arguments must be source types",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #declaration
+                        #[geam::function]
+                        fn wrong<Item>(boxed: BoxValue<'static>) -> bool { true }
+                    }
+                },
+                "generic external arguments must be source types",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #declaration
+                        #[geam::function]
+                        fn wrong<Item>(boxed: Value<Item>) -> BoxInput<'static> { todo!() }
+                    }
+                },
+                "generic external arguments must be source types",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #declaration
+                        #[geam::function]
+                        fn wrong<Item>(boxed: Value<Item>) -> BoxValue<'static> { todo!() }
+                    }
+                },
+                "generic external arguments must be source types",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #declaration
+                        #[geam::function]
+                        fn wrong<Item>(
+                            boxed: BoxInput<Vec<Item>>,
+                        ) -> bool { true }
+                    }
+                },
+                "Vec<T> is not a generic source type; use geam::List<T>",
+            ),
+        ];
+
+        for (item, expected) in cases {
+            assert_eq!(expansion_error(item), expected);
+        }
+    }
+
+    #[test]
+    fn generic_external_expansion_owns_one_store_and_positional_retention() {
+        let expansion = expand(
+            quote!(path = "generic_box", crate_path = geam_core),
+            quote! {
+                mod generic_box {
+                    #[geam::external(
+                        name = "Box",
+                        parameters = [Item],
+                        input = BoxInput,
+                    )]
+                    pub struct BoxValue<Item> {
+                        #[geam::stored]
+                        value: Stored<Item>,
+                    }
+
+                    #[geam::function]
+                    fn replace<Old, New>(
+                        #[geam::call] call: &mut Call<()>,
+                        old: BoxInput<Old>,
+                        value: Value<New>,
+                    ) -> BoxValue<New> {
+                        todo!()
+                    }
+
+                    #[geam::function]
+                    fn try_replace<Old, New>(
+                        #[geam::call] call: &mut Call<()>,
+                        old: BoxInput<Old>,
+                        value: Value<New>,
+                    ) -> HostResult<BoxValue<New>> {
+                        todo!()
+                    }
+                }
+            },
+        )
+        .expect("generic external declaration should expand")
+        .to_string();
+
+        assert!(expansion.contains("const PARAMETER_COUNT : usize = 1usize"));
+        assert_eq!(
+            expansion
+                .matches("HostExternalStore < __GeamExternalPayload0 >")
+                .count(),
+            1,
+        );
+        assert!(expansion.contains("type Payload = __GeamExternalPayload0"));
+        assert!(expansion.contains("ProviderStoredInput < '_ , __GeamExternalOwner0"));
+        assert!(expansion.contains("ProviderStoredOutput < '__geam_call , __GeamExternalOwner0"));
+        assert!(expansion.contains(
+            "-> HostResult < BoxValue < New , geam_core :: __macro_support :: ProviderStoredOutput < '__geam_call"
+        ));
+        assert!(expansion.contains("HostTypeParameter < 1usize >"));
+        assert!(expansion.contains("HostTypeParameter < 0usize >"));
+        assert!(expansion.contains("context . stored_values_equal"));
+        assert!(expansion.contains("context . stored_value_hash"));
+        assert!(expansion.contains("concat ! (\"Box\" , \"(<opaque>)\")"));
+        assert_eq!(expansion.matches("call . external_payload").count(), 2);
+        assert_eq!(
+            expansion
+                .matches("call . create_external_with_binding :: < __GeamProvider >")
+                .count(),
+            2,
+        );
+        assert!(!expansion.contains("HostExternalPayloadBuilder"));
+        assert!(!expansion.contains("payload . clone"));
+        assert_eq!(
+            expansion
+                .matches("with_external_type :: < __GeamProvider , __GeamExternalSchema0 >")
+                .count(),
+            1,
+        );
+    }
+
+    #[test]
+    fn source_identity_and_generated_input_names_have_distinct_owners() {
+        expand(
+            quote!(path = "generic", crate_path = geam_core),
+            quote! {
+                mod generic {
+                    #[geam::external(
+                        name = "BoxInput",
+                        parameters = [Item],
+                        input = BoxInput,
+                    )]
+                    struct BoxValue<Item> {
+                        #[geam::stored]
+                        value: Stored<Item>,
+                    }
+                }
+            },
+        )
+        .expect("source identities may match generated Rust input names");
+
+        let cases = [
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Box",
+                            parameters = [Item],
+                            input = BoxValue,
+                        )]
+                        struct BoxValue<Item> {
+                            #[geam::stored]
+                            value: Stored<Item>,
+                        }
+                    }
+                },
+                "generated external input type `BoxValue` conflicts with provider value type `BoxValue`",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Box",
+                            parameters = [Item],
+                            input = Status,
+                        )]
+                        struct BoxValue<Item> {
+                            #[geam::stored]
+                            value: Stored<Item>,
+                        }
+
+                        #[geam::custom]
+                        enum Status { Ready }
+                    }
+                },
+                "generated external input type `Status` conflicts with provider value type `Status`",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Box",
+                            parameters = [Item],
+                            input = SharedInput,
+                        )]
+                        struct BoxValue<Item> {
+                            #[geam::stored]
+                            value: Stored<Item>,
+                        }
+
+                        #[geam::custom(input = SharedInput)]
+                        enum Status { Ready }
+                    }
+                },
+                "duplicate generated input type `SharedInput`",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "First",
+                            parameters = [Item],
+                            input = SharedInput,
+                        )]
+                        struct FirstValue<Item> {
+                            #[geam::stored]
+                            value: Stored<Item>,
+                        }
+
+                        #[geam::external(
+                            name = "Second",
+                            parameters = [Item],
+                            input = SharedInput,
+                        )]
+                        struct SecondValue<Item> {
+                            #[geam::stored]
+                            value: Stored<Item>,
+                        }
+                    }
+                },
+                "duplicate generated input type `SharedInput`",
+            ),
+        ];
+
+        for (item, expected) in cases {
+            assert_eq!(expansion_error(item), expected);
+        }
+    }
+
+    #[test]
+    fn retained_payload_expansion_uses_operation_contexts_and_positional_accessors() {
+        let expansion = expand(
+            quote!(path = "priority_queue", crate_path = geam_core),
+            quote! {
+                mod priority_queue {
+                    struct QueuePayload;
+
+                    #[geam::external(
+                        name = "PriorityQueue",
+                        parameters = [Item],
+                        input = PriorityQueueInput,
+                        payload = QueuePayload,
+                        manual,
+                    )]
+                    pub struct PriorityQueue<Item>;
+
+                    #[geam::function]
+                    fn empty<Item>() -> PriorityQueue<Item> {
+                        todo!()
+                    }
+
+                    #[geam::function]
+                    fn replace<Item>(
+                        #[geam::call] call: &mut Call<()>,
+                        queue: PriorityQueueInput<Item>,
+                        value: Value<Item>,
+                    ) -> PriorityQueue<Item> {
+                        todo!()
+                    }
+                }
+            },
+        )
+        .expect("advanced retained declaration should expand")
+        .to_string();
+
+        assert!(expansion.contains("const PARAMETER_COUNT : usize = 1usize"));
+        assert_eq!(
+            expansion
+                .matches("HostExternalStore < QueuePayload >")
+                .count(),
+            1,
+        );
+        assert!(expansion.contains("ProviderExternalOutput < QueuePayload >"));
+        assert!(expansion.contains(
+            "Retained < QueuePayload , geam_core :: __macro_support :: HostTypeIndex0 >"
+        ),);
+        assert!(expansion.contains("fn stored_item"));
+        assert!(expansion.contains("fn payload (& self) -> & QueuePayload"));
+        assert!(expansion.contains("RetainedExternalPayload > :: source_equal"));
+        assert!(expansion.contains("RetainedExternalPayload > :: source_hash"));
+        assert!(expansion.contains("RetainedExternalPayload > :: inspect"));
+        assert!(!expansion.contains("pub struct __GeamExternalPayload0"));
+        assert!(!expansion.contains("pub struct __GeamExternalOwner0"));
+    }
+
+    #[test]
     fn external_declarations_are_struct_only_non_generic_and_unique() {
         assert_eq!(
             expansion_error(quote! {
@@ -8077,7 +10174,7 @@ mod tests {
                     struct Metrics<T>(T);
                 }
             }),
-            "external payload structs must not have generics",
+            "external payload structs must not have generics; declare `parameters = [...]` for retained generic externals",
         );
         assert_eq!(
             expansion_error(quote! {
@@ -8355,7 +10452,7 @@ mod tests {
                         enum Status { Ready }
                     }
                 },
-                "duplicate custom input type `Status`",
+                "generated custom input type `Status` conflicts with provider value type `Status`",
             ),
             (
                 quote! {
@@ -8367,7 +10464,7 @@ mod tests {
                         enum Second { Value }
                     }
                 },
-                "duplicate custom input type `SharedInput`",
+                "duplicate generated input type `SharedInput`",
             ),
         ];
 
@@ -9264,6 +11361,10 @@ mod tests {
         );
         assert!(expansion.contains("external_payload_hash (self)"));
         assert!(expansion.contains("concat ! (\"Metrics\" , \"(<opaque>)\")"));
+        assert!(
+            expansion.contains("fn inspect (& self) -> geam_core :: __macro_support :: EcoString")
+        );
+        assert!(!expansion.contains(":: ecow :: EcoString"));
         assert!(expansion.contains("type Payload = Metrics"));
         assert!(expansion.contains("HostExternalBinding < Profile , __GeamExternalSchema0 >"));
         assert!(expansion.contains("type Storage = __GeamExternalStorage0"));

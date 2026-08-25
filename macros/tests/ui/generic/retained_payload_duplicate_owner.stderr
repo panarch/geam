@@ -1,0 +1,13 @@
+error[E0119]: conflicting implementations of trait `geam_core::provider::ProviderStoredOwner` for type `SharedPayload`
+  --> tests/ui/generic/retained_payload_duplicate_owner.rs:13:1
+   |
+13 | / #[geam_macros::module(
+14 | |     path = "retained_payload_duplicate_owner",
+15 | |     crate_path = geam_core,
+16 | | )]
+   | |  ^
+   | |  |
+   | |__first implementation here
+   |    conflicting implementation for `SharedPayload`
+   |
+   = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)

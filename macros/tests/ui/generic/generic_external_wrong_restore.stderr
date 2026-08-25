@@ -1,0 +1,22 @@
+error[E0308]: mismatched types
+  --> tests/ui/generic/generic_external_wrong_restore.rs:32:22
+   |
+28 |     fn wrong<StoredItem, ReturnedItem>(
+   |              ----------  ------------ expected type parameter
+   |              |
+   |              found type parameter
+...
+32 |         call.restore(boxed.value())
+   |              ------- ^^^^^^^^^^^^^ expected `Stored<ReturnedItem, ...>`, found `Stored<StoredItem, ...>`
+   |              |
+   |              arguments to this method are incorrect
+   |
+   = note: expected struct `Stored<ReturnedItem, geam_core::provider::ProviderStoredInput<'_, _, _, HostTypeParameter<0>>>`
+              found struct `Stored<StoredItem, geam_core::provider::ProviderStoredInput<'_, __GeamExternalOwner0, HostTypeIndex0, HostTypeParameter<1>>>`
+   = note: a type parameter was expected, but a different one was found; you might be missing a type parameter or trait bound
+   = note: for more information, visit https://doc.rust-lang.org/book/ch10-02-traits.html#traits-as-parameters
+note: method defined here
+  --> $WORKSPACE/core/src/provider/call.rs
+   |
+   |     pub fn restore<Type, Host, Owner, Index>(
+   |            ^^^^^^^

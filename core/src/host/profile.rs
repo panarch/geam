@@ -371,6 +371,31 @@ where
         self.restore_runtime_value::<Type>(&value.value)
     }
 
+    #[doc(hidden)]
+    pub fn provider_store<Stored, Type>(
+        &mut self,
+        value: Type::Value<'call>,
+    ) -> HostStoredValue<Stored>
+    where
+        Type: HostType,
+    {
+        HostStoredValue::new(
+            self.runtime
+                .retain_stored(crate::host::type_::into_scoped::<Type>(value)),
+        )
+    }
+
+    #[doc(hidden)]
+    pub fn provider_restore<Type, Stored>(
+        &mut self,
+        value: &HostStoredValue<Stored>,
+    ) -> Type::Value<'call>
+    where
+        Type: HostType,
+    {
+        self.restore_stored::<Type, Stored>(value)
+    }
+
     pub(in crate::host) fn restore_runtime_value<Type>(
         &mut self,
         value: &crate::runtime::StoredRuntimeValue,

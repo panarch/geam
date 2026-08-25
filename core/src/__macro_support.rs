@@ -9,16 +9,23 @@ pub use crate::host::{
     HostListType, HostProfile, HostProvider, HostProviderComponent,
     HostProviderComponentInitialization, HostProviderComponentRegistration,
     HostProviderConfiguration, HostProviderInitializationError, HostProviderModule,
-    HostRegistrationError, HostTuple, HostTupleType, HostType, HostTypeIndex0, HostTypeIndexNext,
-    HostTypeList, HostTypeListEnd, HostTypeParameter, HostTypeSequence,
+    HostRegistrationError, HostStoredType, HostStoredValue, HostTuple, HostTupleType, HostType,
+    HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
+    HostTypeParameter, HostTypeSequence,
 };
 pub use crate::provider::ExternalPayload;
+pub use crate::provider::advanced::{
+    Equality, Hashing, Index0, Inspection, Next, Retained, RetainedExternalPayload,
+};
 pub use crate::provider::{
-    Call, Callback, HostResult, List, MissingCallbackContext, MissingValueContext,
-    ProviderActiveCall, ProviderCallPlaceholder, ProviderExternalItem, ProviderExternalListDecoder,
-    ProviderExternalPayloadAccess, ProviderInputListContext, ProviderListContext,
-    ProviderListCustomFields, ProviderListItemDecoder, ProviderListItemValue,
-    ProviderScalarListDecoder, ProviderSharedCall, ProviderValueContext, Value,
+    Call, Callback, HostResult, List, MissingCallbackContext, MissingExternalInputContext,
+    MissingExternalOutputContext, MissingStoredContext, MissingValueContext, ProviderActiveCall,
+    ProviderCallPlaceholder, ProviderExternalInputContext, ProviderExternalItem,
+    ProviderExternalListDecoder, ProviderExternalOutput, ProviderExternalPayloadAccess,
+    ProviderInputListContext, ProviderListContext, ProviderListCustomFields,
+    ProviderListItemDecoder, ProviderListItemValue, ProviderScalarListDecoder, ProviderSharedCall,
+    ProviderStoredInput, ProviderStoredOutput, ProviderStoredOwner, ProviderValueContext, Stored,
+    Value,
 };
 pub use crate::provider::{
     ProviderCallbackCodec, ProviderCallbackContext, ProviderConstruction,
@@ -29,6 +36,7 @@ pub use crate::provider::{
     ProviderOutputValue, ProviderResult, ProviderRootOutputValue, ProviderSome, ProviderValue,
 };
 pub use crate::provider_support::HostOpaqueFunctionType;
+pub use ecow::EcoString;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 

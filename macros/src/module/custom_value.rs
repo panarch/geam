@@ -99,11 +99,12 @@ fn parse_custom_arguments(input: ParseStream<'_>) -> syn::Result<CustomArguments
 pub(super) fn collect_custom_declarations(
     items: &mut [Item],
     source_names: &mut BTreeSet<String>,
+    generated_input_names: &mut BTreeSet<String>,
+    provider_type_names: &BTreeSet<String>,
     externals: &[ExternalModel],
     list_decoders: &mut Vec<ListDecoderModel>,
 ) -> syn::Result<CustomDeclarations> {
     let mut headers = Vec::new();
-    let mut input_names = BTreeSet::new();
     for item in items {
         let Item::Enum(custom) = item else {
             continue;
@@ -121,10 +122,18 @@ pub(super) fn collect_custom_declarations(
         }
         if let Some(input) = &arguments.input {
             let input_name = input.unraw().to_string();
-            if input_name == source_name || !input_names.insert(input_name.clone()) {
+            if provider_type_names.contains(&input_name) {
                 return Err(syn::Error::new(
                     input.span(),
-                    format!("duplicate custom input type `{input_name}`"),
+                    format!(
+                        "generated custom input type `{input_name}` conflicts with provider value type `{input_name}`"
+                    ),
+                ));
+            }
+            if !generated_input_names.insert(input_name.clone()) {
+                return Err(syn::Error::new(
+                    input.span(),
+                    format!("duplicate generated input type `{input_name}`"),
                 ));
             }
         }

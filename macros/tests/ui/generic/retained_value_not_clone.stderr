@@ -1,0 +1,5 @@
+error[E0599]: no method named `clone` found for struct `Retained<Owner, Index>` in the current scope
+ --> tests/ui/generic/retained_value_not_clone.rs:8:27
+  |
+8 |     let _ = payload.value.clone();
+  |                           ^^^^^ method not found in `Retained<Payload, HostTypeIndex0>`

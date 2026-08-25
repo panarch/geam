@@ -27,8 +27,7 @@ is formatted, tested, linted, packaged, and executed in CI, but is intentionally
 not published yet.
 
 [`provider/README.md`](provider/README.md) records the remaining higher-level
-authoring target. The current macro surface covers its external payload,
-scalar functions, and `Vec<EcoString>` List return, but custom `Result`
-construction still keeps the complete executable implementation on the
-low-level SDK. After that capability is available, this same example can
-migrate without changing its Gleam API or standalone behavior.
+authoring target. The complete executable implementation remains on the
+low-level SDK as its canonical acceptance case until the macro migration
+checkpoint. That later migration must preserve this Gleam API and standalone
+behavior unchanged.

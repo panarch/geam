@@ -1,7 +1,8 @@
 use super::{
-    Callback, ProviderCallbackCodec, ProviderCallbackContext, ProviderValueContext, Value,
+    Callback, ProviderCallbackCodec, ProviderCallbackContext, ProviderStoredInput,
+    ProviderStoredOutput, ProviderStoredOwner, ProviderValueContext, Stored, Value,
 };
-use crate::{HostCall, HostCallError, HostProfile, HostProvider, HostType};
+use crate::{HostCall, HostCallError, HostProfile, HostProvider, HostStoredType, HostType};
 use ecow::EcoString;
 use std::marker::PhantomData;
 
@@ -103,6 +104,39 @@ where
         Host::Value<'call>: Clone,
     {
         self.context.call.inspect::<Host>(value.host())
+    }
+
+    /// Retains one generic source value for the generated external payload
+    /// that owns the returned field.
+    pub fn store<Type, Host, Owner, Index>(
+        &mut self,
+        value: Value<Type, ProviderValueContext<'call, Host>>,
+    ) -> Stored<Type, ProviderStoredOutput<'call, Owner, Index, Host>>
+    where
+        Host: HostType,
+        Owner: ProviderStoredOwner,
+    {
+        Stored::from_output(
+            self.context
+                .call
+                .provider_store::<HostStoredType<Index>, Host>(value.into_host()),
+        )
+    }
+
+    /// Restores one generic value selected from the active external input.
+    pub fn restore<Type, Host, Owner, Index>(
+        &mut self,
+        value: Stored<Type, ProviderStoredInput<'_, Owner, Index, Host>>,
+    ) -> Value<Type, ProviderValueContext<'call, Host>>
+    where
+        Host: HostType,
+        Owner: ProviderStoredOwner,
+    {
+        Value::from_host(
+            self.context
+                .call
+                .provider_restore::<Host, HostStoredType<Index>>(value.host()),
+        )
     }
 
     /// Invokes one typed Gleam callback within this active provider call.

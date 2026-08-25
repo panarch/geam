@@ -178,9 +178,10 @@ provider spanning three Gleam modules, then collect supported scalar, tuple,
 lazy List, custom, Result, and Option value mappings before showing persistent
 values, default state, read-only state, explicit configuration, and manual
 external semantics. Call tracing then demonstrates typed source callback
-invocation and same-component re-entry. The final text-pattern example keeps
-the advanced low-level baseline for retained values that remain outside the
-current macro surface.
+invocation and same-component re-entry. Generic box then shows a source value
+retained without materialization and mapped through a typed callback. The final
+text-pattern example keeps the advanced low-level baseline for capabilities
+that remain outside the macro surface.
 
 Geam owns only a manifest carrying its exact managed marker, `Cargo.lock`, and
 `build/geam/` runner artifacts. It refuses to adopt an existing user Cargo
