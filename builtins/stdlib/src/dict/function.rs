@@ -1,5 +1,10 @@
 use super::storage::{DictEntry, DictPayload, DictStorage};
-use crate::{Component, GleamStdlibRunState};
+use super::{DictOf, DictSchema};
+use crate::dynamic::Dynamic;
+use crate::{
+    Component, GleamStdlibRunState, HostCall, HostConstruction, HostExternal, HostProvider,
+    HostType, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
+};
 use geam_core::provider::{Call, Callback, HostResult, Value};
 use num_bigint::BigInt;
 use std::collections::HashMap;
@@ -280,6 +285,65 @@ pub(super) mod provider {
             storage: storage.with_entry(key_hash, index, entry),
         }))
     }
+}
+
+type KeyIndex = HostTypeIndex0;
+type ItemIndex = HostTypeIndexNext<KeyIndex>;
+
+pub fn create_dynamic_dict<'call, Profile, Provider, Return>(
+    call: &mut HostCall<'call, Profile, Provider, Return>,
+    construction: HostConstruction<'call, DictOf<Dynamic, Dynamic>>,
+    entries: impl IntoIterator<Item = (HostExternal<'call, Dynamic>, HostExternal<'call, Dynamic>)>,
+) -> HostExternal<'call, DictOf<Dynamic, Dynamic>>
+where
+    Profile: crate::GleamStdlibHostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+{
+    let mut buckets = HashMap::new();
+    for (key, value) in entries {
+        let key_hash = call.source_hash::<Dynamic>(key);
+        insert_first(&mut buckets, key_hash, key, value, |stored, candidate| {
+            call.equal::<Dynamic>(*stored, *candidate)
+        });
+    }
+
+    call.construct_retained_external_with_binding::<
+        provider::__GeamProvider,
+        DictSchema,
+        HostTypeList<Dynamic, HostTypeList<Dynamic, HostTypeListEnd>>,
+    >(construction, move |builder| {
+        let len = buckets.values().map(Vec::len).sum();
+        let buckets = buckets
+            .into_iter()
+            .map(|(key_hash, entries)| {
+                let entries = entries
+                    .into_iter()
+                    .map(|(key, value)| {
+                        Rc::new(DictEntry {
+                            key_hash,
+                            key: Rc::new(geam_core::__macro_support::retain_argument::<
+                                _,
+                                _,
+                                DictPayload,
+                                KeyIndex,
+                            >(builder, key)),
+                            value: Rc::new(geam_core::__macro_support::retain_argument::<
+                                _,
+                                _,
+                                DictPayload,
+                                ItemIndex,
+                            >(builder, value)),
+                        })
+                    })
+                    .collect();
+                (key_hash, entries)
+            })
+            .collect();
+        DictPayload {
+            storage: DictStorage { buckets, len },
+        }
+    })
 }
 
 pub(super) fn host_provider<Profile>()

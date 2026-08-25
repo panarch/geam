@@ -1,18 +1,16 @@
 mod function;
 mod storage;
 
+pub use function::create_value;
 pub(super) use function::provider::__GeamStores as Stores;
+pub(crate) use function::provider::DynamicPayload;
 pub use function::provider::{
     __GeamExternalSchema0 as DynamicSchema, __GeamExternalStorage0 as DynamicExternalStorage,
-    DynamicPayload,
 };
 
 pub(crate) use self::storage::DynamicRepresentation;
 use super::GleamStdlibHostProfile;
-use crate::{
-    HostCall, HostConstruction, HostExternal, HostExternalBinding, HostExternalType, HostProvider,
-    HostProviderModule, HostRegistrationError, HostType, HostTypeListEnd, stdlib_stores,
-};
+use crate::{HostExternalType, HostProviderModule, HostRegistrationError, stdlib_stores};
 
 pub type Dynamic = HostExternalType<DynamicSchema>;
 fn stores<Profile>(stores: &Profile::ExternalStores) -> &Stores
@@ -27,28 +25,6 @@ where
     Profile: GleamStdlibHostProfile,
 {
     function::host_provider::<Profile>()
-}
-
-pub fn create_value<'call, Profile, Provider, Return, Type>(
-    call: &mut HostCall<'call, Profile, Provider, Return>,
-    construction: HostConstruction<'call, Dynamic>,
-    value: Type::Value<'call>,
-) -> HostExternal<'call, Dynamic>
-where
-    Profile: GleamStdlibHostProfile,
-    Provider: HostProvider<Profile>
-        + HostExternalBinding<Profile, DynamicSchema, Storage = DynamicExternalStorage>,
-    Return: HostType,
-    Type: HostType,
-{
-    call.construct_external_with::<DynamicSchema, HostTypeListEnd>(construction, |builder| {
-        DynamicPayload::stored(geam_core::__macro_support::retain_dynamic::<
-            _,
-            HostTypeListEnd,
-            DynamicPayload,
-            Type,
-        >(builder, value))
-    })
 }
 
 #[cfg(test)]

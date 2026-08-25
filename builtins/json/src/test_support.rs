@@ -1,18 +1,13 @@
-use super::function::JsonProvider;
-use super::schema::Json;
 use super::{Component, GleamJsonProfile, GleamJsonRunState, GleamJsonStores};
 use crate::{
-    HostCall, HostCallCompletion, HostCallError, HostComponentProfile, HostExternal, HostModule,
-    HostProfile, HostProviderModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
-    compile_typed_host_program, plan_host_program,
+    HostComponentProfile, HostModule, HostProfile, HostProviderSet, HostedExecution, ModuleSource,
+    PackageSource, compile_typed_host_program, plan_host_program,
 };
 use ecow::EcoString;
-use geam_stdlib::provider_support::{DictSchema, DynamicSchema, StringTreeSchema};
 use geam_stdlib::{
     Component as GleamStdlibComponent, GleamStdlibHostProfile, GleamStdlibRunState,
     GleamStdlibStores, IoOutput,
 };
-use num_bigint::BigInt;
 
 pub(super) struct CustomProfile;
 
@@ -112,14 +107,6 @@ fn do_preprocessed_array(values: List(Json)) -> Json
 fn test_source_hash(json: Json) -> Int
 "#;
 
-fn json_source_hash<'call>(
-    call: HostCall<'call, GleamJsonProfile, JsonProvider<GleamJsonProfile>, BigInt>,
-    json: HostExternal<'call, Json>,
-) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
-    let hash = BigInt::from(call.source_hash::<Json>(json));
-    Ok(call.return_value(hash))
-}
-
 pub(super) fn execution(source: &str) -> HostedExecution<GleamJsonProfile> {
     execution_with_modules(source, Vec::<HostModule<GleamJsonProfile>>::new())
 }
@@ -128,42 +115,7 @@ pub(super) fn execution_with_modules(
     source: &str,
     modules: impl IntoIterator<Item = HostModule<GleamJsonProfile>>,
 ) -> HostedExecution<GleamJsonProfile> {
-    let providers =
-        [
-            HostProviderModule::new("gleam_stdlib", "gleam/dynamic")
-                .and_then(
-                    HostProviderModule::with_external_type::<
-                        JsonProvider<GleamJsonProfile>,
-                        DynamicSchema,
-                    >,
-                )
-                .expect("synthetic Dynamic declaration should register"),
-            HostProviderModule::new("gleam_stdlib", "gleam/dict")
-                .and_then(
-                    HostProviderModule::with_external_type::<
-                        JsonProvider<GleamJsonProfile>,
-                        DictSchema,
-                    >,
-                )
-                .expect("synthetic Dict declaration should register"),
-            HostProviderModule::new("gleam_stdlib", "gleam/string_tree")
-                .and_then(
-                    HostProviderModule::with_external_type::<
-                        JsonProvider<GleamJsonProfile>,
-                        StringTreeSchema,
-                    >,
-                )
-                .expect("synthetic StringTree declaration should register"),
-            super::host_provider::<GleamJsonProfile>()
-                .and_then(|provider| {
-                    provider
-                        .with_scoped_function::<JsonProvider<GleamJsonProfile>, (Json,), BigInt, _>(
-                            "test_source_hash",
-                            json_source_hash,
-                        )
-                })
-                .expect("official JSON provider should register"),
-        ];
+    let providers = super::function::test_host_providers();
     let source = format!("{JSON_DECLARATIONS}\n{source}");
     let packages = [
         PackageSource::new(

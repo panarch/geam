@@ -527,6 +527,29 @@ where
             lease,
         ))
     }
+
+    /// Constructs a retained external payload through its declaration-owned
+    /// binding rather than the provider handling the active function.
+    #[doc(hidden)]
+    pub fn construct_retained_external_with_binding<Binding, Schema, Arguments>(
+        &mut self,
+        _construction: HostConstruction<'call, HostExternalType<Schema, Arguments>>,
+        build: impl FnOnce(
+            &mut HostExternalPayloadBuilder<'_, Profile, Arguments>,
+        ) -> BoundExternalPayload<Profile, Binding, Schema>,
+    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>>
+    where
+        Schema: HostExternalSchema,
+        Binding: HostExternalBinding<Profile, Schema>,
+        Arguments: HostTypeSequence,
+        HostExternalType<Schema, Arguments>: HostType,
+    {
+        let value = {
+            let mut builder = HostExternalPayloadBuilder::new(self.runtime);
+            build(&mut builder)
+        };
+        self.seal_constructed_external_with::<Binding, Schema, Arguments>(value)
+    }
 }
 
 impl<'call, Profile, Provider, Schema, Arguments>

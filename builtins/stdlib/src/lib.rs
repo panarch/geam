@@ -1,17 +1,16 @@
 pub(crate) use geam_core::{
-    BitArrayValue, HostCall, HostComponentProfile, HostConstruction, HostCustomType, HostExternal,
-    HostExternalBinding, HostExternalType, HostFailure, HostProfile, HostProvider,
-    HostProviderComponent, HostProviderComponentRegistration, HostProviderModule,
-    HostRegistrationError, HostType, HostTypeIndex0, HostTypeIndexNext, HostTypeList,
-    HostTypeListEnd,
+    BitArrayValue, HostCall, HostComponentProfile, HostConstruction, HostExternal,
+    HostExternalType, HostFailure, HostProfile, HostProvider, HostProviderComponent,
+    HostProviderComponentRegistration, HostProviderModule, HostRegistrationError, HostType,
+    HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
 };
 #[cfg(test)]
 pub(crate) use geam_core::{
-    ExecutionError, HostCallCompletion, HostCallError, HostExternalEquality, HostExternalHashing,
-    HostExternalInspection, HostExternalSchema, HostExternalStorage, HostExternalStore,
-    HostExternalTypeSchema, HostModule, HostProviderSet, HostedExecution, ModuleSource,
-    PackageSource, PanicKind, PanicMessage, Value, ValueType, compile_typed_host_program,
-    plan_host_program,
+    ExecutionError, HostCallCompletion, HostCallError, HostExternalBinding, HostExternalEquality,
+    HostExternalHashing, HostExternalInspection, HostExternalSchema, HostExternalStorage,
+    HostExternalStore, HostExternalTypeSchema, HostModule, HostProviderSet, HostedExecution,
+    ModuleSource, PackageSource, PanicKind, PanicMessage, Value, ValueType,
+    compile_typed_host_program, plan_host_program,
 };
 use std::marker::PhantomData;
 
@@ -38,7 +37,7 @@ pub mod provider_support {
     pub use crate::dynamic::{
         Dynamic, DynamicExternalStorage, DynamicSchema, create_value as create_dynamic_value,
     };
-    pub use crate::dynamic_decode::DynamicDecodeError;
+    pub use crate::dynamic_decode::DynamicDecodeErrorValue;
     pub use crate::result::{GleamError, GleamOk, GleamResult};
     pub use crate::string_tree::{
         StoredStringTree, StringTree, StringTreeExternalStorage, StringTreePayload,

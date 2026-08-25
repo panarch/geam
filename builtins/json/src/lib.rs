@@ -1,38 +1,23 @@
 mod function;
 mod schema;
-mod storage;
 
-use self::function::{
-    JsonProvider, decode_to_dynamic, do_bool, do_float, do_int, do_null, do_object,
-    do_preprocessed_array, do_string, do_to_string, to_string_tree,
-};
-use self::schema::{DecodeConstructions, Json, JsonDynamicResult, JsonList, ObjectEntries};
-use ecow::EcoString;
 pub(crate) use geam_core::{
     BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostComponentProfile,
-    HostConstructions, HostCustomConstructorAt, HostCustomConstructorDefinition,
-    HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList,
-    HostCustomFieldListEnd, HostCustomIndex0, HostCustomIndexNext, HostCustomSchema,
-    HostCustomType, HostExternal, HostExternalBinding, HostExternalEquality, HostExternalHashing,
-    HostExternalInspection, HostExternalSchema, HostExternalStorage, HostExternalStore,
-    HostExternalType, HostFailure, HostList, HostListType, HostProfile, HostProvider,
+    HostCustomType, HostExternal, HostList, HostListType, HostProfile, HostProvider,
     HostProviderComponent, HostProviderComponentRegistration, HostProviderModule,
-    HostRegistrationError, HostTupleType, HostTypeIndex0, HostTypeIndexNext, HostTypeList,
-    HostTypeListEnd,
+    HostRegistrationError,
 };
 #[cfg(test)]
 pub(crate) use geam_core::{
     ExecutionError, HostCustomConstructorSchema, HostCustomFieldSchema, HostCustomTypeSchema,
-    HostError, HostExternalTypeSchema, HostModule, HostProviderSet, HostSchemaType,
-    HostedExecution, InvariantError, ModuleSource, PackageSource, Value, ValueType,
-    compile_typed_host_program, plan_host_program,
+    HostError, HostExternalBinding, HostExternalStorage, HostExternalType, HostExternalTypeSchema,
+    HostModule, HostProviderSet, HostSchemaType, HostedExecution, InvariantError, ModuleSource,
+    PackageSource, Value, ValueType, compile_typed_host_program, plan_host_program,
 };
-use geam_stdlib::provider_support::StringTree;
 use geam_stdlib::{
     Component as GleamStdlibComponent, GleamStdlibHostProfile, GleamStdlibRunState,
     GleamStdlibStores, IoOutput,
 };
-use num_bigint::BigInt;
 
 /// A host profile that composes the official Gleam JSON and standard-library components.
 pub trait GleamJsonHostProfile: GleamStdlibHostProfile + HostComponentProfile<Component> {}
@@ -45,7 +30,7 @@ impl<Profile> GleamJsonHostProfile for Profile where
 /// External value stores used by the official Gleam JSON provider.
 #[derive(Default)]
 pub struct GleamJsonStores {
-    json: storage::Stores,
+    json: function::Stores,
 }
 
 /// The statically composed provider component for the official Gleam JSON package.
@@ -56,6 +41,10 @@ impl HostProviderComponent for Component {
     const ID: &'static str = "gleam_json";
     type Stores = GleamJsonStores;
     type RunState = ();
+}
+
+impl geam_core::__macro_support::ProviderPackage for Component {
+    const PACKAGE: &'static str = "gleam_json";
 }
 
 /// External stores for the default combined standard-library and JSON profile.
@@ -134,7 +123,7 @@ where
     Profile: GleamJsonHostProfile,
 {
     fn providers() -> Result<Vec<HostProviderModule<Profile>>, HostRegistrationError> {
-        host_provider::<Profile>().map(|provider| vec![provider])
+        function::host_provider::<Profile>().map(|provider| vec![provider])
     }
 }
 
@@ -145,84 +134,11 @@ where
     <Profile as HostComponentProfile<Component>>::component_stores(stores)
 }
 
-pub(crate) fn json_state<Profile>(state: &mut Profile::RunState) -> &mut ()
+pub(crate) fn provider_stores<Profile>(stores: &Profile::ExternalStores) -> &function::Stores
 where
     Profile: GleamJsonHostProfile,
 {
-    <Profile as HostComponentProfile<Component>>::component_state(state)
-}
-
-fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
-where
-    Profile: GleamJsonHostProfile,
-{
-    HostProviderModule::new("gleam_json", "gleam/json")
-        .and_then(
-            HostProviderModule::with_external_type::<JsonProvider<Profile>, schema::JsonSchema>,
-        )
-        .and_then(|provider| {
-            provider.with_scoped_function_and_constructions::<
-                JsonProvider<Profile>,
-                (BitArrayValue,),
-                JsonDynamicResult,
-                DecodeConstructions,
-                _,
-            >("decode_to_dynamic", decode_to_dynamic::<Profile>)
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<JsonProvider<Profile>, (Json,), EcoString, _>(
-                "do_to_string",
-                do_to_string::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<JsonProvider<Profile>, (Json,), StringTree, _>(
-                "to_string_tree",
-                to_string_tree::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<JsonProvider<Profile>, (EcoString,), Json, _>(
-                "do_string",
-                do_string::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<JsonProvider<Profile>, (bool,), Json, _>(
-                "do_bool",
-                do_bool::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<JsonProvider<Profile>, (BigInt,), Json, _>(
-                "do_int",
-                do_int::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<JsonProvider<Profile>, (f64,), Json, _>(
-                "do_float",
-                do_float::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<JsonProvider<Profile>, (), Json, _>(
-                "do_null",
-                do_null::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<JsonProvider<Profile>, (ObjectEntries,), Json, _>(
-                "do_object",
-                do_object::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<JsonProvider<Profile>, (JsonList,), Json, _>(
-                "do_preprocessed_array",
-                do_preprocessed_array::<Profile>,
-            )
-        })
+    &json_stores::<Profile>(stores).json
 }
 
 #[cfg(test)]

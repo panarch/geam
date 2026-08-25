@@ -1,11 +1,9 @@
 mod function;
 
-pub use function::provider::__GeamCustomSchema0 as DynamicDecodeErrorSchema;
+pub use function::provider::DecodeError as DynamicDecodeErrorValue;
 
 use super::GleamStdlibHostProfile;
-use crate::{HostCustomType, HostProviderModule, HostRegistrationError};
-
-pub type DynamicDecodeError = HostCustomType<DynamicDecodeErrorSchema>;
+use crate::{HostProviderModule, HostRegistrationError};
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where

@@ -1,5 +1,9 @@
 use super::storage::{DynamicRepresentation, DynamicValue};
-use crate::{Component, GleamStdlibRunState};
+use super::{Dynamic, DynamicSchema};
+use crate::{
+    Component, GleamStdlibRunState, HostCall, HostConstruction, HostExternal, HostProvider,
+    HostType, HostTypeListEnd,
+};
 use ecow::EcoString;
 use geam_core::provider::advanced::{Equality, Hashing, Inspection, RetainedExternalPayload};
 use geam_core::provider::{Call, Value};
@@ -150,6 +154,31 @@ pub(super) mod provider {
     ) -> DynamicPayload {
         DynamicPayload::stored(call.store_dynamic(value))
     }
+}
+
+pub fn create_value<'call, Profile, Provider, Return, Type>(
+    call: &mut HostCall<'call, Profile, Provider, Return>,
+    construction: HostConstruction<'call, Dynamic>,
+    value: Type::Value<'call>,
+) -> HostExternal<'call, Dynamic>
+where
+    Profile: crate::GleamStdlibHostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Type: HostType,
+{
+    call.construct_retained_external_with_binding::<
+        provider::__GeamProvider,
+        DynamicSchema,
+        HostTypeListEnd,
+    >(construction, |builder| {
+        provider::DynamicPayload::stored(geam_core::__macro_support::retain_dynamic::<
+            _,
+            HostTypeListEnd,
+            provider::DynamicPayload,
+            Type,
+        >(builder, value))
+    })
 }
 
 pub(super) fn host_provider<Profile>()

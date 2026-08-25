@@ -1,32 +1,63 @@
 mod error;
 
 use self::error::DecodeFailure;
-use super::JsonProvider;
 use crate::GleamJsonHostProfile;
 use crate::schema::{
-    DecodeConstructions, DecodeDictIndex, DecodeDynamicIndex, DecodeErrorIndex, DecodeListIndex,
+    DecodeDictIndex, DecodeDynamicIndex, DecodeErrorIndex, DecodeListIndex, DecodeRequirements,
     DynamicDict, DynamicList, JsonDynamicError, JsonDynamicOk, JsonDynamicResult, UnexpectedByte,
     UnexpectedEndOfInput, UnexpectedSequence,
 };
 use crate::{
-    BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostConstructions, HostExternal,
-    HostList,
+    BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostExternal, HostList,
+    HostProvider,
 };
 use ecow::EcoString;
+use geam_core::provider::{ProviderConstructions, ProviderRootOutputValue, ProviderValue};
 use geam_stdlib::provider_support::{Dynamic, create_dynamic_dict, create_dynamic_value};
 use jiter::{Jiter, Peek};
 use num_bigint::BigInt;
 
-pub(crate) fn decode_to_dynamic<'call, Profile>(
-    mut call: HostCall<'call, Profile, JsonProvider<Profile>, JsonDynamicResult>,
-    constructions: HostConstructions<'call, DecodeConstructions>,
+pub struct DecodeOutput {
+    json: BitArrayValue,
+}
+
+pub(super) fn decode_to_dynamic(json: BitArrayValue) -> DecodeOutput {
+    DecodeOutput { json }
+}
+
+impl ProviderValue for DecodeOutput {
+    type Host = JsonDynamicResult;
+    type Input = Self;
+    type ListInput = Self;
+    type OutputRequirements = DecodeRequirements;
+    type RootRequirements = DecodeRequirements;
+}
+
+impl<Profile, Provider> ProviderRootOutputValue<Profile, Provider> for DecodeOutput
+where
+    Profile: GleamJsonHostProfile,
+    Provider: HostProvider<Profile>,
+{
+    fn complete<'call>(
+        self,
+        call: HostCall<'call, Profile, Provider, JsonDynamicResult>,
+        constructions: &ProviderConstructions<'call, DecodeRequirements>,
+    ) -> Result<HostCallCompletion<'call, JsonDynamicResult>, HostCallError> {
+        complete_decode(call, constructions, self.json)
+    }
+}
+
+fn complete_decode<'call, Profile, Provider>(
+    mut call: HostCall<'call, Profile, Provider, JsonDynamicResult>,
+    constructions: &ProviderConstructions<'call, DecodeRequirements>,
     json: BitArrayValue,
 ) -> Result<HostCallCompletion<'call, JsonDynamicResult>, HostCallError>
 where
     Profile: GleamJsonHostProfile,
+    Provider: HostProvider<Profile>,
 {
     let decoded = if json.bit_len().is_multiple_of(8) {
-        parse_dynamic(&mut call, &constructions, json.bytes())
+        parse_dynamic(&mut call, constructions, json.bytes())
     } else {
         Err(DecodeFailure::Byte(EcoString::new()))
     };
@@ -35,21 +66,21 @@ where
         Ok(value) => Ok(call.return_custom::<JsonDynamicOk>((value, ()))),
         Err(DecodeFailure::EndOfInput) => {
             let error = call.construct_custom::<UnexpectedEndOfInput>(
-                constructions.at::<DecodeErrorIndex>(),
+                constructions.select::<DecodeErrorIndex>().token(),
                 (),
             );
             Ok(call.return_custom::<JsonDynamicError>((error, ())))
         }
         Err(DecodeFailure::Byte(byte)) => {
             let error = call.construct_custom::<UnexpectedByte>(
-                constructions.at::<DecodeErrorIndex>(),
+                constructions.select::<DecodeErrorIndex>().token(),
                 (byte, ()),
             );
             Ok(call.return_custom::<JsonDynamicError>((error, ())))
         }
         Err(DecodeFailure::Sequence(sequence)) => {
             let error = call.construct_custom::<UnexpectedSequence>(
-                constructions.at::<DecodeErrorIndex>(),
+                constructions.select::<DecodeErrorIndex>().token(),
                 (sequence, ()),
             );
             Ok(call.return_custom::<JsonDynamicError>((error, ())))
@@ -65,13 +96,14 @@ enum ParseFrame<'call> {
     },
 }
 
-fn parse_dynamic<'call, Profile>(
-    call: &mut HostCall<'call, Profile, JsonProvider<Profile>, JsonDynamicResult>,
-    constructions: &HostConstructions<'call, DecodeConstructions>,
+fn parse_dynamic<'call, Profile, Provider>(
+    call: &mut HostCall<'call, Profile, Provider, JsonDynamicResult>,
+    constructions: &ProviderConstructions<'call, DecodeRequirements>,
     input: &[u8],
 ) -> Result<HostExternal<'call, Dynamic>, DecodeFailure>
 where
     Profile: GleamJsonHostProfile,
+    Provider: HostProvider<Profile>,
 {
     let mut parser = Jiter::new(input);
     let mut frames = Vec::new();
@@ -84,18 +116,18 @@ where
             parser
                 .known_null()
                 .map_err(|error| DecodeFailure::from_jiter(input, error))?;
-            create_dynamic_value::<Profile, JsonProvider<Profile>, JsonDynamicResult, ()>(
+            create_dynamic_value::<Profile, Provider, JsonDynamicResult, ()>(
                 call,
-                constructions.at::<DecodeDynamicIndex>(),
+                constructions.select::<DecodeDynamicIndex>().token(),
                 (),
             )
         } else if matches!(next, Peek::True | Peek::False) {
             let value = parser
                 .known_bool(next)
                 .map_err(|error| DecodeFailure::from_jiter(input, error))?;
-            create_dynamic_value::<Profile, JsonProvider<Profile>, JsonDynamicResult, bool>(
+            create_dynamic_value::<Profile, Provider, JsonDynamicResult, bool>(
                 call,
-                constructions.at::<DecodeDynamicIndex>(),
+                constructions.select::<DecodeDynamicIndex>().token(),
                 value,
             )
         } else if next == Peek::String {
@@ -103,9 +135,9 @@ where
                 .known_str()
                 .map(EcoString::from)
                 .map_err(|error| DecodeFailure::from_jiter(input, error))?;
-            create_dynamic_value::<Profile, JsonProvider<Profile>, JsonDynamicResult, EcoString>(
+            create_dynamic_value::<Profile, Provider, JsonDynamicResult, EcoString>(
                 call,
-                constructions.at::<DecodeDynamicIndex>(),
+                constructions.select::<DecodeDynamicIndex>().token(),
                 value,
             )
         } else if next == Peek::Array {
@@ -204,30 +236,35 @@ enum ParsedNumber {
     Float(f64),
 }
 
-fn create_dynamic_number<'call, Profile>(
-    call: &mut HostCall<'call, Profile, JsonProvider<Profile>, JsonDynamicResult>,
-    constructions: &HostConstructions<'call, DecodeConstructions>,
+fn create_dynamic_number<'call, Profile, Provider>(
+    call: &mut HostCall<'call, Profile, Provider, JsonDynamicResult>,
+    constructions: &ProviderConstructions<'call, DecodeRequirements>,
     number: &[u8],
 ) -> Result<HostExternal<'call, Dynamic>, DecodeFailure>
 where
     Profile: GleamJsonHostProfile,
+    Provider: HostProvider<Profile>,
 {
     match parse_number(number)? {
         ParsedNumber::Int(value) => Ok(create_dynamic_value::<
             Profile,
-            JsonProvider<Profile>,
+            Provider,
             JsonDynamicResult,
             BigInt,
         >(
-            call, constructions.at::<DecodeDynamicIndex>(), value
+            call,
+            constructions.select::<DecodeDynamicIndex>().token(),
+            value,
         )),
         ParsedNumber::Float(value) => Ok(create_dynamic_value::<
             Profile,
-            JsonProvider<Profile>,
+            Provider,
             JsonDynamicResult,
             f64,
         >(
-            call, constructions.at::<DecodeDynamicIndex>(), value
+            call,
+            constructions.select::<DecodeDynamicIndex>().token(),
+            value,
         )),
     }
 }
@@ -256,47 +293,52 @@ fn parse_number(number: &[u8]) -> Result<ParsedNumber, DecodeFailure> {
     Ok(ParsedNumber::Float(value))
 }
 
-fn create_dynamic_list<'call, Profile>(
-    call: &mut HostCall<'call, Profile, JsonProvider<Profile>, JsonDynamicResult>,
-    constructions: &HostConstructions<'call, DecodeConstructions>,
+fn create_dynamic_list<'call, Profile, Provider>(
+    call: &mut HostCall<'call, Profile, Provider, JsonDynamicResult>,
+    constructions: &ProviderConstructions<'call, DecodeRequirements>,
     values: Vec<HostExternal<'call, Dynamic>>,
 ) -> HostExternal<'call, Dynamic>
 where
     Profile: GleamJsonHostProfile,
+    Provider: HostProvider<Profile>,
 {
     let values: HostList<'call, Dynamic> =
-        call.construct_list(constructions.at::<DecodeListIndex>(), values);
-    create_dynamic_value::<Profile, JsonProvider<Profile>, JsonDynamicResult, DynamicList>(
+        call.construct_list(constructions.select::<DecodeListIndex>().token(), values);
+    create_dynamic_value::<Profile, Provider, JsonDynamicResult, DynamicList>(
         call,
-        constructions.at::<DecodeDynamicIndex>(),
+        constructions.select::<DecodeDynamicIndex>().token(),
         values,
     )
 }
 
-fn create_dynamic_object<'call, Profile>(
-    call: &mut HostCall<'call, Profile, JsonProvider<Profile>, JsonDynamicResult>,
-    constructions: &HostConstructions<'call, DecodeConstructions>,
+fn create_dynamic_object<'call, Profile, Provider>(
+    call: &mut HostCall<'call, Profile, Provider, JsonDynamicResult>,
+    constructions: &ProviderConstructions<'call, DecodeRequirements>,
     entries: Vec<(EcoString, HostExternal<'call, Dynamic>)>,
 ) -> HostExternal<'call, Dynamic>
 where
     Profile: GleamJsonHostProfile,
+    Provider: HostProvider<Profile>,
 {
     let entries = entries
         .into_iter()
         .map(|(key, value)| {
-            let key = create_dynamic_value::<
-                Profile,
-                JsonProvider<Profile>,
-                JsonDynamicResult,
-                EcoString,
-            >(call, constructions.at::<DecodeDynamicIndex>(), key);
+            let key = create_dynamic_value::<Profile, Provider, JsonDynamicResult, EcoString>(
+                call,
+                constructions.select::<DecodeDynamicIndex>().token(),
+                key,
+            );
             (key, value)
         })
         .collect::<Vec<_>>();
-    let dict = create_dynamic_dict(call, constructions.at::<DecodeDictIndex>(), entries);
-    create_dynamic_value::<Profile, JsonProvider<Profile>, JsonDynamicResult, DynamicDict>(
+    let dict = create_dynamic_dict(
         call,
-        constructions.at::<DecodeDynamicIndex>(),
+        constructions.select::<DecodeDictIndex>().token(),
+        entries,
+    );
+    create_dynamic_value::<Profile, Provider, JsonDynamicResult, DynamicDict>(
+        call,
+        constructions.select::<DecodeDynamicIndex>().token(),
         dict,
     )
 }

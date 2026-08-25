@@ -1275,6 +1275,7 @@ version = "0.1.2"
 dependencies = [
  "ecow",
  "geam-core",
+ "geam-macros",
  "geam-stdlib",
  "jiter",
  "num-bigint",
