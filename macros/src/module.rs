@@ -1,7 +1,11 @@
 mod custom_value;
 
 use crate::path::support_path;
-use custom_value::*;
+use custom_value::{
+    CustomConstructorModel, CustomFieldModel, CustomFieldValueType, CustomFields, CustomInputModel,
+    CustomModel, collect_custom_declarations, custom_input_model, custom_output_type,
+    custom_output_type_with_index,
+};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, quote_spanned};
 use std::collections::{BTreeMap, BTreeSet};
@@ -633,7 +637,6 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
         &mut list_decoders,
     )?;
     let customs = custom_declarations.models;
-    let custom_list_decoders = custom_declarations.list_decoders;
 
     let mut functions = Vec::new();
     for item in items.iter_mut() {
@@ -1428,22 +1431,30 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             }
         }
     });
-    let mut custom_declarations = Vec::with_capacity(customs.len());
-    for (index, custom) in customs.iter().enumerate() {
-        custom_declarations.push(generate_custom_declaration(
-            index,
-            custom,
-            &customs,
-            custom_list_decoders[index].as_ref(),
-            &support,
-            &module_path,
-        )?);
-    }
     let custom_inputs = customs
         .iter()
         .enumerate()
-        .filter_map(|(index, custom)| custom.input.clone().map(|input| (index, input)))
+        .filter_map(|(index, custom)| {
+            custom
+                .input
+                .as_ref()
+                .map(|input| (index, input.ident.clone()))
+        })
         .collect::<BTreeMap<_, _>>();
+    let custom_declarations = customs
+        .iter()
+        .enumerate()
+        .map(|(index, custom)| {
+            generate_custom_declaration(
+                index,
+                custom,
+                &customs,
+                &custom_inputs,
+                &support,
+                &module_path,
+            )
+        })
+        .collect::<Vec<_>>();
     let generated_list_decoders = list_decoders
         .iter()
         .map(|decoder| generate_list_decoder(decoder, &customs, &custom_inputs, &support))
@@ -1661,10 +1672,10 @@ fn generate_custom_declaration(
     custom_index: usize,
     custom: &CustomModel,
     customs: &[CustomModel],
-    list_decoder: Option<&Ident>,
+    custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
     module_path: &LitStr,
-) -> syn::Result<TokenStream> {
+) -> TokenStream {
     let custom_ident = &custom.ident;
     let schema = &custom.schema;
     let source_name = custom.ident.unraw().to_string();
@@ -1672,7 +1683,8 @@ fn generate_custom_declaration(
     for constructor in &custom.constructors {
         for field in custom_field_models(&constructor.fields) {
             let definition = &field.definition;
-            let label = if let Some(ident) = &field.ident {
+            let label = if field.named {
+                let ident = &field.ident;
                 let label = ident.unraw().to_string();
                 quote!(::core::option::Option::Some(#label))
             } else {
@@ -1794,7 +1806,8 @@ fn generate_custom_declaration(
         &quote!(Provider),
         &quote!(Self::Host),
     );
-    let input_declaration = if let Some(input) = &custom.input {
+    let input_declaration = if let Some(input_model) = &custom.input {
+        let input = &input_model.ident;
         let visibility = &custom.visibility;
         let mut variants = Vec::with_capacity(custom.constructors.len());
         for constructor in &custom.constructors {
@@ -1804,18 +1817,15 @@ fn generate_custom_declaration(
                 CustomFields::Unnamed(fields) => {
                     let mut types = Vec::with_capacity(fields.len());
                     for field in fields {
-                        types.push(custom_input_type(&field.value, customs, support)?);
+                        types.push(custom_input_type(&field.value, custom_inputs, support));
                     }
                     quote!(#ident(#(#types),*))
                 }
                 CustomFields::Named(fields) => {
                     let mut members = Vec::with_capacity(fields.len());
                     for field in fields {
-                        let field_ident = field
-                            .ident
-                            .as_ref()
-                            .expect("named custom fields must retain identifiers");
-                        let type_ = custom_input_type(&field.value, customs, support)?;
+                        let field_ident = &field.ident;
+                        let type_ = custom_input_type(&field.value, custom_inputs, support);
                         members.push(quote!(#field_ident: #type_));
                     }
                     quote!(#ident { #(#members),* })
@@ -1823,18 +1833,19 @@ fn generate_custom_declaration(
             };
             variants.push(variant);
         }
-        let input_codec_bounds = custom_input_codec_bounds(custom, customs, support);
+        let input_codec_bounds = custom_input_codec_bounds(custom, customs, custom_inputs, support);
         let decoder_input_codec_bounds = input_codec_bounds.clone();
         let list_codec_bounds = custom_list_codec_bounds(custom_index, customs, support);
         let decoder_definition = generate_custom_decoder(
-            custom_index,
             custom,
+            input_model,
             customs,
+            custom_inputs,
             support,
             &decoder_input_codec_bounds,
         );
-        let decoder_ident = &custom.decoder;
-        let list_decoder = list_decoder.expect("custom input must own a List decoder");
+        let decoder_ident = &input_model.decoder;
+        let list_decoder = &input_model.list_decoder;
         let list_decoder_value = list_decoder_value(
             list_decoder,
             &StaticValueType::Custom {
@@ -1909,12 +1920,13 @@ fn generate_custom_declaration(
         TokenStream::new()
     };
     let input = if let Some(input) = &custom.input {
+        let input = &input.ident;
         quote!(#input)
     } else {
         quote!(#support::NoCustomInput)
     };
 
-    Ok(quote! {
+    quote! {
         #(#field_definitions)*
         #(#constructor_definitions)*
 
@@ -1993,25 +2005,24 @@ fn generate_custom_declaration(
         }
 
         #input_declaration
-    })
+    }
 }
 
 fn generate_custom_decoder(
-    _custom_index: usize,
     custom: &CustomModel,
+    input_model: &CustomInputModel,
     customs: &[CustomModel],
+    custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
     codec_bounds: &[TokenStream],
 ) -> TokenStream {
-    let decoder = &custom.decoder;
+    let decoder = &input_model.decoder;
     let schema = &custom.schema;
-    let input = custom
-        .input
-        .as_ref()
-        .expect("custom decoder requires an input declaration");
+    let input = &input_model.ident;
     let mut names = GeneratedNames::default();
     let mut branches = Vec::with_capacity(custom.constructors.len());
-    for constructor in &custom.constructors {
+    let mut remaining = TokenStream::new();
+    for (constructor_index, constructor) in custom.constructors.iter().enumerate() {
         let marker = &constructor.marker;
         let fields = custom_field_models(&constructor.fields);
         let mut host_fields = Vec::with_capacity(fields.len());
@@ -2028,6 +2039,7 @@ fn generate_custom_decoder(
                 &field.value,
                 quote!(#host),
                 customs,
+                custom_inputs,
                 support,
                 &mut names,
             ));
@@ -2043,15 +2055,26 @@ fn generate_custom_decoder(
             value_names.push(name);
         }
         let expression = custom_input_expression(input, constructor, &value_names);
-        branches.push(quote! {
-            if let ::core::option::Option::Some(#host_pattern) =
-                call.provider_custom_fields::<#marker>(value)
-            {
+        let body = quote! {
                 #(#statements)*
                 #(#declarations)*
-                return #expression;
-            }
-        });
+                #expression
+        };
+        if constructor_index + 1 == custom.constructors.len() {
+            remaining = quote! {
+                let #host_pattern =
+                    call.provider_remaining_custom_fields::<#marker>(value);
+                #body
+            };
+        } else {
+            branches.push(quote! {
+                if let ::core::option::Option::Some(#host_pattern) =
+                    call.provider_custom_fields::<#marker>(value)
+                {
+                    return { #body };
+                }
+            });
+        }
     }
     quote! {
         fn #decoder<'__geam_call, Profile, Provider, Return>(
@@ -2073,7 +2096,7 @@ fn generate_custom_decoder(
             #(#codec_bounds,)*
         {
             #(#branches)*
-            ::core::unreachable!("typed custom constructor index is out of range")
+            #remaining
         }
     }
 }
@@ -2082,12 +2105,13 @@ fn decode_custom_field_value(
     type_: &CustomFieldValueType,
     input: TokenStream,
     customs: &[CustomModel],
+    custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
     names: &mut GeneratedNames,
 ) -> GeneratedValue {
     match type_ {
         CustomFieldValueType::Value(type_) => {
-            decode_custom_input_value(type_, input, customs, support, names)
+            decode_custom_input_value(type_, input, customs, custom_inputs, support, names)
         }
         CustomFieldValueType::List(list) => {
             let decoder =
@@ -2104,6 +2128,7 @@ fn decode_custom_input_value(
     type_: &StaticValueType,
     input: TokenStream,
     customs: &[CustomModel],
+    custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
     names: &mut GeneratedNames,
 ) -> GeneratedValue {
@@ -2133,10 +2158,7 @@ fn decode_custom_input_value(
             ),
         },
         StaticValueType::Custom { index, .. } => {
-            let input_type = customs[*index]
-                .input
-                .as_ref()
-                .expect("custom source inputs require a generated input type");
+            let input_type = &custom_inputs[index];
             GeneratedValue {
                 statements: TokenStream::new(),
                 value: quote!(
@@ -2162,8 +2184,14 @@ fn decode_custom_input_value(
             };
             let mut values = Vec::with_capacity(elements.len());
             for (element, host) in elements.iter().zip(host_elements) {
-                let decoded =
-                    decode_custom_input_value(element, quote!(#host), customs, support, names);
+                let decoded = decode_custom_input_value(
+                    element,
+                    quote!(#host),
+                    customs,
+                    custom_inputs,
+                    support,
+                    names,
+                );
                 statements.extend(decoded.statements);
                 values.push(decoded.value);
             }
@@ -2177,10 +2205,22 @@ fn decode_custom_input_value(
             let failure_host = host_static_value_type(failure, customs, support);
             let success_value = names.next("result_success_host");
             let failure_value = names.next("result_failure_host");
-            let decoded_success =
-                decode_custom_input_value(success, quote!(#success_value), customs, support, names);
-            let decoded_failure =
-                decode_custom_input_value(failure, quote!(#failure_value), customs, support, names);
+            let decoded_success = decode_custom_input_value(
+                success,
+                quote!(#success_value),
+                customs,
+                custom_inputs,
+                support,
+                names,
+            );
+            let decoded_failure = decode_custom_input_value(
+                failure,
+                quote!(#failure_value),
+                customs,
+                custom_inputs,
+                support,
+                names,
+            );
             let success_statements = decoded_success.statements;
             let success = decoded_success.value;
             let failure_statements = decoded_failure.statements;
@@ -2195,15 +2235,12 @@ fn decode_custom_input_value(
                     {
                         #success_statements
                         ::core::result::Result::Ok(#success)
-                    } else if let ::core::option::Option::Some((#failure_value, ())) =
-                        call.provider_custom_fields::<
+                    } else {
+                        let (#failure_value, ()) = call.provider_remaining_custom_fields::<
                             #support::ProviderError<#success_host, #failure_host>
-                        >(#input)
-                    {
+                        >(#input);
                         #failure_statements
                         ::core::result::Result::Err(#failure)
-                    } else {
-                        ::core::unreachable!("typed Result constructor index is out of range")
                     }
                 }),
             }
@@ -2211,8 +2248,14 @@ fn decode_custom_input_value(
         StaticValueType::Option { value } => {
             let host = host_static_value_type(value, customs, support);
             let some_host = names.next("option_some_host");
-            let decoded =
-                decode_custom_input_value(value, quote!(#some_host), customs, support, names);
+            let decoded = decode_custom_input_value(
+                value,
+                quote!(#some_host),
+                customs,
+                custom_inputs,
+                support,
+                names,
+            );
             let statements = decoded.statements;
             let value = decoded.value;
             GeneratedValue {
@@ -2223,13 +2266,8 @@ fn decode_custom_input_value(
                     {
                         #statements
                         ::core::option::Option::Some(#value)
-                    } else if call
-                        .provider_custom_fields::<#support::ProviderNone<#host>>(#input)
-                        .is_some()
-                    {
-                        ::core::option::Option::None
                     } else {
-                        ::core::unreachable!("typed Option constructor index is out of range")
+                        ::core::option::Option::None
                     }
                 }),
             }
@@ -2239,106 +2277,92 @@ fn decode_custom_input_value(
 
 fn custom_input_type(
     type_: &CustomFieldValueType,
-    customs: &[CustomModel],
+    custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
-) -> syn::Result<TokenStream> {
+) -> TokenStream {
     match type_ {
-        CustomFieldValueType::Value(type_) => custom_input_value_type(type_, customs, support),
+        CustomFieldValueType::Value(type_) => {
+            custom_input_value_type(type_, custom_inputs, support)
+        }
         CustomFieldValueType::List(list) => {
-            let item = custom_list_input_value_type(&list.collection.value, customs, support)?;
+            let item = custom_list_input_value_type(&list.collection.value, custom_inputs, support);
             let decoder = &list.decoder;
-            Ok(quote! {
+            quote! {
                 #support::List<
                     #item,
                     #support::ProviderInputListContext<#decoder>,
                 >
-            })
+            }
         }
     }
 }
 
 fn custom_input_value_type(
     type_: &StaticValueType,
-    customs: &[CustomModel],
+    custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
-) -> syn::Result<TokenStream> {
+) -> TokenStream {
     match type_ {
-        StaticValueType::Scalar(type_) => Ok(quote!(#type_)),
+        StaticValueType::Scalar(type_) => quote!(#type_),
         StaticValueType::Declared { type_, .. } => {
-            Ok(quote!(<#type_ as #support::ProviderValue>::Input))
+            quote!(<#type_ as #support::ProviderValue>::Input)
         }
         StaticValueType::External { payload, .. } => {
-            Ok(quote!(#support::ProviderExternalItem<#payload>))
+            quote!(#support::ProviderExternalItem<#payload>)
         }
         StaticValueType::Custom { index, .. } => {
-            let Some(input) = &customs[*index].input else {
-                return Err(syn::Error::new(
-                    customs[*index].ident.span(),
-                    format!(
-                        "custom value `{}` is nested in an input declaration but has no `input = ...`",
-                        customs[*index].ident
-                    ),
-                ));
-            };
-            Ok(quote!(#input))
+            let input = &custom_inputs[index];
+            quote!(#input)
         }
         StaticValueType::Tuple(elements) => {
-            let mut types = Vec::with_capacity(elements.len());
-            for element in elements {
-                types.push(custom_input_value_type(element, customs, support)?);
-            }
-            Ok(quote!((#(#types,)*)))
+            let types = elements
+                .iter()
+                .map(|element| custom_input_value_type(element, custom_inputs, support))
+                .collect::<Vec<_>>();
+            quote!((#(#types,)*))
         }
         StaticValueType::Result { success, failure } => {
-            let success = custom_input_value_type(success, customs, support)?;
-            let failure = custom_input_value_type(failure, customs, support)?;
-            Ok(quote!(::core::result::Result<#success, #failure>))
+            let success = custom_input_value_type(success, custom_inputs, support);
+            let failure = custom_input_value_type(failure, custom_inputs, support);
+            quote!(::core::result::Result<#success, #failure>)
         }
         StaticValueType::Option { value } => {
-            let value = custom_input_value_type(value, customs, support)?;
-            Ok(quote!(::core::option::Option<#value>))
+            let value = custom_input_value_type(value, custom_inputs, support);
+            quote!(::core::option::Option<#value>)
         }
     }
 }
 
 fn custom_list_input_value_type(
     type_: &StaticValueType,
-    customs: &[CustomModel],
+    custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
-) -> syn::Result<TokenStream> {
+) -> TokenStream {
     match type_ {
-        StaticValueType::Scalar(type_) => Ok(quote!(#type_)),
+        StaticValueType::Scalar(type_) => quote!(#type_),
         StaticValueType::Declared { type_, .. } => {
-            Ok(quote!(<#type_ as #support::ProviderValue>::ListInput))
+            quote!(<#type_ as #support::ProviderValue>::ListInput)
         }
-        StaticValueType::External { payload, .. } => Ok(quote!(#payload)),
+        StaticValueType::External { payload, .. } => quote!(#payload),
         StaticValueType::Custom { index, .. } => {
-            let Some(input) = &customs[*index].input else {
-                return Err(syn::Error::new(
-                    customs[*index].ident.span(),
-                    format!(
-                        "custom value `{}` is nested in an input declaration but has no `input = ...`",
-                        customs[*index].ident
-                    ),
-                ));
-            };
-            Ok(quote!(#input))
+            let input = &custom_inputs[index];
+            quote!(#input)
         }
         StaticValueType::Tuple(elements) => {
-            let mut types = Vec::with_capacity(elements.len());
-            for element in elements {
-                types.push(custom_list_input_value_type(element, customs, support)?);
-            }
-            Ok(quote!((#(#types,)*)))
+            let types = elements
+                .iter()
+                .map(|element| custom_list_input_value_type(element, custom_inputs, support))
+                .collect::<Vec<_>>();
+            quote!((#(#types,)*))
         }
         StaticValueType::Result { success, failure } => {
-            let success = custom_list_input_value_type(success, customs, support)?;
-            let failure = custom_list_input_value_type(failure, customs, support)?;
-            Ok(quote!(::core::result::Result<#success, #failure>))
+            let success = custom_list_input_value_type(success, custom_inputs, support);
+            let failure = custom_list_input_value_type(failure, custom_inputs, support);
+            quote!(::core::result::Result<#success, #failure>)
         }
         StaticValueType::Option { value } => {
-            let value = custom_list_input_value_type(value, customs, support)?;
-            Ok(quote!(::core::option::Option<#value>))
+            let value = custom_list_input_value_type(value, custom_inputs, support);
+            quote!(::core::option::Option<#value>)
         }
     }
 }
@@ -2443,6 +2467,7 @@ fn collect_custom_output_codec_bounds(
 fn custom_input_codec_bounds(
     custom: &CustomModel,
     customs: &[CustomModel],
+    custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
 ) -> Vec<TokenStream> {
     let mut bounds = Vec::new();
@@ -2450,7 +2475,7 @@ fn custom_input_codec_bounds(
         for field in custom_field_models(&constructor.fields) {
             match &field.value {
                 CustomFieldValueType::Value(value) => {
-                    collect_custom_input_codec_bounds(value, customs, support, &mut bounds);
+                    collect_custom_input_codec_bounds(value, custom_inputs, support, &mut bounds);
                 }
                 CustomFieldValueType::List(list) => {
                     for access in list_declared_accesses(&list.collection.value, customs) {
@@ -2469,7 +2494,7 @@ fn custom_input_codec_bounds(
 
 fn collect_custom_input_codec_bounds(
     type_: &StaticValueType,
-    customs: &[CustomModel],
+    custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
     bounds: &mut Vec<TokenStream>,
 ) {
@@ -2481,25 +2506,22 @@ fn collect_custom_input_codec_bounds(
             });
         }
         StaticValueType::Custom { index, .. } => {
-            let input = customs[*index]
-                .input
-                .as_ref()
-                .expect("nested custom source inputs require a generated input type");
+            let input = &custom_inputs[index];
             bounds.push(quote! {
                 #input: #support::ProviderInputValue<Profile, Provider, Return>
             });
         }
         StaticValueType::Tuple(elements) => {
             for element in elements {
-                collect_custom_input_codec_bounds(element, customs, support, bounds);
+                collect_custom_input_codec_bounds(element, custom_inputs, support, bounds);
             }
         }
         StaticValueType::Result { success, failure } => {
-            collect_custom_input_codec_bounds(success, customs, support, bounds);
-            collect_custom_input_codec_bounds(failure, customs, support, bounds);
+            collect_custom_input_codec_bounds(success, custom_inputs, support, bounds);
+            collect_custom_input_codec_bounds(failure, custom_inputs, support, bounds);
         }
         StaticValueType::Option { value } => {
-            collect_custom_input_codec_bounds(value, customs, support, bounds);
+            collect_custom_input_codec_bounds(value, custom_inputs, support, bounds);
         }
         StaticValueType::Scalar(_) | StaticValueType::External { .. } => {}
     }
@@ -3055,11 +3077,7 @@ fn collect_function_input_bounds(
         ProviderValueType::Option { value } => {
             collect_function_input_bounds(value, customs, support, return_type, bounds);
         }
-        ProviderValueType::Custom { index, .. } => {
-            let input = customs[*index]
-                .input
-                .as_ref()
-                .expect("custom source inputs require a generated input type");
+        ProviderValueType::Custom { rust: input, .. } => {
             bounds.push(quote! {
                 #input: #support::ProviderInputValue<
                     Profile,
@@ -3491,11 +3509,9 @@ fn decode_value_argument(
                 }
             }
         }
-        ProviderValueType::Custom { index, .. } => {
-            let input_type = customs[*index]
-                .input
-                .as_ref()
-                .expect("custom source inputs require a generated input type");
+        ProviderValueType::Custom {
+            rust: input_type, ..
+        } => {
             let value = names.next("custom_input");
             GeneratedValue {
                 statements: quote! {
@@ -3593,15 +3609,12 @@ fn decode_value_argument(
                     {
                         #success_statements
                         ::core::result::Result::Ok(#success)
-                    } else if let ::core::option::Option::Some((#failure_value, ())) =
-                        call.provider_custom_fields::<
+                    } else {
+                        let (#failure_value, ()) = call.provider_remaining_custom_fields::<
                             #support::ProviderError<#success_host, #failure_host>
-                        >(#input)
-                    {
+                        >(#input);
                         #failure_statements
                         ::core::result::Result::Err(#failure)
-                    } else {
-                        ::core::unreachable!("typed Result constructor index is out of range")
                     };
                 },
                 value: quote!(#value),
@@ -3629,13 +3642,8 @@ fn decode_value_argument(
                     {
                         #decoded_statements
                         ::core::option::Option::Some(#decoded_value)
-                    } else if call
-                        .provider_custom_fields::<#support::ProviderNone<#host>>(#input)
-                        .is_some()
-                    {
-                        ::core::option::Option::None
                     } else {
-                        ::core::unreachable!("typed Option constructor index is out of range")
+                        ::core::option::Option::None
                     };
                 },
                 value: quote!(#result),
@@ -4108,12 +4116,7 @@ fn custom_output_pattern(
             let mut members = Vec::with_capacity(fields.len());
             for field in fields {
                 bindings.push(names.next("custom_field"));
-                members.push(
-                    field
-                        .ident
-                        .as_ref()
-                        .expect("named custom fields must retain their identifiers"),
-                );
+                members.push(&field.ident);
             }
             (
                 quote!(#custom::#variant { #(#members: #bindings),* }),
@@ -5596,14 +5599,11 @@ fn decode_list_item(
                             #success_statements
                             ::core::result::Result::Ok(#success_value)
                         }
-                        1 => {
+                        _ => {
                             let #field = #custom.take_field(0);
                             #failure_statements
                             ::core::result::Result::Err(#failure_value)
                         }
-                        _ => ::core::unreachable!(
-                            "typed Result constructor index is out of range"
-                        ),
                     }
                 },
             }
@@ -5632,10 +5632,7 @@ fn decode_list_item(
                             #statements
                             ::core::option::Option::Some(#value)
                         }
-                        1 => ::core::option::Option::None,
-                        _ => ::core::unreachable!(
-                            "typed Option constructor index is out of range"
-                        ),
+                        _ => ::core::option::Option::None,
                     }
                 },
             }
@@ -5703,8 +5700,13 @@ fn decode_list_custom(
             });
         }
         let expression = custom_input_expression(input_type, constructor, &decoded_names);
+        let pattern = if constructor_index + 1 == custom.constructors.len() {
+            quote!(_)
+        } else {
+            quote!(#constructor_index)
+        };
         arms.push(quote! {
-            #constructor_index => {
+            #pattern => {
                 #statements
                 #expression
             }
@@ -5717,7 +5719,6 @@ fn decode_list_custom(
         value: quote! {
             match #custom_value.constructor() {
                 #(#arms,)*
-                _ => ::core::unreachable!("typed custom constructor index is out of range"),
             }
         },
     }
@@ -5764,12 +5765,7 @@ fn custom_input_expression(
         CustomFields::Named(fields) => {
             let mut names = Vec::with_capacity(fields.len());
             for field in fields {
-                names.push(
-                    field
-                        .ident
-                        .as_ref()
-                        .expect("named custom fields must retain their identifiers"),
-                );
+                names.push(&field.ident);
             }
             quote!(#input::#variant { #(#names: #values),* })
         }
@@ -7950,7 +7946,7 @@ fn classify_function_input_value(
     }
     if let Some(custom) = custom_output_type(type_, customs) {
         let input = if let Some(input) = &custom.input {
-            format!("`{input}`")
+            format!("`{}`", input.ident)
         } else {
             "an explicit generated input type".to_owned()
         };
@@ -8099,7 +8095,7 @@ fn classify_argument_value(
     }
     if let Some(custom) = custom_output_type(type_, customs) {
         let input = if let Some(input) = &custom.input {
-            format!("`{input}`")
+            format!("`{}`", input.ident)
         } else {
             "an explicit generated input type".to_owned()
         };
@@ -8436,7 +8432,7 @@ fn classify_collection_input_item(
     }
     if let Some(custom) = custom_output_type(type_, customs) {
         let input = if let Some(input) = &custom.input {
-            format!("`{input}`")
+            format!("`{}`", input.ident)
         } else {
             "an `input = ...` declaration".to_owned()
         };
@@ -12940,6 +12936,8 @@ mod tests {
         assert!(expansion.contains("ProviderError <"));
         assert!(expansion.contains("ProviderSome <"));
         assert!(expansion.contains("ProviderNone <"));
+        assert!(expansion.contains("provider_remaining_custom_fields"));
+        assert!(!expansion.contains("unreachable"));
         assert!(
             expansion.contains(
                 "value : :: core :: result :: Result < :: core :: option :: Option < (BigInt , ProblemInput ,) > , ProblemInput >"

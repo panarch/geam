@@ -70,15 +70,17 @@ fn identity(values: geam::List<BigInt>) -> geam::List<BigInt> {
 fn reverse(values: geam::List<EcoString>) -> Vec<EcoString> {
     (0..values.len())
         .rev()
-        .map(|index| values.get(index).expect("index comes from the List length"))
+        .filter_map(|index| values.get(index))
         .collect()
 }
 ```
 
-List items currently support scalar, external, and custom leaves plus recursive
-tuples of those leaves. External items are opaque guards that dereference to the
-provider payload without cloning it. Nested Lists and Lists inside tuples remain
-outside this authoring slice.
+List items support scalar, external, directional custom, Result, and Option
+values plus recursive tuples of those values. External items are opaque guards
+that dereference to the provider payload without cloning it. Function inputs
+may nest a List view inside a tuple, Result, or Option, but a List item cannot
+itself be a List or Vec. A pass-through `List<T>` return remains top-level;
+newly constructed and nested source Lists use owned `Vec<T>` output values.
 
 ## Custom Value Provider Authoring
 

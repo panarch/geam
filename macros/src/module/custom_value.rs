@@ -23,17 +23,21 @@ struct CustomHeader {
     input: Option<Ident>,
     visibility: Visibility,
     schema: Ident,
-    decoder: Ident,
     item: ItemEnum,
 }
 
 pub(super) struct CustomModel {
     pub(super) ident: Ident,
-    pub(super) input: Option<Ident>,
+    pub(super) input: Option<CustomInputModel>,
     pub(super) visibility: Visibility,
     pub(super) schema: Ident,
-    pub(super) decoder: Ident,
     pub(super) constructors: Vec<CustomConstructorModel>,
+}
+
+pub(super) struct CustomInputModel {
+    pub(super) ident: Ident,
+    pub(super) decoder: Ident,
+    pub(super) list_decoder: Ident,
 }
 
 pub(super) struct CustomConstructorModel {
@@ -50,7 +54,8 @@ pub(super) enum CustomFields {
 }
 
 pub(super) struct CustomFieldModel {
-    pub(super) ident: Option<Ident>,
+    pub(super) ident: Ident,
+    pub(super) named: bool,
     pub(super) definition: Ident,
     pub(super) value: CustomFieldValueType,
 }
@@ -62,7 +67,6 @@ pub(super) enum CustomFieldValueType {
 
 pub(super) struct CustomDeclarations {
     pub(super) models: Vec<CustomModel>,
-    pub(super) list_decoders: Vec<Option<Ident>>,
 }
 
 fn parse_custom_arguments(input: ParseStream<'_>) -> syn::Result<CustomArguments> {
@@ -143,7 +147,6 @@ pub(super) fn collect_custom_declarations(
             input: arguments.input,
             visibility: custom.vis.clone(),
             schema: format_ident!("__GeamCustomSchema{index}"),
-            decoder: format_ident!("__geam_decode_custom_{index}"),
             item: custom.clone(),
         });
     }
@@ -159,29 +162,9 @@ pub(super) fn collect_custom_declarations(
         )?);
     }
     validate_custom_cycles(&models)?;
+    validate_custom_input_dependencies(&models)?;
 
-    let mut custom_list_decoders = Vec::with_capacity(models.len());
-    for (index, custom) in models.iter().enumerate() {
-        let decoder = if let Some(input) = &custom.input {
-            let item: Type = syn::parse_quote!(#input);
-            Some(register_list_decoder(
-                &CollectionType {
-                    source: item.clone(),
-                    item: item.clone(),
-                    value: StaticValueType::Custom { index },
-                },
-                list_decoders,
-            ))
-        } else {
-            None
-        };
-        custom_list_decoders.push(decoder);
-    }
-
-    Ok(CustomDeclarations {
-        models,
-        list_decoders: custom_list_decoders,
-    })
+    Ok(CustomDeclarations { models })
 }
 
 fn take_custom_marker(attributes: &mut Vec<Attribute>) -> syn::Result<Option<CustomArguments>> {
@@ -256,7 +239,10 @@ fn build_custom_model(
                         custom_index,
                         constructor_index,
                         field_index,
-                        None,
+                        format_ident!(
+                            "__geam_custom_{custom_index}_{constructor_index}_field_{field_index}"
+                        ),
+                        false,
                         &field.ty,
                         headers,
                         externals,
@@ -268,11 +254,18 @@ fn build_custom_model(
             Fields::Named(fields) => {
                 let mut models = Vec::with_capacity(fields.named.len());
                 for (field_index, field) in fields.named.iter().enumerate() {
+                    let Some(ident) = field.ident.clone() else {
+                        return Err(syn::Error::new_spanned(
+                            field,
+                            "named custom fields must have identifiers",
+                        ));
+                    };
                     models.push(build_custom_field(
                         custom_index,
                         constructor_index,
                         field_index,
-                        field.ident.clone(),
+                        ident,
+                        true,
                         &field.ty,
                         headers,
                         externals,
@@ -292,12 +285,30 @@ fn build_custom_model(
         });
     }
 
+    let input = header.input.as_ref().map(|ident| {
+        let item: Type = syn::parse_quote!(#ident);
+        let list_decoder = register_list_decoder(
+            &CollectionType {
+                source: item.clone(),
+                item,
+                value: StaticValueType::Custom {
+                    index: custom_index,
+                },
+            },
+            list_decoders,
+        );
+        CustomInputModel {
+            ident: ident.clone(),
+            decoder: format_ident!("__geam_decode_custom_{custom_index}"),
+            list_decoder,
+        }
+    });
+
     Ok(CustomModel {
         ident: header.ident.clone(),
-        input: header.input.clone(),
+        input,
         visibility: header.visibility.clone(),
         schema: header.schema.clone(),
-        decoder: header.decoder.clone(),
         constructors,
     })
 }
@@ -307,7 +318,8 @@ fn build_custom_field(
     custom_index: usize,
     constructor_index: usize,
     field_index: usize,
-    ident: Option<Ident>,
+    ident: Ident,
+    named: bool,
     type_: &Type,
     headers: &[CustomHeader],
     externals: &[ExternalModel],
@@ -315,6 +327,7 @@ fn build_custom_field(
 ) -> syn::Result<CustomFieldModel> {
     Ok(CustomFieldModel {
         ident,
+        named,
         definition: format_ident!(
             "__GeamCustom{custom_index}Constructor{constructor_index}Field{field_index}"
         ),
@@ -407,13 +420,12 @@ fn classify_custom_value(
     if let Some((index, _)) = custom_header_output_type(type_, headers) {
         return Ok(StaticValueType::Custom { index });
     }
-    if let Some(header) = custom_header_input_type(type_, headers) {
+    if let Some((header, input)) = custom_header_input_type(type_, headers) {
         return Err(syn::Error::new_spanned(
             type_,
             format!(
                 "custom input `{}` cannot be stored in an output; use `{}`",
-                header.input.as_ref().expect("matched input must exist"),
-                header.ident
+                input, header.ident
             ),
         ));
     }
@@ -453,14 +465,18 @@ fn custom_header_output_type<'custom>(
 fn custom_header_input_type<'custom>(
     type_: &Type,
     customs: &'custom [CustomHeader],
-) -> Option<&'custom CustomHeader> {
+) -> Option<(&'custom CustomHeader, &'custom Ident)> {
     let Type::Path(TypePath { qself: None, path }) = type_ else {
         return None;
     };
     let ident = path.get_ident()?;
-    customs
-        .iter()
-        .find(|custom| custom.input.as_ref() == Some(ident))
+    customs.iter().find_map(|custom| {
+        custom
+            .input
+            .as_ref()
+            .filter(|input| *input == ident)
+            .map(|input| (custom, input))
+    })
 }
 
 fn validate_custom_cycles(customs: &[CustomModel]) -> syn::Result<()> {
@@ -545,6 +561,57 @@ fn custom_dependencies(custom: &CustomModel) -> Vec<usize> {
     output
 }
 
+fn validate_custom_input_dependencies(customs: &[CustomModel]) -> syn::Result<()> {
+    fn validate_value(type_: &StaticValueType, customs: &[CustomModel]) -> syn::Result<()> {
+        match type_ {
+            StaticValueType::Custom { index, .. } => {
+                let custom = &customs[*index];
+                if custom.input.is_none() {
+                    return Err(syn::Error::new(
+                        custom.ident.span(),
+                        format!(
+                            "custom value `{}` is nested in an input declaration but has no `input = ...`",
+                            custom.ident
+                        ),
+                    ));
+                }
+            }
+            StaticValueType::Tuple(elements) => {
+                for element in elements {
+                    validate_value(element, customs)?;
+                }
+            }
+            StaticValueType::Result { success, failure } => {
+                validate_value(success, customs)?;
+                validate_value(failure, customs)?;
+            }
+            StaticValueType::Option { value } => validate_value(value, customs)?,
+            StaticValueType::Scalar(_)
+            | StaticValueType::Declared { .. }
+            | StaticValueType::External { .. } => {}
+        }
+        Ok(())
+    }
+
+    for custom in customs.iter().filter(|custom| custom.input.is_some()) {
+        for constructor in &custom.constructors {
+            let fields = match &constructor.fields {
+                CustomFields::Unit => continue,
+                CustomFields::Unnamed(fields) | CustomFields::Named(fields) => fields,
+            };
+            for field in fields {
+                match &field.value {
+                    CustomFieldValueType::Value(value) => validate_value(value, customs)?,
+                    CustomFieldValueType::List(list) => {
+                        validate_value(&list.collection.value, customs)?;
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn custom_output_type<'custom>(
     type_: &Type,
     customs: &'custom [CustomModel],
@@ -579,9 +646,9 @@ pub(super) fn custom_input_model<'custom>(
     let ident = path.get_ident()?;
     for (index, custom) in customs.iter().enumerate() {
         if let Some(input) = custom.input.as_ref()
-            && input == ident
+            && &input.ident == ident
         {
-            return Some((index, custom, input));
+            return Some((index, custom, &input.ident));
         }
     }
     None
@@ -589,7 +656,7 @@ pub(super) fn custom_input_model<'custom>(
 
 #[cfg(test)]
 mod tests {
-    use super::parse_custom_arguments;
+    use super::{CustomHeader, build_custom_model, parse_custom_arguments};
     use quote::quote;
     use syn::parse::Parser;
 
@@ -636,5 +703,37 @@ mod tests {
                 expected,
             );
         }
+    }
+
+    #[test]
+    fn model_conversion_rejects_a_named_syn_field_without_an_identifier() {
+        let mut item: syn::ItemEnum = syn::parse_quote! {
+            enum Status {
+                Invalid { reason: bool },
+            }
+        };
+        item.variants[0]
+            .fields
+            .iter_mut()
+            .next()
+            .expect("fixture should contain one field")
+            .ident = None;
+        let header = CustomHeader {
+            ident: item.ident.clone(),
+            input: None,
+            visibility: item.vis.clone(),
+            schema: syn::parse_quote!(__GeamCustomSchema0),
+            item,
+        };
+        let headers = [header];
+
+        let error = build_custom_model(0, &headers[0], &headers, &[], &mut Vec::new())
+            .err()
+            .expect("invalid generic syn field shape should be rejected");
+
+        assert_eq!(
+            error.to_string(),
+            "named custom fields must have identifiers"
+        );
     }
 }

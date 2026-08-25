@@ -104,17 +104,14 @@ mod lists {
     fn reverse(values: geam::List<EcoString>) -> Vec<EcoString> {
         (0..values.len())
             .rev()
-            .map(|index| values.get(index).expect("index comes from the List length"))
+            .filter_map(|index| values.get(index))
             .collect()
     }
 
     #[geam::function]
     fn labels(values: geam::List<(EcoString, BigInt)>) -> Vec<EcoString> {
         (0..values.len())
-            .map(|index| {
-                let (label, _) = values.get(index).expect("index comes from the List length");
-                label
-            })
+            .filter_map(|index| values.get(index).map(|(label, _)| label))
             .collect()
     }
 }

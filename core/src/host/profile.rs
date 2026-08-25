@@ -316,6 +316,20 @@ where
         >(self.runtime, &fields))
     }
 
+    /// Takes the fields of the constructor left after generated code has
+    /// excluded every preceding constructor in the linked schema.
+    #[doc(hidden)]
+    pub fn provider_remaining_custom_fields<Constructor>(
+        &mut self,
+        value: HostCustom<'call, Constructor::Custom>,
+    ) -> <Constructor::Fields as HostTypeSequence>::Values<'call>
+    where
+        Constructor: HostCustomConstructor,
+    {
+        let fields = self.runtime.take_custom_fields(value.token);
+        crate::host::type_::from_tokens::<Constructor::Fields, Profile>(self.runtime, &fields)
+    }
+
     /// Constructs an ordinary custom value authorized by one registered type token.
     pub fn construct_custom<Constructor>(
         &mut self,
@@ -890,6 +904,7 @@ mod tests {
         assert_eq!(call.custom_fields::<Other>(custom), None,);
         assert_eq!(call.provider_custom_fields::<Marker>(custom), Some(()),);
         assert_eq!(call.provider_custom_fields::<Other>(custom), None,);
+        assert_eq!(call.provider_remaining_custom_fields::<Marker>(custom), ());
         assert!(!call.equal::<BigInt>(1.into(), 1.into()));
         assert!(!call.equal::<HostListType<BigInt>>(list, list));
         assert!(!call.equal::<EmptyTuple>(tuple, tuple));
