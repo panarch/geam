@@ -15,7 +15,8 @@ pub use crate::host::{
 };
 pub use crate::provider::ExternalPayload;
 pub use crate::provider::advanced::{
-    Equality, Hashing, Index0, Inspection, Next, Retained, RetainedExternalPayload,
+    Equality, Hashing, Index0, Inspection, Next, ProviderDynamicInput, Retained,
+    RetainedExternalPayload,
 };
 pub use crate::provider::{
     Call, Callback, HostResult, List, MissingCallbackContext, MissingExternalInputContext,
@@ -31,9 +32,10 @@ pub use crate::provider::{
     ProviderCallbackCodec, ProviderCallbackContext, ProviderConstruction,
     ProviderConstructionIndex0, ProviderConstructionIndexNext, ProviderConstructionList,
     ProviderConstructionRequirementAt, ProviderConstructionRequirements, ProviderConstructions,
-    ProviderError, ProviderExternalCodec, ProviderInputValue, ProviderListInputCodec,
-    ProviderListInputValue, ProviderNoConstructions, ProviderNone, ProviderOk, ProviderOption,
-    ProviderOutputValue, ProviderResult, ProviderRootOutputValue, ProviderSome, ProviderValue,
+    ProviderError, ProviderExternalCodec, ProviderExternalDeclaration, ProviderInputValue,
+    ProviderListInputCodec, ProviderListInputValue, ProviderNoConstructions, ProviderNone,
+    ProviderOk, ProviderOption, ProviderOutputValue, ProviderResult, ProviderRootOutputValue,
+    ProviderSome, ProviderValue,
 };
 pub use crate::provider_support::HostOpaqueFunctionType;
 pub use ecow::EcoString;

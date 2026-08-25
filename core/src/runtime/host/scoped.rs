@@ -108,6 +108,25 @@ impl StoredRuntimeValue {
             EvaluatedValue::Function(_) => HostStoredValueFamily::Function,
         }
     }
+
+    #[expect(
+        clippy::result_large_err,
+        reason = "non-tuples retain the original value without another heap allocation"
+    )]
+    pub(crate) fn map_tuple_items<Item>(
+        self,
+        mut map: impl FnMut(Self) -> Item,
+    ) -> Result<Box<[Item]>, Self> {
+        let Self { value, type_ } = self;
+        match (value, type_) {
+            (EvaluatedValue::Tuple(values), crate::plan::ValueType::Tuple(types)) => Ok(values
+                .into_iter()
+                .zip(types)
+                .map(|(value, type_)| map(Self::new(value, type_)))
+                .collect()),
+            (value, type_) => Err(Self::new(value, type_)),
+        }
+    }
 }
 
 impl StoredRuntimeList {

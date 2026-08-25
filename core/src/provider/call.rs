@@ -2,6 +2,7 @@ use super::{
     Callback, ProviderCallbackCodec, ProviderCallbackContext, ProviderStoredInput,
     ProviderStoredOutput, ProviderStoredOwner, ProviderValueContext, Stored, Value,
 };
+use crate::provider::advanced::{ProviderDynamicInput, StoredDynamic};
 use crate::{HostCall, HostCallError, HostProfile, HostProvider, HostStoredType, HostType};
 use ecow::EcoString;
 use std::marker::PhantomData;
@@ -137,6 +138,39 @@ where
                 .call
                 .provider_restore::<Host, HostStoredType<Index>>(value.host()),
         )
+    }
+
+    /// Retains one call-scoped generic value with its exact specialized type.
+    pub fn store_dynamic<Type, Host, Owner>(
+        &mut self,
+        value: Value<Type, ProviderValueContext<'call, Host>>,
+    ) -> StoredDynamic<Owner>
+    where
+        Host: HostType,
+        Owner: ProviderStoredOwner,
+    {
+        StoredDynamic::new(
+            self.context
+                .call
+                .provider_store_dynamic::<Host>(value.into_host()),
+        )
+    }
+
+    /// Restores an existential value only when its exact specialized type
+    /// matches the requested generated input codec.
+    pub fn restore_dynamic<Type, Owner>(
+        &mut self,
+        value: &StoredDynamic<Owner>,
+    ) -> Option<Type::View<'call>>
+    where
+        Type: ProviderDynamicInput<Profile, Provider, Return>,
+        Owner: ProviderStoredOwner,
+    {
+        let value = self
+            .context
+            .call
+            .provider_restore_dynamic::<Type::Host>(value.host())?;
+        Some(Type::from_host(&mut self.context.call, value))
     }
 
     /// Invokes one typed Gleam callback within this active provider call.

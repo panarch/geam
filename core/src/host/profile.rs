@@ -396,6 +396,31 @@ where
         self.restore_stored::<Type, Stored>(value)
     }
 
+    #[doc(hidden)]
+    pub fn provider_store_dynamic<Type>(
+        &mut self,
+        value: Type::Value<'call>,
+    ) -> crate::HostStoredDynamic
+    where
+        Type: HostType,
+    {
+        crate::HostStoredDynamic::new(
+            self.runtime
+                .retain_stored(crate::host::type_::into_scoped::<Type>(value)),
+        )
+    }
+
+    #[doc(hidden)]
+    pub fn provider_restore_dynamic<Type>(
+        &mut self,
+        value: &crate::HostStoredDynamic,
+    ) -> Option<Type::Value<'call>>
+    where
+        Type: HostType,
+    {
+        value.decode::<Profile, Provider, Return, Type>(self)
+    }
+
     pub(in crate::host) fn restore_runtime_value<Type>(
         &mut self,
         value: &crate::runtime::StoredRuntimeValue,

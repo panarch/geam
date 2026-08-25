@@ -42,6 +42,7 @@ struct FunctionArguments {
 struct ExternalArguments {
     name: LitStr,
     manual: bool,
+    retained: bool,
     parameters: Vec<Ident>,
     input: Option<Ident>,
     payload: Option<Type>,
@@ -51,6 +52,7 @@ struct ExternalArguments {
 struct PartialExternalArguments {
     name: Option<LitStr>,
     manual: Option<Ident>,
+    retained: Option<Ident>,
     parameters: Option<Vec<Ident>>,
     input: Option<Ident>,
     payload: Option<Type>,
@@ -59,6 +61,7 @@ struct PartialExternalArguments {
 enum ExternalSemantics {
     Default,
     Manual,
+    Retained,
 }
 
 struct ExternalModel {
@@ -603,7 +606,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     let module_path = arguments.path;
     let module_ident = &module.ident;
     let payload_semantics = externals.iter().filter_map(|external| {
-        if external.generic.is_some() || matches!(external.semantics, ExternalSemantics::Manual) {
+        if external.generic.is_some() || !matches!(external.semantics, ExternalSemantics::Default) {
             return None;
         }
         let payload = &external.ident;
@@ -658,11 +661,68 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                 ).#module_ident.#store_field
             }
         };
+        let semantics = match external.semantics {
+            ExternalSemantics::Default | ExternalSemantics::Manual => quote! {
+                fn source_equal(
+                    _context: &#support::HostExternalEquality<'_>,
+                    left: &Self::Payload,
+                    right: &Self::Payload,
+                ) -> bool {
+                    <#payload as #support::ExternalPayload>::source_equal(left, right)
+                }
+
+                fn source_hash(
+                    _context: &#support::HostExternalHashing<'_>,
+                    value: &Self::Payload,
+                ) -> u64 {
+                    <#payload as #support::ExternalPayload>::source_hash(value)
+                }
+
+                fn inspect(
+                    _context: &#support::HostExternalInspection<'_>,
+                    value: &Self::Payload,
+                ) -> #support::EcoString {
+                    <#payload as #support::ExternalPayload>::inspect(value)
+                }
+            },
+            ExternalSemantics::Retained => quote! {
+                fn source_equal(
+                    context: &#support::HostExternalEquality<'_>,
+                    left: &Self::Payload,
+                    right: &Self::Payload,
+                ) -> bool {
+                    <#payload as #support::RetainedExternalPayload>::source_equal(
+                        left,
+                        context,
+                        right,
+                    )
+                }
+
+                fn source_hash(
+                    context: &#support::HostExternalHashing<'_>,
+                    value: &Self::Payload,
+                ) -> u64 {
+                    <#payload as #support::RetainedExternalPayload>::source_hash(value, context)
+                }
+
+                fn inspect(
+                    context: &#support::HostExternalInspection<'_>,
+                    value: &Self::Payload,
+                ) -> #support::EcoString {
+                    <#payload as #support::RetainedExternalPayload>::inspect(value, context)
+                }
+            },
+        };
         if let Some(generic) = &external.generic {
             let parameter_count = generic.parameters.len();
             let parameters = &generic.parameters;
             let input = &generic.input;
             let visibility = &generic.visibility;
+            let host_parameters = parameters
+                .iter()
+                .map(|parameter| quote!(<#parameter as #support::ProviderValue>::Host))
+                .collect::<Vec<_>>();
+            let host_arguments = host_type_token_sequence(&host_parameters, &support);
             match &generic.storage {
                 GenericExternalStorage::StoredFields {
                     payload: generic_payload,
@@ -703,6 +763,11 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                         let ident = &field.ident;
                         quote!(context.stored_value_hash(&value.#ident))
                     });
+                    let contexts = fields
+                        .iter()
+                        .enumerate()
+                        .map(|(index, _)| format_ident!("__GeamStoredContext{index}"))
+                        .collect::<Vec<_>>();
                     return quote! {
                         #[doc(hidden)]
                         pub struct #schema;
@@ -713,6 +778,52 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                             const MODULE: &'static str = #module_path;
                             const NAME: &'static str = #source_name;
                             const PARAMETER_COUNT: usize = #parameter_count;
+                        }
+
+                        impl<#(#parameters,)* #(#contexts,)*>
+                            #support::ProviderExternalDeclaration
+                            for #payload<#(#parameters,)* #(#contexts,)*>
+                        {
+                            type Schema = #schema;
+                        }
+
+                        impl<#(#parameters,)* Profile, Provider, Return>
+                            #support::ProviderDynamicInput<Profile, Provider, Return>
+                            for #payload<#(#parameters,)*>
+                        where
+                            Profile: __GeamModuleProfile,
+                            Provider: #support::HostProvider<Profile>,
+                            Return: #support::HostType,
+                            #(#parameters: #support::ProviderValue,)*
+                        {
+                            type Host = #support::HostExternalType<#schema, #host_arguments>;
+                            type View<'__geam_call> = #input<
+                                #(#parameters,)*
+                                #support::ProviderExternalInputContext<
+                                    '__geam_call,
+                                    #generic_payload,
+                                    #host_arguments,
+                                >,
+                            >;
+
+                            fn from_host<'__geam_call>(
+                                call: &mut #support::HostCall<
+                                    '__geam_call,
+                                    Profile,
+                                    Provider,
+                                    Return,
+                                >,
+                                value: <Self::Host as #support::HostType>::Value<'__geam_call>,
+                            ) -> Self::View<'__geam_call> {
+                                let payload = call.external_payload_with::<
+                                    __GeamProvider,
+                                    #schema,
+                                    #host_arguments,
+                                >(value);
+                                #input::__geam_from_host(
+                                    #support::ProviderExternalInputContext::from_host(payload),
+                                )
+                            }
                         }
 
                         #[doc(hidden)]
@@ -841,6 +952,52 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                             const PARAMETER_COUNT: usize = #parameter_count;
                         }
 
+                        impl<#(#parameters,)* __GeamExternalContext>
+                            #support::ProviderExternalDeclaration
+                            for #output<#(#parameters,)* __GeamExternalContext>
+                        {
+                            type Schema = #schema;
+                        }
+
+                        impl<#(#parameters,)* Profile, Provider, Return>
+                            #support::ProviderDynamicInput<Profile, Provider, Return>
+                            for #output<#(#parameters,)*>
+                        where
+                            Profile: __GeamModuleProfile,
+                            Provider: #support::HostProvider<Profile>,
+                            Return: #support::HostType,
+                            #(#parameters: #support::ProviderValue,)*
+                        {
+                            type Host = #support::HostExternalType<#schema, #host_arguments>;
+                            type View<'__geam_call> = #input<
+                                #(#parameters,)*
+                                #support::ProviderExternalInputContext<
+                                    '__geam_call,
+                                    #retained_payload,
+                                    #host_arguments,
+                                >,
+                            >;
+
+                            fn from_host<'__geam_call>(
+                                call: &mut #support::HostCall<
+                                    '__geam_call,
+                                    Profile,
+                                    Provider,
+                                    Return,
+                                >,
+                                value: <Self::Host as #support::HostType>::Value<'__geam_call>,
+                            ) -> Self::View<'__geam_call> {
+                                let payload = call.external_payload_with::<
+                                    __GeamProvider,
+                                    #schema,
+                                    #host_arguments,
+                                >(value);
+                                #input::__geam_from_host(
+                                    #support::ProviderExternalInputContext::from_host(payload),
+                                )
+                            }
+                        }
+
                         impl<#(#parameters,)*> #output<#(#parameters,)*> {
                             fn from_payload(
                                 payload: #retained_payload,
@@ -961,6 +1118,12 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                 const NAME: &'static str = #source_name;
                 const PARAMETER_COUNT: usize = 0;
             }
+
+            impl #support::ProviderExternalDeclaration for #payload {
+                type Schema = #schema;
+            }
+
+            impl #support::ProviderStoredOwner for #payload {}
 
             impl #support::ProviderValue for #payload {
                 type Host = #support::HostExternalType<#schema>;
@@ -1085,27 +1248,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                     #store
                 }
 
-                fn source_equal(
-                    _context: &#support::HostExternalEquality<'_>,
-                    left: &Self::Payload,
-                    right: &Self::Payload,
-                ) -> bool {
-                    <#payload as #support::ExternalPayload>::source_equal(left, right)
-                }
-
-                fn source_hash(
-                    _context: &#support::HostExternalHashing<'_>,
-                    value: &Self::Payload,
-                ) -> u64 {
-                    <#payload as #support::ExternalPayload>::source_hash(value)
-                }
-
-                fn inspect(
-                    _context: &#support::HostExternalInspection<'_>,
-                    value: &Self::Payload,
-                ) -> #support::EcoString {
-                    <#payload as #support::ExternalPayload>::inspect(value)
-                }
+                #semantics
             }
         }
     });
@@ -5523,6 +5666,20 @@ impl Parse for ExternalArguments {
                         ));
                     }
                 }
+                "retained" => {
+                    if partial.retained.replace(field.clone()).is_some() {
+                        return Err(syn::Error::new(
+                            field.span(),
+                            "duplicate external argument `retained`",
+                        ));
+                    }
+                    if !input.is_empty() && !input.peek(Token![,]) {
+                        return Err(syn::Error::new(
+                            field.span(),
+                            "external argument `retained` does not accept a value",
+                        ));
+                    }
+                }
                 "parameters" => {
                     input.parse::<Token![=]>()?;
                     let content;
@@ -5574,9 +5731,16 @@ impl Parse for ExternalArguments {
                 "missing required external argument `name`",
             ));
         };
+        if let (Some(_), Some(retained)) = (&partial.manual, &partial.retained) {
+            return Err(syn::Error::new(
+                retained.span(),
+                "external arguments `manual` and `retained` cannot be combined",
+            ));
+        }
         Ok(Self {
             name,
             manual: partial.manual.is_some(),
+            retained: partial.retained.is_some(),
             parameters: partial.parameters.unwrap_or_default(),
             input: partial.input,
             payload: partial.payload,
@@ -5718,6 +5882,12 @@ fn build_external_model(
         }
         None
     } else {
+        if arguments.retained {
+            return Err(syn::Error::new_spanned(
+                &payload.ident,
+                "external argument `retained` is only supported for non-generic payloads",
+            ));
+        }
         let Some(input) = arguments.input.clone() else {
             return Err(syn::Error::new_spanned(
                 &payload.ident,
@@ -5939,7 +6109,9 @@ fn build_external_model(
     Ok(ExternalModel {
         ident: payload.ident.clone(),
         name: arguments.name,
-        semantics: if arguments.manual {
+        semantics: if arguments.retained {
+            ExternalSemantics::Retained
+        } else if arguments.manual {
             ExternalSemantics::Manual
         } else {
             ExternalSemantics::Default
@@ -9143,11 +9315,12 @@ mod tests {
     }
 
     #[test]
-    fn external_arguments_require_a_name_and_bare_manual_flag() {
+    fn external_arguments_require_a_name_and_bare_semantics_flags() {
         let automatic = syn::parse2::<ExternalArguments>(quote!(name = "Metrics"))
             .expect("default semantics should parse");
         assert_eq!(automatic.name.value(), "Metrics");
         assert!(!automatic.manual);
+        assert!(!automatic.retained);
         assert!(automatic.parameters.is_empty());
         assert!(automatic.input.is_none());
         assert!(automatic.payload.is_none());
@@ -9156,6 +9329,13 @@ mod tests {
             .expect("manual semantics should parse in either field order");
         assert_eq!(manual.name.value(), "Metrics");
         assert!(manual.manual);
+        assert!(!manual.retained);
+
+        let retained = syn::parse2::<ExternalArguments>(quote!(retained, name = "Dynamic"))
+            .expect("retained semantics should parse in either field order");
+        assert_eq!(retained.name.value(), "Dynamic");
+        assert!(!retained.manual);
+        assert!(retained.retained);
 
         let generic = syn::parse2::<ExternalArguments>(quote!(
             name = "Box",
@@ -9192,6 +9372,10 @@ mod tests {
             (quote!(), "missing required external argument `name`"),
             (quote!(manual), "missing required external argument `name`"),
             (
+                quote!(retained),
+                "missing required external argument `name`",
+            ),
+            (
                 quote!(name = "First", name = "Second"),
                 "duplicate external argument `name`",
             ),
@@ -9206,6 +9390,22 @@ mod tests {
             (
                 quote!(name = "Metrics", manual("custom")),
                 "external argument `manual` does not accept a value",
+            ),
+            (
+                quote!(name = "Dynamic", retained, retained),
+                "duplicate external argument `retained`",
+            ),
+            (
+                quote!(name = "Dynamic", retained = true),
+                "external argument `retained` does not accept a value",
+            ),
+            (
+                quote!(name = "Dynamic", retained("context")),
+                "external argument `retained` does not accept a value",
+            ),
+            (
+                quote!(name = "Dynamic", manual, retained),
+                "external arguments `manual` and `retained` cannot be combined",
             ),
             (
                 quote!(name = "Box", parameters = [Item], parameters = [Other]),
@@ -9295,6 +9495,23 @@ mod tests {
                     }
                 },
                 "external argument `payload` requires non-empty `parameters`",
+            ),
+            (
+                quote! {
+                    mod generic {
+                        #[geam::external(
+                            name = "Box",
+                            parameters = [Item],
+                            input = BoxInput,
+                            retained,
+                        )]
+                        struct BoxValue<Item> {
+                            #[geam::stored]
+                            value: Stored<Item>,
+                        }
+                    }
+                },
+                "external argument `retained` is only supported for non-generic payloads",
             ),
             (
                 quote! {
@@ -9984,7 +10201,14 @@ mod tests {
         assert!(expansion.contains("context . stored_values_equal"));
         assert!(expansion.contains("context . stored_value_hash"));
         assert!(expansion.contains("concat ! (\"Box\" , \"(<opaque>)\")"));
-        assert_eq!(expansion.matches("call . external_payload").count(), 2);
+        assert_eq!(expansion.matches("call . external_payload").count(), 3);
+        assert!(expansion.contains(
+            "ProviderExternalDeclaration for BoxValue < Item , __GeamStoredContext0 , >"
+        ));
+        assert!(expansion.contains(
+            "ProviderDynamicInput < Profile , Provider , Return > for BoxValue < Item , >"
+        ));
+        assert!(expansion.contains("type View < '__geam_call > = BoxInput < Item ,"));
         assert_eq!(
             expansion
                 .matches("call . create_external_with_binding :: < __GeamProvider >")
@@ -11390,6 +11614,34 @@ mod tests {
         assert!(expansion.contains("let returned = call . create_external (returned)"));
         assert!(expansion.contains(
             "< super :: Component as geam_core :: __macro_support :: ProviderPackage > :: PACKAGE"
+        ));
+    }
+
+    #[test]
+    fn retained_external_expansion_uses_only_the_context_aware_semantics_contract() {
+        let expansion = expand(
+            quote!(path = "dynamic", crate_path = geam_core),
+            quote! {
+                mod dynamic {
+                    #[geam::external(name = "Snapshot", manual)]
+                    struct Snapshot;
+
+                    #[geam::external(name = "Dynamic", retained)]
+                    struct Dynamic;
+                }
+            },
+        )
+        .expect("manual and retained external semantics should remain distinct")
+        .to_string();
+
+        assert!(expansion.contains(
+            "< Snapshot as geam_core :: __macro_support :: ExternalPayload > :: source_equal"
+        ));
+        assert!(expansion.contains(
+            "< Dynamic as geam_core :: __macro_support :: RetainedExternalPayload > :: source_equal"
+        ));
+        assert!(!expansion.contains(
+            "< Dynamic as geam_core :: __macro_support :: ExternalPayload > :: source_equal"
         ));
     }
 

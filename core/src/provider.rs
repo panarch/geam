@@ -67,6 +67,12 @@ pub trait ExternalPayload: 'static {
     fn inspect(&self) -> EcoString;
 }
 
+/// Static source identity generated for one macro-authored external type.
+#[doc(hidden)]
+pub trait ProviderExternalDeclaration {
+    type Schema: crate::HostExternalSchema;
+}
+
 /// A provider-owned configuration failure before component identity is added.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InitializationError {

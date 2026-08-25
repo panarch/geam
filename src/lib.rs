@@ -4,7 +4,8 @@ pub mod gleam_time;
 pub mod provider {
     pub mod advanced {
         pub use geam_core::provider::advanced::{
-            Equality, Hashing, Index0, Inspection, Next, Retained, RetainedExternalPayload,
+            DynamicKind, Equality, Hashing, Index0, Inspection, Next, Retained,
+            RetainedExternalPayload, StoredDynamic,
         };
     }
 
@@ -37,17 +38,18 @@ pub mod __macro_support {
         ProviderConstruction, ProviderConstructionIndex0, ProviderConstructionIndexNext,
         ProviderConstructionList, ProviderConstructionRequirementAt,
         ProviderConstructionRequirements, ProviderConstructions, ProviderCustomDeclaration,
-        ProviderCustomInputDeclaration, ProviderError, ProviderExternalCodec,
-        ProviderExternalInputContext, ProviderExternalItem, ProviderExternalListDecoder,
-        ProviderExternalOutput, ProviderExternalPayloadAccess, ProviderInputListContext,
-        ProviderInputValue, ProviderListContext, ProviderListCustomFields, ProviderListInputCodec,
-        ProviderListInputValue, ProviderListItemDecoder, ProviderListItemValue,
-        ProviderModuleRegistration, ProviderNoConstructions, ProviderNone, ProviderOk,
-        ProviderOption, ProviderOutputValue, ProviderPackage, ProviderResult,
-        ProviderRootOutputValue, ProviderScalarListDecoder, ProviderSharedCall, ProviderSome,
-        ProviderStoredInput, ProviderStoredOutput, ProviderStoredOwner, ProviderValue,
-        ProviderValueContext, Retained, RetainedExternalPayload, Stored, Value,
-        component_initialization_error, external_payload_hash,
+        ProviderCustomInputDeclaration, ProviderDynamicInput, ProviderError, ProviderExternalCodec,
+        ProviderExternalDeclaration, ProviderExternalInputContext, ProviderExternalItem,
+        ProviderExternalListDecoder, ProviderExternalOutput, ProviderExternalPayloadAccess,
+        ProviderInputListContext, ProviderInputValue, ProviderListContext,
+        ProviderListCustomFields, ProviderListInputCodec, ProviderListInputValue,
+        ProviderListItemDecoder, ProviderListItemValue, ProviderModuleRegistration,
+        ProviderNoConstructions, ProviderNone, ProviderOk, ProviderOption, ProviderOutputValue,
+        ProviderPackage, ProviderResult, ProviderRootOutputValue, ProviderScalarListDecoder,
+        ProviderSharedCall, ProviderSome, ProviderStoredInput, ProviderStoredOutput,
+        ProviderStoredOwner, ProviderValue, ProviderValueContext, Retained,
+        RetainedExternalPayload, Stored, Value, component_initialization_error,
+        external_payload_hash,
     };
 }
 
