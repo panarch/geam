@@ -172,6 +172,38 @@ mod prelude_values {
     }
 
     #[geam_macros::function]
+    fn result_list_length(value: Result<geam_core::List<BigInt>, ParseErrorInput>) -> BigInt {
+        value.map_or_else(|_| 0.into(), |values| values.len().into())
+    }
+
+    #[geam_macros::function]
+    fn declared_result_list_length(
+        value: Result<geam_core::List<declarations::SharedProblemInput>, ParseErrorInput>,
+    ) -> BigInt {
+        value.map_or_else(|_| 0.into(), |values| values.len().into())
+    }
+
+    #[geam_macros::function]
+    fn nested_result_text(value: (EcoString, Result<BigInt, ParseErrorInput>)) -> EcoString {
+        match value {
+            (label, Ok(value)) => format!("{label}:ok:{value}").into(),
+            (label, Err(ParseErrorInput::Empty)) => format!("{label}:empty").into(),
+            (label, Err(ParseErrorInput::Invalid(value))) => {
+                format!("{label}:error:{value}").into()
+            }
+        }
+    }
+
+    #[geam_macros::function]
+    fn nested_result(value: BigInt) -> Option<Result<BigInt, ParseError>> {
+        Some(if value < 0.into() {
+            Err(ParseError::Invalid(value.to_string().into()))
+        } else {
+            Ok(value)
+        })
+    }
+
+    #[geam_macros::function]
     fn results() -> Vec<Result<BigInt, ParseError>> {
         vec![Ok(3.into()), Err(ParseError::Empty)]
     }
@@ -263,6 +295,18 @@ fn result_items(values: List(Result(Int, ParseError))) -> String
 @external(erlang, "prelude_values", "results")
 fn results() -> List(Result(Int, ParseError))
 
+@external(erlang, "prelude_values", "result_list_length")
+fn result_list_length(value: Result(List(Int), ParseError)) -> Int
+
+@external(erlang, "prelude_values", "declared_result_list_length")
+fn declared_result_list_length(value: Result(List(declarations.SharedProblem), ParseError)) -> Int
+
+@external(erlang, "prelude_values", "nested_result_text")
+fn nested_result_text(value: #(String, Result(Int, ParseError))) -> String
+
+@external(erlang, "prelude_values", "nested_result")
+fn nested_result(value: Int) -> Option(Result(Int, ParseError))
+
 pub fn main() {
   assert result_text(parse("12")) == "ok:12"
   assert result_text(parse("")) == "error:empty"
@@ -280,6 +324,16 @@ pub fn main() {
   assert outcome_text(optional_outcome(optional(5, True))) == "optional:kept:5"
   assert result_items([]) == "first:none"
   assert result_items(results()) == "first:3"
+  assert result_list_length(Ok([1, 2, 3])) == 3
+  assert result_list_length(Error(Empty)) == 0
+  assert declared_result_list_length(Ok([
+    declarations.shared_problem("blue"),
+    declarations.shared_problem(""),
+  ])) == 2
+  assert nested_result_text(#("nested", Ok(4))) == "nested:ok:4"
+  assert nested_result_text(#("nested", Error(Empty))) == "nested:empty"
+  assert nested_result(5) == Some(Ok(5))
+  assert nested_result(-1) == Some(Error(Invalid("-1")))
   True
 }
 "#;

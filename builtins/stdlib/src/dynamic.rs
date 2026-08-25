@@ -1,89 +1,54 @@
 mod function;
-mod schema;
 mod storage;
 
-pub(crate) use schema::DynamicList;
-pub use schema::{Dynamic, DynamicSchema};
-pub use storage::DynamicExternalStorage;
-pub(super) use storage::Stores;
+pub(super) use function::provider::__GeamStores as Stores;
+pub use function::provider::{
+    __GeamExternalSchema0 as DynamicSchema, __GeamExternalStorage0 as DynamicExternalStorage,
+    DynamicPayload,
+};
 
-pub(crate) use self::function::create_return_value;
-pub use self::function::create_value;
-pub(crate) use self::function::{DynamicProvider, classification, decode_value, sequence};
-use self::function::{array, cast, classify};
-use self::schema::Parameter;
+pub(crate) use self::storage::DynamicRepresentation;
 use super::GleamStdlibHostProfile;
-use crate::{HostList, HostProviderModule, HostRegistrationError};
-use ecow::EcoString;
-use num_bigint::BigInt;
+use crate::{
+    HostCall, HostConstruction, HostExternal, HostExternalBinding, HostExternalType, HostProvider,
+    HostProviderModule, HostRegistrationError, HostType, HostTypeListEnd, stdlib_stores,
+};
+
+pub type Dynamic = HostExternalType<DynamicSchema>;
+fn stores<Profile>(stores: &Profile::ExternalStores) -> &Stores
+where
+    Profile: GleamStdlibHostProfile,
+{
+    &stdlib_stores::<Profile>(stores).dynamic
+}
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
     Profile: GleamStdlibHostProfile,
 {
-    HostProviderModule::new("gleam_stdlib", "gleam/dynamic")
-        .and_then(HostProviderModule::with_external_type::<DynamicProvider<Profile>, DynamicSchema>)
-        .and_then(|provider| {
-            provider.with_scoped_function::<DynamicProvider<Profile>, (Dynamic,), EcoString, _>(
-                "classify",
-                classify::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<DynamicProvider<Profile>, (bool,), Dynamic, _>(
-                "bool",
-                cast::<Profile, bool>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<DynamicProvider<Profile>, (EcoString,), Dynamic, _>(
-                "string",
-                cast::<Profile, EcoString>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<DynamicProvider<Profile>, (f64,), Dynamic, _>(
-                "float",
-                cast::<Profile, f64>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<DynamicProvider<Profile>, (BigInt,), Dynamic, _>(
-                "int",
-                cast::<Profile, BigInt>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<
-                DynamicProvider<Profile>,
-                (crate::BitArrayValue,),
-                Dynamic,
-                _,
-            >("bit_array", cast::<Profile, crate::BitArrayValue>)
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<DynamicProvider<Profile>, (DynamicList,), Dynamic, _>(
-                "list",
-                cast::<Profile, DynamicList>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<DynamicProvider<Profile>, (DynamicList,), Dynamic, _>(
-                "array",
-                array::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<DynamicProvider<Profile>, (Parameter,), Dynamic, _>(
-                "cast",
-                cast::<Profile, Parameter>,
-            )
-        })
+    function::host_provider::<Profile>()
 }
 
-pub(crate) enum DynamicSequence<'call> {
-    List(HostList<'call, Dynamic>),
-    Array(HostList<'call, Dynamic>),
+pub fn create_value<'call, Profile, Provider, Return, Type>(
+    call: &mut HostCall<'call, Profile, Provider, Return>,
+    construction: HostConstruction<'call, Dynamic>,
+    value: Type::Value<'call>,
+) -> HostExternal<'call, Dynamic>
+where
+    Profile: GleamStdlibHostProfile,
+    Provider: HostProvider<Profile>
+        + HostExternalBinding<Profile, DynamicSchema, Storage = DynamicExternalStorage>,
+    Return: HostType,
+    Type: HostType,
+{
+    call.construct_external_with::<DynamicSchema, HostTypeListEnd>(construction, |builder| {
+        DynamicPayload::stored(geam_core::__macro_support::retain_dynamic::<
+            _,
+            HostTypeListEnd,
+            DynamicPayload,
+            Type,
+        >(builder, value))
+    })
 }
 
 #[cfg(test)]

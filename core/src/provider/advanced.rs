@@ -1,10 +1,12 @@
 use crate::host::{
-    HostCall, HostExternalEquality, HostExternalHashing, HostExternalInspection, HostProfile,
-    HostProvider, HostStoredDynamic, HostStoredType, HostStoredValue, HostType, HostTypeIndex0,
-    HostTypeIndexNext,
+    HostCall, HostExternalEquality, HostExternalHashing, HostExternalInspection, HostListType,
+    HostProfile, HostProvider, HostStoredDynamic, HostStoredType, HostStoredValue, HostType,
+    HostTypeIndex0, HostTypeIndexNext,
 };
 use crate::provider::{
-    ProviderExternalDeclaration, ProviderInputValue, ProviderStoredOwner, ProviderValue,
+    List, ProviderConstructions, ProviderExternalDeclaration, ProviderInputValue,
+    ProviderListContext, ProviderListInputCodec, ProviderListInputValue, ProviderNoConstructions,
+    ProviderOutputValue, ProviderStoredOwner, ProviderValue, ProviderValueContext, Value,
 };
 use ecow::EcoString;
 use std::marker::PhantomData;
@@ -36,6 +38,87 @@ pub struct Retained<Owner, Index> {
 pub struct StoredDynamic<Owner> {
     value: HostStoredDynamic,
     owner: PhantomData<fn() -> Owner>,
+}
+
+/// An existing external source value with its original runtime identity.
+///
+/// This advanced input is useful when a provider must pass an external value
+/// to a callback or return it unchanged. Dereferencing it borrows the ordinary
+/// Rust payload; consuming it preserves the original source handle.
+pub type External<Payload> = crate::provider::ProviderExternalItem<Payload>;
+
+/// Static pass-through into existential retention without materialization.
+#[doc(hidden)]
+pub trait ProviderDynamicValue<'call, Profile, Provider, Return>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+{
+    type Host: HostType;
+
+    fn into_host(
+        self,
+        call: &mut HostCall<'call, Profile, Provider, Return>,
+    ) -> <Self::Host as HostType>::Value<'call>;
+}
+
+impl<'call, Profile, Provider, Return, Type, Host>
+    ProviderDynamicValue<'call, Profile, Provider, Return>
+    for Value<Type, ProviderValueContext<'call, Host>>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Host: HostType,
+{
+    type Host = Host;
+
+    fn into_host(
+        self,
+        _call: &mut HostCall<'call, Profile, Provider, Return>,
+    ) -> <Self::Host as HostType>::Value<'call> {
+        self.into_host()
+    }
+}
+
+impl<'call, Profile, Provider, Return, Type> ProviderDynamicValue<'call, Profile, Provider, Return>
+    for Type
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Type: ProviderValue<OutputRequirements = ProviderNoConstructions>
+        + ProviderOutputValue<Profile, Provider, Return>,
+{
+    type Host = Type::Host;
+
+    fn into_host(
+        self,
+        call: &mut HostCall<'call, Profile, Provider, Return>,
+    ) -> <Self::Host as HostType>::Value<'call> {
+        self.into_host(call, &ProviderConstructions::none())
+    }
+}
+
+impl<'call, Profile, Provider, Return, Item, HostItem, Decoder>
+    ProviderDynamicValue<'call, Profile, Provider, Return>
+    for List<Item, ProviderListContext<'call, HostItem, Decoder>>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    HostItem: HostType,
+    Decoder: crate::provider::ProviderListItemDecoder<Item>,
+{
+    type Host = HostListType<HostItem>;
+
+    fn into_host(
+        self,
+        _call: &mut HostCall<'call, Profile, Provider, Return>,
+    ) -> <Self::Host as HostType>::Value<'call> {
+        self.__geam_into_context().into_host()
+    }
 }
 
 /// Broad runtime family of one existentially retained source value.
@@ -107,6 +190,33 @@ where
         value: <Self::Host as HostType>::Value<'call>,
     ) -> Self::View<'call> {
         Type::Input::from_host(call, value)
+    }
+}
+
+impl<Profile, Provider, Return, Item> ProviderDynamicInput<Profile, Provider, Return> for List<Item>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Item: ProviderValue<ListInput = Item>,
+    Item::ListInput: ProviderListInputCodec<Profile>,
+{
+    type Host = HostListType<Item::Host>;
+    type View<'call> = List<
+        Item,
+        ProviderListContext<
+            'call,
+            Item::Host,
+            <Item::ListInput as ProviderListInputValue>::Decoder,
+        >,
+    >;
+
+    fn from_host<'call>(
+        call: &mut HostCall<'call, Profile, Provider, Return>,
+        value: <Self::Host as HostType>::Value<'call>,
+    ) -> Self::View<'call> {
+        let decoder = <Item::ListInput as ProviderListInputCodec<Profile>>::decoder(call);
+        call.provider_list(value, decoder)
     }
 }
 

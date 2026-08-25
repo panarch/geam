@@ -1,50 +1,240 @@
-mod collection;
-mod index;
-mod scalar;
+use crate::dict::DictDeclaration;
+use crate::dynamic::{DynamicPayload, DynamicRepresentation};
+use crate::{Component, GleamStdlibRunState};
+use ecow::EcoString;
+use geam_core::provider::{Call, Callback, HostResult, List, Value};
+use num_bigint::BigInt;
+use num_traits::ToPrimitive;
 
-pub(super) use collection::{decode_dict, decode_list};
-pub(super) use index::bare_index;
-pub(super) use scalar::{
-    cast, dynamic_bit_array, dynamic_float, dynamic_int, dynamic_string, is_null,
-};
+#[geam_macros::module(
+    path = "gleam/dynamic/decode",
+    crate_path = geam_core,
+    profile = crate::GleamStdlibHostProfile,
+    component = crate::Component<Profile::Io>,
+)]
+pub(super) mod provider {
+    use super::{
+        BigInt, Call, Callback, DictDeclaration, DynamicPayload, DynamicRepresentation, EcoString,
+        GleamStdlibRunState, HostResult, List, ToPrimitive, Value,
+    };
 
-use crate::{
-    DictExternalStorage, DictSchema, DynamicExternalStorage, DynamicSchema, GleamStdlibHostProfile,
-    GleamStdlibRunState, stdlib_state,
-};
-use crate::{HostExternalBinding, HostProvider};
-use std::marker::PhantomData;
+    #[geam_macros::custom(input = DecodeErrorInput)]
+    pub enum DecodeError {
+        DecodeError {
+            expected: EcoString,
+            found: EcoString,
+            path: Vec<EcoString>,
+        },
+    }
 
-pub(super) struct DynamicDecodeProvider<Profile>(PhantomData<Profile>);
+    #[geam_macros::function(profile = Profile)]
+    fn bare_index<Key>(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        data: geam_core::provider::advanced::External<DynamicPayload>,
+        key: Value<Key>,
+    ) -> Result<Option<geam_core::provider::advanced::External<DynamicPayload>>, EcoString> {
+        if let Some(dict) = call
+            .restore_dynamic::<DictDeclaration<DynamicPayload, DynamicPayload>, DynamicPayload>(
+                data.stored_value(),
+            )
+        {
+            for (key_hash, index) in dict.payload().coordinates() {
+                let dynamic_key =
+                    call.restore(dict.stored_key(|payload| payload.key(key_hash, index)));
+                let dynamic_key = call.external_payload(dynamic_key);
+                let Some(candidate) = call.restore_dynamic_value(dynamic_key.stored_value(), &key)
+                else {
+                    continue;
+                };
+                if !call.equal(&candidate, &key) {
+                    continue;
+                }
 
-impl<Profile> HostProvider<Profile> for DynamicDecodeProvider<Profile>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    type State = GleamStdlibRunState<Profile::Io>;
+                let dynamic_value =
+                    call.restore(dict.stored_item(|payload| payload.value(key_hash, index)));
+                let dynamic_value = call.external_payload(dynamic_value);
+                return Ok(Some(dynamic_value));
+            }
+            return Ok(None);
+        }
 
-    fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        stdlib_state::<Profile>(state)
+        let key = call.store_dynamic::<_, DynamicPayload>(key);
+        let Some(index) = call.restore_dynamic::<BigInt, DynamicPayload>(&key) else {
+            return Err("Dict".into());
+        };
+        let Some(index) = index.to_usize() else {
+            return Err("Indexable".into());
+        };
+        let representation = data.representation();
+        let Some(values) =
+            call.restore_dynamic::<List<DynamicPayload>, DynamicPayload>(data.stored_value())
+        else {
+            return Err("Indexable".into());
+        };
+        if representation == DynamicRepresentation::List && index >= 8 {
+            return Err("Indexable".into());
+        }
+        match values.get(index) {
+            Some(value) => Ok(Some(value)),
+            None if representation == DynamicRepresentation::Array => Ok(None),
+            None => Err("Indexable".into()),
+        }
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn dynamic_string(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        data: geam_core::provider::advanced::External<DynamicPayload>,
+    ) -> Result<EcoString, EcoString> {
+        call.restore_dynamic::<EcoString, DynamicPayload>(data.stored_value())
+            .ok_or_else(EcoString::default)
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn dynamic_int(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        data: geam_core::provider::advanced::External<DynamicPayload>,
+    ) -> Result<BigInt, BigInt> {
+        call.restore_dynamic::<BigInt, DynamicPayload>(data.stored_value())
+            .ok_or_else(|| BigInt::from(0))
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn dynamic_float(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        data: geam_core::provider::advanced::External<DynamicPayload>,
+    ) -> Result<f64, f64> {
+        call.restore_dynamic::<f64, DynamicPayload>(data.stored_value())
+            .ok_or(0.0)
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn dynamic_bit_array(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        data: geam_core::provider::advanced::External<DynamicPayload>,
+    ) -> Result<geam_core::BitArrayValue, geam_core::BitArrayValue> {
+        call.restore_dynamic::<geam_core::BitArrayValue, DynamicPayload>(data.stored_value())
+            .ok_or_else(|| geam_core::BitArrayValue::from_bytes(Vec::new()))
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn decode_list<Item, PathKey>(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        data: geam_core::provider::advanced::External<DynamicPayload>,
+        item: Callback<
+            fn(
+                geam_core::provider::advanced::External<DynamicPayload>,
+            ) -> (Value<Item>, List<DecodeErrorInput>),
+        >,
+        _push_path: Value<
+            fn((Item, List<DecodeErrorInput>), PathKey) -> (Item, List<DecodeErrorInput>),
+        >,
+        mut index: BigInt,
+        accumulator: Value<List<Item>>,
+    ) -> HostResult<(Vec<Value<Item>>, Vec<DecodeError>)> {
+        let representation = data.representation();
+        let Some(values) =
+            call.restore_dynamic::<List<DynamicPayload>, DynamicPayload>(data.stored_value())
+        else {
+            return Ok((
+                Vec::new(),
+                vec![DecodeError::DecodeError {
+                    expected: "List".into(),
+                    found: representation.name().into(),
+                    path: Vec::new(),
+                }],
+            ));
+        };
+
+        let mut decoded = Vec::with_capacity(call.list_len(&accumulator) + values.len());
+        let mut accumulator_index = 0;
+        while let Some(value) = call.list_get::<_, Item, _>(&accumulator, accumulator_index) {
+            decoded.push(value);
+            accumulator_index += 1;
+        }
+        decoded.reverse();
+
+        let mut value_index = 0;
+        while let Some(value) = values.get(value_index) {
+            let (value, errors) = call.invoke(item, (value,))?;
+            if errors.len() != 0 {
+                let mut updated_errors = Vec::with_capacity(errors.len());
+                let mut error_index = 0;
+                while let Some(error) = errors.get(error_index) {
+                    match error {
+                        DecodeErrorInput::DecodeError {
+                            expected,
+                            found,
+                            path,
+                        } => {
+                            let mut updated_path = Vec::with_capacity(path.len() + 1);
+                            updated_path.push(index.to_string().into());
+                            let mut path_index = 0;
+                            while let Some(segment) = path.get(path_index) {
+                                updated_path.push(segment);
+                                path_index += 1;
+                            }
+                            updated_errors.push(DecodeError::DecodeError {
+                                expected,
+                                found,
+                                path: updated_path,
+                            });
+                        }
+                    }
+                    error_index += 1;
+                }
+                return Ok((Vec::new(), updated_errors));
+            }
+            decoded.push(value);
+            value_index += 1;
+            index += 1;
+        }
+
+        Ok((decoded, Vec::new()))
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn decode_dict(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        data: geam_core::provider::advanced::External<DynamicPayload>,
+    ) -> Result<crate::dict::DynamicDictOutput, ()> {
+        let dict = call
+            .restore_dynamic::<DictDeclaration<DynamicPayload, DynamicPayload>, DynamicPayload>(
+                data.stored_value(),
+            )
+            .ok_or(())?;
+        Ok(DictDeclaration::from_payload(dict.payload().cloned()))
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn cast<Item>(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        value: Value<Item>,
+    ) -> crate::dynamic::DynamicPayload {
+        DynamicPayload::stored(call.store_dynamic(value))
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn is_null(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        value: geam_core::provider::advanced::External<DynamicPayload>,
+    ) -> bool {
+        call.restore_dynamic::<(), DynamicPayload>(value.stored_value())
+            .is_some()
     }
 }
 
-impl<Profile> HostExternalBinding<Profile, DynamicSchema> for DynamicDecodeProvider<Profile>
+pub(super) fn host_provider<Profile>()
+-> Result<crate::HostProviderModule<Profile>, crate::HostRegistrationError>
 where
-    Profile: GleamStdlibHostProfile,
+    Profile: crate::GleamStdlibHostProfile,
 {
-    type Storage = DynamicExternalStorage;
-}
-
-impl<Profile> HostExternalBinding<Profile, DictSchema> for DynamicDecodeProvider<Profile>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    type Storage = DictExternalStorage;
+    provider::__geam_module::<Profile>()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::DynamicDecodeProvider;
+    use super::provider::__GeamProvider as DynamicDecodeProvider;
     use crate::{
         ExecutionError, HostModule, HostProvider, HostProviderSet, HostedExecution, ModuleSource,
         PackageSource, PanicKind, PanicMessage, Value, compile_typed_host_program,
@@ -247,6 +437,7 @@ pub fn main() {
   let dynamic_dict = dynamic.cast(dict)
   assert bare_index(dynamic_dict, "key") == Ok(option.Some(one))
   assert bare_index(dynamic_dict, "missing") == Ok(option.None)
+  assert bare_index(dynamic_dict, 1) == Ok(option.None)
   assert decode_dict(dynamic_dict) == Ok(dict)
   assert decode_dict(one) == Error(Nil)
 
@@ -260,6 +451,7 @@ pub fn main() {
   assert bare_index(array, 2) == Ok(option.None)
   assert bare_index(one, 0) == Error("Indexable")
   assert bare_index(one, "key") == Error("Dict")
+  assert bare_index(dynamic.cast([1, 2]), 0) == Error("Indexable")
 
   assert decode_list(list, decode_int_item, keep_path, 0, []) == #([1, 2], [])
   assert decode_list(array, decode_int_item, keep_path, 5, [4, 3]) ==
@@ -398,9 +590,8 @@ pub fn main() {
     #[test]
     fn provider_projects_the_complete_run_state() {
         let mut state = GleamStdlibRunState::from_seed([0; 32]);
-        let projected = <DynamicDecodeProvider<GleamStdlibProfile> as HostProvider<
-            GleamStdlibProfile,
-        >>::project(&mut state);
+        let projected =
+            <DynamicDecodeProvider as HostProvider<GleamStdlibProfile>>::project(&mut state);
 
         assert!(std::ptr::eq(projected, &state));
     }

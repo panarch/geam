@@ -1,4 +1,6 @@
-use crate::host::{ExternalPayloadView, HostExternalStore, HostList, HostType};
+use crate::host::{
+    ExternalPayloadLease, ExternalPayloadView, HostExternalStore, HostList, HostType,
+};
 use crate::runtime::{
     StoredRuntimeList, StoredRuntimeListCustomFields, StoredRuntimeListItem,
     StoredRuntimeListTupleItems,
@@ -59,6 +61,7 @@ pub struct ProviderExternalPayloadAccess<Payload> {
 #[doc(hidden)]
 pub struct ProviderExternalItem<Payload> {
     value: ExternalPayloadView<Payload>,
+    lease: ExternalPayloadLease,
 }
 
 /// Profile-independent decoder for one scalar List item.
@@ -196,9 +199,9 @@ impl<'value> ProviderListItemValue<'value> {
     where
         Payload: 'static,
     {
-        ProviderExternalItem {
-            value: access.store.view(&self.value.into_external_lease()),
-        }
+        let lease = self.value.into_external_lease();
+        let value = access.store.view(&lease);
+        ProviderExternalItem { value, lease }
     }
 
     #[doc(hidden)]
@@ -275,8 +278,12 @@ impl<Payload> Deref for ProviderExternalItem<Payload> {
 }
 
 impl<Payload> ProviderExternalItem<Payload> {
-    pub(crate) fn new(value: ExternalPayloadView<Payload>) -> Self {
-        Self { value }
+    pub(crate) fn new(value: ExternalPayloadView<Payload>, lease: ExternalPayloadLease) -> Self {
+        Self { value, lease }
+    }
+
+    pub(crate) fn into_lease(self) -> ExternalPayloadLease {
+        self.lease
     }
 }
 

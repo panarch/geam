@@ -1,7 +1,7 @@
 use super::{
-    CollectionType, DeclaredInput, ExternalModel, ListDecoderModel, ListType, ProviderValueType,
-    SourceWrapper, collection_item, external_type, is_collection, is_marker,
-    is_qualified_type_path, register_list_decoder, source_wrapper,
+    CollectionType, ExternalModel, ListDecoderModel, ListType, SourceWrapper, StaticValueType,
+    collection_item, external_type, is_collection, is_marker, is_qualified_type_path,
+    register_list_decoder, source_wrapper,
 };
 use quote::format_ident;
 use std::collections::BTreeSet;
@@ -56,7 +56,7 @@ pub(super) struct CustomFieldModel {
 }
 
 pub(super) enum CustomFieldValueType {
-    Value(Box<ProviderValueType>),
+    Value(Box<StaticValueType>),
     List(Box<ListType>),
 }
 
@@ -168,7 +168,7 @@ pub(super) fn collect_custom_declarations(
                 &CollectionType {
                     source: item.clone(),
                     item: item.clone(),
-                    value: ProviderValueType::Custom { index, rust: item },
+                    value: StaticValueType::Custom { index },
                 },
                 list_decoders,
             ))
@@ -368,7 +368,7 @@ fn classify_custom_value(
     type_: &Type,
     headers: &[CustomHeader],
     externals: &[ExternalModel],
-) -> syn::Result<ProviderValueType> {
+) -> syn::Result<StaticValueType> {
     if let Type::Reference(_) = type_ {
         return Err(syn::Error::new_spanned(
             type_,
@@ -385,30 +385,27 @@ fn classify_custom_value(
         SourceWrapper::Result {
             success, failure, ..
         } => {
-            return Ok(ProviderValueType::Result {
+            return Ok(StaticValueType::Result {
                 success: Box::new(classify_custom_value(success, headers, externals)?),
                 failure: Box::new(classify_custom_value(failure, headers, externals)?),
             });
         }
         SourceWrapper::Option { value, .. } => {
-            return Ok(ProviderValueType::Option {
+            return Ok(StaticValueType::Option {
                 value: Box::new(classify_custom_value(value, headers, externals)?),
             });
         }
         SourceWrapper::Other => {}
     }
     if let Some(external) = external_type(type_, externals) {
-        return Ok(ProviderValueType::External {
+        return Ok(StaticValueType::External {
             payload: external.ident.clone(),
             schema: external.schema.clone(),
             store_field: external.store_field.clone(),
         });
     }
     if let Some((index, _)) = custom_header_output_type(type_, headers) {
-        return Ok(ProviderValueType::Custom {
-            index,
-            rust: type_.clone(),
-        });
+        return Ok(StaticValueType::Custom { index });
     }
     if let Some(header) = custom_header_input_type(type_, headers) {
         return Err(syn::Error::new_spanned(
@@ -427,15 +424,14 @@ fn classify_custom_value(
         for element in &tuple.elems {
             elements.push(classify_custom_value(element, headers, externals)?);
         }
-        return Ok(ProviderValueType::Tuple(elements));
+        return Ok(StaticValueType::Tuple(elements));
     }
     if is_qualified_type_path(type_) {
-        return Ok(ProviderValueType::Declared {
+        return Ok(StaticValueType::Declared {
             type_: type_.clone(),
-            input: DeclaredInput::Owned,
         });
     }
-    Ok(ProviderValueType::Scalar(type_.clone()))
+    Ok(StaticValueType::Scalar(type_.clone()))
 }
 
 fn custom_header_output_type<'custom>(
@@ -514,22 +510,22 @@ fn validate_custom_cycles(customs: &[CustomModel]) -> syn::Result<()> {
 }
 
 fn custom_dependencies(custom: &CustomModel) -> Vec<usize> {
-    fn collect(type_: &ProviderValueType, output: &mut Vec<usize>) {
+    fn collect(type_: &StaticValueType, output: &mut Vec<usize>) {
         match type_ {
-            ProviderValueType::Custom { index, .. } => output.push(*index),
-            ProviderValueType::Tuple(elements) => {
+            StaticValueType::Custom { index, .. } => output.push(*index),
+            StaticValueType::Tuple(elements) => {
                 for element in elements {
                     collect(element, output);
                 }
             }
-            ProviderValueType::Result { success, failure } => {
+            StaticValueType::Result { success, failure } => {
                 collect(success, output);
                 collect(failure, output);
             }
-            ProviderValueType::Option { value } => collect(value, output),
-            ProviderValueType::Scalar(_)
-            | ProviderValueType::Declared { .. }
-            | ProviderValueType::External { .. } => {}
+            StaticValueType::Option { value } => collect(value, output),
+            StaticValueType::Scalar(_)
+            | StaticValueType::Declared { .. }
+            | StaticValueType::External { .. } => {}
         }
     }
 
@@ -576,14 +572,16 @@ pub(super) fn custom_output_type_with_index<'custom>(
 pub(super) fn custom_input_model<'custom>(
     type_: &Type,
     customs: &'custom [CustomModel],
-) -> Option<(usize, &'custom CustomModel)> {
+) -> Option<(usize, &'custom CustomModel, &'custom Ident)> {
     let Type::Path(TypePath { qself: None, path }) = type_ else {
         return None;
     };
     let ident = path.get_ident()?;
     for (index, custom) in customs.iter().enumerate() {
-        if custom.input.as_ref() == Some(ident) {
-            return Some((index, custom));
+        if let Some(input) = custom.input.as_ref()
+            && input == ident
+        {
+            return Some((index, custom, input));
         }
     }
     None

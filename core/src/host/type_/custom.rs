@@ -7,7 +7,6 @@ use super::{
     HostTypeListEnd, HostTypeSequence, private,
 };
 use crate::host::{HostCustom, HostScopedValue};
-use crate::provider_support::{SoleHostCustomConstructor, private as provider_private};
 use ecow::EcoString;
 use field::{CustomFieldType, ResolveCustomFieldType};
 use std::collections::HashSet;
@@ -436,30 +435,6 @@ where
 {
     type Custom = HostCustomType<Schema, Arguments>;
     type Fields = <Definition::Fields as ResolveCustomFields<Arguments>>::Fields;
-}
-
-impl<Schema, Arguments, Definition> SoleHostCustomConstructor
-    for HostCustomConstructorAt<HostCustomType<Schema, Arguments>, HostCustomIndex0, Definition>
-where
-    Schema: HostCustomSchema<
-        Constructors = HostCustomConstructorList<Definition, HostCustomConstructorListEnd>,
-    >,
-    Arguments: HostTypeSequence,
-    Definition: HostCustomConstructorDefinition,
-    Definition::Fields: ResolveCustomFields<Arguments>,
-{
-}
-
-impl<Schema, Arguments, Definition> provider_private::SoleHostCustomConstructor
-    for HostCustomConstructorAt<HostCustomType<Schema, Arguments>, HostCustomIndex0, Definition>
-where
-    Schema: HostCustomSchema<
-        Constructors = HostCustomConstructorList<Definition, HostCustomConstructorListEnd>,
-    >,
-    Arguments: HostTypeSequence,
-    Definition: HostCustomConstructorDefinition,
-    Definition::Fields: ResolveCustomFields<Arguments>,
-{
 }
 
 impl private::CustomFields for HostCustomFieldListEnd {

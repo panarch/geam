@@ -199,7 +199,23 @@ where
         crate::provider::ProviderExternalItem::new(
             BoundExternalStorage::<Profile, Binding, Schema>::store(self.runtime.external_stores())
                 .view(&lease),
+            lease,
         )
+    }
+
+    #[doc(hidden)]
+    pub fn provider_external_from_item<Schema, Arguments, Payload>(
+        &mut self,
+        value: crate::provider::ProviderExternalItem<Payload>,
+    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>>
+    where
+        Schema: HostExternalSchema,
+        Arguments: HostTypeSequence,
+    {
+        HostExternal::new(self.runtime.build_external(
+            &crate::host::HostTypeDescriptor::of::<HostExternalType<Schema, Arguments>>(),
+            value.into_lease(),
+        ))
     }
 
     #[doc(hidden)]
@@ -298,17 +314,6 @@ where
             Constructor::Fields,
             Profile,
         >(self.runtime, &fields))
-    }
-
-    pub(crate) fn sole_custom_fields<Constructor>(
-        &mut self,
-        value: HostCustom<'call, Constructor::Custom>,
-    ) -> <Constructor::Fields as HostTypeSequence>::Values<'call>
-    where
-        Constructor: crate::host::type_::SoleHostCustomConstructor,
-    {
-        let fields = self.runtime.custom_fields(value.token);
-        crate::host::type_::from_tokens::<Constructor::Fields, Profile>(self.runtime, &fields)
     }
 
     /// Constructs an ordinary custom value authorized by one registered type token.

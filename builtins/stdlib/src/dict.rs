@@ -1,112 +1,98 @@
 mod function;
-mod schema;
 mod storage;
 
-pub use function::create_dynamic_dict;
-pub(crate) use function::lookup;
-pub use schema::{DictOf, DictSchema};
-pub use storage::DictExternalStorage;
-pub(super) use storage::Stores;
+pub(super) use function::provider::__GeamStores as Stores;
+pub(crate) use function::provider::DictValue as DictDeclaration;
+pub use function::provider::{
+    __GeamExternalSchema0 as DictSchema, __GeamExternalStorage0 as DictExternalStorage,
+};
 
-use self::function::{
-    DictProvider, do_fold, do_has_key, do_insert, do_map_values, from_transient, get, new, size,
-    to_transient, transient_delete, transient_insert, transient_update_with,
-};
-use self::schema::{
-    Dict, FoldAccumulator, FoldDict, FoldFunction, GetDict, GetKey, GetResult, Item, Key,
-    MapFunction, MapInputDict, MapOutputDict, TransientDict, TransientDictSchema, UpdateFunction,
-};
+use self::storage::{DictEntry, DictPayload, DictStorage};
 use super::GleamStdlibHostProfile;
-use crate::{HostProviderModule, HostRegistrationError};
-use num_bigint::BigInt;
+use crate::dynamic::Dynamic;
+use crate::{
+    HostCall, HostConstruction, HostExternal, HostExternalBinding, HostExternalType, HostProvider,
+    HostProviderModule, HostRegistrationError, HostType, HostTypeIndex0, HostTypeIndexNext,
+    HostTypeList, HostTypeListEnd, stdlib_stores,
+};
+use std::collections::HashMap;
+use std::rc::Rc;
+
+pub type DictOf<Key, Item> =
+    HostExternalType<DictSchema, HostTypeList<Key, HostTypeList<Item, HostTypeListEnd>>>;
+
+type KeyIndex = HostTypeIndex0;
+type ItemIndex = HostTypeIndexNext<KeyIndex>;
+
+pub(crate) type DynamicDictOutput = function::provider::DictValue<
+    crate::dynamic::DynamicPayload,
+    crate::dynamic::DynamicPayload,
+    geam_core::__macro_support::ProviderExternalOutput<DictPayload>,
+>;
+
+pub fn create_dynamic_dict<'call, Profile, Provider, Return>(
+    call: &mut HostCall<'call, Profile, Provider, Return>,
+    construction: HostConstruction<'call, DictOf<Dynamic, Dynamic>>,
+    entries: impl IntoIterator<Item = (HostExternal<'call, Dynamic>, HostExternal<'call, Dynamic>)>,
+) -> HostExternal<'call, DictOf<Dynamic, Dynamic>>
+where
+    Profile: GleamStdlibHostProfile,
+    Provider: HostProvider<Profile>
+        + HostExternalBinding<Profile, DictSchema, Storage = DictExternalStorage>,
+    Return: HostType,
+{
+    let mut buckets = HashMap::new();
+    for (key, value) in entries {
+        let key_hash = call.source_hash::<Dynamic>(key);
+        function::insert_first(&mut buckets, key_hash, key, value, |stored, candidate| {
+            call.equal::<Dynamic>(*stored, *candidate)
+        });
+    }
+
+    call.construct_external_with(construction, move |builder| {
+        let len = buckets.values().map(Vec::len).sum();
+        let buckets = buckets
+            .into_iter()
+            .map(|(key_hash, entries)| {
+                let entries = entries
+                    .into_iter()
+                    .map(|(key, value)| {
+                        Rc::new(DictEntry {
+                            key_hash,
+                            key: Rc::new(geam_core::__macro_support::retain_argument::<
+                                _,
+                                _,
+                                DictPayload,
+                                KeyIndex,
+                            >(builder, key)),
+                            value: Rc::new(geam_core::__macro_support::retain_argument::<
+                                _,
+                                _,
+                                DictPayload,
+                                ItemIndex,
+                            >(builder, value)),
+                        })
+                    })
+                    .collect();
+                (key_hash, entries)
+            })
+            .collect();
+        DictPayload {
+            storage: DictStorage { buckets, len },
+        }
+    })
+}
+
+fn stores<Profile>(stores: &Profile::ExternalStores) -> &Stores
+where
+    Profile: GleamStdlibHostProfile,
+{
+    &stdlib_stores::<Profile>(stores).dict
+}
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
     Profile: GleamStdlibHostProfile,
 {
-    HostProviderModule::new("gleam_stdlib", "gleam/dict")
-        .and_then(HostProviderModule::with_external_type::<DictProvider<Profile>, DictSchema>)
-        .and_then(
-            HostProviderModule::with_external_type::<DictProvider<Profile>, TransientDictSchema>,
-        )
-        .and_then(|provider| {
-            provider.with_scoped_function::<DictProvider<Profile>, (Dict,), TransientDict, _>(
-                "to_transient",
-                to_transient::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<DictProvider<Profile>, (TransientDict,), Dict, _>(
-                "from_transient",
-                from_transient::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<DictProvider<Profile>, (Dict,), BigInt, _>(
-                "size",
-                size::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<DictProvider<Profile>, (Key, Dict), bool, _>(
-                "do_has_key",
-                do_has_key::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider
-                .with_scoped_function::<DictProvider<Profile>, (), Dict, _>("new", new::<Profile>)
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<DictProvider<Profile>, (GetDict, GetKey), GetResult, _>(
-                "get",
-                get::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<DictProvider<Profile>, (Key, Item, Dict), Dict, _>(
-                "do_insert",
-                do_insert::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<
-                DictProvider<Profile>,
-                (Key, Item, TransientDict),
-                TransientDict,
-                _,
-            >("transient_insert", transient_insert::<Profile>)
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<
-                DictProvider<Profile>,
-                (MapFunction, MapInputDict),
-                MapOutputDict,
-                _,
-            >("do_map_values", do_map_values::<Profile>)
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<
-                DictProvider<Profile>,
-                (Key, TransientDict),
-                TransientDict,
-                _,
-            >("transient_delete", transient_delete::<Profile>)
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<
-                DictProvider<Profile>,
-                (FoldFunction, FoldAccumulator, FoldDict),
-                FoldAccumulator,
-                _,
-            >("do_fold", do_fold::<Profile>)
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<
-                DictProvider<Profile>,
-                (Key, UpdateFunction, Item, TransientDict),
-                TransientDict,
-                _,
-            >("transient_update_with", transient_update_with::<Profile>)
-        })
+    function::host_provider::<Profile>()
 }

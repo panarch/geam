@@ -171,6 +171,7 @@ struct FunctionGeneric {
 #[derive(Clone)]
 enum ProviderValueType {
     Scalar(Type),
+    Generic(Box<GenericValueType>),
     Declared {
         type_: Type,
         input: DeclaredInput,
@@ -178,7 +179,32 @@ enum ProviderValueType {
     External {
         payload: Ident,
         schema: Ident,
-        store_field: Ident,
+    },
+    Custom {
+        index: usize,
+        rust: Type,
+    },
+    List(Box<ListType>),
+    Tuple(Vec<ProviderValueType>),
+    Result {
+        success: Box<ProviderValueType>,
+        failure: Box<ProviderValueType>,
+    },
+    Option {
+        value: Box<ProviderValueType>,
+    },
+}
+
+#[derive(Clone)]
+enum FunctionInputValueType {
+    Scalar(Type),
+    Declared {
+        type_: Type,
+        input: DeclaredInput,
+    },
+    External {
+        payload: Ident,
+        schema: Ident,
     },
     Custom {
         index: usize,
@@ -195,7 +221,46 @@ enum ProviderValueType {
 }
 
 #[derive(Clone)]
+enum StaticValueType {
+    Scalar(Type),
+    Declared {
+        type_: Type,
+    },
+    External {
+        payload: Ident,
+        schema: Ident,
+        store_field: Ident,
+    },
+    Custom {
+        index: usize,
+    },
+    Tuple(Vec<StaticValueType>),
+    Result {
+        success: Box<StaticValueType>,
+        failure: Box<StaticValueType>,
+    },
+    Option {
+        value: Box<StaticValueType>,
+    },
+}
+
+#[derive(Clone)]
 enum FunctionOutputValueType {
+    Value(Box<FunctionOutputLeafType>),
+    Generic(Box<GenericValueType>),
+    Tuple(Vec<FunctionOutputValueType>),
+    Result {
+        success: Box<FunctionOutputValueType>,
+        failure: Box<FunctionOutputValueType>,
+    },
+    Option {
+        value: Box<FunctionOutputValueType>,
+    },
+    Vec(FunctionOutputCollectionType),
+}
+
+#[derive(Clone)]
+enum FunctionRootOutputValueType {
     Value(Box<FunctionOutputLeafType>),
     Tuple(Vec<FunctionOutputValueType>),
     Result {
@@ -211,19 +276,9 @@ enum FunctionOutputValueType {
 #[derive(Clone)]
 enum FunctionOutputLeafType {
     Scalar(Type),
-    Declared {
-        type_: Type,
-        input: DeclaredInput,
-    },
-    External {
-        payload: Ident,
-        schema: Ident,
-        store_field: Ident,
-    },
-    Custom {
-        index: usize,
-        rust: Type,
-    },
+    Declared { type_: Type, input: DeclaredInput },
+    External { payload: Ident, schema: Ident },
+    Custom { index: usize, rust: Type },
 }
 
 #[derive(Clone)]
@@ -260,7 +315,7 @@ enum DeclaredInput {
 struct CollectionType {
     source: Type,
     item: Type,
-    value: ProviderValueType,
+    value: StaticValueType,
 }
 
 #[derive(Clone)]
@@ -270,7 +325,7 @@ struct ListType {
 }
 
 enum FunctionInputType {
-    Value(Box<ProviderValueType>),
+    Value(Box<FunctionInputValueType>),
     Generic(Box<GenericValueType>),
     External(Box<GenericExternalType>),
     List(Box<ListType>),
@@ -282,7 +337,7 @@ enum FunctionArgumentType {
 }
 
 enum FunctionReturnType {
-    Value(FunctionOutputValueType),
+    Value(FunctionRootOutputValueType),
     Generic(Box<GenericValueType>),
     External(Box<GenericExternalType>),
     List(Box<ListType>),
@@ -306,7 +361,7 @@ struct FunctionModel {
 
 struct ListDecoderModel {
     ident: Ident,
-    value: ProviderValueType,
+    value: StaticValueType,
     key: String,
 }
 
@@ -717,6 +772,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             let parameter_count = generic.parameters.len();
             let parameters = &generic.parameters;
             let input = &generic.input;
+            let output = &external.ident;
             let visibility = &generic.visibility;
             let host_parameters = parameters
                 .iter()
@@ -729,6 +785,50 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                     owner,
                     fields,
                 } => {
+                    let output_contexts = fields.iter().map(|field| {
+                        let parameter = &parameters[field.parameter_index];
+                        let index = &field.index;
+                        quote! {
+                            #support::ProviderStoredOutput<
+                                '__geam_output,
+                                #owner,
+                                #index,
+                                <#parameter as #support::ProviderValue>::Host,
+                            >
+                        }
+                    });
+                    let output_type = quote! {
+                        #output<#(#parameters,)* #(#output_contexts,)*>
+                    };
+                    let output_impl_parameters = ::core::iter::once(quote!('__geam_output))
+                        .chain(parameters.iter().map(|parameter| quote!(#parameter)))
+                        .collect::<Vec<_>>();
+                    let output_patterns = fields.iter().map(|field| {
+                        let ident = &field.ident;
+                        quote!(#ident)
+                    });
+                    let output_payload_fields = fields.iter().map(|field| {
+                        let ident = &field.ident;
+                        quote!(#ident: #ident.into_host())
+                    });
+                    let output_payload = quote! {
+                        ::core::result::Result::<
+                            #generic_payload,
+                            #support::ProviderExternalItem<#generic_payload>,
+                        >::Ok({
+                            let #output { #(#output_patterns,)* } = self;
+                            #generic_payload { #(#output_payload_fields,)* }
+                        })
+                    };
+                    let output_codec = generic_external_output_codec(
+                        &output_impl_parameters,
+                        parameters,
+                        output_type,
+                        output_payload,
+                        schema,
+                        &host_arguments,
+                        &support,
+                    );
                     let payload_fields = fields.iter().map(|field| {
                         let ident = &field.ident;
                         let index = &field.index;
@@ -815,16 +915,18 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                                 >,
                                 value: <Self::Host as #support::HostType>::Value<'__geam_call>,
                             ) -> Self::View<'__geam_call> {
-                                let payload = call.external_payload_with::<
+                                let value = call.provider_external_item_with::<
                                     __GeamProvider,
                                     #schema,
                                     #host_arguments,
                                 >(value);
                                 #input::__geam_from_host(
-                                    #support::ProviderExternalInputContext::from_host(payload),
+                                    #support::ProviderExternalInputContext::from_host(value),
                                 )
                             }
                         }
+
+                        #output_codec
 
                         #[doc(hidden)]
                         pub struct #owner;
@@ -914,12 +1016,30 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                     };
                 }
                 GenericExternalStorage::ManualPayload { payload: retained_payload } => {
-                    let output = &external.ident;
+                    let output_type = quote! {
+                        #output<
+                            #(#parameters,)*
+                            #support::ProviderExternalOutput<#retained_payload>,
+                        >
+                    };
+                    let output_impl_parameters = parameters
+                        .iter()
+                        .map(|parameter| quote!(#parameter))
+                        .collect::<Vec<_>>();
+                    let output_codec = generic_external_output_codec(
+                        &output_impl_parameters,
+                        parameters,
+                        output_type,
+                        quote!(self.__geam_context.into_value()),
+                        schema,
+                        &host_arguments,
+                        &support,
+                    );
                     let retained_accessors = parameters.iter().enumerate().map(|(index, parameter)| {
                         let method = retained_parameter_accessor(parameter);
                         let index = host_type_index(index, &support);
                         quote! {
-                            fn #method<'__geam_value>(
+                            #visibility fn #method<'__geam_value>(
                                 &'__geam_value self,
                                 select: impl ::core::ops::FnOnce(
                                     &'__geam_value #retained_payload,
@@ -987,19 +1107,21 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                                 >,
                                 value: <Self::Host as #support::HostType>::Value<'__geam_call>,
                             ) -> Self::View<'__geam_call> {
-                                let payload = call.external_payload_with::<
+                                let value = call.provider_external_item_with::<
                                     __GeamProvider,
                                     #schema,
                                     #host_arguments,
                                 >(value);
                                 #input::__geam_from_host(
-                                    #support::ProviderExternalInputContext::from_host(payload),
+                                    #support::ProviderExternalInputContext::from_host(value),
                                 )
                             }
                         }
 
+                        #output_codec
+
                         impl<#(#parameters,)*> #output<#(#parameters,)*> {
-                            fn from_payload(
+                            #visibility fn from_payload(
                                 payload: #retained_payload,
                             ) -> #output<
                                 #(#parameters,)*
@@ -1011,8 +1133,6 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                                 }
                             }
                         }
-
-                        impl #support::ProviderStoredOwner for #retained_payload {}
 
                         #visibility struct #input<
                             #(#parameters,)*
@@ -1049,8 +1169,20 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                                 }
                             }
 
-                            fn payload(&self) -> &#retained_payload {
+                            #visibility fn payload(&self) -> &#retained_payload {
                                 self.__geam_context.payload()
+                            }
+
+                            #visibility fn into_value(
+                                self,
+                            ) -> #output<
+                                #(#parameters,)*
+                                #support::ProviderExternalOutput<#retained_payload>,
+                            > {
+                                #output {
+                                    __geam_context: self.__geam_context.into_output(),
+                                    __geam_parameters: ::core::marker::PhantomData,
+                                }
                             }
 
                             #(#retained_accessors)*
@@ -1150,6 +1282,22 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                         #schema,
                         #support::HostTypeListEnd,
                     >(value)
+                }
+
+                fn output<'__geam_call, Provider, Return>(
+                    call: &mut #support::HostCall<
+                        '__geam_call,
+                        Profile,
+                        Provider,
+                        Return,
+                    >,
+                    value: #support::ProviderExternalItem<Self>,
+                ) -> <Self::Host as #support::HostType>::Value<'__geam_call>
+                where
+                    Provider: #support::HostProvider<Profile>,
+                    Return: #support::HostType,
+                {
+                    call.provider_external_from_item::<#schema, #support::HostTypeListEnd, _>(value)
                 }
             }
 
@@ -1252,6 +1400,22 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             }
         }
     });
+    // An explicit payload type is also the retention owner. Multiple source
+    // declarations may intentionally share that domain while retaining their
+    // own schemas and stores, as Dict and TransientDict do.
+    let mut retained_owner_keys = BTreeSet::new();
+    let retained_owners = externals
+        .iter()
+        .filter_map(|external| {
+            let generic = external.generic.as_ref()?;
+            let GenericExternalStorage::ManualPayload { payload } = &generic.storage else {
+                return None;
+            };
+            retained_owner_keys
+                .insert(quote!(#payload).to_string())
+                .then(|| quote!(impl #support::ProviderStoredOwner for #payload {}))
+        })
+        .collect::<Vec<_>>();
     let bindings = externals.iter().map(|external| {
         let schema = &external.schema;
         let storage = &external.storage;
@@ -1275,9 +1439,14 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             &module_path,
         )?);
     }
+    let custom_inputs = customs
+        .iter()
+        .enumerate()
+        .filter_map(|(index, custom)| custom.input.clone().map(|input| (index, input)))
+        .collect::<BTreeMap<_, _>>();
     let generated_list_decoders = list_decoders
         .iter()
-        .map(|decoder| generate_list_decoder(decoder, &customs, &support))
+        .map(|decoder| generate_list_decoder(decoder, &customs, &custom_inputs, &support))
         .collect::<Vec<_>>();
     let generated_functions = functions
         .iter()
@@ -1322,6 +1491,9 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     }
     for schema in schemas {
         items.push(Item::Verbatim(schema));
+    }
+    for owner in retained_owners {
+        items.push(Item::Verbatim(owner));
     }
     for declaration in custom_declarations {
         items.push(Item::Verbatim(declaration));
@@ -1397,6 +1569,92 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     items.push(Item::Verbatim(registrar));
 
     Ok(quote!(#module))
+}
+
+fn generic_external_output_codec(
+    impl_parameters: &[TokenStream],
+    parameters: &[Ident],
+    output: TokenStream,
+    output_payload: TokenStream,
+    schema: &Ident,
+    host_arguments: &TokenStream,
+    support: &TokenStream,
+) -> TokenStream {
+    quote! {
+        impl<#(#impl_parameters,)*> #support::ProviderValue for #output
+        where
+            #(#parameters: #support::ProviderValue,)*
+        {
+            type Host = #support::HostExternalType<#schema, #host_arguments>;
+            type Input = Self;
+            type ListInput = Self;
+            type OutputRequirements = #support::ProviderConstruction<Self::Host>;
+            type RootRequirements = #support::ProviderNoConstructions;
+        }
+
+        impl<#(#impl_parameters,)* Profile, Provider, Return>
+            #support::ProviderOutputValue<Profile, Provider, Return>
+            for #output
+        where
+            Profile: __GeamModuleProfile,
+            Provider: #support::HostProvider<Profile>,
+            Return: #support::HostType,
+            #(#parameters: #support::ProviderValue,)*
+        {
+            fn into_host<'__geam_call>(
+                self,
+                call: &mut #support::HostCall<'__geam_call, Profile, Provider, Return>,
+                construction: &#support::ProviderConstructions<
+                    '__geam_call,
+                    Self::OutputRequirements,
+                >,
+            ) -> <Self::Host as #support::HostType>::Value<'__geam_call> {
+                match #output_payload {
+                    ::core::result::Result::Ok(payload) => {
+                        call.construct_external_with_binding::<
+                            __GeamProvider,
+                            #schema,
+                            #host_arguments,
+                        >(construction.token(), payload)
+                    }
+                    ::core::result::Result::Err(value) => {
+                        call.provider_external_from_item::<#schema, #host_arguments, _>(value)
+                    }
+                }
+            }
+        }
+
+        impl<#(#impl_parameters,)* Profile, Provider>
+            #support::ProviderRootOutputValue<Profile, Provider>
+            for #output
+        where
+            Profile: __GeamModuleProfile,
+            Provider: #support::HostProvider<Profile>,
+            #(#parameters: #support::ProviderValue,)*
+        {
+            fn complete<'__geam_call>(
+                self,
+                mut call: #support::HostCall<'__geam_call, Profile, Provider, Self::Host>,
+                _constructions: &#support::ProviderConstructions<
+                    '__geam_call,
+                    Self::RootRequirements,
+                >,
+            ) -> ::core::result::Result<
+                #support::HostCallCompletion<'__geam_call, Self::Host>,
+                #support::HostCallError,
+            > {
+                let value = match #output_payload {
+                    ::core::result::Result::Ok(payload) => {
+                        call.create_external_with_binding::<__GeamProvider>(payload)
+                    }
+                    ::core::result::Result::Err(value) => {
+                        call.provider_external_from_item::<#schema, #host_arguments, _>(value)
+                    }
+                };
+                ::core::result::Result::Ok(call.return_value(value))
+            }
+        }
+    }
 }
 
 fn generate_custom_declaration(
@@ -1579,9 +1837,8 @@ fn generate_custom_declaration(
         let list_decoder = list_decoder.expect("custom input must own a List decoder");
         let list_decoder_value = list_decoder_value(
             list_decoder,
-            &ProviderValueType::Custom {
+            &StaticValueType::Custom {
                 index: custom_index,
-                rust: syn::parse_quote!(#input),
             },
             customs,
             support,
@@ -1844,18 +2101,18 @@ fn decode_custom_field_value(
 }
 
 fn decode_custom_input_value(
-    type_: &ProviderValueType,
+    type_: &StaticValueType,
     input: TokenStream,
     customs: &[CustomModel],
     support: &TokenStream,
     names: &mut GeneratedNames,
 ) -> GeneratedValue {
     match type_ {
-        ProviderValueType::Scalar(_) => GeneratedValue {
+        StaticValueType::Scalar(_) => GeneratedValue {
             statements: TokenStream::new(),
             value: input,
         },
-        ProviderValueType::Declared { type_, .. } => GeneratedValue {
+        StaticValueType::Declared { type_, .. } => GeneratedValue {
             statements: TokenStream::new(),
             value: quote!(
                 <<#type_ as #support::ProviderValue>::Input as
@@ -1865,7 +2122,7 @@ fn decode_custom_input_value(
                     )
             ),
         },
-        ProviderValueType::External { payload, .. } => GeneratedValue {
+        StaticValueType::External { payload, .. } => GeneratedValue {
             statements: TokenStream::new(),
             value: quote!(
                 <#support::ProviderExternalItem<#payload> as
@@ -1875,7 +2132,7 @@ fn decode_custom_input_value(
                     )
             ),
         },
-        ProviderValueType::Custom { index, .. } => {
+        StaticValueType::Custom { index, .. } => {
             let input_type = customs[*index]
                 .input
                 .as_ref()
@@ -1891,7 +2148,7 @@ fn decode_custom_input_value(
                 ),
             }
         }
-        ProviderValueType::Tuple(elements) => {
+        StaticValueType::Tuple(elements) => {
             let mut host_elements = Vec::with_capacity(elements.len());
             let mut host_element_tokens = Vec::with_capacity(elements.len());
             for _ in elements {
@@ -1915,9 +2172,9 @@ fn decode_custom_input_value(
                 value: quote!((#(#values,)*)),
             }
         }
-        ProviderValueType::Result { success, failure } => {
-            let success_host = host_value_type(success, customs, support);
-            let failure_host = host_value_type(failure, customs, support);
+        StaticValueType::Result { success, failure } => {
+            let success_host = host_static_value_type(success, customs, support);
+            let failure_host = host_static_value_type(failure, customs, support);
             let success_value = names.next("result_success_host");
             let failure_value = names.next("result_failure_host");
             let decoded_success =
@@ -1951,8 +2208,8 @@ fn decode_custom_input_value(
                 }),
             }
         }
-        ProviderValueType::Option { value } => {
-            let host = host_value_type(value, customs, support);
+        StaticValueType::Option { value } => {
+            let host = host_static_value_type(value, customs, support);
             let some_host = names.next("option_some_host");
             let decoded =
                 decode_custom_input_value(value, quote!(#some_host), customs, support, names);
@@ -2001,19 +2258,19 @@ fn custom_input_type(
 }
 
 fn custom_input_value_type(
-    type_: &ProviderValueType,
+    type_: &StaticValueType,
     customs: &[CustomModel],
     support: &TokenStream,
 ) -> syn::Result<TokenStream> {
     match type_ {
-        ProviderValueType::Scalar(type_) => Ok(quote!(#type_)),
-        ProviderValueType::Declared { type_, .. } => {
+        StaticValueType::Scalar(type_) => Ok(quote!(#type_)),
+        StaticValueType::Declared { type_, .. } => {
             Ok(quote!(<#type_ as #support::ProviderValue>::Input))
         }
-        ProviderValueType::External { payload, .. } => {
+        StaticValueType::External { payload, .. } => {
             Ok(quote!(#support::ProviderExternalItem<#payload>))
         }
-        ProviderValueType::Custom { index, .. } => {
+        StaticValueType::Custom { index, .. } => {
             let Some(input) = &customs[*index].input else {
                 return Err(syn::Error::new(
                     customs[*index].ident.span(),
@@ -2025,19 +2282,19 @@ fn custom_input_value_type(
             };
             Ok(quote!(#input))
         }
-        ProviderValueType::Tuple(elements) => {
+        StaticValueType::Tuple(elements) => {
             let mut types = Vec::with_capacity(elements.len());
             for element in elements {
                 types.push(custom_input_value_type(element, customs, support)?);
             }
             Ok(quote!((#(#types,)*)))
         }
-        ProviderValueType::Result { success, failure } => {
+        StaticValueType::Result { success, failure } => {
             let success = custom_input_value_type(success, customs, support)?;
             let failure = custom_input_value_type(failure, customs, support)?;
             Ok(quote!(::core::result::Result<#success, #failure>))
         }
-        ProviderValueType::Option { value } => {
+        StaticValueType::Option { value } => {
             let value = custom_input_value_type(value, customs, support)?;
             Ok(quote!(::core::option::Option<#value>))
         }
@@ -2045,17 +2302,17 @@ fn custom_input_value_type(
 }
 
 fn custom_list_input_value_type(
-    type_: &ProviderValueType,
+    type_: &StaticValueType,
     customs: &[CustomModel],
     support: &TokenStream,
 ) -> syn::Result<TokenStream> {
     match type_ {
-        ProviderValueType::Scalar(type_) => Ok(quote!(#type_)),
-        ProviderValueType::Declared { type_, .. } => {
+        StaticValueType::Scalar(type_) => Ok(quote!(#type_)),
+        StaticValueType::Declared { type_, .. } => {
             Ok(quote!(<#type_ as #support::ProviderValue>::ListInput))
         }
-        ProviderValueType::External { payload, .. } => Ok(quote!(#payload)),
-        ProviderValueType::Custom { index, .. } => {
+        StaticValueType::External { payload, .. } => Ok(quote!(#payload)),
+        StaticValueType::Custom { index, .. } => {
             let Some(input) = &customs[*index].input else {
                 return Err(syn::Error::new(
                     customs[*index].ident.span(),
@@ -2067,19 +2324,19 @@ fn custom_list_input_value_type(
             };
             Ok(quote!(#input))
         }
-        ProviderValueType::Tuple(elements) => {
+        StaticValueType::Tuple(elements) => {
             let mut types = Vec::with_capacity(elements.len());
             for element in elements {
                 types.push(custom_list_input_value_type(element, customs, support)?);
             }
             Ok(quote!((#(#types,)*)))
         }
-        ProviderValueType::Result { success, failure } => {
+        StaticValueType::Result { success, failure } => {
             let success = custom_list_input_value_type(success, customs, support)?;
             let failure = custom_list_input_value_type(failure, customs, support)?;
             Ok(quote!(::core::result::Result<#success, #failure>))
         }
-        ProviderValueType::Option { value } => {
+        StaticValueType::Option { value } => {
             let value = custom_list_input_value_type(value, customs, support)?;
             Ok(quote!(::core::option::Option<#value>))
         }
@@ -2114,7 +2371,7 @@ fn custom_output_codec_bounds(
 }
 
 fn collect_custom_output_codec_bounds(
-    type_: &ProviderValueType,
+    type_: &StaticValueType,
     customs: &[CustomModel],
     support: &TokenStream,
     provider: &TokenStream,
@@ -2122,7 +2379,7 @@ fn collect_custom_output_codec_bounds(
     bounds: &mut Vec<TokenStream>,
 ) {
     match type_ {
-        ProviderValueType::Declared { type_, .. } => {
+        StaticValueType::Declared { type_, .. } => {
             bounds.push(quote! {
                 #type_: #support::ProviderOutputValue<
                     Profile,
@@ -2131,7 +2388,7 @@ fn collect_custom_output_codec_bounds(
                 >
             });
         }
-        ProviderValueType::Custom { index, .. } => {
+        StaticValueType::Custom { index, .. } => {
             let type_ = &customs[*index].ident;
             bounds.push(quote! {
                 #type_: #support::ProviderOutputValue<
@@ -2141,7 +2398,7 @@ fn collect_custom_output_codec_bounds(
                 >
             });
         }
-        ProviderValueType::Tuple(elements) => {
+        StaticValueType::Tuple(elements) => {
             for element in elements {
                 collect_custom_output_codec_bounds(
                     element,
@@ -2153,7 +2410,7 @@ fn collect_custom_output_codec_bounds(
                 );
             }
         }
-        ProviderValueType::Result { success, failure } => {
+        StaticValueType::Result { success, failure } => {
             collect_custom_output_codec_bounds(
                 success,
                 customs,
@@ -2171,7 +2428,7 @@ fn collect_custom_output_codec_bounds(
                 bounds,
             );
         }
-        ProviderValueType::Option { value } => collect_custom_output_codec_bounds(
+        StaticValueType::Option { value } => collect_custom_output_codec_bounds(
             value,
             customs,
             support,
@@ -2179,7 +2436,7 @@ fn collect_custom_output_codec_bounds(
             return_type,
             bounds,
         ),
-        ProviderValueType::Scalar(_) | ProviderValueType::External { .. } => {}
+        StaticValueType::Scalar(_) | StaticValueType::External { .. } => {}
     }
 }
 
@@ -2211,19 +2468,19 @@ fn custom_input_codec_bounds(
 }
 
 fn collect_custom_input_codec_bounds(
-    type_: &ProviderValueType,
+    type_: &StaticValueType,
     customs: &[CustomModel],
     support: &TokenStream,
     bounds: &mut Vec<TokenStream>,
 ) {
     match type_ {
-        ProviderValueType::Declared { type_, .. } => {
+        StaticValueType::Declared { type_, .. } => {
             bounds.push(quote! {
                 <#type_ as #support::ProviderValue>::Input:
                     #support::ProviderInputValue<Profile, Provider, Return>
             });
         }
-        ProviderValueType::Custom { index, .. } => {
+        StaticValueType::Custom { index, .. } => {
             let input = customs[*index]
                 .input
                 .as_ref()
@@ -2232,19 +2489,19 @@ fn collect_custom_input_codec_bounds(
                 #input: #support::ProviderInputValue<Profile, Provider, Return>
             });
         }
-        ProviderValueType::Tuple(elements) => {
+        StaticValueType::Tuple(elements) => {
             for element in elements {
                 collect_custom_input_codec_bounds(element, customs, support, bounds);
             }
         }
-        ProviderValueType::Result { success, failure } => {
+        StaticValueType::Result { success, failure } => {
             collect_custom_input_codec_bounds(success, customs, support, bounds);
             collect_custom_input_codec_bounds(failure, customs, support, bounds);
         }
-        ProviderValueType::Option { value } => {
+        StaticValueType::Option { value } => {
             collect_custom_input_codec_bounds(value, customs, support, bounds);
         }
-        ProviderValueType::Scalar(_) | ProviderValueType::External { .. } => {}
+        StaticValueType::Scalar(_) | StaticValueType::External { .. } => {}
     }
 }
 
@@ -2254,11 +2511,9 @@ fn custom_list_codec_bounds(
     support: &TokenStream,
 ) -> Vec<TokenStream> {
     let mut bounds = Vec::new();
-    let custom_type = &customs[custom_index].ident;
     for access in list_declared_accesses(
-        &ProviderValueType::Custom {
+        &StaticValueType::Custom {
             index: custom_index,
-            rust: syn::parse_quote!(#custom_type),
         },
         customs,
     ) {
@@ -2321,7 +2576,10 @@ fn generate_callback_codec(
         .iter()
         .map(|generic| generic.ident.clone())
         .collect::<Vec<_>>();
-    let codec_type = callback_codec_type(codec, generic_idents.iter().map(|ident| quote!(#ident)));
+    let codec_type = callback_codec_type(
+        codec,
+        generic_idents.iter().map(|ident| quote!(#ident)).collect(),
+    );
     let host_arguments = callback_host_arguments(callback, customs, support);
     let host_return = host_input_type(&callback.return_, customs, support);
     let rust_arguments = callback
@@ -2810,7 +3068,18 @@ fn collect_function_input_bounds(
                 >
             });
         }
-        ProviderValueType::Scalar(_) | ProviderValueType::External { .. } => {}
+        ProviderValueType::List(list) => {
+            for access in list_declared_accesses(&list.collection.value, customs) {
+                let type_ = access.type_;
+                bounds.push(quote! {
+                    <#type_ as #support::ProviderValue>::ListInput:
+                        #support::ProviderListInputCodec<Profile>
+                });
+            }
+        }
+        ProviderValueType::Scalar(_)
+        | ProviderValueType::Generic(_)
+        | ProviderValueType::External { .. } => {}
     }
 }
 
@@ -2823,7 +3092,8 @@ fn collect_function_input_type_bounds(
 ) {
     match type_ {
         FunctionInputType::Value(type_) => {
-            collect_function_input_bounds(type_, customs, support, return_type, bounds);
+            let type_ = provider_value_from_input_root(type_);
+            collect_function_input_bounds(&type_, customs, support, return_type, bounds);
         }
         FunctionInputType::Generic(_) => {}
         FunctionInputType::External(_) => {}
@@ -2847,7 +3117,24 @@ fn collect_function_return_bounds(
     bounds: &mut Vec<TokenStream>,
 ) {
     match type_ {
-        FunctionReturnType::Value(FunctionOutputValueType::Value(value)) => match value.as_ref() {
+        FunctionReturnType::Value(value) => {
+            collect_function_root_output_bounds(value, customs, support, return_type, bounds)
+        }
+        FunctionReturnType::Generic(_)
+        | FunctionReturnType::External(_)
+        | FunctionReturnType::List(_) => {}
+    }
+}
+
+fn collect_function_root_output_bounds(
+    type_: &FunctionRootOutputValueType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+    return_type: &TokenStream,
+    bounds: &mut Vec<TokenStream>,
+) {
+    match type_ {
+        FunctionRootOutputValueType::Value(value) => match value.as_ref() {
             FunctionOutputLeafType::Declared { type_, .. } => {
                 bounds.push(quote! {
                     #type_: #support::ProviderRootOutputValue<Profile, __GeamProvider>
@@ -2861,21 +3148,51 @@ fn collect_function_return_bounds(
             }
             FunctionOutputLeafType::Scalar(_) | FunctionOutputLeafType::External { .. } => {}
         },
-        FunctionReturnType::Value(
-            value @ (FunctionOutputValueType::Tuple(_)
-            | FunctionOutputValueType::Result { .. }
-            | FunctionOutputValueType::Option { .. }
-            | FunctionOutputValueType::Vec(_)),
-        ) => collect_function_output_intermediate_bounds(
-            value,
-            customs,
-            support,
-            return_type,
-            bounds,
-        ),
-        FunctionReturnType::Generic(_)
-        | FunctionReturnType::External(_)
-        | FunctionReturnType::List(_) => {}
+        FunctionRootOutputValueType::Tuple(elements) => {
+            for element in elements {
+                collect_function_output_intermediate_bounds(
+                    element,
+                    customs,
+                    support,
+                    return_type,
+                    bounds,
+                );
+            }
+        }
+        FunctionRootOutputValueType::Result { success, failure } => {
+            collect_function_output_intermediate_bounds(
+                success,
+                customs,
+                support,
+                return_type,
+                bounds,
+            );
+            collect_function_output_intermediate_bounds(
+                failure,
+                customs,
+                support,
+                return_type,
+                bounds,
+            );
+        }
+        FunctionRootOutputValueType::Option { value } => {
+            collect_function_output_intermediate_bounds(
+                value,
+                customs,
+                support,
+                return_type,
+                bounds,
+            );
+        }
+        FunctionRootOutputValueType::Vec(collection) => {
+            collect_function_output_intermediate_bounds(
+                &collection.value,
+                customs,
+                support,
+                return_type,
+                bounds,
+            );
+        }
     }
 }
 
@@ -2909,6 +3226,7 @@ fn collect_function_output_intermediate_bounds(
             }
             FunctionOutputLeafType::Scalar(_) | FunctionOutputLeafType::External { .. } => {}
         },
+        FunctionOutputValueType::Generic(_) => {}
         FunctionOutputValueType::Tuple(elements) => {
             for element in elements {
                 collect_function_output_intermediate_bounds(
@@ -2976,10 +3294,13 @@ fn decode_argument(
             let value = names.next("callback");
             let codec = callback_codec_type(
                 &callback.codec,
-                function_generics.iter().map(|generic| {
-                    let index = generic.index;
-                    quote!(#support::HostTypeParameter<#index>)
-                }),
+                function_generics
+                    .iter()
+                    .map(|generic| {
+                        let index = generic.index;
+                        quote!(#support::HostTypeParameter<#index>)
+                    })
+                    .collect(),
             );
             let constructions = if let Some(constructions) = callback_constructions {
                 quote!(#constructions)
@@ -3022,7 +3343,8 @@ fn decode_input(
     } = environment;
     match type_ {
         FunctionInputType::Value(type_) => {
-            decode_value_argument(type_, input, customs, support, return_type, names, false)
+            let type_ = provider_value_from_input_root(type_);
+            decode_value_argument(&type_, input, customs, support, return_type, names, false)
         }
         FunctionInputType::Generic(value) => {
             let source = match generic_source {
@@ -3046,9 +3368,20 @@ fn decode_input(
             let payload = names.next("external_payload");
             let input_type =
                 generic_external_input_signature_type(external, customs, support, *generic_source);
+            let schema = &external.schema;
+            let arguments = external
+                .arguments
+                .iter()
+                .map(|argument| generic_host_type(&argument.host, customs, support))
+                .collect::<Vec<_>>();
+            let arguments = host_type_token_sequence(&arguments, support);
             GeneratedValue {
                 statements: quote! {
-                    let #payload = call.external_payload(#input);
+                    let #payload = call.provider_external_item_with::<
+                        __GeamProvider,
+                        #schema,
+                        #arguments,
+                    >(#input);
                     let #value: #input_type = <#input_type>::__geam_from_host(
                         #support::ProviderExternalInputContext::from_host(#payload),
                     );
@@ -3084,6 +3417,20 @@ fn decode_value_argument(
             statements: TokenStream::new(),
             value: input,
         },
+        ProviderValueType::Generic(value) => {
+            let source = &value.source;
+            let host = generic_host_type(&value.host, customs, support);
+            let value = names.next("generic_input");
+            GeneratedValue {
+                statements: quote! {
+                    let #value = #support::Value::<
+                        #source,
+                        #support::ProviderValueContext<'__geam_call, #host>,
+                    >::from_host(#input);
+                },
+                value: quote!(#value),
+            }
+        }
         ProviderValueType::Declared {
             type_,
             input: DeclaredInput::Owned,
@@ -3157,6 +3504,17 @@ fn decode_value_argument(
                         __GeamProvider,
                         #return_type,
                     >>::from_host(&mut call, #input);
+                },
+                value: quote!(#value),
+            }
+        }
+        ProviderValueType::List(list) => {
+            let decoder =
+                list_decoder_value(&list.decoder, &list.collection.value, customs, support);
+            let value = names.next("nested_list");
+            GeneratedValue {
+                statements: quote! {
+                    let #value = call.provider_list(#input, #decoder);
                 },
                 value: quote!(#value),
             }
@@ -3305,13 +3663,28 @@ fn generate_return(
             constructions: Vec::new(),
         },
         FunctionReturnType::External(external) => {
-            let generated = generate_generic_external_payload(external, quote!(returned), names);
+            let generated =
+                generate_generic_external_payload(external, quote!(returned), support, names);
             let statements = generated.statements;
             let payload = generated.value;
+            let schema = &external.schema;
+            let arguments = external
+                .arguments
+                .iter()
+                .map(|argument| generic_host_type(&argument.host, customs, support))
+                .collect::<Vec<_>>();
+            let arguments = host_type_token_sequence(&arguments, support);
             GeneratedReturn {
                 statements: quote! {
                     #statements
-                    let returned = call.create_external_with_binding::<#provider>(#payload);
+                    let returned = match #payload {
+                        ::core::result::Result::Ok(payload) => {
+                            call.create_external_with_binding::<#provider>(payload)
+                        }
+                        ::core::result::Result::Err(value) => {
+                            call.provider_external_from_item::<#schema, #arguments, _>(value)
+                        }
+                    };
                 },
                 completion: quote! {
                     ::core::result::Result::Ok(call.return_value(returned))
@@ -3335,7 +3708,7 @@ fn generate_return(
 }
 
 fn generate_function_value_return(
-    type_: &FunctionOutputValueType,
+    type_: &FunctionRootOutputValueType,
     customs: &[CustomModel],
     support: &TokenStream,
     provider: &TokenStream,
@@ -3354,10 +3727,10 @@ fn generate_function_value_return(
         constructions: &mut constructions,
     };
     match type_ {
-        FunctionOutputValueType::Value(value) => {
+        FunctionRootOutputValueType::Value(value) => {
             generate_output_leaf_return(value, customs, support, provider, state.names)
         }
-        FunctionOutputValueType::Tuple(elements) => {
+        FunctionRootOutputValueType::Tuple(elements) => {
             let generated = encode_function_output_tuple_elements(
                 elements,
                 quote!(returned),
@@ -3373,7 +3746,7 @@ fn generate_function_value_return(
                 constructions,
             }
         }
-        FunctionOutputValueType::Result { success, failure } => {
+        FunctionRootOutputValueType::Result { success, failure } => {
             let success_value = state.names.next("result_success");
             let failure_value = state.names.next("result_failure");
             let success_output = encode_function_output_intermediate(
@@ -3415,7 +3788,7 @@ fn generate_function_value_return(
                 constructions,
             }
         }
-        FunctionOutputValueType::Option { value } => {
+        FunctionRootOutputValueType::Option { value } => {
             let some_value = state.names.next("option_some");
             let output = encode_function_output_intermediate(
                 value,
@@ -3442,7 +3815,7 @@ fn generate_function_value_return(
                 constructions,
             }
         }
-        FunctionOutputValueType::Vec(collection) => {
+        FunctionRootOutputValueType::Vec(collection) => {
             let item = state.names.next("returned_list_item");
             let generated = encode_function_output_intermediate(
                 &collection.value,
@@ -3477,19 +3850,61 @@ fn provider_value_from_output_leaf(type_: &FunctionOutputLeafType) -> ProviderVa
             type_: type_.clone(),
             input: *input,
         },
-        FunctionOutputLeafType::External {
-            payload,
-            schema,
-            store_field,
-        } => ProviderValueType::External {
+        FunctionOutputLeafType::External { payload, schema } => ProviderValueType::External {
             payload: payload.clone(),
             schema: schema.clone(),
-            store_field: store_field.clone(),
         },
         FunctionOutputLeafType::Custom { index, rust } => ProviderValueType::Custom {
             index: *index,
             rust: rust.clone(),
         },
+    }
+}
+
+fn provider_value_from_input_root(type_: &FunctionInputValueType) -> ProviderValueType {
+    match type_ {
+        FunctionInputValueType::Scalar(type_) => ProviderValueType::Scalar(type_.clone()),
+        FunctionInputValueType::Declared { type_, input } => ProviderValueType::Declared {
+            type_: type_.clone(),
+            input: *input,
+        },
+        FunctionInputValueType::External { payload, schema } => ProviderValueType::External {
+            payload: payload.clone(),
+            schema: schema.clone(),
+        },
+        FunctionInputValueType::Custom { index, rust } => ProviderValueType::Custom {
+            index: *index,
+            rust: rust.clone(),
+        },
+        FunctionInputValueType::Tuple(elements) => ProviderValueType::Tuple(elements.clone()),
+        FunctionInputValueType::Result { success, failure } => ProviderValueType::Result {
+            success: success.clone(),
+            failure: failure.clone(),
+        },
+        FunctionInputValueType::Option { value } => ProviderValueType::Option {
+            value: value.clone(),
+        },
+    }
+}
+
+fn function_output_from_root(type_: &FunctionRootOutputValueType) -> FunctionOutputValueType {
+    match type_ {
+        FunctionRootOutputValueType::Value(value) => FunctionOutputValueType::Value(value.clone()),
+        FunctionRootOutputValueType::Tuple(elements) => {
+            FunctionOutputValueType::Tuple(elements.clone())
+        }
+        FunctionRootOutputValueType::Result { success, failure } => {
+            FunctionOutputValueType::Result {
+                success: success.clone(),
+                failure: failure.clone(),
+            }
+        }
+        FunctionRootOutputValueType::Option { value } => FunctionOutputValueType::Option {
+            value: value.clone(),
+        },
+        FunctionRootOutputValueType::Vec(collection) => {
+            FunctionOutputValueType::Vec(collection.clone())
+        }
     }
 }
 
@@ -3715,8 +4130,8 @@ fn custom_field_models(fields: &CustomFields) -> &[CustomFieldModel] {
     }
 }
 
-fn encode_tuple_elements(
-    elements: &[ProviderValueType],
+fn encode_static_tuple_elements(
+    elements: &[StaticValueType],
     input: TokenStream,
     environment: &OutputEnvironment<'_>,
     state: &mut OutputState<'_>,
@@ -3731,7 +4146,9 @@ fn encode_tuple_elements(
     let encoded = elements
         .iter()
         .zip(native_elements)
-        .map(|(element, value)| encode_intermediate(element, quote!(#value), environment, state))
+        .map(|(element, value)| {
+            encode_static_intermediate(element, quote!(#value), environment, state)
+        })
         .collect::<Vec<_>>();
     for element in &encoded {
         statements.extend(element.statements.clone());
@@ -3786,11 +4203,17 @@ fn encode_custom_field(
     state: &mut OutputState<'_>,
 ) -> GeneratedValue {
     match type_ {
-        CustomFieldValueType::Value(type_) => encode_intermediate(type_, input, environment, state),
+        CustomFieldValueType::Value(type_) => {
+            encode_static_intermediate(type_, input, environment, state)
+        }
         CustomFieldValueType::List(list) => {
             let item = state.names.next("returned_custom_list_item");
-            let generated =
-                encode_intermediate(&list.collection.value, quote!(#item), environment, state);
+            let generated = encode_static_intermediate(
+                &list.collection.value,
+                quote!(#item),
+                environment,
+                state,
+            );
             let statements = generated.statements;
             let item_value = generated.value;
             let values = state.names.next("returned_custom_list_values");
@@ -3819,18 +4242,18 @@ fn encode_custom_field(
     }
 }
 
-fn encode_intermediate(
-    type_: &ProviderValueType,
+fn encode_static_intermediate(
+    type_: &StaticValueType,
     input: TokenStream,
     environment: &OutputEnvironment<'_>,
     state: &mut OutputState<'_>,
 ) -> GeneratedValue {
     match type_ {
-        ProviderValueType::Scalar(_) => GeneratedValue {
+        StaticValueType::Scalar(_) => GeneratedValue {
             statements: TokenStream::new(),
             value: input,
         },
-        ProviderValueType::Declared { type_, .. } => {
+        StaticValueType::Declared { type_, .. } => {
             let support = environment.support;
             let requirement = quote!(
                 <#type_ as #support::ProviderValue>::OutputRequirements
@@ -3851,10 +4274,10 @@ fn encode_intermediate(
                 value: quote!(#value),
             }
         }
-        ProviderValueType::External { schema, .. } => {
+        StaticValueType::External { schema, .. } => {
             let support = environment.support;
             let construction = register_host_construction(
-                host_value_type(type_, environment.customs, support),
+                host_static_value_type(type_, environment.customs, support),
                 support,
                 state.names,
                 state.constructions,
@@ -3874,7 +4297,7 @@ fn encode_intermediate(
                 value: quote!(#value),
             }
         }
-        ProviderValueType::Custom { index, .. } => {
+        StaticValueType::Custom { index, .. } => {
             let type_ = &environment.customs[*index].ident;
             let support = environment.support;
             let requirement = quote!(
@@ -3896,11 +4319,11 @@ fn encode_intermediate(
                 value: quote!(#value),
             }
         }
-        ProviderValueType::Tuple(elements) => {
-            let mut generated = encode_tuple_elements(elements, input, environment, state);
+        StaticValueType::Tuple(elements) => {
+            let mut generated = encode_static_tuple_elements(elements, input, environment, state);
             let support = environment.support;
             let construction = register_host_construction(
-                host_value_type(type_, environment.customs, support),
+                host_static_value_type(type_, environment.customs, support),
                 support,
                 state.names,
                 state.constructions,
@@ -3916,22 +4339,22 @@ fn encode_intermediate(
             generated.value = quote!(#value);
             generated
         }
-        ProviderValueType::Result { success, failure } => {
+        StaticValueType::Result { success, failure } => {
             let success_value = state.names.next("result_success");
             let failure_value = state.names.next("result_failure");
             let success_output =
-                encode_intermediate(success, quote!(#success_value), environment, state);
+                encode_static_intermediate(success, quote!(#success_value), environment, state);
             let failure_output =
-                encode_intermediate(failure, quote!(#failure_value), environment, state);
+                encode_static_intermediate(failure, quote!(#failure_value), environment, state);
             let success_statements = success_output.statements;
             let success_output = success_output.value;
             let failure_statements = failure_output.statements;
             let failure_output = failure_output.value;
             let support = environment.support;
-            let success_host = host_value_type(success, environment.customs, support);
-            let failure_host = host_value_type(failure, environment.customs, support);
+            let success_host = host_static_value_type(success, environment.customs, support);
+            let failure_host = host_static_value_type(failure, environment.customs, support);
             let construction = register_host_construction(
-                host_value_type(type_, environment.customs, support),
+                host_static_value_type(type_, environment.customs, support),
                 support,
                 state.names,
                 state.constructions,
@@ -3957,15 +4380,16 @@ fn encode_intermediate(
                 value: quote!(#output),
             }
         }
-        ProviderValueType::Option { value } => {
+        StaticValueType::Option { value } => {
             let some_value = state.names.next("option_some");
-            let encoded = encode_intermediate(value, quote!(#some_value), environment, state);
+            let encoded =
+                encode_static_intermediate(value, quote!(#some_value), environment, state);
             let statements = encoded.statements;
             let encoded = encoded.value;
             let support = environment.support;
-            let host = host_value_type(value, environment.customs, support);
+            let host = host_static_value_type(value, environment.customs, support);
             let construction = register_host_construction(
-                host_value_type(type_, environment.customs, support),
+                host_static_value_type(type_, environment.customs, support),
                 support,
                 state.names,
                 state.constructions,
@@ -4002,12 +4426,13 @@ fn encode_function_output_intermediate(
     state: &mut OutputState<'_>,
 ) -> GeneratedValue {
     match type_ {
-        FunctionOutputValueType::Value(value) => encode_intermediate(
-            &provider_value_from_output_leaf(value),
-            input,
-            environment,
-            state,
-        ),
+        FunctionOutputValueType::Value(value) => {
+            encode_function_output_leaf_intermediate(value, input, environment, state)
+        }
+        FunctionOutputValueType::Generic(_) => GeneratedValue {
+            statements: TokenStream::new(),
+            value: quote!(#input.into_host()),
+        },
         FunctionOutputValueType::Tuple(elements) => {
             let mut generated =
                 encode_function_output_tuple_elements(elements, input, environment, state);
@@ -4151,6 +4576,83 @@ fn encode_function_output_intermediate(
     }
 }
 
+fn encode_function_output_leaf_intermediate(
+    type_: &FunctionOutputLeafType,
+    input: TokenStream,
+    environment: &OutputEnvironment<'_>,
+    state: &mut OutputState<'_>,
+) -> GeneratedValue {
+    match type_ {
+        FunctionOutputLeafType::Scalar(_) => GeneratedValue {
+            statements: TokenStream::new(),
+            value: input,
+        },
+        FunctionOutputLeafType::Declared { type_, .. } => {
+            let support = environment.support;
+            let requirement = quote!(
+                <#type_ as #support::ProviderValue>::OutputRequirements
+            );
+            let construction =
+                register_provider_requirement(requirement, state.names, state.constructions);
+            let value = state.names.next("returned_declared");
+            let provider = environment.provider;
+            let return_type = environment.return_type;
+            GeneratedValue {
+                statements: quote! {
+                    let #value = <#type_ as #support::ProviderOutputValue<
+                        Profile,
+                        #provider,
+                        #return_type,
+                    >>::into_host(#input, &mut call, &#construction);
+                },
+                value: quote!(#value),
+            }
+        }
+        FunctionOutputLeafType::External { schema, .. } => {
+            let support = environment.support;
+            let host = quote!(#support::HostExternalType<#schema>);
+            let construction =
+                register_host_construction(host, support, state.names, state.constructions);
+            let value = state.names.next("returned_external");
+            GeneratedValue {
+                statements: quote! {
+                    let #value = call.construct_external_with_binding::<
+                        __GeamProvider,
+                        #schema,
+                        #support::HostTypeListEnd,
+                    >(
+                        #construction.token(),
+                        #input,
+                    );
+                },
+                value: quote!(#value),
+            }
+        }
+        FunctionOutputLeafType::Custom { index, .. } => {
+            let type_ = &environment.customs[*index].ident;
+            let support = environment.support;
+            let requirement = quote!(
+                <#type_ as #support::ProviderValue>::OutputRequirements
+            );
+            let construction =
+                register_provider_requirement(requirement, state.names, state.constructions);
+            let value = state.names.next("returned_custom");
+            let provider = environment.provider;
+            let return_type = environment.return_type;
+            GeneratedValue {
+                statements: quote! {
+                    let #value = <#type_ as #support::ProviderOutputValue<
+                        Profile,
+                        #provider,
+                        #return_type,
+                    >>::into_host(#input, &mut call, &#construction);
+                },
+                value: quote!(#value),
+            }
+        }
+    }
+}
+
 fn encode_callback_argument(
     type_: &FunctionReturnType,
     input: TokenStream,
@@ -4164,7 +4666,8 @@ fn encode_callback_argument(
             value: quote!(#input.into_host()),
         },
         FunctionReturnType::External(external) => {
-            let generated = generate_generic_external_payload(external, input, names);
+            let generated =
+                generate_generic_external_payload(external, input, environment.support, names);
             let statements = generated.statements;
             let payload = generated.value;
             let host =
@@ -4185,11 +4688,18 @@ fn encode_callback_argument(
             GeneratedValue {
                 statements: quote! {
                     #statements
-                    let #value = call.construct_external_with_binding::<
-                        #provider,
-                        #schema,
-                        #arguments,
-                    >(#construction.token(), #payload);
+                    let #value = match #payload {
+                        ::core::result::Result::Ok(payload) => {
+                            call.construct_external_with_binding::<
+                                #provider,
+                                #schema,
+                                #arguments,
+                            >(#construction.token(), payload)
+                        }
+                        ::core::result::Result::Err(value) => {
+                            call.provider_external_from_item::<#schema, #arguments, _>(value)
+                        }
+                    };
                 },
                 value: quote!(#value),
             }
@@ -4203,7 +4713,8 @@ fn encode_callback_argument(
                 names,
                 constructions,
             };
-            encode_function_output_intermediate(value, input, environment, &mut state)
+            let value = function_output_from_root(value);
+            encode_function_output_intermediate(&value, input, environment, &mut state)
         }
     }
 }
@@ -4225,13 +4736,16 @@ fn host_input_type(
     support: &TokenStream,
 ) -> TokenStream {
     match type_ {
-        FunctionInputType::Value(type_) => host_value_type(type_, customs, support),
+        FunctionInputType::Value(type_) => {
+            let type_ = provider_value_from_input_root(type_);
+            host_value_type(&type_, customs, support)
+        }
         FunctionInputType::Generic(value) => generic_host_type(&value.host, customs, support),
         FunctionInputType::External(external) => {
             generic_external_host_type(external, customs, support)
         }
         FunctionInputType::List(list) => {
-            let item = host_value_type(&list.collection.value, customs, support);
+            let item = host_static_value_type(&list.collection.value, customs, support);
             quote!(#support::HostListType<#item>)
         }
     }
@@ -4243,13 +4757,16 @@ fn host_return_type(
     support: &TokenStream,
 ) -> TokenStream {
     match type_ {
-        FunctionReturnType::Value(type_) => function_output_host_type(type_, customs, support),
+        FunctionReturnType::Value(type_) => {
+            let type_ = function_output_from_root(type_);
+            function_output_host_type(&type_, customs, support)
+        }
         FunctionReturnType::Generic(value) => generic_host_type(&value.host, customs, support),
         FunctionReturnType::External(external) => {
             generic_external_host_type(external, customs, support)
         }
         FunctionReturnType::List(list) => {
-            let item = host_value_type(&list.collection.value, customs, support);
+            let item = host_static_value_type(&list.collection.value, customs, support);
             quote!(#support::HostListType<#item>)
         }
     }
@@ -4264,6 +4781,7 @@ fn function_output_host_type(
         FunctionOutputValueType::Value(value) => {
             host_value_type(&provider_value_from_output_leaf(value), customs, support)
         }
+        FunctionOutputValueType::Generic(value) => generic_host_type(&value.host, customs, support),
         FunctionOutputValueType::Tuple(elements) => {
             let elements = function_output_host_type_sequence(elements, customs, support);
             quote!(#support::HostTupleType<#elements>)
@@ -4305,6 +4823,7 @@ fn host_value_type(
 ) -> TokenStream {
     match type_ {
         ProviderValueType::Scalar(type_) => quote!(#type_),
+        ProviderValueType::Generic(value) => generic_host_type(&value.host, customs, support),
         ProviderValueType::Declared { type_, .. } => {
             quote!(<#type_ as #support::ProviderValue>::Host)
         }
@@ -4314,6 +4833,10 @@ fn host_value_type(
         ProviderValueType::Custom { index, .. } => {
             let schema = &customs[*index].schema;
             quote!(#support::HostCustomType<#schema>)
+        }
+        ProviderValueType::List(list) => {
+            let item = host_static_value_type(&list.collection.value, customs, support);
+            quote!(#support::HostListType<#item>)
         }
         ProviderValueType::Tuple(elements) => {
             let elements = host_value_type_sequence(elements, customs, support);
@@ -4326,6 +4849,43 @@ fn host_value_type(
         }
         ProviderValueType::Option { value } => {
             let value = host_value_type(value, customs, support);
+            quote!(#support::ProviderOption<#value>)
+        }
+    }
+}
+
+fn host_static_value_type(
+    type_: &StaticValueType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+) -> TokenStream {
+    match type_ {
+        StaticValueType::Scalar(type_) => quote!(#type_),
+        StaticValueType::Declared { type_, .. } => {
+            quote!(<#type_ as #support::ProviderValue>::Host)
+        }
+        StaticValueType::External { schema, .. } => {
+            quote!(#support::HostExternalType<#schema>)
+        }
+        StaticValueType::Custom { index, .. } => {
+            let schema = &customs[*index].schema;
+            quote!(#support::HostCustomType<#schema>)
+        }
+        StaticValueType::Tuple(elements) => {
+            let elements = elements
+                .iter()
+                .map(|element| host_static_value_type(element, customs, support))
+                .collect::<Vec<_>>();
+            let elements = host_type_token_sequence(&elements, support);
+            quote!(#support::HostTupleType<#elements>)
+        }
+        StaticValueType::Result { success, failure } => {
+            let success = host_static_value_type(success, customs, support);
+            let failure = host_static_value_type(failure, customs, support);
+            quote!(#support::ProviderResult<#success, #failure>)
+        }
+        StaticValueType::Option { value } => {
+            let value = host_static_value_type(value, customs, support);
             quote!(#support::ProviderOption<#value>)
         }
     }
@@ -4392,9 +4952,9 @@ fn host_custom_field_type(
     support: &TokenStream,
 ) -> TokenStream {
     match type_ {
-        CustomFieldValueType::Value(type_) => host_value_type(type_, customs, support),
+        CustomFieldValueType::Value(type_) => host_static_value_type(type_, customs, support),
         CustomFieldValueType::List(list) => {
-            let item = host_value_type(&list.collection.value, customs, support);
+            let item = host_static_value_type(&list.collection.value, customs, support);
             quote!(#support::HostListType<#item>)
         }
     }
@@ -4421,7 +4981,7 @@ fn wrapper_input_type(
     support: &TokenStream,
 ) -> TokenStream {
     match type_ {
-        FunctionInputType::Value(type_) => wrapper_value_type(type_, customs, support),
+        FunctionInputType::Value(type_) => wrapper_input_value_type(type_, customs, support),
         FunctionInputType::Generic(value) => {
             let host = generic_host_type(&value.host, customs, support);
             quote!(<#host as #support::HostType>::Value<'__geam_call>)
@@ -4431,7 +4991,7 @@ fn wrapper_input_type(
             quote!(#support::HostExternal<'__geam_call, #host>)
         }
         FunctionInputType::List(list) => {
-            let item = host_value_type(&list.collection.value, customs, support);
+            let item = host_static_value_type(&list.collection.value, customs, support);
             quote!(#support::HostList<'__geam_call, #item>)
         }
     }
@@ -4462,36 +5022,36 @@ fn callback_host_arguments(
         })
 }
 
-fn wrapper_value_type(
-    type_: &ProviderValueType,
+fn wrapper_input_value_type(
+    type_: &FunctionInputValueType,
     customs: &[CustomModel],
     support: &TokenStream,
 ) -> TokenStream {
     match type_ {
-        ProviderValueType::Scalar(type_) => quote!(#type_),
-        ProviderValueType::Declared { type_, .. } => {
+        FunctionInputValueType::Scalar(type_) => quote!(#type_),
+        FunctionInputValueType::Declared { type_, .. } => {
             quote!(
                 <<#type_ as #support::ProviderValue>::Host as
                     #support::HostType>::Value<'__geam_call>
             )
         }
-        ProviderValueType::External { schema, .. } => {
+        FunctionInputValueType::External { schema, .. } => {
             quote!(#support::HostExternal<'__geam_call, #support::HostExternalType<#schema>>)
         }
-        ProviderValueType::Custom { index, .. } => {
+        FunctionInputValueType::Custom { index, .. } => {
             let schema = &customs[*index].schema;
             quote!(#support::HostCustom<'__geam_call, #support::HostCustomType<#schema>>)
         }
-        ProviderValueType::Tuple(elements) => {
+        FunctionInputValueType::Tuple(elements) => {
             let elements = host_value_type_sequence(elements, customs, support);
             quote!(#support::HostTuple<'__geam_call, #elements>)
         }
-        ProviderValueType::Result { success, failure } => {
+        FunctionInputValueType::Result { success, failure } => {
             let success = host_value_type(success, customs, support);
             let failure = host_value_type(failure, customs, support);
             quote!(#support::HostCustom<'__geam_call, #support::ProviderResult<#success, #failure>>)
         }
-        ProviderValueType::Option { value } => {
+        FunctionInputValueType::Option { value } => {
             let value = host_value_type(value, customs, support);
             quote!(#support::HostCustom<'__geam_call, #support::ProviderOption<#value>>)
         }
@@ -4609,7 +5169,7 @@ fn provider_construction_index(index: usize, support: &TokenStream) -> TokenStre
 }
 
 fn register_list_decoder(list: &CollectionType, decoders: &mut Vec<ListDecoderModel>) -> Ident {
-    let key = provider_value_key(&list.value);
+    let key = static_value_key(&list.value);
     if let Some(decoder) = decoders
         .iter()
         .find(|decoder: &&ListDecoderModel| decoder.key == key)
@@ -4632,8 +5192,8 @@ fn validate_list_return(function: &FunctionModel) -> syn::Result<()> {
             matches!(
                 argument,
                 FunctionArgumentType::Input(FunctionInputType::List(argument))
-                    if provider_value_key(&argument.collection.value)
-                        == provider_value_key(&returned.collection.value)
+                    if static_value_key(&argument.collection.value)
+                        == static_value_key(&returned.collection.value)
             )
         })
     {
@@ -4645,29 +5205,29 @@ fn validate_list_return(function: &FunctionModel) -> syn::Result<()> {
     Ok(())
 }
 
-fn provider_value_key(type_: &ProviderValueType) -> String {
+fn static_value_key(type_: &StaticValueType) -> String {
     match type_ {
-        ProviderValueType::Scalar(type_) => format!("scalar:{}", quote!(#type_)),
-        ProviderValueType::Declared { type_, .. } => {
+        StaticValueType::Scalar(type_) => format!("scalar:{}", quote!(#type_)),
+        StaticValueType::Declared { type_, .. } => {
             format!("declared:{}", quote!(#type_))
         }
-        ProviderValueType::External { schema, .. } => format!("external:{schema}"),
-        ProviderValueType::Custom { index, .. } => format!("custom:{index}"),
-        ProviderValueType::Tuple(elements) => format!(
+        StaticValueType::External { schema, .. } => format!("external:{schema}"),
+        StaticValueType::Custom { index, .. } => format!("custom:{index}"),
+        StaticValueType::Tuple(elements) => format!(
             "tuple:({})",
             elements
                 .iter()
-                .map(provider_value_key)
+                .map(static_value_key)
                 .collect::<Vec<_>>()
                 .join(",")
         ),
-        ProviderValueType::Result { success, failure } => format!(
+        StaticValueType::Result { success, failure } => format!(
             "result:<{},{}>",
-            provider_value_key(success),
-            provider_value_key(failure),
+            static_value_key(success),
+            static_value_key(failure),
         ),
-        ProviderValueType::Option { value } => {
-            format!("option:<{}>", provider_value_key(value))
+        StaticValueType::Option { value } => {
+            format!("option:<{}>", static_value_key(value))
         }
     }
 }
@@ -4675,11 +5235,11 @@ fn provider_value_key(type_: &ProviderValueType) -> String {
 fn generate_list_decoder(
     decoder: &ListDecoderModel,
     customs: &[CustomModel],
+    custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
 ) -> TokenStream {
     let ident = &decoder.ident;
-    let item = custom_list_input_value_type(&decoder.value, customs, support)
-        .expect("validated List input values must have an input marker");
+    let item = validated_list_item_type(&decoder.value, custom_inputs, support);
     let accesses = list_external_accesses(&decoder.value, customs);
     let declared = list_declared_accesses(&decoder.value, customs);
     let fields = accesses.iter().map(|access| {
@@ -4716,12 +5276,13 @@ fn generate_list_decoder(
         &decoder.value,
         quote!(__geam_value),
         customs,
+        custom_inputs,
         support,
         &mut names,
     );
     let statements = decoded.statements;
     let value = decoded.value;
-    let view = list_item_view_type(&decoder.value, customs, support);
+    let view = list_item_view_type(&decoder.value, custom_inputs, support);
     quote! {
         #definition
 
@@ -4739,9 +5300,43 @@ fn generate_list_decoder(
     }
 }
 
+fn validated_list_item_type(
+    type_: &StaticValueType,
+    custom_inputs: &BTreeMap<usize, Ident>,
+    support: &TokenStream,
+) -> TokenStream {
+    match type_ {
+        StaticValueType::Scalar(type_) => quote!(#type_),
+        StaticValueType::Declared { type_, .. } => {
+            quote!(<#type_ as #support::ProviderValue>::ListInput)
+        }
+        StaticValueType::External { payload, .. } => quote!(#payload),
+        StaticValueType::Custom { index, .. } => {
+            let input = &custom_inputs[index];
+            quote!(#input)
+        }
+        StaticValueType::Tuple(elements) => {
+            let elements = elements
+                .iter()
+                .map(|element| validated_list_item_type(element, custom_inputs, support))
+                .collect::<Vec<_>>();
+            quote!((#(#elements,)*))
+        }
+        StaticValueType::Result { success, failure } => {
+            let success = validated_list_item_type(success, custom_inputs, support);
+            let failure = validated_list_item_type(failure, custom_inputs, support);
+            quote!(::core::result::Result<#success, #failure>)
+        }
+        StaticValueType::Option { value } => {
+            let value = validated_list_item_type(value, custom_inputs, support);
+            quote!(::core::option::Option<#value>)
+        }
+    }
+}
+
 fn list_decoder_value(
     ident: &Ident,
-    value: &ProviderValueType,
+    value: &StaticValueType,
     customs: &[CustomModel],
     support: &TokenStream,
 ) -> TokenStream {
@@ -4778,7 +5373,7 @@ fn list_decoder_value(
 }
 
 fn list_declared_accesses(
-    type_: &ProviderValueType,
+    type_: &StaticValueType,
     customs: &[CustomModel],
 ) -> Vec<ListDeclaredAccess> {
     fn collect_custom_field(
@@ -4793,12 +5388,12 @@ fn list_declared_accesses(
     }
 
     fn collect(
-        type_: &ProviderValueType,
+        type_: &StaticValueType,
         customs: &[CustomModel],
         accesses: &mut Vec<ListDeclaredAccess>,
     ) {
         match type_ {
-            ProviderValueType::Declared { type_, .. } => {
+            StaticValueType::Declared { type_, .. } => {
                 let field = declared_access_field(type_);
                 if accesses.iter().any(|access| access.field == field) {
                     return;
@@ -4808,24 +5403,24 @@ fn list_declared_accesses(
                     field,
                 });
             }
-            ProviderValueType::Tuple(elements) => {
+            StaticValueType::Tuple(elements) => {
                 for element in elements {
                     collect(element, customs, accesses);
                 }
             }
-            ProviderValueType::Result { success, failure } => {
+            StaticValueType::Result { success, failure } => {
                 collect(success, customs, accesses);
                 collect(failure, customs, accesses);
             }
-            ProviderValueType::Option { value } => collect(value, customs, accesses),
-            ProviderValueType::Custom { index, .. } => {
+            StaticValueType::Option { value } => collect(value, customs, accesses),
+            StaticValueType::Custom { index, .. } => {
                 for constructor in &customs[*index].constructors {
                     for field in custom_field_models(&constructor.fields) {
                         collect_custom_field(&field.value, customs, accesses);
                     }
                 }
             }
-            ProviderValueType::Scalar(_) | ProviderValueType::External { .. } => {}
+            StaticValueType::Scalar(_) | StaticValueType::External { .. } => {}
         }
     }
 
@@ -4844,7 +5439,7 @@ fn declared_access_field(type_: &Type) -> Ident {
 }
 
 fn list_external_accesses(
-    type_: &ProviderValueType,
+    type_: &StaticValueType,
     customs: &[CustomModel],
 ) -> Vec<ListExternalAccess> {
     fn collect_custom_field(
@@ -4861,13 +5456,13 @@ fn list_external_accesses(
     }
 
     fn collect(
-        type_: &ProviderValueType,
+        type_: &StaticValueType,
         customs: &[CustomModel],
         accesses: &mut Vec<ListExternalAccess>,
     ) {
         match type_ {
-            ProviderValueType::Scalar(_) | ProviderValueType::Declared { .. } => {}
-            ProviderValueType::External {
+            StaticValueType::Scalar(_) | StaticValueType::Declared { .. } => {}
+            StaticValueType::External {
                 payload,
                 schema,
                 store_field,
@@ -4881,17 +5476,17 @@ fn list_external_accesses(
                     field: store_field.clone(),
                 });
             }
-            ProviderValueType::Tuple(elements) => {
+            StaticValueType::Tuple(elements) => {
                 for element in elements {
                     collect(element, customs, accesses);
                 }
             }
-            ProviderValueType::Result { success, failure } => {
+            StaticValueType::Result { success, failure } => {
                 collect(success, customs, accesses);
                 collect(failure, customs, accesses);
             }
-            ProviderValueType::Option { value } => collect(value, customs, accesses),
-            ProviderValueType::Custom { index, .. } => {
+            StaticValueType::Option { value } => collect(value, customs, accesses),
+            StaticValueType::Custom { index, .. } => {
                 for constructor in &customs[*index].constructors {
                     for field in custom_field_models(&constructor.fields) {
                         collect_custom_field(&field.value, customs, accesses);
@@ -4907,32 +5502,33 @@ fn list_external_accesses(
 }
 
 fn decode_list_item(
-    type_: &ProviderValueType,
+    type_: &StaticValueType,
     input: TokenStream,
     customs: &[CustomModel],
+    custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
     names: &mut GeneratedNames,
 ) -> GeneratedValue {
     match type_ {
-        ProviderValueType::Scalar(type_) => GeneratedValue {
+        StaticValueType::Scalar(type_) => GeneratedValue {
             statements: TokenStream::new(),
             value: quote!(#input.into_scalar::<#type_>()),
         },
-        ProviderValueType::Declared { type_, .. } => {
+        StaticValueType::Declared { type_, .. } => {
             let field = declared_access_field(type_);
             GeneratedValue {
                 statements: TokenStream::new(),
                 value: quote!(#support::ProviderListItemDecoder::decode(&self.#field, #input)),
             }
         }
-        ProviderValueType::External { store_field, .. } => GeneratedValue {
+        StaticValueType::External { store_field, .. } => GeneratedValue {
             statements: TokenStream::new(),
             value: quote!(#input.into_external(&self.#store_field)),
         },
-        ProviderValueType::Custom { index, .. } => {
-            decode_list_custom(*index, input, customs, support, names)
+        StaticValueType::Custom { index, .. } => {
+            decode_list_custom(*index, input, customs, custom_inputs, support, names)
         }
-        ProviderValueType::Tuple(elements) => {
+        StaticValueType::Tuple(elements) => {
             let tuple = names.next("list_tuple");
             let decoded_elements = elements
                 .iter()
@@ -4945,7 +5541,14 @@ fn decode_list_item(
                 elements.iter().zip(&decoded_elements).enumerate().rev()
             {
                 let host = names.next("list_tuple_element");
-                let generated = decode_list_item(element, quote!(#host), customs, support, names);
+                let generated = decode_list_item(
+                    element,
+                    quote!(#host),
+                    customs,
+                    custom_inputs,
+                    support,
+                    names,
+                );
                 let generated_statements = generated.statements;
                 let generated_value = generated.value;
                 statements.extend(quote! {
@@ -4959,15 +5562,27 @@ fn decode_list_item(
                 value: quote!((#(#decoded_elements,)*)),
             }
         }
-        ProviderValueType::Result { success, failure } => {
+        StaticValueType::Result { success, failure } => {
             let custom = names.next("list_result");
             let field = names.next("list_result_field");
-            let decoded_success =
-                decode_list_item(success, quote!(#field), customs, support, names);
+            let decoded_success = decode_list_item(
+                success,
+                quote!(#field),
+                customs,
+                custom_inputs,
+                support,
+                names,
+            );
             let success_statements = decoded_success.statements;
             let success_value = decoded_success.value;
-            let decoded_failure =
-                decode_list_item(failure, quote!(#field), customs, support, names);
+            let decoded_failure = decode_list_item(
+                failure,
+                quote!(#field),
+                customs,
+                custom_inputs,
+                support,
+                names,
+            );
             let failure_statements = decoded_failure.statements;
             let failure_value = decoded_failure.value;
             GeneratedValue {
@@ -4993,10 +5608,17 @@ fn decode_list_item(
                 },
             }
         }
-        ProviderValueType::Option { value } => {
+        StaticValueType::Option { value } => {
             let custom = names.next("list_option");
             let field = names.next("list_option_field");
-            let decoded = decode_list_item(value, quote!(#field), customs, support, names);
+            let decoded = decode_list_item(
+                value,
+                quote!(#field),
+                customs,
+                custom_inputs,
+                support,
+                names,
+            );
             let statements = decoded.statements;
             let value = decoded.value;
             GeneratedValue {
@@ -5025,12 +5647,13 @@ fn decode_list_custom_field(
     type_: &CustomFieldValueType,
     input: TokenStream,
     customs: &[CustomModel],
+    custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
     names: &mut GeneratedNames,
 ) -> GeneratedValue {
     match type_ {
         CustomFieldValueType::Value(type_) => {
-            decode_list_item(type_, input, customs, support, names)
+            decode_list_item(type_, input, customs, custom_inputs, support, names)
         }
         CustomFieldValueType::List(list) => {
             let decoder = nested_list_decoder_value(&list.decoder, &list.collection.value, customs);
@@ -5046,14 +5669,12 @@ fn decode_list_custom(
     custom_index: usize,
     input: TokenStream,
     customs: &[CustomModel],
+    custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
     names: &mut GeneratedNames,
 ) -> GeneratedValue {
     let custom = &customs[custom_index];
-    let input_type = custom
-        .input
-        .as_ref()
-        .expect("custom list inputs require a generated input type");
+    let input_type = &custom_inputs[&custom_index];
     let custom_value = names.next("list_custom");
     let mut arms = Vec::new();
     for (constructor_index, constructor) in custom.constructors.iter().enumerate() {
@@ -5065,8 +5686,14 @@ fn decode_list_custom(
         let mut statements = TokenStream::new();
         for (field_index, (field, decoded)) in fields.iter().zip(&decoded_names).enumerate().rev() {
             let host = names.next("list_custom_field");
-            let generated =
-                decode_list_custom_field(&field.value, quote!(#host), customs, support, names);
+            let generated = decode_list_custom_field(
+                &field.value,
+                quote!(#host),
+                customs,
+                custom_inputs,
+                support,
+                names,
+            );
             let generated_statements = generated.statements;
             let generated_value = generated.value;
             statements.extend(quote! {
@@ -5098,7 +5725,7 @@ fn decode_list_custom(
 
 fn nested_list_decoder_value(
     ident: &Ident,
-    value: &ProviderValueType,
+    value: &StaticValueType,
     customs: &[CustomModel],
 ) -> TokenStream {
     let accesses = list_external_accesses(value, customs);
@@ -5150,40 +5777,37 @@ fn custom_input_expression(
 }
 
 fn list_item_view_type(
-    type_: &ProviderValueType,
-    customs: &[CustomModel],
+    type_: &StaticValueType,
+    custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
 ) -> TokenStream {
     match type_ {
-        ProviderValueType::Scalar(type_) => quote!(#type_),
-        ProviderValueType::Declared { type_, .. } => {
+        StaticValueType::Scalar(type_) => quote!(#type_),
+        StaticValueType::Declared { type_, .. } => {
             quote!(<<#type_ as #support::ProviderValue>::ListInput as
                 #support::ProviderListInputValue>::View)
         }
-        ProviderValueType::External { payload, .. } => {
+        StaticValueType::External { payload, .. } => {
             quote!(#support::ProviderExternalItem<#payload>)
         }
-        ProviderValueType::Custom { index, .. } => {
-            let input = customs[*index]
-                .input
-                .as_ref()
-                .expect("custom List inputs require a generated input type");
+        StaticValueType::Custom { index, .. } => {
+            let input = &custom_inputs[index];
             quote!(#input)
         }
-        ProviderValueType::Tuple(elements) => {
-            let mut types = Vec::with_capacity(elements.len());
-            for element in elements {
-                types.push(list_item_view_type(element, customs, support));
-            }
+        StaticValueType::Tuple(elements) => {
+            let types = elements
+                .iter()
+                .map(|element| list_item_view_type(element, custom_inputs, support))
+                .collect::<Vec<_>>();
             quote!((#(#types,)*))
         }
-        ProviderValueType::Result { success, failure } => {
-            let success = list_item_view_type(success, customs, support);
-            let failure = list_item_view_type(failure, customs, support);
+        StaticValueType::Result { success, failure } => {
+            let success = list_item_view_type(success, custom_inputs, support);
+            let failure = list_item_view_type(failure, custom_inputs, support);
             quote!(::core::result::Result<#success, #failure>)
         }
-        ProviderValueType::Option { value } => {
-            let value = list_item_view_type(value, customs, support);
+        StaticValueType::Option { value } => {
+            let value = list_item_view_type(value, custom_inputs, support);
             quote!(::core::option::Option<#value>)
         }
     }
@@ -5191,7 +5815,7 @@ fn list_item_view_type(
 
 fn list_signature_type(list: &ListType, customs: &[CustomModel], support: &TokenStream) -> Type {
     let item = &list.collection.item;
-    let host_item = host_value_type(&list.collection.value, customs, support);
+    let host_item = host_static_value_type(&list.collection.value, customs, support);
     let decoder = &list.decoder;
     syn::parse_quote! {
         #support::List<
@@ -5201,9 +5825,14 @@ fn list_signature_type(list: &ListType, customs: &[CustomModel], support: &Token
     }
 }
 
-fn provider_input_signature_type(type_: &ProviderValueType, support: &TokenStream) -> Type {
+fn provider_input_signature_type(
+    type_: &ProviderValueType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+) -> Type {
     match type_ {
         ProviderValueType::Scalar(type_) => type_.clone(),
+        ProviderValueType::Generic(value) => generic_value_signature_type(value, customs, support),
         ProviderValueType::Declared {
             type_,
             input: DeclaredInput::Owned,
@@ -5216,20 +5845,31 @@ fn provider_input_signature_type(type_: &ProviderValueType, support: &TokenStrea
             syn::parse_quote!(#support::ProviderExternalItem<#payload>)
         }
         ProviderValueType::Custom { rust, .. } => rust.clone(),
+        ProviderValueType::List(list) => {
+            let item = &list.collection.item;
+            let host_item = host_static_value_type(&list.collection.value, customs, support);
+            let decoder = &list.decoder;
+            syn::parse_quote! {
+                #support::List<
+                    #item,
+                    #support::ProviderListContext<'__geam_call, #host_item, #decoder>,
+                >
+            }
+        }
         ProviderValueType::Tuple(elements) => {
             let mut types = Vec::with_capacity(elements.len());
             for element in elements {
-                types.push(provider_input_signature_type(element, support));
+                types.push(provider_input_signature_type(element, customs, support));
             }
             syn::parse_quote!((#(#types,)*))
         }
         ProviderValueType::Result { success, failure } => {
-            let success = provider_input_signature_type(success, support);
-            let failure = provider_input_signature_type(failure, support);
+            let success = provider_input_signature_type(success, customs, support);
+            let failure = provider_input_signature_type(failure, customs, support);
             syn::parse_quote!(::core::result::Result<#success, #failure>)
         }
         ProviderValueType::Option { value } => {
-            let value = provider_input_signature_type(value, support);
+            let value = provider_input_signature_type(value, customs, support);
             syn::parse_quote!(::core::option::Option<#value>)
         }
     }
@@ -5269,6 +5909,7 @@ fn generic_external_host_type(
 fn generate_generic_external_payload(
     external: &GenericExternalType,
     input: TokenStream,
+    support: &TokenStream,
     names: &mut GeneratedNames,
 ) -> GeneratedValue {
     let output = &external.output;
@@ -5294,7 +5935,12 @@ fn generate_generic_external_payload(
             GeneratedValue {
                 statements: quote! {
                     let #output { #(#patterns,)* } = #input;
-                    let #payload = #payload_type { #(#values,)* };
+                    let #payload = ::core::result::Result::<
+                        #payload_type,
+                        #support::ProviderExternalItem<#payload_type>,
+                    >::Ok(
+                        #payload_type { #(#values,)* },
+                    );
                 },
                 value: quote!(#payload),
             }
@@ -5304,7 +5950,7 @@ fn generate_generic_external_payload(
             GeneratedValue {
                 statements: quote! {
                     let #output { __geam_context: #context, .. } = #input;
-                    let #payload = #context.into_payload();
+                    let #payload = #context.into_value();
                 },
                 value: quote!(#payload),
             }
@@ -5381,7 +6027,10 @@ fn callback_signature_type(
     support: &TokenStream,
 ) -> Type {
     let signature = &callback.signature;
-    let codec = callback_codec_type(&callback.codec, generics.iter().map(|ident| quote!(#ident)));
+    let codec = callback_codec_type(
+        &callback.codec,
+        generics.iter().map(|ident| quote!(#ident)).collect(),
+    );
     let mut path = callback.path.clone();
     for segment in path.path.segments.iter_mut().rev().take(1) {
         segment.arguments = PathArguments::AngleBracketed(syn::parse_quote! {
@@ -5400,11 +6049,7 @@ fn callback_signature_type(
     Type::Path(path)
 }
 
-fn callback_codec_type(
-    codec: &Ident,
-    arguments: impl IntoIterator<Item = TokenStream>,
-) -> TokenStream {
-    let arguments = arguments.into_iter().collect::<Vec<_>>();
+fn callback_codec_type(codec: &Ident, arguments: Vec<TokenStream>) -> TokenStream {
     if arguments.is_empty() {
         quote!(#codec)
     } else {
@@ -5418,7 +6063,10 @@ fn callback_output_signature_type(
     support: &TokenStream,
 ) -> Type {
     match type_ {
-        FunctionReturnType::Value(value) => function_output_rust_type(value),
+        FunctionReturnType::Value(value) => {
+            let value = function_output_from_root(value);
+            function_output_rust_type(&value, customs, support)
+        }
         FunctionReturnType::Generic(value) => generic_value_signature_type(value, customs, support),
         FunctionReturnType::External(external) => {
             generic_external_output_signature_type(external, customs, support)
@@ -5433,7 +6081,10 @@ fn callback_input_signature_type(
     support: &TokenStream,
 ) -> Type {
     match type_ {
-        FunctionInputType::Value(value) => provider_input_signature_type(value, support),
+        FunctionInputType::Value(value) => {
+            let value = provider_value_from_input_root(value);
+            provider_input_signature_type(&value, customs, support)
+        }
         FunctionInputType::Generic(value) => generic_value_signature_type(value, customs, support),
         FunctionInputType::External(external) => generic_external_input_signature_type(
             external,
@@ -5451,7 +6102,7 @@ fn callback_list_signature_type(
     support: &TokenStream,
 ) -> Type {
     let item = &list.collection.item;
-    let host_item = host_value_type(&list.collection.value, customs, support);
+    let host_item = host_static_value_type(&list.collection.value, customs, support);
     let decoder = &list.decoder;
     syn::parse_quote! {
         #support::List<
@@ -5461,7 +6112,11 @@ fn callback_list_signature_type(
     }
 }
 
-fn function_output_rust_type(type_: &FunctionOutputValueType) -> Type {
+fn function_output_rust_type(
+    type_: &FunctionOutputValueType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+) -> Type {
     match type_ {
         FunctionOutputValueType::Value(value) => match value.as_ref() {
             FunctionOutputLeafType::Scalar(type_)
@@ -5469,24 +6124,27 @@ fn function_output_rust_type(type_: &FunctionOutputValueType) -> Type {
             FunctionOutputLeafType::External { payload, .. } => syn::parse_quote!(#payload),
             FunctionOutputLeafType::Custom { rust, .. } => rust.clone(),
         },
+        FunctionOutputValueType::Generic(value) => {
+            generic_value_signature_type(value, customs, support)
+        }
         FunctionOutputValueType::Tuple(elements) => {
             let elements = elements
                 .iter()
-                .map(function_output_rust_type)
+                .map(|element| function_output_rust_type(element, customs, support))
                 .collect::<Vec<_>>();
             syn::parse_quote!((#(#elements,)*))
         }
         FunctionOutputValueType::Result { success, failure } => {
-            let success = function_output_rust_type(success);
-            let failure = function_output_rust_type(failure);
+            let success = function_output_rust_type(success, customs, support);
+            let failure = function_output_rust_type(failure, customs, support);
             syn::parse_quote!(::core::result::Result<#success, #failure>)
         }
         FunctionOutputValueType::Option { value } => {
-            let value = function_output_rust_type(value);
+            let value = function_output_rust_type(value, customs, support);
             syn::parse_quote!(::core::option::Option<#value>)
         }
         FunctionOutputValueType::Vec(collection) => {
-            let value = function_output_rust_type(&collection.value);
+            let value = function_output_rust_type(&collection.value, customs, support);
             syn::parse_quote!(::std::vec::Vec<#value>)
         }
     }
@@ -5960,15 +6618,13 @@ fn build_external_model(
                     "generic external `payload` must be a non-generic type path",
                 ));
             };
-            if payload_path
-                .segments
-                .iter()
-                .any(|segment| !matches!(segment.arguments, PathArguments::None))
-            {
-                return Err(syn::Error::new_spanned(
-                    &explicit_payload,
-                    "generic external `payload` must be a non-generic type path",
-                ));
+            for segment in &payload_path.segments {
+                if !matches!(segment.arguments, PathArguments::None) {
+                    return Err(syn::Error::new_spanned(
+                        &explicit_payload,
+                        "generic external `payload` must be a non-generic type path",
+                    ));
+                }
             }
             if !matches!(payload.fields, Fields::Unit) {
                 return Err(syn::Error::new_spanned(
@@ -6308,6 +6964,7 @@ fn validate_function(
                     list_decoders,
                     &mut generic_scope,
                     support,
+                    false,
                 )?)
             };
             match &type_ {
@@ -6336,9 +6993,10 @@ fn validate_function(
                     );
                 }
                 FunctionArgumentType::Input(FunctionInputType::Value(value))
-                    if contains_source_wrapper(value) =>
+                    if function_input_contains_source_wrapper(value) =>
                 {
-                    *argument.ty = provider_input_signature_type(value, support);
+                    let value = provider_value_from_input_root(value);
+                    *argument.ty = provider_input_signature_type(&value, customs, support);
                 }
                 FunctionArgumentType::Input(FunctionInputType::Value(_)) => {}
             }
@@ -6371,38 +7029,32 @@ fn validate_function(
     validate_list_return(&model)?;
     if let FunctionReturnType::List(list) = &model.return_ {
         let list = list_signature_type(list, customs, support);
-        let output = if let Some((_, host_result)) = &host_result {
-            let host_result = collection_type_with_item(host_result, &list);
-            syn::parse_quote!(#host_result)
-        } else {
-            list
-        };
+        let output = wrap_host_result_type(list, host_result.as_ref().map(|(_, path)| path));
         function.sig.output =
             ReturnType::Type(Token![->](proc_macro2::Span::call_site()), Box::new(output));
         has_list = true;
     } else if let FunctionReturnType::Generic(value) = &model.return_ {
         let output = generic_value_signature_type(value, customs, support);
-        let output = if let Some((_, host_result)) = &host_result {
-            let host_result = collection_type_with_item(host_result, &output);
-            syn::parse_quote!(#host_result)
-        } else {
-            output
-        };
+        let output = wrap_host_result_type(output, host_result.as_ref().map(|(_, path)| path));
         function.sig.output =
             ReturnType::Type(Token![->](proc_macro2::Span::call_site()), Box::new(output));
     } else if let FunctionReturnType::External(external) = &model.return_ {
         let output = generic_external_output_signature_type(external, customs, support);
-        let output = if let Some((_, host_result)) = &host_result {
-            let host_result = collection_type_with_item(host_result, &output);
-            syn::parse_quote!(#host_result)
-        } else {
-            output
-        };
+        let output = wrap_host_result_type(output, host_result.as_ref().map(|(_, path)| path));
+        function.sig.output =
+            ReturnType::Type(Token![->](proc_macro2::Span::call_site()), Box::new(output));
+    } else if let FunctionReturnType::Value(value) = &model.return_
+        && function_root_output_contains_generic(value)
+    {
+        let value = function_output_from_root(value);
+        let output = function_output_rust_type(&value, customs, support);
+        let output = wrap_host_result_type(output, host_result.as_ref().map(|(_, path)| path));
         function.sig.output =
             ReturnType::Type(Token![->](proc_macro2::Span::call_site()), Box::new(output));
     }
     if !matches!(model.call, CallAccess::None)
         || function_contains_generic_value(&model)
+        || function_contains_nested_list(&model)
         || function_contains_call_scoped_generic_external(&model)
         || function_contains_callback(&model)
     {
@@ -6410,6 +7062,14 @@ fn validate_function(
     }
     if has_list {
         prepend_function_lifetime(&mut function.sig.generics, syn::parse_quote!('__geam_list));
+    }
+    if has_list && !matches!(model.call, CallAccess::None) {
+        function
+            .sig
+            .generics
+            .make_where_clause()
+            .predicates
+            .push(syn::parse_quote!('__geam_list: '__geam_call));
     }
     if let Some((profile, bound)) = &profile {
         function
@@ -6448,19 +7108,111 @@ fn prepend_function_lifetime(generics: &mut syn::Generics, lifetime: syn::Lifeti
     generics.params.extend(existing);
 }
 
-fn contains_source_wrapper(type_: &ProviderValueType) -> bool {
+fn provider_value_contains_source_wrapper(type_: &ProviderValueType) -> bool {
     match type_ {
-        ProviderValueType::Result { .. } | ProviderValueType::Option { .. } => true,
-        ProviderValueType::Tuple(elements) => elements.iter().any(contains_source_wrapper),
+        ProviderValueType::Result { .. }
+        | ProviderValueType::Option { .. }
+        | ProviderValueType::List(_) => true,
+        ProviderValueType::Tuple(elements) => {
+            elements.iter().any(provider_value_contains_source_wrapper)
+        }
         ProviderValueType::Scalar(_)
+        | ProviderValueType::Generic(_)
         | ProviderValueType::Declared { .. }
         | ProviderValueType::External { .. }
         | ProviderValueType::Custom { .. } => false,
     }
 }
 
+fn function_input_contains_source_wrapper(type_: &FunctionInputValueType) -> bool {
+    match type_ {
+        FunctionInputValueType::Result { .. } | FunctionInputValueType::Option { .. } => true,
+        FunctionInputValueType::Tuple(elements) => {
+            elements.iter().any(provider_value_contains_source_wrapper)
+        }
+        FunctionInputValueType::Scalar(_)
+        | FunctionInputValueType::Declared { .. }
+        | FunctionInputValueType::External { .. }
+        | FunctionInputValueType::Custom { .. } => false,
+    }
+}
+
+fn provider_value_nested_generic_source(value: &ProviderValueType) -> Option<&Type> {
+    match value {
+        ProviderValueType::Generic(value) => Some(&value.source),
+        ProviderValueType::Tuple(elements) => elements
+            .iter()
+            .find_map(provider_value_nested_generic_source),
+        ProviderValueType::Result { success, failure } => {
+            provider_value_nested_generic_source(success)
+                .or_else(|| provider_value_nested_generic_source(failure))
+        }
+        ProviderValueType::Option { value } => provider_value_nested_generic_source(value),
+        ProviderValueType::Scalar(_)
+        | ProviderValueType::Declared { .. }
+        | ProviderValueType::External { .. }
+        | ProviderValueType::Custom { .. }
+        | ProviderValueType::List(_) => None,
+    }
+}
+
+fn function_input_nested_generic_source(value: &FunctionInputValueType) -> Option<&Type> {
+    match value {
+        FunctionInputValueType::Tuple(elements) => elements
+            .iter()
+            .find_map(provider_value_nested_generic_source),
+        FunctionInputValueType::Result { success, failure } => {
+            provider_value_nested_generic_source(success)
+                .or_else(|| provider_value_nested_generic_source(failure))
+        }
+        FunctionInputValueType::Option { value } => provider_value_nested_generic_source(value),
+        FunctionInputValueType::Scalar(_)
+        | FunctionInputValueType::Declared { .. }
+        | FunctionInputValueType::External { .. }
+        | FunctionInputValueType::Custom { .. } => None,
+    }
+}
+
+fn function_output_contains_generic(value: &FunctionOutputValueType) -> bool {
+    match value {
+        FunctionOutputValueType::Generic(_) => true,
+        FunctionOutputValueType::Tuple(elements) => {
+            elements.iter().any(function_output_contains_generic)
+        }
+        FunctionOutputValueType::Result { success, failure } => {
+            function_output_contains_generic(success) || function_output_contains_generic(failure)
+        }
+        FunctionOutputValueType::Option { value } => function_output_contains_generic(value),
+        FunctionOutputValueType::Vec(collection) => {
+            function_output_contains_generic(&collection.value)
+        }
+        FunctionOutputValueType::Value(_) => false,
+    }
+}
+
+fn function_root_output_contains_generic(value: &FunctionRootOutputValueType) -> bool {
+    match value {
+        FunctionRootOutputValueType::Tuple(elements) => {
+            elements.iter().any(function_output_contains_generic)
+        }
+        FunctionRootOutputValueType::Result { success, failure } => {
+            function_output_contains_generic(success) || function_output_contains_generic(failure)
+        }
+        FunctionRootOutputValueType::Option { value } => function_output_contains_generic(value),
+        FunctionRootOutputValueType::Vec(collection) => {
+            function_output_contains_generic(&collection.value)
+        }
+        FunctionRootOutputValueType::Value(_) => false,
+    }
+}
+
 fn function_contains_generic_value(function: &FunctionModel) -> bool {
-    if matches!(function.return_, FunctionReturnType::Generic(_)) {
+    if matches!(function.return_, FunctionReturnType::Generic(_))
+        || matches!(
+            &function.return_,
+            FunctionReturnType::Value(value) if function_root_output_contains_generic(value)
+        )
+    {
         return true;
     }
     for argument in &function.arguments {
@@ -6472,6 +7224,48 @@ fn function_contains_generic_value(function: &FunctionModel) -> bool {
         }
     }
     false
+}
+
+fn provider_value_contains_list(value: &ProviderValueType) -> bool {
+    match value {
+        ProviderValueType::List(_) => true,
+        ProviderValueType::Tuple(elements) => elements.iter().any(provider_value_contains_list),
+        ProviderValueType::Result { success, failure } => {
+            provider_value_contains_list(success) || provider_value_contains_list(failure)
+        }
+        ProviderValueType::Option { value } => provider_value_contains_list(value),
+        ProviderValueType::Scalar(_)
+        | ProviderValueType::Generic(_)
+        | ProviderValueType::Declared { .. }
+        | ProviderValueType::External { .. }
+        | ProviderValueType::Custom { .. } => false,
+    }
+}
+
+fn function_input_contains_list(value: &FunctionInputValueType) -> bool {
+    match value {
+        FunctionInputValueType::Tuple(elements) => {
+            elements.iter().any(provider_value_contains_list)
+        }
+        FunctionInputValueType::Result { success, failure } => {
+            provider_value_contains_list(success) || provider_value_contains_list(failure)
+        }
+        FunctionInputValueType::Option { value } => provider_value_contains_list(value),
+        FunctionInputValueType::Scalar(_)
+        | FunctionInputValueType::Declared { .. }
+        | FunctionInputValueType::External { .. }
+        | FunctionInputValueType::Custom { .. } => false,
+    }
+}
+
+fn function_contains_nested_list(function: &FunctionModel) -> bool {
+    function.arguments.iter().any(|argument| {
+        matches!(
+            argument,
+            FunctionArgumentType::Input(FunctionInputType::Value(value))
+                if function_input_contains_list(value)
+        )
+    })
 }
 
 fn function_contains_call_scoped_generic_external(function: &FunctionModel) -> bool {
@@ -6527,6 +7321,14 @@ fn collection_type_with_item(collection: &TypePath, item: &Type) -> TypePath {
         segment.arguments = PathArguments::AngleBracketed(syn::parse_quote!(<#item>));
     }
     collection
+}
+
+fn wrap_host_result_type(output: Type, host_result: Option<&TypePath>) -> Type {
+    if let Some(host_result) = host_result {
+        Type::Path(collection_type_with_item(host_result, &output))
+    } else {
+        output
+    }
 }
 
 fn collection_type_with_items(collection: &TypePath, items: &[Type]) -> TypePath {
@@ -6729,6 +7531,7 @@ fn callback_type(
         list_decoders,
         generics,
         support,
+        true,
     )?;
 
     let mut arguments = Vec::with_capacity(signature.inputs.len());
@@ -6895,7 +7698,7 @@ fn classify_generic_host_type(
             },
         });
     }
-    if let Some((index, _)) = custom_input_model(type_, customs) {
+    if let Some((index, _, _)) = custom_input_model(type_, customs) {
         return Ok(ClassifiedGenericHostType {
             instantiated: type_.clone(),
             host: GenericHostType::Custom { index },
@@ -6962,6 +7765,7 @@ fn classify_input(
     list_decoders: &mut Vec<ListDecoderModel>,
     generics: &mut GenericParameterScope,
     support: &TokenStream,
+    allow_nested_generic: bool,
 ) -> syn::Result<FunctionInputType> {
     if let Some(external) =
         generic_external_type(type_, true, externals, generics, customs, support)?
@@ -6980,6 +7784,12 @@ fn classify_input(
         ));
     }
     if let Type::Reference(reference) = type_ {
+        if is_advanced_external(&reference.elem)? {
+            return Err(syn::Error::new_spanned(
+                type_,
+                "provider::advanced::External<T> arguments are already retained views and must be passed by value",
+            ));
+        }
         if is_collection(&reference.elem, "List") {
             return Err(syn::Error::new_spanned(
                 type_,
@@ -7003,10 +7813,9 @@ fn classify_input(
                 ));
             }
             return Ok(FunctionInputType::Value(Box::new(
-                ProviderValueType::External {
+                FunctionInputValueType::External {
                     payload: external.ident.clone(),
                     schema: external.schema.clone(),
-                    store_field: external.store_field.clone(),
                 },
             )));
         }
@@ -7018,7 +7827,7 @@ fn classify_input(
         }
         if reference.mutability.is_none() && is_qualified_type_path(&reference.elem) {
             return Ok(FunctionInputType::Value(Box::new(
-                ProviderValueType::Declared {
+                FunctionInputValueType::Declared {
                     type_: (*reference.elem).clone(),
                     input: DeclaredInput::BorrowedExternal,
                 },
@@ -7051,81 +7860,57 @@ fn classify_input(
             "Vec<T> arguments are not supported; use geam::List<T>",
         ));
     }
-    Ok(FunctionInputType::Value(Box::new(classify_argument_value(
-        type_, externals, customs, generics, support,
-    )?)))
-}
-
-fn classify_argument_value(
-    type_: &Type,
-    externals: &[ExternalModel],
-    customs: &[CustomModel],
-    generics: &mut GenericParameterScope,
-    support: &TokenStream,
-) -> syn::Result<ProviderValueType> {
-    if generic_value_type(type_, generics, externals, customs, support)?.is_some() {
+    let value =
+        classify_function_input_value(type_, externals, customs, list_decoders, generics, support)?;
+    if !allow_nested_generic && let Some(source) = function_input_nested_generic_source(&value) {
         return Err(syn::Error::new_spanned(
-            type_,
+            source,
             "Value<...> must be the complete source argument",
         ));
     }
-    if let Type::Reference(reference) = type_ {
-        if let Some(external) = external_type(&reference.elem, externals) {
-            if reference.mutability.is_some() {
-                return Err(syn::Error::new_spanned(
-                    type_,
-                    format!(
-                        "external payload `{}` arguments must be immutable references",
-                        external.ident
-                    ),
-                ));
-            }
-            return Ok(ProviderValueType::External {
-                payload: external.ident.clone(),
-                schema: external.schema.clone(),
-                store_field: external.store_field.clone(),
-            });
-        }
-        if reference.mutability.is_none() && is_qualified_type_path(&reference.elem) {
-            return Ok(ProviderValueType::Declared {
-                type_: (*reference.elem).clone(),
-                input: DeclaredInput::BorrowedExternal,
-            });
-        }
-        return Err(syn::Error::new_spanned(
-            type_,
-            "provider source arguments may borrow only declared external payloads",
-        ));
-    }
-    if is_collection(type_, "List") {
-        return Err(syn::Error::new_spanned(
-            type_,
-            "geam::List<T> is supported only as a top-level source argument",
-        ));
-    }
-    if is_collection(type_, "Vec") {
-        return Err(syn::Error::new_spanned(
-            type_,
-            "Vec<T> arguments are not supported; use geam::List<T>",
-        ));
-    }
+    Ok(FunctionInputType::Value(Box::new(value)))
+}
+
+fn classify_function_input_value(
+    type_: &Type,
+    externals: &[ExternalModel],
+    customs: &[CustomModel],
+    list_decoders: &mut Vec<ListDecoderModel>,
+    generics: &mut GenericParameterScope,
+    support: &TokenStream,
+) -> syn::Result<FunctionInputValueType> {
     match source_wrapper(type_)? {
         SourceWrapper::Result {
             success, failure, ..
         } => {
-            return Ok(ProviderValueType::Result {
+            return Ok(FunctionInputValueType::Result {
                 success: Box::new(classify_argument_value(
-                    success, externals, customs, generics, support,
+                    success,
+                    externals,
+                    customs,
+                    list_decoders,
+                    generics,
+                    support,
                 )?),
                 failure: Box::new(classify_argument_value(
-                    failure, externals, customs, generics, support,
+                    failure,
+                    externals,
+                    customs,
+                    list_decoders,
+                    generics,
+                    support,
                 )?),
             });
         }
         SourceWrapper::Option { value, .. } => {
-            return Ok(ProviderValueType::Option {
+            return Ok(FunctionInputValueType::Option {
                 value: Box::new(classify_argument_value(
-                    value, externals, customs, generics, support,
+                    value,
+                    externals,
+                    customs,
+                    list_decoders,
+                    generics,
+                    support,
                 )?),
             });
         }
@@ -7145,14 +7930,168 @@ fn classify_argument_value(
     {
         let mut elements = Vec::with_capacity(tuple.elems.len());
         for element in &tuple.elems {
-            elements.push(classify_argument_value(
-                element, externals, customs, generics, support,
-            )?);
+            let element = classify_argument_value(
+                element,
+                externals,
+                customs,
+                list_decoders,
+                generics,
+                support,
+            )?;
+            elements.push(element);
+        }
+        return Ok(FunctionInputValueType::Tuple(elements));
+    }
+    if let Some((index, _, _)) = custom_input_model(type_, customs) {
+        return Ok(FunctionInputValueType::Custom {
+            index,
+            rust: type_.clone(),
+        });
+    }
+    if let Some(custom) = custom_output_type(type_, customs) {
+        let input = if let Some(input) = &custom.input {
+            format!("`{input}`")
+        } else {
+            "an explicit generated input type".to_owned()
+        };
+        return Err(syn::Error::new_spanned(
+            type_,
+            format!(
+                "custom output `{}` cannot be used as a source argument; use {input}",
+                custom.ident
+            ),
+        ));
+    }
+    if is_declared_provider_type(type_)? {
+        return Ok(FunctionInputValueType::Declared {
+            type_: type_.clone(),
+            input: DeclaredInput::Owned,
+        });
+    }
+    Ok(FunctionInputValueType::Scalar(type_.clone()))
+}
+
+fn classify_argument_value(
+    type_: &Type,
+    externals: &[ExternalModel],
+    customs: &[CustomModel],
+    list_decoders: &mut Vec<ListDecoderModel>,
+    generics: &mut GenericParameterScope,
+    support: &TokenStream,
+) -> syn::Result<ProviderValueType> {
+    if let Some(value) = generic_value_type(type_, generics, externals, customs, support)? {
+        return Ok(ProviderValueType::Generic(Box::new(value)));
+    }
+    if let Type::Reference(reference) = type_ {
+        if let Some(external) = external_type(&reference.elem, externals) {
+            if reference.mutability.is_some() {
+                return Err(syn::Error::new_spanned(
+                    type_,
+                    format!(
+                        "external payload `{}` arguments must be immutable references",
+                        external.ident
+                    ),
+                ));
+            }
+            return Ok(ProviderValueType::External {
+                payload: external.ident.clone(),
+                schema: external.schema.clone(),
+            });
+        }
+        if reference.mutability.is_none() && is_qualified_type_path(&reference.elem) {
+            return Ok(ProviderValueType::Declared {
+                type_: (*reference.elem).clone(),
+                input: DeclaredInput::BorrowedExternal,
+            });
+        }
+        return Err(syn::Error::new_spanned(
+            type_,
+            "provider source arguments may borrow only declared external payloads",
+        ));
+    }
+    if let Some(item) = collection_item(type_, "List")? {
+        let value = classify_collection_input_item(&item, externals, customs, "List")?;
+        let collection = CollectionType {
+            source: type_.clone(),
+            item,
+            value,
+        };
+        let decoder = register_list_decoder(&collection, list_decoders);
+        return Ok(ProviderValueType::List(Box::new(ListType {
+            collection,
+            decoder,
+        })));
+    }
+    if is_collection(type_, "Vec") {
+        return Err(syn::Error::new_spanned(
+            type_,
+            "Vec<T> arguments are not supported; use geam::List<T>",
+        ));
+    }
+    match source_wrapper(type_)? {
+        SourceWrapper::Result {
+            success, failure, ..
+        } => {
+            return Ok(ProviderValueType::Result {
+                success: Box::new(classify_argument_value(
+                    success,
+                    externals,
+                    customs,
+                    list_decoders,
+                    generics,
+                    support,
+                )?),
+                failure: Box::new(classify_argument_value(
+                    failure,
+                    externals,
+                    customs,
+                    list_decoders,
+                    generics,
+                    support,
+                )?),
+            });
+        }
+        SourceWrapper::Option { value, .. } => {
+            return Ok(ProviderValueType::Option {
+                value: Box::new(classify_argument_value(
+                    value,
+                    externals,
+                    customs,
+                    list_decoders,
+                    generics,
+                    support,
+                )?),
+            });
+        }
+        SourceWrapper::Other => {}
+    }
+    if let Some(external) = external_type(type_, externals) {
+        return Err(syn::Error::new_spanned(
+            type_,
+            format!(
+                "external payload `{}` arguments must be immutable references",
+                external.ident
+            ),
+        ));
+    }
+    if let Type::Tuple(tuple) = type_
+        && !tuple.elems.is_empty()
+    {
+        let mut elements = Vec::with_capacity(tuple.elems.len());
+        for element in &tuple.elems {
+            let element = classify_argument_value(
+                element,
+                externals,
+                customs,
+                list_decoders,
+                generics,
+                support,
+            )?;
+            elements.push(element);
         }
         return Ok(ProviderValueType::Tuple(elements));
     }
-    if let Some((index, custom)) = custom_input_model(type_, customs) {
-        debug_assert!(custom.input.is_some());
+    if let Some((index, _, _)) = custom_input_model(type_, customs) {
         return Ok(ProviderValueType::Custom {
             index,
             rust: type_.clone(),
@@ -7172,7 +8111,7 @@ fn classify_argument_value(
             ),
         ));
     }
-    if is_qualified_type_path(type_) {
+    if is_declared_provider_type(type_)? {
         return Ok(ProviderValueType::Declared {
             type_: type_.clone(),
             input: DeclaredInput::Owned,
@@ -7256,15 +8195,60 @@ fn classify_return(
     }
     if let Some(item) = collection_item(type_, "Vec")? {
         let value = classify_function_output_value(&item, externals, customs, generics, support)?;
-        return Ok(FunctionReturnType::Value(FunctionOutputValueType::Vec(
+        return Ok(FunctionReturnType::Value(FunctionRootOutputValueType::Vec(
             FunctionOutputCollectionType {
                 value: Box::new(value),
             },
         )));
     }
-    Ok(FunctionReturnType::Value(classify_function_output_value(
-        type_, externals, customs, generics, support,
-    )?))
+    Ok(FunctionReturnType::Value(
+        classify_function_root_output_value(type_, externals, customs, generics, support)?,
+    ))
+}
+
+fn classify_function_root_output_value(
+    type_: &Type,
+    externals: &[ExternalModel],
+    customs: &[CustomModel],
+    generics: &mut GenericParameterScope,
+    support: &TokenStream,
+) -> syn::Result<FunctionRootOutputValueType> {
+    match source_wrapper(type_)? {
+        SourceWrapper::Result {
+            success, failure, ..
+        } => {
+            return Ok(FunctionRootOutputValueType::Result {
+                success: Box::new(classify_function_output_value(
+                    success, externals, customs, generics, support,
+                )?),
+                failure: Box::new(classify_function_output_value(
+                    failure, externals, customs, generics, support,
+                )?),
+            });
+        }
+        SourceWrapper::Option { value, .. } => {
+            return Ok(FunctionRootOutputValueType::Option {
+                value: Box::new(classify_function_output_value(
+                    value, externals, customs, generics, support,
+                )?),
+            });
+        }
+        SourceWrapper::Other => {}
+    }
+    if let Type::Tuple(tuple) = type_
+        && !tuple.elems.is_empty()
+    {
+        let mut elements = Vec::with_capacity(tuple.elems.len());
+        for element in &tuple.elems {
+            elements.push(classify_function_output_value(
+                element, externals, customs, generics, support,
+            )?);
+        }
+        return Ok(FunctionRootOutputValueType::Tuple(elements));
+    }
+    Ok(FunctionRootOutputValueType::Value(Box::new(
+        classify_function_output_leaf(type_, externals, customs)?,
+    )))
 }
 
 fn classify_function_output_value(
@@ -7274,11 +8258,8 @@ fn classify_function_output_value(
     generics: &mut GenericParameterScope,
     support: &TokenStream,
 ) -> syn::Result<FunctionOutputValueType> {
-    if generic_value_type(type_, generics, externals, customs, support)?.is_some() {
-        return Err(syn::Error::new_spanned(
-            type_,
-            "Value<...> must be the complete source return",
-        ));
+    if let Some(value) = generic_value_type(type_, generics, externals, customs, support)? {
+        return Ok(FunctionOutputValueType::Generic(Box::new(value)));
     }
     if let Type::Reference(reference) = type_ {
         if let Some(external) = external_type(&reference.elem, externals) {
@@ -7329,15 +8310,6 @@ fn classify_function_output_value(
         }
         SourceWrapper::Other => {}
     }
-    if let Some(external) = external_type(type_, externals) {
-        return Ok(FunctionOutputValueType::Value(Box::new(
-            FunctionOutputLeafType::External {
-                payload: external.ident.clone(),
-                schema: external.schema.clone(),
-                store_field: external.store_field.clone(),
-            },
-        )));
-    }
     if let Type::Tuple(tuple) = type_
         && !tuple.elems.is_empty()
     {
@@ -7349,35 +8321,44 @@ fn classify_function_output_value(
         }
         return Ok(FunctionOutputValueType::Tuple(elements));
     }
-    if let Some((index, _)) = custom_output_type_with_index(type_, customs) {
-        return Ok(FunctionOutputValueType::Value(Box::new(
-            FunctionOutputLeafType::Custom {
-                index,
-                rust: type_.clone(),
-            },
-        )));
+    Ok(FunctionOutputValueType::Value(Box::new(
+        classify_function_output_leaf(type_, externals, customs)?,
+    )))
+}
+
+fn classify_function_output_leaf(
+    type_: &Type,
+    externals: &[ExternalModel],
+    customs: &[CustomModel],
+) -> syn::Result<FunctionOutputLeafType> {
+    if let Some(external) = external_type(type_, externals) {
+        return Ok(FunctionOutputLeafType::External {
+            payload: external.ident.clone(),
+            schema: external.schema.clone(),
+        });
     }
-    if let Some((_, custom)) = custom_input_model(type_, customs) {
+    if let Some((index, _)) = custom_output_type_with_index(type_, customs) {
+        return Ok(FunctionOutputLeafType::Custom {
+            index,
+            rust: type_.clone(),
+        });
+    }
+    if let Some((_, custom, input)) = custom_input_model(type_, customs) {
         return Err(syn::Error::new_spanned(
             type_,
             format!(
                 "custom input `{}` cannot be returned; return `{}`",
-                custom.input.as_ref().expect("matched input must exist"),
-                custom.ident
+                input, custom.ident
             ),
         ));
     }
-    if is_qualified_type_path(type_) {
-        return Ok(FunctionOutputValueType::Value(Box::new(
-            FunctionOutputLeafType::Declared {
-                type_: type_.clone(),
-                input: DeclaredInput::Owned,
-            },
-        )));
+    if is_declared_provider_type(type_)? {
+        return Ok(FunctionOutputLeafType::Declared {
+            type_: type_.clone(),
+            input: DeclaredInput::Owned,
+        });
     }
-    Ok(FunctionOutputValueType::Value(Box::new(
-        FunctionOutputLeafType::Scalar(type_.clone()),
-    )))
+    Ok(FunctionOutputLeafType::Scalar(type_.clone()))
 }
 
 fn classify_collection_input_item(
@@ -7385,13 +8366,19 @@ fn classify_collection_input_item(
     externals: &[ExternalModel],
     customs: &[CustomModel],
     collection: &str,
-) -> syn::Result<ProviderValueType> {
+) -> syn::Result<StaticValueType> {
     if is_type_application_named(type_, "Value") {
         return Err(syn::Error::new_spanned(
             type_,
             format!(
                 "Value<...> cannot be a {collection} item; wrap the complete generic source shape in Value<...>"
             ),
+        ));
+    }
+    if is_advanced_external(type_)? {
+        return Err(syn::Error::new_spanned(
+            type_,
+            "provider::advanced::External<T> is a call-scoped pass-through and cannot be a List item; use the declared payload input type",
         ));
     }
     if let Type::Reference(reference) = type_ {
@@ -7419,7 +8406,7 @@ fn classify_collection_input_item(
         SourceWrapper::Result {
             success, failure, ..
         } => {
-            return Ok(ProviderValueType::Result {
+            return Ok(StaticValueType::Result {
                 success: Box::new(classify_collection_input_item(
                     success, externals, customs, collection,
                 )?),
@@ -7429,7 +8416,7 @@ fn classify_collection_input_item(
             });
         }
         SourceWrapper::Option { value, .. } => {
-            return Ok(ProviderValueType::Option {
+            return Ok(StaticValueType::Option {
                 value: Box::new(classify_collection_input_item(
                     value, externals, customs, collection,
                 )?),
@@ -7438,17 +8425,14 @@ fn classify_collection_input_item(
         SourceWrapper::Other => {}
     }
     if let Some(external) = external_type(type_, externals) {
-        return Ok(ProviderValueType::External {
+        return Ok(StaticValueType::External {
             payload: external.ident.clone(),
             schema: external.schema.clone(),
             store_field: external.store_field.clone(),
         });
     }
-    if let Some((index, _)) = custom_input_model(type_, customs) {
-        return Ok(ProviderValueType::Custom {
-            index,
-            rust: type_.clone(),
-        });
+    if let Some((index, _, _)) = custom_input_model(type_, customs) {
+        return Ok(StaticValueType::Custom { index });
     }
     if let Some(custom) = custom_output_type(type_, customs) {
         let input = if let Some(input) = &custom.input {
@@ -7472,15 +8456,14 @@ fn classify_collection_input_item(
             .iter()
             .map(|element| classify_collection_input_item(element, externals, customs, collection))
             .collect::<syn::Result<Vec<_>>>()?;
-        return Ok(ProviderValueType::Tuple(elements));
+        return Ok(StaticValueType::Tuple(elements));
     }
     if is_qualified_type_path(type_) {
-        return Ok(ProviderValueType::Declared {
+        return Ok(StaticValueType::Declared {
             type_: type_.clone(),
-            input: DeclaredInput::Owned,
         });
     }
-    Ok(ProviderValueType::Scalar(type_.clone()))
+    Ok(StaticValueType::Scalar(type_.clone()))
 }
 
 fn collection_item(type_: &Type, name: &str) -> syn::Result<Option<Type>> {
@@ -7634,6 +8617,18 @@ fn is_qualified_type_path(type_: &Type) -> bool {
     )
 }
 
+fn is_declared_provider_type(type_: &Type) -> syn::Result<bool> {
+    is_advanced_external(type_).map(|external| external | is_qualified_type_path(type_))
+}
+
+fn is_advanced_external(type_: &Type) -> syn::Result<bool> {
+    if !is_type_application_named(type_, "External") {
+        return Ok(false);
+    }
+    collection_item(type_, "External")?;
+    Ok(true)
+}
+
 fn external_type<'external>(
     type_: &Type,
     externals: &'external [ExternalModel],
@@ -7720,7 +8715,7 @@ mod tests {
     use super::{
         ExternalArguments, GenericParameterScope, ModuleArguments, build_external_model,
         classify_collection_input_item, expand, find_unwrapped_generic, list_item_view_type,
-        provider_value_key, retained_parameter_accessor,
+        retained_parameter_accessor, static_value_key,
     };
     use quote::quote;
     use syn::{ItemFn, Type};
@@ -9090,15 +10085,6 @@ mod tests {
                 quote! {
                     mod counter {
                         #[geam::function]
-                        fn identity<Item>(value: Value<Item>) -> Option<Value<Item>> { todo!() }
-                    }
-                },
-                "Value<...> must be the complete source return",
-            ),
-            (
-                quote! {
-                    mod counter {
-                        #[geam::function]
                         fn identity(value: Value) -> bool { true }
                     }
                 },
@@ -9273,6 +10259,21 @@ mod tests {
         for (item, expected) in cases {
             assert_eq!(expansion_error(item), expected);
         }
+
+        let expansion = expand(
+            quote!(path = "counter", crate_path = geam_core),
+            quote! {
+                mod counter {
+                    #[geam::function]
+                    fn identity<Item>(value: Value<Item>) -> Option<Value<Item>> { todo!() }
+                }
+            },
+        )
+        .expect("generic values should compose inside source output shapes")
+        .to_string();
+        assert!(expansion.contains(
+            "ProviderOption < geam_core :: __macro_support :: HostTypeParameter < 0usize > >"
+        ));
     }
 
     #[test]
@@ -10201,7 +11202,13 @@ mod tests {
         assert!(expansion.contains("context . stored_values_equal"));
         assert!(expansion.contains("context . stored_value_hash"));
         assert!(expansion.contains("concat ! (\"Box\" , \"(<opaque>)\")"));
-        assert_eq!(expansion.matches("call . external_payload").count(), 3);
+        assert_eq!(
+            expansion
+                .matches("call . provider_external_item_with")
+                .count(),
+            3,
+        );
+        assert!(!expansion.contains("call . external_payload_with"));
         assert!(expansion.contains(
             "ProviderExternalDeclaration for BoxValue < Item , __GeamStoredContext0 , >"
         ));
@@ -10213,7 +11220,7 @@ mod tests {
             expansion
                 .matches("call . create_external_with_binding :: < __GeamProvider >")
                 .count(),
-            2,
+            3,
         );
         assert!(!expansion.contains("HostExternalPayloadBuilder"));
         assert!(!expansion.contains("payload . clone"));
@@ -10334,7 +11341,7 @@ mod tests {
     }
 
     #[test]
-    fn retained_payload_expansion_uses_operation_contexts_and_positional_accessors() {
+    fn retained_payload_expansion_uses_one_explicit_owner_across_declarations() {
         let expansion = expand(
             quote!(path = "priority_queue", crate_path = geam_core),
             quote! {
@@ -10349,6 +11356,15 @@ mod tests {
                         manual,
                     )]
                     pub struct PriorityQueue<Item>;
+
+                    #[geam::external(
+                        name = "TransientPriorityQueue",
+                        parameters = [Item],
+                        input = TransientPriorityQueueInput,
+                        payload = QueuePayload,
+                        manual,
+                    )]
+                    pub struct TransientPriorityQueue<Item>;
 
                     #[geam::function]
                     fn empty<Item>() -> PriorityQueue<Item> {
@@ -10373,6 +11389,12 @@ mod tests {
         assert_eq!(
             expansion
                 .matches("HostExternalStore < QueuePayload >")
+                .count(),
+            2,
+        );
+        assert_eq!(
+            expansion
+                .matches("ProviderStoredOwner for QueuePayload")
                 .count(),
             1,
         );
@@ -10872,6 +11894,30 @@ mod tests {
             (
                 quote! {
                     mod counter {
+                        #[geam::custom]
+                        enum Status { Ready }
+
+                        #[geam::function]
+                        fn read(value: (bool, Status)) -> bool { true }
+                    }
+                },
+                "custom output `Status` cannot be used as a source argument; use an explicit generated input type",
+            ),
+            (
+                quote! {
+                    mod counter {
+                        #[geam::custom(input = StatusInput)]
+                        enum Status { Ready }
+
+                        #[geam::function]
+                        fn read(value: (bool, Status)) -> bool { true }
+                    }
+                },
+                "custom output `Status` cannot be used as a source argument; use `StatusInput`",
+            ),
+            (
+                quote! {
+                    mod counter {
                         #[geam::custom(input = StatusInput)]
                         enum Status { Ready }
 
@@ -11096,6 +12142,34 @@ mod tests {
             (
                 quote! {
                     mod lists {
+                        #[geam::external(name = "Token")]
+                        struct Token;
+
+                        #[geam::function]
+                        fn input(
+                            value: &geam_core::provider::advanced::External<Token>,
+                        ) -> bool { true }
+                    }
+                },
+                "provider::advanced::External<T> arguments are already retained views and must be passed by value",
+            ),
+            (
+                quote! {
+                    mod lists {
+                        #[geam::external(name = "Token")]
+                        struct Token;
+
+                        #[geam::function]
+                        fn input(
+                            values: geam::List<geam_core::provider::advanced::External<Token>>,
+                        ) -> bool { true }
+                    }
+                },
+                "provider::advanced::External<T> is a call-scoped pass-through and cannot be a List item; use the declared payload input type",
+            ),
+            (
+                quote! {
+                    mod lists {
                         #[geam::function]
                         fn borrowed(values: &geam::List<BigInt>) -> bool { true }
                     }
@@ -11182,6 +12256,66 @@ mod tests {
     }
 
     #[test]
+    fn advanced_external_generic_arity_diagnostics_are_exact() {
+        let cases = [
+            quote! {
+                mod values {
+                    #[geam::function]
+                    fn inspect(
+                        value: &geam_core::provider::advanced::External<BigInt, bool>,
+                    ) -> bool { true }
+                }
+            },
+            quote! {
+                mod values {
+                    #[geam::function]
+                    fn inspect(
+                        value: geam_core::provider::advanced::External<BigInt, bool>,
+                    ) -> bool { true }
+                }
+            },
+            quote! {
+                mod values {
+                    #[geam::function]
+                    fn inspect(
+                        value: Result<
+                            geam_core::provider::advanced::External<BigInt, bool>,
+                            bool,
+                        >,
+                    ) -> bool { true }
+                }
+            },
+            quote! {
+                mod values {
+                    #[geam::function]
+                    fn inspect(
+                        values: geam::List<
+                            geam_core::provider::advanced::External<BigInt, bool>,
+                        >,
+                    ) -> bool { true }
+                }
+            },
+            quote! {
+                mod values {
+                    #[geam::function]
+                    fn inspect()
+                        -> geam_core::provider::advanced::External<BigInt, bool>
+                    {
+                        unreachable!()
+                    }
+                }
+            },
+        ];
+
+        for item in cases {
+            assert_eq!(
+                expansion_error(item),
+                "External requires exactly one type argument",
+            );
+        }
+    }
+
+    #[test]
     fn list_item_diagnostics_reject_borrowed_external_and_nested_collections() {
         let cases = [
             (
@@ -11260,15 +12394,6 @@ mod tests {
                 quote! {
                     mod lists {
                         #[geam::function]
-                        fn nested(values: (geam::List<BigInt>, bool)) -> bool { true }
-                    }
-                },
-                "geam::List<T> is supported only as a top-level source argument",
-            ),
-            (
-                quote! {
-                    mod lists {
-                        #[geam::function]
                         fn nested(values: (Vec<BigInt>, bool)) -> bool { true }
                     }
                 },
@@ -11279,6 +12404,21 @@ mod tests {
         for (item, expected) in cases {
             assert_eq!(expansion_error(item), expected);
         }
+
+        let expansion = expand(
+            quote!(path = "lists", crate_path = geam_core),
+            quote! {
+                mod lists {
+                    #[geam::function]
+                    fn nested(values: (geam::List<BigInt>, bool)) -> bool { true }
+                }
+            },
+        )
+        .expect("lazy Lists should compose inside ordinary input values")
+        .to_string();
+        assert!(expansion.contains(
+            "HostTupleType < geam_core :: __macro_support :: HostTypeList < geam_core :: __macro_support :: HostListType < BigInt >"
+        ));
     }
 
     #[test]
@@ -11833,28 +12973,86 @@ mod tests {
         let input = classify_collection_input_item(&input, &[], &[], "List")
             .expect("nested Result and Option List input should classify");
         assert_eq!(
-            provider_value_key(&input),
+            static_value_key(&input),
             "result:<option:<scalar:BigInt>,option:<scalar:EcoString>>",
         );
         assert_eq!(
-            list_item_view_type(&input, &[], &quote!(geam_core)).to_string(),
+            list_item_view_type(
+                &input,
+                &std::collections::BTreeMap::new(),
+                &quote!(geam_core),
+            )
+            .to_string(),
             ":: core :: result :: Result < :: core :: option :: Option < BigInt > , :: core :: option :: Option < EcoString > >",
         );
     }
 
     #[test]
-    fn source_result_and_option_reject_nested_collections_at_the_exact_direction() {
+    fn source_result_and_option_preserve_nested_collection_direction() {
         let argument_cases = [
             (
                 quote! {
                     mod values {
                         #[geam::function]
                         fn inspect(
-                            value: Result<geam_core::List<BigInt>, EcoString>,
+                            value: Option<(bool, Vec<BigInt>)>,
                         ) -> bool { true }
                     }
                 },
-                "geam::List<T> is supported only as a top-level source argument",
+                "Vec<T> arguments are not supported; use geam::List<T>",
+            ),
+            (
+                quote! {
+                    mod values {
+                        #[geam::function]
+                        fn inspect(
+                            value: (Result<Vec<EcoString>, BigInt>, bool),
+                        ) -> bool { true }
+                    }
+                },
+                "Vec<T> arguments are not supported; use geam::List<T>",
+            ),
+            (
+                quote! {
+                    mod values {
+                        #[geam::function]
+                        fn inspect(
+                            value: (Result<BigInt, Vec<EcoString>>, bool),
+                        ) -> bool { true }
+                    }
+                },
+                "Vec<T> arguments are not supported; use geam::List<T>",
+            ),
+            (
+                quote! {
+                    mod values {
+                        #[geam::function]
+                        fn inspect(
+                            value: (Option<Vec<BigInt>>, bool),
+                        ) -> bool { true }
+                    }
+                },
+                "Vec<T> arguments are not supported; use geam::List<T>",
+            ),
+            (
+                quote! {
+                    mod values {
+                        #[geam::function]
+                        fn inspect(value: (bool, Vec<BigInt>)) -> bool { true }
+                    }
+                },
+                "Vec<T> arguments are not supported; use geam::List<T>",
+            ),
+            (
+                quote! {
+                    mod values {
+                        #[geam::function]
+                        fn inspect(
+                            value: Result<Vec<EcoString>, BigInt>,
+                        ) -> bool { true }
+                    }
+                },
+                "Vec<T> arguments are not supported; use geam::List<T>",
             ),
             (
                 quote! {
@@ -11883,6 +13081,23 @@ mod tests {
         for (item, expected) in argument_cases {
             assert_eq!(expansion_error(item), expected);
         }
+
+        let expansion = expand(
+            quote!(path = "values", crate_path = geam_core),
+            quote! {
+                mod values {
+                    #[geam::function]
+                    fn inspect(
+                        value: Result<geam_core::List<BigInt>, EcoString>,
+                    ) -> bool { true }
+                }
+            },
+        )
+        .expect("lazy Lists should compose inside source Result input")
+        .to_string();
+        assert!(expansion.contains(
+            "ProviderResult < geam_core :: __macro_support :: HostListType < BigInt > , EcoString >"
+        ));
 
         let return_cases = [
             (
@@ -11978,6 +13193,21 @@ mod tests {
 
                         #[geam::function]
                         fn inspect() -> Result<BigInt, &Token> {
+                            unreachable!()
+                        }
+                    }
+                },
+                "external payload `Token` returns must be owned",
+            ),
+            (
+                quote! {
+                    mod values {
+                        #[geam::external(name = "Token")]
+                        #[derive(PartialEq, Eq, Hash)]
+                        struct Token;
+
+                        #[geam::function]
+                        fn inspect() -> Option<Result<BigInt, &Token>> {
                             unreachable!()
                         }
                     }
@@ -12281,6 +13511,37 @@ mod tests {
                     }
                 },
                 "Option requires exactly 1 type argument",
+            ),
+            (
+                quote! {
+                    mod values {
+                        #[geam::function]
+                        fn inspect(
+                            value: Result<geam::List<BigInt, bool>, bool>,
+                        ) -> bool { true }
+                    }
+                },
+                "List requires exactly one type argument",
+            ),
+            (
+                quote! {
+                    mod values {
+                        #[geam::function]
+                        fn inspect(
+                            value: Result<geam::List<Vec<BigInt>>, bool>,
+                        ) -> bool { true }
+                    }
+                },
+                "nested List and Vec item values are not supported",
+            ),
+            (
+                quote! {
+                    mod values {
+                        #[geam::function]
+                        fn inspect(value: (Result<BigInt>, bool)) -> bool { true }
+                    }
+                },
+                "Result requires exactly 2 type arguments",
             ),
         ];
 

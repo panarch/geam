@@ -1,9 +1,12 @@
 use super::{
-    Callback, ProviderCallbackCodec, ProviderCallbackContext, ProviderStoredInput,
-    ProviderStoredOutput, ProviderStoredOwner, ProviderValueContext, Stored, Value,
+    Callback, ProviderCallbackCodec, ProviderCallbackContext, ProviderExternalCodec,
+    ProviderExternalItem, ProviderStoredInput, ProviderStoredOutput, ProviderStoredOwner,
+    ProviderValueContext, Stored, Value,
 };
-use crate::provider::advanced::{ProviderDynamicInput, StoredDynamic};
-use crate::{HostCall, HostCallError, HostProfile, HostProvider, HostStoredType, HostType};
+use crate::provider::advanced::{ProviderDynamicInput, ProviderDynamicValue, StoredDynamic};
+use crate::{
+    HostCall, HostCallError, HostListType, HostProfile, HostProvider, HostStoredType, HostType,
+};
 use ecow::EcoString;
 use std::marker::PhantomData;
 
@@ -107,6 +110,32 @@ where
         self.context.call.inspect::<Host>(value.host())
     }
 
+    /// Returns the length of an opaque generic List without decoding an item.
+    pub fn list_len<ListType, ItemHost>(
+        &self,
+        value: &Value<ListType, ProviderValueContext<'call, HostListType<ItemHost>>>,
+    ) -> usize
+    where
+        ItemHost: HostType,
+    {
+        self.context.call.list_len(value.host())
+    }
+
+    /// Reads one opaque generic List item as a call-scoped generic value.
+    pub fn list_get<ListType, Item, ItemHost>(
+        &mut self,
+        value: &Value<ListType, ProviderValueContext<'call, HostListType<ItemHost>>>,
+        index: usize,
+    ) -> Option<Value<Item, ProviderValueContext<'call, ItemHost>>>
+    where
+        ItemHost: HostType,
+    {
+        self.context
+            .call
+            .list_item(value.host(), index)
+            .map(Value::from_host)
+    }
+
     /// Retains one generic source value for the generated external payload
     /// that owns the returned field.
     pub fn store<Type, Host, Owner, Index>(
@@ -140,19 +169,33 @@ where
         )
     }
 
-    /// Retains one call-scoped generic value with its exact specialized type.
-    pub fn store_dynamic<Type, Host, Owner>(
-        &mut self,
-        value: Value<Type, ProviderValueContext<'call, Host>>,
-    ) -> StoredDynamic<Owner>
+    /// Reads the payload of a statically known external source value.
+    ///
+    /// This advanced bridge preserves the original external lease. It is used
+    /// when a retained generic field has already fixed its source type to one
+    /// generated external declaration.
+    #[doc(hidden)]
+    pub fn external_payload<Type>(
+        &self,
+        value: Value<Type, ProviderValueContext<'call, Type::Host>>,
+    ) -> ProviderExternalItem<Type>
     where
-        Host: HostType,
+        Type: ProviderExternalCodec<Profile>,
+    {
+        Type::input(&self.context.call, value.into_host())
+    }
+
+    /// Retains one call-scoped generic value with its exact specialized type.
+    pub fn store_dynamic<Value, Owner>(&mut self, value: Value) -> StoredDynamic<Owner>
+    where
+        Value: ProviderDynamicValue<'call, Profile, Provider, Return>,
         Owner: ProviderStoredOwner,
     {
+        let value = value.into_host(&mut self.context.call);
         StoredDynamic::new(
             self.context
                 .call
-                .provider_store_dynamic::<Host>(value.into_host()),
+                .provider_store_dynamic::<Value::Host>(value),
         )
     }
 
@@ -171,6 +214,23 @@ where
             .call
             .provider_restore_dynamic::<Type::Host>(value.host())?;
         Some(Type::from_host(&mut self.context.call, value))
+    }
+
+    /// Restores an existential value with the exact specialization of an
+    /// existing call-scoped generic value.
+    pub fn restore_dynamic_value<Type, Host, Owner>(
+        &mut self,
+        value: &StoredDynamic<Owner>,
+        _type_witness: &Value<Type, ProviderValueContext<'call, Host>>,
+    ) -> Option<Value<Type, ProviderValueContext<'call, Host>>>
+    where
+        Host: HostType,
+        Owner: ProviderStoredOwner,
+    {
+        self.context
+            .call
+            .provider_restore_dynamic::<Host>(value.host())
+            .map(Value::from_host)
     }
 
     /// Invokes one typed Gleam callback within this active provider call.

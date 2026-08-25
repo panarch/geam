@@ -44,10 +44,6 @@ impl HostStoredDynamic {
         Self { value }
     }
 
-    pub(crate) fn value_type(&self) -> &crate::plan::ValueType {
-        self.value.type_()
-    }
-
     pub(crate) fn value_family(&self) -> HostStoredValueFamily {
         self.value.family()
     }
@@ -154,7 +150,6 @@ mod tests {
             BigInt::from(7),
         ));
 
-        assert_eq!(stored.value_type(), &ValueType::Int);
         assert!(stored.has_type(&ValueType::Int));
         assert!(!stored.has_type(&ValueType::String));
     }

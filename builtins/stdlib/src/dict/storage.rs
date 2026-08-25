@@ -1,26 +1,13 @@
-use super::schema::{DictSchema, StoredKey, StoredValue, TransientDictSchema};
-use crate::{GleamStdlibHostProfile, stdlib_stores};
-use crate::{
-    HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalStorage,
-    HostExternalStore, HostStoredValue,
-};
 use ecow::EcoString;
+use geam_core::provider::advanced::{
+    Equality, Hashing, Index0, Inspection, Next, Retained, RetainedExternalPayload,
+};
 use im::{HashMap, Vector};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
-#[derive(Default)]
-pub(crate) struct Stores {
-    dicts: HostExternalStore<DictPayload>,
-    transients: HostExternalStore<TransientDictPayload>,
-}
-
 pub struct DictPayload {
-    pub(super) storage: DictStorage,
-}
-
-pub(super) struct TransientDictPayload {
     pub(super) storage: DictStorage,
 }
 
@@ -32,106 +19,67 @@ pub(super) struct DictStorage {
 
 pub(super) struct DictEntry {
     pub(super) key_hash: u64,
-    pub(super) key: HostStoredValue<StoredKey>,
-    pub(super) value: HostStoredValue<StoredValue>,
+    pub(super) key: Rc<Retained<DictPayload, Index0>>,
+    pub(super) value: Rc<Retained<DictPayload, Next<Index0>>>,
 }
 
-pub(super) trait DictPayloadStorage {
-    fn storage(&self) -> &DictStorage;
-}
-
-pub struct DictExternalStorage;
-pub(super) struct TransientDictExternalStorage;
-
-impl<Profile> HostExternalStorage<Profile, DictSchema> for DictExternalStorage
-where
-    Profile: GleamStdlibHostProfile,
-{
-    type Payload = DictPayload;
-
-    fn store(stores: &Profile::ExternalStores) -> &HostExternalStore<Self::Payload> {
-        &stdlib_stores::<Profile>(stores).dict.dicts
+impl DictPayload {
+    pub(crate) fn coordinates(&self) -> Vec<(u64, usize)> {
+        self.storage
+            .buckets
+            .iter()
+            .flat_map(|(key_hash, bucket)| (0..bucket.len()).map(move |index| (*key_hash, index)))
+            .collect()
     }
 
-    fn source_equal(
-        context: &HostExternalEquality<'_>,
-        left: &Self::Payload,
-        right: &Self::Payload,
-    ) -> bool {
-        storage_equal(context, &left.storage, &right.storage)
+    pub(crate) fn key(&self, key_hash: u64, index: usize) -> &Retained<Self, Index0> {
+        self.storage.buckets[&key_hash][index].key.as_ref()
     }
 
-    fn source_hash(context: &HostExternalHashing<'_>, value: &Self::Payload) -> u64 {
-        storage_hash(context, &value.storage)
+    pub(crate) fn value(&self, key_hash: u64, index: usize) -> &Retained<Self, Next<Index0>> {
+        self.storage.buckets[&key_hash][index].value.as_ref()
     }
 
-    fn inspect(context: &HostExternalInspection<'_>, value: &Self::Payload) -> EcoString {
-        inspect_storage(context, &value.storage)
+    pub(crate) fn cloned(&self) -> Self {
+        Self {
+            storage: self.storage.clone(),
+        }
     }
 }
 
-impl<Profile> HostExternalStorage<Profile, TransientDictSchema> for TransientDictExternalStorage
-where
-    Profile: GleamStdlibHostProfile,
-{
-    type Payload = TransientDictPayload;
-
-    fn store(stores: &Profile::ExternalStores) -> &HostExternalStore<Self::Payload> {
-        &stdlib_stores::<Profile>(stores).dict.transients
+impl RetainedExternalPayload for DictPayload {
+    fn source_equal(&self, context: &Equality<'_>, other: &Self) -> bool {
+        storage_equal(context, &self.storage, &other.storage)
     }
 
-    fn source_equal(
-        context: &HostExternalEquality<'_>,
-        left: &Self::Payload,
-        right: &Self::Payload,
-    ) -> bool {
-        storage_equal(context, &left.storage, &right.storage)
+    fn source_hash(&self, context: &Hashing<'_>) -> u64 {
+        storage_hash(context, &self.storage)
     }
 
-    fn source_hash(context: &HostExternalHashing<'_>, value: &Self::Payload) -> u64 {
-        storage_hash(context, &value.storage)
-    }
-
-    fn inspect(context: &HostExternalInspection<'_>, value: &Self::Payload) -> EcoString {
-        inspect_storage(context, &value.storage)
+    fn inspect(&self, context: &Inspection<'_>) -> EcoString {
+        inspect_storage(context, &self.storage)
     }
 }
 
-impl DictPayloadStorage for DictPayload {
-    fn storage(&self) -> &DictStorage {
-        &self.storage
-    }
-}
-
-impl DictPayloadStorage for TransientDictPayload {
-    fn storage(&self) -> &DictStorage {
-        &self.storage
-    }
-}
-
-fn storage_equal(
-    context: &HostExternalEquality<'_>,
-    left: &DictStorage,
-    right: &DictStorage,
-) -> bool {
+fn storage_equal(context: &Equality<'_>, left: &DictStorage, right: &DictStorage) -> bool {
     left.len == right.len
         && left.entries().all(|left| {
             right.buckets.get(&left.key_hash).is_some_and(|bucket| {
                 bucket.iter().any(|right| {
-                    context.stored_values_equal(&left.key, &right.key)
-                        && context.stored_values_equal(&left.value, &right.value)
+                    left.key.source_equal(context, &right.key)
+                        && left.value.source_equal(context, &right.value)
                 })
             })
         })
 }
 
-fn storage_hash(context: &HostExternalHashing<'_>, storage: &DictStorage) -> u64 {
+fn storage_hash(context: &Hashing<'_>, storage: &DictStorage) -> u64 {
     let mut sum = 0_u64;
     let mut xor = 0_u64;
     for entry in storage.entries() {
         let mut hasher = DefaultHasher::new();
         entry.key_hash.hash(&mut hasher);
-        context.stored_value_hash(&entry.value).hash(&mut hasher);
+        entry.value.source_hash(context).hash(&mut hasher);
         let hash = hasher.finish();
         sum = sum.wrapping_add(hash);
         xor ^= hash.rotate_left(29);
@@ -144,14 +92,14 @@ fn storage_hash(context: &HostExternalHashing<'_>, storage: &DictStorage) -> u64
     hasher.finish()
 }
 
-fn inspect_storage(context: &HostExternalInspection<'_>, storage: &DictStorage) -> EcoString {
+fn inspect_storage(context: &Inspection<'_>, storage: &DictStorage) -> EcoString {
     let mut entries = storage
         .entries()
         .map(|entry| {
             format!(
                 "#({}, {})",
-                context.inspect_stored_value(&entry.key),
-                context.inspect_stored_value(&entry.value),
+                entry.key.inspect(context),
+                entry.value.inspect(context),
             )
         })
         .collect::<Vec<_>>();

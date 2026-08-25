@@ -1,10 +1,46 @@
-use crate::host::{HostExternalPayloadView, HostStoredType, HostStoredValue, HostTypeSequence};
-use crate::provider::advanced::Retained;
+use crate::host::{
+    HostExternalPayloadBuilder, HostProfile, HostStoredType, HostStoredValue, HostType, HostTypeAt,
+    HostTypeSequence,
+};
+use crate::provider::ProviderExternalItem;
+use crate::provider::advanced::{Retained, StoredDynamic};
 use std::marker::PhantomData;
 
 /// Generated identity for one external declaration that may own retained values.
 #[doc(hidden)]
 pub trait ProviderStoredOwner: 'static {}
+
+/// Retains one low-level generic argument for a macro-authored payload.
+///
+/// This bridge exists for built-in providers that still consume the typed-host
+/// SDK while a sibling component has moved to the authoring macros.
+#[doc(hidden)]
+pub fn retain_argument<Profile, Arguments, Owner, Index>(
+    builder: &mut HostExternalPayloadBuilder<'_, Profile, Arguments>,
+    value: <<Arguments as HostTypeAt<Index>>::Type as HostType>::Value<'_>,
+) -> Retained<Owner, Index>
+where
+    Profile: HostProfile,
+    Arguments: HostTypeSequence + HostTypeAt<Index>,
+    Owner: ProviderStoredOwner,
+{
+    Retained::new(builder.store_argument::<Index>(value))
+}
+
+/// Retains one low-level value with its exact specialized type.
+#[doc(hidden)]
+pub fn retain_dynamic<Profile, Arguments, Owner, Type>(
+    builder: &mut HostExternalPayloadBuilder<'_, Profile, Arguments>,
+    value: Type::Value<'_>,
+) -> StoredDynamic<Owner>
+where
+    Profile: HostProfile,
+    Arguments: HostTypeSequence,
+    Owner: ProviderStoredOwner,
+    Type: HostType,
+{
+    StoredDynamic::new(builder.store_dynamic::<Type>(value))
+}
 
 /// One generic Gleam value retained by a macro-authored external payload.
 ///
@@ -41,7 +77,8 @@ pub struct ProviderExternalInputContext<'call, Payload, Arguments>
 where
     Arguments: HostTypeSequence,
 {
-    payload: HostExternalPayloadView<'call, Payload, Arguments>,
+    value: ProviderExternalItem<Payload>,
+    context: PhantomData<&'call Arguments>,
 }
 
 #[doc(hidden)]
@@ -49,7 +86,7 @@ pub struct MissingExternalInputContext;
 
 #[doc(hidden)]
 pub struct ProviderExternalOutput<Payload> {
-    payload: Payload,
+    value: Result<Payload, ProviderExternalItem<Payload>>,
 }
 
 #[doc(hidden)]
@@ -110,12 +147,17 @@ where
 impl<Payload> ProviderExternalOutput<Payload> {
     #[doc(hidden)]
     pub fn new(payload: Payload) -> Self {
-        Self { payload }
+        Self { value: Ok(payload) }
     }
 
     #[doc(hidden)]
-    pub fn into_payload(self) -> Payload {
-        self.payload
+    pub fn from_input(value: ProviderExternalItem<Payload>) -> Self {
+        Self { value: Err(value) }
+    }
+
+    #[doc(hidden)]
+    pub fn into_value(self) -> Result<Payload, ProviderExternalItem<Payload>> {
+        self.value
     }
 }
 
@@ -124,12 +166,20 @@ where
     Arguments: HostTypeSequence,
 {
     #[doc(hidden)]
-    pub fn from_host(payload: HostExternalPayloadView<'call, Payload, Arguments>) -> Self {
-        Self { payload }
+    pub fn from_host(value: ProviderExternalItem<Payload>) -> Self {
+        Self {
+            value,
+            context: PhantomData,
+        }
     }
 
     #[doc(hidden)]
     pub fn payload(&self) -> &Payload {
-        &self.payload
+        &self.value
+    }
+
+    #[doc(hidden)]
+    pub fn into_output(self) -> ProviderExternalOutput<Payload> {
+        ProviderExternalOutput::from_input(self.value)
     }
 }

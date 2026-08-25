@@ -20,6 +20,7 @@ pub struct Component;
 #[geam_macros::module(path = "dynamic_provider/declarations", crate_path = geam_core)]
 mod declarations {
     use super::EcoString;
+    use geam_core::provider::advanced::External;
 
     #[geam_macros::external(name = "Token")]
     #[derive(PartialEq, Eq, Hash)]
@@ -28,6 +29,11 @@ mod declarations {
     #[geam_macros::function]
     fn token(value: EcoString) -> Token {
         Token(value)
+    }
+
+    #[geam_macros::function]
+    fn identity_token(value: External<Token>) -> External<Token> {
+        value
     }
 }
 
@@ -177,6 +183,28 @@ mod dynamic_provider {
     ) -> bool {
         call.source_hash(&first) == call.source_hash(&second)
     }
+
+    #[geam_macros::function]
+    fn has_exact_type<Item>(
+        #[geam_macros::call] call: &mut Call<()>,
+        stored: &Dynamic,
+        witness: Value<Item>,
+    ) -> bool {
+        call.restore_dynamic_value(&stored.value, &witness)
+            .is_some()
+    }
+
+    #[geam_macros::function]
+    fn list_summary<Item>(
+        #[geam_macros::call] call: &mut Call<()>,
+        values: Value<geam_core::List<Item>>,
+        expected: Value<Item>,
+    ) -> (BigInt, bool) {
+        let matches = call
+            .list_get::<_, Item, _>(&values, 0)
+            .is_some_and(|value| call.equal(&value, &expected));
+        (call.list_len(&values).into(), matches)
+    }
 }
 
 struct Profile;
@@ -251,11 +279,19 @@ fn nested_tuple_size(value: value) -> Int
 @external(erlang, "dynamic_provider", "same_hash")
 fn same_hash(first: value, second: value) -> Bool
 
+@external(erlang, "dynamic_provider", "has_exact_type")
+fn has_exact_type(stored: Dynamic, witness: value) -> Bool
+
+@external(erlang, "dynamic_provider", "list_summary")
+fn list_summary(values: List(item), expected: item) -> #(Int, Bool)
+
 pub fn main() {
   let first = cast(7)
   let equal = cast(7)
   let text = cast("seven")
-  let token_value = cast(declarations.token("opaque"))
+  let token = declarations.token("opaque")
+  let identity_token = declarations.identity_token(token)
+  let token_value = cast(token)
   let boxed = cast(box_value(9))
   #(
     kind(first),
@@ -275,8 +311,14 @@ pub fn main() {
     tuple_size(1),
     nested_tuple_size(#(1, #("two", True))),
     same_hash(first, equal),
+    has_exact_type(first, 0),
+    !has_exact_type(first, "zero"),
+    list_summary([1, 2, 3], 1),
+    list_summary([], 1),
     first == equal,
     first,
+    token,
+    identity_token,
   )
 }
 "#;
@@ -287,6 +329,9 @@ pub type Token
 
 @external(erlang, "dynamic_provider", "token")
 pub fn token(value: String) -> Token
+
+@external(erlang, "dynamic_provider", "identity_token")
+pub fn identity_token(value: Token) -> Token
 "#;
 
 #[test]
@@ -322,6 +367,18 @@ fn existential_values_restore_exact_types_and_preserve_source_semantics() {
 
     assert_eq!(
         returned.inspect().to_string(),
-        r#"#("Int", "String", "External", Ok(7), Error(Nil), True, True, True, True, Ok("opaque"), Error(Nil), Ok(True), Error(Nil), 3, 0, 2, True, True, 7)"#,
+        r#"#("Int", "String", "External", Ok(7), Error(Nil), True, True, True, True, Ok("opaque"), Error(Nil), Ok(True), Error(Nil), 3, 0, 2, True, True, True, #(3, True), #(0, False), True, 7, Token(<opaque>), Token(<opaque>))"#,
     );
+    let geam_core::Value::Tuple(values) = returned else {
+        panic!("dynamic main should return its inspected tuple");
+    };
+    let [
+        ..,
+        geam_core::Value::External(original),
+        geam_core::Value::External(identity),
+    ] = values.as_slice()
+    else {
+        panic!("dynamic main should preserve both Token values");
+    };
+    assert_eq!(original.identity(), identity.identity());
 }

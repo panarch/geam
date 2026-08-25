@@ -43,7 +43,7 @@ pub use stored::Stored;
 pub use stored::{
     MissingExternalInputContext, MissingExternalOutputContext, MissingStoredContext,
     ProviderExternalInputContext, ProviderExternalOutput, ProviderStoredInput,
-    ProviderStoredOutput, ProviderStoredOwner,
+    ProviderStoredOutput, ProviderStoredOwner, retain_argument, retain_dynamic,
 };
 pub use value::Value;
 #[doc(hidden)]

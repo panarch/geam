@@ -1,5 +1,5 @@
 use ecow::EcoString;
-use geam_core::provider::{Call, Callback, HostFailure, HostResult, Value};
+use geam_core::provider::{Call, Callback, HostFailure, HostResult, List, Value};
 use geam_core::{
     ExecutionError, HostComponentProfile, HostLocation, HostModule, HostProfile,
     HostProviderComponent, HostProviderComponentRegistration, HostProviderSet, HostedExecution,
@@ -23,7 +23,9 @@ pub struct Component;
 
 #[geam_macros::module(path = "callback_provider", crate_path = geam_core)]
 mod callback_provider {
-    use super::{BigInt, Call, Callback, EcoString, HostFailure, HostResult, RunState, Value};
+    use super::{
+        BigInt, Call, Callback, EcoString, HostFailure, HostResult, List, RunState, Value,
+    };
 
     #[geam_macros::external(name = "Token")]
     #[derive(PartialEq, Eq, Hash)]
@@ -126,6 +128,15 @@ mod callback_provider {
     }
 
     #[geam_macros::function]
+    fn inspect_callback<Item>(
+        #[geam_macros::call] call: &mut Call<RunState>,
+        callback: Callback<fn() -> (Value<Item>, List<EcoString>)>,
+    ) -> HostResult<(Value<Item>, BigInt)> {
+        let (value, messages) = call.invoke(callback, ())?;
+        Ok((value, messages.len().into()))
+    }
+
+    #[geam_macros::function]
     fn fail() -> HostResult<()> {
         Err(HostFailure::new("callback provider failed").into())
     }
@@ -197,6 +208,9 @@ fn list_total(callback: fn(List(#(#(Int, String), Token))) -> List(Int)) -> Int
 @external(erlang, "callback_provider", "classify")
 fn classify(callback: fn(#(String, Int), Result(String, Decision), Option(Int)) -> Option(Int)) -> Option(Int)
 
+@external(erlang, "callback_provider", "inspect_callback")
+fn inspect_callback(callback: fn() -> #(item, List(String))) -> #(item, Int)
+
 @external(erlang, "callback_provider", "fail")
 fn fail() -> Nil
 
@@ -230,6 +244,10 @@ fn classify_values(pair, result, optional) {
   optional
 }
 
+fn callback_pair() {
+  #(42, ["first", "second"])
+}
+
 fn fail_callback() {
   fail()
 }
@@ -246,6 +264,7 @@ pub fn main() {
     decide(keep_decision, "accepted"),
     list_total(keep_list),
     classify(classify_values),
+    inspect_callback(callback_pair),
     entries(),
   )
 }
@@ -331,6 +350,13 @@ fn callbacks_reenter_the_component_and_preserve_typed_results() {
     assert_eq!(optional.fields()[0].value(), &RuntimeValue::Int(7.into()));
     assert_eq!(
         values[6],
+        RuntimeValue::Tuple(vec![
+            RuntimeValue::Int(42.into()),
+            RuntimeValue::Int(2.into())
+        ]),
+    );
+    assert_eq!(
+        values[7],
         RuntimeValue::String("before/inside/after".into()),
     );
 }
@@ -338,7 +364,7 @@ fn callbacks_reenter_the_component_and_preserve_typed_results() {
 #[test]
 fn nested_provider_failure_remains_the_original_execution_error() {
     let source = SOURCE.replace(
-        "#(\n    around(body),\n    apply(increment, 4),\n    rotate(rotate_value, \"tag\", 8),\n    decide(keep_decision, \"accepted\"),\n    list_total(keep_list),\n    classify(classify_values),\n    entries(),\n  )",
+        "#(\n    around(body),\n    apply(increment, 4),\n    rotate(rotate_value, \"tag\", 8),\n    decide(keep_decision, \"accepted\"),\n    list_total(keep_list),\n    classify(classify_values),\n    inspect_callback(callback_pair),\n    entries(),\n  )",
         "around(fail_callback)",
     );
     let error = execution(&source)
@@ -361,13 +387,13 @@ fn nested_provider_failure_remains_the_original_execution_error() {
     assert_eq!(site.module().as_str(), "callback_provider");
     assert_eq!(site.function().as_str(), "fail_callback");
     assert_eq!(path.as_str(), "src/callback_provider.gleam");
-    assert_eq!(*line, 70);
+    assert_eq!(*line, 77);
 }
 
 #[test]
 fn nested_source_panic_is_not_rewrapped_as_a_host_failure() {
     let source = SOURCE.replace(
-        "#(\n    around(body),\n    apply(increment, 4),\n    rotate(rotate_value, \"tag\", 8),\n    decide(keep_decision, \"accepted\"),\n    list_total(keep_list),\n    classify(classify_values),\n    entries(),\n  )",
+        "#(\n    around(body),\n    apply(increment, 4),\n    rotate(rotate_value, \"tag\", 8),\n    decide(keep_decision, \"accepted\"),\n    list_total(keep_list),\n    classify(classify_values),\n    inspect_callback(callback_pair),\n    entries(),\n  )",
         "around(panic_callback)",
     );
     let error = execution(&source)

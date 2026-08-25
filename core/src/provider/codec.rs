@@ -70,6 +70,14 @@ where
     where
         Provider: HostProvider<Profile>,
         Return: HostType;
+
+    fn output<'call, Provider, Return>(
+        call: &mut HostCall<'call, Profile, Provider, Return>,
+        value: super::ProviderExternalItem<Self>,
+    ) -> <Self::Host as HostType>::Value<'call>
+    where
+        Provider: HostProvider<Profile>,
+        Return: HostType;
 }
 
 /// Profile-independent List item view and decoder selected by one declaration.
@@ -321,8 +329,42 @@ where
     type Host = Payload::Host;
     type Input = Self;
     type ListInput = Self;
-    type OutputRequirements = Payload::OutputRequirements;
-    type RootRequirements = Payload::RootRequirements;
+    type OutputRequirements = ProviderNoConstructions;
+    type RootRequirements = ProviderNoConstructions;
+}
+
+impl<Profile, Provider, Return, Payload> ProviderOutputValue<Profile, Provider, Return>
+    for super::ProviderExternalItem<Payload>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Payload: ProviderExternalCodec<Profile>,
+{
+    fn into_host<'call>(
+        self,
+        call: &mut HostCall<'call, Profile, Provider, Return>,
+        _constructions: &ProviderConstructions<'call, Self::OutputRequirements>,
+    ) -> <Self::Host as HostType>::Value<'call> {
+        Payload::output(call, self)
+    }
+}
+
+impl<Profile, Provider, Payload> ProviderRootOutputValue<Profile, Provider>
+    for super::ProviderExternalItem<Payload>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Payload: ProviderExternalCodec<Profile>,
+{
+    fn complete<'call>(
+        self,
+        mut call: HostCall<'call, Profile, Provider, Self::Host>,
+        _constructions: &ProviderConstructions<'call, Self::RootRequirements>,
+    ) -> Result<HostCallCompletion<'call, Self::Host>, HostCallError> {
+        let value = Payload::output(&mut call, self);
+        Ok(call.return_value(value))
+    }
 }
 
 impl<Profile, Provider, Return, Payload> ProviderInputValue<Profile, Provider, Return>
