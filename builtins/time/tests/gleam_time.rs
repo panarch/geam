@@ -1,11 +1,11 @@
 use camino::{Utf8Path, Utf8PathBuf};
-use geam::gleam_stdlib::{GleamStdlibRunState, host_providers as stdlib_host_providers};
-use geam::gleam_time::{
-    GleamTimeProfile, GleamTimeRunState, TimeSource, host_providers as time_host_providers,
-};
-use geam::{
+use geam_core::{
     HostFailure, HostModule, HostProviderSet, HostedExecution, TypedProgram, Value,
     compile_typed_host_project, compile_typed_project, plan_host_program,
+};
+use geam_stdlib::{GleamStdlibRunState, host_providers as stdlib_host_providers};
+use geam_time::{
+    GleamTimeProfile, GleamTimeRunState, TimeSource, host_providers as time_host_providers,
 };
 use std::collections::VecDeque;
 use std::time::SystemTime;
@@ -178,7 +178,7 @@ fn time_hosts() -> HostProviderSet<GleamTimeProfile<ScriptedSource>> {
 }
 
 fn project_root() -> Utf8PathBuf {
-    let root = Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/projects/gleam_time");
+    let root = Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/project");
     static PREPARED: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
     workspace_dependencies::prepare(
         &PREPARED,

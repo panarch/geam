@@ -16,4 +16,6 @@ jiff.workspace = true
 num-bigint.workspace = true
 
 [dev-dependencies]
+camino.workspace = true
 ecow.workspace = true
+gleam-core.workspace = true
