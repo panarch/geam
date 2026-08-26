@@ -1,9 +1,9 @@
 mod function;
 
-use self::function::{IoProvider, print, print_error, println, println_error};
-use crate::GleamStdlibHostProfile;
+use crate::{Component, GleamStdlibHostProfile, GleamStdlibRunState};
 use crate::{HostProviderModule, HostRegistrationError};
 use ecow::EcoString;
+use geam_core::provider::Call;
 
 /// A caller-owned destination for official Gleam standard-library IO events.
 pub trait IoSink {
@@ -49,35 +49,53 @@ impl IoSink for Vec<IoOutput> {
     }
 }
 
+#[geam_macros::module(
+    path = "gleam/io",
+    crate_path = geam_core,
+    profile = crate::GleamStdlibHostProfile,
+    component = crate::Component<Profile::Io>,
+)]
+mod provider {
+    use super::{Call, EcoString, GleamStdlibRunState, function};
+
+    #[geam_macros::function(profile = Profile)]
+    fn print(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        text: EcoString,
+    ) -> () {
+        function::print(call.state_mut().io_sink(), text)
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn print_error(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        text: EcoString,
+    ) -> () {
+        function::print_error(call.state_mut().io_sink(), text)
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn println(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        text: EcoString,
+    ) -> () {
+        function::println(call.state_mut().io_sink(), text)
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn println_error(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        text: EcoString,
+    ) -> () {
+        function::println_error(call.state_mut().io_sink(), text)
+    }
+}
+
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
     Profile: GleamStdlibHostProfile,
 {
-    HostProviderModule::new("gleam_stdlib", "gleam/io")
-        .and_then(|provider| {
-            provider.with_scoped_function::<IoProvider<Profile>, (EcoString,), (), _>(
-                "print",
-                print::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<IoProvider<Profile>, (EcoString,), (), _>(
-                "print_error",
-                print_error::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<IoProvider<Profile>, (EcoString,), (), _>(
-                "println",
-                println::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<IoProvider<Profile>, (EcoString,), (), _>(
-                "println_error",
-                println_error::<Profile>,
-            )
-        })
+    provider::__geam_module::<Profile>()
 }
 
 #[cfg(test)]

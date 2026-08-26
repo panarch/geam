@@ -1,29 +1,31 @@
-use super::{GleamTimeHostProfile, TimeProvider, TimeSource};
-use crate::{
-    HostCall, HostCallCompletion, HostCallError, HostProviderModule, HostRegistrationError,
-};
+use super::{Component, GleamTimeHostProfile, TimeSource};
+use crate::{HostProviderModule, HostRegistrationError};
+use geam_core::provider::{Call, HostResult};
 use num_bigint::BigInt;
+
+#[geam_macros::module(
+    path = "gleam/time/calendar",
+    crate_path = geam_core,
+    profile = crate::GleamTimeHostProfile,
+    component = crate::Component<Profile::Source>,
+)]
+mod provider {
+    use super::{BigInt, Call, HostResult, TimeSource};
+
+    #[geam_macros::function(profile = Profile)]
+    fn local_time_offset_seconds(
+        #[geam_macros::call] call: &mut Call<Profile::Source>,
+    ) -> HostResult<BigInt> {
+        let seconds = call.state_mut().local_offset_seconds()?;
+        Ok(BigInt::from(seconds))
+    }
+}
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
     Profile: GleamTimeHostProfile,
 {
-    HostProviderModule::new("gleam_time", "gleam/time/calendar").and_then(|provider| {
-        provider.with_scoped_function::<TimeProvider<Profile>, (), BigInt, _>(
-            "local_time_offset_seconds",
-            local_time_offset_seconds::<Profile>,
-        )
-    })
-}
-
-fn local_time_offset_seconds<'call, Profile>(
-    mut call: HostCall<'call, Profile, TimeProvider<Profile>, BigInt>,
-) -> Result<HostCallCompletion<'call, BigInt>, HostCallError>
-where
-    Profile: GleamTimeHostProfile,
-{
-    let seconds = call.state().local_offset_seconds()?;
-    Ok(call.return_value(BigInt::from(seconds)))
+    provider::__geam_module::<Profile>()
 }
 
 #[cfg(test)]

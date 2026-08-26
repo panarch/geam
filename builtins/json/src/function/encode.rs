@@ -1,153 +1,45 @@
-use super::JsonProvider;
-use crate::GleamJsonHostProfile;
-use crate::schema::{Json, ObjectEntry};
-use crate::storage::JsonPayload;
-use crate::{HostCall, HostCallCompletion, HostCallError, HostExternal, HostFailure, HostList};
+use super::provider::JsonPayload;
 use ecow::EcoString;
-use geam_stdlib::provider_support::{StoredStringTree, StringTree, StringTreePayload};
+use geam_core::HostFailure;
+use geam_core::provider::HostResult;
+use geam_stdlib::provider_support::{StoredStringTree, StringTreePayload};
 use num_bigint::BigInt;
 
-pub(crate) fn do_to_string<'call, Profile>(
-    call: HostCall<'call, Profile, JsonProvider<Profile>, EcoString>,
-    json: HostExternal<'call, Json>,
-) -> Result<HostCallCompletion<'call, EcoString>, HostCallError>
-where
-    Profile: GleamJsonHostProfile,
-{
-    let text = call.external_payload(json).tree.flatten();
-    Ok(call.return_value(text))
+pub(super) fn do_to_string(json: &JsonPayload) -> EcoString {
+    json.tree().flatten()
 }
 
-pub(crate) fn to_string_tree<'call, Profile>(
-    mut call: HostCall<'call, Profile, JsonProvider<Profile>, StringTree>,
-    json: HostExternal<'call, Json>,
-) -> Result<HostCallCompletion<'call, StringTree>, HostCallError>
-where
-    Profile: GleamJsonHostProfile,
-{
-    let tree = call.external_payload(json).tree.clone();
-    let tree = call.create_external(StringTreePayload::from_stored(tree));
-    Ok(call.return_value(tree))
+pub(super) fn to_string_tree(json: &JsonPayload) -> StringTreePayload {
+    StringTreePayload::from_stored(json.tree().clone())
 }
 
-pub(crate) fn do_string<'call, Profile>(
-    mut call: HostCall<'call, Profile, JsonProvider<Profile>, Json>,
-    value: EcoString,
-) -> Result<HostCallCompletion<'call, Json>, HostCallError>
-where
-    Profile: GleamJsonHostProfile,
-{
-    let json = call.create_external(JsonPayload {
-        tree: StoredStringTree::text(encode_string(&value)),
-    });
-    Ok(call.return_value(json))
+pub(super) fn do_string(value: EcoString) -> JsonPayload {
+    JsonPayload::from_tree(StoredStringTree::text(encode_string(&value)))
 }
 
-pub(crate) fn do_bool<'call, Profile>(
-    mut call: HostCall<'call, Profile, JsonProvider<Profile>, Json>,
-    value: bool,
-) -> Result<HostCallCompletion<'call, Json>, HostCallError>
-where
-    Profile: GleamJsonHostProfile,
-{
+pub(super) fn do_bool(value: bool) -> JsonPayload {
     let text = if value { "true" } else { "false" };
-    let json = call.create_external(JsonPayload {
-        tree: StoredStringTree::text(text.into()),
-    });
-    Ok(call.return_value(json))
+    JsonPayload::from_tree(StoredStringTree::text(text.into()))
 }
 
-pub(crate) fn do_int<'call, Profile>(
-    mut call: HostCall<'call, Profile, JsonProvider<Profile>, Json>,
-    value: BigInt,
-) -> Result<HostCallCompletion<'call, Json>, HostCallError>
-where
-    Profile: GleamJsonHostProfile,
-{
-    let json = call.create_external(JsonPayload {
-        tree: StoredStringTree::text(value.to_string().into()),
-    });
-    Ok(call.return_value(json))
+pub(super) fn do_int(value: BigInt) -> JsonPayload {
+    JsonPayload::from_tree(StoredStringTree::text(value.to_string().into()))
 }
 
-pub(crate) fn do_float<'call, Profile>(
-    mut call: HostCall<'call, Profile, JsonProvider<Profile>, Json>,
-    value: f64,
-) -> Result<HostCallCompletion<'call, Json>, HostCallError>
-where
-    Profile: GleamJsonHostProfile,
-{
+pub(super) fn do_float(value: f64) -> HostResult<JsonPayload> {
     if !value.is_finite() {
         return Err(HostFailure::new("JSON cannot encode a non-finite Float").into());
     }
-    let json = call.create_external(JsonPayload {
-        tree: StoredStringTree::text(encode_float(value).into()),
-    });
-    Ok(call.return_value(json))
+    Ok(JsonPayload::from_tree(StoredStringTree::text(
+        encode_float(value).into(),
+    )))
 }
 
-pub(crate) fn do_null<'call, Profile>(
-    mut call: HostCall<'call, Profile, JsonProvider<Profile>, Json>,
-) -> Result<HostCallCompletion<'call, Json>, HostCallError>
-where
-    Profile: GleamJsonHostProfile,
-{
-    let json = call.create_external(JsonPayload {
-        tree: StoredStringTree::text("null".into()),
-    });
-    Ok(call.return_value(json))
+pub(super) fn do_null() -> JsonPayload {
+    JsonPayload::from_tree(StoredStringTree::text("null".into()))
 }
 
-pub(crate) fn do_object<'call, Profile>(
-    mut call: HostCall<'call, Profile, JsonProvider<Profile>, Json>,
-    entries: HostList<'call, ObjectEntry>,
-) -> Result<HostCallCompletion<'call, Json>, HostCallError>
-where
-    Profile: GleamJsonHostProfile,
-{
-    let mut index = 0;
-    let mut trees = vec![StoredStringTree::text("{".into())];
-    while let Some(entry) = call.list_item::<ObjectEntry>(entries, index) {
-        let (key, (value, ())) = call.tuple_values(entry);
-        if index != 0 {
-            trees.push(StoredStringTree::text(",".into()));
-        }
-        trees.push(StoredStringTree::text(encode_string(&key)));
-        trees.push(StoredStringTree::text(":".into()));
-        trees.push(call.external_payload(value).tree.clone());
-        index += 1;
-    }
-    trees.push(StoredStringTree::text("}".into()));
-    let json = call.create_external(JsonPayload {
-        tree: StoredStringTree::sequence(trees),
-    });
-    Ok(call.return_value(json))
-}
-
-pub(crate) fn do_preprocessed_array<'call, Profile>(
-    mut call: HostCall<'call, Profile, JsonProvider<Profile>, Json>,
-    values: HostList<'call, Json>,
-) -> Result<HostCallCompletion<'call, Json>, HostCallError>
-where
-    Profile: GleamJsonHostProfile,
-{
-    let mut index = 0;
-    let mut trees = vec![StoredStringTree::text("[".into())];
-    while let Some(value) = call.list_item(values, index) {
-        if index != 0 {
-            trees.push(StoredStringTree::text(",".into()));
-        }
-        trees.push(call.external_payload(value).tree.clone());
-        index += 1;
-    }
-    trees.push(StoredStringTree::text("]".into()));
-    let json = call.create_external(JsonPayload {
-        tree: StoredStringTree::sequence(trees),
-    });
-    Ok(call.return_value(json))
-}
-
-fn encode_string(value: &str) -> EcoString {
+pub(super) fn encode_string(value: &str) -> EcoString {
     let mut output = String::with_capacity(value.len() + 2);
     output.push('"');
     for character in value.chars() {

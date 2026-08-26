@@ -4,35 +4,10 @@ mod unicode;
 
 pub(super) use self::inspect::do_inspect;
 pub(super) use self::slice::{erl_split, erl_trim, grapheme_slice, unsafe_byte_slice};
-pub(super) use self::unicode::{
-    from_utf_codepoints, pop_grapheme, unsafe_int_to_utf_codepoint, utf_codepoint_to_int,
-};
+pub(super) use self::unicode::{pop_grapheme, unsafe_int_to_utf_codepoint, utf_codepoint_to_int};
 
-use crate::{GleamStdlibRunState, StringTreeExternalStorage, StringTreeSchema, stdlib_state};
-use crate::{HostExternalBinding, HostProvider};
 use ecow::EcoString;
 use num_bigint::BigInt;
-use std::marker::PhantomData;
-
-pub(super) struct StringProvider<Profile>(PhantomData<Profile>);
-
-impl<Profile> HostProvider<Profile> for StringProvider<Profile>
-where
-    Profile: super::super::GleamStdlibHostProfile,
-{
-    type State = GleamStdlibRunState<Profile::Io>;
-
-    fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        stdlib_state::<Profile>(state)
-    }
-}
-
-impl<Profile> HostExternalBinding<Profile, StringTreeSchema> for StringProvider<Profile>
-where
-    Profile: super::super::GleamStdlibHostProfile,
-{
-    type Storage = StringTreeExternalStorage;
-}
 
 pub(super) fn length(string: EcoString) -> BigInt {
     BigInt::from(
@@ -92,24 +67,10 @@ pub(super) fn remove_suffix(string: EcoString, suffix: EcoString) -> EcoString {
 #[cfg(test)]
 mod tests {
     use super::{
-        StringProvider, byte_size, contains, crop, ends_with, length, less_than, lowercase,
-        remove_prefix, remove_suffix, starts_with, uppercase,
+        byte_size, contains, crop, ends_with, length, less_than, lowercase, remove_prefix,
+        remove_suffix, starts_with, uppercase,
     };
-    use crate::HostProvider;
-    use crate::{GleamStdlibProfile, GleamStdlibRunState};
     use num_bigint::BigInt;
-
-    #[test]
-    fn projects_the_stdlib_run_state() {
-        let mut state = GleamStdlibRunState::from_seed([0; 32]);
-        let original = std::ptr::from_ref(&state);
-        let projected =
-            <StringProvider<GleamStdlibProfile> as HostProvider<GleamStdlibProfile>>::project(
-                &mut state,
-            );
-
-        assert_eq!(std::ptr::from_mut(projected).cast_const(), original);
-    }
 
     #[test]
     fn applies_scalar_string_semantics() {

@@ -1,49 +1,51 @@
 mod function;
-mod schema;
 
-use self::function::{
-    UriProvider, codeunit_slice, parse_query, percent_decode, percent_encode, pop_codeunit,
-};
-use self::schema::{CodeunitPair, PercentDecodeResult, QueryConstructions, QueryResult};
-use super::GleamStdlibHostProfile;
+use super::{Component, GleamStdlibHostProfile};
 use crate::{HostProviderModule, HostRegistrationError};
 use ecow::EcoString;
+use geam_core::provider::HostResult;
 use num_bigint::BigInt;
+
+#[geam_macros::module(
+    path = "gleam/uri",
+    crate_path = geam_core,
+    profile = crate::GleamStdlibHostProfile,
+    component = crate::Component<Profile::Io>,
+)]
+mod provider {
+    use super::{BigInt, EcoString, HostResult, function};
+
+    #[geam_macros::function]
+    fn pop_codeunit(string: EcoString) -> (BigInt, EcoString) {
+        function::pop_codeunit(string)
+    }
+
+    #[geam_macros::function]
+    fn codeunit_slice(string: EcoString, from: BigInt, length: BigInt) -> HostResult<EcoString> {
+        function::codeunit_slice(string, from, length).map_err(Into::into)
+    }
+
+    #[geam_macros::function]
+    fn parse_query(query: EcoString) -> Result<Vec<(EcoString, EcoString)>, ()> {
+        function::parse_query(query)
+    }
+
+    #[geam_macros::function]
+    fn percent_encode(value: EcoString) -> EcoString {
+        function::percent_encode(value)
+    }
+
+    #[geam_macros::function]
+    fn percent_decode(value: EcoString) -> Result<EcoString, ()> {
+        function::percent_decode(value)
+    }
+}
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
     Profile: GleamStdlibHostProfile,
 {
-    HostProviderModule::new("gleam_stdlib", "gleam/uri")
-        .and_then(|provider| {
-            provider.with_scoped_function::<UriProvider<Profile>, (EcoString,), CodeunitPair, _>(
-                "pop_codeunit",
-                pop_codeunit::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_fallible_function::<(EcoString, BigInt, BigInt), EcoString, _>(
-                "codeunit_slice",
-                codeunit_slice,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function_and_constructions::<
-                UriProvider<Profile>,
-                (EcoString,),
-                QueryResult,
-                QueryConstructions,
-                _,
-            >("parse_query", parse_query::<Profile>)
-        })
-        .and_then(|provider| provider.with_function("percent_encode", percent_encode))
-        .and_then(|provider| {
-            provider
-                .with_scoped_function::<UriProvider<Profile>, (EcoString,), PercentDecodeResult, _>(
-                    "percent_decode",
-                    percent_decode::<Profile>,
-                )
-        })
+    provider::__geam_module::<Profile>()
 }
 
 #[cfg(test)]

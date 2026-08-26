@@ -1,89 +1,30 @@
 mod function;
-mod schema;
 mod storage;
 
-pub(crate) use schema::DynamicList;
-pub use schema::{Dynamic, DynamicSchema};
-pub use storage::DynamicExternalStorage;
-pub(super) use storage::Stores;
+pub use function::create_value;
+pub(super) use function::provider::__GeamStores as Stores;
+pub(crate) use function::provider::DynamicPayload;
+pub use function::provider::{
+    __GeamExternalSchema0 as DynamicSchema, __GeamExternalStorage0 as DynamicExternalStorage,
+};
 
-pub(crate) use self::function::create_return_value;
-pub use self::function::create_value;
-pub(crate) use self::function::{DynamicProvider, classification, decode_value, sequence};
-use self::function::{array, cast, classify};
-use self::schema::Parameter;
+pub(crate) use self::storage::DynamicRepresentation;
 use super::GleamStdlibHostProfile;
-use crate::{HostList, HostProviderModule, HostRegistrationError};
-use ecow::EcoString;
-use num_bigint::BigInt;
+use crate::{HostExternalType, HostProviderModule, HostRegistrationError, stdlib_stores};
+
+pub type Dynamic = HostExternalType<DynamicSchema>;
+fn stores<Profile>(stores: &Profile::ExternalStores) -> &Stores
+where
+    Profile: GleamStdlibHostProfile,
+{
+    &stdlib_stores::<Profile>(stores).dynamic
+}
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
     Profile: GleamStdlibHostProfile,
 {
-    HostProviderModule::new("gleam_stdlib", "gleam/dynamic")
-        .and_then(HostProviderModule::with_external_type::<DynamicProvider<Profile>, DynamicSchema>)
-        .and_then(|provider| {
-            provider.with_scoped_function::<DynamicProvider<Profile>, (Dynamic,), EcoString, _>(
-                "classify",
-                classify::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<DynamicProvider<Profile>, (bool,), Dynamic, _>(
-                "bool",
-                cast::<Profile, bool>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<DynamicProvider<Profile>, (EcoString,), Dynamic, _>(
-                "string",
-                cast::<Profile, EcoString>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<DynamicProvider<Profile>, (f64,), Dynamic, _>(
-                "float",
-                cast::<Profile, f64>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<DynamicProvider<Profile>, (BigInt,), Dynamic, _>(
-                "int",
-                cast::<Profile, BigInt>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<
-                DynamicProvider<Profile>,
-                (crate::BitArrayValue,),
-                Dynamic,
-                _,
-            >("bit_array", cast::<Profile, crate::BitArrayValue>)
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<DynamicProvider<Profile>, (DynamicList,), Dynamic, _>(
-                "list",
-                cast::<Profile, DynamicList>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<DynamicProvider<Profile>, (DynamicList,), Dynamic, _>(
-                "array",
-                array::<Profile>,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<DynamicProvider<Profile>, (Parameter,), Dynamic, _>(
-                "cast",
-                cast::<Profile, Parameter>,
-            )
-        })
-}
-
-pub(crate) enum DynamicSequence<'call> {
-    List(HostList<'call, Dynamic>),
-    Array(HostList<'call, Dynamic>),
+    function::host_provider::<Profile>()
 }
 
 #[cfg(test)]

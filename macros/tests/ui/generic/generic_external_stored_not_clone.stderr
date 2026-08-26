@@ -1,0 +1,5 @@
+error[E0599]: no method named `clone` found for struct `Stored<Type, Context>` in the current scope
+  --> tests/ui/generic/generic_external_stored_not_clone.rs:33:32
+   |
+33 |         let duplicate = stored.clone();
+   |                                ^^^^^ method not found in `Stored<Item, geam_core::provider::ProviderStoredInput<'_, __GeamExternalOwner0, HostTypeIndex0, HostTypeParameter<0>>>`

@@ -1,0 +1,14 @@
+[workspace]
+members = ["declarations", "consumer"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+publish = false
+
+[workspace.dependencies]
+ecow = "=0.2.6"
+geam-core = { path = "../../../../core" }
+geam-macro-cross-crate-declarations = { path = "declarations" }
+geam-macros = { path = "../../.." }
+num-bigint = "0.4.6"

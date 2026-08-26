@@ -1,0 +1,6 @@
+packages = [
+  { name = "example_generic_box", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/example_generic_box" },
+]
+
+[requirements]
+example_generic_box = { path = "packages/example_generic_box" }

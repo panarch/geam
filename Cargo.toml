@@ -26,6 +26,7 @@ members = [
     "builtins/stdlib",
     "builtins/json",
     "builtins/time",
+    "macros",
 ]
 default-members = [
     ".",
@@ -34,6 +35,7 @@ default-members = [
     "builtins/stdlib",
     "builtins/json",
     "builtins/time",
+    "macros",
 ]
 resolver = "3"
 
@@ -57,6 +59,7 @@ flate2 = "1"
 geam-core = { path = "core", version = "=0.1.2" }
 geam-cli = { path = "cli", version = "=0.1.2" }
 geam-json = { path = "builtins/json", version = "=0.1.2" }
+geam-macros = { path = "macros", version = "=0.1.2" }
 geam-stdlib = { path = "builtins/stdlib", version = "=0.1.2" }
 geam-time = { path = "builtins/time", version = "=0.1.2" }
 gleam-core = { package = "geam-gleam-core", version = "=1.18.1-geam.2" }
@@ -70,6 +73,9 @@ jiter = { version = "0.16", default-features = false }
 miette = "7"
 num-bigint = "0.4.6"
 num-traits = "0.2"
+proc-macro-crate = "3"
+proc-macro2 = "1"
+quote = "1"
 rand = { version = "=0.10.0", default-features = false, features = ["std", "chacha", "sys_rng"] }
 ryu = "1"
 semver = "1"
@@ -80,6 +86,8 @@ tar = "0.4"
 tempfile = "3"
 thiserror = "2"
 toml = "0.9"
+trybuild = "1"
+syn = { version = "2", features = ["full"] }
 unicode-segmentation = "1.13"
 ureq = { version = "3", features = ["json"] }
 vec1 = "1"
@@ -88,6 +96,7 @@ vec1 = "1"
 geam-cli.workspace = true
 geam-core.workspace = true
 geam-json.workspace = true
+geam-macros.workspace = true
 geam-stdlib.workspace = true
 geam-time.workspace = true
 

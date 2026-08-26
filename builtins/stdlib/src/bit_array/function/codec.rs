@@ -1,7 +1,4 @@
-use super::super::schema::{BitArrayError, BitArrayOk, BitArrayResult};
-use super::BitArrayProvider;
-use crate::GleamStdlibHostProfile;
-use crate::{BitArrayValue, HostCall, HostCallCompletion, HostCallError};
+use crate::BitArrayValue;
 use base64::Engine;
 use base64::alphabet;
 use base64::engine::general_purpose::{
@@ -24,34 +21,20 @@ pub(in crate::bit_array) fn base64_encode(value: BitArrayValue, padding: bool) -
     }
 }
 
-pub(in crate::bit_array) fn decode64<'call, Profile>(
-    call: HostCall<'call, Profile, BitArrayProvider<Profile>, BitArrayResult>,
-    value: EcoString,
-) -> Result<HostCallCompletion<'call, BitArrayResult>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    Ok(match decode_base64(&value) {
-        Ok(bytes) => call.return_custom::<BitArrayOk>((BitArrayValue::from_bytes(bytes), ())),
-        Err(_) => call.return_custom::<BitArrayError>(((), ())),
-    })
+pub(in crate::bit_array) fn decode64(value: EcoString) -> Result<BitArrayValue, ()> {
+    decode_base64(&value)
+        .map(BitArrayValue::from_bytes)
+        .map_err(|_| ())
 }
 
 pub(in crate::bit_array) fn base16_encode(value: BitArrayValue) -> EcoString {
     hex::encode_upper(bit_array_pad_to_bytes(&value).bytes()).into()
 }
 
-pub(in crate::bit_array) fn base16_decode<'call, Profile>(
-    call: HostCall<'call, Profile, BitArrayProvider<Profile>, BitArrayResult>,
-    value: EcoString,
-) -> Result<HostCallCompletion<'call, BitArrayResult>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    Ok(match hex::decode(value.as_bytes()) {
-        Ok(bytes) => call.return_custom::<BitArrayOk>((BitArrayValue::from_bytes(bytes), ())),
-        Err(_) => call.return_custom::<BitArrayError>(((), ())),
-    })
+pub(in crate::bit_array) fn base16_decode(value: EcoString) -> Result<BitArrayValue, ()> {
+    hex::decode(value.as_bytes())
+        .map(BitArrayValue::from_bytes)
+        .map_err(|_| ())
 }
 
 fn decode_base64(value: &str) -> Result<Vec<u8>, base64::DecodeError> {

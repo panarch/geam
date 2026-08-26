@@ -1,0 +1,16 @@
+error[E0521]: borrowed data escapes outside of function
+  --> tests/ui/generic/generic_external_input_guard_escape.rs:32:9
+   |
+11 | / #[geam_macros::module(
+12 | |     path = "generic_external_input_guard_escape",
+13 | |     crate_path = geam_core,
+14 | | )]
+   | |__- lifetime `'__geam_call` defined here
+...
+31 |       fn escape(boxed: BoxInput<EcoString>) -> bool {
+   |                 ----- `boxed` is a reference that is only valid in the function body
+32 |           retain(boxed);
+   |           ^^^^^^^^^^^^^
+   |           |
+   |           `boxed` escapes the function body here
+   |           argument requires that `'__geam_call` must outlive `'static`

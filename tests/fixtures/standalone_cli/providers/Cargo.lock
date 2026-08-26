@@ -1093,6 +1093,7 @@ dependencies = [
  "geam-cli",
  "geam-core",
  "geam-json",
+ "geam-macros",
  "geam-stdlib",
  "geam-time",
 ]
@@ -1283,10 +1284,21 @@ version = "0.1.2"
 dependencies = [
  "ecow",
  "geam-core",
+ "geam-macros",
  "geam-stdlib",
  "jiter",
  "num-bigint",
  "ryu",
+]
+
+[[package]]
+name = "geam-macros"
+version = "0.1.2"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -1297,6 +1309,7 @@ dependencies = [
  "bitvec",
  "ecow",
  "geam-core",
+ "geam-macros",
  "hex",
  "im",
  "num-bigint",
@@ -1310,6 +1323,7 @@ name = "geam-time"
 version = "0.1.2"
 dependencies = [
  "geam-core",
+ "geam-macros",
  "geam-stdlib",
  "jiff",
  "num-bigint",
@@ -2240,6 +2254,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "proc-macro-crate"
+version = "3.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e67ba7e9b2b56446f1d419b1d807906278ffa1a658a8a5d8a39dcb1f5a78614f"
+dependencies = [
+ "toml_edit",
+]
+
+[[package]]
 name = "proc-macro-error-attr2"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3101,7 +3124,7 @@ dependencies = [
  "indexmap",
  "serde_core",
  "serde_spanned",
- "toml_datetime",
+ "toml_datetime 0.7.5+spec-1.1.0",
  "toml_parser",
  "toml_writer",
  "winnow 0.7.15",
@@ -3114,6 +3137,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92e1cfed4a3038bc5a127e35a2d360f145e1f4b971b551a2ba5fd7aedf7e1347"
 dependencies = [
  "serde_core",
+]
+
+[[package]]
+name = "toml_datetime"
+version = "1.1.1+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3165f65f62e28e0115a00b2ebdd37eb6f3b641855f9d636d3cd4103767159ad7"
+dependencies = [
+ "serde_core",
+]
+
+[[package]]
+name = "toml_edit"
+version = "0.25.13+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6975367e4d2ef766d86af01ffad14b622fecc8d4357a998fbc4deb6e9bacaf9b"
+dependencies = [
+ "indexmap",
+ "toml_datetime 1.1.1+spec-1.1.0",
+ "toml_parser",
+ "winnow 1.0.4",
 ]
 
 [[package]]

@@ -1,117 +1,341 @@
-use super::schema::{
-    Dict, FoldAccumulator, FoldDict, FoldFunctionArguments, GetDict, GetError, GetKey, GetOk,
-    GetResult, Item, ItemIndex, Key, KeyIndex, MapFunctionArguments, MapInputDict, MapOutput,
-    MapOutputDict, TransientDict, UpdateFunctionArguments,
-};
-use super::storage::{
-    DictEntry, DictExternalStorage, DictPayload, DictPayloadStorage, DictStorage,
-    TransientDictExternalStorage, TransientDictPayload,
-};
-use crate::{Dynamic, GleamStdlibHostProfile, GleamStdlibRunState, stdlib_state};
+use super::storage::{DictEntry, DictPayload, DictStorage};
+use super::{DictOf, DictSchema};
+use crate::dynamic::Dynamic;
 use crate::{
-    HostCall, HostCallCompletion, HostCallError, HostCallable, HostConstruction, HostExternal,
-    HostExternalBinding, HostExternalPayloadBuilder, HostExternalPayloadView, HostProfile,
-    HostProvider, HostType, HostTypeAt, HostTypeSequence, HostValue,
+    Component, GleamStdlibRunState, HostCall, HostConstruction, HostExternal, HostProvider,
+    HostType, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
 };
+use geam_core::provider::{Call, Callback, HostResult, Value};
 use num_bigint::BigInt;
 use std::collections::HashMap;
-use std::marker::PhantomData;
 use std::rc::Rc;
 
-pub(super) struct DictProvider<Profile>(PhantomData<Profile>);
+#[geam_macros::module(
+    path = "gleam/dict",
+    crate_path = geam_core,
+    profile = crate::GleamStdlibHostProfile,
+    component = crate::Component<Profile::Io>,
+    stores = crate::dict::stores,
+)]
+pub(super) mod provider {
+    use super::{
+        BigInt, Call, Callback, DictEntry, DictPayload, DictStorage, GleamStdlibRunState,
+        HostResult, Rc, Value,
+    };
 
-impl<Profile> HostProvider<Profile> for DictProvider<Profile>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    type State = GleamStdlibRunState<Profile::Io>;
+    #[geam_macros::external(
+        name = "Dict",
+        parameters = [Key, Item],
+        input = DictInput,
+        payload = DictPayload,
+        manual,
+    )]
+    pub struct DictValue<Key, Item>;
 
-    fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        stdlib_state::<Profile>(state)
+    #[geam_macros::external(
+        name = "TransientDict",
+        parameters = [Key, Item],
+        input = TransientDictInput,
+        payload = DictPayload,
+        manual,
+    )]
+    pub(super) struct TransientDictValue<Key, Item>;
+
+    #[geam_macros::function]
+    fn to_transient<Key, Item>(dict: DictInput<Key, Item>) -> TransientDictValue<Key, Item> {
+        TransientDictValue::from_payload(DictPayload {
+            storage: dict.payload().storage.clone(),
+        })
+    }
+
+    #[geam_macros::function]
+    fn from_transient<Key, Item>(transient: TransientDictInput<Key, Item>) -> DictValue<Key, Item> {
+        DictValue::from_payload(DictPayload {
+            storage: transient.payload().storage.clone(),
+        })
+    }
+
+    #[geam_macros::function]
+    fn size<Key, Item>(dict: DictInput<Key, Item>) -> BigInt {
+        dict.payload().storage.len.into()
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn do_has_key<Key, Item>(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        key: Value<Key>,
+        dict: DictInput<Key, Item>,
+    ) -> bool {
+        let key_hash = call.source_hash(&key);
+        dict.payload()
+            .storage
+            .matching_index(key_hash, &mut |index| {
+                let candidate =
+                    call.restore(dict.stored_key(|payload| {
+                        payload.storage.buckets[&key_hash][index].key.as_ref()
+                    }));
+                call.equal(&candidate, &key)
+            })
+            .is_some()
+    }
+
+    #[geam_macros::function]
+    fn new<Key, Item>() -> DictValue<Key, Item> {
+        DictValue::from_payload(DictPayload {
+            storage: DictStorage::default(),
+        })
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn get<Item, Key>(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        dict: DictInput<Key, Item>,
+        key: Value<Key>,
+    ) -> Result<Value<Item>, ()> {
+        let key_hash = call.source_hash(&key);
+        let Some(index) =
+            dict.payload()
+                .storage
+                .matching_index(key_hash, &mut |index| {
+                    let candidate = call.restore(dict.stored_key(|payload| {
+                        payload.storage.buckets[&key_hash][index].key.as_ref()
+                    }));
+                    call.equal(&candidate, &key)
+                })
+        else {
+            return Err(());
+        };
+        Ok(call.restore(
+            dict.stored_item(|payload| payload.storage.buckets[&key_hash][index].value.as_ref()),
+        ))
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn do_insert<Key, Item>(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        key: Value<Key>,
+        value: Value<Item>,
+        dict: DictInput<Key, Item>,
+    ) -> DictValue<Key, Item> {
+        let key_hash = call.source_hash(&key);
+        let index =
+            dict.payload()
+                .storage
+                .matching_index(key_hash, &mut |index| {
+                    let candidate = call.restore(dict.stored_key(|payload| {
+                        payload.storage.buckets[&key_hash][index].key.as_ref()
+                    }));
+                    call.equal(&candidate, &key)
+                });
+        let storage = dict.payload().storage.clone();
+        let entry = Rc::new(DictEntry {
+            key_hash,
+            key: Rc::new(call.store(key).into_retained()),
+            value: Rc::new(call.store(value).into_retained()),
+        });
+        DictValue::from_payload(DictPayload {
+            storage: storage.with_entry(key_hash, index, entry),
+        })
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn transient_insert<Key, Item>(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        key: Value<Key>,
+        value: Value<Item>,
+        transient: TransientDictInput<Key, Item>,
+    ) -> TransientDictValue<Key, Item> {
+        let key_hash = call.source_hash(&key);
+        let index = transient
+            .payload()
+            .storage
+            .matching_index(key_hash, &mut |index| {
+                let candidate =
+                    call.restore(transient.stored_key(|payload| {
+                        payload.storage.buckets[&key_hash][index].key.as_ref()
+                    }));
+                call.equal(&candidate, &key)
+            });
+        let storage = transient.payload().storage.clone();
+        let entry = Rc::new(DictEntry {
+            key_hash,
+            key: Rc::new(call.store(key).into_retained()),
+            value: Rc::new(call.store(value).into_retained()),
+        });
+        TransientDictValue::from_payload(DictPayload {
+            storage: storage.with_entry(key_hash, index, entry),
+        })
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn do_map_values<Key, Mapped, Item>(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        function: Callback<fn(Value<Key>, Value<Item>) -> Value<Mapped>>,
+        dict: DictInput<Key, Item>,
+    ) -> HostResult<DictValue<Key, Mapped>> {
+        let coordinates = dict.payload().coordinates();
+        let mut buckets = im::HashMap::new();
+        for (key_hash, index) in coordinates {
+            let key = call.restore(
+                dict.stored_key(|payload| payload.storage.buckets[&key_hash][index].key.as_ref()),
+            );
+            let value =
+                call.restore(dict.stored_item(|payload| {
+                    payload.storage.buckets[&key_hash][index].value.as_ref()
+                }));
+            let value = call.invoke(function, (key, value))?;
+            let entry = Rc::new(DictEntry {
+                key_hash,
+                key: dict.payload().storage.buckets[&key_hash][index].key.clone(),
+                value: Rc::new(call.store(value).into_retained()),
+            });
+            buckets
+                .entry(key_hash)
+                .or_insert_with(im::Vector::new)
+                .push_back(entry);
+        }
+        Ok(DictValue::from_payload(DictPayload {
+            storage: DictStorage {
+                buckets,
+                len: dict.payload().storage.len,
+            },
+        }))
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn transient_delete<Key, Item>(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        key: Value<Key>,
+        transient: TransientDictInput<Key, Item>,
+    ) -> TransientDictValue<Key, Item> {
+        let key_hash = call.source_hash(&key);
+        let Some(index) = transient
+            .payload()
+            .storage
+            .matching_index(key_hash, &mut |index| {
+                let candidate =
+                    call.restore(transient.stored_key(|payload| {
+                        payload.storage.buckets[&key_hash][index].key.as_ref()
+                    }));
+                call.equal(&candidate, &key)
+            })
+        else {
+            return transient.into_value();
+        };
+        TransientDictValue::from_payload(DictPayload {
+            storage: transient.payload().storage.without_entry(key_hash, index),
+        })
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn do_fold<Accumulator, Key, Item>(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        function: Callback<fn(Value<Key>, Value<Item>, Value<Accumulator>) -> Value<Accumulator>>,
+        mut accumulator: Value<Accumulator>,
+        dict: DictInput<Key, Item>,
+    ) -> HostResult<Value<Accumulator>> {
+        for (key_hash, index) in dict.payload().coordinates() {
+            let key = call.restore(
+                dict.stored_key(|payload| payload.storage.buckets[&key_hash][index].key.as_ref()),
+            );
+            let value =
+                call.restore(dict.stored_item(|payload| {
+                    payload.storage.buckets[&key_hash][index].value.as_ref()
+                }));
+            accumulator = call.invoke(function, (key, value, accumulator))?;
+        }
+        Ok(accumulator)
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn transient_update_with<Key, Item>(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        key: Value<Key>,
+        function: Callback<fn(Value<Item>) -> Value<Item>>,
+        initial: Value<Item>,
+        transient: TransientDictInput<Key, Item>,
+    ) -> HostResult<TransientDictValue<Key, Item>> {
+        let key_hash = call.source_hash(&key);
+        let index = transient
+            .payload()
+            .storage
+            .matching_index(key_hash, &mut |index| {
+                let candidate =
+                    call.restore(transient.stored_key(|payload| {
+                        payload.storage.buckets[&key_hash][index].key.as_ref()
+                    }));
+                call.equal(&candidate, &key)
+            });
+        let value = match index {
+            Some(index) => {
+                let value = call.restore(transient.stored_item(|payload| {
+                    payload.storage.buckets[&key_hash][index].value.as_ref()
+                }));
+                call.invoke(function, (value,))?
+            }
+            None => initial,
+        };
+        let storage = transient.payload().storage.clone();
+        let entry = Rc::new(DictEntry {
+            key_hash,
+            key: Rc::new(call.store(key).into_retained()),
+            value: Rc::new(call.store(value).into_retained()),
+        });
+        Ok(TransientDictValue::from_payload(DictPayload {
+            storage: storage.with_entry(key_hash, index, entry),
+        }))
     }
 }
 
-impl<Profile> HostExternalBinding<Profile, super::schema::DictSchema> for DictProvider<Profile>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    type Storage = DictExternalStorage;
-}
-
-impl<Profile> HostExternalBinding<Profile, super::schema::TransientDictSchema>
-    for DictProvider<Profile>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    type Storage = TransientDictExternalStorage;
-}
-
-pub(crate) fn lookup<'call, Profile, Provider, Return, KeyType, ValueType>(
-    call: &mut HostCall<'call, Profile, Provider, Return>,
-    dict: HostExternal<'call, super::schema::DictOf<KeyType, ValueType>>,
-    key: KeyType::Value<'call>,
-) -> Option<ValueType::Value<'call>>
-where
-    Profile: GleamStdlibHostProfile,
-    Provider:
-        HostExternalBinding<Profile, super::schema::DictSchema, Storage = DictExternalStorage>,
-    Return: HostType,
-    KeyType: HostType,
-    ValueType: HostType,
-{
-    let key_hash = call.source_hash::<KeyType>(key.clone());
-    let payload = call.external_payload(dict);
-    let index = matching_entry(call, &payload, key_hash, key)?;
-    Some(
-        payload.restore_argument::<Profile, Provider, Return, ItemIndex>(call, |payload| {
-            &payload.storage.buckets[&key_hash][index].value
-        }),
-    )
-}
+type KeyIndex = HostTypeIndex0;
+type ItemIndex = HostTypeIndexNext<KeyIndex>;
 
 pub fn create_dynamic_dict<'call, Profile, Provider, Return>(
     call: &mut HostCall<'call, Profile, Provider, Return>,
-    construction: HostConstruction<'call, super::schema::DictOf<Dynamic, Dynamic>>,
+    construction: HostConstruction<'call, DictOf<Dynamic, Dynamic>>,
     entries: impl IntoIterator<Item = (HostExternal<'call, Dynamic>, HostExternal<'call, Dynamic>)>,
-) -> HostExternal<'call, super::schema::DictOf<Dynamic, Dynamic>>
+) -> HostExternal<'call, DictOf<Dynamic, Dynamic>>
 where
-    Profile: GleamStdlibHostProfile,
-    Provider:
-        HostExternalBinding<Profile, super::schema::DictSchema, Storage = DictExternalStorage>,
+    Profile: crate::GleamStdlibHostProfile,
+    Provider: HostProvider<Profile>,
     Return: HostType,
 {
-    create_dict(call, construction, entries)
-}
-
-fn create_dict<'call, Profile, Provider, Return, KeyType, ValueType>(
-    call: &mut HostCall<'call, Profile, Provider, Return>,
-    construction: HostConstruction<'call, super::schema::DictOf<KeyType, ValueType>>,
-    entries: impl IntoIterator<Item = (KeyType::Value<'call>, ValueType::Value<'call>)>,
-) -> HostExternal<'call, super::schema::DictOf<KeyType, ValueType>>
-where
-    Profile: GleamStdlibHostProfile,
-    Provider:
-        HostExternalBinding<Profile, super::schema::DictSchema, Storage = DictExternalStorage>,
-    Return: HostType,
-    KeyType: HostType,
-    ValueType: HostType,
-{
-    let mut buckets = HashMap::<u64, Vec<(KeyType::Value<'call>, ValueType::Value<'call>)>>::new();
+    let mut buckets = HashMap::new();
     for (key, value) in entries {
-        let key_hash = call.source_hash::<KeyType>(key.clone());
+        let key_hash = call.source_hash::<Dynamic>(key);
         insert_first(&mut buckets, key_hash, key, value, |stored, candidate| {
-            call.equal::<KeyType>(stored.clone(), candidate.clone())
+            call.equal::<Dynamic>(*stored, *candidate)
         });
     }
 
-    call.construct_external_with(construction, move |builder| {
+    call.construct_retained_external_with_binding::<
+        provider::__GeamProvider,
+        DictSchema,
+        HostTypeList<Dynamic, HostTypeList<Dynamic, HostTypeListEnd>>,
+    >(construction, move |builder| {
         let len = buckets.values().map(Vec::len).sum();
         let buckets = buckets
             .into_iter()
             .map(|(key_hash, entries)| {
                 let entries = entries
                     .into_iter()
-                    .map(|(key, value)| create_entry(builder, key_hash, key, value))
+                    .map(|(key, value)| {
+                        Rc::new(DictEntry {
+                            key_hash,
+                            key: Rc::new(geam_core::__macro_support::retain_argument::<
+                                _,
+                                _,
+                                DictPayload,
+                                KeyIndex,
+                            >(builder, key)),
+                            value: Rc::new(geam_core::__macro_support::retain_argument::<
+                                _,
+                                _,
+                                DictPayload,
+                                ItemIndex,
+                            >(builder, value)),
+                        })
+                    })
                     .collect();
                 (key_hash, entries)
             })
@@ -122,7 +346,15 @@ where
     })
 }
 
-fn insert_first<Key, Value>(
+pub(super) fn host_provider<Profile>()
+-> Result<crate::HostProviderModule<Profile>, crate::HostRegistrationError>
+where
+    Profile: crate::GleamStdlibHostProfile,
+{
+    provider::__geam_module::<Profile>()
+}
+
+pub(super) fn insert_first<Key, Value>(
     buckets: &mut HashMap<u64, Vec<(Key, Value)>>,
     key_hash: u64,
     key: Key,
@@ -135,290 +367,10 @@ fn insert_first<Key, Value>(
     }
 }
 
-pub(super) fn to_transient<'call, Profile>(
-    mut call: HostCall<'call, Profile, DictProvider<Profile>, TransientDict>,
-    dict: HostExternal<'call, Dict>,
-) -> Result<HostCallCompletion<'call, TransientDict>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    let storage = call.external_payload(dict).storage.clone();
-    let transient = call.create_external(TransientDictPayload { storage });
-    Ok(call.return_value(transient))
-}
-
-pub(super) fn from_transient<'call, Profile>(
-    mut call: HostCall<'call, Profile, DictProvider<Profile>, Dict>,
-    transient: HostExternal<'call, TransientDict>,
-) -> Result<HostCallCompletion<'call, Dict>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    let storage = call.external_payload(transient).storage.clone();
-    let dict = call.create_external(DictPayload { storage });
-    Ok(call.return_value(dict))
-}
-
-pub(super) fn size<'call, Profile>(
-    call: HostCall<'call, Profile, DictProvider<Profile>, BigInt>,
-    dict: HostExternal<'call, Dict>,
-) -> Result<HostCallCompletion<'call, BigInt>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    let size = call.external_payload(dict).storage.len;
-    Ok(call.return_value(BigInt::from(size)))
-}
-
-pub(super) fn do_has_key<'call, Profile>(
-    mut call: HostCall<'call, Profile, DictProvider<Profile>, bool>,
-    key: HostValue<'call, Key>,
-    dict: HostExternal<'call, Dict>,
-) -> Result<HostCallCompletion<'call, bool>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    let key_hash = call.source_hash::<Key>(key);
-    let payload = call.external_payload(dict);
-    let found = matching_entry(&mut call, &payload, key_hash, key).is_some();
-    Ok(call.return_value(found))
-}
-
-pub(super) fn new<'call, Profile>(
-    mut call: HostCall<'call, Profile, DictProvider<Profile>, Dict>,
-) -> Result<HostCallCompletion<'call, Dict>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    let dict = call.create_external(DictPayload {
-        storage: DictStorage::default(),
-    });
-    Ok(call.return_value(dict))
-}
-
-pub(super) fn get<'call, Profile>(
-    mut call: HostCall<'call, Profile, DictProvider<Profile>, GetResult>,
-    dict: HostExternal<'call, GetDict>,
-    key: HostValue<'call, GetKey>,
-) -> Result<HostCallCompletion<'call, GetResult>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    let key_hash = call.source_hash::<GetKey>(key);
-    let payload = call.external_payload(dict);
-    let Some(index) = matching_entry(&mut call, &payload, key_hash, key) else {
-        return Ok(call.return_custom::<GetError>(((), ())));
-    };
-    let value = payload.restore_argument::<Profile, DictProvider<Profile>, GetResult, ItemIndex>(
-        &mut call,
-        |payload| &payload.storage.buckets[&key_hash][index].value,
-    );
-    Ok(call.return_custom::<GetOk>((value, ())))
-}
-
-pub(super) fn do_insert<'call, Profile>(
-    mut call: HostCall<'call, Profile, DictProvider<Profile>, Dict>,
-    key: HostValue<'call, Key>,
-    value: HostValue<'call, Item>,
-    dict: HostExternal<'call, Dict>,
-) -> Result<HostCallCompletion<'call, Dict>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    let key_hash = call.source_hash::<Key>(key);
-    let payload = call.external_payload(dict);
-    let index = matching_entry(&mut call, &payload, key_hash, key);
-    let storage = payload.storage.clone();
-    let dict = call.create_external_with(move |builder| DictPayload {
-        storage: storage.with_entry(key_hash, index, create_entry(builder, key_hash, key, value)),
-    });
-    Ok(call.return_value(dict))
-}
-
-pub(super) fn transient_insert<'call, Profile>(
-    mut call: HostCall<'call, Profile, DictProvider<Profile>, TransientDict>,
-    key: HostValue<'call, Key>,
-    value: HostValue<'call, Item>,
-    transient: HostExternal<'call, TransientDict>,
-) -> Result<HostCallCompletion<'call, TransientDict>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    let key_hash = call.source_hash::<Key>(key);
-    let payload = call.external_payload(transient);
-    let index = matching_entry(&mut call, &payload, key_hash, key);
-    let storage = payload.storage.clone();
-    let transient = call.create_external_with(move |builder| TransientDictPayload {
-        storage: storage.with_entry(key_hash, index, create_entry(builder, key_hash, key, value)),
-    });
-    Ok(call.return_value(transient))
-}
-
-pub(super) fn do_map_values<'call, Profile>(
-    mut call: HostCall<'call, Profile, DictProvider<Profile>, MapOutputDict>,
-    function: HostCallable<'call, MapFunctionArguments, MapOutput>,
-    dict: HostExternal<'call, MapInputDict>,
-) -> Result<HostCallCompletion<'call, MapOutputDict>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    let payload = call.external_payload(dict);
-    let mut values = Vec::with_capacity(payload.storage.len);
-    let coordinates = payload
-        .storage
-        .buckets
-        .iter()
-        .flat_map(|(key_hash, bucket)| (0..bucket.len()).map(move |index| (*key_hash, index)))
-        .collect::<Vec<_>>();
-    for (key_hash, index) in coordinates {
-        let key = payload
-            .restore_argument::<Profile, DictProvider<Profile>, MapOutputDict, KeyIndex>(
-                &mut call,
-                |payload| &payload.storage.buckets[&key_hash][index].key,
-            );
-        let value = payload
-            .restore_argument::<Profile, DictProvider<Profile>, MapOutputDict, ItemIndex>(
-                &mut call,
-                |payload| &payload.storage.buckets[&key_hash][index].value,
-            );
-        let value = call.invoke(function, (key, (value, ())))?;
-        values.push((key_hash, key, value));
-    }
-    let dict = call.create_external_with(move |builder| {
-        let mut storage = DictStorage::default();
-        for (key_hash, key, value) in values {
-            storage =
-                storage.with_entry(key_hash, None, create_entry(builder, key_hash, key, value));
-        }
-        DictPayload { storage }
-    });
-    Ok(call.return_value(dict))
-}
-
-pub(super) fn transient_delete<'call, Profile>(
-    mut call: HostCall<'call, Profile, DictProvider<Profile>, TransientDict>,
-    key: HostValue<'call, Key>,
-    transient: HostExternal<'call, TransientDict>,
-) -> Result<HostCallCompletion<'call, TransientDict>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    let key_hash = call.source_hash::<Key>(key);
-    let payload = call.external_payload(transient);
-    let Some(index) = matching_entry(&mut call, &payload, key_hash, key) else {
-        return Ok(call.return_value(transient));
-    };
-    let storage = payload.storage.without_entry(key_hash, index);
-    let transient = call.create_external(TransientDictPayload { storage });
-    Ok(call.return_value(transient))
-}
-
-pub(super) fn do_fold<'call, Profile>(
-    mut call: HostCall<'call, Profile, DictProvider<Profile>, FoldAccumulator>,
-    function: HostCallable<'call, FoldFunctionArguments, FoldAccumulator>,
-    mut accumulator: HostValue<'call, FoldAccumulator>,
-    dict: HostExternal<'call, FoldDict>,
-) -> Result<HostCallCompletion<'call, FoldAccumulator>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    let payload = call.external_payload(dict);
-    let coordinates = payload
-        .storage
-        .buckets
-        .iter()
-        .flat_map(|(key_hash, bucket)| (0..bucket.len()).map(move |index| (*key_hash, index)))
-        .collect::<Vec<_>>();
-    for (key_hash, index) in coordinates {
-        let key = payload
-            .restore_argument::<Profile, DictProvider<Profile>, FoldAccumulator, KeyIndex>(
-                &mut call,
-                |payload| &payload.storage.buckets[&key_hash][index].key,
-            );
-        let value = payload
-            .restore_argument::<Profile, DictProvider<Profile>, FoldAccumulator, ItemIndex>(
-                &mut call,
-                |payload| &payload.storage.buckets[&key_hash][index].value,
-            );
-        accumulator = call.invoke(function, (key, (value, (accumulator, ()))))?;
-    }
-    Ok(call.return_value(accumulator))
-}
-
-pub(super) fn transient_update_with<'call, Profile>(
-    mut call: HostCall<'call, Profile, DictProvider<Profile>, TransientDict>,
-    key: HostValue<'call, Key>,
-    function: HostCallable<'call, UpdateFunctionArguments, Item>,
-    init: HostValue<'call, Item>,
-    transient: HostExternal<'call, TransientDict>,
-) -> Result<HostCallCompletion<'call, TransientDict>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    let key_hash = call.source_hash::<Key>(key);
-    let payload = call.external_payload(transient);
-    let index = matching_entry(&mut call, &payload, key_hash, key);
-    let value = match index {
-        Some(index) => {
-            let current = payload
-                .restore_argument::<Profile, DictProvider<Profile>, TransientDict, ItemIndex>(
-                    &mut call,
-                    |payload| &payload.storage.buckets[&key_hash][index].value,
-                );
-            call.invoke(function, (current, ()))?
-        }
-        None => init,
-    };
-    let storage = payload.storage.clone();
-    let transient = call.create_external_with(move |builder| TransientDictPayload {
-        storage: storage.with_entry(key_hash, index, create_entry(builder, key_hash, key, value)),
-    });
-    Ok(call.return_value(transient))
-}
-
-fn matching_entry<'call, Profile, Provider, Return, Payload, Arguments>(
-    call: &mut HostCall<'call, Profile, Provider, Return>,
-    payload: &HostExternalPayloadView<'call, Payload, Arguments>,
-    key_hash: u64,
-    key: <<Arguments as HostTypeAt<KeyIndex>>::Type as HostType>::Value<'call>,
-) -> Option<usize>
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-    Payload: DictPayloadStorage,
-    Arguments: HostTypeSequence + HostTypeAt<KeyIndex>,
-{
-    payload.storage().matching_index(key_hash, &mut |index| {
-        let candidate = payload
-            .restore_argument::<Profile, Provider, Return, KeyIndex>(call, |payload| {
-                &payload.storage().buckets[&key_hash][index].key
-            });
-        call.equal::<<Arguments as HostTypeAt<KeyIndex>>::Type>(candidate, key.clone())
-    })
-}
-
-fn create_entry<'call, Profile, Arguments>(
-    builder: &mut HostExternalPayloadBuilder<'_, Profile, Arguments>,
-    key_hash: u64,
-    key: <<Arguments as HostTypeAt<KeyIndex>>::Type as HostType>::Value<'call>,
-    value: <<Arguments as HostTypeAt<ItemIndex>>::Type as HostType>::Value<'call>,
-) -> Rc<DictEntry>
-where
-    Profile: HostProfile,
-    Arguments: HostTypeSequence + HostTypeAt<KeyIndex> + HostTypeAt<ItemIndex>,
-{
-    Rc::new(DictEntry {
-        key_hash,
-        key: builder.store_argument::<KeyIndex>(key),
-        value: builder.store_argument::<ItemIndex>(value),
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::host_provider;
-    use super::{DictProvider, insert_first};
+    use super::{insert_first, provider::__GeamProvider as DictProvider};
     use crate::{
         Component as GleamStdlibComponent, GleamStdlibHostProfile, GleamStdlibProfile,
         GleamStdlibRunState, GleamStdlibStores, IoOutput,
@@ -685,10 +637,7 @@ pub fn new(value: Int) -> CollisionKey
     #[test]
     fn provider_projects_the_complete_run_state() {
         let mut state = GleamStdlibRunState::from_seed([0; 32]);
-        let projected =
-            <DictProvider<GleamStdlibProfile> as HostProvider<GleamStdlibProfile>>::project(
-                &mut state,
-            );
+        let projected = <DictProvider as HostProvider<GleamStdlibProfile>>::project(&mut state);
 
         assert!(std::ptr::eq(projected, &state));
     }

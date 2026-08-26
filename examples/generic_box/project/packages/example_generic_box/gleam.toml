@@ -1,0 +1,4 @@
+name = "example_generic_box"
+version = "1.0.0"
+description = "Generic retained values backed by a native Geam provider"
+licences = ["Apache-2.0"]

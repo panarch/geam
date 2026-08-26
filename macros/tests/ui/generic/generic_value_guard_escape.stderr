@@ -1,0 +1,17 @@
+error[E0521]: borrowed data escapes outside of function
+  --> tests/ui/generic/generic_value_guard_escape.rs:18:9
+   |
+10 | #[geam_macros::module(path = "generic_values", crate_path = geam_core)]
+   | ----------------------------------------------------------------------- lifetime `'__geam_call` defined here
+...
+17 |     fn retain_value<Item>(value: Value<Item>) -> () {
+   |                           ----- `value` is a reference that is only valid in the function body
+18 |         retain(value);
+   |         ^^^^^^^^^^^^^
+   |         |
+   |         `value` escapes the function body here
+   |         argument requires that `'__geam_call` must outlive `'static`
+   |
+   = note: requirement occurs because of the type `geam_core::provider::ProviderValueContext<'_, HostTypeParameter<0>>`, which makes the generic argument `'_` invariant
+   = note: the struct `geam_core::provider::ProviderValueContext<'call, Host>` is invariant over the parameter `'call`
+   = help: see <https://doc.rust-lang.org/nomicon/subtyping.html> for more information about variance

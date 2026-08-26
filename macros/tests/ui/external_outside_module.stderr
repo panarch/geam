@@ -1,0 +1,7 @@
+error: `#[geam::external]` must be inside a `#[geam::module]` inline module
+ --> tests/ui/external_outside_module.rs:1:1
+  |
+1 | #[geam_macros::external(name = "Metrics")]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `geam_macros::external` (in Nightly builds, run with -Z macro-backtrace for more info)

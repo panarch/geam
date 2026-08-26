@@ -5,8 +5,11 @@ pub mod frontend;
 pub mod host;
 pub mod plan;
 pub mod planner;
+pub mod provider;
 pub mod runtime;
 
+#[doc(hidden)]
+pub mod __macro_support;
 #[doc(hidden)]
 pub mod provider_support;
 
@@ -51,6 +54,7 @@ pub use planner::{
     ExternalTypeProviderLinkReason, HostProviderLinkReason, PlanError, RequiredHostFunction,
     plan_host_program, plan_module, plan_module_with_source, plan_program, required_host_functions,
 };
+pub use provider::List;
 pub use runtime::{
     BitArraySegmentPanicReason, BitArrayValue, BitArrayValueLengthError, CustomFieldValue,
     CustomValue, EchoLocation, EchoOutput, EchoSink, ExecutionError, ExternalValue,

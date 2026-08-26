@@ -1,0 +1,13 @@
+error[E0597]: `tag` does not live long enough
+  --> tests/ui/list_external_guard_escape.rs:23:16
+   |
+22 |         let tag = values.get(0).unwrap();
+   |             --- binding `tag` declared here
+23 |         retain(&tag);
+   |         -------^^^^-
+   |         |      |
+   |         |      borrowed value does not live long enough
+   |         argument requires that `tag` is borrowed for `'static`
+24 |         true
+25 |     }
+   |     - `tag` dropped here while still borrowed

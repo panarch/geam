@@ -1,20 +1,13 @@
-use super::super::schema::{BitArrayError, BitArrayOk, BitArrayResult};
-use super::BitArrayProvider;
-use crate::GleamStdlibHostProfile;
-use crate::{BitArrayValue, HostCall, HostCallCompletion, HostCallError};
+use crate::BitArrayValue;
 use geam_core::provider_support::bit_array_byte_slice;
 use num_bigint::{BigInt, Sign};
 use num_traits::ToPrimitive;
 
-pub(in crate::bit_array) fn slice<'call, Profile>(
-    call: HostCall<'call, Profile, BitArrayProvider<Profile>, BitArrayResult>,
+pub(in crate::bit_array) fn slice(
     value: BitArrayValue,
     position: BigInt,
     length: BigInt,
-) -> Result<HostCallCompletion<'call, BitArrayResult>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
+) -> Result<BitArrayValue, ()> {
     let endpoint = &position + &length;
     let (start, end) = if position <= endpoint {
         (position, endpoint)
@@ -32,8 +25,5 @@ where
             None
         };
 
-    Ok(match selected {
-        Some(value) => call.return_custom::<BitArrayOk>((value, ())),
-        None => call.return_custom::<BitArrayError>(((), ())),
-    })
+    selected.ok_or(())
 }

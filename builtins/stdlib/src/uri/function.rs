@@ -1,44 +1,16 @@
 mod codec;
 
-use super::schema::{
-    CodeunitPair, PercentDecodeError, PercentDecodeOk, PercentDecodeResult, QueryConstructions,
-    QueryError, QueryOk, QueryPairIndex, QueryPairsIndex, QueryResult,
-};
-use crate::{GleamStdlibHostProfile, GleamStdlibRunState, stdlib_state};
-use crate::{
-    HostCall, HostCallCompletion, HostCallError, HostConstructions, HostFailure, HostProvider,
-};
+use crate::HostFailure;
 use ecow::EcoString;
 use num_bigint::BigInt;
 use num_traits::ToPrimitive;
-use std::marker::PhantomData;
-
-pub(super) struct UriProvider<Profile>(PhantomData<Profile>);
-
-impl<Profile> HostProvider<Profile> for UriProvider<Profile>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    type State = GleamStdlibRunState<Profile::Io>;
-
-    fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        stdlib_state::<Profile>(state)
-    }
-}
-
-pub(super) fn pop_codeunit<'call, Profile>(
-    call: HostCall<'call, Profile, UriProvider<Profile>, CodeunitPair>,
-    string: EcoString,
-) -> Result<HostCallCompletion<'call, CodeunitPair>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
+pub(super) fn pop_codeunit(string: EcoString) -> (BigInt, EcoString) {
     let Some(value) = string.chars().next() else {
-        return Ok(call.return_tuple((BigInt::from(0), (string, ()))));
+        return (BigInt::from(0), string);
     };
     let rest = EcoString::from(&string[value.len_utf8()..]);
 
-    Ok(call.return_tuple((BigInt::from(u32::from(value)), (rest, ()))))
+    (BigInt::from(u32::from(value)), rest)
 }
 
 pub(super) fn codeunit_slice(
@@ -63,43 +35,16 @@ pub(super) fn codeunit_slice(
     Ok(EcoString::from(&string[from..end]))
 }
 
-pub(super) fn parse_query<'call, Profile>(
-    mut call: HostCall<'call, Profile, UriProvider<Profile>, QueryResult>,
-    constructions: HostConstructions<'call, QueryConstructions>,
-    query: EcoString,
-) -> Result<HostCallCompletion<'call, QueryResult>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    let Some(pairs) = codec::parse_query(&query) else {
-        return Ok(call.return_custom::<QueryError>(((), ())));
-    };
-    let pairs = pairs
-        .into_iter()
-        .map(|(key, value)| {
-            call.construct_tuple(constructions.at::<QueryPairIndex>(), (key, (value, ())))
-        })
-        .collect::<Vec<_>>();
-    let pairs = call.construct_list(constructions.at::<QueryPairsIndex>(), pairs);
-
-    Ok(call.return_custom::<QueryOk>((pairs, ())))
+pub(super) fn parse_query(query: EcoString) -> Result<Vec<(EcoString, EcoString)>, ()> {
+    codec::parse_query(&query).ok_or(())
 }
 
 pub(super) fn percent_encode(value: EcoString) -> EcoString {
     codec::percent_encode(&value)
 }
 
-pub(super) fn percent_decode<'call, Profile>(
-    call: HostCall<'call, Profile, UriProvider<Profile>, PercentDecodeResult>,
-    value: EcoString,
-) -> Result<HostCallCompletion<'call, PercentDecodeResult>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    Ok(match codec::percent_decode(&value) {
-        Some(value) => call.return_custom::<PercentDecodeOk>((value, ())),
-        None => call.return_custom::<PercentDecodeError>(((), ())),
-    })
+pub(super) fn percent_decode(value: EcoString) -> Result<EcoString, ()> {
+    codec::percent_decode(&value).ok_or(())
 }
 
 fn scalar_byte_index(string: &str, index: usize) -> Option<usize> {
@@ -112,16 +57,17 @@ fn scalar_byte_index(string: &str, index: usize) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::{UriProvider, codeunit_slice, scalar_byte_index};
-    use crate::{GleamStdlibProfile, GleamStdlibRunState};
+    use super::{codeunit_slice, scalar_byte_index};
+    use crate::{ExecutionError, GleamStdlibProfile, GleamStdlibRunState, ValueType};
     use crate::{
-        HostModule, HostProvider, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
-        Value, compile_typed_host_program, plan_host_program,
+        HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource, Value,
+        compile_typed_host_program, plan_host_program,
     };
     use ecow::EcoString;
+    use geam_core::{HostError, InvariantError};
     use num_bigint::BigInt;
 
-    const URI_SOURCE: &str = r#"
+    const URI_DECLARATIONS: &str = r#"
 @external(erlang, "gleam_stdlib", "string_pop_codeunit")
 fn pop_codeunit(string: String) -> #(Int, String)
 
@@ -136,7 +82,9 @@ pub fn percent_encode(value: String) -> String
 
 @external(erlang, "gleam_stdlib", "percent_decode")
 pub fn percent_decode(value: String) -> Result(String, Nil)
+"#;
 
+    const URI_MAIN: &str = r#"
 pub fn main() {
   let #(codepoint, rest) = pop_codeunit("ñrest")
   assert codepoint == 241
@@ -154,16 +102,30 @@ pub fn main() {
 }
 "#;
 
-    #[test]
-    fn uri_provider_projects_the_caller_owned_run_state() {
-        let mut state = GleamStdlibRunState::from_seed([3; 32]);
-        let expected = std::ptr::from_mut(&mut state);
-        let projected =
-            <UriProvider<GleamStdlibProfile> as HostProvider<GleamStdlibProfile>>::project(
-                &mut state,
-            );
-
-        assert!(std::ptr::eq(projected, expected));
+    fn execution(source: &str) -> HostedExecution<GleamStdlibProfile> {
+        let provider = super::super::host_provider::<GleamStdlibProfile>()
+            .expect("synthetic URI provider should register");
+        let typed = compile_typed_host_program(
+            "gleam_stdlib",
+            "gleam/uri",
+            [PackageSource::new(
+                "gleam_stdlib",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new(
+                    "gleam/uri",
+                    "src/gleam/uri.gleam",
+                    source,
+                )],
+            )],
+            HostProviderSet::with_providers(
+                Vec::<HostModule<GleamStdlibProfile>>::new(),
+                [provider],
+            )
+            .expect("synthetic URI provider module should be unique"),
+        )
+        .expect("synthetic URI source should compile");
+        let plan = plan_host_program(typed).expect("synthetic URI source should plan");
+        HostedExecution::try_from_module_plan(plan).expect("synthetic URI source should seal")
     }
 
     #[test]
@@ -224,30 +186,8 @@ pub fn main() {
 
     #[test]
     fn executes_every_uri_provider_through_the_typed_hosted_pipeline() {
-        let provider = super::super::host_provider::<GleamStdlibProfile>()
-            .expect("synthetic URI provider should register");
-        let typed = compile_typed_host_program(
-            "gleam_stdlib",
-            "gleam/uri",
-            [PackageSource::new(
-                "gleam_stdlib",
-                Vec::<EcoString>::new(),
-                [ModuleSource::new(
-                    "gleam/uri",
-                    "src/gleam/uri.gleam",
-                    URI_SOURCE,
-                )],
-            )],
-            HostProviderSet::with_providers(
-                Vec::<HostModule<GleamStdlibProfile>>::new(),
-                [provider],
-            )
-            .expect("synthetic URI provider module should be unique"),
-        )
-        .expect("synthetic URI source should compile");
-        let plan = plan_host_program(typed).expect("synthetic URI source should plan");
-        let execution =
-            HostedExecution::try_from_module_plan(plan).expect("synthetic URI source should seal");
+        let source = format!("{URI_DECLARATIONS}\n{URI_MAIN}");
+        let execution = execution(&source);
 
         assert_eq!(
             execution
@@ -258,5 +198,46 @@ pub fn main() {
                 .expect("synthetic URI source should run"),
             Value::Nil,
         );
+    }
+
+    #[test]
+    fn preserves_invalid_slices_through_the_uri_host_adapter() {
+        let source =
+            format!("{URI_DECLARATIONS}\npub fn main() {{ codeunit_slice(\"año\", -1, 1) }}");
+        let execution = execution(&source);
+        let error = execution
+            .run_main(
+                &mut GleamStdlibRunState::from_seed([5; 32]),
+                &mut Vec::new(),
+            )
+            .expect_err("invalid URI slice should fail");
+        let error = expect_uri_host_error(error);
+
+        assert_eq!(error.package(), "gleam_stdlib");
+        assert_eq!(error.module(), "gleam/uri");
+        assert_eq!(error.function(), "codeunit_slice");
+        assert_eq!(
+            error.failure().message(),
+            "URI string slice index is not representable",
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid URI slice should remain a host failure")]
+    fn uri_host_failure_assertion_rejects_other_execution_errors() {
+        let _ = expect_uri_host_error(ExecutionError::Invariant(
+            InvariantError::ListIndexOutOfBounds {
+                item_type: ValueType::String,
+                index: 1,
+                length: 0,
+            },
+        ));
+    }
+
+    fn expect_uri_host_error(error: ExecutionError) -> Box<HostError> {
+        let ExecutionError::Host(error) = error else {
+            panic!("invalid URI slice should remain a host failure");
+        };
+        error
     }
 }

@@ -23,7 +23,6 @@ pub use sequence::{
 pub use tuple::HostTupleType;
 
 pub(crate) use crate::provider_support::HostOpaqueFunctionType;
-pub(crate) use crate::provider_support::SoleHostCustomConstructor;
 pub(crate) use sequence::HostAbiTypeSequence;
 
 use super::HostScopedValue;

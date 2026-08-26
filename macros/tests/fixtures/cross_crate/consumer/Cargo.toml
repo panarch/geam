@@ -1,0 +1,12 @@
+[package]
+name = "geam-macro-cross-crate-consumer"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+ecow.workspace = true
+geam-core.workspace = true
+geam-macro-cross-crate-declarations.workspace = true
+geam-macros.workspace = true
+num-bigint.workspace = true

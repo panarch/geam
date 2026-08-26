@@ -1,0 +1,5 @@
+error: Option requires exactly 1 type argument
+ --> tests/ui/source_option_wrong_arity.rs:6:21
+  |
+6 |     fn invalid() -> Option<BigInt, BigInt> {
+  |                     ^^^^^^^^^^^^^^^^^^^^^^

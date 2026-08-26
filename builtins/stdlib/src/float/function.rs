@@ -1,36 +1,10 @@
 use super::parse::{format, parse_literal};
-use super::schema::{ParseError, ParseOk, ParseResult};
-use crate::{GleamStdlibHostProfile, GleamStdlibRunState, stdlib_state};
-use crate::{HostCall, HostCallCompletion, HostCallError, HostFailure, HostProvider};
+use crate::HostFailure;
 use ecow::EcoString;
 use num_bigint::BigInt;
 use num_traits::{FromPrimitive, ToPrimitive};
-use std::marker::PhantomData;
-
-pub(super) struct FloatProvider<Profile>(PhantomData<Profile>);
-
-impl<Profile> HostProvider<Profile> for FloatProvider<Profile>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    type State = GleamStdlibRunState<Profile::Io>;
-
-    fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        stdlib_state::<Profile>(state)
-    }
-}
-
-pub(super) fn parse<'call, Profile>(
-    call: HostCall<'call, Profile, FloatProvider<Profile>, ParseResult>,
-    source: EcoString,
-) -> Result<HostCallCompletion<'call, ParseResult>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    Ok(match parse_literal(&source) {
-        Some(value) => call.return_custom::<ParseOk>((value, ())),
-        None => call.return_custom::<ParseError>(((), ())),
-    })
+pub(super) fn parse(source: EcoString) -> Result<f64, ()> {
+    parse_literal(&source).ok_or(())
 }
 
 pub(super) fn to_string(value: f64) -> EcoString {
@@ -66,16 +40,6 @@ pub(super) fn do_power(base: f64, exponent: f64) -> f64 {
     base.powf(exponent)
 }
 
-pub(super) fn random<'call, Profile>(
-    mut call: HostCall<'call, Profile, FloatProvider<Profile>, f64>,
-) -> Result<HostCallCompletion<'call, f64>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    let value = call.state().random_float();
-    Ok(call.return_value(value))
-}
-
 pub(super) fn do_log(value: f64) -> f64 {
     value.ln()
 }
@@ -88,12 +52,11 @@ pub(super) fn exponential(value: f64) -> f64 {
 mod tests {
     use super::super::host_provider;
     use super::{
-        FloatProvider, ceiling, do_log, do_power, do_to_float, exponential, floor, js_round,
-        to_string, truncate,
+        ceiling, do_log, do_power, do_to_float, exponential, floor, js_round, to_string, truncate,
     };
     use crate::{GleamStdlibProfile, GleamStdlibRunState};
     use crate::{
-        HostModule, HostProvider, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
+        HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
         compile_typed_host_program, plan_host_program,
     };
     use ecow::EcoString;
@@ -160,17 +123,6 @@ pub fn exponential(value: Float) -> Float
         .expect("synthetic float source should compile");
         let plan = plan_host_program(typed).expect("synthetic float source should plan");
         HostedExecution::try_from_module_plan(plan).expect("synthetic float execution should seal")
-    }
-
-    #[test]
-    fn projects_only_the_stdlib_random_state() {
-        let mut state = GleamStdlibRunState::from_seed([3; 32]);
-        let projected =
-            <FloatProvider<GleamStdlibProfile> as HostProvider<GleamStdlibProfile>>::project(
-                &mut state,
-            );
-
-        assert!(std::ptr::eq(projected, &state));
     }
 
     #[test]

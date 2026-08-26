@@ -1,0 +1,11 @@
+error[E0277]: the trait bound `Dynamic: RetainedExternalPayload` is not satisfied
+  --> tests/ui/external_retained_missing_payload.rs:11:12
+   |
+11 |     struct Dynamic;
+   |            ^^^^^^^ unsatisfied trait bound
+   |
+help: the trait `RetainedExternalPayload` is not implemented for `Dynamic`
+  --> tests/ui/external_retained_missing_payload.rs:11:5
+   |
+11 |     struct Dynamic;
+   |     ^^^^^^^^^^^^^^

@@ -1,0 +1,4 @@
+name = "example_run_metrics"
+version = "1.0.0"
+description = "Persistent metrics values backed by a native Geam provider"
+licences = ["Apache-2.0"]

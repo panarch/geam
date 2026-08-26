@@ -1,108 +1,159 @@
-use super::DynamicSequence;
-use super::schema::{Dynamic, DynamicList, DynamicSchema};
-use super::storage::{DynamicExternalStorage, DynamicPayload, DynamicRepresentation};
-use crate::{GleamStdlibHostProfile, GleamStdlibRunState, stdlib_state};
+use super::storage::{DynamicRepresentation, DynamicValue};
+use super::{Dynamic, DynamicSchema};
 use crate::{
-    HostCall, HostCallCompletion, HostCallError, HostConstruction, HostExternal,
-    HostExternalBinding, HostList, HostProvider, HostType,
+    Component, GleamStdlibRunState, HostCall, HostConstruction, HostExternal, HostProvider,
+    HostType, HostTypeListEnd,
 };
 use ecow::EcoString;
-use std::marker::PhantomData;
+use geam_core::provider::advanced::{Equality, Hashing, Inspection, RetainedExternalPayload};
+use geam_core::provider::{Call, Value};
+use num_bigint::BigInt;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
-pub(crate) struct DynamicProvider<Profile>(PhantomData<Profile>);
+#[geam_macros::module(
+    path = "gleam/dynamic",
+    crate_path = geam_core,
+    profile = crate::GleamStdlibHostProfile,
+    component = crate::Component<Profile::Io>,
+    stores = crate::dynamic::stores,
+)]
+pub(super) mod provider {
+    use super::{
+        BigInt, Call, DefaultHasher, DynamicRepresentation, DynamicValue, EcoString, Equality,
+        GleamStdlibRunState, Hash, Hasher, Hashing, Inspection, RetainedExternalPayload, Value,
+    };
 
-impl<Profile> HostProvider<Profile> for DynamicProvider<Profile>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    type State = GleamStdlibRunState<Profile::Io>;
-
-    fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        stdlib_state::<Profile>(state)
+    #[geam_macros::external(name = "Dynamic", retained)]
+    pub struct DynamicPayload {
+        pub(in crate::dynamic) value: DynamicValue,
     }
-}
 
-impl<Profile> HostExternalBinding<Profile, DynamicSchema> for DynamicProvider<Profile>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    type Storage = DynamicExternalStorage;
-}
-
-pub(super) fn classify<'call, Profile>(
-    call: HostCall<'call, Profile, DynamicProvider<Profile>, EcoString>,
-    value: HostExternal<'call, Dynamic>,
-) -> Result<HostCallCompletion<'call, EcoString>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    let name = call.external_payload(value).representation().name().into();
-    Ok(call.return_value(name))
-}
-
-pub(super) fn cast<'call, Profile, Type>(
-    mut call: HostCall<'call, Profile, DynamicProvider<Profile>, Dynamic>,
-    value: Type::Value<'call>,
-) -> Result<HostCallCompletion<'call, Dynamic>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-    Type: HostType,
-{
-    let dynamic = create_return_value::<Profile, DynamicProvider<Profile>, Type>(&mut call, value);
-    Ok(call.return_value(dynamic))
-}
-
-pub(super) fn array<'call, Profile>(
-    mut call: HostCall<'call, Profile, DynamicProvider<Profile>, Dynamic>,
-    values: HostList<'call, Dynamic>,
-) -> Result<HostCallCompletion<'call, Dynamic>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    let mut index = 0;
-    let mut sequence = Vec::new();
-    while let Some(value) = call.list_item(values, index) {
-        sequence.push(value);
-        index += 1;
-    }
-    let dynamic = call.create_external_with(move |builder| DynamicPayload::Array {
-        value: builder.store_dynamic::<DynamicList>(values),
-        elements: sequence
-            .into_iter()
-            .map(|value| builder.store_dynamic::<Dynamic>(value))
-            .collect(),
-    });
-    Ok(call.return_value(dynamic))
-}
-
-pub(crate) fn classification<'call, Profile, Provider, Return>(
-    call: &HostCall<'call, Profile, Provider, Return>,
-    value: HostExternal<'call, Dynamic>,
-) -> EcoString
-where
-    Profile: GleamStdlibHostProfile,
-    Provider: HostExternalBinding<Profile, DynamicSchema, Storage = DynamicExternalStorage>,
-    Return: HostType,
-{
-    call.external_payload(value).representation().name().into()
-}
-
-pub(crate) fn create_return_value<'call, Profile, Provider, Type>(
-    call: &mut HostCall<'call, Profile, Provider, Dynamic>,
-    value: Type::Value<'call>,
-) -> HostExternal<'call, Dynamic>
-where
-    Profile: GleamStdlibHostProfile,
-    Provider: HostExternalBinding<Profile, DynamicSchema, Storage = DynamicExternalStorage>,
-    Type: HostType,
-{
-    call.create_external_with(|builder| {
-        let value = builder.store_dynamic::<Type>(value);
-        DynamicPayload::Stored {
-            representation: DynamicRepresentation::from_value(&value),
-            value,
+    impl DynamicPayload {
+        pub(crate) fn stored(value: geam_core::provider::advanced::StoredDynamic<Self>) -> Self {
+            Self {
+                value: DynamicValue::stored(value),
+            }
         }
-    })
+
+        pub(crate) fn representation(&self) -> DynamicRepresentation {
+            self.value.representation()
+        }
+
+        pub(crate) fn stored_value(&self) -> &geam_core::provider::advanced::StoredDynamic<Self> {
+            self.value.value()
+        }
+    }
+
+    impl RetainedExternalPayload for DynamicPayload {
+        fn source_equal(&self, context: &Equality<'_>, other: &Self) -> bool {
+            self.representation() == other.representation()
+                && self
+                    .stored_value()
+                    .source_equal(context, other.stored_value())
+        }
+
+        fn source_hash(&self, context: &Hashing<'_>) -> u64 {
+            let mut hasher = DefaultHasher::new();
+            self.representation().hash(&mut hasher);
+            self.stored_value().source_hash(context).hash(&mut hasher);
+            hasher.finish()
+        }
+
+        fn inspect(&self, context: &Inspection<'_>) -> EcoString {
+            match &self.value {
+                DynamicValue::Stored { value, .. } => value.inspect(context),
+                DynamicValue::Array { elements, .. } => {
+                    let values = elements
+                        .iter()
+                        .map(|item| item.inspect(context))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!("#({values})").into()
+                }
+            }
+        }
+    }
+
+    #[geam_macros::function]
+    fn classify(value: &DynamicPayload) -> EcoString {
+        value.representation().name().into()
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn bool(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        value: bool,
+    ) -> DynamicPayload {
+        DynamicPayload::stored(call.store_dynamic(value))
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn string(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        value: EcoString,
+    ) -> DynamicPayload {
+        DynamicPayload::stored(call.store_dynamic(value))
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn float(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        value: f64,
+    ) -> DynamicPayload {
+        DynamicPayload::stored(call.store_dynamic(value))
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn int(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        value: BigInt,
+    ) -> DynamicPayload {
+        DynamicPayload::stored(call.store_dynamic(value))
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn bit_array(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        value: geam_core::BitArrayValue,
+    ) -> DynamicPayload {
+        DynamicPayload::stored(call.store_dynamic(value))
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn list(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        values: List<DynamicPayload>,
+    ) -> DynamicPayload {
+        DynamicPayload::stored(call.store_dynamic(values))
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn array(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        values: List<DynamicPayload>,
+    ) -> DynamicPayload {
+        let mut elements = Vec::with_capacity(values.len());
+        let mut index = 0;
+        while let Some(value) = values.get(index) {
+            elements.push(call.store_dynamic(value));
+            index += 1;
+        }
+        DynamicPayload {
+            value: DynamicValue::Array {
+                value: call.store_dynamic(values),
+                elements: elements.into_boxed_slice(),
+            },
+        }
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn cast<Item>(
+        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        value: Value<Item>,
+    ) -> DynamicPayload {
+        DynamicPayload::stored(call.store_dynamic(value))
+    }
 }
 
 pub fn create_value<'call, Profile, Provider, Return, Type>(
@@ -111,58 +162,38 @@ pub fn create_value<'call, Profile, Provider, Return, Type>(
     value: Type::Value<'call>,
 ) -> HostExternal<'call, Dynamic>
 where
-    Profile: GleamStdlibHostProfile,
-    Provider: HostExternalBinding<Profile, DynamicSchema, Storage = DynamicExternalStorage>,
+    Profile: crate::GleamStdlibHostProfile,
+    Provider: HostProvider<Profile>,
     Return: HostType,
     Type: HostType,
 {
-    call.construct_external_with::<DynamicSchema, crate::HostTypeListEnd>(construction, |builder| {
-        let value = builder.store_dynamic::<Type>(value);
-        DynamicPayload::Stored {
-            representation: DynamicRepresentation::from_value(&value),
-            value,
-        }
+    call.construct_retained_external_with_binding::<
+        provider::__GeamProvider,
+        DynamicSchema,
+        HostTypeListEnd,
+    >(construction, |builder| {
+        provider::DynamicPayload::stored(geam_core::__macro_support::retain_dynamic::<
+            _,
+            HostTypeListEnd,
+            provider::DynamicPayload,
+            Type,
+        >(builder, value))
     })
 }
 
-pub(crate) fn decode_value<'call, Profile, Provider, Return, Type>(
-    call: &mut HostCall<'call, Profile, Provider, Return>,
-    value: HostExternal<'call, Dynamic>,
-) -> Option<Type::Value<'call>>
+pub(super) fn host_provider<Profile>()
+-> Result<crate::HostProviderModule<Profile>, crate::HostRegistrationError>
 where
-    Profile: GleamStdlibHostProfile,
-    Provider: HostExternalBinding<Profile, DynamicSchema, Storage = DynamicExternalStorage>,
-    Return: HostType,
-    Type: HostType,
+    Profile: crate::GleamStdlibHostProfile,
 {
-    let payload = call.external_payload(value);
-    payload.decode::<Profile, Provider, Return, Type>(call, DynamicPayload::value)
-}
-
-pub(crate) fn sequence<'call, Profile, Provider, Return>(
-    call: &mut HostCall<'call, Profile, Provider, Return>,
-    value: HostExternal<'call, Dynamic>,
-) -> Option<DynamicSequence<'call>>
-where
-    Profile: GleamStdlibHostProfile,
-    Provider: HostExternalBinding<Profile, DynamicSchema, Storage = DynamicExternalStorage>,
-    Return: HostType,
-{
-    let payload = call.external_payload(value);
-    let sequence = match payload.representation() {
-        DynamicRepresentation::List => DynamicSequence::List,
-        DynamicRepresentation::Array => DynamicSequence::Array,
-        _ => return None,
-    };
-    payload
-        .decode::<Profile, Provider, Return, DynamicList>(call, DynamicPayload::value)
-        .map(sequence)
+    provider::__geam_module::<Profile>()
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::Dynamic;
     use super::super::host_provider;
-    use super::{Dynamic, DynamicProvider};
+    use super::provider::__GeamProvider as DynamicProvider;
     use crate::{GleamStdlibProfile, GleamStdlibRunState};
     use crate::{
         HostCall, HostCallCompletion, HostCallError, HostExternal, HostModule, HostProvider,
@@ -253,10 +284,7 @@ pub fn cast(value: value) -> Dynamic
     #[test]
     fn provider_projects_the_complete_run_state() {
         let mut state = GleamStdlibRunState::from_seed([0; 32]);
-        let projected =
-            <DynamicProvider<GleamStdlibProfile> as HostProvider<GleamStdlibProfile>>::project(
-                &mut state,
-            );
+        let projected = <DynamicProvider as HostProvider<GleamStdlibProfile>>::project(&mut state);
 
         assert!(std::ptr::eq(projected, &state));
 
@@ -341,6 +369,7 @@ pub fn main() {
   assert classify(bits) == "BitArray"
   assert classify(list_value) == "List"
   assert classify(array_value) == "Array"
+  assert classify(cast(first_int)) == "External"
   assert first_int == second_int
   assert list_value != array_value
   assert array_value == second_array

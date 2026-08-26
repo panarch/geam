@@ -1,0 +1,7 @@
+error: `#[geam::external]` must be applied to a struct inside a `#[geam::module]` inline module
+  --> tests/ui/external_non_struct.rs:19:5
+   |
+19 |     #[geam_macros::external(name = "Metrics")]
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this error originates in the attribute macro `geam_macros::external` (in Nightly builds, run with -Z macro-backtrace for more info)

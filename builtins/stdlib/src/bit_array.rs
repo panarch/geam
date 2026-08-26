@@ -1,81 +1,110 @@
 mod function;
-mod schema;
 
-use self::function::{
-    BitArrayProvider, base16_decode, base16_encode, base64_encode, bit_array_to_int_and_size,
-    bit_size, byte_size, concat, decode64, from_string, pad_to_bytes, slice, unsafe_to_string,
-};
-use self::schema::{BitArrayList, BitArrayResult, IntPair};
-use super::GleamStdlibHostProfile;
+use super::{Component, GleamStdlibHostProfile};
 use crate::{BitArrayValue, HostProviderModule, HostRegistrationError};
+use bitvec::order::Msb0;
+use bitvec::vec::BitVec;
 use ecow::EcoString;
+use geam_core::provider::HostResult;
+use geam_core::provider_support::{bit_array_bits, bit_array_from_bits};
 use num_bigint::BigInt;
+
+#[geam_macros::module(
+    path = "gleam/bit_array",
+    crate_path = geam_core,
+    profile = crate::GleamStdlibHostProfile,
+    component = crate::Component<Profile::Io>,
+)]
+mod provider {
+    use super::{
+        BigInt, BitArrayValue, BitVec, EcoString, HostResult, Msb0, bit_array_bits,
+        bit_array_from_bits, function,
+    };
+
+    #[geam_macros::function]
+    fn from_string(value: EcoString) -> BitArrayValue {
+        function::from_string(value)
+    }
+
+    #[geam_macros::function]
+    fn bit_size(value: BitArrayValue) -> BigInt {
+        function::bit_size(value)
+    }
+
+    #[geam_macros::function]
+    fn byte_size(value: BitArrayValue) -> BigInt {
+        function::byte_size(value)
+    }
+
+    #[geam_macros::function]
+    fn pad_to_bytes(value: BitArrayValue) -> BitArrayValue {
+        function::pad_to_bytes(value)
+    }
+
+    #[geam_macros::function]
+    fn slice(value: BitArrayValue, position: BigInt, length: BigInt) -> Result<BitArrayValue, ()> {
+        function::slice(value, position, length)
+    }
+
+    #[geam_macros::function]
+    fn unsafe_to_string(value: BitArrayValue) -> HostResult<EcoString> {
+        function::unsafe_to_string(value).map_err(Into::into)
+    }
+
+    #[geam_macros::function]
+    fn concat(values: geam_core::provider::List<BitArrayValue>) -> BitArrayValue {
+        let mut bits = BitVec::<u8, Msb0>::new();
+        let mut index = 0;
+        while let Some(value) = values.get(index) {
+            bits.extend_from_bitslice(bit_array_bits(&value));
+            index += 1;
+        }
+        bit_array_from_bits(bits)
+    }
+
+    #[geam_macros::function]
+    fn base64_encode(value: BitArrayValue, padding: bool) -> EcoString {
+        function::base64_encode(value, padding)
+    }
+
+    #[geam_macros::function]
+    fn decode64(value: EcoString) -> Result<BitArrayValue, ()> {
+        function::decode64(value)
+    }
+
+    #[geam_macros::function]
+    fn base16_encode(value: BitArrayValue) -> EcoString {
+        function::base16_encode(value)
+    }
+
+    #[geam_macros::function]
+    fn base16_decode(value: EcoString) -> Result<BitArrayValue, ()> {
+        function::base16_decode(value)
+    }
+
+    #[geam_macros::function]
+    fn bit_array_to_int_and_size(value: BitArrayValue) -> (BigInt, BigInt) {
+        function::bit_array_to_int_and_size(value)
+    }
+}
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
     Profile: GleamStdlibHostProfile,
 {
-    HostProviderModule::new("gleam_stdlib", "gleam/bit_array")
-        .and_then(|provider| provider.with_function("from_string", from_string))
-        .and_then(|provider| provider.with_function("bit_size", bit_size))
-        .and_then(|provider| provider.with_function("byte_size", byte_size))
-        .and_then(|provider| provider.with_function("pad_to_bytes", pad_to_bytes))
-        .and_then(|provider| {
-            provider.with_scoped_function::<
-                BitArrayProvider<Profile>,
-                (BitArrayValue, BigInt, BigInt),
-                BitArrayResult,
-                _,
-            >("slice", slice::<Profile>)
-        })
-        .and_then(|provider| {
-            provider.with_fallible_function::<(BitArrayValue,), EcoString, _>(
-                "unsafe_to_string",
-                unsafe_to_string,
-            )
-        })
-        .and_then(|provider| {
-            provider.with_scoped_function::<
-                BitArrayProvider<Profile>,
-                (BitArrayList,),
-                BitArrayValue,
-                _,
-            >("concat", concat::<Profile>)
-        })
-        .and_then(|provider| provider.with_function("base64_encode", base64_encode))
-        .and_then(|provider| {
-            provider
-                .with_scoped_function::<BitArrayProvider<Profile>, (EcoString,), BitArrayResult, _>(
-                    "decode64",
-                    decode64::<Profile>,
-                )
-        })
-        .and_then(|provider| provider.with_function("base16_encode", base16_encode))
-        .and_then(|provider| {
-            provider
-                .with_scoped_function::<BitArrayProvider<Profile>, (EcoString,), BitArrayResult, _>(
-                    "base16_decode",
-                    base16_decode::<Profile>,
-                )
-        })
-        .and_then(|provider| {
-            provider
-                .with_scoped_function::<BitArrayProvider<Profile>, (BitArrayValue,), IntPair, _>(
-                    "bit_array_to_int_and_size",
-                    bit_array_to_int_and_size::<Profile>,
-                )
-        })
+    provider::__geam_module::<Profile>()
 }
 
 #[cfg(test)]
 mod tests {
     use super::host_provider;
-    use crate::{GleamStdlibProfile, GleamStdlibRunState};
     use crate::{
-        HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
-        compile_typed_host_program, plan_host_program,
+        ExecutionError, HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
+        ValueType, compile_typed_host_program, plan_host_program,
     };
+    use crate::{GleamStdlibProfile, GleamStdlibRunState};
     use ecow::EcoString;
+    use geam_core::{HostError, InvariantError};
 
     const BIT_ARRAY_DECLARATIONS: &str = r#"
 @external(erlang, "host", "from_string")
@@ -115,6 +144,34 @@ fn base16_decode(value: String) -> Result(BitArray, Nil)
 fn bit_array_to_int_and_size(value: BitArray) -> #(Int, Int)
 "#;
 
+    fn execution(source: &str) -> HostedExecution<GleamStdlibProfile> {
+        let source = format!("{BIT_ARRAY_DECLARATIONS}\n{source}");
+        let provider = host_provider::<GleamStdlibProfile>()
+            .expect("official bit array provider should register");
+        let hosts = HostProviderSet::with_providers(
+            Vec::<HostModule<GleamStdlibProfile>>::new(),
+            [provider],
+        )
+        .expect("bit array provider module should be unique");
+        let typed = compile_typed_host_program(
+            "gleam_stdlib",
+            "gleam/bit_array",
+            [PackageSource::new(
+                "gleam_stdlib",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new(
+                    "gleam/bit_array",
+                    "src/gleam/bit_array.gleam",
+                    source,
+                )],
+            )],
+            hosts,
+        )
+        .expect("synthetic bit array source should compile");
+        let plan = plan_host_program(typed).expect("synthetic bit array source should plan");
+        HostedExecution::try_from_module_plan(plan).expect("bit array execution should seal")
+    }
+
     #[test]
     fn registers_the_exact_official_bit_array_provider_inventory() {
         let provider = host_provider::<GleamStdlibProfile>()
@@ -147,10 +204,9 @@ fn bit_array_to_int_and_size(value: BitArray) -> #(Int, Int)
 
     #[test]
     fn executes_every_bit_array_provider_through_the_hosted_pipeline() {
-        let source = format!(
-            r#"{BIT_ARRAY_DECLARATIONS}
-
-pub fn main() {{
+        let execution = execution(
+            r#"
+pub fn main() {
   assert from_string("AB") == <<65, 66>>
   assert bit_size(<<5:size(3)>>) == 3
   assert byte_size(<<5:size(3)>>) == 1
@@ -173,34 +229,9 @@ pub fn main() {{
   assert base16_decode("01") == Ok(<<1>>)
   assert base16_decode("GG") == Error(Nil)
   bit_array_to_int_and_size(<<5:size(3)>>)
-}}
+}
 "#,
         );
-        let provider = host_provider::<GleamStdlibProfile>()
-            .expect("official bit array provider should register");
-        let hosts = HostProviderSet::with_providers(
-            Vec::<HostModule<GleamStdlibProfile>>::new(),
-            [provider],
-        )
-        .expect("bit array provider module should be unique");
-        let typed = compile_typed_host_program(
-            "gleam_stdlib",
-            "gleam/bit_array",
-            [PackageSource::new(
-                "gleam_stdlib",
-                Vec::<EcoString>::new(),
-                [ModuleSource::new(
-                    "gleam/bit_array",
-                    "src/gleam/bit_array.gleam",
-                    source,
-                )],
-            )],
-            hosts,
-        )
-        .expect("synthetic bit array source should compile");
-        let plan = plan_host_program(typed).expect("synthetic bit array source should plan");
-        let execution =
-            HostedExecution::try_from_module_plan(plan).expect("bit array execution should seal");
         let value = execution
             .run_main(
                 &mut GleamStdlibRunState::from_seed([0; 32]),
@@ -209,5 +240,41 @@ pub fn main() {{
             .expect("bit array providers should run");
 
         assert_eq!(value.inspect().to_string(), "#(5, 3)");
+    }
+
+    #[test]
+    fn preserves_invalid_utf8_through_the_bit_array_host_adapter() {
+        let execution = execution("pub fn main() { unsafe_to_string(<<255>>) }");
+        let error = execution
+            .run_main(
+                &mut GleamStdlibRunState::from_seed([0; 32]),
+                &mut Vec::new(),
+            )
+            .expect_err("invalid UTF-8 should fail");
+        let error = expect_bit_array_host_error(error);
+
+        assert_eq!(error.package(), "gleam_stdlib");
+        assert_eq!(error.module(), "gleam/bit_array");
+        assert_eq!(error.function(), "unsafe_to_string");
+        assert_eq!(error.failure().message(), "bit array is not valid UTF-8");
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid UTF-8 should remain a host failure")]
+    fn bit_array_host_failure_assertion_rejects_other_execution_errors() {
+        let _ = expect_bit_array_host_error(ExecutionError::Invariant(
+            InvariantError::ListIndexOutOfBounds {
+                item_type: ValueType::BitArray,
+                index: 1,
+                length: 0,
+            },
+        ));
+    }
+
+    fn expect_bit_array_host_error(error: ExecutionError) -> Box<HostError> {
+        let ExecutionError::Host(error) = error else {
+            panic!("invalid UTF-8 should remain a host failure");
+        };
+        error
     }
 }

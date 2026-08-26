@@ -4,7 +4,10 @@ mod scoped;
 pub(super) use self::invoke::{invoke_never, invoke_value};
 
 use self::scoped::ScopedValues;
-pub(crate) use self::scoped::StoredRuntimeValue;
+pub(crate) use self::scoped::{
+    StoredRuntimeList, StoredRuntimeListCustomFields, StoredRuntimeListItem,
+    StoredRuntimeListTupleItems, StoredRuntimeValue,
+};
 use crate::host::{
     ExternalPayloadLease, HostCallArguments, HostCallRuntime, HostCustomArgumentSlot,
     HostCustomToken, HostExternalArgumentSlot, HostExternalToken, HostFunctionArgumentSlot,
@@ -294,6 +297,16 @@ where
             .into_boxed_slice()
     }
 
+    fn take_custom_fields(&mut self, value: HostCustomToken) -> Box<[HostValueToken]> {
+        self.scoped
+            .take_custom_fields(value)
+            .into_vec()
+            .into_iter()
+            .map(|value| self.scoped.push(value))
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+    }
+
     fn invoke(
         &mut self,
         function: HostFunctionToken,
@@ -426,6 +439,13 @@ where
         let value = self.scoped.value_from_scoped(value);
         let type_ = value.value_type(self.plan.value_metadata());
         StoredRuntimeValue::new(value, type_)
+    }
+
+    fn retain_list(&self, value: HostListToken) -> StoredRuntimeList {
+        StoredRuntimeList::new(
+            self.scoped.list_value(value),
+            self.state.lists().clone_handle(),
+        )
     }
 
     fn restore_stored(&mut self, value: &StoredRuntimeValue) -> HostValueToken {

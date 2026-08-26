@@ -1,0 +1,4 @@
+name = "example_feature_flags"
+version = "1.0.0"
+description = "Configured feature flags backed by a native Geam provider"
+licences = ["Apache-2.0"]

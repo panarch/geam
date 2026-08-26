@@ -1,0 +1,5 @@
+error: external payload `Metrics` arguments must be immutable references
+  --> tests/ui/external_by_value.rs:39:26
+   |
+39 |     fn identity(metrics: Metrics) -> Metrics {
+   |                          ^^^^^^^

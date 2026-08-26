@@ -1,0 +1,6 @@
+packages = [
+  { name = "example_feature_flags", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/example_feature_flags" },
+]
+
+[requirements]
+example_feature_flags = { path = "packages/example_feature_flags" }

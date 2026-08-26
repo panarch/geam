@@ -40,23 +40,46 @@ pub struct HostStoredDynamic {
 }
 
 impl HostStoredDynamic {
-    pub(super) fn new(value: crate::runtime::StoredRuntimeValue) -> Self {
+    pub(crate) fn new(value: crate::runtime::StoredRuntimeValue) -> Self {
         Self { value }
-    }
-
-    pub(crate) fn value_type(&self) -> &crate::plan::ValueType {
-        self.value.type_()
     }
 
     pub(crate) fn value_family(&self) -> HostStoredValueFamily {
         self.value.family()
     }
 
+    pub(crate) fn has_external_schema<Schema>(&self) -> bool
+    where
+        Schema: crate::host::HostExternalSchema,
+    {
+        let crate::plan::ValueType::External(type_) = self.value.type_() else {
+            return false;
+        };
+        let name = type_.type_name();
+        name.package() == Schema::PACKAGE
+            && name.module() == Schema::MODULE
+            && name.name() == Schema::NAME
+            && type_.arguments().len() == Schema::PARAMETER_COUNT
+    }
+
+    #[expect(
+        clippy::result_large_err,
+        reason = "non-tuples retain the original value without another heap allocation"
+    )]
+    pub(crate) fn map_tuple_items<Item>(
+        self,
+        mut map: impl FnMut(Self) -> Item,
+    ) -> Result<Box<[Item]>, Self> {
+        self.value
+            .map_tuple_items(|value| map(Self::new(value)))
+            .map_err(Self::new)
+    }
+
     pub(super) fn runtime_value(&self) -> &crate::runtime::StoredRuntimeValue {
         &self.value
     }
 
-    fn decode<'call, Profile, Provider, Return, Type>(
+    pub(crate) fn decode<'call, Profile, Provider, Return, Type>(
         &self,
         call: &mut HostCall<'call, Profile, Provider, Return>,
     ) -> Option<Type::Value<'call>>
@@ -127,7 +150,6 @@ mod tests {
             BigInt::from(7),
         ));
 
-        assert_eq!(stored.value_type(), &ValueType::Int);
         assert!(stored.has_type(&ValueType::Int));
         assert!(!stored.has_type(&ValueType::String));
     }

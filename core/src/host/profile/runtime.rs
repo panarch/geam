@@ -34,6 +34,7 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile> {
     fn tuple_values(&mut self, value: HostTupleToken) -> Box<[HostValueToken]>;
     fn custom_constructor(&self, value: HostCustomToken) -> usize;
     fn custom_fields(&mut self, value: HostCustomToken) -> Box<[HostValueToken]>;
+    fn take_custom_fields(&mut self, value: HostCustomToken) -> Box<[HostValueToken]>;
     fn invoke(
         &mut self,
         function: HostFunctionToken,
@@ -66,6 +67,7 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile> {
         descriptor: &crate::host::HostTypeDescriptor,
     ) -> Option<crate::plan::ValueType>;
     fn retain_stored(&self, value: HostScopedValue) -> crate::runtime::StoredRuntimeValue;
+    fn retain_list(&self, value: HostListToken) -> crate::runtime::StoredRuntimeList;
     fn restore_stored(&mut self, value: &crate::runtime::StoredRuntimeValue) -> HostValueToken;
 }
 
@@ -95,6 +97,7 @@ pub(crate) mod test {
         arguments: Box<dyn HostCallArguments>,
         completed: Option<HostScopedValue>,
         external_leases: Vec<crate::host::ExternalPayloadLease>,
+        list_builds: usize,
     }
 
     impl HostProfile for TestHostProfile {
@@ -127,11 +130,16 @@ pub(crate) mod test {
                 arguments: Box::new(arguments),
                 completed: None,
                 external_leases: Vec::new(),
+                list_builds: 0,
             }
         }
 
         pub(crate) fn completed(&self) -> Option<&HostScopedValue> {
             self.completed.as_ref()
+        }
+
+        pub(crate) fn list_builds(&self) -> usize {
+            self.list_builds
         }
     }
 
@@ -249,6 +257,10 @@ pub(crate) mod test {
             Box::new([])
         }
 
+        fn take_custom_fields(&mut self, _value: HostCustomToken) -> Box<[HostValueToken]> {
+            Box::new([])
+        }
+
         fn invoke(
             &mut self,
             _function: HostFunctionToken,
@@ -297,6 +309,7 @@ pub(crate) mod test {
             _type_: &crate::host::HostTypeDescriptor,
             _values: Box<[HostScopedValue]>,
         ) -> HostValueToken {
+            self.list_builds += 1;
             token(HostValueFamily::List)
         }
 
@@ -336,6 +349,10 @@ pub(crate) mod test {
 
         fn retain_stored(&self, _value: HostScopedValue) -> crate::runtime::StoredRuntimeValue {
             crate::runtime::StoredRuntimeValue::test_int(0.into())
+        }
+
+        fn retain_list(&self, _value: HostListToken) -> crate::runtime::StoredRuntimeList {
+            crate::runtime::StoredRuntimeList::test_ints(vec![1.into()])
         }
 
         fn restore_stored(

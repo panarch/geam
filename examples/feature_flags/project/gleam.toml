@@ -1,0 +1,7 @@
+name = "feature_flags_example"
+version = "1.0.0"
+description = "Standalone Geam feature flags provider example"
+licences = ["Apache-2.0"]
+
+[dependencies]
+example_feature_flags = { path = "packages/example_feature_flags" }

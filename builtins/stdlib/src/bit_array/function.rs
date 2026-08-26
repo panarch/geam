@@ -4,30 +4,10 @@ mod slice;
 pub(super) use self::codec::{base16_decode, base16_encode, base64_encode, decode64};
 pub(super) use self::slice::slice;
 
-use super::schema::IntPair;
-use crate::{
-    BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostFailure, HostList, HostProvider,
-};
-use crate::{GleamStdlibHostProfile, GleamStdlibRunState, stdlib_state};
-use bitvec::order::Msb0;
-use bitvec::vec::BitVec;
+use crate::{BitArrayValue, HostFailure};
 use ecow::EcoString;
-use geam_core::provider_support::{bit_array_bits, bit_array_from_bits, bit_array_pad_to_bytes};
+use geam_core::provider_support::bit_array_pad_to_bytes;
 use num_bigint::{BigInt, Sign};
-use std::marker::PhantomData;
-
-pub(super) struct BitArrayProvider<Profile>(PhantomData<Profile>);
-
-impl<Profile> HostProvider<Profile> for BitArrayProvider<Profile>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    type State = GleamStdlibRunState<Profile::Io>;
-
-    fn project(state: &mut Profile::RunState) -> &mut Self::State {
-        stdlib_state::<Profile>(state)
-    }
-}
 
 pub(super) fn from_string(value: EcoString) -> BitArrayValue {
     BitArrayValue::from_bytes(value.as_bytes().to_vec())
@@ -54,53 +34,17 @@ pub(super) fn unsafe_to_string(value: BitArrayValue) -> Result<EcoString, HostFa
         .map_err(|_| HostFailure::new("bit array is not valid UTF-8"))
 }
 
-pub(super) fn concat<'call, Profile>(
-    mut call: HostCall<'call, Profile, BitArrayProvider<Profile>, BitArrayValue>,
-    values: HostList<'call, BitArrayValue>,
-) -> Result<HostCallCompletion<'call, BitArrayValue>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    let mut bits = BitVec::<u8, Msb0>::new();
-    let mut index = 0;
-    while let Some(value) = call.list_item(values, index) {
-        bits.extend_from_bitslice(bit_array_bits(&value));
-        index += 1;
-    }
-    Ok(call.return_value(bit_array_from_bits(bits)))
-}
-
-pub(super) fn bit_array_to_int_and_size<'call, Profile>(
-    call: HostCall<'call, Profile, BitArrayProvider<Profile>, IntPair>,
-    value: BitArrayValue,
-) -> Result<HostCallCompletion<'call, IntPair>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
+pub(super) fn bit_array_to_int_and_size(value: BitArrayValue) -> (BigInt, BigInt) {
     let unused_bits = value.bytes().len() * 8 - value.bit_len();
     let integer = BigInt::from_bytes_be(Sign::Plus, value.bytes()) >> unused_bits;
-    Ok(call.return_tuple((integer, (BigInt::from(value.bit_len()), ()))))
+    (integer, BigInt::from(value.bit_len()))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        BitArrayProvider, bit_size, byte_size, from_string, pad_to_bytes, unsafe_to_string,
-    };
-    use crate::{BitArrayValue, HostProvider};
-    use crate::{GleamStdlibProfile, GleamStdlibRunState};
+    use super::{bit_size, byte_size, from_string, pad_to_bytes, unsafe_to_string};
+    use crate::BitArrayValue;
     use num_bigint::BigInt;
-
-    #[test]
-    fn projects_the_stdlib_run_state() {
-        let mut state = GleamStdlibRunState::from_seed([0; 32]);
-        let original = std::ptr::from_ref(&state);
-        let projected = <BitArrayProvider<GleamStdlibProfile> as HostProvider<
-            GleamStdlibProfile,
-        >>::project(&mut state);
-
-        assert_eq!(std::ptr::from_mut(projected).cast_const(), original);
-    }
 
     #[test]
     fn converts_sizes_padding_and_utf8() {

@@ -1,0 +1,4 @@
+name = "example_request_ids"
+version = "1.0.0"
+description = "Run-local request IDs backed by a native Geam provider"
+licences = ["Apache-2.0"]

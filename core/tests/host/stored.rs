@@ -1,12 +1,13 @@
 use ecow::EcoString;
 use geam_core::{
-    ExecutionError, HostCall, HostCallCompletion, HostCallError, HostCallable, HostExternal,
-    HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
-    HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostFailure,
-    HostFunctionType, HostProfile, HostProvider, HostProviderModule, HostProviderSet,
-    HostStoredType, HostStoredValue, HostTypeIndex0, HostTypeIndexNext, HostTypeList,
-    HostTypeListEnd, HostTypeParameter, HostValue, HostedExecution, ListValue, ModuleSource,
-    PackageSource, PanicKind, Value, compile_typed_host_program, plan_host_program,
+    ExecutionError, HostCall, HostCallCompletion, HostCallError, HostCallable, HostConstructions,
+    HostExternal, HostExternalBinding, HostExternalEquality, HostExternalHashing,
+    HostExternalInspection, HostExternalSchema, HostExternalStorage, HostExternalStore,
+    HostExternalType, HostFailure, HostFunctionType, HostProfile, HostProvider, HostProviderModule,
+    HostProviderSet, HostStoredType, HostStoredValue, HostTupleType, HostTypeIndex0,
+    HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
+    HostedExecution, ListValue, ModuleSource, PackageSource, PanicKind, Value,
+    compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
 use std::sync::Arc;
@@ -278,6 +279,105 @@ function tuple#0
     assert_eq!(second, Ok(expected));
     assert_eq!(first_state.drops.load(Ordering::Relaxed), 1);
     assert_eq!(second_state.drops.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn constructs_retained_externals_inside_compound_returns() {
+    type StoredMapPair =
+        HostTupleType<HostTypeList<StoreMap, HostTypeList<StoreMap, HostTypeListEnd>>>;
+    type ConstructionTypes = HostTypeList<StoreMap, HostTypeListEnd>;
+
+    fn pair<'call>(
+        mut call: HostCall<'call, StoredProfile, StoredProvider, StoredMapPair>,
+        constructions: HostConstructions<'call, ConstructionTypes>,
+        key: HostValue<'call, FirstParameter>,
+        value: HostValue<'call, SecondParameter>,
+    ) -> Result<HostCallCompletion<'call, StoredMapPair>, HostCallError> {
+        let first_drop = Arc::clone(&call.state().drops);
+        let first = call.construct_external_with(constructions.at::<HostTypeIndex0>(), |builder| {
+            StoredMapPayload {
+                key: builder.store_argument::<HostTypeIndex0>(key),
+                value: builder.store_argument::<HostTypeIndexNext<HostTypeIndex0>>(value),
+                _drop: PayloadDrop(first_drop),
+            }
+        });
+        let second_drop = Arc::clone(&call.state().drops);
+        let second =
+            call.construct_external_with(constructions.at::<HostTypeIndex0>(), |builder| {
+                StoredMapPayload {
+                    key: builder.store_argument::<HostTypeIndex0>(key),
+                    value: builder.store_argument::<HostTypeIndexNext<HostTypeIndex0>>(value),
+                    _drop: PayloadDrop(second_drop),
+                }
+            });
+
+        Ok(call.return_tuple((first, (second, ()))))
+    }
+
+    fn key<'call>(
+        mut call: HostCall<'call, StoredProfile, StoredProvider, FirstParameter>,
+        stored: HostExternal<'call, StoreMap>,
+    ) -> Result<HostCallCompletion<'call, FirstParameter>, HostCallError> {
+        let payload = call.external_payload(stored);
+        let key = payload.restore_argument(&mut call, |payload| &payload.key);
+        Ok(call.return_value(key))
+    }
+
+    let provider = HostProviderModule::<StoredProfile>::new("application", "main")
+        .expect("provider module should be valid")
+        .with_external_type::<StoredProvider, StoredMapSchema>()
+        .expect("stored map type should be valid")
+        .with_scoped_function_and_constructions::<
+            StoredProvider,
+            (FirstParameter, SecondParameter),
+            StoredMapPair,
+            ConstructionTypes,
+            _,
+        >("pair", pair)
+        .expect("stored pair provider should be valid")
+        .with_scoped_function::<StoredProvider, (StoreMap,), FirstParameter, _>("key", key)
+        .expect("key provider should be valid");
+    let source = r#"
+@external(erlang, "host", "StoredMap")
+pub type StoredMap(key, value)
+
+@external(erlang, "host", "pair")
+fn pair(key: key, value: value) -> #(StoredMap(key, value), StoredMap(key, value))
+
+@external(erlang, "host", "key")
+fn key(map: StoredMap(key, value)) -> key
+
+pub fn main() {
+  let #(first, second) = pair(42, "answer")
+  assert first == second
+  #(key(first), key(second))
+}
+"#;
+    let typed = compile_typed_host_program(
+        "application",
+        "main",
+        [PackageSource::new(
+            "application",
+            Vec::<EcoString>::new(),
+            [ModuleSource::new("main", "src/main.gleam", source)],
+        )],
+        HostProviderSet::with_providers(Vec::new(), [provider])
+            .expect("provider module should be unique"),
+    )
+    .expect("stored pair source should compile");
+    let plan = plan_host_program(typed).expect("stored pair source should plan");
+    let execution =
+        HostedExecution::try_from_module_plan(plan).expect("stored pair execution should seal");
+    let mut state = StoredRunState::default();
+
+    assert_eq!(
+        execution.run_main(&mut state, &mut Vec::new()),
+        Ok(Value::Tuple(vec![
+            Value::Int(BigInt::from(42)),
+            Value::Int(BigInt::from(42)),
+        ])),
+    );
+    assert_eq!(state.drops.load(Ordering::Relaxed), 2);
 }
 
 #[test]

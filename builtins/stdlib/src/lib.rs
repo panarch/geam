@@ -1,23 +1,16 @@
 pub(crate) use geam_core::{
-    BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostCallable, HostComponentProfile,
-    HostConstruction, HostConstructions, HostCustom, HostCustomConstructorAt,
-    HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
-    HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomIndex0,
-    HostCustomIndexNext, HostCustomSchema, HostCustomType, HostCustomTypeArgument, HostExternal,
-    HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
-    HostExternalPayloadBuilder, HostExternalPayloadView, HostExternalSchema, HostExternalStorage,
-    HostExternalStore, HostExternalType, HostFailure, HostFunctionType, HostList, HostListType,
-    HostProfile, HostProvider, HostProviderComponent, HostProviderComponentRegistration,
-    HostProviderModule, HostRegistrationError, HostStoredDynamic, HostStoredType, HostStoredValue,
-    HostTupleType, HostType, HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeList,
-    HostTypeListEnd, HostTypeParameter, HostTypeSequence, HostValue, ValueType,
+    BitArrayValue, HostCall, HostComponentProfile, HostConstruction, HostExternal,
+    HostExternalType, HostFailure, HostProfile, HostProvider, HostProviderComponent,
+    HostProviderComponentRegistration, HostProviderModule, HostRegistrationError, HostType,
+    HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
 };
 #[cfg(test)]
 pub(crate) use geam_core::{
-    ExecutionError, HostCustomConstructorSchema, HostCustomFieldSchema, HostCustomTypeSchema,
-    HostExternalTypeSchema, HostModule, HostProviderSet, HostSchemaType, HostedExecution,
-    ModuleSource, PackageSource, PanicKind, PanicMessage, Value, compile_typed_host_program,
-    plan_host_program,
+    ExecutionError, HostCallCompletion, HostCallError, HostExternalBinding, HostExternalEquality,
+    HostExternalHashing, HostExternalInspection, HostExternalSchema, HostExternalStorage,
+    HostExternalStore, HostExternalTypeSchema, HostModule, HostProviderSet, HostedExecution,
+    ModuleSource, PackageSource, PanicKind, PanicMessage, Value, ValueType,
+    compile_typed_host_program, plan_host_program,
 };
 use std::marker::PhantomData;
 
@@ -28,7 +21,6 @@ mod dynamic_decode;
 mod float;
 mod int;
 mod io;
-mod option;
 mod result;
 mod run_state;
 mod string;
@@ -38,10 +30,6 @@ mod uri;
 pub use io::{IoOutput, IoSink, IoStream};
 pub use run_state::{GleamStdlibRunState, GleamStdlibRunStateError};
 
-pub(crate) use dict::{DictExternalStorage, DictSchema};
-pub(crate) use dynamic::{Dynamic, DynamicExternalStorage, DynamicSchema};
-pub(crate) use string_tree::{StringTreeExternalStorage, StringTreeSchema};
-
 /// Narrow implementation contract used by sibling official provider packages.
 #[doc(hidden)]
 pub mod provider_support {
@@ -49,7 +37,7 @@ pub mod provider_support {
     pub use crate::dynamic::{
         Dynamic, DynamicExternalStorage, DynamicSchema, create_value as create_dynamic_value,
     };
-    pub use crate::dynamic_decode::DynamicDecodeError;
+    pub use crate::dynamic_decode::DynamicDecodeErrorValue;
     pub use crate::result::{GleamError, GleamOk, GleamResult};
     pub use crate::string_tree::{
         StoredStringTree, StringTree, StringTreeExternalStorage, StringTreePayload,
@@ -82,6 +70,13 @@ where
     const ID: &'static str = "gleam_stdlib";
     type Stores = GleamStdlibStores;
     type RunState = GleamStdlibRunState<Io>;
+}
+
+impl<Io> geam_core::__macro_support::ProviderPackage for Component<Io>
+where
+    Io: IoSink + 'static,
+{
+    const PACKAGE: &'static str = "gleam_stdlib";
 }
 
 /// The default profile for using only the official Gleam standard library providers.
@@ -132,15 +127,6 @@ where
     <Profile as HostComponentProfile<Component<Profile::Io>>>::component_stores(stores)
 }
 
-pub(crate) fn stdlib_state<Profile>(
-    state: &mut Profile::RunState,
-) -> &mut GleamStdlibRunState<Profile::Io>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    <Profile as HostComponentProfile<Component<Profile::Io>>>::component_state(state)
-}
-
 fn register_host_providers<Profile>()
 -> Result<Vec<HostProviderModule<Profile>>, HostRegistrationError>
 where
@@ -172,7 +158,7 @@ type ProviderRegistration<Profile> =
 mod tests {
     use super::{
         Component, GleamStdlibHostProfile, GleamStdlibProfile, GleamStdlibRunState,
-        GleamStdlibStores, IoOutput, IoSink, IoStream, host_providers, stdlib_state, stdlib_stores,
+        GleamStdlibStores, IoOutput, IoSink, IoStream, host_providers, stdlib_stores,
     };
     use crate::{
         HostComponentProfile, HostProfile, HostProviderComponent, HostProviderComponentRegistration,
@@ -317,20 +303,31 @@ mod tests {
         ));
         let default_state_pointer = &mut default_state as *mut GleamStdlibRunState;
         assert!(std::ptr::eq(
-            stdlib_state::<GleamStdlibProfile>(&mut default_state),
+            <GleamStdlibProfile as HostComponentProfile<Component>>::component_state(
+                &mut default_state,
+            ),
             default_state_pointer,
         ));
         let state_pointer = &mut state.stdlib as *mut GleamStdlibRunState<RecordingSink>;
         assert!(std::ptr::eq(
-            stdlib_state::<CustomProfile>(&mut state),
+            <CustomProfile as HostComponentProfile<Component<RecordingSink>>>::component_state(
+                &mut state,
+            ),
             state_pointer,
         ));
 
-        let default_io = stdlib_state::<GleamStdlibProfile>(&mut default_state).io_sink();
+        let default_io = <GleamStdlibProfile as HostComponentProfile<Component>>::component_state(
+            &mut default_state,
+        )
+        .io_sink();
         default_io.emit(IoOutput::new(IoStream::Stdout, "default".into()));
         assert_eq!(default_state.io_outputs()[0].text(), "default");
 
-        let custom_io = stdlib_state::<CustomProfile>(&mut state).io_sink();
+        let custom_io =
+            <CustomProfile as HostComponentProfile<Component<RecordingSink>>>::component_state(
+                &mut state,
+            )
+            .io_sink();
         custom_io.emit(IoOutput::new(IoStream::Stderr, "custom".into()));
         assert_eq!(state.stdlib.io_sink().outputs[0].stream(), IoStream::Stderr);
         assert_eq!(state.stdlib.io_sink().outputs[0].text(), "custom");

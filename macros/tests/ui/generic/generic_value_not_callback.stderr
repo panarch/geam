@@ -1,0 +1,10 @@
+error[E0618]: expected function, found `geam_core::provider::Value<fn(Item) -> Item, geam_core::provider::ProviderValueContext<'__geam_call, geam_core::__macro_support::HostOpaqueFunctionType<HostTypeList<HostTypeParameter<0>, HostTypeListEnd>, HostTypeParameter<0>>>>`
+  --> tests/ui/generic/generic_value_not_callback.rs:19:9
+   |
+16 |         callback: Value<fn(Item) -> Item>,
+   |         -------- `callback` has type `geam_core::provider::Value<fn(Item) -> Item, geam_core::provider::ProviderValueContext<'__geam_call, geam_core::__macro_support::HostOpaqueFunctionType<HostTypeList<HostTypeParameter<0>, HostTypeListEnd>, HostTypeParameter<0>>>>`
+...
+19 |         callback(value)
+   |         ^^^^^^^^-------
+   |         |
+   |         call expression requires function

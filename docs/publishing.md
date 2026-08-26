@@ -1,19 +1,25 @@
 # Publishing
 
-Geam publishes six lockstep crates from one workspace:
+Geam publishes seven lockstep crates from one workspace:
 
 ```text
-geam-core
--> geam-stdlib
--> geam-json   geam-time
-       \         /
-        geam-cli
-           -> geam
+geam-core + geam-macros
+  -> geam-stdlib
+
+geam-core + geam-macros + geam-stdlib
+  -> geam-json
+  -> geam-time
+
+geam-core + geam-stdlib + geam-json + geam-time
+  -> geam-cli
+
+geam-core + geam-macros + built-ins + geam-cli
+  -> geam
 ```
 
 The root `geam` crate remains the public facade and owns the installable
 `geam` binary. The other crates are internal ownership boundaries rather than
-separately versioned products. Every release updates all six package versions
+separately versioned products. Every release updates all seven package versions
 and their exact internal dependency requirements together.
 
 The manual `Geam: Publish crates` workflow uses one
@@ -25,7 +31,7 @@ or polling with a release script.
 
 ## Authentication
 
-The workflow runs in the repository's `crates-io` environment. Each of the six
+The workflow runs in the repository's `crates-io` environment. Each of the seven
 crates uses this crates.io Trusted Publisher identity:
 
 - repository owner: `panarch`
@@ -47,12 +53,13 @@ checks the workspace and assembles package archives.
 3. Merge the release branch into `main` and wait for Checks.
 4. Run `Geam: Publish crates` from `main` with `dry_run` enabled. This runs
    `cargo publish --workspace --locked --dry-run`, which assembles and verifies
-   all six packages without authentication or upload.
+   all seven packages without authentication or upload.
 5. Run the workflow again with `dry_run` disabled. It authenticates once and
    Cargo publishes in dependency order:
 
 ```text
 geam-core
+geam-macros
 geam-stdlib
 geam-json
 geam-time
@@ -68,16 +75,17 @@ The current workspace conversion keeps version `0.1.2` and does not publish
 these new package boundaries. The next release branch performs the first
 lockstep version update.
 
-The five newly named internal crates do not yet exist on crates.io, so they
-cannot have Trusted Publisher records before their first upload. Bootstrap the
-first workspace release once from a locally authenticated checkout with the
+The six newly named internal crates (`geam-core`, `geam-stdlib`, `geam-json`,
+`geam-time`, `geam-cli`, and `geam-macros`) do not yet exist on crates.io, so
+they cannot have Trusted Publisher records before their first upload. Bootstrap
+the first workspace release once from a locally authenticated checkout with the
 same workspace command:
 
 ```sh
 cargo publish --workspace --locked
 ```
 
-After all six crates exist, register `publish.yml` and the `crates-io`
+After all seven crates exist, register `publish.yml` and the `crates-io`
 environment as the Trusted Publisher for each package. Subsequent releases use
 only the regular workflow above. The local credential is a one-time bootstrap
 mechanism, not a second maintained release path.

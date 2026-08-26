@@ -1,0 +1,7 @@
+error: `#[geam::custom]` must be inside a `#[geam::module]` inline module
+ --> tests/ui/custom_outside_module.rs:1:1
+  |
+1 | #[geam_macros::custom(input = StatusInput)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `geam_macros::custom` (in Nightly builds, run with -Z macro-backtrace for more info)

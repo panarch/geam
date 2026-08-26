@@ -1,51 +1,84 @@
 mod function;
 mod parse;
-mod schema;
 
 pub(super) use self::function::do_to_float;
 
-use self::function::{
-    FloatProvider, ceiling, do_log, do_power, exponential, floor, js_round, parse, random,
-    to_string, truncate,
-};
-use self::schema::ParseResult;
-use super::GleamStdlibHostProfile;
+use super::{Component, GleamStdlibHostProfile, GleamStdlibRunState};
 use crate::{HostProviderModule, HostRegistrationError};
 use ecow::EcoString;
+use geam_core::provider::{Call, HostResult};
 use num_bigint::BigInt;
+
+#[geam_macros::module(
+    path = "gleam/float",
+    crate_path = geam_core,
+    profile = crate::GleamStdlibHostProfile,
+    component = crate::Component<Profile::Io>,
+)]
+mod provider {
+    use super::{BigInt, Call, EcoString, GleamStdlibRunState, HostResult, function};
+
+    #[geam_macros::function]
+    fn parse(source: EcoString) -> Result<f64, ()> {
+        function::parse(source)
+    }
+
+    #[geam_macros::function]
+    fn to_string(value: f64) -> EcoString {
+        function::to_string(value)
+    }
+
+    #[geam_macros::function]
+    fn ceiling(value: f64) -> f64 {
+        function::ceiling(value)
+    }
+
+    #[geam_macros::function]
+    fn floor(value: f64) -> f64 {
+        function::floor(value)
+    }
+
+    #[geam_macros::function]
+    fn js_round(value: f64) -> HostResult<BigInt> {
+        function::js_round(value).map_err(Into::into)
+    }
+
+    #[geam_macros::function]
+    fn truncate(value: f64) -> HostResult<BigInt> {
+        function::truncate(value).map_err(Into::into)
+    }
+
+    #[geam_macros::function]
+    fn do_to_float(value: BigInt) -> HostResult<f64> {
+        function::do_to_float(value).map_err(Into::into)
+    }
+
+    #[geam_macros::function]
+    fn do_power(base: f64, exponent: f64) -> f64 {
+        function::do_power(base, exponent)
+    }
+
+    #[geam_macros::function(profile = Profile)]
+    fn random(#[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>) -> f64 {
+        call.state_mut().random_float()
+    }
+
+    #[geam_macros::function]
+    fn do_log(value: f64) -> f64 {
+        function::do_log(value)
+    }
+
+    #[geam_macros::function]
+    fn exponential(value: f64) -> f64 {
+        function::exponential(value)
+    }
+}
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
     Profile: GleamStdlibHostProfile,
 {
-    HostProviderModule::new("gleam_stdlib", "gleam/float")
-        .and_then(|provider| {
-            provider.with_scoped_function::<FloatProvider<Profile>, (EcoString,), ParseResult, _>(
-                "parse",
-                parse::<Profile>,
-            )
-        })
-        .and_then(|provider| provider.with_function("to_string", to_string))
-        .and_then(|provider| provider.with_function("ceiling", ceiling))
-        .and_then(|provider| provider.with_function("floor", floor))
-        .and_then(|provider| {
-            provider.with_fallible_function::<(f64,), BigInt, _>("js_round", js_round)
-        })
-        .and_then(|provider| {
-            provider.with_fallible_function::<(f64,), BigInt, _>("truncate", truncate)
-        })
-        .and_then(|provider| {
-            provider.with_fallible_function::<(BigInt,), f64, _>("do_to_float", do_to_float)
-        })
-        .and_then(|provider| provider.with_function("do_power", do_power))
-        .and_then(|provider| {
-            provider.with_scoped_function::<FloatProvider<Profile>, (), f64, _>(
-                "random",
-                random::<Profile>,
-            )
-        })
-        .and_then(|provider| provider.with_function("do_log", do_log))
-        .and_then(|provider| provider.with_function("exponential", exponential))
+    provider::__geam_module::<Profile>()
 }
 
 #[cfg(test)]

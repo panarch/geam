@@ -1,0 +1,7 @@
+name = "generic_box_example"
+version = "1.0.0"
+description = "Standalone Geam generic external retention example"
+licences = ["Apache-2.0"]
+
+[dependencies]
+example_generic_box = { path = "packages/example_generic_box" }
