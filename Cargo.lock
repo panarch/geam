@@ -1236,8 +1236,10 @@ dependencies = [
 name = "geam-json"
 version = "0.1.2"
 dependencies = [
+ "camino",
  "ecow",
  "geam-core",
+ "geam-gleam-core",
  "geam-macros",
  "geam-stdlib",
  "jiter",

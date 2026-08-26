@@ -16,3 +16,7 @@ geam-stdlib.workspace = true
 jiter.workspace = true
 num-bigint.workspace = true
 ryu.workspace = true
+
+[dev-dependencies]
+camino.workspace = true
+gleam-core.workspace = true

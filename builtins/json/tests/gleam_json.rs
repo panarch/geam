@@ -1,12 +1,10 @@
 use camino::{Utf8Path, Utf8PathBuf};
-use geam::gleam_json::{
-    GleamJsonProfile, GleamJsonRunState, host_providers as json_host_providers,
-};
-use geam::gleam_stdlib::{GleamStdlibRunState, host_providers as stdlib_host_providers};
-use geam::{
+use geam_core::{
     HostModule, HostProviderSet, HostedExecution, TypedProgram, Value, compile_typed_host_project,
     compile_typed_project, plan_host_program,
 };
+use geam_json::{GleamJsonProfile, GleamJsonRunState, host_providers as json_host_providers};
+use geam_stdlib::{GleamStdlibRunState, host_providers as stdlib_host_providers};
 
 #[path = "gleam_json/decode.rs"]
 mod decode;
@@ -146,7 +144,7 @@ fn json_hosts() -> HostProviderSet<GleamJsonProfile> {
 }
 
 fn project_root() -> Utf8PathBuf {
-    let root = Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/projects/gleam_json");
+    let root = Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/project");
     static PREPARED: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
     workspace_dependencies::prepare(
         &PREPARED,
