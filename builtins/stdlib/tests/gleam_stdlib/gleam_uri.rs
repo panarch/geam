@@ -1,5 +1,5 @@
-use geam::gleam_stdlib::{GleamStdlibProfile, GleamStdlibRunState, host_providers};
-use geam::{HostModule, HostProviderSet};
+use geam_core::{HostModule, HostProviderSet};
+use geam_stdlib::{GleamStdlibProfile, GleamStdlibRunState, host_providers};
 
 use super::{ExpectedSurface, assert_surface, run_hosted_fixture};
 

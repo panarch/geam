@@ -1,12 +1,12 @@
 use ecow::EcoString;
-use geam::gleam_stdlib::{
-    Component, GleamStdlibHostProfile, GleamStdlibProfile, GleamStdlibRunState, GleamStdlibStores,
-    IoOutput, IoSink, IoStream, host_providers,
-};
-use geam::{
+use geam_core::{
     EchoOutput, EchoSink, ExecutionError, HostComponentProfile, HostModule, HostProfile,
     HostProviderSet, HostedExecution, PanicKind, PanicMessage, Value, compile_typed_host_project,
     plan_host_program,
+};
+use geam_stdlib::{
+    Component, GleamStdlibHostProfile, GleamStdlibProfile, GleamStdlibRunState, GleamStdlibStores,
+    IoOutput, IoSink, IoStream, host_providers,
 };
 use std::cell::RefCell;
 use std::rc::Rc;

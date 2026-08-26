@@ -1266,8 +1266,10 @@ version = "0.1.2"
 dependencies = [
  "base64 0.22.1",
  "bitvec",
+ "camino",
  "ecow",
  "geam-core",
+ "geam-gleam-core",
  "geam-macros",
  "hex",
  "im",

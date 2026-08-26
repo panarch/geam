@@ -1,5 +1,5 @@
 use camino::{Utf8Path, Utf8PathBuf};
-use geam::{
+use geam_core::{
     ExecutionPlan, HostProfile, HostProviderSet, HostedExecution, TypedProgram, Value,
     compile_typed_host_project, compile_typed_project, plan_host_program, plan_program, run_main,
 };
@@ -167,8 +167,7 @@ fn expected_module_order<'name>(
 }
 
 fn project_root() -> Utf8PathBuf {
-    let root =
-        Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/projects/gleam_stdlib");
+    let root = Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/project");
     static PREPARED: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
     workspace_dependencies::prepare(
         &PREPARED,

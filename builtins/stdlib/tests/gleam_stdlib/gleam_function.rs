@@ -1,4 +1,4 @@
-use geam::Value;
+use geam_core::Value;
 
 use super::{ExpectedSurface, assert_surface, run_fixture};
 
