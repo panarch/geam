@@ -16,7 +16,7 @@ env:
 
 jobs:
   fmt:
-    name: fmt
+    name: Formatting
     runs-on: ubuntu-latest
 
     steps:
@@ -44,7 +44,7 @@ jobs:
           done
 
   clippy:
-    name: clippy
+    name: Clippy
     runs-on: ubuntu-latest
 
     steps:
@@ -91,8 +91,74 @@ jobs:
             (cd "examples/$example/provider" && cargo clippy --all-targets --locked -- -D warnings)
           done
 
-  test:
-    name: test
+  workspace-tests:
+    name: Workspace tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+          rustflags: ""
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Test workspace packages
+        run: cargo test --workspace --exclude geam --locked
+
+      - name: Assemble workspace packages
+        run: cargo package --workspace --locked --no-verify
+
+  root-acceptance:
+    name: Root acceptance
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Gleam toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          gleam-version: "1.18.1"
+          rebar3-version: "3"
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+          rustflags: ""
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+
+      - name: Test the public facade and binary
+        run: cargo test --package geam --locked
+
+      - name: Verify standalone provider packages
+        working-directory: tests/fixtures/standalone_cli/providers
+        run: |
+          cargo package --quiet --offline --allow-dirty --no-verify --locked --package geam-catalog
+          cargo package --quiet --offline --allow-dirty --no-verify --locked --package geam-counter
+
+      - name: Verify standalone Gleam packages
+        run: |
+          for package in catalog counter pure_labels; do
+            (cd "tests/fixtures/standalone_cli/project/packages/$package" && gleam export hex-tarball)
+          done
+
+  example-providers:
+    name: Provider examples
     runs-on: ubuntu-latest
 
     steps:
@@ -116,8 +182,6 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            . -> target
-            tests/fixtures/standalone_cli/providers -> target
             examples/text_tools/provider -> target
             examples/value_types/provider -> target
             examples/tag_set/provider -> target
@@ -127,18 +191,6 @@ jobs:
             examples/call_tracing/provider -> target
             examples/generic_box/provider -> target
             examples/text_pattern/provider -> target
-
-      - name: Run tests
-        run: cargo test --workspace --locked
-
-      - name: Assemble workspace packages
-        run: cargo package --workspace --locked --no-verify
-
-      - name: Verify standalone provider packages
-        working-directory: tests/fixtures/standalone_cli/providers
-        run: |
-          cargo package --quiet --offline --allow-dirty --no-verify --locked --package geam-catalog
-          cargo package --quiet --offline --allow-dirty --no-verify --locked --package geam-counter
 
       - name: Test and package example providers
         run: |
@@ -165,14 +217,8 @@ jobs:
             (cd "examples/$example/project/packages/$gleam_package" && gleam export hex-tarball)
           done
 
-      - name: Verify standalone Gleam packages
-        run: |
-          for package in catalog counter pure_labels; do
-            (cd "tests/fixtures/standalone_cli/project/packages/$package" && gleam export hex-tarball)
-          done
-
   external-provider-sdk:
-    name: External Provider SDK
+    name: External provider SDK
     runs-on: ubuntu-latest
 
     steps:
@@ -209,7 +255,7 @@ jobs:
         run: cargo llvm-cov --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --locked --summary-only --fail-under-lines 100 --fail-under-regions 100
 
   coverage:
-    name: coverage
+    name: Coverage
     runs-on: ubuntu-latest
 
     steps:
