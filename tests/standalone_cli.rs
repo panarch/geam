@@ -1027,7 +1027,7 @@ fn write_cargo_config(project: &TempDir) {
 fn standalone_fixture() -> TempDir {
     prepare_cargo_dependencies();
     let fixture = tempdir().expect("temporary standalone fixture should be created");
-    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/standalone_cli");
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("cli/tests/fixtures/standalone_cli");
     static GLEAM_DEPENDENCIES: OnceLock<Result<(), String>> = OnceLock::new();
     workspace_dependencies::prepare(
         &GLEAM_DEPENDENCIES,
@@ -1139,7 +1139,7 @@ fn provider_example(name: &str) -> TempDir {
 fn prepare_cargo_dependencies() {
     const WORKSPACES: [&str; 11] = [
         "tests/fixtures/provider_sdk",
-        "tests/fixtures/standalone_cli/providers",
+        "cli/tests/fixtures/standalone_cli/providers",
         "examples/text_tools/provider",
         "examples/value_types/provider",
         "examples/tag_set/provider",

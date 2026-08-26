@@ -139,7 +139,7 @@ This workspace is independently locked and needs neither a Gleam CLI nor
 downloaded Gleam package source. Its Rust dependencies use Cargo's ordinary
 locked acquisition path. CI runs it as a separate provider SDK boundary.
 
-The tracked `tests/fixtures/standalone_cli` fixture verifies the complete CLI
+The tracked `cli/tests/fixtures/standalone_cli` fixture verifies the complete CLI
 assembly boundary. Its Gleam project combines a Pure Gleam path package,
 version-locked stdlib, JSON, and Time dependencies, and two provider-backed path
 packages. Official package source is downloaded outside Git, while the local

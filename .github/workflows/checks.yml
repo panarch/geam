@@ -34,7 +34,7 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Check standalone provider formatting
-        working-directory: tests/fixtures/standalone_cli/providers
+        working-directory: cli/tests/fixtures/standalone_cli/providers
         run: cargo fmt --all --check
 
       - name: Check example provider formatting
@@ -63,7 +63,7 @@ jobs:
         with:
           workspaces: |
             . -> target
-            tests/fixtures/standalone_cli/providers -> target
+            cli/tests/fixtures/standalone_cli/providers -> target
             examples/text_tools/provider -> target
             examples/value_types/provider -> target
             examples/tag_set/provider -> target
@@ -75,14 +75,14 @@ jobs:
             examples/text_pattern/provider -> target
 
       - name: Fetch standalone provider dependencies
-        working-directory: tests/fixtures/standalone_cli/providers
+        working-directory: cli/tests/fixtures/standalone_cli/providers
         run: cargo fetch --locked --config net.offline=false
 
       - name: Run clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Run standalone provider clippy
-        working-directory: tests/fixtures/standalone_cli/providers
+        working-directory: cli/tests/fixtures/standalone_cli/providers
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Run example provider clippy
@@ -146,7 +146,7 @@ jobs:
         run: cargo test --package geam --locked
 
       - name: Verify standalone provider packages
-        working-directory: tests/fixtures/standalone_cli/providers
+        working-directory: cli/tests/fixtures/standalone_cli/providers
         run: |
           cargo package --quiet --offline --allow-dirty --no-verify --locked --package geam-catalog
           cargo package --quiet --offline --allow-dirty --no-verify --locked --package geam-counter
@@ -154,7 +154,7 @@ jobs:
       - name: Verify standalone Gleam packages
         run: |
           for package in catalog counter pure_labels; do
-            (cd "tests/fixtures/standalone_cli/project/packages/$package" && gleam export hex-tarball)
+            (cd "cli/tests/fixtures/standalone_cli/project/packages/$package" && gleam export hex-tarball)
           done
 
   example-providers:
@@ -281,7 +281,7 @@ jobs:
         with:
           workspaces: |
             . -> target
-            tests/fixtures/standalone_cli/providers -> target
+            cli/tests/fixtures/standalone_cli/providers -> target
             examples/text_tools/provider -> target
             examples/value_types/provider -> target
             examples/tag_set/provider -> target

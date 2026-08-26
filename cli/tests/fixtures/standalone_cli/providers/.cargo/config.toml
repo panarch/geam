@@ -1,5 +1,5 @@
 [patch.crates-io]
-geam = { path = "../../../.." }
+geam = { path = "../../../../.." }
 standalone-catalog-domain = { path = "catalog-domain" }
 
 [net]
