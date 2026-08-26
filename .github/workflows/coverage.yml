@@ -40,10 +40,11 @@ jobs:
         with:
           tool: cargo-llvm-cov@0.8.7
 
-      - name: Run core and macros coverage closure
-        run: |
-          cargo llvm-cov --no-report --package geam-core --package geam-macros --locked
-          cargo llvm-cov --no-clean --package geam-stdlib --lib --locked --summary-only
+      - name: Clean workspace coverage artifacts
+        run: cargo llvm-cov clean --workspace
+
+      - name: Run core and macro owner tests
+        run: cargo llvm-cov --no-report --package geam-core --package geam-macros --locked
 
       - name: Check geam-core coverage
         run: cargo llvm-cov report --package geam-core --summary-only --fail-under-lines 100 --fail-under-regions 100
@@ -83,6 +84,9 @@ jobs:
         with:
           tool: cargo-llvm-cov@0.8.7
 
+      - name: Clean workspace coverage artifacts
+        run: cargo llvm-cov clean --workspace
+
       - name: Run built-in coverage closure
         run: cargo llvm-cov --no-report --package geam-stdlib --package geam-json --package geam-time --locked
 
@@ -119,6 +123,9 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov@0.8.7
+
+      - name: Clean workspace coverage artifacts
+        run: cargo llvm-cov clean --workspace
 
       - name: Run CLI and binary coverage closure
         run: |

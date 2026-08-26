@@ -271,20 +271,20 @@ starts with an empty coverage profile, executes only the tests needed to reach
 its package contracts, and then reports every production package separately.
 This permits JSON tests to exercise stdlib contracts they consume without
 allowing JSON coverage to compensate for an uncovered stdlib line or region.
-The first `cargo llvm-cov --no-report` command in each closure performs the
-tool's default clean; only a later command in the same closure uses
-`--no-clean` to retain those profiles.
+Each closure explicitly runs `cargo llvm-cov clean --workspace` before
+collection so cached instrumentation from another package cannot contribute to
+its reports. This command clears artifacts; it does not execute additional
+packages. Only a later collection command in the same closure uses `--no-clean`
+to retain that closure's profiles.
 
-The core closure also executes the `geam-stdlib` library tests because stdlib
-is the production consumer of core's hidden provider-support contract. That
-execution contributes only to the `geam-core` report in this closure;
-`geam-stdlib` still has its own independent report in the built-in closure.
+The core and macro closure uses only those packages' owner tests. Both reports
+must independently reach 100% without relying on built-in or CLI consumers.
 
 Run the core and macro closure:
 
 ```sh
+cargo llvm-cov clean --workspace
 cargo llvm-cov --no-report --package geam-core --package geam-macros --locked
-cargo llvm-cov --no-clean --package geam-stdlib --lib --locked --summary-only
 cargo llvm-cov report --package geam-core --summary-only --fail-under-lines 100 --fail-under-regions 100
 cargo llvm-cov report --package geam-macros --summary-only --fail-under-lines 100 --fail-under-regions 100
 ```
@@ -292,6 +292,7 @@ cargo llvm-cov report --package geam-macros --summary-only --fail-under-lines 10
 Run the built-in closure with Gleam `v1.18.1` available:
 
 ```sh
+cargo llvm-cov clean --workspace
 cargo llvm-cov --no-report --package geam-stdlib --package geam-json --package geam-time --locked
 cargo llvm-cov report --package geam-stdlib --summary-only --fail-under-lines 100 --fail-under-regions 100
 cargo llvm-cov report --package geam-json --summary-only --fail-under-lines 100 --fail-under-regions 100
@@ -301,6 +302,7 @@ cargo llvm-cov report --package geam-time --summary-only --fail-under-lines 100 
 Run the CLI and binary closure:
 
 ```sh
+cargo llvm-cov clean --workspace
 cargo llvm-cov --no-report --package geam-cli --locked
 cargo llvm-cov --no-clean --package geam --test binary --locked --summary-only
 cargo llvm-cov report --package geam-cli --summary-only --fail-under-lines 100 --fail-under-regions 100
