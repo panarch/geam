@@ -1,0 +1,124 @@
+name: Workspace
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    name: Formatting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt
+          cache: false
+          rustflags: ""
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Check standalone provider formatting
+        working-directory: cli/tests/fixtures/standalone_cli/providers
+        run: cargo fmt --all --check
+
+      - name: Check example provider formatting
+        run: |
+          for example in text_tools value_types tag_set request_ids feature_flags run_metrics call_tracing generic_box text_pattern; do
+            (cd "examples/$example/provider" && cargo fmt --all --check)
+          done
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
+          cache: false
+          rustflags: ""
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            cli/tests/fixtures/standalone_cli/providers -> target
+            examples/text_tools/provider -> target
+            examples/value_types/provider -> target
+            examples/tag_set/provider -> target
+            examples/request_ids/provider -> target
+            examples/feature_flags/provider -> target
+            examples/run_metrics/provider -> target
+            examples/call_tracing/provider -> target
+            examples/generic_box/provider -> target
+            examples/text_pattern/provider -> target
+
+      - name: Fetch standalone provider dependencies
+        working-directory: cli/tests/fixtures/standalone_cli/providers
+        run: cargo fetch --locked --config net.offline=false
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Run standalone provider clippy
+        working-directory: cli/tests/fixtures/standalone_cli/providers
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Run example provider clippy
+        run: |
+          for example in text_tools value_types tag_set request_ids feature_flags run_metrics call_tracing generic_box text_pattern; do
+            (cd "examples/$example/provider" && cargo clippy --all-targets --locked -- -D warnings)
+          done
+
+  workspace-tests:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Gleam toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          gleam-version: "1.18.1"
+          rebar3-version: "3"
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+          rustflags: ""
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Test workspace packages
+        run: cargo test --workspace --exclude geam --locked
+
+      - name: Assemble workspace packages
+        run: cargo package --workspace --locked --no-verify
