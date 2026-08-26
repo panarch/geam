@@ -6,8 +6,9 @@ milestones.
 The root Cargo workspace contains the `geam` facade and binary, `geam-core`,
 `geam-stdlib`, `geam-json`, `geam-time`, `geam-cli`, and `geam-macros`. Each
 extracted package owns tests for its production protocols. Root integration
-targets own the public `geam::...` facade, official package compatibility, and
-standalone binary behavior; they do not replace package-local owner tests.
+targets own the public `geam::...` facade, cross-crate compatibility, and
+standalone distribution behavior; they do not replace package-local owner
+tests or built-in compatibility suites.
 
 For guidance on constructing owner tests, promoting diagnostic probes, and
 closing coverage gaps, see [test-development.md](test-development.md).
@@ -74,17 +75,17 @@ the frontend owner tests. These tests construct Hex, Git, and Local package
 layouts without network access or an installed Gleam CLI, keeping loader owner
 coverage independent of external package acquisition.
 
-The tracked `tests/fixtures/projects/gleam_stdlib` project locks official
-`gleam_stdlib` `v1.0.3` but does not track downloaded package source. Full test
-and coverage runs automatically download that exact source before executing the
-integration target.
+The tracked `builtins/stdlib/tests/fixtures/project` project locks official
+`gleam_stdlib` `v1.0.3` but does not track downloaded package source. The
+`geam-stdlib` integration target downloads that exact source before executing
+its package-local compatibility suite.
 
 CI runs these tests with Gleam `v1.18.1`. Provider-free roots run through
 `compile_typed_project -> plan_program -> ExecutionPlan::from_module_plan ->
 run_main`; roots whose selected closure uses registered externals run through
 `compile_typed_host_project -> plan_host_program ->
 HostedExecution::try_from_module_plan -> run_main` with the explicit
-`geam::gleam_stdlib` provider bundle. The tracked set covers `gleam/bit_array`,
+`geam-stdlib` provider bundle. The tracked set covers `gleam/bit_array`,
 `gleam/bool`, `gleam/bytes_tree`, `gleam/dict`, `gleam/dynamic`,
 `gleam/dynamic/decode`, `gleam/float`, `gleam/function`, `gleam/int`, `gleam/io`,
 `gleam/list`, `gleam/option`, `gleam/order`, `gleam/pair`, `gleam/result`,
@@ -104,18 +105,18 @@ the hosted resolved-project pipeline with the explicit stdlib provider bundle.
 It fixes the public surface of all five package modules and executes every
 public function.
 
-The tracked `tests/fixtures/projects/gleam_json` project independently locks
-official `gleam_json` `v3.1.0` and `gleam_stdlib` `v1.0.3`. Full test and
-coverage runs automatically download its exact locked source before executing
-the integration target.
+The tracked `builtins/json/tests/fixtures/project` project independently locks
+official `gleam_json` `v3.1.0` and `gleam_stdlib` `v1.0.3`. The `geam-json`
+integration target downloads its exact locked source before executing the
+package-local compatibility suite.
 
 This target explicitly composes the stdlib and JSON provider bundles, fixes the
 complete public `gleam/json` surface, and executes every public function.
 
-The tracked `tests/fixtures/projects/gleam_time` project independently locks
-official `gleam_time` `v1.8.0` and `gleam_stdlib` `v1.0.3`. Full test and
-coverage runs automatically download its exact locked source before executing
-the integration target.
+The tracked `builtins/time/tests/fixtures/project` project independently locks
+official `gleam_time` `v1.8.0` and `gleam_stdlib` `v1.0.3`. The `geam-time`
+integration target downloads its exact locked source before executing the
+package-local compatibility suite.
 
 This target explicitly composes the stdlib and Time provider bundles. It fixes
 the complete public surfaces of `gleam/time/duration`, `gleam/time/calendar`,
@@ -163,9 +164,9 @@ specialized manual external semantics. `call_tracing` verifies typed callback
 return identity, same-component re-entry, exact state ordering, and fresh state
 on repeated runs. `generic_box` verifies typed retention, cross-type
 replacement, source semantics, and callback mapping without materialization.
-Root binary tests follow each documented path add, prepare, run, and
-repeated-run workflow against independently locked provider crates. The
-complete Gleam entrypoints execute every public example function.
+The root `provider_examples` target follows each documented path add, prepare,
+run, and repeated-run workflow against independently locked provider crates.
+The complete Gleam entrypoints execute every public example function.
 Repository-local Cargo patches select the current checkout until the authoring
 crates are released.
 
@@ -189,6 +190,22 @@ Gleam dependencies and all nine example Gleam packages. It also packages the
 two standalone fixture providers and every example provider. No fixture package
 is published.
 
+The root package keeps four explicit acceptance targets:
+
+- `binary` starts the installed-shape `geam` process for command dispatch,
+  process failures, pure execution, and IO/Echo ordering.
+- `cross_crate_http` proves that the Pure Gleam `gleam_http` package works
+  through the root facade and stdlib composition. HTTP is not a Geam built-in
+  and has no provider crate.
+- `provider_examples` executes the nine documented provider projects through
+  the real binary and generated runners.
+- `standalone_distribution` combines built-ins and two independent providers
+  in one canonical managed-project flow.
+
+Detailed project loading, provider reconciliation, registry, manifest, lock,
+and runner behavior remains in `geam-cli`; the root targets only retain the
+process, facade, cross-crate, or distribution boundary named above.
+
 Source-level rejection fixtures live under categorized
 `tests/fixtures/rejection/**/*.gleam` paths. They are reserved for public
 boundary cases that are clearer as complete Gleam modules than as planner unit
@@ -205,6 +222,23 @@ cargo test --workspace --locked
 The workspace's explicit default members are the same seven packages, so
 `cargo test --locked` remains equivalent for local use. CI spells out
 `--workspace` so newly added internal packages cannot be omitted implicitly.
+
+Run a package-owned compatibility suite directly:
+
+```sh
+cargo test --package geam-stdlib --test gleam_stdlib --locked
+cargo test --package geam-json --test gleam_json --locked
+cargo test --package geam-time --test gleam_time --locked
+```
+
+Run the root acceptance targets independently:
+
+```sh
+cargo test --package geam --test binary --locked
+cargo test --package geam --test cross_crate_http --locked
+cargo test --package geam --test provider_examples --locked
+cargo test --package geam --test standalone_distribution --locked
+```
 
 Planner unit tests use the crate-internal `planner::dsl` expected-plan helpers
 instead of snapshots, so supported lowering changes update the expected plan
@@ -232,27 +266,64 @@ rustup component add llvm-tools-preview
 cargo install cargo-llvm-cov --locked
 ```
 
-Run the enforced coverage gate:
+Coverage is measured through three production-consumer closures. Each closure
+starts with an empty coverage profile, executes only the tests needed to reach
+its package contracts, and then reports every production package separately.
+This permits JSON tests to exercise stdlib contracts they consume without
+allowing JSON coverage to compensate for an uncovered stdlib line or region.
+The first `cargo llvm-cov --no-report` command in each closure performs the
+tool's default clean; only a later command in the same closure uses
+`--no-clean` to retain those profiles.
+
+The core closure also executes the `geam-stdlib` library tests because stdlib
+is the production consumer of core's hidden provider-support contract. That
+execution contributes only to the `geam-core` report in this closure;
+`geam-stdlib` still has its own independent report in the built-in closure.
+
+Run the core and macro closure:
 
 ```sh
-cargo llvm-cov --workspace --locked --summary-only --fail-under-lines 100 --fail-under-regions 100
+cargo llvm-cov --no-report --package geam-core --package geam-macros --locked
+cargo llvm-cov --no-clean --package geam-stdlib --lib --locked --summary-only
+cargo llvm-cov report --package geam-core --summary-only --fail-under-lines 100 --fail-under-regions 100
+cargo llvm-cov report --package geam-macros --summary-only --fail-under-lines 100 --fail-under-regions 100
 ```
 
-Geam keeps both line coverage and full-scope region coverage at 100%. Region
-coverage is the stricter review signal when a source line contains multiple
-expression regions.
-
-When a coverage gap is hard to explain from the summary alone, split the target
-and inspect LLVM's region and instantiation detail before adding fixtures:
+Run the built-in closure with Gleam `v1.18.1` available:
 
 ```sh
-cargo llvm-cov --workspace --locked --text --show-instantiations --show-missing-lines
+cargo llvm-cov --no-report --package geam-stdlib --package geam-json --package geam-time --locked
+cargo llvm-cov report --package geam-stdlib --summary-only --fail-under-lines 100 --fail-under-regions 100
+cargo llvm-cov report --package geam-json --summary-only --fail-under-lines 100 --fail-under-regions 100
+cargo llvm-cov report --package geam-time --summary-only --fail-under-lines 100 --fail-under-regions 100
 ```
 
-Generate an HTML report:
+Run the CLI and binary closure:
 
 ```sh
-cargo llvm-cov --workspace --locked --html
+cargo llvm-cov --no-report --package geam-cli --locked
+cargo llvm-cov --no-clean --package geam --test binary --locked --summary-only
+cargo llvm-cov report --package geam-cli --summary-only --fail-under-lines 100 --fail-under-regions 100
+cargo llvm-cov report --package geam --summary-only --fail-under-lines 100 --fail-under-regions 100
+```
+
+The independent Provider SDK workspace retains its own 100% gate shown above.
+Geam keeps both line coverage and full-scope region coverage at 100% for every
+reported production package. Region coverage is the stricter review signal
+when a source line contains multiple expression regions.
+
+When a coverage gap is hard to explain from the summary alone, inspect LLVM's
+region and instantiation detail for the package after running its closure:
+
+```sh
+cargo llvm-cov report --package geam-core --text --show-instantiations --show-missing-lines
+```
+
+Replace `geam-core` with the package under investigation. Generate a
+package-scoped HTML report from the same profile:
+
+```sh
+cargo llvm-cov report --package geam-core --html
 ```
 
 The HTML report is written to:
