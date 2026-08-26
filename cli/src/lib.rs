@@ -30,18 +30,17 @@ pub fn run() -> ExitCode {
 fn run_command(cli: Cli, current_directory: camino::Utf8PathBuf) -> Result<(), CliError> {
     let project_root = project::find_project_root(&current_directory)?;
     match cli.command {
-        Command::Prepare(command) => {
-            let module = project::entry_module(&project_root, command.module)?;
-            standalone::prepare(&project_root, module)
-        }
+        Command::Prepare(command) => project::entry_module(&project_root, command.module)
+            .and_then(|module| standalone::prepare(&project_root, module)),
         Command::Run(command) => {
-            let module = project::entry_module(&project_root, command.module)?;
-            standalone::run(
-                &project_root,
-                &current_directory,
-                module,
-                command.provider_configs,
-            )
+            project::entry_module(&project_root, command.module).and_then(|module| {
+                standalone::run(
+                    &project_root,
+                    &current_directory,
+                    module,
+                    command.provider_configs,
+                )
+            })
         }
         Command::Provider(command) => match command.command {
             ProviderCommand::Add(command) => {

@@ -5,15 +5,15 @@ use geam::{
     compile_typed_project, plan_host_program,
 };
 
-#[path = "gleam_http/cookie.rs"]
+#[path = "cross_crate_http/cookie.rs"]
 mod cookie;
-#[path = "gleam_http/http.rs"]
+#[path = "cross_crate_http/http.rs"]
 mod http;
-#[path = "gleam_http/request.rs"]
+#[path = "cross_crate_http/request.rs"]
 mod request;
-#[path = "gleam_http/response.rs"]
+#[path = "cross_crate_http/response.rs"]
 mod response;
-#[path = "gleam_http/service.rs"]
+#[path = "cross_crate_http/service.rs"]
 mod service;
 #[path = "support/upstream_surface.rs"]
 mod upstream_surface;
