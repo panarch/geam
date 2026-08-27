@@ -26,9 +26,14 @@ pub fn main() {
 }
 ```
 
-`Pattern` is opaque to Gleam. Patterns compiled from the same source text
+On Geam, `Pattern` is opaque to Gleam. Patterns compiled from the same source text
 compare equal, and inspection shows the pattern text rather than Rust's regex
 internals.
+
+The Gleam package also includes an Erlang `re` implementation for `gleam run`.
+This crate implements the Geam side. Pattern and replacement syntax, equality,
+and inspection follow the selected runtime, as described in the
+[runtime semantics](https://github.com/panarch/geam/blob/main/examples/text_pattern/project/packages/example_text_pattern/README.md#runtime-semantics).
 
 ## Run the Example
 

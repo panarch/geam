@@ -1,6 +1,6 @@
 name = "example_text_pattern"
 version = "0.1.0"
-description = "Typed text patterns backed by a native Geam provider"
+description = "Regular expressions for Gleam on Erlang and Geam"
 licences = ["Apache-2.0"]
 
 links = [
