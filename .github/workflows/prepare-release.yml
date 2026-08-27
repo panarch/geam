@@ -1,0 +1,118 @@
+name: "Geam: Prepare release"
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: read
+
+concurrency:
+  group: geam-prepare-release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  prepare:
+    name: Release PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      CARGO_NET_OFFLINE: "false"
+    steps:
+      - name: Require the main branch
+        env:
+          SELECTED_REF: ${{ github.ref }}
+        run: test "$SELECTED_REF" = refs/heads/main
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.96"
+
+      - name: Install release tools
+        run: |
+          cargo install cargo-release --version 1.1.4 --locked
+          cargo install cargo-edit --version 0.13.13 --locked --no-default-features --features upgrade
+
+      - name: Bump workspace versions
+        env:
+          RELEASE_BUMP: ${{ inputs.bump }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          cargo release version "$RELEASE_BUMP" --workspace --execute --no-confirm
+          version=$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "geam") | .version')
+          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Check release branch and PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="release/$RELEASE_VERSION"
+          refs=$(git ls-remote origin "refs/heads/$branch" "refs/tags/v$RELEASE_VERSION")
+          test -z "$refs" || { echo "Release branch or tag already exists" >&2; exit 1; }
+          test "$(gh pr list --state all --head "$branch" --json number --jq length)" = 0
+          git switch -c "$branch"
+
+      - name: Update standalone provider requirements
+        working-directory: cli/tests/fixtures/standalone_cli/providers
+        run: cargo upgrade --package "geam@=$RELEASE_VERSION" --pinned --recursive false
+
+      - name: Update example provider requirements
+        run: |
+          for manifest in examples/*/provider/Cargo.toml; do
+            (cd "$(dirname "$manifest")" && cargo upgrade --package "geam@=$RELEASE_VERSION" --pinned --recursive false)
+          done
+
+      - name: Refresh tracked Cargo locks
+        run: |
+          while IFS= read -r lock; do
+            (cd "$(dirname "$lock")" && cargo update --workspace)
+          done < <(git ls-files '*Cargo.lock')
+          git diff --check
+          git diff --stat
+
+      - name: Open release PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --update -- '*Cargo.toml' '*Cargo.lock'
+          git commit -F - <<EOF
+          Prepare Geam $RELEASE_VERSION
+
+          - Bump workspace versions and provider requirements together.
+          - Refresh independently owned Cargo locks.
+          EOF
+          git push --set-upstream origin "release/$RELEASE_VERSION"
+          gh pr create --draft --base main --head "release/$RELEASE_VERSION" \
+            --title "Release Geam $RELEASE_VERSION" --body-file - <<EOF
+          ## Release checklist
+
+          - [ ] Add and review \`docs/releases/$RELEASE_VERSION.md\`.
+          - [ ] Review the version and lockfile diff.
+          - [ ] Approve the PR workflow runs and wait for all checks.
+          - [ ] Mark ready and squash-merge; wait for main's checks at the merge SHA.
+
+          Publish separately using the [publishing guide](https://github.com/$GITHUB_REPOSITORY/blob/main/docs/publishing.md).
+          EOF
