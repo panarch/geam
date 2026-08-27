@@ -178,6 +178,13 @@ orchestration test owns search, sparse-index, checksum, archive metadata,
 approval, registry-shaped dependency, lock, check, and run coverage without
 requiring a fixture crate to be published.
 
+The same text-pattern test first runs the common Gleam entrypoint and the
+Erlang-specific example using the package's native `re` implementation, before
+adding a Rust provider. It then runs the common entrypoint twice on Geam and
+checks Geam-specific replacement syntax, pattern equality, and exact inspection.
+This test requires Erlang/OTP as well as Gleam; CI supplies OTP `29`. The native
+Erlang source is included in the exported Hex package.
+
 CI formats, tests, lints, and packages every independent example provider. The
 nine macro examples select the current unreleased authoring surface through
 repository-local patches and complete standalone execution. The independent
@@ -225,7 +232,8 @@ tests.
 
 ## Commands
 
-With the Rust toolchain and Gleam `v1.18.1` installed, run the full test suite:
+With the Rust toolchain, Gleam `v1.18.1`, and Erlang/OTP `29` installed, run the
+full test suite:
 
 ```sh
 cargo test --workspace --locked

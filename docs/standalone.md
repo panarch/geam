@@ -85,10 +85,10 @@ example_text_pattern
 ```
 
 The example project contains an ordinary local Gleam dependency and no Geam
-mapping metadata. Its provider crate is package-ready but remains unpublished
-while the higher-level macro authoring API is still planned. The bounded
-registry tests separately verify discovery, approval, archive validation, and
-the same production runner path without requiring a published fixture crate.
+mapping metadata. Its independently packageable provider uses Geam's public
+authoring macros. The bounded registry tests separately verify discovery,
+approval, archive validation, and the same production runner path without
+requiring a published fixture crate.
 
 Explicit selection is itself approval:
 

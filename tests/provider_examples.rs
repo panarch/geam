@@ -289,9 +289,33 @@ fn runs_the_documented_feature_flags_provider_with_explicit_configuration() {
 }
 
 #[test]
-fn runs_the_documented_text_pattern_provider_from_its_local_path() {
+fn runs_the_documented_text_pattern_on_erlang_and_geam() {
     let fixture = provider_example("text_pattern");
     let project = fixture.path().join("project");
+
+    for module in ["text_pattern_example", "text_pattern_erlang"] {
+        let run = Command::new("gleam")
+            .args([
+                "run",
+                "--target",
+                "erlang",
+                "--no-print-progress",
+                "--module",
+                module,
+            ])
+            .current_dir(&project)
+            .output()
+            .expect("Gleam CLI should start with Erlang installed");
+        assert!(
+            run.status.success(),
+            "Erlang text pattern example {module} failed: {}",
+            String::from_utf8_lossy(&run.stderr),
+        );
+        assert!(run.stdout.is_empty());
+        assert!(run.stderr.is_empty());
+    }
+    assert!(!project.join("Cargo.toml").exists());
+    assert!(!project.join("Cargo.lock").exists());
 
     let add = geam_at(&project, ["provider", "add", "--path", "../provider"]);
     assert!(
@@ -330,10 +354,21 @@ fn runs_the_documented_text_pattern_provider_from_its_local_path() {
     );
     assert!(runner.contains("geam_provider_example_text_pattern::Component"));
 
-    let run = geam_at(&project, ["run"]);
+    for _ in 0..2 {
+        let run = geam_at(&project, ["run"]);
+        assert!(
+            run.status.success(),
+            "text pattern run failed: {}",
+            String::from_utf8_lossy(&run.stderr),
+        );
+        assert!(run.stdout.is_empty());
+        assert!(run.stderr.is_empty());
+    }
+
+    let run = geam_at(&project, ["run", "--module", "text_pattern_geam"]);
     assert!(
         run.status.success(),
-        "text pattern run failed: {}",
+        "Geam-specific text pattern run failed: {}",
         String::from_utf8_lossy(&run.stderr),
     );
     assert!(run.stdout.is_empty());
@@ -342,7 +377,7 @@ fn runs_the_documented_text_pattern_provider_from_its_local_path() {
     assert_eq!(
         String::from_utf8_lossy(&run.stderr),
         format!(
-            "{}/src/text_pattern_example.gleam:8 compiled pattern\nPattern(\"[A-Za-z]+\")\n",
+            "{}/src/text_pattern_geam.gleam:8 compiled pattern\nPattern(\"[A-Za-z]+\")\n",
             canonical_project.display(),
         ),
     );

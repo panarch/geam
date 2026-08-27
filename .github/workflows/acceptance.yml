@@ -83,7 +83,7 @@ jobs:
           - example: generic_box
             test: runs_the_documented_generic_box_provider_with_persistent_values
           - example: text_pattern
-            test: runs_the_documented_text_pattern_provider_from_its_local_path
+            test: runs_the_documented_text_pattern_on_erlang_and_geam
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/target
 

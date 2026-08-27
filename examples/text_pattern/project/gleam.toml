@@ -1,6 +1,6 @@
 name = "text_pattern_example"
-version = "1.0.0"
-description = "Standalone Geam text pattern provider example"
+version = "0.1.0"
+description = "Text pattern example for Erlang and Geam"
 licences = ["Apache-2.0"]
 
 [dependencies]

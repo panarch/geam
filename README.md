@@ -206,7 +206,8 @@ compiler-boundary details, and sync policy.
 
 ## Testing
 
-With the Rust toolchain and Gleam `v1.18.1` installed, run the full test suite:
+With the Rust toolchain, Gleam `v1.18.1`, and Erlang/OTP `29` installed, run the
+full test suite:
 
 ```sh
 cargo test --locked
