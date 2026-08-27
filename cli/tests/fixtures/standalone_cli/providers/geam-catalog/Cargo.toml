@@ -13,6 +13,6 @@ gleam-version = ">= 1.0.0 and < 2.0.0"
 
 [dependencies]
 ecow = "=0.2.6"
-geam = "=0.1.2"
+geam = "=0.2.0"
 num-bigint = "0.4"
 standalone-catalog-domain = { path = "../catalog-domain", version = "0.1.0" }
