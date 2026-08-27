@@ -3,8 +3,25 @@ name: "Geam: Publish crates"
 on:
   workflow_dispatch:
     inputs:
+      operation:
+        description: Operation
+        required: true
+        default: Publish workspace
+        type: choice
+        options:
+          - Publish workspace
+          - Retry packages
+          - Create GitHub Release
+      commit:
+        description: Full release commit SHA
+        required: true
+        type: string
+      packages:
+        description: For Retry packages only, space-separated
+        required: false
+        type: string
       dry_run:
-        description: Check and package the workspace without publishing
+        description: dry-run
         required: true
         default: true
         type: boolean
@@ -22,46 +39,137 @@ env:
 
 jobs:
   publish:
-    name: workspace crates to crates.io
+    name: ${{ inputs.operation }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: crates-io
     permissions:
-      contents: read
+      actions: read
+      contents: write
       id-token: write
+    env:
+      RELEASE_OPERATION: ${{ inputs.operation }}
+      RELEASE_COMMIT: ${{ inputs.commit }}
+      RELEASE_PACKAGES: ${{ inputs.packages }}
 
     steps:
-      - name: Require the main branch
+      - name: Validate inputs
         env:
           SELECTED_REF: ${{ github.ref }}
-        run: test "$SELECTED_REF" = refs/heads/main
+        run: |
+          if [[ "$SELECTED_REF" != refs/heads/main ]]; then
+            echo "::error::Run this workflow from main."
+            exit 1
+          fi
+          if [[ ! "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::commit must be a full 40-character lowercase hexadecimal SHA."
+            exit 1
+          fi
+          case "$RELEASE_OPERATION" in
+            "Retry packages")
+              if [[ ! "$RELEASE_PACKAGES" =~ [^[:space:]] ]]; then
+                echo "::error::Retry packages requires at least one crate in packages."
+                exit 1
+              fi
+              ;;
+            "Publish workspace"|"Create GitHub Release")
+              if [[ -n "$RELEASE_PACKAGES" ]]; then
+                echo "::error::packages must be empty for $RELEASE_OPERATION."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::Select Publish workspace, Retry packages, or Create GitHub Release."
+              exit 1
+              ;;
+          esac
 
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ inputs.commit }}
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.96"
 
       - name: Restore Rust cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@v2
         with:
           shared-key: geam-publish
 
-      - name: Verify workspace packages
-        if: ${{ inputs.dry_run == true }}
-        run: cargo publish --workspace --locked --dry-run
+      - name: Validate release commit and notes
+        id: release
+        run: |
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          git merge-base --is-ancestor "$RELEASE_COMMIT" origin/main
+          metadata=$(cargo metadata --locked --no-deps --format-version 1)
+          version=$(jq -r '.packages[] | select(.name == "geam") | .version' <<< "$metadata")
+          jq -e --arg version "$version" 'all(.packages[]; .version == $version)' <<< "$metadata" > /dev/null
+          notes="docs/releases/$version.md"
+          test -s "$notes" || { echo "Missing release notes: $notes" >&2; exit 1; }
+          test "$(head -n 1 "$notes")" = "# Geam $version"
+          tail -n +2 "$notes" | grep '[^[:space:]]' > /dev/null
+          if grep -nE 'TODO|TBD|FIXME|<!--' "$notes"; then
+            echo "Replace release note placeholders before publishing" >&2
+            exit 1
+          fi
+          if git show-ref --verify --quiet "refs/tags/v$version"; then
+            test "$(git rev-parse "v$version^{commit}")" = "$RELEASE_COMMIT"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Require successful main checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for workflow in workspace.yml coverage.yml acceptance.yml; do
+            runs=$(gh run list --workflow "$workflow" --branch main --event push --commit "$RELEASE_COMMIT" --limit 1 --json status,conclusion)
+            jq -e 'length == 1 and .[0].status == "completed" and .[0].conclusion == "success"' <<< "$runs" > /dev/null || {
+              echo "$workflow must succeed at $RELEASE_COMMIT before publication" >&2
+              exit 1
+            }
+          done
 
       - name: Authenticate to crates.io
-        if: ${{ inputs.dry_run == false }}
+        if: ${{ inputs.dry_run == false && inputs.operation != 'Create GitHub Release' }}
         id: auth
-        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
+        uses: rust-lang/crates-io-auth-action@v1
 
-      - name: Publish workspace packages
-        if: ${{ inputs.dry_run == false }}
+      - name: Publish or dry-run selected crates
+        if: ${{ inputs.operation != 'Create GitHub Release' }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-        run: cargo publish --workspace --locked
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=(--locked)
+          if [[ "$RELEASE_OPERATION" == "Retry packages" ]]; then
+            read -r -a packages <<< "${RELEASE_PACKAGES//$'\n'/ }"
+            for package in "${packages[@]}"; do args+=(--package "$package"); done
+          else
+            args+=(--workspace)
+          fi
+          if [[ "$DRY_RUN" == true ]]; then args+=(--dry-run); fi
+          cargo publish "${args[@]}"
+
+      - name: Verify every workspace crate is published
+        if: ${{ inputs.dry_run == false || inputs.operation == 'Create GitHub Release' }}
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          packages=$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[].name')
+          while IFS= read -r package; do
+            (cd "$RUNNER_TEMP" && cargo info "$package@$RELEASE_VERSION" --registry crates-io > /dev/null)
+          done <<< "$packages"
+
+      - name: Create GitHub Release
+        if: ${{ inputs.dry_run == false }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          gh release create "v$RELEASE_VERSION" --target "$RELEASE_COMMIT" \
+            --title "Geam $RELEASE_VERSION" --notes-file "docs/releases/$RELEASE_VERSION.md"
