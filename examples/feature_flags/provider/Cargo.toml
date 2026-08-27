@@ -18,7 +18,7 @@ gleam-version = ">= 1.0.0 and < 2.0.0"
 
 [dependencies]
 ecow = "=0.2.6"
-geam = "=0.2.0"
+geam = "=0.2.1"
 
 [workspace]
 resolver = "3"
