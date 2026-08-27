@@ -60,8 +60,32 @@ jobs:
           done
 
   example-providers:
-    name: Provider examples
+    name: Provider examples (${{ matrix.example }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - example: text_tools
+            test: runs_the_documented_text_tools_provider_across_three_modules
+          - example: value_types
+            test: runs_the_documented_value_types_provider_without_configuration
+          - example: tag_set
+            test: runs_the_documented_tag_set_provider_without_configuration
+          - example: request_ids
+            test: runs_the_documented_request_ids_provider_with_fresh_default_state
+          - example: feature_flags
+            test: runs_the_documented_feature_flags_provider_with_explicit_configuration
+          - example: run_metrics
+            test: runs_the_documented_run_metrics_provider_without_configuration
+          - example: call_tracing
+            test: runs_the_documented_call_tracing_provider_with_fresh_callback_state
+          - example: generic_box
+            test: runs_the_documented_generic_box_provider_with_persistent_values
+          - example: text_pattern
+            test: runs_the_documented_text_pattern_provider_from_its_local_path
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
 
     steps:
       - name: Checkout
@@ -83,45 +107,25 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
+          key: ${{ matrix.example }}
           workspaces: |
             . -> target
-            examples/text_tools/provider -> target
-            examples/value_types/provider -> target
-            examples/tag_set/provider -> target
-            examples/request_ids/provider -> target
-            examples/feature_flags/provider -> target
-            examples/run_metrics/provider -> target
-            examples/call_tracing/provider -> target
-            examples/generic_box/provider -> target
-            examples/text_pattern/provider -> target
+            examples/${{ matrix.example }}/provider -> ../../../target
 
-      - name: Run documented provider examples
-        run: cargo test --package geam --test provider_examples --locked
+      - name: Run documented provider example
+        run: cargo test --package geam --test provider_examples --locked -- --exact "${{ matrix.test }}"
 
-      - name: Test and package example providers
-        run: |
-          for example in text_tools value_types tag_set request_ids feature_flags run_metrics call_tracing generic_box text_pattern; do
-            (cd "examples/$example/provider" && cargo test --locked)
-            (cd "examples/$example/provider" && cargo package --locked)
-          done
+      - name: Test example provider
+        working-directory: examples/${{ matrix.example }}/provider
+        run: cargo test --locked
 
-      - name: Verify example Gleam packages
-        run: |
-          for package in \
-            text_tools/example_text_tools \
-            value_types/example_value_types \
-            tag_set/example_tag_set \
-            request_ids/example_request_ids \
-            feature_flags/example_feature_flags \
-            run_metrics/example_run_metrics \
-            call_tracing/example_call_tracing \
-            generic_box/example_generic_box \
-            text_pattern/example_text_pattern
-          do
-            example="${package%%/*}"
-            gleam_package="${package#*/}"
-            (cd "examples/$example/project/packages/$gleam_package" && gleam export hex-tarball)
-          done
+      - name: Verify example provider package
+        working-directory: examples/${{ matrix.example }}/provider
+        run: cargo package --locked
+
+      - name: Verify example Gleam package
+        working-directory: examples/${{ matrix.example }}/project/packages/example_${{ matrix.example }}
+        run: gleam export hex-tarball
 
   external-provider-sdk:
     name: External provider SDK
