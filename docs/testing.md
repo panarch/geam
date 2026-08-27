@@ -184,6 +184,18 @@ repository-local patches and complete standalone execution. The independent
 Provider SDK fixture remains the canonical low-level typed-host ABI acceptance
 owner.
 
+The [Acceptance workflow](../.github/workflows/acceptance.yml) runs one matrix
+job per documented example. Each job selects its exact `provider_examples`
+test, runs the independent provider's tests, verifies its Cargo package, and
+exports its Gleam package. A failed example does not cancel the other matrix
+jobs. Formatting and Clippy remain in the Workspace workflow.
+
+Each example has a distinct cache key. Within a job, the root test binary and
+independent provider use the checkout's `target/` directory so Cargo can reuse
+matching build artifacts without changing either workspace's lockfile. The
+generated runner still uses its temporary project's `build/geam/target/`;
+those isolated runner artifacts are not shared or cached between jobs.
+
 The normal suite executes the full generated runner with the fixture's locked
 Gleam and Rust dependencies. CI exports the standalone fixture's three local
 Gleam dependencies and all nine example Gleam packages. It also packages the
@@ -239,6 +251,15 @@ cargo test --package geam --test cross_crate_http --locked
 cargo test --package geam --test provider_examples --locked
 cargo test --package geam --test standalone_distribution --locked
 ```
+
+To run one provider example with the same exact selection used by its CI job:
+
+```sh
+cargo test --package geam --test provider_examples --locked -- \
+  --exact runs_the_documented_text_tools_provider_across_three_modules
+```
+
+The unfiltered `provider_examples` command still runs all nine examples locally.
 
 Planner unit tests use the crate-internal `planner::dsl` expected-plan helpers
 instead of snapshots, so supported lowering changes update the expected plan
