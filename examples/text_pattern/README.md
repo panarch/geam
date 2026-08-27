@@ -5,8 +5,9 @@ provider for [Geam](https://github.com/panarch/geam). The Gleam package declares
 only its public types and Erlang externals. The Rust crate implements those
 externals with `regex` through Geam's public provider authoring macros.
 
-See the [provider README](provider/README.md) for the crate overview, Gleam API,
-and a short usage example.
+See the [Gleam package README](project/packages/example_text_pattern/README.md)
+for installation and API usage, and the [provider README](provider/README.md)
+for the matching Rust implementation and authoring macros.
 
 ```text
 project/
@@ -38,7 +39,7 @@ No provider configuration is required. A successful run checks regex compilation
 matching, replacement, invalid-pattern errors, and pattern equality, and echoes
 `Pattern("[A-Za-z]+")` to stderr. Running `geam run` again repeats the same checks.
 
-The Gleam package is a checked-in path dependency, not a Hex package. Provider
+This checkout uses the Gleam package as a local path dependency. Provider
 selection comes from the Rust crate's Cargo metadata; the Gleam package needs no
 Geam-specific metadata. The provider is not a Geam built-in.
 

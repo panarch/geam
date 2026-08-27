@@ -32,12 +32,13 @@ internals.
 
 ## Run the Example
 
-The matching Gleam package is a local dependency in the Geam repository, not
-a package published to Hex. Installing this Cargo crate alone does not add
-the Gleam declarations to a project.
+The matching `example_text_pattern` Gleam package supplies the source
+declarations. Installing this Cargo crate alone does not add them to a project.
+The [Gleam package guide](https://github.com/panarch/geam/blob/main/examples/text_pattern/project/packages/example_text_pattern/README.md)
+covers Hex installation, native provider approval, and execution with Geam.
 
 Follow the [complete example and setup instructions](https://github.com/panarch/geam/blob/main/examples/text_pattern/README.md)
-to prepare and run the project with Geam. No provider configuration is required.
+to run from a local checkout instead. No provider configuration is required.
 The [standalone guide](https://github.com/panarch/geam/blob/main/docs/standalone.md)
 explains provider selection and the generated Cargo runner.
 
