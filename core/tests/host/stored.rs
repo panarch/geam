@@ -31,6 +31,7 @@ struct StoredMapSchema;
 struct StoredCallbackSchema;
 
 struct StoredProvider;
+struct StoredConstructionProvider;
 
 struct StoredMapStorage;
 struct StoredCallbackStorage;
@@ -75,6 +76,14 @@ impl HostProfile for StoredProfile {
 }
 
 impl HostProvider<StoredProfile> for StoredProvider {
+    type State = StoredRunState;
+
+    fn project(state: &mut StoredRunState) -> &mut Self::State {
+        state
+    }
+}
+
+impl HostProvider<StoredProfile> for StoredConstructionProvider {
     type State = StoredRunState;
 
     fn project(state: &mut StoredRunState) -> &mut Self::State {
@@ -156,6 +165,10 @@ impl HostExternalStorage<StoredProfile, StoredCallbackSchema> for StoredCallback
 }
 
 impl HostExternalBinding<StoredProfile, StoredMapSchema> for StoredProvider {
+    type Storage = StoredMapStorage;
+}
+
+impl HostExternalBinding<StoredProfile, StoredMapSchema> for StoredConstructionProvider {
     type Storage = StoredMapStorage;
 }
 
@@ -288,7 +301,7 @@ fn constructs_retained_externals_inside_compound_returns() {
     type ConstructionTypes = HostTypeList<StoreMap, HostTypeListEnd>;
 
     fn pair<'call>(
-        mut call: HostCall<'call, StoredProfile, StoredProvider, StoredMapPair>,
+        mut call: HostCall<'call, StoredProfile, StoredConstructionProvider, StoredMapPair>,
         constructions: HostConstructions<'call, ConstructionTypes>,
         key: HostValue<'call, FirstParameter>,
         value: HostValue<'call, SecondParameter>,
@@ -302,8 +315,11 @@ fn constructs_retained_externals_inside_compound_returns() {
             }
         });
         let second_drop = Arc::clone(&call.state().drops);
-        let second =
-            call.construct_external_with(constructions.at::<HostTypeIndex0>(), |builder| {
+        let second = call.construct_retained_external_with_binding::<
+            StoredProvider,
+            StoredMapSchema,
+            StoreMapArguments,
+        >(constructions.at::<HostTypeIndex0>(), |builder| {
                 StoredMapPayload {
                     key: builder.store_argument::<HostTypeIndex0>(key),
                     value: builder.store_argument::<HostTypeIndexNext<HostTypeIndex0>>(value),
@@ -328,7 +344,7 @@ fn constructs_retained_externals_inside_compound_returns() {
         .with_external_type::<StoredProvider, StoredMapSchema>()
         .expect("stored map type should be valid")
         .with_scoped_function_and_constructions::<
-            StoredProvider,
+            StoredConstructionProvider,
             (FirstParameter, SecondParameter),
             StoredMapPair,
             ConstructionTypes,

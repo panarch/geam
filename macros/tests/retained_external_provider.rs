@@ -164,6 +164,11 @@ mod retained_queue {
     fn size<Item>(queue: PriorityQueueInput<Item>) -> BigInt {
         queue.payload().entries.len().into()
     }
+
+    #[geam_macros::function]
+    fn identity<Item>(queue: PriorityQueueInput<Item>) -> PriorityQueue<Item> {
+        queue.into_value()
+    }
 }
 
 struct Profile;
@@ -212,12 +217,16 @@ fn top_or(queue: PriorityQueue(item), fallback: item) -> item
 @external(erlang, "retained_queue", "size")
 fn size(queue: PriorityQueue(item)) -> Int
 
+@external(erlang, "retained_queue", "identity")
+fn identity(queue: PriorityQueue(item)) -> PriorityQueue(item)
+
 pub fn main() {
   let empty_strings = empty()
   let low = push(empty_strings, 1, "low")
   let high = push(low, 9, "high")
   let equal = push(push(empty(), 1, "low"), 9, "high")
   let numbers = push(empty(), 4, 42)
+  let same_high = identity(high)
 
   #(
     top_or(empty_strings, "empty"),
@@ -227,6 +236,7 @@ pub fn main() {
     size(high),
     high == equal,
     top_or(numbers, 0),
+    same_high == high,
   )
 }
 "#;
@@ -254,7 +264,7 @@ fn retained_external_schema_uses_one_store_for_every_specialization() {
             .functions()
             .map(|function| function.name().as_str())
             .collect::<Vec<_>>(),
-        ["empty", "push", "top_or", "size"],
+        ["empty", "push", "top_or", "size", "identity"],
     );
     assert_eq!(
         std::mem::size_of::<<Component as HostProviderComponent>::Stores>(),
@@ -298,6 +308,7 @@ fn retained_external_payloads_share_old_entries_and_restore_exact_specialization
             RuntimeValue::Int(2.into()),
             RuntimeValue::Bool(true),
             RuntimeValue::Int(42.into()),
+            RuntimeValue::Bool(true),
         ]),
     );
 }

@@ -1,0 +1,8 @@
+[patch.crates-io]
+geam = { path = "../../../../.." }
+geam-catalog = { path = "../providers/geam-catalog" }
+geam-counter = { path = "../providers/geam-counter" }
+standalone-catalog-domain = { path = "../providers/catalog-domain" }
+
+[net]
+offline = true

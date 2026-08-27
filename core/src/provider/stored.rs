@@ -183,3 +183,38 @@ where
         ProviderExternalOutput::from_input(self.value)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ProviderStoredOwner, retain_argument, retain_dynamic};
+    use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
+    use crate::host::{
+        CallArguments, HostExternalPayloadBuilder, HostTypeIndex0, HostTypeList, HostTypeListEnd,
+    };
+    use crate::plan::ValueType;
+    use crate::provider::advanced::{DynamicKind, Retained, StoredDynamic};
+    use num_bigint::BigInt;
+
+    struct Payload;
+
+    impl ProviderStoredOwner for Payload {}
+
+    #[test]
+    fn retention_bridges_preserve_the_declared_owner_and_runtime_type() {
+        type Arguments = HostTypeList<BigInt, HostTypeListEnd>;
+
+        let mut state = TestRunState::default();
+        let arguments = CallArguments::new(Vec::new(), Vec::new());
+        let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
+        let mut builder =
+            HostExternalPayloadBuilder::<TestHostProfile, Arguments>::new(&mut runtime);
+
+        let retained: Retained<Payload, HostTypeIndex0> =
+            retain_argument(&mut builder, BigInt::from(7));
+        let dynamic: StoredDynamic<Payload> =
+            retain_dynamic::<_, Arguments, _, BigInt>(&mut builder, BigInt::from(8));
+
+        assert_eq!(retained.host().value.type_(), &ValueType::Int);
+        assert_eq!(dynamic.kind(), DynamicKind::Int);
+    }
+}

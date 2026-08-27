@@ -1,0 +1,139 @@
+name: Coverage
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  core-macros-coverage:
+    name: Core and macros
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: llvm-tools-preview
+          cache: false
+          rustflags: ""
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.8.7
+
+      - name: Clean workspace coverage artifacts
+        run: cargo llvm-cov clean --workspace
+
+      - name: Run core and macro owner tests
+        run: cargo llvm-cov --no-report --package geam-core --package geam-macros --locked
+
+      - name: Check geam-core coverage
+        run: cargo llvm-cov report --package geam-core --summary-only --fail-under-lines 100 --fail-under-regions 100
+
+      - name: Check geam-macros coverage
+        run: cargo llvm-cov report --package geam-macros --summary-only --fail-under-lines 100 --fail-under-regions 100
+
+  built-in-coverage:
+    name: Built-ins
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Gleam toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          gleam-version: "1.18.1"
+          rebar3-version: "3"
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: llvm-tools-preview
+          cache: false
+          rustflags: ""
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.8.7
+
+      - name: Clean workspace coverage artifacts
+        run: cargo llvm-cov clean --workspace
+
+      - name: Run built-in coverage closure
+        run: cargo llvm-cov --no-report --package geam-stdlib --package geam-json --package geam-time --locked
+
+      - name: Check geam-stdlib coverage
+        run: cargo llvm-cov report --package geam-stdlib --summary-only --fail-under-lines 100 --fail-under-regions 100
+
+      - name: Check geam-json coverage
+        run: cargo llvm-cov report --package geam-json --summary-only --fail-under-lines 100 --fail-under-regions 100
+
+      - name: Check geam-time coverage
+        run: cargo llvm-cov report --package geam-time --summary-only --fail-under-lines 100 --fail-under-regions 100
+
+  cli-binary-coverage:
+    name: CLI and binary
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: llvm-tools-preview
+          cache: false
+          rustflags: ""
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.8.7
+
+      - name: Clean workspace coverage artifacts
+        run: cargo llvm-cov clean --workspace
+
+      - name: Run CLI and binary coverage closure
+        run: |
+          cargo llvm-cov --no-report --package geam-cli --locked
+          cargo llvm-cov --no-clean --package geam --test binary --locked --summary-only
+
+      - name: Check geam-cli coverage
+        run: cargo llvm-cov report --package geam-cli --summary-only --fail-under-lines 100 --fail-under-regions 100
+
+      - name: Check geam binary coverage
+        run: cargo llvm-cov report --package geam --summary-only --fail-under-lines 100 --fail-under-regions 100

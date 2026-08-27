@@ -1236,8 +1236,10 @@ dependencies = [
 name = "geam-json"
 version = "0.1.2"
 dependencies = [
+ "camino",
  "ecow",
  "geam-core",
+ "geam-gleam-core",
  "geam-macros",
  "geam-stdlib",
  "jiter",
@@ -1266,8 +1268,10 @@ version = "0.1.2"
 dependencies = [
  "base64 0.22.1",
  "bitvec",
+ "camino",
  "ecow",
  "geam-core",
+ "geam-gleam-core",
  "geam-macros",
  "hex",
  "im",
@@ -1281,8 +1285,10 @@ dependencies = [
 name = "geam-time"
 version = "0.1.2"
 dependencies = [
+ "camino",
  "ecow",
  "geam-core",
+ "geam-gleam-core",
  "geam-macros",
  "geam-stdlib",
  "jiff",

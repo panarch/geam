@@ -2,7 +2,7 @@ use ecow::EcoString;
 use geam_core::provider::advanced::{
     DynamicKind, Equality, Hashing, Inspection, RetainedExternalPayload, StoredDynamic,
 };
-use geam_core::provider::{Call, Stored, Value};
+use geam_core::provider::{Call, List, Stored, Value};
 use geam_core::{
     HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
     HostProviderComponentRegistration, HostProviderSet, HostedExecution, ModuleSource,
@@ -35,13 +35,18 @@ mod declarations {
     fn identity_token(value: External<Token>) -> External<Token> {
         value
     }
+
+    #[geam_macros::function]
+    fn identity_token_pair(value: External<Token>) -> (External<Token>, bool) {
+        (value, true)
+    }
 }
 
 #[geam_macros::module(path = "dynamic_provider", crate_path = geam_core)]
 mod dynamic_provider {
     use super::declarations::Token;
     use super::{
-        BigInt, Call, DynamicKind, EcoString, Equality, Hashing, Inspection,
+        BigInt, Call, DynamicKind, EcoString, Equality, Hashing, Inspection, List,
         RetainedExternalPayload, Stored, StoredDynamic, Value,
     };
 
@@ -74,6 +79,20 @@ mod dynamic_provider {
     fn cast<Item>(#[geam_macros::call] call: &mut Call<()>, value: Value<Item>) -> Dynamic {
         Dynamic {
             value: call.store_dynamic(value),
+        }
+    }
+
+    #[geam_macros::function]
+    fn cast_int(#[geam_macros::call] call: &mut Call<()>, value: BigInt) -> Dynamic {
+        Dynamic {
+            value: call.store_dynamic(value),
+        }
+    }
+
+    #[geam_macros::function]
+    fn cast_int_list(#[geam_macros::call] call: &mut Call<()>, values: List<BigInt>) -> Dynamic {
+        Dynamic {
+            value: call.store_dynamic(values),
         }
     }
 
@@ -116,6 +135,16 @@ mod dynamic_provider {
     }
 
     #[geam_macros::function]
+    fn restore_int_list_length(
+        #[geam_macros::call] call: &mut Call<()>,
+        value: &Dynamic,
+    ) -> Result<BigInt, ()> {
+        call.restore_dynamic::<List<BigInt>, Dynamic>(&value.value)
+            .map(|values| values.len().into())
+            .ok_or(())
+    }
+
+    #[geam_macros::function]
     fn is_token(value: &Dynamic) -> bool {
         value.value.is_external::<Token>()
     }
@@ -146,6 +175,18 @@ mod dynamic_provider {
             .ok_or(())?;
         let value = call.restore(boxed.value());
         Ok(call.inspect(&value) == "9")
+    }
+
+    #[geam_macros::function]
+    fn boxed_token_text(
+        #[geam_macros::call] call: &mut Call<()>,
+        value: &Dynamic,
+    ) -> Result<EcoString, ()> {
+        let boxed = call
+            .restore_dynamic::<BoxValue<Token>, Dynamic>(&value.value)
+            .ok_or(())?;
+        let token = call.restore(boxed.value());
+        Ok(call.external_payload(token).0.clone())
     }
 
     #[geam_macros::function]
@@ -252,11 +293,20 @@ fn box_value(value: item) -> Box(item)
 @external(erlang, "dynamic_provider", "cast")
 fn cast(value: value) -> Dynamic
 
+@external(erlang, "dynamic_provider", "cast_int")
+fn cast_int(value: Int) -> Dynamic
+
+@external(erlang, "dynamic_provider", "cast_int_list")
+fn cast_int_list(values: List(Int)) -> Dynamic
+
 @external(erlang, "dynamic_provider", "kind")
 fn kind(value: Dynamic) -> String
 
 @external(erlang, "dynamic_provider", "restore_int")
 fn restore_int(value: Dynamic) -> Result(Int, Nil)
+
+@external(erlang, "dynamic_provider", "restore_int_list_length")
+fn restore_int_list_length(value: Dynamic) -> Result(Int, Nil)
 
 @external(erlang, "dynamic_provider", "is_token")
 fn is_token(value: Dynamic) -> Bool
@@ -269,6 +319,9 @@ fn token_text(value: Dynamic) -> Result(String, Nil)
 
 @external(erlang, "dynamic_provider", "box_contains_nine")
 fn box_contains_nine(value: Dynamic) -> Result(Bool, Nil)
+
+@external(erlang, "dynamic_provider", "boxed_token_text")
+fn boxed_token_text(value: Dynamic) -> Result(String, Nil)
 
 @external(erlang, "dynamic_provider", "tuple_size")
 fn tuple_size(value: value) -> Int
@@ -285,20 +338,45 @@ fn has_exact_type(stored: Dynamic, witness: value) -> Bool
 @external(erlang, "dynamic_provider", "list_summary")
 fn list_summary(values: List(item), expected: item) -> #(Int, Bool)
 
+pub type Marker {
+  Marker
+}
+
+fn increment(value: Int) -> Int {
+  value + 1
+}
+
 pub fn main() {
+  let assert <<codepoint:utf8_codepoint>> = <<"A":utf8>>
   let first = cast(7)
   let equal = cast(7)
   let text = cast("seven")
   let token = declarations.token("opaque")
   let identity_token = declarations.identity_token(token)
+  let #(paired_token, pair_flag) = declarations.identity_token_pair(token)
   let token_value = cast(token)
   let boxed = cast(box_value(9))
+  let boxed_token = cast(box_value(token))
+  let typed_int = cast_int(8)
+  let typed_list = cast_int_list([1, 2])
   #(
     kind(first),
     kind(text),
     kind(token_value),
+    kind(cast(1.5)),
+    kind(cast(<<1>>)),
+    kind(cast(codepoint)),
+    kind(cast(True)),
+    kind(cast(Nil)),
+    kind(cast([1])),
+    kind(cast(#(1, True))),
+    kind(cast(Marker)),
+    kind(cast(increment)),
+    kind(typed_int),
+    kind(typed_list),
     restore_int(first),
     restore_int(text),
+    restore_int_list_length(typed_list),
     is_token(token_value),
     !is_token(first),
     is_box(boxed),
@@ -307,6 +385,9 @@ pub fn main() {
     token_text(first),
     box_contains_nine(boxed),
     box_contains_nine(first),
+    boxed_token_text(boxed_token),
+    pair_flag,
+    paired_token == token,
     tuple_size(#(1, "two", True)),
     tuple_size(1),
     nested_tuple_size(#(1, #("two", True))),
@@ -332,6 +413,9 @@ pub fn token(value: String) -> Token
 
 @external(erlang, "dynamic_provider", "identity_token")
 pub fn identity_token(value: Token) -> Token
+
+@external(erlang, "dynamic_provider", "identity_token_pair")
+pub fn identity_token_pair(value: Token) -> #(Token, Bool)
 "#;
 
 #[test]
@@ -367,7 +451,7 @@ fn existential_values_restore_exact_types_and_preserve_source_semantics() {
 
     assert_eq!(
         returned.inspect().to_string(),
-        r#"#("Int", "String", "External", Ok(7), Error(Nil), True, True, True, True, Ok("opaque"), Error(Nil), Ok(True), Error(Nil), 3, 0, 2, True, True, True, #(3, True), #(0, False), True, 7, Token(<opaque>), Token(<opaque>))"#,
+        r#"#("Int", "String", "External", "Float", "BitArray", "UtfCodepoint", "Bool", "Nil", "List", "Tuple", "Custom", "Function", "Int", "List", Ok(7), Error(Nil), Ok(2), True, True, True, True, Ok("opaque"), Error(Nil), Ok(True), Error(Nil), Ok("opaque"), True, True, 3, 0, 2, True, True, True, #(3, True), #(0, False), True, 7, Token(<opaque>), Token(<opaque>))"#,
     );
     let geam_core::Value::Tuple(values) = returned else {
         panic!("dynamic main should return its inspected tuple");

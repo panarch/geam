@@ -473,7 +473,7 @@ pub fn main() {
 }
 
 fn fixture_source() -> std::path::PathBuf {
-    repository_root().join("tests/fixtures/standalone_cli")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/standalone_cli")
 }
 
 fn repository_root() -> &'static Path {
