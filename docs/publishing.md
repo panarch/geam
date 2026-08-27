@@ -48,6 +48,10 @@ checks the workspace and assembles package archives.
 
 1. Create a release branch and update `[workspace.package].version` plus every
    exact internal requirement in `[workspace.dependencies]` to the same version.
+   Update the exact `geam` requirements in the standalone fixture providers and
+   example providers, then reconcile the root and independently locked fixture
+   and example `Cargo.lock` files without upgrading unrelated dependencies.
+   Provider package versions and Gleam package versions remain independent.
 2. Run the full workspace checks and
    `cargo package --workspace --locked --no-verify` locally.
 3. Merge the release branch into `main` and wait for Checks.
@@ -71,9 +75,9 @@ Concurrent publish runs are serialized, and only `main` can publish.
 
 ## First Workspace Release
 
-The current workspace conversion keeps version `0.1.2` and does not publish
-these new package boundaries. The next release branch performs the first
-lockstep version update.
+The next workspace release is prepared at version `0.2.0`, including the
+provider authoring API. All seven packages and their exact internal
+requirements move together.
 
 The six newly named internal crates (`geam-core`, `geam-stdlib`, `geam-json`,
 `geam-time`, `geam-cli`, and `geam-macros`) do not yet exist on crates.io, so

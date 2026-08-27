@@ -1088,7 +1088,7 @@ dependencies = [
 
 [[package]]
 name = "geam"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "geam-cli",
  "geam-core",
@@ -1110,7 +1110,7 @@ dependencies = [
 
 [[package]]
 name = "geam-cli"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "camino",
  "cargo_metadata",
@@ -1136,7 +1136,7 @@ dependencies = [
 
 [[package]]
 name = "geam-core"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "bitvec",
  "camino",
@@ -1280,7 +1280,7 @@ dependencies = [
 
 [[package]]
 name = "geam-json"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "ecow",
  "geam-core",
@@ -1293,7 +1293,7 @@ dependencies = [
 
 [[package]]
 name = "geam-macros"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1303,7 +1303,7 @@ dependencies = [
 
 [[package]]
 name = "geam-stdlib"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "bitvec",
@@ -1320,7 +1320,7 @@ dependencies = [
 
 [[package]]
 name = "geam-time"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "geam-core",
  "geam-macros",

@@ -40,7 +40,7 @@ default-members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.1.2"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.96"
 license = "Apache-2.0"
@@ -56,12 +56,12 @@ clap = { version = "4", features = ["derive"] }
 # does not compile against ecow 0.3.0.
 ecow = "=0.2.6"
 flate2 = "1"
-geam-core = { path = "core", version = "=0.1.2" }
-geam-cli = { path = "cli", version = "=0.1.2" }
-geam-json = { path = "builtins/json", version = "=0.1.2" }
-geam-macros = { path = "macros", version = "=0.1.2" }
-geam-stdlib = { path = "builtins/stdlib", version = "=0.1.2" }
-geam-time = { path = "builtins/time", version = "=0.1.2" }
+geam-core = { path = "core", version = "=0.2.0" }
+geam-cli = { path = "cli", version = "=0.2.0" }
+geam-json = { path = "builtins/json", version = "=0.2.0" }
+geam-macros = { path = "macros", version = "=0.2.0" }
+geam-stdlib = { path = "builtins/stdlib", version = "=0.2.0" }
+geam-time = { path = "builtins/time", version = "=0.2.0" }
 gleam-core = { package = "geam-gleam-core", version = "=1.18.1-geam.2" }
 gleam-compiler-core = { package = "geam-gleam-core", version = "=1.18.1-geam.2" }
 half = { version = "2.7.1", default-features = false }
