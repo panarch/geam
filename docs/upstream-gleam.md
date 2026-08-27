@@ -14,15 +14,21 @@ Repository: https://github.com/gleam-lang/gleam
 Release:    v1.18.1
 Commit:     4a83802ca33a8a96227a1b332768725f232f9779
 Published:  2026-08-01
-Cargo:      geam-gleam-core 1.18.1-geam.1
+Cargo:      geam-gleam-core 1.18.1-geam.2
 ```
 
 The baseline is release-based rather than `main`-based so typed AST and
 compiler-boundary behavior are compared against a published Gleam toolchain.
+The release, commit, and publication date above refer to the
+[upstream Gleam release](https://github.com/gleam-lang/gleam/releases/tag/v1.18.1)
+(UTC), not the compiler crate's publication date.
+
 The `geam-gleam-core` package and its compiler-component dependencies are
-published from the release-tracking `panarch/gleam` mirror. Geam pins that
-package exactly so the crates.io dependency graph and this recorded upstream
-source identity advance together.
+published from the release-tracking `panarch/gleam` mirror. Its
+[packaging release](https://github.com/panarch/gleam/releases/tag/geam-v1.18.1-geam.2)
+records the same upstream commit. Geam pins that package exactly; the `geam.2`
+suffix is a mirror packaging revision, not a different Gleam release or Geam's
+own lockstep version.
 
 The official standard library has an independent baseline:
 
@@ -426,6 +432,16 @@ smaller execution profile is enforced by typed-AST planning, not by forking
 Gleam's parser or type inferencer.
 
 ## Sync Policy
+
+This document is maintained manually when the upstream baseline or mirror
+packaging revision changes. Geam release-version automation must not update
+compiler or official package baselines.
+
+The [Workspace workflow](../.github/workflows/workspace.yml) checks the `Cargo:`
+line against the compiler version resolved by `cargo metadata --locked`. This
+only detects pin drift: release identity, publication date, and compatibility
+claims still require manual verification against the upstream and mirror
+releases. The check does not infer or rewrite that narrative.
 
 When updating Geam to a newer Gleam baseline, record:
 
