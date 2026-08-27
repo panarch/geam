@@ -464,7 +464,7 @@ name = "geam-example-text-pattern"
 [package.metadata.geam.provider]
 schema = 1
 gleam-package = "example_text_pattern"
-gleam-version = ">= 1.0.0 and < 2.0.0"
+gleam-version = ">= 0.1.0 and < 0.2.0"
 ```
 
 The [complete example](../examples/text_pattern/README.md) executes this crate
