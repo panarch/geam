@@ -1,9 +1,9 @@
 # geam-example-text-pattern
 
 An example provider for [Geam](https://github.com/panarch/geam), a Rust runtime
-for a supported subset of Gleam. It implements the `example_text_pattern`
-Gleam package with Rust's `regex` crate and demonstrates how to expose Rust
-functionality to Gleam through Geam's public provider authoring macros.
+for Gleam. It implements the `example_text_pattern` Gleam package with Rust's
+`regex` crate and demonstrates how to expose Rust functionality to Gleam
+through Geam's public provider authoring macros.
 
 ## Gleam API
 
