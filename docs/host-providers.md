@@ -469,7 +469,12 @@ gleam-version = ">= 0.1.0 and < 0.2.0"
 
 The [complete example](../examples/text_pattern/README.md) executes this crate
 through explicit path selection and packages it with ordinary Cargo tooling.
-Its [provider README](../examples/text_pattern/provider/README.md) explains the
+The matching Gleam package and provider are also published on Hex and crates.io;
+the package's [public usage guide](../examples/text_pattern/project/packages/example_text_pattern/README.md)
+shows discovery and approval without an explicit provider selection. CI keeps
+that released path separate from checkout tests and verifies it with a fixed
+combination of published Geam, Gleam package, and provider versions. The
+[provider README](../examples/text_pattern/provider/README.md) explains the
 complete macro-authored Rust mapping and why `Pattern` owns manual source
 semantics.
 

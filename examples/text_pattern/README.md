@@ -1,9 +1,9 @@
 # Text Pattern Provider Example
 
-This example pairs an ordinary Gleam package with a separately packageable Rust
-provider for [Geam](https://github.com/panarch/geam). The Gleam package includes
-an Erlang `re` implementation. The Rust crate implements the same API with
-`regex` through Geam's public provider authoring macros.
+This example pairs a Gleam package published on Hex with a Rust provider
+published on crates.io for [Geam](https://github.com/panarch/geam). The Gleam
+package includes an Erlang `re` implementation. The Rust crate implements the
+same API with `regex` through Geam's public provider authoring macros.
 
 See the [Gleam package README](project/packages/example_text_pattern/README.md)
 for installation and API usage, and the [provider README](provider/README.md)

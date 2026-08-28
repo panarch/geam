@@ -181,7 +181,7 @@ external semantics. Call tracing then demonstrates typed source callback
 invocation and same-component re-entry. Generic box then shows a source value
 retained without materialization and mapped through a typed callback. The final
 text-pattern example combines a regex-backed external, custom error, source
-`Result`, and `List(String)` output in one packageable macro-authored provider.
+`Result`, and `List(String)` output in one published macro-authored provider.
 
 Geam owns only a manifest carrying its exact managed marker, `Cargo.lock`, and
 `build/geam/` runner artifacts. It refuses to adopt an existing user Cargo
