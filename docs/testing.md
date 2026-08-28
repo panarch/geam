@@ -173,10 +173,19 @@ crates are released.
 The [`examples/text_pattern`](../examples/text_pattern) example adds a
 distribution-ready advanced macro provider. Its path test executes manual
 external semantics, a custom error, source Result, and List output through the
-managed root lock and generated runner. The existing fake-registry
-orchestration test owns search, sparse-index, checksum, archive metadata,
-approval, registry-shaped dependency, lock, check, and run coverage without
-requiring a fixture crate to be published.
+managed root lock and generated runner. The fake-registry orchestration test
+owns deterministic checkout coverage of search, sparse-index, checksum,
+archive metadata, approval, registry-shaped dependency, lock, check, and run.
+
+A separate `Published provider` acceptance job exercises the released
+distribution rather than the checkout. It installs `geam 0.2.1`, creates a
+clean project, pins `example_text_pattern 0.1.0` from Hex, and uses a real PTY
+approval to select `geam-example-text-pattern 0.1.0` from crates.io without an
+explicit provider add. Cargo metadata must show exact registry dependencies,
+the generated runner must include the provider component, and repeated
+prepare/run must preserve the managed manifest, lock, and runner source. The
+small Gleam entry module is kept inline in the workflow because this job owns a
+single released command sequence rather than reusable source behavior.
 
 The same text-pattern test first runs the common Gleam entrypoint and the
 Erlang-specific example using the package's native `re` implementation, before
@@ -195,7 +204,10 @@ The [Acceptance workflow](../.github/workflows/acceptance.yml) runs one matrix
 job per documented example. Each job selects its exact `provider_examples`
 test, runs the independent provider's tests, verifies its Cargo package, and
 exports its Gleam package. A failed example does not cancel the other matrix
-jobs. Formatting and Clippy remain in the Workspace workflow.
+jobs. The parallel `Published provider` job has no repository checkout and
+therefore cannot substitute path dependencies or checkout binaries for the
+released artifacts it monitors. Formatting and Clippy remain in the Workspace
+workflow.
 
 Each example has a distinct cache key. Within a job, the root test binary and
 independent provider use the checkout's `target/` directory so Cargo can reuse
@@ -206,8 +218,9 @@ those isolated runner artifacts are not shared or cached between jobs.
 The normal suite executes the full generated runner with the fixture's locked
 Gleam and Rust dependencies. CI exports the standalone fixture's three local
 Gleam dependencies and all nine example Gleam packages. It also packages the
-two standalone fixture providers and every example provider. No fixture package
-is published.
+two standalone fixture providers and every example provider. No test-only
+fixture package is published; the text-pattern packages are public
+documentation examples with their own release cycle.
 
 The root package keeps four explicit acceptance targets:
 

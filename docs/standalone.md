@@ -86,9 +86,19 @@ example_text_pattern
 
 The example project contains an ordinary local Gleam dependency and no Geam
 mapping metadata. Its independently packageable provider uses Geam's public
-authoring macros. The bounded registry tests separately verify discovery,
-approval, archive validation, and the same production runner path without
-requiring a published fixture crate.
+authoring macros. The bounded fake-registry tests separately verify discovery,
+approval, archive validation, and the same production runner path
+deterministically against the current checkout.
+
+The Gleam package and Rust provider are also published as
+`example_text_pattern 0.1.0` on Hex and `geam-example-text-pattern 0.1.0` on
+crates.io. A separate CI acceptance job installs the published `geam 0.2.1`,
+creates a clean Gleam project, adds the Hex package, discovers and approves the
+real crates.io provider without `geam provider add`, and then locks, builds, and
+executes the generated runner. Repeating `prepare` and `run` must preserve the
+managed manifest, lock, and runner source. This fixed released combination
+monitors the public distribution path; it does not replace checkout regression
+tests and changes only when the corresponding artifacts have been published.
 
 Explicit selection is itself approval:
 

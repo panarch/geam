@@ -59,6 +59,125 @@ jobs:
             (cd "cli/tests/fixtures/standalone_cli/project/packages/$package" && gleam export hex-tarball)
           done
 
+  published-provider:
+    name: Published provider
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GEAM_VERSION: "0.2.1"
+      GLEAM_PACKAGE_VERSION: "0.1.0"
+      PROVIDER_VERSION: "0.1.0"
+      GEAM_ROOT: ${{ runner.temp }}/published-geam
+      GEAM_BIN: ${{ runner.temp }}/published-geam/bin/geam
+      PROJECT_ROOT: ${{ runner.temp }}/published-provider
+
+    steps:
+      - name: Install Gleam toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          gleam-version: "1.18.1"
+          rebar3-version: "3"
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: "1.96"
+          cache: false
+          rustflags: ""
+
+      - name: Install published Geam
+        run: |
+          cargo install geam --version "=$GEAM_VERSION" --locked --root "$GEAM_ROOT"
+          test "$("$GEAM_BIN" --version)" = "geam $GEAM_VERSION"
+
+      - name: Create clean Gleam project
+        run: gleam new --name published_provider --skip-git --skip-github "$PROJECT_ROOT"
+
+      - name: Add published Gleam package
+        working-directory: ${{ env.PROJECT_ROOT }}
+        run: |
+          gleam add "example_text_pattern@$GLEAM_PACKAGE_VERSION"
+          sed -i.bak "s/^example_text_pattern = .*/example_text_pattern = \"$GLEAM_PACKAGE_VERSION\"/" gleam.toml
+          rm gleam.toml.bak
+          grep -Fx "example_text_pattern = \"$GLEAM_PACKAGE_VERSION\"" gleam.toml
+          gleam deps download
+          grep -E "name = \"example_text_pattern\", version = \"$GLEAM_PACKAGE_VERSION\".*source = \"hex\"" manifest.toml
+
+      - name: Write provider-backed entry module
+        working-directory: ${{ env.PROJECT_ROOT }}
+        run: |
+          cat > src/published_provider.gleam <<'GLEAM'
+          import example_text_pattern as pattern
+
+          pub fn main() -> Nil {
+            let assert Ok(words) = pattern.compile("[A-Za-z]+")
+            assert pattern.is_match(words, "Geam + Gleam 2026")
+            assert pattern.find_all(words, "Geam + Gleam 2026") == ["Geam", "Gleam"]
+            assert pattern.replace_all(words, "Geam + Gleam 2026", "<word>")
+              == "<word> + <word> 2026"
+            let assert Error(pattern.CompileError(message)) = pattern.compile("(")
+            assert message != ""
+          }
+          GLEAM
+
+      - name: Approve discovered crates.io provider
+        working-directory: ${{ env.PROJECT_ROOT }}
+        run: |
+          test ! -e Cargo.toml
+          printf 'y\n' | script --quiet --return --command "$GEAM_BIN prepare" "$RUNNER_TEMP/provider-approval.log"
+          test "$(grep -Fc "Approve geam-example-text-pattern $PROVIDER_VERSION? [y/N]" "$RUNNER_TEMP/provider-approval.log")" -eq 1
+
+      - name: Verify published provider selection
+        working-directory: ${{ env.PROJECT_ROOT }}
+        run: |
+          cargo metadata --format-version 1 --locked --manifest-path Cargo.toml > "$RUNNER_TEMP/provider-metadata.json"
+          jq -e --arg manifest "$PROJECT_ROOT/Cargo.toml" --arg version "$PROVIDER_VERSION" '
+            [
+              .packages[]
+              | select(.manifest_path == $manifest)
+              | .dependencies[]
+              | select(
+                  .rename == "geam_provider_example_text_pattern"
+                  and .name == "geam-example-text-pattern"
+                  and .req == ("=" + $version)
+                  and .path == null
+                  and (.source | startswith("registry+"))
+                )
+            ]
+            | length == 1
+          ' "$RUNNER_TEMP/provider-metadata.json"
+          jq -e --arg geam "$GEAM_VERSION" --arg provider "$PROVIDER_VERSION" '
+            ([
+              .packages[]
+              | select(
+                  .name == "geam"
+                  and .version == $geam
+                  and (.source | startswith("registry+"))
+                )
+            ] | length == 1)
+            and
+            ([
+              .packages[]
+              | select(
+                  .name == "geam-example-text-pattern"
+                  and .version == $provider
+                  and (.source | startswith("registry+"))
+                )
+            ] | length == 1)
+          ' "$RUNNER_TEMP/provider-metadata.json"
+          grep -F "geam_provider_example_text_pattern::Component" build/geam/runner.rs
+          sha256sum Cargo.toml Cargo.lock build/geam/runner.rs > "$RUNNER_TEMP/provider-files.before"
+
+      - name: Run and repeat published project
+        working-directory: ${{ env.PROJECT_ROOT }}
+        run: |
+          test -z "$("$GEAM_BIN" run)"
+          "$GEAM_BIN" prepare
+          test -z "$("$GEAM_BIN" run)"
+          sha256sum Cargo.toml Cargo.lock build/geam/runner.rs > "$RUNNER_TEMP/provider-files.after"
+          diff --unified "$RUNNER_TEMP/provider-files.before" "$RUNNER_TEMP/provider-files.after"
+
   example-providers:
     name: Provider examples (${{ matrix.example }})
     runs-on: ubuntu-latest
