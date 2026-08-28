@@ -39,6 +39,7 @@ pub(super) struct Provider {
 #[derive(Debug, PartialEq, Eq, Subcommand)]
 pub(super) enum ProviderCommand {
     Add(AddProvider),
+    List,
     Remove(RemoveProvider),
 }
 
@@ -123,7 +124,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_registry_path_git_and_remove_provider_commands() {
+    fn parses_registry_path_git_list_and_remove_provider_commands() {
         let registry = Cli::try_parse_from(["geam", "provider", "add", "geam-images@1.2.3"])
             .expect("registry provider should parse");
         assert_eq!(
@@ -189,6 +190,17 @@ mod tests {
                         rev: Some("abc123".to_owned()),
                         package: Some("geam-images".to_owned()),
                     }),
+                }),
+            },
+        );
+
+        let list =
+            Cli::try_parse_from(["geam", "provider", "list"]).expect("list command should parse");
+        assert_eq!(
+            list,
+            Cli {
+                command: Command::Provider(Provider {
+                    command: ProviderCommand::List,
                 }),
             },
         );

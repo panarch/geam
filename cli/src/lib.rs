@@ -46,6 +46,7 @@ fn run_command(cli: Cli, current_directory: camino::Utf8PathBuf) -> Result<(), C
             ProviderCommand::Add(command) => {
                 provider::add(&project_root, current_directory.as_std_path(), command)
             }
+            ProviderCommand::List => provider::list(&project_root),
             ProviderCommand::Remove(command) => provider::remove(&project_root, command),
         },
     }
