@@ -97,6 +97,7 @@ geam provider add geam-company-image@0.3.1
 geam provider add --path ../geam-company-image
 geam provider add --path ../provider-workspace --package geam-company-image
 geam provider add --git https://example.com/provider.git --rev COMMIT
+geam provider list
 geam provider remove company_image
 ```
 
@@ -104,6 +105,9 @@ Registry versions are recorded exactly. Git revisions and path packages follow
 Cargo source and lock semantics. One Gleam package has at most one provider, and
 provider metadata must declare that exact package and a compatible Hex version
 range. Provider crates export their component as `Component` at the crate root.
+`geam provider list` reads the stored external selections without compiling the
+project, contacting a registry, or changing the managed runner files. Built-in
+providers are not selections and are not included.
 
 ## Configuration
 

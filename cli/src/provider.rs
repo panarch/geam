@@ -1,4 +1,5 @@
 mod approval;
+mod list;
 mod manifest;
 mod metadata;
 mod reconcile;
@@ -83,6 +84,10 @@ pub(super) fn add(
         command,
         &crate::runner::SystemCargo,
     )
+}
+
+pub(super) fn list(project_root: &Utf8Path) -> Result<(), CliError> {
+    list::write(project_root, &mut std::io::stdout().lock())
 }
 
 fn add_with(

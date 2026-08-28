@@ -128,7 +128,7 @@ pub fn main() {
 }
 
 #[test]
-fn dispatches_provider_add_and_remove_through_the_binary_boundary() {
+fn dispatches_provider_add_list_and_remove_through_the_binary_boundary() {
     let project = gleam_project_with_dependency("images", "1.2.3");
     let provider = provider_package();
 
@@ -150,11 +150,43 @@ fn dispatches_provider_add_and_remove_through_the_binary_boundary() {
         String::from_utf8_lossy(&add.stderr),
     );
 
+    let list = geam(&project, ["provider", "list"]);
+    assert!(
+        list.status.success(),
+        "provider list failed: {}",
+        String::from_utf8_lossy(&list.stderr),
+    );
+    let canonical_provider =
+        fs::canonicalize(provider.path()).expect("provider path should canonicalize");
+    let provider_path = format!(
+        "{:?}",
+        canonical_provider
+            .to_str()
+            .expect("provider path should be valid UTF-8"),
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&list.stdout),
+        format!(
+            "GLEAM PACKAGE  CARGO CRATE  SOURCE\nimages         geam-images  path {provider_path}\n"
+        ),
+    );
+
     let remove = geam(&project, ["provider", "remove", "images"]);
     assert!(
         remove.status.success(),
         "provider remove failed: {}",
         String::from_utf8_lossy(&remove.stderr),
+    );
+
+    let empty = geam(&project, ["provider", "list"]);
+    assert!(
+        empty.status.success(),
+        "empty provider list failed: {}",
+        String::from_utf8_lossy(&empty.stderr),
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&empty.stdout),
+        "No external providers are selected.\n",
     );
 }
 

@@ -49,6 +49,12 @@ pub(super) enum ProviderSource {
     Git { url: String, rev: Option<String> },
 }
 
+pub(super) fn read_provider_selections(
+    root: &Utf8Path,
+) -> Result<Vec<ProviderSelection>, CliError> {
+    Ok(read_providers(root)?.into_values().collect())
+}
+
 pub(crate) struct ManagedProject {
     root: Utf8PathBuf,
     root_package: String,
@@ -57,65 +63,10 @@ pub(crate) struct ManagedProject {
 
 impl ManagedProject {
     pub(crate) fn load(root: &Utf8Path, root_package: impl Into<String>) -> Result<Self, CliError> {
-        let path = root.join("Cargo.toml");
-        let root_package = root_package.into();
-        if !path.exists() {
-            return Ok(Self {
-                root: root.to_path_buf(),
-                root_package,
-                providers: BTreeMap::new(),
-            });
-        }
-        let source = fs::read_to_string(&path).map_err(|error| CliError::FileRead {
-            path: path.clone(),
-            error,
-        })?;
-        if !source.starts_with(MANAGED_HEADER) {
-            return Err(CliError::UserOwnedCargoManifest { path });
-        }
-        let document = source
-            .parse::<toml::Table>()
-            .map_err(|error| CliError::InvalidToml {
-                kind: "managed Cargo manifest",
-                path: path.clone(),
-                reason: error.to_string(),
-            })?;
-        let schema = document
-            .get("package")
-            .and_then(toml::Value::as_table)
-            .and_then(|package| package.get("metadata"))
-            .and_then(toml::Value::as_table)
-            .and_then(|metadata| metadata.get("geam"))
-            .and_then(toml::Value::as_table)
-            .and_then(|geam| geam.get("runner"))
-            .and_then(toml::Value::as_table)
-            .and_then(|runner| runner.get("schema"))
-            .and_then(toml::Value::as_integer)
-            .ok_or_else(|| CliError::InvalidToml {
-                kind: "managed Cargo manifest",
-                path: path.clone(),
-                reason: "missing package.metadata.geam.runner.schema".to_owned(),
-            })?;
-        if schema != RUNNER_SCHEMA {
-            return Err(CliError::UnsupportedRunnerSchema { path, schema });
-        }
-        let dependencies = document
-            .get("dependencies")
-            .and_then(toml::Value::as_table)
-            .ok_or_else(|| CliError::InvalidToml {
-                kind: "managed Cargo manifest",
-                path: path.clone(),
-                reason: "missing dependencies table".to_owned(),
-            })?;
-        let providers = dependencies
-            .iter()
-            .filter(|(alias, _)| alias.starts_with(PROVIDER_ALIAS_PREFIX))
-            .map(|(alias, value)| parse_provider_dependency(alias, value))
-            .collect::<Result<BTreeMap<_, _>, _>>()?;
         Ok(Self {
             root: root.to_path_buf(),
-            root_package,
-            providers,
+            root_package: root_package.into(),
+            providers: read_providers(root)?,
         })
     }
 
@@ -226,6 +177,59 @@ impl ManagedProject {
         source.push_str("\n[workspace]\nresolver = \"3\"\n");
         source
     }
+}
+
+fn read_providers(root: &Utf8Path) -> Result<BTreeMap<String, ProviderSelection>, CliError> {
+    let path = root.join("Cargo.toml");
+    if !path.exists() {
+        return Ok(BTreeMap::new());
+    }
+    let source = fs::read_to_string(&path).map_err(|error| CliError::FileRead {
+        path: path.clone(),
+        error,
+    })?;
+    if !source.starts_with(MANAGED_HEADER) {
+        return Err(CliError::UserOwnedCargoManifest { path });
+    }
+    let document = source
+        .parse::<toml::Table>()
+        .map_err(|error| CliError::InvalidToml {
+            kind: "managed Cargo manifest",
+            path: path.clone(),
+            reason: error.to_string(),
+        })?;
+    let schema = document
+        .get("package")
+        .and_then(toml::Value::as_table)
+        .and_then(|package| package.get("metadata"))
+        .and_then(toml::Value::as_table)
+        .and_then(|metadata| metadata.get("geam"))
+        .and_then(toml::Value::as_table)
+        .and_then(|geam| geam.get("runner"))
+        .and_then(toml::Value::as_table)
+        .and_then(|runner| runner.get("schema"))
+        .and_then(toml::Value::as_integer)
+        .ok_or_else(|| CliError::InvalidToml {
+            kind: "managed Cargo manifest",
+            path: path.clone(),
+            reason: "missing package.metadata.geam.runner.schema".to_owned(),
+        })?;
+    if schema != RUNNER_SCHEMA {
+        return Err(CliError::UnsupportedRunnerSchema { path, schema });
+    }
+    let dependencies = document
+        .get("dependencies")
+        .and_then(toml::Value::as_table)
+        .ok_or_else(|| CliError::InvalidToml {
+            kind: "managed Cargo manifest",
+            path,
+            reason: "missing dependencies table".to_owned(),
+        })?;
+    dependencies
+        .iter()
+        .filter(|(alias, _)| alias.starts_with(PROVIDER_ALIAS_PREFIX))
+        .map(|(alias, value)| parse_provider_dependency(alias, value))
+        .collect()
 }
 
 fn replace_file(temporary: &Utf8Path, destination: &Utf8Path) -> Result<(), CliError> {

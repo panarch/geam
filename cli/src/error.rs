@@ -95,6 +95,9 @@ pub(super) enum CliError {
         error: io::Error,
     },
 
+    #[error("failed to write provider list")]
+    ProviderListIo(#[source] io::Error),
+
     #[error("provider configuration {spec} is invalid: {reason}")]
     InvalidProviderConfiguration { spec: String, reason: String },
 
