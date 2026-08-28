@@ -67,9 +67,6 @@ jobs:
       GEAM_VERSION: "0.2.1"
       GLEAM_PACKAGE_VERSION: "0.1.0"
       PROVIDER_VERSION: "0.1.0"
-      GEAM_ROOT: ${{ runner.temp }}/published-geam
-      GEAM_BIN: ${{ runner.temp }}/published-geam/bin/geam
-      PROJECT_ROOT: ${{ runner.temp }}/published-provider
 
     steps:
       - name: Install Gleam toolchain
@@ -88,14 +85,14 @@ jobs:
 
       - name: Install published Geam
         run: |
-          cargo install geam --version "=$GEAM_VERSION" --locked --root "$GEAM_ROOT"
-          test "$("$GEAM_BIN" --version)" = "geam $GEAM_VERSION"
+          cargo install geam --version "=$GEAM_VERSION" --locked --root "$RUNNER_TEMP/published-geam"
+          test "$("$RUNNER_TEMP/published-geam/bin/geam" --version)" = "geam $GEAM_VERSION"
 
       - name: Create clean Gleam project
-        run: gleam new --name published_provider --skip-git --skip-github "$PROJECT_ROOT"
+        run: gleam new --name published_provider --skip-git --skip-github "$RUNNER_TEMP/published-provider"
 
       - name: Add published Gleam package
-        working-directory: ${{ env.PROJECT_ROOT }}
+        working-directory: ${{ runner.temp }}/published-provider
         run: |
           gleam add "example_text_pattern@$GLEAM_PACKAGE_VERSION"
           sed -i.bak "s/^example_text_pattern = .*/example_text_pattern = \"$GLEAM_PACKAGE_VERSION\"/" gleam.toml
@@ -105,7 +102,7 @@ jobs:
           grep -E "name = \"example_text_pattern\", version = \"$GLEAM_PACKAGE_VERSION\".*source = \"hex\"" manifest.toml
 
       - name: Write provider-backed entry module
-        working-directory: ${{ env.PROJECT_ROOT }}
+        working-directory: ${{ runner.temp }}/published-provider
         run: |
           cat > src/published_provider.gleam <<'GLEAM'
           import example_text_pattern as pattern
@@ -122,17 +119,17 @@ jobs:
           GLEAM
 
       - name: Approve discovered crates.io provider
-        working-directory: ${{ env.PROJECT_ROOT }}
+        working-directory: ${{ runner.temp }}/published-provider
         run: |
           test ! -e Cargo.toml
-          printf 'y\n' | script --quiet --return --command "$GEAM_BIN prepare" "$RUNNER_TEMP/provider-approval.log"
+          printf 'y\n' | script --quiet --return --command "$RUNNER_TEMP/published-geam/bin/geam prepare" "$RUNNER_TEMP/provider-approval.log"
           test "$(grep -Fc "Approve geam-example-text-pattern $PROVIDER_VERSION? [y/N]" "$RUNNER_TEMP/provider-approval.log")" -eq 1
 
       - name: Verify published provider selection
-        working-directory: ${{ env.PROJECT_ROOT }}
+        working-directory: ${{ runner.temp }}/published-provider
         run: |
           cargo metadata --format-version 1 --locked --manifest-path Cargo.toml > "$RUNNER_TEMP/provider-metadata.json"
-          jq -e --arg manifest "$PROJECT_ROOT/Cargo.toml" --arg version "$PROVIDER_VERSION" '
+          jq -e --arg manifest "$RUNNER_TEMP/published-provider/Cargo.toml" --arg version "$PROVIDER_VERSION" '
             [
               .packages[]
               | select(.manifest_path == $manifest)
@@ -170,11 +167,11 @@ jobs:
           sha256sum Cargo.toml Cargo.lock build/geam/runner.rs > "$RUNNER_TEMP/provider-files.before"
 
       - name: Run and repeat published project
-        working-directory: ${{ env.PROJECT_ROOT }}
+        working-directory: ${{ runner.temp }}/published-provider
         run: |
-          test -z "$("$GEAM_BIN" run)"
-          "$GEAM_BIN" prepare
-          test -z "$("$GEAM_BIN" run)"
+          test -z "$("$RUNNER_TEMP/published-geam/bin/geam" run)"
+          "$RUNNER_TEMP/published-geam/bin/geam" prepare
+          test -z "$("$RUNNER_TEMP/published-geam/bin/geam" run)"
           sha256sum Cargo.toml Cargo.lock build/geam/runner.rs > "$RUNNER_TEMP/provider-files.after"
           diff --unified "$RUNNER_TEMP/provider-files.before" "$RUNNER_TEMP/provider-files.after"
 
