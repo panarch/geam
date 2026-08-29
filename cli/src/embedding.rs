@@ -14,8 +14,30 @@ use package::EmbeddingPackage;
 use profile::HostedBindings;
 use std::collections::BTreeSet;
 
+struct GeneratedBindings {
+    package: EmbeddingPackage,
+    source: String,
+}
+
+pub(super) fn check(current_directory: &Utf8Path, target: EmbeddingTarget) -> Result<(), CliError> {
+    check_with_project_reader(current_directory, target, read_existing_resolved_project)
+}
+
 pub(super) fn sync(current_directory: &Utf8Path, target: EmbeddingTarget) -> Result<(), CliError> {
     sync_with_project_reader(current_directory, target, read_existing_resolved_project)
+}
+
+fn check_with_project_reader(
+    current_directory: &Utf8Path,
+    target: EmbeddingTarget,
+    read_project: fn(&Utf8Path) -> Result<ResolvedProject, CliError>,
+) -> Result<(), CliError> {
+    let generated = generate_with_project_reader(current_directory, target, read_project)?;
+    output::check(
+        generated.package.manifest(),
+        generated.package.output_path(),
+        generated.source.as_bytes(),
+    )
 }
 
 fn sync_with_project_reader(
@@ -23,6 +45,20 @@ fn sync_with_project_reader(
     target: EmbeddingTarget,
     read_project: fn(&Utf8Path) -> Result<ResolvedProject, CliError>,
 ) -> Result<(), CliError> {
+    let generated = generate_with_project_reader(current_directory, target, read_project)?;
+    output::sync(
+        generated.package.output_directory(),
+        generated.package.output_path(),
+        generated.source.as_bytes(),
+    )?;
+    Ok(())
+}
+
+fn generate_with_project_reader(
+    current_directory: &Utf8Path,
+    target: EmbeddingTarget,
+    read_project: fn(&Utf8Path) -> Result<ResolvedProject, CliError>,
+) -> Result<GeneratedBindings, CliError> {
     let package = EmbeddingPackage::load(current_directory, target.manifest_path)?;
     let program = geam_core::compile_typed_project(
         package.project_root().to_path_buf(),
@@ -48,17 +84,12 @@ fn sync_with_project_reader(
             render::hosted(&hosted)
         }
     };
-    output::sync(
-        package.output_directory(),
-        package.output_path(),
-        source.as_bytes(),
-    )?;
-    Ok(())
+    Ok(GeneratedBindings { package, source })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{sync, sync_with_project_reader};
+    use super::{check, sync, sync_with_project_reader};
     use crate::command::EmbeddingTarget;
     use crate::error::CliError;
     use camino::Utf8PathBuf;
@@ -81,6 +112,13 @@ mod tests {
             },
         )
         .expect("plain bindings should synchronize");
+        check(
+            &fixture.root.join("src/nested"),
+            EmbeddingTarget {
+                manifest_path: None,
+            },
+        )
+        .expect("exact plain bindings should pass checking from a nested directory");
         let generated_path = fixture.root.join("src/geam_bindings.rs");
         let generated = fs::read(&generated_path).expect("generated source should be readable");
         assert!(String::from_utf8_lossy(&generated).contains("use runtime::embedding::EcoString;"));
@@ -113,6 +151,13 @@ mod tests {
             },
         )
         .expect("identical explicit synchronization should succeed");
+        check(
+            &fixture.root,
+            EmbeddingTarget {
+                manifest_path: Some(fixture.root.join("Cargo.toml")),
+            },
+        )
+        .expect("exact explicit plain bindings should pass checking");
         assert_eq!(
             fs::read(&generated_path).expect("unchanged generated source should be readable"),
             generated,
@@ -277,6 +322,13 @@ pub fn normalize(value: String) -> String
             },
         )
         .expect("hosted bindings should synchronize");
+        check(
+            &fixture.root,
+            EmbeddingTarget {
+                manifest_path: None,
+            },
+        )
+        .expect("exact hosted bindings should pass checking");
         let generated_path = fixture.root.join("src/geam_bindings.rs");
         let generated = fs::read(&generated_path).expect("generated source should be readable");
         let source = String::from_utf8_lossy(&generated);
@@ -325,6 +377,25 @@ pub fn normalize(value: String) -> String
             .join("\n");
         fs::write(&manifest_path, format!("{without_provider}\n"))
             .expect("provider dependency should be removed");
+        let checked_error = check(
+            &fixture.root,
+            EmbeddingTarget {
+                manifest_path: None,
+            },
+        )
+        .expect_err("missing direct provider should fail hosted checking");
+        assert!(matches!(
+            checked_error,
+            CliError::InvalidEmbeddingProvider { package, manifest: path, reason }
+                if package == "example_text_pattern"
+                    && path == manifest_path
+                    && reason.contains("no enabled direct provider dependency")
+        ));
+        assert_eq!(
+            fs::read(&generated_path)
+                .expect("provider check failure should preserve previous output"),
+            generated,
+        );
         let error = sync(
             &fixture.root,
             EmbeddingTarget {
@@ -359,6 +430,13 @@ pub fn normalize(value: String) -> String
             },
         )
         .expect("built-in hosted bindings should synchronize");
+        check(
+            &fixture.root,
+            EmbeddingTarget {
+                manifest_path: None,
+            },
+        )
+        .expect("exact built-in bindings should pass checking");
         let generated_path = fixture.root.join("src/geam_bindings.rs");
         let generated = fs::read_to_string(&generated_path)
             .expect("built-in generated source should be readable");
@@ -392,6 +470,194 @@ pub fn normalize(value: String) -> String
                 .arg("--offline")
                 .arg("--quiet"),
             "built-in generated Rust application",
+        );
+    }
+
+    #[test]
+    fn checks_missing_stale_and_plain_boundary_drift_without_writing() {
+        let fixture = ApplicationFixture::new();
+        fixture.write_plain_project();
+        fixture.generate_lockfile();
+        let manifest_path = fixture.root.join("Cargo.toml");
+        let generated_path = fixture.root.join("src/geam_bindings.rs");
+
+        let missing = check(
+            &fixture.root,
+            EmbeddingTarget {
+                manifest_path: None,
+            },
+        )
+        .expect_err("missing generated bindings should fail checking");
+        assert_eq!(
+            missing.to_string(),
+            format!(
+                "Rust embedding bindings at {generated_path} are missing or stale for {manifest_path}; run `geam embedding sync --manifest-path {manifest_path}`"
+            ),
+        );
+        assert!(!generated_path.exists());
+
+        sync(
+            &fixture.root,
+            EmbeddingTarget {
+                manifest_path: None,
+            },
+        )
+        .expect("plain fixture should synchronize");
+        let original = fs::read(&generated_path).expect("generated source should be readable");
+
+        let support_path = fixture.root.join("gleam/src/support.gleam");
+        let support = fs::read_to_string(&support_path).expect("support source should be readable");
+        fs::write(
+            &support_path,
+            format!(
+                "{}\nfn private_helper() -> Nil {{ Nil }}\n",
+                support.replace("value * 2", "value + value"),
+            ),
+        )
+        .expect("body-only and private changes should be written");
+        check(
+            &fixture.root,
+            EmbeddingTarget {
+                manifest_path: None,
+            },
+        )
+        .expect("body-only and private changes should not alter bindings");
+        assert_eq!(
+            fs::read(&generated_path).expect("clean generated source should remain readable"),
+            original,
+        );
+
+        let boundary_path = fixture.root.join("gleam/src/inventory_rules.gleam");
+        let boundary =
+            fs::read_to_string(&boundary_path).expect("boundary source should be readable");
+        fs::write(
+            &boundary_path,
+            format!("{boundary}\npub fn added() -> Int {{ 1 }}\n"),
+        )
+        .expect("public addition should be written");
+        assert!(matches!(
+            check(
+                &fixture.root,
+                EmbeddingTarget {
+                    manifest_path: None,
+                },
+            ),
+            Err(CliError::EmbeddingBindingsOutOfDate { manifest, output })
+                if manifest == manifest_path && output == generated_path
+        ));
+        assert_eq!(
+            fs::read(&generated_path).expect("stale source should remain readable"),
+            original,
+        );
+
+        sync(
+            &fixture.root,
+            EmbeddingTarget {
+                manifest_path: None,
+            },
+        )
+        .expect("public addition should synchronize");
+        let with_addition =
+            fs::read(&generated_path).expect("updated generated source should be readable");
+        fs::write(&boundary_path, &boundary).expect("public addition should be removed");
+        assert!(matches!(
+            check(
+                &fixture.root,
+                EmbeddingTarget {
+                    manifest_path: None,
+                },
+            ),
+            Err(CliError::EmbeddingBindingsOutOfDate { manifest, output })
+                if manifest == manifest_path && output == generated_path
+        ));
+        assert_eq!(
+            fs::read(&generated_path).expect("removed-boundary output should remain readable"),
+            with_addition,
+        );
+
+        sync(
+            &fixture.root,
+            EmbeddingTarget {
+                manifest_path: None,
+            },
+        )
+        .expect("restored boundary should synchronize");
+        let restored = fs::read(&generated_path).expect("restored output should be readable");
+        fs::write(
+            &boundary_path,
+            boundary.replace(
+                "pub fn bindings() -> Int { 7 }",
+                "pub fn bindings() -> Bool { True }",
+            ),
+        )
+        .expect("signature change should be written");
+        assert!(matches!(
+            check(
+                &fixture.root,
+                EmbeddingTarget {
+                    manifest_path: None,
+                },
+            ),
+            Err(CliError::EmbeddingBindingsOutOfDate { manifest, output })
+                if manifest == manifest_path && output == generated_path
+        ));
+        assert_eq!(
+            fs::read(&generated_path).expect("signature-drift output should remain readable"),
+            restored,
+        );
+
+        fs::write(&boundary_path, "pub fn invalid(")
+            .expect("invalid boundary source should be written");
+        check(
+            &fixture.root,
+            EmbeddingTarget {
+                manifest_path: None,
+            },
+        )
+        .expect_err("invalid source should fail checking");
+        assert_eq!(
+            fs::read(&generated_path).expect("invalid-source output should remain readable"),
+            restored,
+        );
+    }
+
+    #[test]
+    fn detects_host_requirement_drift_without_using_unused_dependencies() {
+        let fixture = ApplicationFixture::new();
+        fixture.write_hosted_project();
+        fixture.generate_lockfile();
+        sync(
+            &fixture.root,
+            EmbeddingTarget {
+                manifest_path: None,
+            },
+        )
+        .expect("hosted fixture should synchronize");
+        let generated_path = fixture.root.join("src/geam_bindings.rs");
+        let generated = fs::read(&generated_path).expect("hosted output should be readable");
+        let manifest_path = fixture.root.join("Cargo.toml");
+
+        fs::write(
+            fixture.root.join("gleam/src/rust_embedding.gleam"),
+            r#"pub fn format_words() -> String { "plain" }
+
+pub fn contains_only_words(_text: String) -> Bool { True }
+"#,
+        )
+        .expect("plain replacement boundary should be written");
+        assert!(matches!(
+            check(
+                &fixture.root,
+                EmbeddingTarget {
+                    manifest_path: None,
+                },
+            ),
+            Err(CliError::EmbeddingBindingsOutOfDate { manifest, output })
+                if manifest == manifest_path && output == generated_path
+        ));
+        assert_eq!(
+            fs::read(&generated_path).expect("host-requirement output should remain readable"),
+            generated,
         );
     }
 

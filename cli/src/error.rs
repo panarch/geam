@@ -193,6 +193,14 @@ pub(super) enum CliError {
         reason: String,
     },
 
+    #[error(
+        "Rust embedding bindings at {output} are missing or stale for {manifest}; run `geam embedding sync --manifest-path {manifest}`"
+    )]
+    EmbeddingBindingsOutOfDate {
+        manifest: Utf8PathBuf,
+        output: Utf8PathBuf,
+    },
+
     #[error("invalid Rust embedding boundary module {module}: {reason}")]
     InvalidEmbeddingBoundary { module: String, reason: String },
 }

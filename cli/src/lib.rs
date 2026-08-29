@@ -35,6 +35,9 @@ pub fn run() -> ExitCode {
 fn run_command(cli: Cli, current_directory: camino::Utf8PathBuf) -> Result<(), CliError> {
     let command = match cli.command {
         Command::Embedding(command) => match command.command {
+            EmbeddingCommand::Check(target) => {
+                return embedding::check(&current_directory, target);
+            }
             EmbeddingCommand::Sync(target) => return embedding::sync(&current_directory, target),
         },
         Command::Prepare(command) => ProjectCommand::Prepare(command),
@@ -91,25 +94,27 @@ mod tests {
         let directory = tempdir().expect("temporary directory should be created");
         let root = Utf8PathBuf::from_path_buf(directory.path().to_path_buf())
             .expect("temporary path should be valid UTF-8");
-        let error = run_command(
-            Cli::try_parse_from([
-                "geam",
-                "embedding",
-                "sync",
-                "--manifest-path",
-                "missing/Cargo.toml",
-            ])
-            .expect("embedding command should parse"),
-            root.clone(),
-        )
-        .expect_err("missing explicit Cargo manifest should fail");
+        for operation in ["check", "sync"] {
+            let error = run_command(
+                Cli::try_parse_from([
+                    "geam",
+                    "embedding",
+                    operation,
+                    "--manifest-path",
+                    "missing/Cargo.toml",
+                ])
+                .expect("embedding command should parse"),
+                root.clone(),
+            )
+            .expect_err("missing explicit Cargo manifest should fail");
 
-        assert!(matches!(
-            error,
-            CliError::FileRead { path, error }
-                if path == root.join("missing/Cargo.toml")
-                    && error.kind() == std::io::ErrorKind::NotFound
-        ));
+            assert!(matches!(
+                error,
+                CliError::FileRead { path, error }
+                    if path == root.join("missing/Cargo.toml")
+                        && error.kind() == std::io::ErrorKind::NotFound
+            ));
+        }
     }
 
     #[test]

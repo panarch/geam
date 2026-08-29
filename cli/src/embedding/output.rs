@@ -9,6 +9,24 @@ pub(super) enum SyncOutcome {
     Updated,
 }
 
+pub(super) fn check(
+    manifest: &Utf8Path,
+    destination: &Utf8Path,
+    expected: &[u8],
+) -> Result<(), CliError> {
+    match fs::read(destination) {
+        Ok(current) if current == expected => Ok(()),
+        Ok(_) => Err(out_of_date(manifest, destination)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Err(out_of_date(manifest, destination))
+        }
+        Err(error) => Err(CliError::FileRead {
+            path: destination.to_path_buf(),
+            error,
+        }),
+    }
+}
+
 pub(super) fn sync(
     directory: &Utf8Path,
     destination: &Utf8Path,
@@ -57,9 +75,16 @@ fn write_expected(
         })
 }
 
+fn out_of_date(manifest: &Utf8Path, destination: &Utf8Path) -> CliError {
+    CliError::EmbeddingBindingsOutOfDate {
+        manifest: manifest.to_path_buf(),
+        output: destination.to_path_buf(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{SyncOutcome, sync, write_expected};
+    use super::{SyncOutcome, check, sync, write_expected};
     use crate::error::CliError;
     use camino::Utf8PathBuf;
     use std::fs;
@@ -105,6 +130,89 @@ mod tests {
             ),
             original_inode,
         );
+    }
+
+    #[test]
+    fn checks_exact_missing_and_stale_bytes_without_writing() {
+        let directory = tempdir().expect("temporary directory should be created");
+        let root = Utf8PathBuf::from_path_buf(directory.path().to_path_buf())
+            .expect("temporary path should be valid UTF-8");
+        let manifest = root.join("Cargo.toml");
+        let destination = root.join("geam_bindings.rs");
+
+        let missing = check(&manifest, &destination, b"expected")
+            .expect_err("missing output should fail checking");
+        assert!(matches!(
+            missing,
+            CliError::EmbeddingBindingsOutOfDate { manifest: path, output }
+                if path == manifest && output == destination
+        ));
+        assert!(!destination.exists());
+
+        fs::write(&destination, b"stale\r\n").expect("stale output should be written");
+        let stale_metadata = fs::metadata(&destination).expect("stale metadata should be readable");
+        let stale = check(&manifest, &destination, b"expected\n")
+            .expect_err("byte-stale output should fail checking");
+        assert!(matches!(
+            stale,
+            CliError::EmbeddingBindingsOutOfDate { manifest: path, output }
+                if path == manifest && output == destination
+        ));
+        assert_eq!(
+            fs::read(&destination).expect("stale output should remain readable"),
+            b"stale\r\n",
+        );
+        assert_eq!(
+            fs::metadata(&destination)
+                .expect("checked metadata should be readable")
+                .permissions(),
+            stale_metadata.permissions(),
+        );
+
+        fs::write(&destination, b"expected\n").expect("exact output should be written");
+        let exact_metadata = fs::metadata(&destination).expect("exact metadata should be readable");
+        let modified = exact_metadata
+            .modified()
+            .expect("exact modification time should be readable");
+        #[cfg(unix)]
+        let inode = std::os::unix::fs::MetadataExt::ino(&exact_metadata);
+        check(&manifest, &destination, b"expected\n").expect("exact output should pass checking");
+        let checked_metadata =
+            fs::metadata(&destination).expect("checked exact metadata should be readable");
+        assert_eq!(
+            fs::read(&destination).expect("checked exact output should remain readable"),
+            b"expected\n",
+        );
+        assert_eq!(checked_metadata.permissions(), exact_metadata.permissions());
+        assert_eq!(
+            checked_metadata
+                .modified()
+                .expect("checked modification time should be readable"),
+            modified,
+        );
+        #[cfg(unix)]
+        assert_eq!(
+            std::os::unix::fs::MetadataExt::ino(&checked_metadata),
+            inode,
+        );
+    }
+
+    #[test]
+    fn preserves_check_read_failures_with_destination_context() {
+        let directory = tempdir().expect("temporary directory should be created");
+        let root = Utf8PathBuf::from_path_buf(directory.path().to_path_buf())
+            .expect("temporary path should be valid UTF-8");
+        let manifest = root.join("Cargo.toml");
+        let destination = root.join("geam_bindings.rs");
+        fs::create_dir(&destination).expect("directory fixture should be created");
+
+        let error = check(&manifest, &destination, b"expected")
+            .expect_err("unreadable checked output should fail");
+        assert!(matches!(
+            error,
+            CliError::FileRead { path, .. } if path == destination
+        ));
+        assert!(destination.is_dir());
     }
 
     #[test]
