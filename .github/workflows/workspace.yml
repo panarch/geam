@@ -130,6 +130,12 @@ jobs:
             exit 1
           fi
 
+      - name: Check root feature profiles
+        run: |
+          cargo check --package geam --no-default-features --features embedding --all-targets --locked
+          cargo check --package geam --no-default-features --features provider --all-targets --locked
+          cargo check --package geam --no-default-features --features embedding,gleam-stdlib --all-targets --locked
+
       - name: Test workspace packages
         run: cargo test --workspace --exclude geam --locked
 

@@ -6,16 +6,19 @@ use crate::error::CliError;
 use camino::{Utf8Path, Utf8PathBuf};
 use cargo_metadata::{DependencyKind, Metadata, Package, PackageId};
 use serde::Deserialize;
+use std::collections::BTreeSet;
 
 const MANIFEST_FILE: &str = "Cargo.toml";
 
 #[derive(Debug)]
 pub(super) struct EmbeddingPackage {
+    package_name: String,
     manifest: Utf8PathBuf,
     project_root: Utf8PathBuf,
     root_module: String,
     geam_alias: RustIdentifier,
     geam_package_id: PackageId,
+    geam_features: BTreeSet<String>,
     direct_dependencies: Vec<DirectDependency>,
     output_directory: Utf8PathBuf,
     output_path: Utf8PathBuf,
@@ -25,6 +28,7 @@ pub(super) struct EmbeddingPackage {
 pub(super) struct DirectDependency {
     pub(super) alias: String,
     pub(super) package: Package,
+    enabled_features: BTreeSet<String>,
     pub(super) geam_dependencies: Vec<ResolvedGeamDependency>,
 }
 
@@ -85,11 +89,13 @@ impl EmbeddingPackage {
         let output_path = output_directory.join("geam_bindings.rs");
 
         Ok(Self {
+            package_name,
             manifest,
             project_root: package_root.join(project),
             root_module: embedding.module,
             geam_alias: geam.alias,
             geam_package_id: geam.package_id,
+            geam_features: geam.enabled_features,
             direct_dependencies,
             output_directory,
             output_path,
@@ -114,6 +120,23 @@ impl EmbeddingPackage {
 
     pub(super) fn geam_package_id(&self) -> &PackageId {
         &self.geam_package_id
+    }
+
+    pub(super) fn require_geam_feature(
+        &self,
+        feature: &str,
+        purpose: &str,
+    ) -> Result<(), CliError> {
+        if self.geam_features.contains(feature) {
+            return Ok(());
+        }
+        Err(CliError::InvalidEmbeddingDependency {
+            package: self.package_name.clone(),
+            manifest: self.manifest.clone(),
+            reason: format!(
+                "enabled Geam feature `{feature}` is required {purpose}; enable it on the direct Geam dependency",
+            ),
+        })
     }
 
     pub(super) fn direct_dependencies(&self) -> &[DirectDependency] {
@@ -237,9 +260,25 @@ fn direct_normal_dependencies(
                     dependency.pkg
                 ),
             })?;
+        let dependency_node = resolve
+            .nodes
+            .iter()
+            .find(|node| node.id == dependency.pkg)
+            .ok_or_else(|| CliError::InvalidCargoMetadata {
+                manifest: package.manifest_path.clone(),
+                reason: format!(
+                    "the resolve graph has no node for package {}",
+                    dependency_package.name,
+                ),
+            })?;
         dependencies.push(DirectDependency {
             alias: dependency.name.clone(),
             package: dependency_package.clone(),
+            enabled_features: dependency_node
+                .features
+                .iter()
+                .map(|feature| feature.as_ref().to_owned())
+                .collect(),
             geam_dependencies: Vec::new(),
         });
     }
@@ -249,6 +288,7 @@ fn direct_normal_dependencies(
 struct GeamDependency {
     alias: RustIdentifier,
     package_id: PackageId,
+    enabled_features: BTreeSet<String>,
 }
 
 fn select_geam_dependency(
@@ -295,6 +335,7 @@ fn select_geam_dependency(
     Ok(GeamDependency {
         alias,
         package_id: dependency.package.id.clone(),
+        enabled_features: dependency.enabled_features.clone(),
     })
 }
 
@@ -576,6 +617,26 @@ mod tests {
             error,
             CliError::InvalidCargoMetadata { reason, .. }
                 if reason.contains("no node for package geam")
+        ));
+
+        let mut missing_nested_dependency = metadata_value(&base);
+        let geam_node = missing_nested_dependency["resolve"]["nodes"]
+            .as_array_mut()
+            .expect("resolve nodes fixture should be an array")
+            .iter_mut()
+            .find(|node| node["id"] == "path+file:///geam-one#1.0.0")
+            .expect("Geam resolve node should exist");
+        geam_node["dependencies"] = json!(["path+file:///missing#1.0.0"]);
+        geam_node["deps"] = json!([{
+            "name": "missing",
+            "pkg": "path+file:///missing#1.0.0",
+            "dep_kinds": [{ "kind": "normal", "target": null }],
+        }]);
+        let error = load_metadata_error(&fixture, &manifest, missing_nested_dependency);
+        assert!(matches!(
+            error,
+            CliError::InvalidCargoMetadata { reason, .. }
+                if reason.contains("references missing package")
         ));
 
         let mut missing_dependency = metadata_value(&base);

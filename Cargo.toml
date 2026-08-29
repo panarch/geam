@@ -98,13 +98,59 @@ unicode-segmentation = "1.13"
 ureq = { version = "3", features = ["json"] }
 vec1 = "1"
 
+[features]
+default = ["full"]
+full = ["cli", "embedding", "provider", "builtins"]
+cli = ["dep:geam-cli"]
+embedding = []
+provider = ["dep:geam-macros"]
+builtins = ["gleam-stdlib", "gleam-json", "gleam-time"]
+gleam-stdlib = ["dep:geam-stdlib"]
+gleam-json = ["dep:geam-json", "gleam-stdlib"]
+gleam-time = ["dep:geam-time", "gleam-stdlib"]
+
 [dependencies]
-geam-cli.workspace = true
+geam-cli = { workspace = true, optional = true }
 geam-core.workspace = true
-geam-json.workspace = true
-geam-macros.workspace = true
-geam-stdlib.workspace = true
-geam-time.workspace = true
+geam-json = { workspace = true, optional = true }
+geam-macros = { workspace = true, optional = true }
+geam-stdlib = { workspace = true, optional = true }
+geam-time = { workspace = true, optional = true }
+
+[[bin]]
+name = "geam"
+path = "src/bin/geam.rs"
+required-features = ["cli"]
+
+[[example]]
+name = "rust_embedding"
+path = "examples/rust_embedding.rs"
+required-features = ["embedding"]
+
+[[example]]
+name = "rust_hosted_embedding"
+path = "examples/rust_hosted_embedding.rs"
+required-features = ["embedding", "gleam-stdlib"]
+
+[[test]]
+name = "binary"
+path = "tests/binary.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "cross_crate_http"
+path = "tests/cross_crate_http.rs"
+required-features = ["gleam-stdlib"]
+
+[[test]]
+name = "provider_examples"
+path = "tests/provider_examples.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "standalone_distribution"
+path = "tests/standalone_distribution.rs"
+required-features = ["cli"]
 
 [dev-dependencies]
 camino.workspace = true

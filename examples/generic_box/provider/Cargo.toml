@@ -17,7 +17,7 @@ gleam-package = "example_generic_box"
 gleam-version = ">= 1.0.0 and < 2.0.0"
 
 [dependencies]
-geam = "=0.2.1"
+geam = { version = "=0.2.1", default-features = false, features = ["provider"] }
 
 [workspace]
 resolver = "3"

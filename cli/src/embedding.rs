@@ -60,6 +60,7 @@ fn generate_with_project_reader(
     read_project: fn(&Utf8Path) -> Result<ResolvedProject, CliError>,
 ) -> Result<GeneratedBindings, CliError> {
     let package = EmbeddingPackage::load(current_directory, target.manifest_path)?;
+    package.require_geam_feature("embedding", "to generate Rust embedding bindings")?;
     let program = geam_core::compile_typed_project(
         package.project_root().to_path_buf(),
         package.root_module(),
@@ -377,6 +378,7 @@ pub fn normalize(value: String) -> String
             .join("\n");
         fs::write(&manifest_path, format!("{without_provider}\n"))
             .expect("provider dependency should be removed");
+        fixture.generate_lockfile();
         let checked_error = check(
             &fixture.root,
             EmbeddingTarget {
@@ -384,13 +386,16 @@ pub fn normalize(value: String) -> String
             },
         )
         .expect_err("missing direct provider should fail hosted checking");
-        assert!(matches!(
-            checked_error,
-            CliError::InvalidEmbeddingProvider { package, manifest: path, reason }
-                if package == "example_text_pattern"
-                    && path == manifest_path
-                    && reason.contains("no enabled direct provider dependency")
-        ));
+        assert!(
+            matches!(
+                &checked_error,
+                CliError::InvalidEmbeddingProvider { package, manifest: path, reason }
+                    if package == "example_text_pattern"
+                        && path == &manifest_path
+                        && reason.contains("no enabled direct provider dependency")
+            ),
+            "unexpected provider check error: {checked_error:?}"
+        );
         assert_eq!(
             fs::read(&generated_path)
                 .expect("provider check failure should preserve previous output"),
@@ -661,6 +666,64 @@ pub fn contains_only_words(_text: String) -> Bool { True }
         );
     }
 
+    #[test]
+    fn rejects_missing_embedding_and_builtin_features_before_writing_bindings() {
+        let plain = ApplicationFixture::new();
+        plain.write_plain_project();
+        let manifest_path = plain.root.join("Cargo.toml");
+        let manifest =
+            fs::read_to_string(&manifest_path).expect("plain fixture manifest should be readable");
+        fs::write(
+            &manifest_path,
+            manifest.replace("features = [\"embedding\"]", "features = []"),
+        )
+        .expect("plain fixture should omit the embedding feature");
+        plain.generate_lockfile();
+
+        let error = sync(
+            &plain.root,
+            EmbeddingTarget {
+                manifest_path: None,
+            },
+        )
+        .expect_err("missing embedding feature should fail synchronization");
+        assert!(matches!(
+            error,
+            CliError::InvalidEmbeddingDependency { package, manifest, reason }
+                if package == "plain-embedding-application"
+                    && manifest == manifest_path
+                    && reason.contains("Geam feature `embedding`")
+                    && reason.contains("direct Geam dependency")
+        ));
+        assert!(!plain.root.join("src/geam_bindings.rs").exists());
+
+        let hosted = ApplicationFixture::new();
+        hosted.write_built_in_project();
+        let manifest_path = hosted.root.join("Cargo.toml");
+        let manifest =
+            fs::read_to_string(&manifest_path).expect("hosted fixture manifest should be readable");
+        fs::write(&manifest_path, manifest.replace(", \"gleam-time\"", ""))
+            .expect("hosted fixture should omit the required Time feature");
+        hosted.generate_lockfile();
+
+        let error = sync(
+            &hosted.root,
+            EmbeddingTarget {
+                manifest_path: None,
+            },
+        )
+        .expect_err("missing built-in feature should fail synchronization");
+        assert!(matches!(
+            error,
+            CliError::InvalidEmbeddingDependency { package, manifest, reason }
+                if package == "built-in-embedding-application"
+                    && manifest == manifest_path
+                    && reason.contains("Geam feature `gleam-time`")
+                    && reason.contains("Gleam package `gleam_time`")
+        ));
+        assert!(!hosted.root.join("src/geam_bindings.rs").exists());
+    }
+
     struct ApplicationFixture {
         _directory: TempDir,
         root: Utf8PathBuf,
@@ -702,7 +765,7 @@ version = "0.0.0"
 edition = "2024"
 
 [dependencies]
-runtime = {{ package = "geam", path = {:?} }}
+runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding"] }}
 
 [package.metadata.geam.embedding]
 project = "gleam"
@@ -852,7 +915,7 @@ version = "0.0.0"
 edition = "2024"
 
 [dependencies]
-runtime = {{ package = "geam", path = {:?} }}
+runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding", "gleam-stdlib"] }}
 patterns = {{ package = "geam-example-text-pattern", path = {provider:?} }}
 
 [package.metadata.geam.embedding]
@@ -1004,7 +1067,7 @@ version = "0.0.0"
 edition = "2024"
 
 [dependencies]
-runtime = {{ package = "geam", path = {:?} }}
+runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding", "gleam-json", "gleam-time"] }}
 
 [package.metadata.geam.embedding]
 project = "gleam"

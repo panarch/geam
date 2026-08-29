@@ -62,6 +62,7 @@ impl HostedBindings {
                 components_for_package(package, &providers, required_package, resolved_project)?;
             components.extend(additional);
         }
+        components.require_geam_features(package)?;
         Ok(Self {
             boundary,
             components,
@@ -152,6 +153,22 @@ impl HostedComponents {
         self.iter()
             .any(|component| matches!(component, ComponentBinding::External(_)))
     }
+
+    fn require_geam_features(&self, package: &EmbeddingPackage) -> Result<(), CliError> {
+        for component in self.iter() {
+            let Some(provider) = component.built_in() else {
+                continue;
+            };
+            package.require_geam_feature(
+                provider.geam_feature(),
+                &format!(
+                    "because the selected source closure requires Gleam package `{}`",
+                    provider.package(),
+                ),
+            )?;
+        }
+        Ok(())
+    }
 }
 
 fn components_for_package(
@@ -175,6 +192,17 @@ impl From<BuiltInProvider> for ComponentBinding {
             BuiltInProvider::Stdlib => Self::Stdlib,
             BuiltInProvider::Json => Self::Json,
             BuiltInProvider::Time => Self::Time,
+        }
+    }
+}
+
+impl ComponentBinding {
+    fn built_in(&self) -> Option<BuiltInProvider> {
+        match self {
+            Self::Stdlib => Some(BuiltInProvider::Stdlib),
+            Self::Json => Some(BuiltInProvider::Json),
+            Self::Time => Some(BuiltInProvider::Time),
+            Self::External(_) => None,
         }
     }
 }
@@ -692,7 +720,7 @@ mod tests {
                 .expect("application source should be written");
 
             let mut dependencies = vec![format!(
-                "runtime = {{ package = \"geam\", path = {repository:?} }}"
+                "runtime = {{ package = \"geam\", path = {repository:?}, default-features = false, features = [\"embedding\"] }}"
             )];
             let split_geam = root.join("split-geam");
             for provider in providers {
@@ -703,17 +731,21 @@ mod tests {
                     .expect("provider source should be written");
                 let geam_dependency = match provider.geam {
                     ProviderGeam::Application => {
-                        format!("\n[dependencies]\ngeam = {{ path = {repository:?} }}\n")
+                        format!(
+                            "\n[dependencies]\ngeam = {{ path = {repository:?}, default-features = false, features = [\"provider\"] }}\n"
+                        )
                     }
                     ProviderGeam::Missing => String::new(),
                     ProviderGeam::Split => {
                         write_split_geam(&split_geam);
-                        format!("\n[dependencies]\ngeam = {{ path = {split_geam:?} }}\n")
+                        format!(
+                            "\n[dependencies]\ngeam = {{ path = {split_geam:?}, default-features = false, features = [\"provider\"] }}\n"
+                        )
                     }
                     ProviderGeam::Multiple => {
                         write_split_geam(&split_geam);
                         format!(
-                            "\n[dependencies]\ngeam = {{ path = {repository:?} }}\nsplit_geam = {{ package = \"geam\", path = {split_geam:?} }}\n"
+                            "\n[dependencies]\ngeam = {{ path = {repository:?}, default-features = false, features = [\"provider\"] }}\nsplit_geam = {{ package = \"geam\", path = {split_geam:?}, default-features = false, features = [\"provider\"] }}\n"
                         )
                     }
                 };
@@ -873,6 +905,9 @@ resolver = "3"
 name = "geam"
 version = "9.9.9"
 edition = "2024"
+
+[features]
+provider = []
 
 [workspace]
 resolver = "3"

@@ -1,6 +1,10 @@
+#[cfg(feature = "gleam-json")]
 pub mod gleam_json;
+#[cfg(feature = "gleam-stdlib")]
 pub mod gleam_stdlib;
+#[cfg(feature = "gleam-time")]
 pub mod gleam_time;
+#[cfg(feature = "provider")]
 pub mod provider {
     pub mod advanced {
         pub use geam_core::provider::advanced::{
@@ -16,6 +20,7 @@ pub mod provider {
 }
 
 #[doc(hidden)]
+#[cfg(feature = "provider")]
 pub mod __macro_support {
     pub use geam_core::__macro_support::{
         Call, Callback, EcoString, Equality, ExternalPayload, Hashing, HostCall,
@@ -54,7 +59,10 @@ pub mod __macro_support {
 }
 
 pub use geam_core::List;
-pub use geam_core::{embedding, frontend, host, plan, planner, runtime};
+#[cfg(feature = "embedding")]
+pub use geam_core::embedding;
+pub use geam_core::{frontend, host, plan, planner, runtime};
+#[cfg(feature = "provider")]
 pub use geam_macros::{custom, external, function, module, provider};
 
 pub use geam_core::frontend::{

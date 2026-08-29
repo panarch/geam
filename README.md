@@ -31,6 +31,18 @@ Resolved Gleam project or in-memory module sources
 -> Geam runtime value
 ```
 
+## Installation
+
+Install the complete command-line distribution with its default feature
+profile:
+
+```sh
+cargo install geam --locked
+```
+
+Rust library consumers can instead select the smaller embedding or provider
+authoring profiles described below without depending on `geam-cli`.
+
 Unsupported execution semantics are rejected while planning from Gleam's typed
 AST, before runtime evaluation. The resulting `ModulePlan` owns the root entry
 and every supplied module's validated definitions, and is the canonical
@@ -172,7 +184,7 @@ mutable state, Echo, and call order explicitly. The
 [canonical managed application](examples/rust_embedding_application) combines
 imported source, stdlib IO, and an external provider. See
 [Rust embedding](docs/embedding.md) for project layout, synchronization, and
-the supported scalar boundary.
+the supported scalar boundary and minimal Cargo feature profiles.
 
 ## Standalone Projects
 

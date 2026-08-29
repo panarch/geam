@@ -91,6 +91,21 @@ jobs:
         working-directory: examples/rust_embedding_application/gleam
         run: gleam deps download
 
+      - name: Verify application dependency graph
+        run: |
+          cargo tree --manifest-path examples/rust_embedding_application/Cargo.toml --locked --package geam --edges normal --depth 1 --prefix none > "$RUNNER_TEMP/geam-embedding-graph"
+          cat "$RUNNER_TEMP/geam-embedding-graph"
+          test "$(grep -Ec '^geam v' "$RUNNER_TEMP/geam-embedding-graph")" -eq 1
+          for package in geam-core geam-macros geam-stdlib; do
+            grep -Eq "^${package} v" "$RUNNER_TEMP/geam-embedding-graph"
+          done
+          if grep -Eq '^geam-(cli|json|time) v' "$RUNNER_TEMP/geam-embedding-graph"; then
+            echo "unexpected Geam dependency in the Rust embedding profile" >&2
+            exit 1
+          fi
+          cargo tree --manifest-path examples/rust_embedding_application/Cargo.toml --locked --package geam-rust-embedding-application --edges normal --depth 1 --prefix none > "$RUNNER_TEMP/application-embedding-graph"
+          grep -Eq '^geam-example-text-pattern v' "$RUNNER_TEMP/application-embedding-graph"
+
       - name: Verify managed binding drift and recovery
         run: |
           cargo run --package geam --locked -- embedding check --manifest-path examples/rust_embedding_application/Cargo.toml

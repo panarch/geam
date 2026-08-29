@@ -69,7 +69,7 @@ fn discovers_approves_locks_builds_and_runs_registry_providers() {
                 "name = \"geam-runner\"\n",
                 "path = \"build/geam/runner.rs\"\n\n",
                 "[dependencies]\n",
-                "geam = \"={}\"\n",
+                "geam = {{ version = \"={}\", default-features = false, features = [\"builtins\"] }}\n",
                 "toml = \"0.9\"\n",
                 "geam_provider_catalog = {{ package = \"geam-catalog\", version = \"=1.0.0\" }}\n",
                 "geam_provider_counter = {{ package = \"geam-counter\", version = \"=1.0.0\" }}\n\n",

@@ -850,7 +850,7 @@ pub fn main() { 1 }
         fs::write(
             root.join("Cargo.toml"),
             format!(
-                "{MANAGED_HEADER}\n[package]\nname = \"application-geam-runner\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[package.metadata.geam.runner]\nschema = 1\n\n[[bin]]\nname = \"geam-runner\"\npath = \"build/geam/runner.rs\"\n\n[dependencies]\ngeam = \"={}\"\ntoml = \"0.9\"\n{provider}\n[workspace]\nresolver = \"3\"\n",
+                "{MANAGED_HEADER}\n[package]\nname = \"application-geam-runner\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[package.metadata.geam.runner]\nschema = 1\n\n[[bin]]\nname = \"geam-runner\"\npath = \"build/geam/runner.rs\"\n\n[dependencies]\ngeam = {{ version = \"={}\", default-features = false, features = [\"builtins\"] }}\ntoml = \"0.9\"\n{provider}\n[workspace]\nresolver = \"3\"\n",
                 env!("CARGO_PKG_VERSION"),
             ),
         )

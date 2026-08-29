@@ -22,6 +22,22 @@ impl BuiltInProvider {
         }
     }
 
+    pub(super) fn package(self) -> &'static str {
+        match self {
+            Self::Stdlib => "gleam_stdlib",
+            Self::Json => "gleam_json",
+            Self::Time => "gleam_time",
+        }
+    }
+
+    pub(super) fn geam_feature(self) -> &'static str {
+        match self {
+            Self::Stdlib => "gleam-stdlib",
+            Self::Json => "gleam-json",
+            Self::Time => "gleam-time",
+        }
+    }
+
     pub(super) fn component_closure(self) -> BuiltInProviderClosure {
         match self {
             Self::Stdlib => BuiltInProviderClosure {
@@ -57,6 +73,14 @@ mod tests {
     #[test]
     fn owns_exact_package_identity_and_component_dependencies() {
         assert_eq!(BuiltInProvider::ALL.len(), 3);
+        assert_eq!(
+            BuiltInProvider::ALL.map(BuiltInProvider::package),
+            ["gleam_stdlib", "gleam_json", "gleam_time"],
+        );
+        assert_eq!(
+            BuiltInProvider::ALL.map(BuiltInProvider::geam_feature),
+            ["gleam-stdlib", "gleam-json", "gleam-time"],
+        );
         assert_eq!(
             ["gleam_stdlib", "gleam_json", "gleam_time"].map(BuiltInProvider::from_package),
             BuiltInProvider::ALL.map(Some),

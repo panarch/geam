@@ -32,6 +32,23 @@ Cargo build output and downloaded Gleam package source are local artifacts;
 ignore `target/` and `gleam/build/`. Keep both lockfiles and
 `src/geam_bindings.rs` in source control.
 
+Add Geam without its command-line or provider-authoring surface:
+
+```sh
+cargo add geam --no-default-features --features embedding
+```
+
+Enable only the built-ins reached by the selected Gleam source closure:
+
+- `gleam-stdlib` exposes `geam::gleam_stdlib`;
+- `gleam-json` exposes JSON and its stdlib dependency;
+- `gleam-time` exposes Time and its stdlib dependency.
+
+For example, the canonical application enables `embedding,gleam-stdlib`.
+Its text-pattern provider enables `provider` on the same Geam package identity,
+so Cargo unifies the authoring macros without restoring Geam defaults or CLI.
+An application that authors providers directly can add `provider` itself.
+
 Select the nested project and one boundary module in `Cargo.toml`:
 
 ```toml
@@ -44,6 +61,11 @@ The package must have one enabled direct dependency on `geam`. Each external
 provider required by the selected Gleam source closure must also be an enabled
 direct Cargo dependency with valid Geam provider metadata. The dependency's
 actual Cargo alias is retained in generated source.
+
+`sync` and `check` inspect Cargo's locked resolved feature graph. A missing
+`embedding` or required built-in feature fails with the owning Cargo manifest
+and exact feature name before generated Rust compilation. Geam does not edit
+the dependency declaration.
 
 ## Synchronize Bindings
 

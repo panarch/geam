@@ -10,6 +10,19 @@ targets own the public `geam::...` facade, cross-crate compatibility, and
 standalone distribution behavior; they do not replace package-local owner
 tests or built-in compatibility suites.
 
+The Workspace workflow fixes the root feature profiles independently of the
+default distribution:
+
+```sh
+cargo check --package geam --no-default-features --features embedding --all-targets --locked
+cargo check --package geam --no-default-features --features provider --all-targets --locked
+cargo check --package geam --no-default-features --features embedding,gleam-stdlib --all-targets --locked
+```
+
+Default workspace tests and installation still use the complete `full`
+profile. Minimal checks prove only the selected facade and dependency graph;
+they do not replace owner or acceptance tests.
+
 For guidance on constructing owner tests, promoting diagnostic probes, and
 closing coverage gaps, see [test-development.md](test-development.md).
 
@@ -157,6 +170,8 @@ gleam format --check
 cd ../../..
 cargo run --package geam --locked -- embedding check \
   --manifest-path examples/rust_embedding_application/Cargo.toml
+cargo tree --manifest-path examples/rust_embedding_application/Cargo.toml \
+  --locked --package geam --edges normal --depth 1
 cargo fmt --manifest-path examples/rust_embedding_application/Cargo.toml --all --check
 cargo test --manifest-path examples/rust_embedding_application/Cargo.toml --locked
 cargo clippy --manifest-path examples/rust_embedding_application/Cargo.toml \
@@ -168,9 +183,11 @@ The Acceptance workflow's `Rust embedding` job owns this boundary. It first
 checks the committed bytes, deliberately makes the generated source stale,
 requires `embedding check` to fail, and runs production sync to restore the
 exact committed file before formatting, testing, linting, and running the
-application. Provider-example jobs remain separate because they own provider
-authoring and standalone consumption rather than Rust-first application
-composition.
+application. The same job requires one Geam package identity, the exact
+core/macros/stdlib application profile, the text-pattern provider, and no
+CLI/JSON/Time dependency. Provider-example jobs remain separate because they
+own provider authoring and standalone consumption rather than Rust-first
+application composition.
 
 The tracked `cli/tests/fixtures/standalone_cli` fixture verifies the complete CLI
 assembly boundary. Its Gleam project combines a Pure Gleam path package,
