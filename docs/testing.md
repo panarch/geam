@@ -140,6 +140,38 @@ This workspace is independently locked and needs neither a Gleam CLI nor
 downloaded Gleam package source. Its Rust dependencies use Cargo's ordinary
 locked acquisition path. CI runs it as a separate provider SDK boundary.
 
+The independently locked
+[`examples/rust_embedding_application`](../examples/rust_embedding_application)
+owns the canonical managed Rust-first workflow. Its nested resolved Gleam
+project uses imported source, stdlib IO, and the real text-pattern provider.
+The Rust application keeps loading, binding, sealing, capabilities,
+configuration, mutable state, Echo, repeated typed calls, and exact output
+assertions visible. Its generated `src/geam_bindings.rs` is committed.
+
+Run the same focused checks locally after resolving the nested Gleam project:
+
+```sh
+cd examples/rust_embedding_application/gleam
+gleam deps download
+gleam format --check
+cd ../../..
+cargo run --package geam --locked -- embedding check \
+  --manifest-path examples/rust_embedding_application/Cargo.toml
+cargo fmt --manifest-path examples/rust_embedding_application/Cargo.toml --all --check
+cargo test --manifest-path examples/rust_embedding_application/Cargo.toml --locked
+cargo clippy --manifest-path examples/rust_embedding_application/Cargo.toml \
+  --all-targets --locked -- -D warnings
+cargo run --quiet --manifest-path examples/rust_embedding_application/Cargo.toml --locked
+```
+
+The Acceptance workflow's `Rust embedding` job owns this boundary. It first
+checks the committed bytes, deliberately makes the generated source stale,
+requires `embedding check` to fail, and runs production sync to restore the
+exact committed file before formatting, testing, linting, and running the
+application. Provider-example jobs remain separate because they own provider
+authoring and standalone consumption rather than Rust-first application
+composition.
+
 The tracked `cli/tests/fixtures/standalone_cli` fixture verifies the complete CLI
 assembly boundary. Its Gleam project combines a Pure Gleam path package,
 version-locked stdlib, JSON, and Time dependencies, and two provider-backed path

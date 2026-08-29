@@ -2,6 +2,25 @@
 
 ## Rust Embedding
 
+[`rust_embedding_application`](rust_embedding_application) is the canonical
+managed workflow. It keeps a resolved Gleam project inside an independently
+locked Rust application, commits the generated bindings, and composes stdlib IO
+with a real external provider while leaving capabilities, configuration, state,
+Echo, loading, sealing, and typed calls visible in Rust.
+
+```sh
+cd examples/rust_embedding_application/gleam
+gleam deps download
+cd ../../..
+cargo run --package geam --locked -- embedding check \
+  --manifest-path examples/rust_embedding_application/Cargo.toml
+cargo test --manifest-path examples/rust_embedding_application/Cargo.toml --locked
+cargo run --quiet --manifest-path examples/rust_embedding_application/Cargo.toml --locked
+```
+
+See [Rust embedding](../docs/embedding.md) for the project layout and
+sync/check lifecycle.
+
 [`rust_embedding.rs`](rust_embedding.rs) loads a no-`main` Gleam project with
 an imported module, binds several public scalar functions from its selected
 root into a shared execution, and calls their typed handles repeatedly from
@@ -23,11 +42,11 @@ cd ../..
 cargo run --example rust_hosted_embedding --locked
 ```
 
-Both examples show the manual embedding boundary. Rust selects the project,
+These two examples show the manual embedding boundary. Rust selects the project,
 declares exact function signatures, and seals one shared execution. Hosted
 embedding additionally composes providers and keeps mutable provider state and
-capabilities explicit. Generated bindings and project synchronization are
-separate follow-up work.
+capabilities explicit. They remain low-level typed API references alongside the
+ordinary managed application.
 
 ## Provider Authoring
 

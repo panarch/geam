@@ -50,8 +50,9 @@ Geam regenerates the whole managed manifest canonically and leaves unchanged
 bytes alone. It removes selections for Gleam packages no longer present in the
 resolved manifest. It refuses to modify any existing `Cargo.toml` without its
 managed marker. Rust applications and libraries that own their Cargo manifest
-use the manual embedding API; automatic publishable embedding is tracked
-separately by [#115](https://github.com/panarch/geam/issues/115).
+use the separate checked-in binding workflow described in
+[Rust embedding](embedding.md). Embedding sync reads the caller-owned Cargo and
+Gleam package graphs; it does not adopt them as standalone managed files.
 
 ## Provider Selection
 

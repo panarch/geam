@@ -83,25 +83,6 @@ pub(super) fn hosted(bindings: &HostedBindings) -> String {
     let boundary = &bindings.boundary;
     let alias = boundary.geam_alias.as_str();
     let components = &bindings.components;
-    let mut embedding_imports = BTreeSet::from([
-        "BindingError",
-        "Function",
-        "FunctionDeclaration",
-        "HostedModuleBindings",
-        "HostedModuleBuilder",
-    ]);
-    for function in boundary.functions() {
-        embedding_imports.extend(
-            function
-                .arguments
-                .iter()
-                .chain(std::iter::once(&function.return_type))
-                .filter_map(Scalar::import),
-        );
-    }
-    for import in embedding_imports {
-        output.push_str(&format!("use {alias}::embedding::{import};\n"));
-    }
     let mut host_imports = BTreeSet::from([
         "HostComponentProfile",
         "HostModule",
@@ -121,6 +102,26 @@ pub(super) fn hosted(bindings: &HostedBindings) -> String {
     for import in host_imports {
         output.push_str(&format!("use {alias}::{import};\n"));
     }
+    output.push('\n');
+    let mut embedding_imports = BTreeSet::from([
+        "BindingError",
+        "Function",
+        "FunctionDeclaration",
+        "HostedModuleBindings",
+        "HostedModuleBuilder",
+    ]);
+    for function in boundary.functions() {
+        embedding_imports.extend(
+            function
+                .arguments
+                .iter()
+                .chain(std::iter::once(&function.return_type))
+                .filter_map(Scalar::import),
+        );
+    }
+    for import in embedding_imports {
+        output.push_str(&format!("use {alias}::embedding::{import};\n"));
+    }
     if components.has_stdlib() || components.has_time() {
         output.push_str("use std::marker::PhantomData;\n");
     }
@@ -130,6 +131,7 @@ pub(super) fn hosted(bindings: &HostedBindings) -> String {
         boundary.root_module
     ));
     push_profile_declaration(&mut output, components);
+    push_provider_set_alias(&mut output, components);
     push_stores(&mut output, alias, components);
     push_configurations(&mut output, components);
     push_run_state(&mut output, alias, components);
@@ -152,6 +154,14 @@ pub(super) fn hosted(bindings: &HostedBindings) -> String {
     output.push_str("}\n\n");
     push_hosted_bind(&mut output, alias, components, boundary);
     output
+}
+
+fn push_provider_set_alias(output: &mut String, components: &HostedComponents) {
+    output.push_str(&format!(
+        "pub type ProviderSet{} = HostProviderSet<{}>;\n\n",
+        generics(components),
+        profile_type(components),
+    ));
 }
 
 fn push_profile_declaration(output: &mut String, components: &HostedComponents) {
@@ -374,18 +384,11 @@ fn push_time_profile(output: &mut String, alias: &str, components: &HostedCompon
 
 fn push_host_providers(output: &mut String, alias: &str, components: &HostedComponents) {
     let profile = profile_type(components);
-    let signature = format!(
-        "pub fn host_providers{}() -> Result<HostProviderSet<{profile}>, HostRegistrationError>",
+    output.push_str(&format!(
+        "pub fn host_providers{}() -> Result<ProviderSet{}, HostRegistrationError>",
         generics(components),
-    );
-    if signature.len() <= 100 {
-        output.push_str(&signature);
-    } else {
-        output.push_str(&format!(
-            "pub fn host_providers{}(\n) -> Result<HostProviderSet<{profile}>, HostRegistrationError>",
-            generics(components),
-        ));
-    }
+        generics(components),
+    ));
     push_bounds_open(output, alias, components);
     let mutability = if components.has_multiple() {
         "mut "
@@ -670,7 +673,6 @@ mod tests {
     use crate::embedding::identifier::RustIdentifier;
     use crate::embedding::profile::{ExternalComponent, HostedBindings, HostedComponents};
     use std::fs;
-    use std::process::Command;
 
     #[test]
     fn renders_deterministic_plain_bindings_for_all_scalar_paths() {
@@ -757,20 +759,7 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
             },
             remaining: Vec::new(),
         };
-        let directory = tempfile::tempdir().expect("temporary directory should be created");
-        let path = directory.path().join("geam_bindings.rs");
-        fs::write(&path, plain(&bindings)).expect("generated source should be written");
-        let output = Command::new("rustfmt")
-            .arg("--check")
-            .arg(&path)
-            .output()
-            .expect("rustfmt should start");
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        assert!(
-            output.status.success(),
-            "long generated source should already be formatted:\n{stdout}",
-        );
+        assert_rustfmt_stable("long plain", &plain(&bindings));
     }
 
     #[test]
@@ -823,16 +812,10 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         >,
 "#,
         );
-        let directory = tempfile::tempdir().expect("temporary directory should be created");
-        let path = directory.path().join("geam_bindings.rs");
-        fs::write(&path, format!("pub struct Functions {{\n{field}}}\n"))
-            .expect("long scalar field should be written");
-        let status = Command::new("rustfmt")
-            .arg("--check")
-            .arg(&path)
-            .status()
-            .expect("rustfmt should start");
-        assert!(status.success());
+        assert_rustfmt_stable(
+            "long scalar field",
+            &format!("pub struct Functions {{\n{field}}}\n"),
+        );
     }
 
     #[test]
@@ -853,6 +836,11 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
 
         let time = hosted_source(HostedComponents::from_builtin(BuiltInProvider::Time));
         assert!(time.contains("pub struct Profile<Io, Source>"));
+        assert!(
+            time.contains(
+                "pub type ProviderSet<Io, Source> = HostProviderSet<Profile<Io, Source>>;"
+            )
+        );
         assert!(time.contains("gleam_stdlib::Component<Io>"));
         assert!(time.contains("gleam_time::Component<Source>"));
         assert!(time.contains("Source: runtime::gleam_time::TimeSource"));
@@ -921,6 +909,7 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         mixed.extend(external);
         let mixed = hosted_source(mixed);
         assert!(mixed.contains("pub struct Profile<Io>"));
+        assert!(mixed.contains("pub type ProviderSet<Io> = HostProviderSet<Profile<Io>>;"));
         assert!(mixed.contains("gleam_stdlib::Component<Io>"));
         assert!(mixed.contains("patterns::Component"));
         assert!(mixed.contains("pub fn stdlib("));
@@ -972,16 +961,24 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         let directory = tempfile::tempdir().expect("temporary directory should be created");
         let path = directory.path().join("geam_bindings.rs");
         fs::write(&path, source).expect("generated source should be written");
-        let output = Command::new("rustfmt")
-            .arg("--check")
-            .arg(&path)
-            .output()
-            .expect("rustfmt should start");
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            output.status.success(),
-            "{label} generated source should already be formatted:\nstdout:\n{stdout}\nstderr:\n{stderr}\nsource:\n{source}",
-        );
+        for style_edition in ["2015", "2024"] {
+            let output = std::process::Command::new("rustfmt")
+                .args([
+                    "--edition",
+                    "2024",
+                    "--style-edition",
+                    style_edition,
+                    "--check",
+                ])
+                .arg(&path)
+                .output()
+                .expect("rustfmt should start");
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(
+                output.status.success(),
+                "{label} generated source should already be formatted under style edition {style_edition}:\nstdout:\n{stdout}\nstderr:\n{stderr}\nsource:\n{source}",
+            );
+        }
     }
 }

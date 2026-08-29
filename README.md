@@ -155,6 +155,25 @@ source panics and host failures retain the actual failed source or provider
 identity. See [runtime semantics](docs/runtime-semantics.md) for the ownership,
 re-entry, and sealing rules.
 
+## Rust Embedding
+
+An ordinary Cargo package can keep a resolved Gleam project under `gleam/` and
+generate typed bindings for one public boundary module:
+
+```sh
+geam embedding sync
+geam embedding check
+```
+
+The generated `src/geam_bindings.rs` is checked in. It owns only deterministic
+function declarations and static host composition; the Rust application still
+loads and seals the project and supplies capabilities, provider configuration,
+mutable state, Echo, and call order explicitly. The
+[canonical managed application](examples/rust_embedding_application) combines
+imported source, stdlib IO, and an external provider. See
+[Rust embedding](docs/embedding.md) for project layout, synchronization, and
+the supported scalar boundary.
+
 ## Standalone Projects
 
 The `geam` binary prepares and runs an ordinary resolved Gleam project:

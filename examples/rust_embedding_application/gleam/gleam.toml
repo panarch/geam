@@ -1,0 +1,8 @@
+name = "rust_embedding_application"
+version = "0.1.0"
+description = "Provider-backed Gleam code embedded in a Rust application"
+licences = ["Apache-2.0"]
+
+[dependencies]
+example_text_pattern = { path = "../../text_pattern/project/packages/example_text_pattern" }
+gleam_stdlib = ">= 1.0.3 and < 1.0.4"
