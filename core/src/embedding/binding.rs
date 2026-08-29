@@ -4,14 +4,15 @@ pub use error::BindingError;
 
 use super::{Arguments, Function, Module, ScalarReturn};
 use crate::plan::{FunctionTemplateId, FunctionType, LibraryEntry, LibraryModulePlan};
-use crate::{ExecutionPlan, PlanError};
+use crate::{ExecutionPlan, PlanError, TypedProgram};
 use ecow::EcoString;
 use gleam_compiler_core::ast::{Publicity, TypedModule};
 use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-/// Plans a typed Gleam module before selecting its first embedded function.
+/// Plans a typed Gleam module or resolved project before selecting its first
+/// embedded function.
 ///
 /// An empty builder cannot be sealed. Its first successful [`Self::function`]
 /// call returns a non-empty [`ModuleBindings`] owner:
@@ -84,6 +85,17 @@ impl ModuleBuilder {
     pub fn new(module: TypedModule) -> Result<Self, PlanError> {
         Ok(Self {
             source: BindingSource::new(module)?,
+            owner: Arc::new(()),
+        })
+    }
+
+    /// Plans every body in a resolved typed program without requiring `main`.
+    ///
+    /// Function selection remains limited to public functions in the selected
+    /// root module. Imported modules provide its implementation closure.
+    pub fn from_program(program: TypedProgram) -> Result<Self, PlanError> {
+        Ok(Self {
+            source: BindingSource::from_program(program)?,
             owner: Arc::new(()),
         })
     }
@@ -169,14 +181,17 @@ where
 
 impl BindingSource {
     fn new(module: TypedModule) -> Result<Self, PlanError> {
-        let public_functions = module
-            .definitions
-            .functions
-            .iter()
-            .filter(|function| function.publicity == Publicity::Public)
-            .filter_map(|function| function.name.as_ref().map(|(_, name)| name.clone()))
-            .collect();
+        let public_functions = public_function_names(&module);
         let plan = crate::planner::plan_library_module(module)?;
+        Ok(Self {
+            plan,
+            public_functions,
+        })
+    }
+
+    fn from_program(program: TypedProgram) -> Result<Self, PlanError> {
+        let public_functions = public_function_names(program.root_typed_module());
+        let plan = crate::planner::plan_library_program(program)?;
         Ok(Self {
             plan,
             public_functions,
@@ -219,6 +234,16 @@ impl BindingSource {
     }
 }
 
+fn public_function_names(module: &TypedModule) -> HashSet<EcoString> {
+    module
+        .definitions
+        .functions
+        .iter()
+        .filter(|function| function.publicity == Publicity::Public)
+        .filter_map(|function| function.name.as_ref().map(|(_, name)| name.clone()))
+        .collect()
+}
+
 impl LibraryEntryCounts {
     fn reserve(&mut self, entry: LibraryEntry) -> (usize, LibraryEntry) {
         let count = match entry {
@@ -240,12 +265,64 @@ impl LibraryEntryCounts {
 mod tests {
     use super::{BindingError, FunctionDeclaration, ModuleBuilder};
     use crate::planner::UnsupportedFunctionReason;
-    use crate::{FunctionType, PlanError, ValueType, compile_typed_module};
+    use crate::{
+        FunctionType, ModuleSource, PlanError, ValueType, compile_typed_module,
+        compile_typed_program,
+    };
     use ecow::EcoString;
     use num_bigint::BigInt;
 
     fn compile(source: &str) -> gleam_compiler_core::ast::TypedModule {
         compile_typed_module("library", "library.gleam", source).expect("source should compile")
+    }
+
+    #[test]
+    fn selects_only_public_functions_from_the_program_root() {
+        let program = compile_typed_program(
+            "library",
+            [
+                ModuleSource::new(
+                    "support",
+                    "support.gleam",
+                    r#"
+pub fn selected(value: Int) { value + 1 }
+pub fn support_only(value: String) { value }
+"#,
+                ),
+                ModuleSource::new(
+                    "library",
+                    "library.gleam",
+                    r#"
+import support
+
+pub fn selected(value: String) { value <> support.support_only(":root") }
+"#,
+                ),
+            ],
+        )
+        .expect("program should compile");
+        let builder = ModuleBuilder::from_program(program).expect("library program should plan");
+        let (mut bindings, selected) = builder
+            .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+                "selected",
+            ))
+            .expect("same-named root function should bind");
+
+        assert_eq!(
+            bindings
+                .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+                    "support_only",
+                ))
+                .err(),
+            Some(BindingError::MissingFunction {
+                name: "support_only".into(),
+            }),
+        );
+        let module = bindings.seal();
+        assert_eq!(
+            module.call(&selected, ("value".into(),), &mut Vec::new()),
+            Ok("value:root".into()),
+        );
     }
 
     #[test]
@@ -381,6 +458,43 @@ fn unsupported(value: String) -> String
 
         assert_eq!(
             ModuleBuilder::new(typed).err(),
+            Some(PlanError::UnsupportedFunction {
+                name: "unsupported".into(),
+                reason: UnsupportedFunctionReason::External,
+            }),
+        );
+    }
+
+    #[test]
+    fn rejects_an_unsupported_dependency_body_before_selection() {
+        let program = compile_typed_program(
+            "library",
+            [
+                ModuleSource::new(
+                    "support",
+                    "support.gleam",
+                    r#"
+pub fn keep(value: String) { value }
+
+@external(erlang, "unsupported", "call")
+fn unsupported(value: String) -> String
+"#,
+                ),
+                ModuleSource::new(
+                    "library",
+                    "library.gleam",
+                    r#"
+import support
+
+pub fn identity(value: String) { support.keep(value) }
+"#,
+                ),
+            ],
+        )
+        .expect("program should compile");
+
+        assert_eq!(
+            ModuleBuilder::from_program(program).err(),
             Some(PlanError::UnsupportedFunction {
                 name: "unsupported".into(),
                 reason: UnsupportedFunctionReason::External,

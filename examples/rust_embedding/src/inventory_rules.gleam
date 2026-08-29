@@ -1,9 +1,7 @@
-fn decorate(prefix: String, value: String) {
-  prefix <> value
-}
+import inventory_format
 
 pub fn label(prefix: String, value: String) {
-  decorate(prefix, value)
+  inventory_format.decorate(prefix, value)
 }
 
 pub fn double(value: Int) {

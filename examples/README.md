@@ -2,17 +2,18 @@
 
 ## Rust Embedding
 
-[`rust_embedding.rs`](rust_embedding.rs) compiles one no-`main` Gleam module,
-binds several public scalar functions into a shared execution, and calls their
-typed handles repeatedly from Rust:
+[`rust_embedding.rs`](rust_embedding.rs) loads a no-`main` Gleam project with
+an imported module, binds several public scalar functions from its selected
+root into a shared execution, and calls their typed handles repeatedly from
+Rust:
 
 ```sh
 cargo run --example rust_embedding --locked
 ```
 
-This is the manual embedding boundary. It selects source and declares exact
-Rust signatures directly; project loading and generated bindings are separate
-follow-up work.
+This is the manual embedding boundary. It selects the project and declares
+exact Rust signatures directly; generated bindings are separate follow-up
+work.
 
 ## Provider Authoring
 

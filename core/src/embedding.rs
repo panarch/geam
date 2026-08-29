@@ -1,9 +1,9 @@
-//! Statically typed Rust calls into a plain Gleam module.
+//! Statically typed Rust calls into a plain Gleam module or resolved project.
 //!
 //! Loading and binding happen once. A [`ModuleBuilder`] selects the first
 //! function into non-empty [`ModuleBindings`], which validates any remaining
-//! names and signatures before sealing one immutable execution shared by every
-//! returned [`Function`] handle.
+//! names and signatures from the selected root before sealing one immutable
+//! execution shared by every returned [`Function`] handle.
 //! [`Module::call`] then accepts only the Rust argument and return shapes that
 //! were bound up front.
 
@@ -243,14 +243,25 @@ mod tests {
         ScalarReturn,
     };
     use crate::{
-        BitArrayValue, ExecutionError, PanicKind, PanicSite, SourceSpan, Value,
-        compile_typed_module,
+        BitArrayValue, ExecutionError, ModuleSource, PanicKind, PanicSite, SourceContext,
+        SourceSpan, TypedProgram, Value, compile_typed_module, compile_typed_program,
     };
     use ecow::EcoString;
     use num_bigint::BigInt;
 
     fn compile(source: &str) -> gleam_compiler_core::ast::TypedModule {
         compile_typed_module("library", "library.gleam", source).expect("source should compile")
+    }
+
+    fn compile_program(root_source: &str, support_source: &str) -> TypedProgram {
+        compile_typed_program(
+            "library",
+            [
+                ModuleSource::new("support", "support.gleam", support_source),
+                ModuleSource::new("library", "library.gleam", root_source),
+            ],
+        )
+        .expect("library program should compile")
     }
 
     fn bind<ArgumentsType, Return>(
@@ -305,6 +316,42 @@ pub fn choose(enabled: Bool, left: Float, right: Float) {
             Ok(BigInt::from(42)),
         );
         assert_eq!(module.call(&choose, (true, 12.5, 9.0), &mut echo), Ok(12.5),);
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn seals_cross_module_entries_once_and_calls_them_repeatedly() {
+        let program = compile_program(
+            r#"
+import support
+
+pub fn label(value: String) { support.decorate("SKU:", value) }
+pub fn double(value: Int) { support.double(value) }
+"#,
+            r#"
+pub fn decorate(prefix: String, value: String) { prefix <> value }
+pub fn double(value: Int) { value * 2 }
+"#,
+        );
+        let builder =
+            ModuleBuilder::from_program(program).expect("library program should plan without main");
+        let (mut bindings, label) = builder
+            .function(FunctionDeclaration::<(EcoString,), EcoString>::new("label"))
+            .expect("first root function should bind");
+        let double = bind::<(BigInt,), BigInt>(&mut bindings, "double");
+        let module = bindings.seal();
+        let mut echo = Vec::new();
+
+        for (value, expected) in [("AB-12", "SKU:AB-12"), ("C-4", "SKU:C-4")] {
+            assert_eq!(
+                module.call(&label, (value.into(),), &mut echo),
+                Ok(expected.into()),
+            );
+        }
+        assert_eq!(
+            module.call(&double, (BigInt::from(21),), &mut echo),
+            Ok(BigInt::from(42)),
+        );
         assert!(echo.is_empty());
     }
 
@@ -619,6 +666,48 @@ pub fn explode(_value: String) -> String { panic as "stopped" }
                 Some("stopped".into()),
                 PanicSite::new("library".into(), "explode".into(), SourceSpan::new(44, 62),),
             )),
+        );
+    }
+
+    #[test]
+    fn preserves_imported_source_context_for_execution_failure() {
+        let support_source = r#"
+pub fn explode(_value: String) -> String {
+  panic as "dependency stopped"
+}
+"#;
+        let program = compile_program(
+            r#"
+import support
+
+pub fn explode(value: String) { support.explode(value) }
+"#,
+            support_source,
+        );
+        let builder = ModuleBuilder::from_program(program).expect("library program should plan");
+        let (bindings, explode) = builder
+            .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+                "explode",
+            ))
+            .expect("root function should bind");
+        let module = bindings.seal();
+        let panic_expression = "panic as \"dependency stopped\"";
+        let start = support_source
+            .find(panic_expression)
+            .expect("fixture should contain the panic expression");
+
+        assert_eq!(
+            module.call(&explode, ("value".into(),), &mut Vec::new()),
+            Err(CallError::Execution(ExecutionError::source_panic(
+                Some(&SourceContext::new("support.gleam", support_source)),
+                PanicKind::Panic,
+                Some("dependency stopped".into()),
+                PanicSite::new(
+                    "support".into(),
+                    "explode".into(),
+                    SourceSpan::new(start, start + panic_expression.len()),
+                ),
+            ))),
         );
     }
 }

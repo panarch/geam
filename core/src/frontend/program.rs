@@ -70,6 +70,10 @@ impl TypedProgram {
         self.modules.iter().map(|module| &module.module)
     }
 
+    pub(crate) fn root_typed_module(&self) -> &TypedModule {
+        &self.modules[self.root_index].module
+    }
+
     pub(crate) fn into_parts(self) -> (usize, Vec<TypedProgramModule>) {
         (self.root_index, self.modules)
     }
