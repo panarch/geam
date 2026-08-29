@@ -1,5 +1,6 @@
 mod constant;
 mod echo;
+mod embedding;
 mod error;
 mod evaluated;
 mod function;
@@ -10,6 +11,10 @@ mod profile;
 mod state;
 mod value;
 
+pub(crate) use embedding::{
+    run_embedded_bit_array, run_embedded_bool, run_embedded_float, run_embedded_int,
+    run_embedded_nil, run_embedded_string, run_embedded_utf_codepoint,
+};
 pub(crate) use host::{
     StoredRuntimeList, StoredRuntimeListCustomFields, StoredRuntimeListItem,
     StoredRuntimeListTupleItems, StoredRuntimeValue,
@@ -62,119 +67,6 @@ pub fn run_main(plan: &ExecutionPlan, echo: &mut dyn EchoSink) -> Result<Value, 
     };
     let value = run_core_program(plan, &mut state, function, RetainedValues::empty())?;
     finish_program(plan, &mut state, value)
-}
-
-pub(crate) fn run_embedded_int(
-    plan: &ExecutionPlan,
-    function: crate::plan::execution::function::IntFunctionId,
-    inputs: RetainedValues,
-    echo: &mut dyn EchoSink,
-) -> Result<num_bigint::BigInt, ExecutionError> {
-    let mut state = RuntimeState::new(echo);
-    function::run_int(
-        plan,
-        &mut state,
-        function,
-        error::HostCallOrigin::Entry,
-        inputs,
-    )
-}
-
-pub(crate) fn run_embedded_float(
-    plan: &ExecutionPlan,
-    function: crate::plan::execution::function::FloatFunctionId,
-    inputs: RetainedValues,
-    echo: &mut dyn EchoSink,
-) -> Result<f64, ExecutionError> {
-    let mut state = RuntimeState::new(echo);
-    function::run_float(
-        plan,
-        &mut state,
-        function,
-        error::HostCallOrigin::Entry,
-        inputs,
-    )
-}
-
-pub(crate) fn run_embedded_string(
-    plan: &ExecutionPlan,
-    function: crate::plan::execution::function::StringFunctionId,
-    inputs: RetainedValues,
-    echo: &mut dyn EchoSink,
-) -> Result<ecow::EcoString, ExecutionError> {
-    let mut state = RuntimeState::new(echo);
-    function::run_string(
-        plan,
-        &mut state,
-        function,
-        error::HostCallOrigin::Entry,
-        inputs,
-    )
-}
-
-pub(crate) fn run_embedded_bit_array(
-    plan: &ExecutionPlan,
-    function: crate::plan::execution::function::BitArrayFunctionId,
-    inputs: RetainedValues,
-    echo: &mut dyn EchoSink,
-) -> Result<crate::BitArrayValue, ExecutionError> {
-    let mut state = RuntimeState::new(echo);
-    function::run_bit_array(
-        plan,
-        &mut state,
-        function,
-        error::HostCallOrigin::Entry,
-        inputs,
-    )
-    .map(EvaluatedBitArray::into_value)
-}
-
-pub(crate) fn run_embedded_utf_codepoint(
-    plan: &ExecutionPlan,
-    function: crate::plan::execution::function::UtfCodepointFunctionId,
-    inputs: RetainedValues,
-    echo: &mut dyn EchoSink,
-) -> Result<char, ExecutionError> {
-    let mut state = RuntimeState::new(echo);
-    function::run_utf_codepoint(
-        plan,
-        &mut state,
-        function,
-        error::HostCallOrigin::Entry,
-        inputs,
-    )
-}
-
-pub(crate) fn run_embedded_bool(
-    plan: &ExecutionPlan,
-    function: crate::plan::execution::function::BoolFunctionId,
-    inputs: RetainedValues,
-    echo: &mut dyn EchoSink,
-) -> Result<bool, ExecutionError> {
-    let mut state = RuntimeState::new(echo);
-    function::run_bool(
-        plan,
-        &mut state,
-        function,
-        error::HostCallOrigin::Entry,
-        inputs,
-    )
-}
-
-pub(crate) fn run_embedded_nil(
-    plan: &ExecutionPlan,
-    function: crate::plan::execution::function::NilFunctionId,
-    inputs: RetainedValues,
-    echo: &mut dyn EchoSink,
-) -> Result<(), ExecutionError> {
-    let mut state = RuntimeState::new(echo);
-    function::run_nil(
-        plan,
-        &mut state,
-        function,
-        error::HostCallOrigin::Entry,
-        inputs,
-    )
 }
 
 pub(crate) fn run_hosted_main<Profile: crate::HostProfile>(
