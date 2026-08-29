@@ -12,16 +12,17 @@ mod binding;
 mod error;
 mod hosted;
 
+pub use crate::BitArrayValue;
 pub use binding::{BindingError, FunctionDeclaration, ModuleBindings, ModuleBuilder};
+pub use ecow::EcoString;
 pub use error::CallError;
 pub use hosted::{HostedModule, HostedModuleBindings, HostedModuleBuilder};
+pub use num_bigint::BigInt;
 
 use crate::plan::execution::LibraryFunctionEntries;
 use crate::plan::{FunctionTemplateId, LibraryEntry, ValueType};
 use crate::runtime::RetainedValues;
-use crate::{BitArrayValue, EchoSink, ExecutionError, ExecutionPlan, HostProfile, HostedExecution};
-use ecow::EcoString;
-use num_bigint::BigInt;
+use crate::{EchoSink, ExecutionError, ExecutionPlan, HostProfile, HostedExecution};
 use std::marker::PhantomData;
 use std::sync::Arc;
 

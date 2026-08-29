@@ -10,6 +10,9 @@ pub(super) enum CliError {
     #[error("no gleam.toml was found at or above {start}")]
     ProjectRootNotFound { start: Utf8PathBuf },
 
+    #[error("no Cargo.toml was found at or above {start}")]
+    CargoManifestNotFound { start: Utf8PathBuf },
+
     #[error("path is not valid UTF-8: {0:?}")]
     NonUtf8Path(std::path::PathBuf),
 
@@ -161,5 +164,36 @@ pub(super) enum CliError {
     InvalidCargoMetadata {
         manifest: Utf8PathBuf,
         reason: String,
+    },
+
+    #[error("cannot select an embedding package from {manifest}: {reason}")]
+    EmbeddingPackageSelection {
+        manifest: Utf8PathBuf,
+        reason: String,
+    },
+
+    #[error("invalid Rust embedding metadata for package {package} at {manifest}: {reason}")]
+    InvalidEmbeddingMetadata {
+        package: String,
+        manifest: Utf8PathBuf,
+        reason: String,
+    },
+
+    #[error("invalid Geam dependency for embedding package {package} at {manifest}: {reason}")]
+    InvalidEmbeddingDependency {
+        package: String,
+        manifest: Utf8PathBuf,
+        reason: String,
+    },
+
+    #[error("invalid Rust embedding boundary module {module}: {reason}")]
+    InvalidEmbeddingBoundary { module: String, reason: String },
+
+    #[error(
+        "Rust embedding boundary module {module} requires hosted functions ({requirements}); hosted synchronization is not available yet"
+    )]
+    EmbeddingHostsRequired {
+        module: String,
+        requirements: String,
     },
 }

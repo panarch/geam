@@ -1,10 +1,11 @@
 use super::manifest::ProviderSource;
 use super::metadata::ProviderMetadata;
+use crate::cargo::{CargoMetadataLoader, CargoMetadataMode, SystemCargoMetadata};
 use crate::command::AddProvider;
 use crate::error::CliError;
 use crate::process::run_checked;
 use camino::{Utf8Path, Utf8PathBuf};
-use cargo_metadata::{Metadata, MetadataCommand, Package};
+use cargo_metadata::{Metadata, Package};
 use semver::Version;
 use std::fs;
 use std::path::Path;
@@ -347,62 +348,6 @@ impl ProviderRequest {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CargoMetadataMode {
-    Workspace,
-    Resolve,
-    Locked,
-}
-
-trait CargoMetadataLoader {
-    fn load(
-        &self,
-        current_directory: &Utf8Path,
-        manifest: &Utf8Path,
-        mode: CargoMetadataMode,
-    ) -> Result<Metadata, CliError>;
-}
-
-struct SystemCargoMetadata;
-
-impl CargoMetadataLoader for SystemCargoMetadata {
-    fn load(
-        &self,
-        current_directory: &Utf8Path,
-        manifest: &Utf8Path,
-        mode: CargoMetadataMode,
-    ) -> Result<Metadata, CliError> {
-        let mut command = Command::new("cargo");
-        command
-            .arg("metadata")
-            .arg("--format-version")
-            .arg("1")
-            .arg("--manifest-path")
-            .arg(manifest)
-            .current_dir(current_directory);
-        match mode {
-            CargoMetadataMode::Workspace => {
-                command.arg("--no-deps");
-            }
-            CargoMetadataMode::Resolve => {}
-            CargoMetadataMode::Locked => {
-                command.arg("--locked");
-            }
-        }
-        let output = run_checked(&mut command)?;
-        parse_metadata_output(manifest, &output.stdout)
-    }
-}
-
-fn parse_metadata_output(manifest: &Utf8Path, output: &[u8]) -> Result<Metadata, CliError> {
-    MetadataCommand::parse(String::from_utf8_lossy(output)).map_err(|error| {
-        CliError::InvalidCargoMetadata {
-            manifest: manifest.to_path_buf(),
-            reason: error.to_string(),
-        }
-    })
-}
-
 fn resolved_dependency<'metadata>(
     metadata: &'metadata Metadata,
     alias: &str,
@@ -579,13 +524,13 @@ fn quoted(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        CANDIDATE_ALIAS, CandidateWorkspace, CargoMetadataLoader, CargoMetadataMode, GitInspection,
-        ProviderRequest, SystemCargoMetadata, canonical_provider_path,
-        canonical_provider_path_from, clone_git_for_inspection, clone_git_for_inspection_with,
-        complete_package_identity, inspect_workspace, parse_metadata_output,
+        CANDIDATE_ALIAS, CandidateWorkspace, GitInspection, ProviderRequest,
+        canonical_provider_path, canonical_provider_path_from, clone_git_for_inspection,
+        clone_git_for_inspection_with, complete_package_identity, inspect_workspace,
         parse_registry_specification, resolve_selection_with, resolve_with, resolve_with_candidate,
         resolved_dependency,
     };
+    use crate::cargo::{CargoMetadataLoader, CargoMetadataMode, SystemCargoMetadata};
     use crate::command::AddProvider;
     use crate::error::CliError;
     use crate::provider::manifest::{ProviderSelection, ProviderSource};
@@ -1731,32 +1676,6 @@ mod tests {
             CliError::InvalidProviderMetadata { package, reason }
                 if package == "geam-images"
                     && reason == "missing [package.metadata.geam.provider] table"
-        ));
-    }
-
-    #[test]
-    fn preserves_cargo_process_and_metadata_parse_failures() {
-        let project = utf8_tempdir();
-        let missing_manifest = project.join("missing.toml");
-        let error = SystemCargoMetadata
-            .load(&project, &missing_manifest, CargoMetadataMode::Locked)
-            .expect_err("missing Cargo manifest should fail metadata resolution");
-        let command = format!(
-            "cargo metadata --format-version 1 --manifest-path {missing_manifest} --locked"
-        );
-        assert!(matches!(
-            error,
-            CliError::ProcessFailure { command: actual, status: Some(101), stderr }
-                if actual == command && stderr.contains("manifest path")
-        ));
-        let parse_reason = cargo_metadata::MetadataCommand::parse("not JSON")
-            .expect_err("invalid Cargo output fixture should be rejected");
-        let error = parse_metadata_output(&missing_manifest, b"not JSON")
-            .expect_err("invalid Cargo output should be rejected");
-        assert!(matches!(
-            error,
-            CliError::InvalidCargoMetadata { manifest, reason }
-                if manifest == missing_manifest && reason == parse_reason.to_string()
         ));
     }
 

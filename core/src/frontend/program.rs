@@ -71,7 +71,8 @@ impl TypedProgram {
         self.modules.iter().map(|module| &module.module)
     }
 
-    pub(crate) fn root_typed_module(&self) -> &TypedModule {
+    /// Returns the selected root module for typed caller-boundary inspection.
+    pub fn root_typed_module(&self) -> &TypedModule {
         &self.modules[self.root_index].module
     }
 

@@ -61,8 +61,8 @@ pub(super) struct BindingParts<Plan> {
 /// A typed declaration for one Gleam function selected for Rust embedding.
 ///
 /// Arguments are represented by Rust tuples with arity `0..=7`. Supported
-/// scalar values are [`num_bigint::BigInt`], `f64`, [`ecow::EcoString`],
-/// [`crate::BitArrayValue`], `char`, `bool`, and `()`.
+/// scalar values are [`super::BigInt`], `f64`, [`super::EcoString`],
+/// [`super::BitArrayValue`], `char`, `bool`, and `()`.
 ///
 /// Unsupported Rust values and argument arities are rejected by Rust type
 /// checking:
