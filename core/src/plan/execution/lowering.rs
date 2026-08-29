@@ -2,6 +2,7 @@ mod constant;
 mod function;
 mod graph;
 mod host;
+mod library;
 mod local;
 mod plain;
 mod specialization;
@@ -56,7 +57,7 @@ type LoweringCompletion<Execution> = (
 );
 type PlainLoweredExecution = LoweredExecution<Infallible>;
 
-pub(super) use host::lower_hosted;
+pub(super) use host::{lower_hosted, lower_hosted_library};
 pub(super) use plain::{lower, lower_library};
 
 #[derive(Debug, PartialEq, Eq)]

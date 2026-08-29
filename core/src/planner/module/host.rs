@@ -4,43 +4,73 @@ mod declaration;
 mod link;
 
 use crate::frontend::{HostedTypedProgram, HostedTypedProgramModule};
-use crate::host::{HostProfile, RegisteredHostProviderModule};
-use crate::plan::{HostImplementationBinding, HostedModulePlan, ModuleId};
+use crate::host::{
+    HostProfile, RegisteredHostConstructions, RegisteredHostImplementationId,
+    RegisteredHostImplementations, RegisteredHostProviderModule,
+};
+use crate::plan::{HostImplementationBinding, HostedLibraryModulePlan, HostedModulePlan, ModuleId};
 use crate::planner::error::PlanError;
 
 pub fn plan_host_program<Profile: HostProfile>(
     program: HostedTypedProgram<Profile>,
 ) -> Result<HostedModulePlan<Profile>, PlanError> {
     let (root_index, modules, providers, implementations) = program.into_parts();
-    plan_host_program_schema(root_index, modules, providers).map(|planned| {
-        let implementation_bindings = planned
-            .implementations
-            .into_iter()
-            .map(|(template, constructions, implementation)| {
-                HostImplementationBinding::new(
-                    template,
-                    constructions,
-                    implementations.implementation(implementation),
-                )
-            })
-            .collect();
-        HostedModulePlan::new(
-            planned.root,
-            planned.entry,
-            planned.modules,
-            implementation_bindings,
-        )
-    })
+    plan_host_program_schema(root_index, modules, providers, super::ModuleRole::Root).map(
+        |planned| {
+            let implementation_bindings =
+                bind_implementations(planned.implementations, &implementations);
+            HostedModulePlan::new(
+                planned.root,
+                crate::plan::FunctionTemplateId::in_module(planned.root, 0),
+                planned.modules,
+                implementation_bindings,
+            )
+        },
+    )
+}
+
+pub(crate) fn plan_host_library_program<Profile: HostProfile>(
+    program: HostedTypedProgram<Profile>,
+) -> Result<HostedLibraryModulePlan<Profile>, PlanError> {
+    let (root_index, modules, providers, implementations) = program.into_parts();
+    plan_host_program_schema(root_index, modules, providers, super::ModuleRole::Library).map(
+        |planned| {
+            let implementation_bindings =
+                bind_implementations(planned.implementations, &implementations);
+            HostedLibraryModulePlan::new(planned.root, planned.modules, implementation_bindings)
+        },
+    )
+}
+
+fn bind_implementations<Profile: HostProfile>(
+    planned: Vec<(
+        crate::plan::FunctionTemplateId,
+        RegisteredHostConstructions,
+        RegisteredHostImplementationId,
+    )>,
+    implementations: &RegisteredHostImplementations<Profile>,
+) -> Vec<HostImplementationBinding<Profile>> {
+    planned
+        .into_iter()
+        .map(|(template, constructions, implementation)| {
+            HostImplementationBinding::new(
+                template,
+                constructions,
+                implementations.implementation(implementation),
+            )
+        })
+        .collect()
 }
 
 fn plan_host_program_schema(
     root_index: usize,
     modules: Vec<HostedTypedProgramModule>,
     providers: Vec<RegisteredHostProviderModule>,
+    root_role: super::ModuleRole,
 ) -> Result<body::PlannedHostedProgram, PlanError> {
     let root = ModuleId::new(root_index);
     declaration::collect_hosted_module_declarations(modules, providers)
-        .and_then(|declarations| link::link_hosted_modules(root, declarations))
+        .and_then(|declarations| link::link_hosted_modules(root, root_role, declarations))
         .and_then(constant::reserve_hosted_constants)
         .and_then(|(registry, modules)| constant::plan_hosted_constant_bodies(registry, modules))
         .and_then(|(registry, modules)| body::plan_hosted_modules(root, &registry, modules))

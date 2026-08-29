@@ -8,7 +8,10 @@ mod value_type;
 pub use host::{
     HostFunctionTemplate, HostedFunctionTemplate, HostedModulePlan, HostedPlannedModule,
 };
-pub(crate) use host::{HostImplementationBinding, HostedModulePlanParts, HostedPlannedModuleParts};
+pub(crate) use host::{
+    HostImplementationBinding, HostedLibraryModulePlan, HostedLibraryModulePlanParts,
+    HostedModulePlanParts, HostedPlannedModuleParts,
+};
 pub(crate) use module::ExternalValueShape;
 pub(crate) use module::{
     AssertBinding, AssertPattern, AssertSubject, BitArrayBindingPattern, BitArrayBitsSize,

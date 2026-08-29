@@ -1,0 +1,7 @@
+name = "rust_hosted_embedding_example"
+version = "0.1.0"
+description = "Hosted Gleam project embedded in a Rust application"
+licences = ["Apache-2.0"]
+
+[dependencies]
+gleam_stdlib = ">= 1.0.3 and < 1.0.4"

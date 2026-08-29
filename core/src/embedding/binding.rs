@@ -3,7 +3,11 @@ mod error;
 pub use error::BindingError;
 
 use super::{Arguments, Function, Module, ScalarReturn};
-use crate::plan::{FunctionTemplateId, FunctionType, LibraryEntry, LibraryModulePlan};
+use crate::HostProfile;
+use crate::plan::{
+    FunctionTemplateId, FunctionTemplateSignature, FunctionType, HostedLibraryModulePlan,
+    LibraryEntry, LibraryModulePlan,
+};
 use crate::{ExecutionPlan, PlanError, TypedProgram};
 use ecow::EcoString;
 use gleam_compiler_core::ast::{Publicity, TypedModule};
@@ -25,18 +29,33 @@ use std::sync::Arc;
 /// }
 /// ```
 pub struct ModuleBuilder {
-    source: BindingSource,
-    owner: Arc<()>,
+    inner: BindingBuilder<LibraryModulePlan>,
 }
 
 /// Collects one or more typed function bindings before sealing their module.
 pub struct ModuleBindings {
-    source: BindingSource,
+    inner: Bindings<LibraryModulePlan>,
+}
+
+pub(super) struct BindingBuilder<Plan> {
+    source: BindingSource<Plan>,
+    owner: Arc<()>,
+}
+
+pub(super) struct Bindings<Plan> {
+    source: BindingSource<Plan>,
     selected_names: HashSet<EcoString>,
     first: LibraryEntry,
     remaining: Vec<LibraryEntry>,
     counts: LibraryEntryCounts,
     owner: Arc<()>,
+}
+
+pub(super) struct BindingParts<Plan> {
+    pub(super) plan: Plan,
+    pub(super) first: LibraryEntry,
+    pub(super) remaining: Vec<LibraryEntry>,
+    pub(super) owner: Arc<()>,
 }
 
 /// A typed declaration for one Gleam function selected for Rust embedding.
@@ -64,9 +83,13 @@ pub struct FunctionDeclaration<Arguments, Return> {
     marker: PhantomData<fn(Arguments) -> Return>,
 }
 
-struct BindingSource {
-    plan: LibraryModulePlan,
+struct BindingSource<Plan> {
+    plan: Plan,
     public_functions: HashSet<EcoString>,
+}
+
+pub(super) trait BindingPlan {
+    fn function_signature(&self, name: &EcoString) -> Option<&FunctionTemplateSignature>;
 }
 
 #[derive(Default)]
@@ -83,9 +106,10 @@ struct LibraryEntryCounts {
 impl ModuleBuilder {
     /// Plans every body in a typed module without requiring a `main` function.
     pub fn new(module: TypedModule) -> Result<Self, PlanError> {
+        let public_functions = public_function_names(&module);
+        let plan = crate::planner::plan_library_module(module)?;
         Ok(Self {
-            source: BindingSource::new(module)?,
-            owner: Arc::new(()),
+            inner: BindingBuilder::new(plan, public_functions),
         })
     }
 
@@ -94,9 +118,10 @@ impl ModuleBuilder {
     /// Function selection remains limited to public functions in the selected
     /// root module. Imported modules provide its implementation closure.
     pub fn from_program(program: TypedProgram) -> Result<Self, PlanError> {
+        let public_functions = public_function_names(program.root_typed_module());
+        let plan = crate::planner::plan_library_program(program)?;
         Ok(Self {
-            source: BindingSource::from_program(program)?,
-            owner: Arc::new(()),
+            inner: BindingBuilder::new(plan, public_functions),
         })
     }
 
@@ -110,6 +135,105 @@ impl ModuleBuilder {
         ArgumentsType: Arguments,
         Return: ScalarReturn,
     {
+        self.inner
+            .function(declaration)
+            .map(|(inner, function)| (ModuleBindings { inner }, function))
+    }
+}
+
+impl ModuleBindings {
+    /// Validates and selects another named function for the shared execution.
+    #[allow(private_bounds)]
+    pub fn function<ArgumentsType, Return>(
+        &mut self,
+        declaration: FunctionDeclaration<ArgumentsType, Return>,
+    ) -> Result<Function<ArgumentsType, Return>, BindingError>
+    where
+        ArgumentsType: Arguments,
+        Return: ScalarReturn,
+    {
+        self.inner.function(declaration)
+    }
+
+    /// Seals every selected function into one immutable execution.
+    pub fn seal(self) -> Module {
+        let BindingParts {
+            plan,
+            first,
+            remaining,
+            owner,
+        } = self.inner.into_parts();
+        let (execution, entries) = ExecutionPlan::from_library_plan(plan, first, remaining);
+        Module::from_parts(execution, entries, owner)
+    }
+}
+
+#[allow(private_bounds)]
+impl<ArgumentsType, Return> FunctionDeclaration<ArgumentsType, Return>
+where
+    ArgumentsType: Arguments,
+    Return: ScalarReturn,
+{
+    /// Declares the exact Rust signature expected for a named Gleam function.
+    pub fn new(name: impl Into<EcoString>) -> Self {
+        Self {
+            name: name.into(),
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<Plan: BindingPlan> BindingSource<Plan> {
+    fn validate(
+        &self,
+        name: EcoString,
+        expected: FunctionType,
+    ) -> Result<(EcoString, FunctionTemplateId), BindingError> {
+        let Some(signature) = self.plan.function_signature(&name) else {
+            return Err(BindingError::MissingFunction { name });
+        };
+        if !self.public_functions.contains(&name) {
+            return Err(BindingError::NonPublicFunction { name });
+        }
+        if !signature.scheme().parameters().is_empty() {
+            return Err(BindingError::GenericFunction { name });
+        }
+        let found = signature.shape().type_();
+        if found != expected {
+            return Err(BindingError::SignatureMismatch {
+                name,
+                expected,
+                found,
+            });
+        }
+
+        Ok((name, signature.id()))
+    }
+
+    fn into_plan(self) -> Plan {
+        self.plan
+    }
+}
+
+impl<Plan: BindingPlan> BindingBuilder<Plan> {
+    pub(super) fn new(plan: Plan, public_functions: HashSet<EcoString>) -> Self {
+        Self {
+            source: BindingSource {
+                plan,
+                public_functions,
+            },
+            owner: Arc::new(()),
+        }
+    }
+
+    pub(super) fn function<ArgumentsType, Return>(
+        self,
+        declaration: FunctionDeclaration<ArgumentsType, Return>,
+    ) -> Result<(Bindings<Plan>, Function<ArgumentsType, Return>), BindingError>
+    where
+        ArgumentsType: Arguments,
+        Return: ScalarReturn,
+    {
         let expected = FunctionType::new(ArgumentsType::value_types(), Return::value_type());
         let (name, template) = self.source.validate(declaration.name, expected)?;
         let mut counts = LibraryEntryCounts::default();
@@ -119,7 +243,7 @@ impl ModuleBuilder {
         let function = Function::new(name, slot, &self.owner);
 
         Ok((
-            ModuleBindings {
+            Bindings {
                 source: self.source,
                 selected_names,
                 first,
@@ -132,10 +256,8 @@ impl ModuleBuilder {
     }
 }
 
-impl ModuleBindings {
-    /// Validates and selects another named function for the shared execution.
-    #[allow(private_bounds)]
-    pub fn function<ArgumentsType, Return>(
+impl<Plan: BindingPlan> Bindings<Plan> {
+    pub(super) fn function<ArgumentsType, Return>(
         &mut self,
         declaration: FunctionDeclaration<ArgumentsType, Return>,
     ) -> Result<Function<ArgumentsType, Return>, BindingError>
@@ -156,81 +278,31 @@ impl ModuleBindings {
         Ok(Function::new(name, slot, &self.owner))
     }
 
-    /// Seals every selected function into one immutable execution.
-    pub fn seal(self) -> Module {
-        let (execution, entries) =
-            ExecutionPlan::from_library_plan(self.source.into_plan(), self.first, self.remaining);
-        Module::from_parts(execution, entries, self.owner)
-    }
-}
-
-#[allow(private_bounds)]
-impl<ArgumentsType, Return> FunctionDeclaration<ArgumentsType, Return>
-where
-    ArgumentsType: Arguments,
-    Return: ScalarReturn,
-{
-    /// Declares the exact Rust signature expected for a named Gleam function.
-    pub fn new(name: impl Into<EcoString>) -> Self {
-        Self {
-            name: name.into(),
-            marker: PhantomData,
+    pub(super) fn into_parts(self) -> BindingParts<Plan> {
+        BindingParts {
+            plan: self.source.into_plan(),
+            first: self.first,
+            remaining: self.remaining,
+            owner: self.owner,
         }
     }
 }
 
-impl BindingSource {
-    fn new(module: TypedModule) -> Result<Self, PlanError> {
-        let public_functions = public_function_names(&module);
-        let plan = crate::planner::plan_library_module(module)?;
-        Ok(Self {
-            plan,
-            public_functions,
-        })
-    }
-
-    fn from_program(program: TypedProgram) -> Result<Self, PlanError> {
-        let public_functions = public_function_names(program.root_typed_module());
-        let plan = crate::planner::plan_library_program(program)?;
-        Ok(Self {
-            plan,
-            public_functions,
-        })
-    }
-
-    fn validate(
-        &self,
-        name: EcoString,
-        expected: FunctionType,
-    ) -> Result<(EcoString, FunctionTemplateId), BindingError> {
-        let Some(template) = self
-            .plan
-            .functions()
+impl BindingPlan for LibraryModulePlan {
+    fn function_signature(&self, name: &EcoString) -> Option<&FunctionTemplateSignature> {
+        self.functions()
             .iter()
-            .find(|function| function.name() == &name)
-        else {
-            return Err(BindingError::MissingFunction { name });
-        };
-        if !self.public_functions.contains(&name) {
-            return Err(BindingError::NonPublicFunction { name });
-        }
-        if !template.scheme().parameters().is_empty() {
-            return Err(BindingError::GenericFunction { name });
-        }
-        let found = template.signature().shape().type_();
-        if found != expected {
-            return Err(BindingError::SignatureMismatch {
-                name,
-                expected,
-                found,
-            });
-        }
-
-        Ok((name, template.id()))
+            .find(|function| function.name() == name)
+            .map(|function| function.signature())
     }
+}
 
-    fn into_plan(self) -> LibraryModulePlan {
-        self.plan
+impl<Profile: HostProfile> BindingPlan for HostedLibraryModulePlan<Profile> {
+    fn function_signature(&self, name: &EcoString) -> Option<&FunctionTemplateSignature> {
+        self.functions()
+            .iter()
+            .find(|function| function.name() == name)
+            .map(|function| function.signature())
     }
 }
 

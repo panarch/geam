@@ -182,6 +182,23 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
         })
     }
 
+    pub(crate) fn try_from_library_plan(
+        module_plan: crate::plan::HostedLibraryModulePlan<Profile>,
+        first: crate::plan::LibraryEntry,
+        remaining: Vec<crate::plan::LibraryEntry>,
+    ) -> Result<(Self, LibraryFunctionEntries), HostSpecializationError> {
+        let (program, host_functions, entries) =
+            lowering::lower_hosted_library(module_plan, first, remaining)?;
+        Ok((
+            Self {
+                program,
+                host_functions,
+                external_stores: Profile::ExternalStores::default(),
+            },
+            entries,
+        ))
+    }
+
     pub fn run_main(
         &self,
         state: &mut Profile::RunState,

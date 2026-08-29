@@ -1,31 +1,34 @@
-//! Statically typed Rust calls into a plain Gleam module or resolved project.
+//! Statically typed Rust calls into plain or hosted Gleam code.
 //!
-//! Loading and binding happen once. A [`ModuleBuilder`] selects the first
-//! function into non-empty [`ModuleBindings`], which validates any remaining
-//! names and signatures from the selected root before sealing one immutable
-//! execution shared by every returned [`Function`] handle.
-//! [`Module::call`] then accepts only the Rust argument and return shapes that
-//! were bound up front.
+//! Loading and binding happen once. [`ModuleBuilder`] and
+//! [`HostedModuleBuilder`] select the first function into non-empty binding
+//! owners, which validate any remaining names and signatures from the selected
+//! root before sealing one immutable execution shared by every returned
+//! [`Function`] handle. Plain calls supply an echo sink; hosted calls also
+//! borrow the caller's provider state explicitly. Both accept only the Rust
+//! argument and return shapes that were bound up front.
 
 mod binding;
 mod error;
+mod hosted;
 
 pub use binding::{BindingError, FunctionDeclaration, ModuleBindings, ModuleBuilder};
 pub use error::CallError;
+pub use hosted::{HostedModule, HostedModuleBindings, HostedModuleBuilder};
 
 use crate::plan::execution::LibraryFunctionEntries;
 use crate::plan::{FunctionTemplateId, LibraryEntry, ValueType};
 use crate::runtime::RetainedValues;
-use crate::{BitArrayValue, EchoSink, ExecutionError, ExecutionPlan};
+use crate::{BitArrayValue, EchoSink, ExecutionError, ExecutionPlan, HostProfile, HostedExecution};
 use ecow::EcoString;
 use num_bigint::BigInt;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-/// A typed function handle created by a [`ModuleBuilder`].
+/// A typed function handle created by a plain or hosted module builder.
 ///
-/// The handle becomes callable only after its [`ModuleBindings`] owner is
-/// sealed into a [`Module`], and only that module may call it.
+/// The handle becomes callable only after its binding owner is sealed, and
+/// only the resulting [`Module`] or [`HostedModule`] may call it.
 pub struct Function<Arguments, Return> {
     name: EcoString,
     slot: usize,
@@ -59,6 +62,15 @@ trait ScalarReturn: Scalar {
         module: &Module,
         slot: usize,
         inputs: RetainedValues,
+        echo: &mut dyn EchoSink,
+    ) -> Result<Self, ExecutionError>;
+
+    fn call_hosted<Profile: HostProfile>(
+        execution: &HostedExecution<Profile>,
+        entries: &LibraryFunctionEntries,
+        slot: usize,
+        inputs: RetainedValues,
+        state: &mut Profile::RunState,
         echo: &mut dyn EchoSink,
     ) -> Result<Self, ExecutionError>;
 }
@@ -95,7 +107,7 @@ impl Scalar for () {
 }
 
 macro_rules! scalar_return {
-    ($type:ty, $entry:ident, $entries:ident, $run:ident) => {
+    ($type:ty, $entry:ident, $entries:ident, $run:ident, $run_hosted:ident) => {
         impl ScalarReturn for $type {
             fn entry(template: FunctionTemplateId) -> LibraryEntry {
                 LibraryEntry::$entry(template)
@@ -114,22 +126,58 @@ macro_rules! scalar_return {
                     echo,
                 )
             }
+
+            fn call_hosted<Profile: HostProfile>(
+                execution: &HostedExecution<Profile>,
+                entries: &LibraryFunctionEntries,
+                slot: usize,
+                inputs: RetainedValues,
+                state: &mut Profile::RunState,
+                echo: &mut dyn EchoSink,
+            ) -> Result<Self, ExecutionError> {
+                crate::runtime::$run_hosted(execution, entries.$entries[slot], inputs, state, echo)
+            }
         }
     };
 }
 
-scalar_return!(BigInt, Int, ints, run_embedded_int);
-scalar_return!(f64, Float, floats, run_embedded_float);
-scalar_return!(EcoString, String, strings, run_embedded_string);
-scalar_return!(BitArrayValue, BitArray, bit_arrays, run_embedded_bit_array);
+scalar_return!(BigInt, Int, ints, run_embedded_int, run_hosted_embedded_int);
+scalar_return!(
+    f64,
+    Float,
+    floats,
+    run_embedded_float,
+    run_hosted_embedded_float
+);
+scalar_return!(
+    EcoString,
+    String,
+    strings,
+    run_embedded_string,
+    run_hosted_embedded_string
+);
+scalar_return!(
+    BitArrayValue,
+    BitArray,
+    bit_arrays,
+    run_embedded_bit_array,
+    run_hosted_embedded_bit_array
+);
 scalar_return!(
     char,
     UtfCodepoint,
     utf_codepoints,
-    run_embedded_utf_codepoint
+    run_embedded_utf_codepoint,
+    run_hosted_embedded_utf_codepoint
 );
-scalar_return!(bool, Bool, bools, run_embedded_bool);
-scalar_return!((), Nil, nils, run_embedded_nil);
+scalar_return!(
+    bool,
+    Bool,
+    bools,
+    run_embedded_bool,
+    run_hosted_embedded_bool
+);
+scalar_return!((), Nil, nils, run_embedded_nil, run_hosted_embedded_nil);
 
 impl Arguments for () {
     fn value_types() -> Vec<ValueType> {
