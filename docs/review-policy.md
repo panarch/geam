@@ -363,6 +363,11 @@ execution, runtime, and host boundaries, not a second ABI, type system, or
 execution model. Apply these rules when adding or reviewing Rust-facing Gleam
 function bindings and values:
 
+Rust embedding has no internal error domain. Only failures originating outside
+embedding ownership may be returned. After boundary validation, every
+embedding-owned operation must be total by construction; any internal error,
+invariant, fallback, or panic is a blocking representation defect.
+
 - Loading and binding own source selection, exact signature agreement,
   specialization, and sealing selected entries into one execution. Repeated
   calls use owner-bound typed handles and prevalidated entries; they must not
