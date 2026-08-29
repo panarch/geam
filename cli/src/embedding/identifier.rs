@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct RustIdentifier(String);
 
 impl RustIdentifier {
@@ -17,16 +17,24 @@ impl RustIdentifier {
             return Err(format!("`{value}` cannot be used as a Rust raw identifier"));
         }
 
-        let rendered = if is_rust_keyword(value) {
-            format!("r#{value}")
+        Ok(Self(render(value)))
+    }
+
+    pub(super) fn from_compiled_package(value: &str) -> Self {
+        if matches!(value, "crate" | "self" | "super") {
+            Self(format!("_{value}"))
         } else {
-            value.to_owned()
-        };
-        Ok(Self(rendered))
+            Self(render(value))
+        }
     }
 
     pub(super) fn crate_alias(value: &str) -> Result<Self, String> {
         Self::parse(&value.replace('-', "_"))
+    }
+
+    pub(super) fn with_prefix(&self, prefix: &str) -> Self {
+        let value = self.0.strip_prefix("r#").unwrap_or(&self.0);
+        Self(format!("{prefix}{value}"))
     }
 
     pub(super) fn as_str(&self) -> &str {
@@ -89,6 +97,14 @@ fn is_rust_keyword(value: &str) -> bool {
     )
 }
 
+fn render(value: &str) -> String {
+    if is_rust_keyword(value) {
+        format!("r#{value}")
+    } else {
+        value.to_owned()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::RustIdentifier;
@@ -112,6 +128,21 @@ mod tests {
                 .expect("Cargo alias should normalize")
                 .as_str(),
             "my_geam",
+        );
+        assert_eq!(
+            RustIdentifier::parse("type")
+                .expect("raw identifier should be accepted")
+                .with_prefix("provider_")
+                .as_str(),
+            "provider_type",
+        );
+        assert_eq!(
+            ["crate", "self", "super"].map(RustIdentifier::from_compiled_package),
+            ["_crate", "_self", "_super"].map(|value| RustIdentifier(value.to_owned())),
+        );
+        assert_eq!(
+            RustIdentifier::from_compiled_package("package_self").as_str(),
+            "package_self",
         );
     }
 

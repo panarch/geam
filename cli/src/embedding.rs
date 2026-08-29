@@ -2,40 +2,52 @@ mod boundary;
 mod identifier;
 mod output;
 mod package;
+mod profile;
 mod render;
 
 use crate::command::EmbeddingTarget;
 use crate::error::CliError;
+use crate::project::{ResolvedProject, read_existing_resolved_project};
 use boundary::PlainBindings;
 use camino::Utf8Path;
 use package::EmbeddingPackage;
+use profile::HostedBindings;
+use std::collections::BTreeSet;
 
 pub(super) fn sync(current_directory: &Utf8Path, target: EmbeddingTarget) -> Result<(), CliError> {
+    sync_with_project_reader(current_directory, target, read_existing_resolved_project)
+}
+
+fn sync_with_project_reader(
+    current_directory: &Utf8Path,
+    target: EmbeddingTarget,
+    read_project: fn(&Utf8Path) -> Result<ResolvedProject, CliError>,
+) -> Result<(), CliError> {
     let package = EmbeddingPackage::load(current_directory, target.manifest_path)?;
     let program = geam_core::compile_typed_project(
         package.project_root().to_path_buf(),
         package.root_module(),
     )?;
     let requirements = geam_core::required_host_functions(&program);
-    if !requirements.is_empty() {
-        return Err(CliError::EmbeddingHostsRequired {
-            module: package.root_module().to_owned(),
-            requirements: requirements
-                .iter()
-                .map(|required| {
-                    format!(
-                        "{}/{}/{}",
-                        required.package(),
-                        required.module(),
-                        required.function()
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join(", "),
-        });
-    }
     let bindings = PlainBindings::from_program(package.geam_alias().clone(), &program)?;
-    let source = render::plain(&bindings);
+    let source = match requirements.as_slice() {
+        [] => render::plain(&bindings),
+        [first, remaining @ ..] => {
+            let remaining_packages = remaining
+                .iter()
+                .map(|requirement| requirement.package().to_string())
+                .collect::<BTreeSet<_>>();
+            let resolved_project = read_project(package.project_root())?;
+            let hosted = HostedBindings::resolve(
+                &package,
+                bindings,
+                first.package(),
+                &remaining_packages,
+                &resolved_project,
+            )?;
+            render::hosted(&hosted)
+        }
+    };
     output::sync(
         package.output_directory(),
         package.output_path(),
@@ -46,7 +58,7 @@ pub(super) fn sync(current_directory: &Utf8Path, target: EmbeddingTarget) -> Res
 
 #[cfg(test)]
 mod tests {
-    use super::sync;
+    use super::{sync, sync_with_project_reader};
     use crate::command::EmbeddingTarget;
     use crate::error::CliError;
     use camino::Utf8PathBuf;
@@ -174,18 +186,42 @@ pub fn normalize(value: String) -> String
 "#,
         )
         .expect("host-required source fixture should be written");
+        let error = sync_with_project_reader(
+            &fixture.root,
+            EmbeddingTarget {
+                manifest_path: None,
+            },
+            |project_root| {
+                Err(CliError::FileRead {
+                    path: project_root.join("manifest.toml"),
+                    error: std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        "fixture resolution is unavailable",
+                    ),
+                })
+            },
+        )
+        .expect_err("hosted synchronization should require an existing resolution");
+        assert!(matches!(
+            &error,
+            CliError::FileRead { path, error }
+                if path == &fixture.root.join("gleam/manifest.toml")
+                    && error.kind() == std::io::ErrorKind::NotFound
+        ));
+
         let error = sync(
             &fixture.root,
             EmbeddingTarget {
                 manifest_path: None,
             },
         )
-        .expect_err("host-required project should fail plain synchronization");
+        .expect_err("host-required project should require a direct provider");
         assert!(matches!(
             error,
-            CliError::EmbeddingHostsRequired { module, requirements }
-                if module == "inventory_rules"
-                    && requirements == "embedding_application/inventory_rules/normalize"
+            CliError::InvalidEmbeddingProvider { package, manifest, reason }
+                if package == "embedding_application"
+                    && manifest == fixture.root.join("Cargo.toml")
+                    && reason.contains("no enabled direct provider dependency")
         ));
         assert_eq!(
             fs::read(&generated_path).expect("host failure should preserve previous output"),
@@ -228,6 +264,137 @@ pub fn normalize(value: String) -> String
         }
     }
 
+    #[test]
+    fn synchronizes_formats_lints_and_runs_source_backed_hosted_bindings() {
+        let fixture = ApplicationFixture::new();
+        fixture.write_hosted_project();
+        fixture.generate_lockfile();
+
+        sync(
+            &fixture.root.join("src"),
+            EmbeddingTarget {
+                manifest_path: None,
+            },
+        )
+        .expect("hosted bindings should synchronize");
+        let generated_path = fixture.root.join("src/geam_bindings.rs");
+        let generated = fs::read(&generated_path).expect("generated source should be readable");
+        let source = String::from_utf8_lossy(&generated);
+        assert!(source.contains("pub struct Profile<Io>"));
+        assert!(source.contains("runtime::gleam_stdlib::Component<Io>"));
+        assert!(source.contains("patterns::Component"));
+        assert!(source.contains("pub example_text_pattern: HostProviderConfiguration"));
+        assert!(source.contains("pub fn stdlib_mut"));
+        assert!(!source.contains("runtime::gleam_json::Component"));
+        assert!(!source.contains("runtime::gleam_time::Component"));
+        assert!(!source.contains("unused_provider::Component"));
+
+        assert_success(
+            Command::new("rustfmt").arg("--check").arg(&generated_path),
+            "hosted generated Rust formatting",
+        );
+        assert_success(
+            fixture
+                .cargo("clippy")
+                .arg("--locked")
+                .arg("--offline")
+                .arg("--all-targets")
+                .arg("--")
+                .arg("-D")
+                .arg("warnings"),
+            "hosted generated Rust Clippy",
+        );
+        let output = success_output(
+            fixture
+                .cargo("run")
+                .arg("--locked")
+                .arg("--offline")
+                .arg("--quiet"),
+            "hosted generated Rust application",
+        );
+        assert_eq!(output.stdout, b"GEAM, GLEAM\n");
+        assert_eq!(output.stderr, b"");
+
+        let manifest_path = fixture.root.join("Cargo.toml");
+        let manifest = fs::read_to_string(&manifest_path)
+            .expect("hosted application manifest should be readable");
+        let without_provider = manifest
+            .lines()
+            .filter(|line| !line.starts_with("patterns = "))
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(&manifest_path, format!("{without_provider}\n"))
+            .expect("provider dependency should be removed");
+        let error = sync(
+            &fixture.root,
+            EmbeddingTarget {
+                manifest_path: None,
+            },
+        )
+        .expect_err("missing direct provider should fail hosted synchronization");
+        assert!(matches!(
+            error,
+            CliError::InvalidEmbeddingProvider { package, manifest: path, reason }
+                if package == "example_text_pattern"
+                    && path == manifest_path
+                    && reason.contains("no enabled direct provider dependency")
+        ));
+        assert_eq!(
+            fs::read(&generated_path)
+                .expect("provider graph failure should preserve previous output"),
+            generated,
+        );
+    }
+
+    #[test]
+    fn synchronizes_and_runs_json_time_with_caller_owned_capabilities() {
+        let fixture = ApplicationFixture::new();
+        fixture.write_built_in_project();
+        fixture.generate_lockfile();
+
+        sync(
+            &fixture.root,
+            EmbeddingTarget {
+                manifest_path: None,
+            },
+        )
+        .expect("built-in hosted bindings should synchronize");
+        let generated_path = fixture.root.join("src/geam_bindings.rs");
+        let generated = fs::read_to_string(&generated_path)
+            .expect("built-in generated source should be readable");
+        assert!(generated.contains("pub struct Profile<Io, Source>"));
+        assert!(generated.contains("runtime::gleam_stdlib::Component<Io>"));
+        assert!(generated.contains("runtime::gleam_json::Component"));
+        assert!(generated.contains("runtime::gleam_time::Component<Source>"));
+        assert!(generated.contains("            json: (),"));
+        assert!(generated.contains("            time,"));
+        assert!(!generated.contains("HostProviderComponentInitialization"));
+
+        assert_success(
+            Command::new("rustfmt").arg("--check").arg(&generated_path),
+            "built-in generated Rust formatting",
+        );
+        assert_success(
+            fixture
+                .cargo("clippy")
+                .arg("--locked")
+                .arg("--offline")
+                .arg("--all-targets")
+                .arg("--")
+                .arg("-D")
+                .arg("warnings"),
+            "built-in generated Rust Clippy",
+        );
+        assert_success(
+            fixture
+                .cargo("run")
+                .arg("--locked")
+                .arg("--offline")
+                .arg("--quiet"),
+            "built-in generated Rust application",
+        );
+    }
+
     struct ApplicationFixture {
         _directory: TempDir,
         root: Utf8PathBuf,
@@ -264,7 +431,7 @@ pub fn normalize(value: String) -> String
                 self.root.join("Cargo.toml"),
                 format!(
                     r#"[package]
-name = "embedding-application"
+name = "plain-embedding-application"
 version = "0.0.0"
 edition = "2024"
 
@@ -398,6 +565,274 @@ pub fn double(value: Int) -> Int {
             .expect("imported Gleam source should be written");
         }
 
+        fn write_hosted_project(&self) {
+            fs::create_dir_all(self.root.join("src"))
+                .expect("Rust source directory should be created");
+            fs::create_dir_all(self.root.join("gleam/src"))
+                .expect("Gleam source directory should be created");
+            let provider = self.repository.join("examples/text_pattern/provider");
+            let text_pattern = self
+                .repository
+                .join("examples/text_pattern/project/packages/example_text_pattern");
+            let stdlib = self
+                .repository
+                .join("builtins/stdlib/tests/fixtures/project/build/packages/gleam_stdlib");
+            fs::write(
+                self.root.join("Cargo.toml"),
+                format!(
+                    r#"[package]
+name = "hosted-embedding-application"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+runtime = {{ package = "geam", path = {:?} }}
+patterns = {{ package = "geam-example-text-pattern", path = {provider:?} }}
+
+[package.metadata.geam.embedding]
+project = "gleam"
+module = "rust_embedding"
+
+[patch.crates-io]
+geam = {{ path = {:?} }}
+
+[workspace]
+resolver = "3"
+"#,
+                    self.repository, self.repository,
+                ),
+            )
+            .expect("hosted Rust manifest should be written");
+            fs::write(
+                self.root.join("src/main.rs"),
+                r#"mod geam_bindings;
+
+use runtime::embedding::HostedModuleBuilder;
+use runtime::gleam_stdlib::{GleamStdlibRunState, IoStream};
+use runtime::{HostProviderConfiguration, compile_typed_host_project};
+use std::error::Error;
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let program = compile_typed_host_project(
+        concat!(env!("CARGO_MANIFEST_DIR"), "/gleam"),
+        geam_bindings::ROOT_MODULE,
+        geam_bindings::host_providers()?,
+    )?;
+    let builder = HostedModuleBuilder::new(program)?;
+    let (bindings, functions) = geam_bindings::bind(builder)?;
+    let module = bindings.seal()?;
+    let mut state = geam_bindings::RunState::initialize(
+        GleamStdlibRunState::from_seed([7; 32]),
+        geam_bindings::ProviderConfigurations {
+            example_text_pattern: HostProviderConfiguration::empty(),
+        },
+    )?;
+    let mut echo = Vec::new();
+
+    let value = module.call(&functions.format_words, (), &mut state, &mut echo)?;
+    let words = module.call(
+        &functions.contains_only_words,
+        ("Geam and Gleam".into(),),
+        &mut state,
+        &mut echo,
+    )?;
+    let numbers = module.call(
+        &functions.contains_only_words,
+        ("Geam 2026".into(),),
+        &mut state,
+        &mut echo,
+    )?;
+
+    assert_eq!(value, "GEAM, GLEAM");
+    assert!(words);
+    assert!(!numbers);
+    assert!(echo.is_empty());
+    assert_eq!(state.stdlib().io_outputs().len(), 1);
+    let outputs = state.stdlib_mut().take_io_outputs();
+    assert_eq!(outputs[0].stream(), IoStream::Stdout);
+    assert_eq!(outputs[0].text(), "formatting words\n");
+    println!("{value}");
+    Ok(())
+}
+"#,
+            )
+            .expect("hosted Rust application should be written");
+            fs::write(
+                self.root.join("gleam/gleam.toml"),
+                format!(
+                    r#"name = "embedding_application"
+version = "1.0.0"
+
+[dependencies]
+example_text_pattern = {{ path = {text_pattern:?} }}
+gleam_stdlib = {{ path = {stdlib:?} }}
+"#,
+                ),
+            )
+            .expect("hosted Gleam config should be written");
+            fs::write(
+                self.root.join("gleam/manifest.toml"),
+                format!(
+                    r#"packages = [
+  {{ name = "example_text_pattern", version = "0.1.0", build_tools = ["gleam"], requirements = [], source = "local", path = {text_pattern:?} }},
+  {{ name = "gleam_stdlib", version = "1.0.3", build_tools = ["gleam"], requirements = [], source = "local", path = {stdlib:?} }},
+]
+
+[requirements]
+example_text_pattern = {{ path = {text_pattern:?} }}
+gleam_stdlib = {{ path = {stdlib:?} }}
+"#,
+                ),
+            )
+            .expect("hosted Gleam manifest should be written");
+            fs::write(
+                self.root.join("gleam/src/rust_embedding.gleam"),
+                r#"import example_text_pattern as pattern
+import gleam/io
+import gleam/string
+
+pub fn format_words() -> String {
+  io.println("formatting words")
+  let assert Ok(words) = pattern.compile("[A-Za-z]+")
+  pattern.find_all(words, "Geam + Gleam 2026")
+  |> string.join(", ")
+  |> string.uppercase
+}
+
+pub fn contains_only_words(text: String) -> Bool {
+  let assert Ok(words) = pattern.compile("^[A-Za-z ]+$")
+  pattern.is_match(words, text)
+}
+"#,
+            )
+            .expect("hosted Gleam boundary should be written");
+        }
+
+        fn write_built_in_project(&self) {
+            fs::create_dir_all(self.root.join("src"))
+                .expect("Rust source directory should be created");
+            fs::create_dir_all(self.root.join("gleam/src"))
+                .expect("Gleam source directory should be created");
+            for (package, module) in [("gleam_json", "json_native"), ("gleam_time", "time_native")]
+            {
+                let package_root = self.root.join("gleam/packages").join(package);
+                fs::create_dir_all(package_root.join("src"))
+                    .expect("built-in source package should be created");
+                fs::write(
+                    package_root.join("gleam.toml"),
+                    format!("name = {package:?}\nversion = \"1.0.0\"\n"),
+                )
+                .expect("built-in package config should be written");
+                fs::write(
+                    package_root.join("src").join(format!("{module}.gleam")),
+                    "@external(erlang, \"native\", \"touch\")\npub fn touch() -> Nil\n",
+                )
+                .expect("built-in package source should be written");
+            }
+            fs::write(
+                self.root.join("Cargo.toml"),
+                format!(
+                    r#"[package]
+name = "built-in-embedding-application"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+runtime = {{ package = "geam", path = {:?} }}
+
+[package.metadata.geam.embedding]
+project = "gleam"
+module = "rust_embedding"
+
+[workspace]
+resolver = "3"
+"#,
+                    self.repository,
+                ),
+            )
+            .expect("built-in Rust manifest should be written");
+            fs::write(
+                self.root.join("src/main.rs"),
+                r#"mod geam_bindings;
+
+use runtime::gleam_stdlib::{GleamStdlibRunState, IoOutput};
+use runtime::gleam_time::TimeSource;
+use runtime::HostFailure;
+use std::error::Error;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+struct FixedTime;
+
+impl TimeSource for FixedTime {
+    fn system_time(&mut self) -> Result<SystemTime, HostFailure> {
+        Ok(UNIX_EPOCH)
+    }
+
+    fn local_offset_seconds(&mut self) -> Result<i32, HostFailure> {
+        Ok(0)
+    }
+}
+
+fn consume_functions(functions: geam_bindings::Functions) {
+    let _ = functions.ready;
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    assert_eq!(geam_bindings::ROOT_MODULE, "rust_embedding");
+    let _consume = consume_functions;
+    let _bind = geam_bindings::bind::<Vec<IoOutput>, FixedTime>;
+    let _providers = geam_bindings::host_providers::<Vec<IoOutput>, FixedTime>()?;
+    let mut state = geam_bindings::RunState::initialize(
+        GleamStdlibRunState::from_seed([7; 32]),
+        FixedTime,
+        geam_bindings::ProviderConfigurations,
+    );
+    assert!(state.stdlib().io_outputs().is_empty());
+    assert!(state.stdlib_mut().take_io_outputs().is_empty());
+    Ok(())
+}
+"#,
+            )
+            .expect("built-in Rust application should be written");
+            fs::write(
+                self.root.join("gleam/gleam.toml"),
+                r#"name = "embedding_application"
+version = "1.0.0"
+
+[dependencies]
+gleam_json = { path = "packages/gleam_json" }
+gleam_time = { path = "packages/gleam_time" }
+"#,
+            )
+            .expect("built-in Gleam config should be written");
+            fs::write(
+                self.root.join("gleam/manifest.toml"),
+                r#"packages = [
+  { name = "gleam_json", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/gleam_json" },
+  { name = "gleam_time", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/gleam_time" },
+]
+
+[requirements]
+gleam_json = { path = "packages/gleam_json" }
+gleam_time = { path = "packages/gleam_time" }
+"#,
+            )
+            .expect("built-in Gleam manifest should be written");
+            fs::write(
+                self.root.join("gleam/src/rust_embedding.gleam"),
+                r#"import json_native
+import time_native
+
+pub fn ready() -> Bool {
+  json_native.touch()
+  time_native.touch()
+  True
+}
+"#,
+            )
+            .expect("built-in Gleam boundary should be written");
+        }
+
         fn generate_lockfile(&self) {
             assert_success(
                 self.cargo("generate-lockfile").arg("--offline"),
@@ -426,16 +861,17 @@ pub fn double(value: Int) -> Int {
     }
 
     fn assert_success(command: &mut Command, operation: &str) {
-        let Output {
-            status,
-            stdout,
-            stderr,
-        } = command.output().expect("fixture command should start");
-        let stdout = String::from_utf8_lossy(&stdout);
-        let stderr = String::from_utf8_lossy(&stderr);
+        success_output(command, operation);
+    }
+
+    fn success_output(command: &mut Command, operation: &str) -> Output {
+        let output = command.output().expect("fixture command should start");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
-            status.success(),
+            output.status.success(),
             "{operation} failed\nstdout:\n{stdout}\nstderr:\n{stderr}",
         );
+        output
     }
 }

@@ -1,3 +1,4 @@
+mod builtin;
 mod cargo;
 mod command;
 mod embedding;

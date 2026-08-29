@@ -4,18 +4,34 @@ use crate::cargo::{
 };
 use crate::error::CliError;
 use camino::{Utf8Path, Utf8PathBuf};
-use cargo_metadata::{DependencyKind, Metadata, Package};
+use cargo_metadata::{DependencyKind, Metadata, Package, PackageId};
 use serde::Deserialize;
 
 const MANIFEST_FILE: &str = "Cargo.toml";
 
 #[derive(Debug)]
 pub(super) struct EmbeddingPackage {
+    manifest: Utf8PathBuf,
     project_root: Utf8PathBuf,
     root_module: String,
     geam_alias: RustIdentifier,
+    geam_package_id: PackageId,
+    direct_dependencies: Vec<DirectDependency>,
     output_directory: Utf8PathBuf,
     output_path: Utf8PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct DirectDependency {
+    pub(super) alias: String,
+    pub(super) package: Package,
+    pub(super) geam_dependencies: Vec<ResolvedGeamDependency>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct ResolvedGeamDependency {
+    pub(super) alias: String,
+    pub(super) package_id: PackageId,
 }
 
 impl EmbeddingPackage {
@@ -52,14 +68,29 @@ impl EmbeddingPackage {
                 reason: "`module` must be non-empty".to_owned(),
             });
         }
-        let geam_alias = select_geam_alias(&metadata, package)?;
+        let mut direct_dependencies = direct_normal_dependencies(&metadata, package)?;
+        for dependency in &mut direct_dependencies {
+            dependency.geam_dependencies =
+                direct_normal_dependencies(&metadata, &dependency.package)?
+                    .into_iter()
+                    .filter(|dependency| dependency.package.name == "geam")
+                    .map(|dependency| ResolvedGeamDependency {
+                        alias: dependency.alias,
+                        package_id: dependency.package.id,
+                    })
+                    .collect();
+        }
+        let geam = select_geam_dependency(package, &direct_dependencies)?;
         let output_directory = package_root.join("src");
         let output_path = output_directory.join("geam_bindings.rs");
 
         Ok(Self {
+            manifest,
             project_root: package_root.join(project),
             root_module: embedding.module,
-            geam_alias,
+            geam_alias: geam.alias,
+            geam_package_id: geam.package_id,
+            direct_dependencies,
             output_directory,
             output_path,
         })
@@ -75,6 +106,18 @@ impl EmbeddingPackage {
 
     pub(super) fn geam_alias(&self) -> &RustIdentifier {
         &self.geam_alias
+    }
+
+    pub(super) fn manifest(&self) -> &Utf8Path {
+        &self.manifest
+    }
+
+    pub(super) fn geam_package_id(&self) -> &PackageId {
+        &self.geam_package_id
+    }
+
+    pub(super) fn direct_dependencies(&self) -> &[DirectDependency] {
+        &self.direct_dependencies
     }
 
     pub(super) fn output_directory(&self) -> &Utf8Path {
@@ -154,7 +197,10 @@ fn embedding_metadata(package: &Package) -> Result<EmbeddingMetadata, CliError> 
     })
 }
 
-fn select_geam_alias(metadata: &Metadata, package: &Package) -> Result<RustIdentifier, CliError> {
+fn direct_normal_dependencies(
+    metadata: &Metadata,
+    package: &Package,
+) -> Result<Vec<DirectDependency>, CliError> {
     let resolve = metadata
         .resolve
         .as_ref()
@@ -170,7 +216,7 @@ fn select_geam_alias(metadata: &Metadata, package: &Package) -> Result<RustIdent
             manifest: package.manifest_path.clone(),
             reason: format!("the resolve graph has no node for package {}", package.name),
         })?;
-    let mut aliases = Vec::new();
+    let mut dependencies = Vec::new();
     for dependency in &node.deps {
         if !dependency.dep_kinds.is_empty()
             && !dependency
@@ -191,12 +237,30 @@ fn select_geam_alias(metadata: &Metadata, package: &Package) -> Result<RustIdent
                     dependency.pkg
                 ),
             })?;
-        if dependency_package.name == "geam" {
-            aliases.push(dependency.name.as_str());
-        }
+        dependencies.push(DirectDependency {
+            alias: dependency.name.clone(),
+            package: dependency_package.clone(),
+            geam_dependencies: Vec::new(),
+        });
     }
-    let alias = match aliases.as_slice() {
-        [alias] => *alias,
+    Ok(dependencies)
+}
+
+struct GeamDependency {
+    alias: RustIdentifier,
+    package_id: PackageId,
+}
+
+fn select_geam_dependency(
+    package: &Package,
+    dependencies: &[DirectDependency],
+) -> Result<GeamDependency, CliError> {
+    let geam = dependencies
+        .iter()
+        .filter(|dependency| dependency.package.name == "geam")
+        .collect::<Vec<_>>();
+    let dependency = match geam.as_slice() {
+        [dependency] => *dependency,
         [] => {
             return Err(CliError::InvalidEmbeddingDependency {
                 package: package.name.to_string(),
@@ -205,21 +269,32 @@ fn select_geam_alias(metadata: &Metadata, package: &Package) -> Result<RustIdent
                     .to_owned(),
             });
         }
-        aliases => {
+        dependencies => {
             return Err(CliError::InvalidEmbeddingDependency {
                 package: package.name.to_string(),
                 manifest: package.manifest_path.clone(),
                 reason: format!(
                     "multiple direct Geam dependencies resolve through aliases: {}",
-                    aliases.join(", ")
+                    dependencies
+                        .iter()
+                        .map(|dependency| dependency.alias.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 ),
             });
         }
     };
-    RustIdentifier::crate_alias(alias).map_err(|reason| CliError::InvalidEmbeddingDependency {
-        package: package.name.to_string(),
-        manifest: package.manifest_path.clone(),
-        reason: format!("Cargo alias `{alias}` is unusable in generated Rust: {reason}"),
+    let alias = dependency.alias.as_str();
+    let alias = RustIdentifier::crate_alias(alias).map_err(|reason| {
+        CliError::InvalidEmbeddingDependency {
+            package: package.name.to_string(),
+            manifest: package.manifest_path.clone(),
+            reason: format!("Cargo alias `{alias}` is unusable in generated Rust: {reason}"),
+        }
+    })?;
+    Ok(GeamDependency {
+        alias,
+        package_id: dependency.package.id.clone(),
     })
 }
 
@@ -489,6 +564,18 @@ mod tests {
             error,
             CliError::InvalidCargoMetadata { reason, .. }
                 if reason.contains("no node for package application")
+        ));
+
+        let mut missing_direct_dependency_node = metadata_value(&base);
+        missing_direct_dependency_node["resolve"]["nodes"]
+            .as_array_mut()
+            .expect("resolve nodes fixture should be an array")
+            .retain(|node| node["id"] == "path+file:///application#1.0.0");
+        let error = load_metadata_error(&fixture, &manifest, missing_direct_dependency_node);
+        assert!(matches!(
+            error,
+            CliError::InvalidCargoMetadata { reason, .. }
+                if reason.contains("no node for package geam")
         ));
 
         let mut missing_dependency = metadata_value(&base);

@@ -67,6 +67,12 @@ pub(super) fn read_resolved_project(project_root: &Utf8Path) -> Result<ResolvedP
     read_resolved_project_with(project_root, &ProcessDependencyDownloader::gleam())
 }
 
+pub(super) fn read_existing_resolved_project(
+    project_root: &Utf8Path,
+) -> Result<ResolvedProject, CliError> {
+    read_resolved_project_files(project_root)
+}
+
 fn read_resolved_project_with(
     project_root: &Utf8Path,
     downloader: &dyn DependencyDownloader,

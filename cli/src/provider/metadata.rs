@@ -4,7 +4,7 @@ use hexpm::version::{Range, Version};
 use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct ProviderMetadata {
+pub(crate) struct ProviderMetadata {
     crate_name: String,
     gleam_package: String,
     gleam_range: Range,
@@ -12,6 +12,28 @@ pub(super) struct ProviderMetadata {
 
 impl ProviderMetadata {
     pub(super) fn from_package(package: &Package) -> Result<Self, CliError> {
+        Self::from_optional_package(package)
+            .map_err(|reason| CliError::InvalidProviderMetadata {
+                package: package.name.to_string(),
+                reason,
+            })?
+            .ok_or_else(|| CliError::InvalidProviderMetadata {
+                package: package.name.to_string(),
+                reason: "missing [package.metadata.geam.provider] table".to_owned(),
+            })
+    }
+
+    pub(crate) fn from_optional_package(package: &Package) -> Result<Option<Self>, String> {
+        let provider_present = package
+            .metadata
+            .as_object()
+            .and_then(|metadata| metadata.get("geam"))
+            .and_then(serde_json::Value::as_object)
+            .is_some_and(|geam| geam.contains_key("provider"));
+        if !provider_present {
+            return Ok(None);
+        }
+
         let provider = package
             .metadata
             .as_object()
@@ -19,10 +41,7 @@ impl ProviderMetadata {
             .and_then(|geam| geam.as_object())
             .and_then(|geam| geam.get("provider"))
             .and_then(|provider| provider.as_object())
-            .ok_or_else(|| CliError::InvalidProviderMetadata {
-                package: package.name.to_string(),
-                reason: "missing [package.metadata.geam.provider] table".to_owned(),
-            })?;
+            .ok_or_else(|| "missing [package.metadata.geam.provider] table".to_owned())?;
         Self::from_fields(
             package.name.to_string(),
             provider.keys().map(String::as_str).collect(),
@@ -34,10 +53,7 @@ impl ProviderMetadata {
                 .get("gleam-version")
                 .and_then(|range| range.as_str()),
         )
-        .map_err(|reason| CliError::InvalidProviderMetadata {
-            package: package.name.to_string(),
-            reason,
-        })
+        .map(Some)
     }
 
     pub(super) fn from_manifest(crate_name: &str, package: &toml::Table) -> Result<Self, String> {
@@ -90,19 +106,19 @@ impl ProviderMetadata {
         })
     }
 
-    pub(super) fn crate_name(&self) -> &str {
+    pub(crate) fn crate_name(&self) -> &str {
         &self.crate_name
     }
 
-    pub(super) fn gleam_package(&self) -> &str {
+    pub(crate) fn gleam_package(&self) -> &str {
         &self.gleam_package
     }
 
-    pub(super) fn gleam_range(&self) -> &Range {
+    pub(crate) fn gleam_range(&self) -> &Range {
         &self.gleam_range
     }
 
-    pub(super) fn supports(&self, version: &Version) -> bool {
+    pub(crate) fn supports(&self, version: &Version) -> bool {
         self.gleam_range.to_pubgrub().contains(version)
     }
 }
@@ -187,6 +203,22 @@ mod tests {
                 "expected {expected}: {error}",
             );
         }
+    }
+
+    #[test]
+    fn distinguishes_non_provider_packages_from_malformed_provider_metadata() {
+        let unrelated = package_with_metadata(r#"{"geam":{"other":true}}"#);
+        assert_eq!(
+            ProviderMetadata::from_optional_package(&unrelated)
+                .expect("unrelated package metadata should be ignored"),
+            None,
+        );
+
+        let malformed = package_with_metadata(r#"{"geam":{"provider":true}}"#);
+        assert_eq!(
+            ProviderMetadata::from_optional_package(&malformed),
+            Err("missing [package.metadata.geam.provider] table".to_owned()),
+        );
     }
 
     #[test]

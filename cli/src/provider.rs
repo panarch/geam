@@ -13,10 +13,9 @@ pub(crate) use approval::TerminalApproval;
 use camino::Utf8Path;
 pub(super) use manifest::ManagedProject;
 use manifest::ProviderSelection;
+pub(super) use metadata::ProviderMetadata;
 pub(super) use reconcile::ProviderSelectionReconciler;
 use std::path::Path;
-
-const BUILT_IN_PROVIDER_PACKAGES: [&str; 3] = ["gleam_json", "gleam_stdlib", "gleam_time"];
 
 pub(super) struct SystemProviderReconciler<'io> {
     registry: registry::CratesIoRegistry,
@@ -151,7 +150,7 @@ fn remove_with(
 }
 
 pub(super) fn is_built_in_package(package: &str) -> bool {
-    BUILT_IN_PROVIDER_PACKAGES.contains(&package)
+    crate::builtin::BuiltInProvider::from_package(package).is_some()
 }
 
 #[cfg(test)]

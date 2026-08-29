@@ -186,14 +186,13 @@ pub(super) enum CliError {
         reason: String,
     },
 
+    #[error("invalid Rust embedding provider graph for package {package} at {manifest}: {reason}")]
+    InvalidEmbeddingProvider {
+        package: String,
+        manifest: Utf8PathBuf,
+        reason: String,
+    },
+
     #[error("invalid Rust embedding boundary module {module}: {reason}")]
     InvalidEmbeddingBoundary { module: String, reason: String },
-
-    #[error(
-        "Rust embedding boundary module {module} requires hosted functions ({requirements}); hosted synchronization is not available yet"
-    )]
-    EmbeddingHostsRequired {
-        module: String,
-        requirements: String,
-    },
 }
