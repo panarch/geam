@@ -1,0 +1,624 @@
+//! Statically typed Rust calls into a plain Gleam module.
+//!
+//! Loading and binding happen once. A [`ModuleBuilder`] selects the first
+//! function into non-empty [`ModuleBindings`], which validates any remaining
+//! names and signatures before sealing one immutable execution shared by every
+//! returned [`Function`] handle.
+//! [`Module::call`] then accepts only the Rust argument and return shapes that
+//! were bound up front.
+
+mod binding;
+mod error;
+
+pub use binding::{BindingError, FunctionDeclaration, ModuleBindings, ModuleBuilder};
+pub use error::CallError;
+
+use crate::plan::execution::LibraryFunctionEntries;
+use crate::plan::{FunctionTemplateId, LibraryEntry, ValueType};
+use crate::runtime::RetainedValues;
+use crate::{BitArrayValue, EchoSink, ExecutionError, ExecutionPlan};
+use ecow::EcoString;
+use num_bigint::BigInt;
+use std::marker::PhantomData;
+use std::sync::Arc;
+
+/// A typed function handle created by a [`ModuleBuilder`].
+///
+/// The handle becomes callable only after its [`ModuleBindings`] owner is
+/// sealed into a [`Module`], and only that module may call it.
+pub struct Function<Arguments, Return> {
+    name: EcoString,
+    slot: usize,
+    owner: Arc<()>,
+    marker: PhantomData<fn(Arguments) -> Return>,
+}
+
+/// One sealed plain execution shared by all functions selected from a module.
+pub struct Module {
+    execution: ExecutionPlan,
+    entries: LibraryFunctionEntries,
+    owner: Arc<()>,
+}
+
+trait Scalar: Sized {
+    fn value_type() -> ValueType;
+
+    fn push(self, inputs: &mut RetainedValues);
+}
+
+trait Arguments {
+    fn value_types() -> Vec<ValueType>;
+
+    fn into_inputs(self) -> RetainedValues;
+}
+
+trait ScalarReturn: Scalar {
+    fn entry(template: FunctionTemplateId) -> LibraryEntry;
+
+    fn call(
+        module: &Module,
+        slot: usize,
+        inputs: RetainedValues,
+        echo: &mut dyn EchoSink,
+    ) -> Result<Self, ExecutionError>;
+}
+
+macro_rules! scalar {
+    ($type:ty, $value_type:ident, $push:ident) => {
+        impl Scalar for $type {
+            fn value_type() -> ValueType {
+                ValueType::$value_type
+            }
+
+            fn push(self, inputs: &mut RetainedValues) {
+                inputs.$push(self);
+            }
+        }
+    };
+}
+
+scalar!(BigInt, Int, push_int);
+scalar!(f64, Float, push_float);
+scalar!(EcoString, String, push_string);
+scalar!(BitArrayValue, BitArray, push_bit_array_value);
+scalar!(char, UtfCodepoint, push_utf_codepoint);
+scalar!(bool, Bool, push_bool);
+
+impl Scalar for () {
+    fn value_type() -> ValueType {
+        ValueType::Nil
+    }
+
+    fn push(self, inputs: &mut RetainedValues) {
+        inputs.push_nil();
+    }
+}
+
+macro_rules! scalar_return {
+    ($type:ty, $entry:ident, $entries:ident, $run:ident) => {
+        impl ScalarReturn for $type {
+            fn entry(template: FunctionTemplateId) -> LibraryEntry {
+                LibraryEntry::$entry(template)
+            }
+
+            fn call(
+                module: &Module,
+                slot: usize,
+                inputs: RetainedValues,
+                echo: &mut dyn EchoSink,
+            ) -> Result<Self, ExecutionError> {
+                crate::runtime::$run(
+                    &module.execution,
+                    module.entries.$entries[slot],
+                    inputs,
+                    echo,
+                )
+            }
+        }
+    };
+}
+
+scalar_return!(BigInt, Int, ints, run_embedded_int);
+scalar_return!(f64, Float, floats, run_embedded_float);
+scalar_return!(EcoString, String, strings, run_embedded_string);
+scalar_return!(BitArrayValue, BitArray, bit_arrays, run_embedded_bit_array);
+scalar_return!(
+    char,
+    UtfCodepoint,
+    utf_codepoints,
+    run_embedded_utf_codepoint
+);
+scalar_return!(bool, Bool, bools, run_embedded_bool);
+scalar_return!((), Nil, nils, run_embedded_nil);
+
+impl Arguments for () {
+    fn value_types() -> Vec<ValueType> {
+        Vec::new()
+    }
+
+    fn into_inputs(self) -> RetainedValues {
+        RetainedValues::empty()
+    }
+}
+
+macro_rules! arguments {
+    ($($type:ident => $value:ident),+) => {
+        impl<$($type),+> Arguments for ($($type,)+)
+        where
+            $($type: Scalar,)+
+        {
+            fn value_types() -> Vec<ValueType> {
+                vec![$($type::value_type()),+]
+            }
+
+            fn into_inputs(self) -> RetainedValues {
+                let ($($value,)+) = self;
+                let mut inputs = RetainedValues::empty();
+                $(Scalar::push($value, &mut inputs);)+
+                inputs
+            }
+        }
+    };
+}
+
+arguments!(A => a);
+arguments!(A => a, B => b);
+arguments!(A => a, B => b, C => c);
+arguments!(A => a, B => b, C => c, D => d);
+arguments!(A => a, B => b, C => c, D => d, E => e);
+arguments!(A => a, B => b, C => c, D => d, E => e, F => f);
+arguments!(A => a, B => b, C => c, D => d, E => e, F => f, G => g);
+
+impl<Arguments, Return> Clone for Function<Arguments, Return> {
+    fn clone(&self) -> Self {
+        Self {
+            name: self.name.clone(),
+            slot: self.slot,
+            owner: Arc::clone(&self.owner),
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<Arguments, Return> Function<Arguments, Return> {
+    /// Returns the source name selected for this function.
+    pub fn name(&self) -> &EcoString {
+        &self.name
+    }
+
+    fn new(name: EcoString, slot: usize, owner: &Arc<()>) -> Self {
+        Self {
+            name,
+            slot,
+            owner: Arc::clone(owner),
+            marker: PhantomData,
+        }
+    }
+}
+
+impl Module {
+    /// Calls a bound function with Rust values through its prevalidated entry.
+    #[allow(private_bounds)]
+    pub fn call<Arguments, Return>(
+        &self,
+        function: &Function<Arguments, Return>,
+        arguments: Arguments,
+        echo: &mut dyn EchoSink,
+    ) -> Result<Return, CallError>
+    where
+        Arguments: self::Arguments,
+        Return: ScalarReturn,
+    {
+        self.check_owner(&function.owner).and_then(|()| {
+            let inputs = arguments.into_inputs();
+            Return::call(self, function.slot, inputs, echo).map_err(CallError::Execution)
+        })
+    }
+
+    fn check_owner(&self, owner: &Arc<()>) -> Result<(), CallError> {
+        if Arc::ptr_eq(&self.owner, owner) {
+            Ok(())
+        } else {
+            Err(CallError::ForeignFunction)
+        }
+    }
+
+    fn from_parts(
+        execution: ExecutionPlan,
+        entries: LibraryFunctionEntries,
+        owner: Arc<()>,
+    ) -> Self {
+        Self {
+            execution,
+            entries,
+            owner,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        Arguments, CallError, Function, FunctionDeclaration, ModuleBindings, ModuleBuilder,
+        ScalarReturn,
+    };
+    use crate::{
+        BitArrayValue, ExecutionError, PanicKind, PanicSite, SourceSpan, Value,
+        compile_typed_module,
+    };
+    use ecow::EcoString;
+    use num_bigint::BigInt;
+
+    fn compile(source: &str) -> gleam_compiler_core::ast::TypedModule {
+        compile_typed_module("library", "library.gleam", source).expect("source should compile")
+    }
+
+    fn bind<ArgumentsType, Return>(
+        bindings: &mut ModuleBindings,
+        name: &str,
+    ) -> Function<ArgumentsType, Return>
+    where
+        ArgumentsType: Arguments,
+        Return: ScalarReturn,
+    {
+        bindings
+            .function(FunctionDeclaration::<ArgumentsType, Return>::new(name))
+            .expect("function should bind")
+    }
+
+    #[test]
+    fn seals_multiple_named_entries_without_main_and_calls_them_repeatedly() {
+        let typed = compile(
+            r#"
+fn decorate(prefix: String, value: String) { prefix <> value }
+
+pub fn label(prefix: String, value: String) { decorate(prefix, value) }
+
+pub fn double(value: Int) { value * 2 }
+
+pub fn choose(enabled: Bool, left: Float, right: Float) {
+  case enabled { True -> left False -> right }
+}
+"#,
+        );
+        let builder = ModuleBuilder::new(typed).expect("library should plan without main");
+        let (mut bindings, label) = builder
+            .function(FunctionDeclaration::<(EcoString, EcoString), EcoString>::new("label"))
+            .expect("first function should bind");
+        let double = bind::<(BigInt,), BigInt>(&mut bindings, "double");
+        let choose = bind::<(bool, f64, f64), f64>(&mut bindings, "choose");
+        assert_eq!(label.name(), "label");
+        assert_eq!(label.clone().name(), "label");
+        let module = bindings.seal();
+        let mut echo = Vec::new();
+
+        for (prefix, value, expected) in
+            [("SKU:", "AB-12", "SKU:AB-12"), ("BIN:", "C-4", "BIN:C-4")]
+        {
+            assert_eq!(
+                module.call(&label, (prefix.into(), value.into()), &mut echo),
+                Ok(expected.into()),
+            );
+        }
+        assert_eq!(
+            module.call(&double, (BigInt::from(21),), &mut echo),
+            Ok(BigInt::from(42)),
+        );
+        assert_eq!(module.call(&choose, (true, 12.5, 9.0), &mut echo), Ok(12.5),);
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn sends_each_call_echo_to_the_caller_owned_sink() {
+        let typed = compile(
+            r#"
+pub fn announce(value: String) {
+  echo value as "embedded"
+}
+"#,
+        );
+        let builder = ModuleBuilder::new(typed).expect("echo library should plan");
+        let (bindings, announce) = builder
+            .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+                "announce",
+            ))
+            .expect("first function should bind");
+        let module = bindings.seal();
+        let mut first_echo = Vec::new();
+        let mut second_echo = Vec::new();
+
+        assert_eq!(
+            module.call(&announce, ("first".into(),), &mut first_echo),
+            Ok("first".into()),
+        );
+        assert_eq!(
+            module.call(&announce, ("second".into(),), &mut second_echo),
+            Ok("second".into()),
+        );
+        assert_eq!(first_echo.len(), 1);
+        assert_eq!(
+            first_echo[0].message().map(EcoString::as_str),
+            Some("embedded")
+        );
+        assert_eq!(first_echo[0].value(), &Value::String("first".into()));
+        assert_eq!(second_echo.len(), 1);
+        assert_eq!(
+            second_echo[0].message().map(EcoString::as_str),
+            Some("embedded")
+        );
+        assert_eq!(second_echo[0].value(), &Value::String("second".into()));
+    }
+
+    #[test]
+    fn moves_every_scalar_family_through_exact_typed_entries() {
+        let typed = compile(
+            r#"
+pub fn keep_int(value: Int) { value }
+pub fn keep_float(value: Float) { value }
+pub fn keep_string(value: String) { value }
+pub fn keep_bits(value: BitArray) { value }
+pub fn keep_codepoint(value: UtfCodepoint) { value }
+pub fn keep_bool(value: Bool) { value }
+pub fn keep_nil(value: Nil) { value }
+
+pub fn mixed(
+  _int: Int,
+  _float: Float,
+  _string: String,
+  _bits: BitArray,
+  _codepoint: UtfCodepoint,
+  value: Bool,
+  _nil: Nil,
+) {
+  value
+}
+"#,
+        );
+        let builder = ModuleBuilder::new(typed).expect("scalar library should plan");
+        let (mut bindings, int) = builder
+            .function(FunctionDeclaration::<(BigInt,), BigInt>::new("keep_int"))
+            .expect("first function should bind");
+        let float = bind::<(f64,), f64>(&mut bindings, "keep_float");
+        let string = bind::<(EcoString,), EcoString>(&mut bindings, "keep_string");
+        let bits = bind::<(BitArrayValue,), BitArrayValue>(&mut bindings, "keep_bits");
+        let codepoint = bind::<(char,), char>(&mut bindings, "keep_codepoint");
+        let bool_ = bind::<(bool,), bool>(&mut bindings, "keep_bool");
+        let nil = bind::<((),), ()>(&mut bindings, "keep_nil");
+        let mixed = bind::<(BigInt, f64, EcoString, BitArrayValue, char, bool, ()), bool>(
+            &mut bindings,
+            "mixed",
+        );
+        let module = bindings.seal();
+        let mut echo = Vec::new();
+        let bit_value = BitArrayValue::try_from_parts(vec![0b1010_0000], 3)
+            .expect("three bits should fit in one byte");
+
+        assert_eq!(
+            module.call(&int, (BigInt::from(123),), &mut echo),
+            Ok(BigInt::from(123)),
+        );
+        assert_eq!(module.call(&float, (1.25,), &mut echo), Ok(1.25));
+        assert_eq!(
+            module.call(&string, ("value".into(),), &mut echo),
+            Ok("value".into()),
+        );
+        assert_eq!(
+            module.call(&bits, (bit_value.clone(),), &mut echo),
+            Ok(bit_value.clone()),
+        );
+        assert_eq!(module.call(&codepoint, ('한',), &mut echo), Ok('한'));
+        assert_eq!(module.call(&bool_, (true,), &mut echo), Ok(true));
+        assert_eq!(module.call(&nil, ((),), &mut echo), Ok(()));
+        assert_eq!(
+            module.call(
+                &mixed,
+                (
+                    BigInt::from(1),
+                    2.0,
+                    "three".into(),
+                    bit_value,
+                    '四',
+                    false,
+                    (),
+                ),
+                &mut echo,
+            ),
+            Ok(false),
+        );
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn seals_each_scalar_return_family_as_an_independent_entry() {
+        let source = r#"
+pub fn int_value() { 1 }
+pub fn float_value() { 1.5 }
+pub fn string_value() { "value" }
+pub fn bit_array_value() { <<1, 2>> }
+pub fn codepoint_value() {
+  let assert <<value:utf8_codepoint>> = <<"한":utf8>>
+  value
+}
+pub fn bool_value() { True }
+pub fn nil_value() { Nil }
+"#;
+
+        fn call_only<Return>(source: &str, name: &str) -> Return
+        where
+            Return: ScalarReturn,
+        {
+            let builder = ModuleBuilder::new(compile(source)).expect("library should plan");
+            let (bindings, function) = builder
+                .function(FunctionDeclaration::<(), Return>::new(name))
+                .expect("first function should bind");
+            let module = bindings.seal();
+            module
+                .call(&function, (), &mut Vec::new())
+                .expect("single entry should run")
+        }
+
+        assert_eq!(call_only::<BigInt>(source, "int_value"), BigInt::from(1));
+        assert_eq!(call_only::<f64>(source, "float_value"), 1.5);
+        assert_eq!(
+            call_only::<EcoString>(source, "string_value"),
+            EcoString::from("value"),
+        );
+        assert_eq!(
+            call_only::<BitArrayValue>(source, "bit_array_value"),
+            BitArrayValue::from_bytes(vec![1, 2]),
+        );
+        assert_eq!(call_only::<char>(source, "codepoint_value"), '한');
+        assert!(call_only::<bool>(source, "bool_value"));
+        assert_eq!(call_only::<()>(source, "nil_value"), ());
+    }
+
+    #[test]
+    fn supports_every_argument_arity_through_seven() {
+        let typed = compile(
+            r#"
+pub fn arity0() { 0 }
+pub fn arity1(a: Int) { a }
+pub fn arity2(a: Int, b: Int) { a + b }
+pub fn arity3(a: Int, b: Int, c: Int) { a + b + c }
+pub fn arity4(a: Int, b: Int, c: Int, d: Int) { a + b + c + d }
+pub fn arity5(a: Int, b: Int, c: Int, d: Int, e: Int) { a + b + c + d + e }
+pub fn arity6(a: Int, b: Int, c: Int, d: Int, e: Int, f: Int) { a + b + c + d + e + f }
+pub fn arity7(a: Int, b: Int, c: Int, d: Int, e: Int, f: Int, g: Int) {
+  a + b + c + d + e + f + g
+}
+"#,
+        );
+        let builder = ModuleBuilder::new(typed).expect("arity library should plan");
+        let (mut bindings, arity0) = builder
+            .function(FunctionDeclaration::<(), BigInt>::new("arity0"))
+            .expect("first function should bind");
+        let arity1 = bind::<(BigInt,), BigInt>(&mut bindings, "arity1");
+        let arity2 = bind::<(BigInt, BigInt), BigInt>(&mut bindings, "arity2");
+        let arity3 = bind::<(BigInt, BigInt, BigInt), BigInt>(&mut bindings, "arity3");
+        let arity4 = bind::<(BigInt, BigInt, BigInt, BigInt), BigInt>(&mut bindings, "arity4");
+        let arity5 =
+            bind::<(BigInt, BigInt, BigInt, BigInt, BigInt), BigInt>(&mut bindings, "arity5");
+        let arity6 = bind::<(BigInt, BigInt, BigInt, BigInt, BigInt, BigInt), BigInt>(
+            &mut bindings,
+            "arity6",
+        );
+        let arity7 = bind::<(BigInt, BigInt, BigInt, BigInt, BigInt, BigInt, BigInt), BigInt>(
+            &mut bindings,
+            "arity7",
+        );
+        let module = bindings.seal();
+        let mut echo = Vec::new();
+
+        assert_eq!(module.call(&arity0, (), &mut echo), Ok(BigInt::from(0)));
+        assert_eq!(
+            module.call(&arity1, (1.into(),), &mut echo),
+            Ok(BigInt::from(1)),
+        );
+        assert_eq!(
+            module.call(&arity2, (1.into(), 2.into()), &mut echo),
+            Ok(BigInt::from(3)),
+        );
+        assert_eq!(
+            module.call(&arity3, (1.into(), 2.into(), 3.into()), &mut echo),
+            Ok(BigInt::from(6)),
+        );
+        assert_eq!(
+            module.call(&arity4, (1.into(), 2.into(), 3.into(), 4.into()), &mut echo),
+            Ok(BigInt::from(10)),
+        );
+        assert_eq!(
+            module.call(
+                &arity5,
+                (1.into(), 2.into(), 3.into(), 4.into(), 5.into()),
+                &mut echo,
+            ),
+            Ok(BigInt::from(15)),
+        );
+        assert_eq!(
+            module.call(
+                &arity6,
+                (1.into(), 2.into(), 3.into(), 4.into(), 5.into(), 6.into(),),
+                &mut echo,
+            ),
+            Ok(BigInt::from(21)),
+        );
+        assert_eq!(
+            module.call(
+                &arity7,
+                (
+                    1.into(),
+                    2.into(),
+                    3.into(),
+                    4.into(),
+                    5.into(),
+                    6.into(),
+                    7.into(),
+                ),
+                &mut echo,
+            ),
+            Ok(BigInt::from(28)),
+        );
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn rejects_a_function_handle_from_another_module() {
+        let source = "pub fn identity(value: String) { value }";
+        let first = ModuleBuilder::new(compile(source)).expect("first module should plan");
+        let (first, first_identity) = first
+            .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+                "identity",
+            ))
+            .expect("first identity should bind");
+        let first = first.seal();
+        let second = ModuleBuilder::new(compile(source)).expect("second module should plan");
+        let (second, second_identity) = second
+            .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+                "identity",
+            ))
+            .expect("second identity should bind");
+        let second = second.seal();
+
+        assert_eq!(
+            second.call(&first_identity, ("value".into(),), &mut Vec::new()),
+            Err(CallError::ForeignFunction),
+        );
+        assert_eq!(
+            first.call(&first_identity, ("first".into(),), &mut Vec::new()),
+            Ok("first".into()),
+        );
+        assert_eq!(
+            second.call(&second_identity, ("second".into(),), &mut Vec::new()),
+            Ok("second".into()),
+        );
+    }
+
+    #[test]
+    fn propagates_source_execution_failure_from_a_bound_entry() {
+        let typed = compile(
+            r#"
+pub fn explode(_value: String) -> String { panic as "stopped" }
+"#,
+        );
+        let builder = ModuleBuilder::new(typed).expect("library should plan");
+        let (bindings, explode) = builder
+            .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+                "explode",
+            ))
+            .expect("first function should bind");
+        let module = bindings.seal();
+
+        let error = module
+            .call(&explode, ("value".into(),), &mut Vec::new())
+            .expect_err("source panic should cross the embedding boundary");
+        assert_eq!(
+            error,
+            CallError::Execution(ExecutionError::source_panic(
+                None,
+                PanicKind::Panic,
+                Some("stopped".into()),
+                PanicSite::new("library".into(), "explode".into(), SourceSpan::new(44, 62),),
+            )),
+        );
+    }
+}

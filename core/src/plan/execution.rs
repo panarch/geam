@@ -55,6 +55,16 @@ pub struct ExecutionPlan {
     program: ExecutionProgram<Infallible>,
 }
 
+pub(crate) struct LibraryFunctionEntries {
+    pub(crate) ints: Box<[function::IntFunctionId]>,
+    pub(crate) floats: Box<[function::FloatFunctionId]>,
+    pub(crate) strings: Box<[function::StringFunctionId]>,
+    pub(crate) bit_arrays: Box<[function::BitArrayFunctionId]>,
+    pub(crate) utf_codepoints: Box<[function::UtfCodepointFunctionId]>,
+    pub(crate) bools: Box<[function::BoolFunctionId]>,
+    pub(crate) nils: Box<[function::NilFunctionId]>,
+}
+
 pub struct HostedExecution<Profile: HostProfile> {
     program: ExecutionProgram<host::HostedExecutionProfile>,
     host_functions: host::HostFunctionTables<Profile>,
@@ -131,6 +141,15 @@ impl ExecutionPlan {
         Self {
             program: lowering::lower(module_plan),
         }
+    }
+
+    pub(crate) fn from_library_plan(
+        module_plan: crate::plan::LibraryModulePlan,
+        first: crate::plan::LibraryEntry,
+        remaining: Vec<crate::plan::LibraryEntry>,
+    ) -> (Self, LibraryFunctionEntries) {
+        let (program, entries) = lowering::lower_library(module_plan, first, remaining);
+        (Self { program }, entries)
     }
 
     pub fn module(&self) -> &EcoString {

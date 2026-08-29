@@ -13,6 +13,8 @@ categories = ["compilers", "development-tools"]
 include = [
     "/assets/geam-mascot.svg",
     "/docs/**",
+    "/examples/rust_embedding.rs",
+    "/examples/rust_embedding/**",
     "/src/**",
     "/LICENSE",
     "/README.md",
@@ -105,5 +107,6 @@ camino.workspace = true
 ecow.workspace = true
 gleam-core.workspace = true
 miette = { workspace = true, features = ["fancy-no-backtrace"] }
+num-bigint.workspace = true
 tempfile.workspace = true
 toml.workspace = true

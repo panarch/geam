@@ -5,7 +5,7 @@ mod pattern;
 mod terminator;
 mod value;
 
-pub(super) use environment::RetainedValues;
+pub(crate) use environment::RetainedValues;
 pub(super) use value::GraphValue;
 
 pub(in crate::runtime) use self::environment::BlockEnvironment;

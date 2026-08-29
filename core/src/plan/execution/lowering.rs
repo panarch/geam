@@ -3,13 +3,13 @@ mod function;
 mod graph;
 mod host;
 mod local;
+mod plain;
 mod specialization;
 mod value_type;
 
 use super::type_::{CustomTypeTable, ExternalTypeTable, ListTypeTable, ValueShapeTable};
-use super::{ExecutionProgram, ExecutionProgramCommon};
+use crate::plan::ValueShape;
 use crate::plan::execution::function::ExecutionProfile;
-use crate::plan::{ModulePlan, ValueShape};
 use specialization::{
     RepresentationContext, SpecializationKey, SpecializedCustomConstructor,
     SpecializedCustomValueShape, SpecializedFunctionShape, SpecializedTypeSubstitution,
@@ -17,10 +17,6 @@ use specialization::{
 };
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::Infallible;
-
-struct FunctionTemplates {
-    templates: Vec<Vec<crate::plan::FunctionTemplate>>,
-}
 
 struct ProgramConstantTemplates {
     modules: Vec<crate::plan::ConstantTemplates>,
@@ -61,121 +57,7 @@ type LoweringCompletion<Execution> = (
 type PlainLoweredExecution = LoweredExecution<Infallible>;
 
 pub(super) use host::lower_hosted;
-
-pub(super) fn lower(module_plan: ModulePlan) -> ExecutionProgram<Infallible> {
-    let parts = module_plan.into_parts();
-    let root = parts.root;
-    let entry = parts.entry;
-    let mut module_contexts = Vec::with_capacity(parts.modules.len());
-    let mut module_templates = Vec::with_capacity(parts.modules.len());
-    let mut constant_templates = Vec::with_capacity(parts.modules.len());
-    let mut custom_types = Vec::new();
-
-    for module in parts.modules {
-        let parts = module.into_parts();
-        module_contexts.push(super::ExecutionModuleContext::new(
-            parts.module,
-            parts.source_context,
-        ));
-        custom_types.extend(parts.custom_types);
-        constant_templates.push(parts.constants);
-        let mut templates = parts.functions;
-        templates.extend(parts.anonymous_functions);
-        templates.sort_by_key(|template| template.id().index());
-        module_templates.push(templates);
-    }
-
-    let templates = FunctionTemplates::new(module_templates);
-    let main_return_shape = templates
-        .get(entry)
-        .signature()
-        .shape()
-        .return_shape()
-        .clone();
-    let main_key = SpecializationKey::monomorphic(entry);
-    let initial = SpecializationState {
-        constant_templates: ProgramConstantTemplates {
-            modules: constant_templates,
-        },
-        representations: RepresentationContext::new(custom_types),
-        erased_specializations: HashSet::new(),
-    };
-
-    // Function indices remain provisional until a pass produces no new erasures.
-    let (main, lowered) = resolve_specialization_fixed_point(initial, |state| {
-        let SpecializationState {
-            constant_templates,
-            representations,
-            erased_specializations,
-        } = state;
-        let main_value_shape = specialization::SpecializedValueShape::instantiate(
-            &main_return_shape,
-            main_key.substitution(),
-        );
-        let main_return_shape = representations.inhabitation(&main_value_shape);
-        let mut context = LoweringContext::new(
-            templates.entry_templates(),
-            representations,
-            constant_templates,
-            main_key.clone(),
-            erased_specializations,
-        );
-
-        let main = context.reserve_main(main_key.clone(), main_return_shape);
-
-        while let Some(key) = context.pending.pop_front() {
-            context.begin(&key);
-            function::lower_specialized(templates.get(key.template()), &key, &mut context);
-        }
-
-        let (constant_templates, representations, lowered) = context.finish();
-        let outcome = SpecializationOutcome::from_representability(
-            graph::seal_plain_runtime_function_id(main),
-            main_key.clone(),
-        )
-        .zip_with(lowered, |main, lowered| (main, lowered));
-        let erased_specializations = outcome.erased_specializations();
-        outcome.into_fixed_point(SpecializationState {
-            constant_templates,
-            representations,
-            erased_specializations,
-        })
-    });
-
-    ExecutionProgram {
-        common: ExecutionProgramCommon {
-            root,
-            modules: module_contexts.into_boxed_slice(),
-            main,
-            constants: lowered.constants,
-            list_types: lowered.list_types,
-            custom_types: lowered.custom_types,
-            external_types: lowered.external_types,
-            value_shapes: lowered.value_shapes,
-        },
-        functions: lowered.functions,
-    }
-}
-
-impl FunctionTemplates {
-    fn new(templates: Vec<Vec<crate::plan::FunctionTemplate>>) -> Self {
-        Self { templates }
-    }
-
-    fn get(&self, id: crate::plan::FunctionTemplateId) -> &crate::plan::FunctionTemplate {
-        &self.templates[id.module().index()][id.index()]
-    }
-
-    fn entry_templates(
-        &self,
-    ) -> HashMap<crate::plan::FunctionTemplateId, local::FunctionEntryTemplate> {
-        self.templates
-            .iter()
-            .flatten()
-            .map(|template| (template.id(), local::FunctionEntryTemplate::new(template)))
-            .collect()
-    }
-}
+pub(super) use plain::{lower, lower_library};
 
 #[derive(Debug, PartialEq, Eq)]
 enum FixedPointStep<State, Output> {
@@ -1340,8 +1222,9 @@ impl LoweringContext {
 
 #[cfg(test)]
 pub(super) mod test_support {
+    use super::local::FunctionEntryTemplate;
     use super::specialization::RepresentationContext;
-    use super::{FunctionTemplates, LoweringContext, ProgramConstantTemplates};
+    use super::{LoweringContext, ProgramConstantTemplates};
     use crate::plan::TypeParameterId;
     use std::collections::HashSet;
 
@@ -1390,10 +1273,13 @@ pub(super) mod test_support {
                 crate::plan::IntExpr::value(0.into()),
             ),
         );
-        let templates = FunctionTemplates::new(vec![vec![main, capture_target]]);
+        let entry_templates = [main, capture_target]
+            .iter()
+            .map(|template| (template.id(), FunctionEntryTemplate::new(template)))
+            .collect();
 
         LoweringContext::new(
-            templates.entry_templates(),
+            entry_templates,
             RepresentationContext::new(custom_types),
             ProgramConstantTemplates {
                 modules: vec![crate::plan::ConstantTemplates::from_entries(Vec::new())],
@@ -1411,142 +1297,7 @@ mod tests {
         FixedPointStep, SpecializationOutcome, resolve_specialization_fixed_point,
         try_resolve_specialization_fixed_point,
     };
-    use crate::plan::execution::function::{
-        IntFunctionId, ProfiledCoreRuntimeFunctionId, ProfiledRuntimeFunctionId,
-    };
-
     use std::collections::{HashSet, VecDeque};
-
-    #[test]
-    fn preserves_public_module_and_source_context() {
-        let source = "pub fn main() { 1 }";
-        let typed = crate::compile_typed_module("sample", "sample.gleam", source)
-            .expect("source should compile");
-        let context = crate::SourceContext::new("sample.gleam", source);
-        let module =
-            crate::plan_module_with_source(typed, context.clone()).expect("source should plan");
-        let execution = crate::ExecutionPlan::from_module_plan(module);
-
-        assert_eq!(execution.program.common.root, crate::plan::ModuleId::new(0));
-        assert_eq!(execution.program.common.modules.len(), 1);
-        assert_eq!(execution.program.common.modules[0].module, "sample");
-        assert_eq!(
-            execution.program.common.modules[0].source_context,
-            Some(context),
-        );
-    }
-
-    #[test]
-    fn seeds_only_the_root_entry_and_preserves_module_sources() {
-        let root_source = "pub fn main() { 7 }";
-        let dependency_source = "pub fn main(value: Int) { value }";
-        let typed = crate::compile_typed_program(
-            "root",
-            [
-                crate::ModuleSource::new("root", "root.gleam", root_source),
-                crate::ModuleSource::new("alpha", "alpha.gleam", dependency_source),
-            ],
-        )
-        .expect("program should compile");
-        let module = crate::plan_program(typed).expect("program should plan");
-        let execution = crate::ExecutionPlan::from_module_plan(module);
-
-        assert_eq!(execution.program.common.root, crate::plan::ModuleId::new(1));
-        assert_eq!(
-            execution.program.common.main,
-            ProfiledRuntimeFunctionId::Core(ProfiledCoreRuntimeFunctionId::Int(IntFunctionId(0))),
-        );
-        assert_eq!(
-            execution
-                .program
-                .common
-                .modules
-                .iter()
-                .map(|module| {
-                    (
-                        module.module.as_str(),
-                        module
-                            .source_context
-                            .as_ref()
-                            .map(crate::SourceContext::source),
-                    )
-                })
-                .collect::<Vec<_>>(),
-            vec![
-                ("alpha", Some(dependency_source)),
-                ("root", Some(root_source))
-            ],
-        );
-        assert_eq!(
-            execution
-                .program
-                .functions
-                .value_returns
-                .int_functions
-                .len(),
-            1,
-        );
-    }
-
-    #[test]
-    fn deduplicates_cross_module_generic_specializations() {
-        let typed = crate::compile_typed_program(
-            "main",
-            [
-                crate::ModuleSource::new(
-                    "generic",
-                    "generic.gleam",
-                    "pub fn identity(value: value) { value }",
-                ),
-                crate::ModuleSource::new(
-                    "main",
-                    "main.gleam",
-                    r#"
-import generic
-
-pub fn main() {
-  #(
-    generic.identity(1),
-    generic.identity(2),
-    generic.identity("three"),
-  )
-}
-"#,
-                ),
-            ],
-        )
-        .expect("generic module program should compile");
-        let module = crate::plan_program(typed).expect("generic module program should plan");
-        let execution = crate::ExecutionPlan::from_module_plan(module);
-
-        assert_eq!(
-            execution
-                .program
-                .functions
-                .value_returns
-                .int_functions
-                .len(),
-            1,
-        );
-        assert_eq!(
-            execution
-                .program
-                .functions
-                .value_returns
-                .string_functions
-                .len(),
-            1,
-        );
-        assert_eq!(
-            execution
-                .program
-                .functions
-                .value_returns
-                .tuple_functions
-                .len(),
-            1,
-        );
-    }
 
     #[test]
     fn specialization_fixed_point_discards_provisional_passes_before_completing() {

@@ -148,6 +148,22 @@ pub struct ModulePlan {
     modules: Vec<PlannedModule>,
 }
 
+pub(crate) struct LibraryModulePlan {
+    root: ModuleId,
+    modules: Vec<PlannedModule>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum LibraryEntry {
+    Int(FunctionTemplateId),
+    Float(FunctionTemplateId),
+    String(FunctionTemplateId),
+    BitArray(FunctionTemplateId),
+    UtfCodepoint(FunctionTemplateId),
+    Bool(FunctionTemplateId),
+    Nil(FunctionTemplateId),
+}
+
 #[derive(Debug, PartialEq)]
 pub struct PlannedModule {
     id: ModuleId,
@@ -163,6 +179,11 @@ pub struct PlannedModule {
 pub(crate) struct ModulePlanParts {
     pub(crate) root: ModuleId,
     pub(crate) entry: FunctionTemplateId,
+    pub(crate) modules: Vec<PlannedModule>,
+}
+
+pub(crate) struct LibraryModulePlanParts {
+    pub(crate) root: ModuleId,
     pub(crate) modules: Vec<PlannedModule>,
 }
 
@@ -298,6 +319,23 @@ impl ModulePlan {
     #[cfg(test)]
     fn root_module_mut(&mut self) -> &mut PlannedModule {
         &mut self.modules[self.root.index()]
+    }
+}
+
+impl LibraryModulePlan {
+    pub(crate) fn from_modules(root: ModuleId, modules: Vec<PlannedModule>) -> Self {
+        Self { root, modules }
+    }
+
+    pub(crate) fn functions(&self) -> &[FunctionTemplate] {
+        &self.modules[self.root.index()].functions
+    }
+
+    pub(crate) fn into_parts(self) -> LibraryModulePlanParts {
+        LibraryModulePlanParts {
+            root: self.root,
+            modules: self.modules,
+        }
     }
 }
 

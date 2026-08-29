@@ -92,7 +92,7 @@ pub(in crate::runtime) struct BlockEnvironment {
     values: Box<BlockValues>,
 }
 
-pub(in crate::runtime) struct RetainedValues {
+pub(crate) struct RetainedValues {
     values: Box<BlockValues>,
 }
 
@@ -662,7 +662,7 @@ impl BlockEnvironment {
 }
 
 impl RetainedValues {
-    pub(in crate::runtime) fn empty() -> Self {
+    pub(crate) fn empty() -> Self {
         Self {
             values: Box::default(),
         }
@@ -686,15 +686,15 @@ impl RetainedValues {
         }
     }
 
-    pub(in crate::runtime) fn push_int(&mut self, value: BigInt) {
+    pub(crate) fn push_int(&mut self, value: BigInt) {
         self.values.ints.push(value);
     }
 
-    pub(in crate::runtime) fn push_float(&mut self, value: f64) {
+    pub(crate) fn push_float(&mut self, value: f64) {
         self.values.floats.push(value);
     }
 
-    pub(in crate::runtime) fn push_string(&mut self, value: EcoString) {
+    pub(crate) fn push_string(&mut self, value: EcoString) {
         self.values.strings.push(value);
     }
 
@@ -702,7 +702,13 @@ impl RetainedValues {
         self.values.bit_arrays.push(value);
     }
 
-    pub(in crate::runtime) fn push_utf_codepoint(&mut self, value: char) {
+    pub(crate) fn push_bit_array_value(&mut self, value: crate::BitArrayValue) {
+        self.values
+            .bit_arrays
+            .push(EvaluatedBitArray::from_value(value));
+    }
+
+    pub(crate) fn push_utf_codepoint(&mut self, value: char) {
         self.values.utf_codepoints.push(value);
     }
 
@@ -714,11 +720,11 @@ impl RetainedValues {
         self.values.externals.push(value);
     }
 
-    pub(in crate::runtime) fn push_bool(&mut self, value: bool) {
+    pub(crate) fn push_bool(&mut self, value: bool) {
         self.values.bools.push(value);
     }
 
-    pub(in crate::runtime) fn push_nil(&mut self) {}
+    pub(crate) fn push_nil(&mut self) {}
 
     pub(in crate::runtime) fn push_tuple(&mut self, value: Vec<EvaluatedValue>) {
         self.values.tuples.push(value);

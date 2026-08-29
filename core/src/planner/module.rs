@@ -1,7 +1,7 @@
 use crate::frontend::TypedProgram;
 use crate::plan::{
-    FunctionFunctionLocalId, FunctionTemplateId, IntFunctionLocalId, ModuleId, ModulePlan,
-    ParamBinding, ParamLocal, PlannedModule, SourceContext,
+    FunctionFunctionLocalId, FunctionTemplateId, IntFunctionLocalId, LibraryModulePlan, ModuleId,
+    ModulePlan, ParamBinding, ParamLocal, PlannedModule, SourceContext,
 };
 use crate::planner::context::{AnonymousFunctions, FunctionInfo, FunctionParam};
 use crate::planner::error::{
@@ -58,6 +58,18 @@ pub fn plan_program(program: TypedProgram) -> Result<ModulePlan, PlanError> {
     )
 }
 
+pub(crate) fn plan_library_module(module: TypedModule) -> Result<LibraryModulePlan, PlanError> {
+    let (root, modules) = plan_module_bodies(
+        0,
+        vec![ModuleInput {
+            module,
+            source_context: None,
+        }],
+        ModuleRole::Library,
+    )?;
+    Ok(LibraryModulePlan::from_modules(root, modules))
+}
+
 struct ModuleInput {
     module: TypedModule,
     source_context: Option<SourceContext>,
@@ -104,6 +116,19 @@ struct ModuleFunctions {
 }
 
 fn plan_modules(root_index: usize, modules: Vec<ModuleInput>) -> Result<ModulePlan, PlanError> {
+    let (root, planned_modules) = plan_module_bodies(root_index, modules, ModuleRole::Root)?;
+    Ok(ModulePlan::from_modules(
+        root,
+        FunctionTemplateId::in_module(root, 0),
+        planned_modules,
+    ))
+}
+
+fn plan_module_bodies(
+    root_index: usize,
+    modules: Vec<ModuleInput>,
+    root_role: ModuleRole,
+) -> Result<(ModuleId, Vec<PlannedModule>), PlanError> {
     let root = ModuleId::new(root_index);
     let mut declarations = Vec::with_capacity(modules.len());
 
@@ -128,7 +153,7 @@ fn plan_modules(root_index: usize, modules: Vec<ModuleInput>) -> Result<ModulePl
     let mut function_declarations = Vec::with_capacity(declarations.len());
     for declaration in declarations {
         let role = if declaration.id == root {
-            ModuleRole::Root
+            root_role
         } else {
             ModuleRole::Dependency
         };
@@ -213,16 +238,13 @@ fn plan_modules(root_index: usize, modules: Vec<ModuleInput>) -> Result<ModulePl
         ));
     }
 
-    Ok(ModulePlan::from_modules(
-        root,
-        FunctionTemplateId::in_module(root, 0),
-        planned_modules,
-    ))
+    Ok((root, planned_modules))
 }
 
 #[derive(Clone, Copy)]
 enum ModuleRole {
     Root,
+    Library,
     Dependency,
 }
 
@@ -300,7 +322,7 @@ fn function_table_with_external_types(
             }
             FunctionIndexing::Root { main_index }
         }
-        ModuleRole::Dependency => FunctionIndexing::Dependency,
+        ModuleRole::Library | ModuleRole::Dependency => FunctionIndexing::Dependency,
     };
 
     let mut by_name = HashMap::with_capacity(seeds.len());

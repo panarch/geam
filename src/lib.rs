@@ -54,7 +54,7 @@ pub mod __macro_support {
 }
 
 pub use geam_core::List;
-pub use geam_core::{frontend, host, plan, planner, runtime};
+pub use geam_core::{embedding, frontend, host, plan, planner, runtime};
 pub use geam_macros::{custom, external, function, module, provider};
 
 pub use geam_core::frontend::{

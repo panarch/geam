@@ -22,6 +22,7 @@ pub use error::{
     UnsupportedFunctionReason, UnsupportedPatternKind, UnsupportedTopLevelKind,
 };
 pub use host_requirement::{RequiredHostFunction, required_host_functions};
+pub(crate) use module::plan_library_module;
 pub use module::{plan_host_program, plan_module, plan_module_with_source, plan_program};
 
 #[cfg(test)]
