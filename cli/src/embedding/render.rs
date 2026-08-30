@@ -137,7 +137,7 @@ pub(super) fn hosted(bindings: &HostedBindings, project_path: &Utf8Path) -> Stri
     push_profile_declaration(&mut output, components);
     push_provider_set_alias(&mut output, components);
     push_stores(&mut output, alias, components);
-    push_configurations(&mut output, components);
+    push_run_state_inputs(&mut output, alias, components);
     push_run_state(&mut output, alias, components);
     push_host_profile(&mut output, alias, components);
     for component in components.iter() {
@@ -264,24 +264,56 @@ fn push_stores(output: &mut String, alias: &str, components: &HostedComponents) 
     output.push_str("        }\n    }\n}\n\n");
 }
 
-fn push_configurations(output: &mut String, components: &HostedComponents) {
-    let external = components
-        .iter()
-        .filter_map(|component| match component {
-            ComponentBinding::External(component) => Some(component),
-            ComponentBinding::Stdlib | ComponentBinding::Json | ComponentBinding::Time => None,
-        })
-        .collect::<Vec<_>>();
-    if external.is_empty() {
-        output.push_str("pub struct ProviderConfigurations;\n\n");
-        return;
+fn push_run_state_inputs(output: &mut String, alias: &str, components: &HostedComponents) {
+    output.push_str(&format!(
+        "pub struct RunStateInputs{}",
+        generics(components),
+    ));
+    push_bounds_open(output, alias, components);
+    for component in components.iter() {
+        match component {
+            ComponentBinding::Stdlib => output.push_str(&format!(
+                "    pub stdlib: {alias}::gleam_stdlib::GleamStdlibRunState<Io>,\n"
+            )),
+            ComponentBinding::Json => {}
+            ComponentBinding::Time => output.push_str("    pub time: Source,\n"),
+            ComponentBinding::External(component) => output.push_str(&format!(
+                "    pub {}: HostProviderConfiguration,\n",
+                component.input_field.as_str(),
+            )),
+        }
     }
-    output.push_str("pub struct ProviderConfigurations {\n");
-    for component in external {
+    output.push_str("}\n\n");
+
+    output.push_str(&format!(
+        "impl{} RunStateInputs{}",
+        generics(components),
+        generics(components),
+    ));
+    push_bounds_open(output, alias, components);
+    output.push_str("    pub fn initialize(self)");
+    let return_type = format!("RunState{}", generics(components));
+    if components.has_external() {
         output.push_str(&format!(
-            "    pub {}: HostProviderConfiguration,\n",
-            component.configuration_field.as_str(),
+            " -> Result<{return_type}, HostProviderInitializationError> {{\n        Ok(RunState {{\n"
         ));
+    } else {
+        output.push_str(&format!(" -> {return_type} {{\n        RunState {{\n"));
+    }
+    for component in components.iter() {
+        match component {
+            ComponentBinding::Stdlib => output.push_str("            stdlib: self.stdlib,\n"),
+            ComponentBinding::Json => output.push_str("            json: (),\n"),
+            ComponentBinding::Time => output.push_str("            time: self.time,\n"),
+            ComponentBinding::External(component) => {
+                push_external_initialization(output, alias, component)
+            }
+        }
+    }
+    if components.has_external() {
+        output.push_str("        })\n    }\n");
+    } else {
+        output.push_str("        }\n    }\n");
     }
     output.push_str("}\n\n");
 }
@@ -294,72 +326,18 @@ fn push_run_state(output: &mut String, alias: &str, components: &HostedComponent
     }
     output.push_str("}\n\n");
 
-    output.push_str(&format!(
-        "impl{} RunState{}",
-        generics(components),
-        generics(components),
-    ));
-    push_bounds_open(output, alias, components);
-    output.push_str("    pub fn initialize(\n");
     if components.has_stdlib() {
         output.push_str(&format!(
-            "        stdlib: {alias}::gleam_stdlib::GleamStdlibRunState<Io>,\n"
+            "impl{} RunState{}",
+            generics(components),
+            generics(components),
         ));
-    }
-    if components.has_time() {
-        output.push_str("        time: Source,\n");
-    }
-    let configurations = if components.has_external() {
-        "configurations"
-    } else {
-        "_configurations"
-    };
-    output.push_str(&format!(
-        "        {configurations}: ProviderConfigurations,\n    )"
-    ));
-    let compact_state = components
-        .iter()
-        .map(|component| match component {
-            ComponentBinding::Stdlib => Some("stdlib"),
-            ComponentBinding::Json => Some("json: ()"),
-            ComponentBinding::Time => Some("time"),
-            ComponentBinding::External(_) => None,
-        })
-        .collect::<Option<Vec<_>>>()
-        .map(|fields| fields.join(", "))
-        .filter(|fields| fields.len() <= 18);
-    if components.has_external() {
-        output.push_str(" -> Result<Self, HostProviderInitializationError> {\n        Ok(Self {\n");
-    } else if let Some(fields) = &compact_state {
-        output.push_str(&format!(" -> Self {{\n        Self {{ {fields} }}\n"));
-    } else {
-        output.push_str(" -> Self {\n        Self {\n");
-    }
-    if compact_state.is_none() {
-        for component in components.iter() {
-            match component {
-                ComponentBinding::Stdlib => output.push_str("            stdlib,\n"),
-                ComponentBinding::Json => output.push_str("            json: (),\n"),
-                ComponentBinding::Time => output.push_str("            time,\n"),
-                ComponentBinding::External(component) => {
-                    push_external_initialization(output, alias, component)
-                }
-            }
-        }
-    }
-    if components.has_external() {
-        output.push_str("        })\n    }\n");
-    } else if compact_state.is_some() {
-        output.push_str("    }\n");
-    } else {
-        output.push_str("        }\n    }\n");
-    }
-    if components.has_stdlib() {
+        push_bounds_open(output, alias, components);
         output.push_str(&format!(
-            "\n    pub fn stdlib(&self) -> &{alias}::gleam_stdlib::GleamStdlibRunState<Io> {{\n        &self.stdlib\n    }}\n\n    pub fn stdlib_mut(&mut self) -> &mut {alias}::gleam_stdlib::GleamStdlibRunState<Io> {{\n        &mut self.stdlib\n    }}\n"
+            "    pub fn stdlib(&self) -> &{alias}::gleam_stdlib::GleamStdlibRunState<Io> {{\n        &self.stdlib\n    }}\n\n    pub fn stdlib_mut(&mut self) -> &mut {alias}::gleam_stdlib::GleamStdlibRunState<Io> {{\n        &mut self.stdlib\n    }}\n"
         ));
+        output.push_str("}\n\n");
     }
-    output.push_str("}\n\n");
 }
 
 fn push_host_profile(output: &mut String, alias: &str, components: &HostedComponents) {
@@ -479,19 +457,23 @@ fn push_host_providers(output: &mut String, alias: &str, components: &HostedComp
         let registration = format!(
             "<{component_type} as HostProviderComponentRegistration<{profile}>>::providers()?"
         );
-        if components.capabilities() == HostedCapabilities::IoAndTime {
+        let direct_opening = format!(
+            "    let additional_providers = <{component_type} as HostProviderComponentRegistration<"
+        );
+        if 8 + registration.len() <= 100 {
             output.push_str(&format!(
-                "    providers.extend(\n        <{component_type} as HostProviderComponentRegistration<\n            {profile},\n        >>::providers()?,\n    );\n"
+                "    let additional_providers =\n        {registration};\n"
             ));
-        } else if components.capabilities() == HostedCapabilities::None {
+        } else if direct_opening.len() < 100 {
             output.push_str(&format!(
-                "    providers.extend(<{component_type} as HostProviderComponentRegistration<\n        {profile},\n    >>::providers()?);\n"
+                "    let additional_providers = <{component_type} as HostProviderComponentRegistration<\n        {profile},\n    >>::providers()?;\n"
             ));
         } else {
             output.push_str(&format!(
-                "    providers.extend(\n        {registration},\n    );\n"
+                "    let additional_providers =\n        <{component_type} as HostProviderComponentRegistration<\n            {profile},\n        >>::providers()?;\n"
             ));
         }
+        output.push_str("    providers.extend(additional_providers);\n");
     }
     output.push_str(&format!(
         "    HostProviderSet::with_providers(Vec::<HostModule<{profile}>>::new(), providers)\n}}\n\n"
@@ -578,16 +560,24 @@ fn push_external_initialization(
     let type_path = component_type(alias, &ComponentBinding::External(component.clone()));
     let initialization =
         format!("<{type_path} as HostProviderComponentInitialization>::initialize(");
+    let statement = format!(
+        "            {field}: {initialization}&self.{input})?,\n",
+        input = component.input_field.as_str(),
+    );
+    if statement.trim_end().len() <= 100 {
+        output.push_str(&statement);
+        return;
+    }
     let opening = format!("            {field}: {initialization}\n");
     if opening.trim_end().len() <= 100 {
         output.push_str(&format!(
-            "{opening}                &configurations.{configuration},\n            )?,\n",
-            configuration = component.configuration_field.as_str(),
+            "{opening}                &self.{input},\n            )?,\n",
+            input = component.input_field.as_str(),
         ));
     } else {
         output.push_str(&format!(
-            "            {field}:\n                {initialization}\n                    &configurations.{configuration},\n                )?,\n",
-            configuration = component.configuration_field.as_str(),
+            "            {field}:\n                {initialization}\n                    &self.{input},\n                )?,\n",
+            input = component.input_field.as_str(),
         ));
     }
 }
@@ -899,7 +889,11 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
             "pub fn project<Io>() -> Result<HostedProject<Profile<Io>>, HostRegistrationError>"
         ));
         assert!(stdlib.contains("host_providers()?"));
-        assert!(stdlib.contains("pub struct ProviderConfigurations;"));
+        assert!(stdlib.contains("pub struct RunStateInputs<Io>"));
+        assert!(stdlib.contains("pub stdlib: runtime::gleam_stdlib::GleamStdlibRunState<Io>"));
+        assert!(stdlib.contains("pub fn initialize(self) -> RunState<Io>"));
+        assert!(stdlib.contains("RunState {\n            stdlib: self.stdlib,"));
+        assert!(!stdlib.contains("ProviderConfigurations"));
         assert!(stdlib.contains("gleam_stdlib::Component<Io>"));
         assert!(!stdlib.contains("gleam_json::Component"));
         assert!(!stdlib.contains("gleam_time::Component"));
@@ -909,6 +903,7 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         assert!(json.contains("pub struct Profile<Io>"));
         assert!(json.contains("gleam_stdlib::Component<Io>"));
         assert!(json.contains("gleam_json::Component"));
+        assert!(!json.contains("    pub json:"));
         assert!(!json.contains("gleam_time::Component"));
 
         let time = hosted_source(HostedComponents::from_builtin(BuiltInProvider::Time));
@@ -920,6 +915,7 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         );
         assert!(time.contains("gleam_stdlib::Component<Io>"));
         assert!(time.contains("gleam_time::Component<Source>"));
+        assert!(time.contains("    pub time: Source,"));
         assert!(time.contains("Source: runtime::gleam_time::TimeSource"));
         assert!(!time.contains("gleam_json::Component"));
 
@@ -944,7 +940,13 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         let external = external_components();
         let external_only = hosted_source(external_components());
         assert!(external_only.contains("pub struct Profile;"));
+        assert!(external_only.contains("pub struct RunStateInputs"));
         assert!(external_only.contains("pub example_text_pattern: HostProviderConfiguration"));
+        assert!(external_only.contains(
+            "pub fn initialize(self) -> Result<RunState, HostProviderInitializationError>"
+        ));
+        assert!(external_only.contains("&self.example_text_pattern"));
+        assert!(!external_only.contains("ProviderConfigurations"));
         assert!(external_only.contains("patterns::Component"));
         assert!(external_only.contains("HostProviderInitializationError"));
         assert!(external_only.contains("#[derive(Default)]\npub struct Stores"));
@@ -955,42 +957,95 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         let mut two_external = external_components();
         two_external.extend(HostedComponents::from_external(ExternalComponent {
             package: "other_provider".to_owned(),
-            configuration_field: identifier("other_provider"),
+            input_field: identifier("other_provider"),
             state_field: identifier("provider_other_provider"),
             crate_alias: identifier("other"),
         }));
         let two_external = hosted_source(two_external);
         assert!(two_external.contains("pub other_provider: HostProviderConfiguration"));
         assert!(two_external.contains("other::Component"));
+        let pattern_input = two_external
+            .find("pub example_text_pattern:")
+            .expect("text pattern input should be generated");
+        let other_input = two_external
+            .find("pub other_provider:")
+            .expect("other provider input should be generated");
+        assert!(pattern_input < other_input);
 
         let mut two_short = HostedComponents::from_external(ExternalComponent {
             package: "a".to_owned(),
-            configuration_field: identifier("a"),
+            input_field: identifier("a"),
             state_field: identifier("provider_a"),
             crate_alias: identifier("p"),
         });
         two_short.extend(HostedComponents::from_external(ExternalComponent {
-            package: "b".to_owned(),
-            configuration_field: identifier("b"),
-            state_field: identifier("provider_b"),
+            package: "bb".to_owned(),
+            input_field: identifier("bb"),
+            state_field: identifier("provider_bb"),
             crate_alias: identifier("q"),
         }));
         let two_short = hosted_source(two_short);
+        assert!(two_short.contains(
+            "            provider_bb: <q::Component as HostProviderComponentInitialization>::initialize(\n                &self.bb,\n            )?,"
+        ));
 
         let long_external = hosted_source(HostedComponents::from_external(ExternalComponent {
             package: "package_with_a_deliberately_long_name".to_owned(),
-            configuration_field: identifier("package_with_a_deliberately_long_name"),
+            input_field: identifier("package_with_a_deliberately_long_name"),
             state_field: identifier("provider_package_with_a_deliberately_long_name"),
             crate_alias: identifier("provider_with_a_deliberately_long_cargo_alias"),
         }));
 
-        let mut mixed = HostedComponents::from_builtin(BuiltInProvider::Stdlib);
+        let reserved_external = hosted_source(HostedComponents::from_external(ExternalComponent {
+            package: "stdlib".to_owned(),
+            input_field: identifier("stdlib"),
+            state_field: identifier("provider_stdlib"),
+            crate_alias: identifier("reserved"),
+        }));
+        assert!(reserved_external.contains("pub provider_stdlib: HostProviderConfiguration"));
+        assert!(!reserved_external.contains("pub stdlib: HostProviderConfiguration"));
+
+        let mut escaped_collisions = HostedComponents::from_external(ExternalComponent {
+            package: "crate".to_owned(),
+            input_field: identifier("_crate"),
+            state_field: identifier("provider__crate"),
+            crate_alias: identifier("escaped"),
+        });
+        escaped_collisions.extend(HostedComponents::from_external(ExternalComponent {
+            package: "_crate".to_owned(),
+            input_field: identifier("_crate"),
+            state_field: identifier("provider__crate"),
+            crate_alias: identifier("natural"),
+        }));
+        let escaped_collisions = hosted_source(escaped_collisions);
+        assert!(escaped_collisions.contains("pub _crate: HostProviderConfiguration"));
+        assert!(escaped_collisions.contains("pub provider__crate: HostProviderConfiguration"));
+        assert!(escaped_collisions.contains("provider__crate: <natural::Component"));
+        assert!(escaped_collisions.contains("provider_provider__crate: <escaped::Component"));
+
+        let mut mixed = HostedComponents::from_builtin(BuiltInProvider::Time);
         mixed.extend(external);
+        mixed.extend(HostedComponents::from_external(ExternalComponent {
+            package: "other_provider".to_owned(),
+            input_field: identifier("other_provider"),
+            state_field: identifier("provider_other_provider"),
+            crate_alias: identifier("other"),
+        }));
         let mixed = hosted_source(mixed);
-        assert!(mixed.contains("pub struct Profile<Io>"));
-        assert!(mixed.contains("pub type ProviderSet<Io> = HostProviderSet<Profile<Io>>;"));
+        assert!(mixed.contains("pub struct Profile<Io, Source>"));
+        assert!(
+            mixed.contains(
+                "pub type ProviderSet<Io, Source> = HostProviderSet<Profile<Io, Source>>;"
+            )
+        );
         assert!(mixed.contains("gleam_stdlib::Component<Io>"));
+        assert!(mixed.contains("gleam_time::Component<Source>"));
         assert!(mixed.contains("patterns::Component"));
+        assert!(mixed.contains("other::Component"));
+        assert!(mixed.contains("pub stdlib: runtime::gleam_stdlib::GleamStdlibRunState<Io>"));
+        assert!(mixed.contains("pub time: Source"));
+        assert!(mixed.contains("pub example_text_pattern: HostProviderConfiguration"));
+        assert!(mixed.contains("pub other_provider: HostProviderConfiguration"));
         assert!(mixed.contains("pub fn stdlib("));
         assert!(!mixed.contains("pub fn provider_example_text_pattern"));
 
@@ -998,6 +1053,8 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         assert_rustfmt_stable("two external", &two_external);
         assert_rustfmt_stable("two short external", &two_short);
         assert_rustfmt_stable("long external", &long_external);
+        assert_rustfmt_stable("reserved external", &reserved_external);
+        assert_rustfmt_stable("escaped collisions", &escaped_collisions);
         assert_rustfmt_stable("mixed", &mixed);
     }
 
@@ -1029,7 +1086,7 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
     fn external_components() -> HostedComponents {
         HostedComponents::from_external(ExternalComponent {
             package: "example_text_pattern".to_owned(),
-            configuration_field: identifier("example_text_pattern"),
+            input_field: identifier("example_text_pattern"),
             state_field: identifier("provider_example_text_pattern"),
             crate_alias: identifier("patterns"),
         })

@@ -46,8 +46,27 @@ where
     }
 }
 
-pub struct ProviderConfigurations {
+pub struct RunStateInputs<Io>
+where
+    Io: geam::gleam_stdlib::IoSink + 'static,
+{
+    pub stdlib: geam::gleam_stdlib::GleamStdlibRunState<Io>,
     pub example_text_pattern: HostProviderConfiguration,
+}
+
+impl<Io> RunStateInputs<Io>
+where
+    Io: geam::gleam_stdlib::IoSink + 'static,
+{
+    pub fn initialize(self) -> Result<RunState<Io>, HostProviderInitializationError> {
+        Ok(RunState {
+            stdlib: self.stdlib,
+            provider_example_text_pattern:
+                <patterns::Component as HostProviderComponentInitialization>::initialize(
+                    &self.example_text_pattern,
+                )?,
+        })
+    }
 }
 
 pub struct RunState<Io>
@@ -62,19 +81,6 @@ impl<Io> RunState<Io>
 where
     Io: geam::gleam_stdlib::IoSink + 'static,
 {
-    pub fn initialize(
-        stdlib: geam::gleam_stdlib::GleamStdlibRunState<Io>,
-        configurations: ProviderConfigurations,
-    ) -> Result<Self, HostProviderInitializationError> {
-        Ok(Self {
-            stdlib,
-            provider_example_text_pattern:
-                <patterns::Component as HostProviderComponentInitialization>::initialize(
-                    &configurations.example_text_pattern,
-                )?,
-        })
-    }
-
     pub fn stdlib(&self) -> &geam::gleam_stdlib::GleamStdlibRunState<Io> {
         &self.stdlib
     }
@@ -140,9 +146,9 @@ where
     let mut providers = <geam::gleam_stdlib::Component<Io> as HostProviderComponentRegistration<
         Profile<Io>,
     >>::providers()?;
-    providers.extend(
-        <patterns::Component as HostProviderComponentRegistration<Profile<Io>>>::providers()?,
-    );
+    let additional_providers =
+        <patterns::Component as HostProviderComponentRegistration<Profile<Io>>>::providers()?;
+    providers.extend(additional_providers);
     HostProviderSet::with_providers(Vec::<HostModule<Profile<Io>>>::new(), providers)
 }
 

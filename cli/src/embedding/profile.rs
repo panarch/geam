@@ -37,7 +37,7 @@ pub(super) enum ComponentBinding {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct ExternalComponent {
     pub(super) package: String,
-    pub(super) configuration_field: RustIdentifier,
+    pub(super) input_field: RustIdentifier,
     pub(super) state_field: RustIdentifier,
     pub(super) crate_alias: RustIdentifier,
 }
@@ -85,10 +85,12 @@ impl HostedComponents {
     }
 
     fn new(first: ComponentBinding) -> Self {
-        Self {
+        let mut components = Self {
             first,
             remaining: Vec::new(),
-        }
+        };
+        components.assign_external_fields();
+        components
     }
 
     fn insert(&mut self, component: ComponentBinding) {
@@ -98,12 +100,13 @@ impl HostedComponents {
         if component < self.first {
             let previous = std::mem::replace(&mut self.first, component);
             self.remaining.insert(0, previous);
-            return;
+        } else {
+            let index = self
+                .remaining
+                .partition_point(|current| current < &component);
+            self.remaining.insert(index, component);
         }
-        let index = self
-            .remaining
-            .partition_point(|current| current < &component);
-        self.remaining.insert(index, component);
+        self.assign_external_fields();
     }
 
     pub(super) fn extend(&mut self, components: Self) {
@@ -154,6 +157,38 @@ impl HostedComponents {
             .any(|component| matches!(component, ComponentBinding::External(_)))
     }
 
+    fn assign_external_fields(&mut self) {
+        let mut used_inputs = BTreeSet::from(["stdlib".to_owned(), "time".to_owned()]);
+        let mut used_state =
+            BTreeSet::from(["stdlib".to_owned(), "json".to_owned(), "time".to_owned()]);
+        let mut external = std::iter::once(&mut self.first)
+            .chain(self.remaining.iter_mut())
+            .filter_map(|component| match component {
+                ComponentBinding::External(component) => Some(component),
+                ComponentBinding::Stdlib | ComponentBinding::Json | ComponentBinding::Time => None,
+            })
+            .collect::<Vec<_>>();
+        // A reserved package keeps its stable escaped field when another
+        // provider's natural package name matches that escape.
+        external.sort_by_key(|component| {
+            let (priority, _) = input_field_candidate(&component.package);
+            (priority, component.package.clone())
+        });
+        for component in external {
+            let (_, mut input_field) = input_field_candidate(&component.package);
+            while !used_inputs.insert(input_field.as_str().to_owned()) {
+                input_field = input_field.with_prefix("provider_");
+            }
+            let mut state_field =
+                RustIdentifier::from_compiled_package(&component.package).with_prefix("provider_");
+            while !used_state.insert(state_field.as_str().to_owned()) {
+                state_field = state_field.with_prefix("provider_");
+            }
+            component.input_field = input_field;
+            component.state_field = state_field;
+        }
+    }
+
     fn require_geam_features(&self, package: &EmbeddingPackage) -> Result<(), CliError> {
         for component in self.iter() {
             let Some(provider) = component.built_in() else {
@@ -168,6 +203,18 @@ impl HostedComponents {
             )?;
         }
         Ok(())
+    }
+}
+
+fn input_field_candidate(package: &str) -> (u8, RustIdentifier) {
+    let field = RustIdentifier::from_compiled_package(package);
+    if matches!(field.as_str(), "stdlib" | "time") {
+        return (0, field.with_prefix("provider_"));
+    }
+    if field.as_str() == package {
+        (1, field)
+    } else {
+        (2, field)
     }
 }
 
@@ -303,8 +350,8 @@ impl<'metadata> ProviderCandidates<'metadata> {
         }
         verify_provider_geam_identity(package, candidate)?;
 
-        let configuration_field = RustIdentifier::from_compiled_package(required_package);
-        let state_field = configuration_field.with_prefix("provider_");
+        let input_field = RustIdentifier::from_compiled_package(required_package);
+        let state_field = input_field.with_prefix("provider_");
         let alias = candidate.dependency.alias.as_str();
         let crate_alias = RustIdentifier::crate_alias(alias).map_err(|reason| {
             provider_error(
@@ -315,7 +362,7 @@ impl<'metadata> ProviderCandidates<'metadata> {
         })?;
         Ok(ExternalComponent {
             package: required_package.to_owned(),
-            configuration_field,
+            input_field,
             state_field,
             crate_alias,
         })
@@ -426,7 +473,7 @@ mod tests {
     fn orders_and_deduplicates_mixed_components_without_weakening_dependencies() {
         let mut components = HostedComponents::from_external(ExternalComponent {
             package: "example_text_pattern".to_owned(),
-            configuration_field: identifier("example_text_pattern"),
+            input_field: identifier("example_text_pattern"),
             state_field: identifier("provider_example_text_pattern"),
             crate_alias: identifier("patterns"),
         });
@@ -440,13 +487,92 @@ mod tests {
                 &ComponentBinding::Time,
                 &ComponentBinding::External(ExternalComponent {
                     package: "example_text_pattern".to_owned(),
-                    configuration_field: identifier("example_text_pattern"),
+                    input_field: identifier("example_text_pattern"),
                     state_field: identifier("provider_example_text_pattern"),
                     crate_alias: identifier("patterns"),
                 }),
             ],
         );
         assert_eq!(components.capabilities(), HostedCapabilities::IoAndTime);
+    }
+
+    #[test]
+    fn reserves_builtin_input_names_and_resolves_external_collisions() {
+        let reserved = HostedComponents::from_external(ExternalComponent {
+            package: "stdlib".to_owned(),
+            input_field: identifier("stdlib"),
+            state_field: identifier("provider_stdlib"),
+            crate_alias: identifier("stdlib_provider"),
+        });
+        assert_eq!(
+            reserved.iter().cloned().collect::<Vec<_>>(),
+            [ComponentBinding::External(ExternalComponent {
+                package: "stdlib".to_owned(),
+                input_field: identifier("provider_stdlib"),
+                state_field: identifier("provider_stdlib"),
+                crate_alias: identifier("stdlib_provider"),
+            })],
+        );
+
+        let mut escaped = HostedComponents::from_external(ExternalComponent {
+            package: "crate".to_owned(),
+            input_field: identifier("_crate"),
+            state_field: identifier("provider__crate"),
+            crate_alias: identifier("escaped_provider"),
+        });
+        escaped.extend(HostedComponents::from_external(ExternalComponent {
+            package: "_crate".to_owned(),
+            input_field: identifier("_crate"),
+            state_field: identifier("provider__crate"),
+            crate_alias: identifier("natural_provider"),
+        }));
+        assert_eq!(
+            escaped.iter().cloned().collect::<Vec<_>>(),
+            [
+                ComponentBinding::External(ExternalComponent {
+                    package: "_crate".to_owned(),
+                    input_field: identifier("_crate"),
+                    state_field: identifier("provider__crate"),
+                    crate_alias: identifier("natural_provider"),
+                }),
+                ComponentBinding::External(ExternalComponent {
+                    package: "crate".to_owned(),
+                    input_field: identifier("provider__crate"),
+                    state_field: identifier("provider_provider__crate"),
+                    crate_alias: identifier("escaped_provider"),
+                }),
+            ],
+        );
+
+        let mut collisions = HostedComponents::from_external(ExternalComponent {
+            package: "stdlib".to_owned(),
+            input_field: identifier("stdlib"),
+            state_field: identifier("provider_stdlib"),
+            crate_alias: identifier("stdlib_provider"),
+        });
+        collisions.extend(HostedComponents::from_external(ExternalComponent {
+            package: "provider_stdlib".to_owned(),
+            input_field: identifier("provider_stdlib"),
+            state_field: identifier("provider_provider_stdlib"),
+            crate_alias: identifier("prefixed_provider"),
+        }));
+        assert_eq!(
+            collisions.iter().cloned().collect::<Vec<_>>(),
+            [
+                ComponentBinding::External(ExternalComponent {
+                    package: "provider_stdlib".to_owned(),
+                    input_field: identifier("provider_provider_stdlib"),
+                    state_field: identifier("provider_provider_stdlib"),
+                    crate_alias: identifier("prefixed_provider"),
+                }),
+                ComponentBinding::External(ExternalComponent {
+                    package: "stdlib".to_owned(),
+                    input_field: identifier("provider_stdlib"),
+                    state_field: identifier("provider_stdlib"),
+                    crate_alias: identifier("stdlib_provider"),
+                }),
+            ],
+        );
     }
 
     #[test]
@@ -471,7 +597,7 @@ mod tests {
             hosted.components.iter().collect::<Vec<_>>(),
             [&ComponentBinding::External(ExternalComponent {
                 package: "images".to_owned(),
-                configuration_field: identifier("images"),
+                input_field: identifier("images"),
                 state_field: identifier("provider_images"),
                 crate_alias: identifier("patterns"),
             })],

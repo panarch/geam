@@ -11,12 +11,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (bindings, functions) = geam_bindings::bind(builder)?;
     let module = bindings.seal()?;
 
-    let mut state = geam_bindings::RunState::initialize(
-        GleamStdlibRunState::from_seed([7; 32]),
-        geam_bindings::ProviderConfigurations {
-            example_text_pattern: HostProviderConfiguration::empty(),
-        },
-    )?;
+    let mut state = geam_bindings::RunStateInputs {
+        stdlib: GleamStdlibRunState::from_seed([7; 32]),
+        example_text_pattern: HostProviderConfiguration::empty(),
+    }
+    .initialize()?;
     let mut echo = Vec::new();
 
     let first = module.call(

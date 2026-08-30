@@ -117,6 +117,24 @@ the same project compilation boundary:
 let program = geam_bindings::project()?.compile()?;
 ```
 
+For hosted execution, generated `RunStateInputs` lists every runtime value the
+caller must choose. The canonical application supplies stdlib state and its
+external provider configuration explicitly:
+
+```rust
+let mut state = geam_bindings::RunStateInputs {
+    stdlib: GleamStdlibRunState::from_seed([7; 32]),
+    example_text_pattern: HostProviderConfiguration::empty(),
+}
+.initialize()?;
+```
+
+Time-backed source closures add a caller-owned `time` field. Component-owned
+unit state, including JSON state, is initialized internally and does not become
+a synthetic input. Initialization returns `RunState` directly when every
+selected component is total, and preserves `HostProviderInitializationError`
+when an external provider can reject its configuration.
+
 The application remains explicit about the runtime lifecycle:
 
 1. Compile the generated project selection through the existing read-only

@@ -334,8 +334,19 @@ pub fn normalize(value: String) -> String
         let generated = fs::read(&generated_path).expect("generated source should be readable");
         let source = String::from_utf8_lossy(&generated);
         assert!(source.contains("pub struct Profile;"));
+        assert!(source.contains("pub struct RunStateInputs"));
+        assert!(source.contains("flags::Component"));
         assert!(source.contains("patterns::Component"));
+        assert!(source.contains("pub example_feature_flags: HostProviderConfiguration"));
         assert!(source.contains("pub example_text_pattern: HostProviderConfiguration"));
+        let flags_input = source
+            .find("pub example_feature_flags:")
+            .expect("feature flags input should be generated");
+        let pattern_input = source
+            .find("pub example_text_pattern:")
+            .expect("text pattern input should be generated");
+        assert!(flags_input < pattern_input);
+        assert!(!source.contains("ProviderConfigurations"));
         assert!(!source.contains("runtime::gleam_stdlib::Component"));
         assert!(!source.contains("runtime::gleam_json::Component"));
         assert!(!source.contains("runtime::gleam_time::Component"));
@@ -448,8 +459,12 @@ pub fn normalize(value: String) -> String
         assert!(generated.contains("runtime::gleam_stdlib::Component<Io>"));
         assert!(generated.contains("runtime::gleam_json::Component"));
         assert!(generated.contains("runtime::gleam_time::Component<Source>"));
+        assert!(generated.contains("pub struct RunStateInputs<Io, Source>"));
+        assert!(generated.contains("pub stdlib: runtime::gleam_stdlib::GleamStdlibRunState<Io>"));
+        assert!(generated.contains("    pub time: Source,"));
+        assert!(!generated.contains("    pub json:"));
         assert!(generated.contains("            json: (),"));
-        assert!(generated.contains("            time,"));
+        assert!(generated.contains("            time: self.time,"));
         assert!(!generated.contains("HostProviderComponentInitialization"));
 
         assert_success(
@@ -895,10 +910,14 @@ pub fn double(value: Int) -> Int {
                 .expect("Rust source directory should be created");
             fs::create_dir_all(self.root.join("gleam/src"))
                 .expect("Gleam source directory should be created");
-            let provider = self.repository.join("examples/text_pattern/provider");
+            let pattern_provider = self.repository.join("examples/text_pattern/provider");
+            let flags_provider = self.repository.join("examples/feature_flags/provider");
             let text_pattern = self
                 .repository
                 .join("examples/text_pattern/project/packages/example_text_pattern");
+            let feature_flags = self
+                .repository
+                .join("examples/feature_flags/project/packages/example_feature_flags");
             fs::write(
                 self.root.join("Cargo.toml"),
                 format!(
@@ -909,7 +928,8 @@ edition = "2024"
 
 [dependencies]
 runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding"] }}
-patterns = {{ package = "geam-example-text-pattern", path = {provider:?} }}
+flags = {{ package = "geam-example-feature-flags", path = {flags_provider:?} }}
+patterns = {{ package = "geam-example-text-pattern", path = {pattern_provider:?} }}
 
 [package.metadata.geam.embedding]
 project = "gleam"
@@ -930,19 +950,50 @@ resolver = "3"
                 r#"mod geam_bindings;
 
 use runtime::embedding::HostedModuleBuilder;
-use runtime::HostProviderConfiguration;
+use runtime::{HostProviderConfiguration, HostProviderConfigurationValue};
+use std::collections::BTreeMap;
 use std::error::Error;
+
+fn feature_flags_configuration() -> HostProviderConfiguration {
+    HostProviderConfiguration::new(BTreeMap::from([
+        (
+            "environment".into(),
+            HostProviderConfigurationValue::from("staging"),
+        ),
+        (
+            "enabled".into(),
+            vec![HostProviderConfigurationValue::from("new_checkout")].into(),
+        ),
+    ]))
+}
 
 fn main() -> Result<(), Box<dyn Error>> {
     let program = geam_bindings::project()?.compile()?;
     let builder = HostedModuleBuilder::new(program)?;
     let (bindings, functions) = geam_bindings::bind(builder)?;
     let module = bindings.seal()?;
-    let mut state = geam_bindings::RunState::initialize(
-        geam_bindings::ProviderConfigurations {
-            example_text_pattern: HostProviderConfiguration::empty(),
-        },
-    )?;
+    let initialization_error = match (geam_bindings::RunStateInputs {
+        example_feature_flags: HostProviderConfiguration::empty(),
+        example_text_pattern: HostProviderConfiguration::empty(),
+    })
+    .initialize()
+    {
+        Ok(_) => panic!("missing feature flag configuration should fail"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        initialization_error.component_id(),
+        "geam-example-feature-flags"
+    );
+    assert_eq!(
+        initialization_error.reason(),
+        "configuration key `environment` must be a String"
+    );
+    let mut state = geam_bindings::RunStateInputs {
+        example_feature_flags: feature_flags_configuration(),
+        example_text_pattern: HostProviderConfiguration::empty(),
+    }
+    .initialize()?;
     let mut echo = Vec::new();
 
     let value = module.call(&functions.format_words, (), &mut state, &mut echo)?;
@@ -958,10 +1009,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         &mut state,
         &mut echo,
     )?;
+    let environment = module.call(&functions.environment, (), &mut state, &mut echo)?;
+    let checkout = module.call(&functions.checkout_enabled, (), &mut state, &mut echo)?;
 
     assert_eq!(value, "<Geam> + <Gleam> 2026");
     assert!(words);
     assert!(!numbers);
+    assert_eq!(environment, "staging");
+    assert!(checkout);
     assert!(echo.is_empty());
     println!("{value}");
     Ok(())
@@ -976,6 +1031,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 version = "1.0.0"
 
 [dependencies]
+example_feature_flags = {{ path = {feature_flags:?} }}
 example_text_pattern = {{ path = {text_pattern:?} }}
 "#,
                 ),
@@ -985,10 +1041,12 @@ example_text_pattern = {{ path = {text_pattern:?} }}
                 self.root.join("gleam/manifest.toml"),
                 format!(
                     r#"packages = [
+  {{ name = "example_feature_flags", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "local", path = {feature_flags:?} }},
   {{ name = "example_text_pattern", version = "0.1.0", build_tools = ["gleam"], requirements = [], source = "local", path = {text_pattern:?} }},
 ]
 
 [requirements]
+example_feature_flags = {{ path = {feature_flags:?} }}
 example_text_pattern = {{ path = {text_pattern:?} }}
 "#,
                 ),
@@ -996,7 +1054,8 @@ example_text_pattern = {{ path = {text_pattern:?} }}
             .expect("hosted Gleam manifest should be written");
             fs::write(
                 self.root.join("gleam/src/rust_embedding.gleam"),
-                r#"import example_text_pattern as pattern
+                r#"import example_feature_flags as flags
+import example_text_pattern as pattern
 
 pub fn format_words() -> String {
   let assert Ok(words) = pattern.compile("[A-Za-z]+")
@@ -1006,6 +1065,14 @@ pub fn format_words() -> String {
 pub fn contains_only_words(text: String) -> Bool {
   let assert Ok(words) = pattern.compile("^[A-Za-z ]+$")
   pattern.is_match(words, text)
+}
+
+pub fn environment() -> String {
+  flags.environment()
+}
+
+pub fn checkout_enabled() -> Bool {
+  flags.enabled("new_checkout")
 }
 "#,
             )
@@ -1086,11 +1153,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let _consume = consume_functions;
     let _bind = geam_bindings::bind::<Vec<IoOutput>, FixedTime>;
     let _program = geam_bindings::project::<Vec<IoOutput>, FixedTime>()?.compile()?;
-    let mut state = geam_bindings::RunState::initialize(
-        GleamStdlibRunState::from_seed([7; 32]),
-        FixedTime,
-        geam_bindings::ProviderConfigurations,
-    );
+    let mut state = geam_bindings::RunStateInputs {
+        stdlib: GleamStdlibRunState::from_seed([7; 32]),
+        time: FixedTime,
+    }
+    .initialize();
     assert!(state.stdlib().io_outputs().is_empty());
     assert!(state.stdlib_mut().take_io_outputs().is_empty());
     Ok(())
