@@ -125,7 +125,10 @@ values, callbacks, and other unsupported exports fail synchronization instead
 of being omitted. Imported modules may contain ordinary supported Gleam code;
 only public functions of the selected root module become Rust bindings.
 
-For direct control over declarations and binding, the
-[`rust_embedding.rs`](../examples/rust_embedding.rs) and
-[`rust_hosted_embedding.rs`](../examples/rust_hosted_embedding.rs) examples
-remain the low-level typed API references.
+For provider-free direct control over declarations and binding,
+[`rust_embedding.rs`](../examples/rust_embedding.rs) remains the low-level
+typed API reference. Source closures that require built-in or external
+providers should use the managed sync and check workflow shown by the canonical
+application. The lower-level provider assembly contract remains documented in
+[host provider components](host-providers.md); it is not a second application
+workflow.

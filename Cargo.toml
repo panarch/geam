@@ -15,10 +15,6 @@ include = [
     "/docs/**",
     "/examples/rust_embedding.rs",
     "/examples/rust_embedding/**",
-    "/examples/rust_hosted_embedding.rs",
-    "/examples/rust_hosted_embedding/gleam.toml",
-    "/examples/rust_hosted_embedding/manifest.toml",
-    "/examples/rust_hosted_embedding/src/**",
     "/src/**",
     "/LICENSE",
     "/README.md",
@@ -126,11 +122,6 @@ required-features = ["cli"]
 name = "rust_embedding"
 path = "examples/rust_embedding.rs"
 required-features = ["embedding"]
-
-[[example]]
-name = "rust_hosted_embedding"
-path = "examples/rust_hosted_embedding.rs"
-required-features = ["embedding", "gleam-stdlib"]
 
 [[test]]
 name = "binary"

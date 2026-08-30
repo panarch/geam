@@ -30,23 +30,12 @@ Rust:
 cargo run --example rust_embedding --locked
 ```
 
-[`rust_hosted_embedding.rs`](rust_hosted_embedding.rs) adds an official Gleam
-dependency and its Rust provider bundle. It binds a public root function that
-calls `gleam/string.lowercase`, then supplies caller-owned provider state and
-Echo output on each typed call:
-
-```sh
-cd examples/rust_hosted_embedding
-gleam deps download
-cd ../..
-cargo run --example rust_hosted_embedding --locked
-```
-
-These two examples show the manual embedding boundary. Rust selects the project,
-declares exact function signatures, and seals one shared execution. Hosted
-embedding additionally composes providers and keeps mutable provider state and
-capabilities explicit. They remain low-level typed API references alongside the
-ordinary managed application.
+This provider-free example is the manual embedding boundary. Rust selects the
+project, declares exact function signatures, and seals one shared execution.
+When a selected source closure requires built-in or external providers, use the
+managed application so generated bindings own provider composition while Rust
+keeps capabilities, configuration, mutable state, Echo, loading, sealing, and
+call order explicit.
 
 ## Provider Authoring
 
