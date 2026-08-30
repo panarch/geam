@@ -14,6 +14,7 @@ const MANIFEST_FILE: &str = "Cargo.toml";
 pub(super) struct EmbeddingPackage {
     package_name: String,
     manifest: Utf8PathBuf,
+    project_path: Utf8PathBuf,
     project_root: Utf8PathBuf,
     root_module: String,
     geam_alias: RustIdentifier,
@@ -57,8 +58,8 @@ impl EmbeddingPackage {
         let package_name = package.name.to_string();
         let package_root = manifest.with_file_name("");
         let embedding = embedding_metadata(package)?;
-        let project = Utf8Path::new(&embedding.project);
-        if embedding.project.is_empty() || project.is_absolute() {
+        let project_path = Utf8PathBuf::from(embedding.project);
+        if project_path.as_str().is_empty() || project_path.is_absolute() {
             return Err(CliError::InvalidEmbeddingMetadata {
                 package: package_name,
                 manifest,
@@ -91,7 +92,8 @@ impl EmbeddingPackage {
         Ok(Self {
             package_name,
             manifest,
-            project_root: package_root.join(project),
+            project_root: package_root.join(&project_path),
+            project_path,
             root_module: embedding.module,
             geam_alias: geam.alias,
             geam_package_id: geam.package_id,
@@ -104,6 +106,10 @@ impl EmbeddingPackage {
 
     pub(super) fn project_root(&self) -> &Utf8Path {
         &self.project_root
+    }
+
+    pub(super) fn project_path(&self) -> &Utf8Path {
+        &self.project_path
     }
 
     pub(super) fn root_module(&self) -> &str {
@@ -399,6 +405,7 @@ mod tests {
         let nearest = EmbeddingPackage::load_with(&nested, None, &renamed_alias)
             .expect("nearest package should be selected");
         assert_eq!(nearest.project_root, package.join("gleam"));
+        assert_eq!(nearest.project_path, Utf8Path::new("gleam"));
         assert_eq!(nearest.root_module, "inventory_rules");
         assert_eq!(nearest.geam_alias.as_str(), "runtime");
         assert_eq!(nearest.output_path, package.join("src/geam_bindings.rs"));
@@ -528,9 +535,23 @@ mod tests {
             assert!(matches!(
                 error,
                 CliError::InvalidEmbeddingMetadata { package, manifest: path, reason }
-                    if package == "application" && path == manifest && reason.contains(expected)
+                if package == "application" && path == manifest && reason.contains(expected)
             ));
         }
+
+        let parent_relative = metadata(
+            &manifest,
+            embedding_metadata("../gleam project", "inventory_rules"),
+            &[("geam", "geam-one", "normal")],
+        );
+        let package =
+            EmbeddingPackage::load_with(&fixture.root, Some(manifest.clone()), &parent_relative)
+                .expect("parent-relative embedding project should remain valid");
+        assert_eq!(package.project_path(), Utf8Path::new("../gleam project"));
+        assert_eq!(
+            package.project_root(),
+            fixture.root.join("application/../gleam project"),
+        );
     }
 
     #[test]

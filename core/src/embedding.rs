@@ -7,10 +7,14 @@
 //! [`Function`] handle. Plain calls supply an echo sink; hosted calls also
 //! borrow the caller's provider state explicitly. Both accept only the Rust
 //! argument and return shapes that were bound up front.
+//!
+//! [`Project`] and [`HostedProject`] retain one source selection until it is
+//! compiled into the corresponding existing typed program owner.
 
 mod binding;
 mod error;
 mod hosted;
+mod project;
 
 pub use crate::BitArrayValue;
 pub use binding::{BindingError, FunctionDeclaration, ModuleBindings, ModuleBuilder};
@@ -18,6 +22,7 @@ pub use ecow::EcoString;
 pub use error::CallError;
 pub use hosted::{HostedModule, HostedModuleBindings, HostedModuleBuilder};
 pub use num_bigint::BigInt;
+pub use project::{HostedProject, Project};
 
 use crate::plan::execution::LibraryFunctionEntries;
 use crate::plan::{FunctionTemplateId, LibraryEntry, ValueType};

@@ -68,7 +68,7 @@ fn generate_with_project_reader(
     let requirements = geam_core::required_host_functions(&program);
     let bindings = PlainBindings::from_program(package.geam_alias().clone(), &program)?;
     let source = match requirements.as_slice() {
-        [] => render::plain(&bindings),
+        [] => render::plain(&bindings, package.project_path()),
         [first, remaining @ ..] => {
             let remaining_packages = remaining
                 .iter()
@@ -82,7 +82,7 @@ fn generate_with_project_reader(
                 &remaining_packages,
                 &resolved_project,
             )?;
-            render::hosted(&hosted)
+            render::hosted(&hosted, package.project_path())
         }
     };
     Ok(GeneratedBindings { package, source })
@@ -784,10 +784,7 @@ resolver = "3"
 use std::error::Error;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let program = runtime::compile_typed_project(
-        concat!(env!("CARGO_MANIFEST_DIR"), "/gleam"),
-        geam_bindings::ROOT_MODULE,
-    )?;
+    let program = geam_bindings::project().compile()?;
     let builder = runtime::embedding::ModuleBuilder::from_program(program)?;
     let (bindings, functions) = geam_bindings::bind(builder)?;
     let module = bindings.seal();
@@ -933,15 +930,11 @@ resolver = "3"
                 r#"mod geam_bindings;
 
 use runtime::embedding::HostedModuleBuilder;
-use runtime::{HostProviderConfiguration, compile_typed_host_project};
+use runtime::HostProviderConfiguration;
 use std::error::Error;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let program = compile_typed_host_project(
-        concat!(env!("CARGO_MANIFEST_DIR"), "/gleam"),
-        geam_bindings::ROOT_MODULE,
-        geam_bindings::host_providers()?,
-    )?;
+    let program = geam_bindings::project()?.compile()?;
     let builder = HostedModuleBuilder::new(program)?;
     let (bindings, functions) = geam_bindings::bind(builder)?;
     let module = bindings.seal()?;
@@ -1092,7 +1085,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     assert_eq!(geam_bindings::ROOT_MODULE, "rust_embedding");
     let _consume = consume_functions;
     let _bind = geam_bindings::bind::<Vec<IoOutput>, FixedTime>;
-    let _providers = geam_bindings::host_providers::<Vec<IoOutput>, FixedTime>()?;
+    let _program = geam_bindings::project::<Vec<IoOutput>, FixedTime>()?.compile()?;
     let mut state = geam_bindings::RunState::initialize(
         GleamStdlibRunState::from_seed([7; 32]),
         FixedTime,

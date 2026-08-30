@@ -102,12 +102,25 @@ file.
 
 ## Run The Module
 
-The generated module exposes `ROOT_MODULE`, a typed `Functions` aggregate, and
-plain or hosted `bind` support. The application remains explicit about the
-runtime lifecycle:
+The generated module exposes the selected `project`, a typed `Functions`
+aggregate, and plain or hosted `bind` support. Compile a provider-free project
+with:
 
-1. Load the resolved project with `compile_typed_project` or
-   `compile_typed_host_project`.
+```rust
+let program = geam_bindings::project().compile()?;
+```
+
+Hosted composition performs static provider registration separately before
+the same project compilation boundary:
+
+```rust
+let program = geam_bindings::project()?.compile()?;
+```
+
+The application remains explicit about the runtime lifecycle:
+
+1. Compile the generated project selection through the existing read-only
+   plain or hosted project loader.
 2. Build and bind all selected functions into one owner.
 3. Seal that owner once.
 4. Construct caller-owned capabilities, provider configuration, state, and
@@ -117,6 +130,10 @@ runtime lifecycle:
 See the canonical application's
 [`main.rs`](../examples/rust_embedding_application/src/main.rs) for the complete
 hosted sequence and exact state and output assertions.
+
+The lower-level `compile_typed_project` and `compile_typed_host_project`
+functions remain available when an application deliberately owns project
+selection or host registration instead of generated bindings.
 
 The first managed boundary supports public functions with zero through seven
 scalar arguments and a scalar return: Int, Float, String, BitArray,

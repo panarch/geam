@@ -17,6 +17,7 @@ use geam::embedding::Function;
 use geam::embedding::FunctionDeclaration;
 use geam::embedding::HostedModuleBindings;
 use geam::embedding::HostedModuleBuilder;
+use geam::embedding::HostedProject;
 use std::marker::PhantomData;
 
 pub const ROOT_MODULE: &str = "rust_embedding";
@@ -143,6 +144,17 @@ where
         <patterns::Component as HostProviderComponentRegistration<Profile<Io>>>::providers()?,
     );
     HostProviderSet::with_providers(Vec::<HostModule<Profile<Io>>>::new(), providers)
+}
+
+pub fn project<Io>() -> Result<HostedProject<Profile<Io>>, HostRegistrationError>
+where
+    Io: geam::gleam_stdlib::IoSink + 'static,
+{
+    Ok(HostedProject::new(
+        concat!(env!("CARGO_MANIFEST_DIR"), "/gleam"),
+        ROOT_MODULE,
+        host_providers()?,
+    ))
 }
 
 pub struct Functions {
