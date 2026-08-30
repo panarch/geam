@@ -424,14 +424,14 @@ mod tests {
 
     #[test]
     fn orders_and_deduplicates_mixed_components_without_weakening_dependencies() {
-        let mut components = HostedComponents::from_builtin(BuiltInProvider::Time);
-        components.extend(HostedComponents::from_builtin(BuiltInProvider::Stdlib));
-        components.extend(HostedComponents::from_external(ExternalComponent {
+        let mut components = HostedComponents::from_external(ExternalComponent {
             package: "example_text_pattern".to_owned(),
             configuration_field: identifier("example_text_pattern"),
             state_field: identifier("provider_example_text_pattern"),
             crate_alias: identifier("patterns"),
-        }));
+        });
+        components.extend(HostedComponents::from_builtin(BuiltInProvider::Time));
+        components.extend(HostedComponents::from_builtin(BuiltInProvider::Stdlib));
 
         assert_eq!(
             components.iter().collect::<Vec<_>>(),

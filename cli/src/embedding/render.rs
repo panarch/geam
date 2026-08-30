@@ -176,6 +176,10 @@ fn push_profile_declaration(output: &mut String, components: &HostedComponents) 
 }
 
 fn push_stores(output: &mut String, alias: &str, components: &HostedComponents) {
+    let derives_default = components.capabilities() == HostedCapabilities::None;
+    if derives_default {
+        output.push_str("#[derive(Default)]\n");
+    }
     output.push_str(&format!("pub struct Stores{}", generics(components)));
     push_bounds_open(output, alias, components);
     for component in components.iter() {
@@ -183,6 +187,9 @@ fn push_stores(output: &mut String, alias: &str, components: &HostedComponents) 
     }
     output.push_str("}\n\n");
 
+    if derives_default {
+        return;
+    }
     output.push_str(&format!(
         "impl{} Default for Stores{}",
         generics(components),
@@ -870,6 +877,8 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         assert!(external_only.contains("pub example_text_pattern: HostProviderConfiguration"));
         assert!(external_only.contains("patterns::Component"));
         assert!(external_only.contains("HostProviderInitializationError"));
+        assert!(external_only.contains("#[derive(Default)]\npub struct Stores"));
+        assert!(!external_only.contains("impl Default for Stores"));
         assert!(!external_only.contains("pub fn stdlib("));
         assert!(!external_only.contains("gleam_stdlib::Component"));
 

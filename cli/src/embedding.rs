@@ -333,11 +333,10 @@ pub fn normalize(value: String) -> String
         let generated_path = fixture.root.join("src/geam_bindings.rs");
         let generated = fs::read(&generated_path).expect("generated source should be readable");
         let source = String::from_utf8_lossy(&generated);
-        assert!(source.contains("pub struct Profile<Io>"));
-        assert!(source.contains("runtime::gleam_stdlib::Component<Io>"));
+        assert!(source.contains("pub struct Profile;"));
         assert!(source.contains("patterns::Component"));
         assert!(source.contains("pub example_text_pattern: HostProviderConfiguration"));
-        assert!(source.contains("pub fn stdlib_mut"));
+        assert!(!source.contains("runtime::gleam_stdlib::Component"));
         assert!(!source.contains("runtime::gleam_json::Component"));
         assert!(!source.contains("runtime::gleam_time::Component"));
         assert!(!source.contains("unused_provider::Component"));
@@ -365,7 +364,7 @@ pub fn normalize(value: String) -> String
                 .arg("--quiet"),
             "hosted generated Rust application",
         );
-        assert_eq!(output.stdout, b"GEAM, GLEAM\n");
+        assert_eq!(output.stdout, b"<Geam> + <Gleam> 2026\n");
         assert_eq!(output.stderr, b"");
 
         let manifest_path = fixture.root.join("Cargo.toml");
@@ -903,9 +902,6 @@ pub fn double(value: Int) -> Int {
             let text_pattern = self
                 .repository
                 .join("examples/text_pattern/project/packages/example_text_pattern");
-            let stdlib = self
-                .repository
-                .join("builtins/stdlib/tests/fixtures/project/build/packages/gleam_stdlib");
             fs::write(
                 self.root.join("Cargo.toml"),
                 format!(
@@ -915,7 +911,7 @@ version = "0.0.0"
 edition = "2024"
 
 [dependencies]
-runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding", "gleam-stdlib"] }}
+runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding"] }}
 patterns = {{ package = "geam-example-text-pattern", path = {provider:?} }}
 
 [package.metadata.geam.embedding]
@@ -937,7 +933,6 @@ resolver = "3"
                 r#"mod geam_bindings;
 
 use runtime::embedding::HostedModuleBuilder;
-use runtime::gleam_stdlib::{GleamStdlibRunState, IoStream};
 use runtime::{HostProviderConfiguration, compile_typed_host_project};
 use std::error::Error;
 
@@ -951,7 +946,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (bindings, functions) = geam_bindings::bind(builder)?;
     let module = bindings.seal()?;
     let mut state = geam_bindings::RunState::initialize(
-        GleamStdlibRunState::from_seed([7; 32]),
         geam_bindings::ProviderConfigurations {
             example_text_pattern: HostProviderConfiguration::empty(),
         },
@@ -972,14 +966,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         &mut echo,
     )?;
 
-    assert_eq!(value, "GEAM, GLEAM");
+    assert_eq!(value, "<Geam> + <Gleam> 2026");
     assert!(words);
     assert!(!numbers);
     assert!(echo.is_empty());
-    assert_eq!(state.stdlib().io_outputs().len(), 1);
-    let outputs = state.stdlib_mut().take_io_outputs();
-    assert_eq!(outputs[0].stream(), IoStream::Stdout);
-    assert_eq!(outputs[0].text(), "formatting words\n");
     println!("{value}");
     Ok(())
 }
@@ -994,7 +984,6 @@ version = "1.0.0"
 
 [dependencies]
 example_text_pattern = {{ path = {text_pattern:?} }}
-gleam_stdlib = {{ path = {stdlib:?} }}
 "#,
                 ),
             )
@@ -1004,12 +993,10 @@ gleam_stdlib = {{ path = {stdlib:?} }}
                 format!(
                     r#"packages = [
   {{ name = "example_text_pattern", version = "0.1.0", build_tools = ["gleam"], requirements = [], source = "local", path = {text_pattern:?} }},
-  {{ name = "gleam_stdlib", version = "1.0.3", build_tools = ["gleam"], requirements = [], source = "local", path = {stdlib:?} }},
 ]
 
 [requirements]
 example_text_pattern = {{ path = {text_pattern:?} }}
-gleam_stdlib = {{ path = {stdlib:?} }}
 "#,
                 ),
             )
@@ -1017,15 +1004,10 @@ gleam_stdlib = {{ path = {stdlib:?} }}
             fs::write(
                 self.root.join("gleam/src/rust_embedding.gleam"),
                 r#"import example_text_pattern as pattern
-import gleam/io
-import gleam/string
 
 pub fn format_words() -> String {
-  io.println("formatting words")
   let assert Ok(words) = pattern.compile("[A-Za-z]+")
-  pattern.find_all(words, "Geam + Gleam 2026")
-  |> string.join(", ")
-  |> string.uppercase
+  pattern.replace_all(words, "Geam + Gleam 2026", "<$0>")
 }
 
 pub fn contains_only_words(text: String) -> Bool {

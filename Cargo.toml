@@ -82,7 +82,7 @@ num-traits = "0.2"
 proc-macro-crate = "3"
 proc-macro2 = "1"
 quote = "1"
-rand = { version = "=0.10.0", default-features = false, features = ["std", "chacha", "sys_rng"] }
+rand = { version = "=0.10.2", default-features = false, features = ["std", "chacha", "sys_rng"] }
 ryu = "1"
 semver = "1"
 serde = { version = "1", features = ["derive"] }
