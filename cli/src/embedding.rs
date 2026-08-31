@@ -9,7 +9,10 @@ mod render;
 
 use crate::builtin::BuiltInProvider;
 use crate::error::CliError;
-use crate::project::{ResolvedProject, prepare_dependencies, read_existing_resolved_project};
+use crate::project::{
+    ResolvedProject, prepare_dependencies, read_existing_resolved_project,
+    restore_locked_dependencies,
+};
 use crate::provider::CratesIoRegistry;
 use crate::provider::registry::ProviderRegistry;
 use boundary::PlainBindings;
@@ -56,11 +59,40 @@ fn check_with_project_reader(
     current_directory: &Utf8Path,
     read_project: fn(&Utf8Path) -> Result<ResolvedProject, CliError>,
 ) -> Result<(), CliError> {
-    let generated = generate_with_project_reader(current_directory, read_project)?;
+    check_with_progress(
+        current_directory,
+        read_project,
+        &mut std::io::stderr().lock(),
+    )
+}
+
+fn check_with_progress(
+    current_directory: &Utf8Path,
+    read_project: fn(&Utf8Path) -> Result<ResolvedProject, CliError>,
+    progress: &mut dyn Write,
+) -> Result<(), CliError> {
+    report(
+        progress,
+        format_args!("Checking Cargo dependencies in {current_directory}"),
+    )?;
+    let package = EmbeddingPackage::load(current_directory)?;
+    report(
+        progress,
+        format_args!("Checking Gleam dependencies in {}", package.project_root()),
+    )?;
+    restore_locked_dependencies(package.project_root())?;
+    let program = geam_core::compile_typed_project(package.project_root(), package.root_module())?;
+    let requirements = geam_core::required_host_functions(&program);
+    let bindings = PlainBindings::from_program(package.geam_alias().clone(), &program)?;
+    let generated = generate(package, bindings, &requirements, read_project)?;
     output::check(
         generated.package.manifest(),
         generated.package.output_path(),
         generated.source.as_bytes(),
+    )?;
+    report(
+        progress,
+        format_args!("Checked {}", generated.package.output_path()),
     )
 }
 
@@ -153,20 +185,6 @@ fn prepare_with_registry(
     )
 }
 
-fn generate_with_project_reader(
-    current_directory: &Utf8Path,
-    read_project: fn(&Utf8Path) -> Result<ResolvedProject, CliError>,
-) -> Result<GeneratedBindings, CliError> {
-    let package = EmbeddingPackage::load(current_directory)?;
-    let program = geam_core::compile_typed_project(
-        package.project_root().to_path_buf(),
-        package.root_module(),
-    )?;
-    let requirements = geam_core::required_host_functions(&program);
-    let bindings = PlainBindings::from_program(package.geam_alias().clone(), &program)?;
-    generate(package, bindings, &requirements, read_project)
-}
-
 fn generate(
     package: EmbeddingPackage,
     bindings: PlainBindings,
@@ -204,8 +222,8 @@ fn report(writer: &mut dyn Write, message: std::fmt::Arguments<'_>) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::{
-        check, check_with_project_reader, init, init_with_progress, prepare, report, sync,
-        sync_with_project_reader,
+        check, check_with_progress, check_with_project_reader, init, init_with_progress, prepare,
+        report, sync, sync_with_project_reader,
     };
     use crate::embedding::package::EmbeddingProject;
     use crate::error::CliError;
@@ -215,6 +233,25 @@ mod tests {
     use std::io::{self, Write};
     use std::process::{Command, Output};
     use tempfile::{TempDir, tempdir};
+
+    struct ClosedProgress {
+        remaining: usize,
+    }
+
+    impl Write for ClosedProgress {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            if self.remaining == 0 {
+                Err(io::Error::other("progress closed"))
+            } else {
+                self.remaining -= 1;
+                Ok(())
+            }
+        }
+    }
 
     #[test]
     fn initializes_and_runs_a_fresh_rust_package_without_manual_dependency_setup() {
@@ -377,22 +414,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[test]
     fn stops_preparation_at_the_failed_phase_without_publishing_bindings() {
-        struct ClosedProgress {
-            remaining: usize,
-        }
-        impl Write for ClosedProgress {
-            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-                Ok(bytes.len())
-            }
-            fn flush(&mut self) -> io::Result<()> {
-                if self.remaining == 0 {
-                    Err(io::Error::other("progress closed"))
-                } else {
-                    self.remaining -= 1;
-                    Ok(())
-                }
-            }
-        }
         let fixture = ApplicationFixture::new();
         fixture.write_plain_project();
         for remaining in 0..3 {
@@ -966,6 +987,150 @@ pub fn contains_only_words(_text: String) -> Bool { True }
             fs::read_to_string(&manifest_path).expect("updated manifest"),
             manifest
         );
+    }
+
+    #[test]
+    fn checks_locked_hex_sources_and_drift_without_rewriting_project_files() {
+        let fixture = ApplicationFixture::new();
+        fixture.write_plain_project();
+        fs::create_dir(fixture.root.join(".cargo")).expect("Cargo configuration directory");
+        fs::write(
+            fixture.root.join(".cargo/config.toml"),
+            "[net]\noffline = true\n",
+        )
+        .expect("use previously acquired Rust packages");
+        fs::write(
+            fixture.root.join("src/main.rs"),
+            "fn main() { panic!(\"check must not execute applications\"); }\n",
+        )
+        .expect("non-executing application");
+        fs::write(
+            fixture.root.join("build.rs"),
+            "fn main() { panic!(\"check must not execute build scripts\"); }\n",
+        )
+        .expect("non-executing build script");
+        let config = "name = \"plain_embedding_application\"\nversion = \"1.0.0\"\n[dependencies]\ngleam_stdlib = \">= 1.0.3 and < 1.0.4\"\n";
+        let lock = r#"packages = [
+{ name = "gleam_stdlib", version = "1.0.3", build_tools = ["gleam"], requirements = [], source = "hex", outer_checksum = "1F543AFBA5D33DA493E6087F4E4C4F20D899411343512686C98A8ABB2963CF22" },
+]
+[requirements]
+gleam_stdlib = { version = ">= 1.0.3 and < 1.0.4" }
+"#;
+        fs::write(fixture.root.join("gleam/gleam.toml"), config).expect("Hex declaration");
+        fs::write(fixture.root.join("gleam/manifest.toml"), lock).expect("committed Hex selection");
+        fs::write(fixture.root.join("gleam/src/plain_embedding_application.gleam"), "import gleam/order\npub fn ascending() -> Bool { order.negate(order.Lt) == order.Gt }\n").expect("source using a published Gleam module");
+        fixture.generate_lockfile();
+        sync(&fixture.root).expect("prepare committed bindings and locks");
+        let paths = [
+            "Cargo.toml",
+            "Cargo.lock",
+            "build.rs",
+            "src/main.rs",
+            "src/geam_bindings.rs",
+            "gleam/gleam.toml",
+            "gleam/manifest.toml",
+            "gleam/src/plain_embedding_application.gleam",
+        ];
+        let project_files =
+            || paths.map(|path| fs::read(fixture.root.join(path)).map_err(|error| error.kind()));
+        let prepared = project_files();
+        fs::remove_dir_all(fixture.root.join("gleam/build")).expect("cold Gleam package cache");
+        let mut progress = Vec::new();
+        check_with_progress(&fixture.root, read_existing_resolved_project, &mut progress)
+            .expect("check restores locked Hex sources without preparation");
+        assert_eq!(
+            String::from_utf8(progress).expect("progress text"),
+            format!(
+                "geam: Checking Cargo dependencies in {0}\ngeam: Checking Gleam dependencies in {0}/gleam\ngeam: Checked {0}/src/geam_bindings.rs\n",
+                fixture.root
+            )
+        );
+        assert_eq!(project_files(), prepared);
+        assert!(
+            fixture
+                .root
+                .join("gleam/build/packages/gleam_stdlib/src/gleam/order.gleam")
+                .is_file()
+        );
+        assert_eq!(
+            fs::read_to_string(
+                fixture
+                    .root
+                    .join("gleam/build/packages/gleam_stdlib/gleam.toml")
+            )
+            .expect("locked Hex package")
+            .parse::<toml_edit::DocumentMut>()
+            .expect("package metadata")["version"]
+                .as_str(),
+            Some("1.0.3")
+        );
+        for remaining in 0..3 {
+            let error = check_with_progress(
+                &fixture.root,
+                read_existing_resolved_project,
+                &mut ClosedProgress { remaining },
+            )
+            .expect_err("closed progress stream");
+            assert_eq!(error.to_string(), "failed to write embedding progress");
+            assert_eq!(project_files(), prepared);
+        }
+
+        let manifest =
+            fs::read_to_string(fixture.root.join("Cargo.toml")).expect("application manifest");
+        for (path, changed, diagnostic_path) in [
+            (
+                "src/geam_bindings.rs",
+                Some("// stale generated module\n".to_owned()),
+                "src/geam_bindings.rs",
+            ),
+            ("gleam/manifest.toml", None, "gleam/manifest.toml"),
+            (
+                "gleam/gleam.toml",
+                Some(config.replace("1.0.3 and < 1.0.4", "1.0.4 and < 1.0.5")),
+                "gleam/manifest.toml",
+            ),
+            ("Cargo.lock", None, "Cargo.toml"),
+            (
+                "Cargo.toml",
+                Some(manifest.replace("0.0.0", "0.0.1")),
+                "Cargo.toml",
+            ),
+            (
+                "gleam/src/plain_embedding_application.gleam",
+                Some("pub fn invalid(".to_owned()),
+                "gleam/src/plain_embedding_application.gleam",
+            ),
+        ] {
+            let original = fs::read(fixture.root.join(path)).expect("original project file");
+            match changed {
+                Some(source) => fs::write(fixture.root.join(path), source).expect("project drift"),
+                None => fs::remove_file(fixture.root.join(path)).expect("missing committed lock"),
+            }
+            let before = project_files();
+            let error = check(&fixture.root).expect_err("drift must not be repaired by check");
+            assert!(
+                error
+                    .to_string()
+                    .contains(fixture.root.join(diagnostic_path).as_str()),
+                "{error}"
+            );
+            assert_eq!(project_files(), before);
+            fs::write(fixture.root.join(path), original).expect("restore test input");
+        }
+
+        fs::remove_dir_all(fixture.root.join("gleam/build"))
+            .expect("cold cache before acquisition failure");
+        fs::write(fixture.root.join("gleam/build"), "blocked cache")
+            .expect("external download workspace failure");
+        let error = check(&fixture.root).expect_err("cannot acquire into a blocked cache");
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "failed to read {}",
+                fixture.root.join("gleam/build/packages/packages.toml")
+            )
+        );
+        assert_eq!(project_files(), prepared);
     }
 
     struct ApplicationFixture {

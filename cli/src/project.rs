@@ -1,3 +1,5 @@
+mod locked;
+
 use crate::error::CliError;
 use crate::process::run_checked;
 use camino::{Utf8Path, Utf8PathBuf};
@@ -10,6 +12,8 @@ use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::fs;
 use std::process::Command;
+
+pub(super) use locked::restore_locked_dependencies;
 
 const CONFIG_FILE: &str = "gleam.toml";
 const MANIFEST_FILE: &str = "manifest.toml";

@@ -36,6 +36,15 @@ pub(super) enum CliError {
     #[error("failed to create a temporary provider candidate workspace")]
     TemporaryProviderWorkspace(#[source] io::Error),
 
+    #[error("failed to create a temporary Gleam dependency download workspace")]
+    TemporaryDependencyWorkspace(#[source] io::Error),
+
+    #[error("Gleam lock {path} is not ready: {reason}; run `geam embedding sync`")]
+    GleamLockOutOfDate { path: Utf8PathBuf, reason: String },
+
+    #[error("Gleam dependency download for {path} did not preserve the locked package set")]
+    GleamDownloadChangedLock { path: Utf8PathBuf },
+
     #[error("invalid {kind} at {path}: {reason}")]
     InvalidToml {
         kind: &'static str,

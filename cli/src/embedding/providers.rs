@@ -321,6 +321,32 @@ mod tests {
 
         let declared = fs::read(&manifest_path).expect("approved declaration remains retryable");
         let calls = registry.calls.borrow().clone();
+        let project_files = || {
+            [
+                "Cargo.toml",
+                "Cargo.lock",
+                "gleam/gleam.toml",
+                "gleam/manifest.toml",
+                "gleam/src/provider_application.gleam",
+                "gleam/packages/words/gleam.toml",
+                "src/main.rs",
+                "native/Cargo.toml",
+                "native/src/lib.rs",
+                "native/build.rs",
+            ]
+            .map(|path| fs::read(fixture.root.join(path)).expect("prepared project file"))
+        };
+        let before = project_files();
+        assert_eq!(
+            check(&fixture.root)
+                .expect_err("check rejects the incompatible provider without repairing it")
+                .to_string(),
+            expected
+        );
+        assert_eq!(project_files(), before);
+        assert_eq!(*registry.calls.borrow(), calls);
+        assert!(!fixture.root.join("src/geam_bindings.rs").exists());
+        assert!(!fixture.root.join("native/built.marker").exists());
         let mut input = Cursor::new(b"y\n");
         let error = fixture
             .prepare(&registry, true, &mut input, &mut Vec::new())
