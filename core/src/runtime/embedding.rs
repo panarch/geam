@@ -1,9 +1,14 @@
 mod hosted;
+mod input;
+mod output;
+
+pub(crate) use input::EmbeddingInput;
+pub(crate) use output::EmbeddingOutput;
 
 pub(crate) use hosted::{
-    run_hosted_embedded_bit_array, run_hosted_embedded_bool, run_hosted_embedded_float,
-    run_hosted_embedded_int, run_hosted_embedded_nil, run_hosted_embedded_string,
-    run_hosted_embedded_utf_codepoint,
+    run_hosted_embedded_bit_array, run_hosted_embedded_bool, run_hosted_embedded_custom,
+    run_hosted_embedded_float, run_hosted_embedded_int, run_hosted_embedded_nil,
+    run_hosted_embedded_string, run_hosted_embedded_tuple, run_hosted_embedded_utf_codepoint,
 };
 
 use super::error::HostCallOrigin;
@@ -13,8 +18,8 @@ use super::state::RuntimeState;
 use super::{EchoSink, EvaluatedBitArray, ExecutionError};
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::function::{
-    BitArrayFunctionId, BoolFunctionId, FloatFunctionId, IntFunctionId, NilFunctionId,
-    StringFunctionId, UtfCodepointFunctionId,
+    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, IntFunctionId,
+    NilFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
 };
 
 pub(crate) fn run_embedded_int(
@@ -68,6 +73,17 @@ pub(crate) fn run_embedded_utf_codepoint(
     function::run_utf_codepoint(plan, &mut state, function, HostCallOrigin::Entry, inputs)
 }
 
+pub(crate) fn run_embedded_custom(
+    plan: &ExecutionPlan,
+    function: CustomFunctionId,
+    inputs: RetainedValues,
+    echo: &mut dyn EchoSink,
+) -> Result<EmbeddingOutput, ExecutionError> {
+    let mut state = RuntimeState::new(echo);
+    function::run_custom(plan, &mut state, function, HostCallOrigin::Entry, inputs)
+        .map(EmbeddingOutput::from_custom)
+}
+
 pub(crate) fn run_embedded_bool(
     plan: &ExecutionPlan,
     function: BoolFunctionId,
@@ -86,4 +102,15 @@ pub(crate) fn run_embedded_nil(
 ) -> Result<(), ExecutionError> {
     let mut state = RuntimeState::new(echo);
     function::run_nil(plan, &mut state, function, HostCallOrigin::Entry, inputs)
+}
+
+pub(crate) fn run_embedded_tuple(
+    plan: &ExecutionPlan,
+    function: TupleFunctionId,
+    inputs: RetainedValues,
+    echo: &mut dyn EchoSink,
+) -> Result<EmbeddingOutput, ExecutionError> {
+    let mut state = RuntimeState::new(echo);
+    function::run_tuple(plan, &mut state, function, HostCallOrigin::Entry, inputs)
+        .map(EmbeddingOutput::from_tuple)
 }

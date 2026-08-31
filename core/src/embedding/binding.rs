@@ -2,11 +2,11 @@ mod error;
 
 pub use error::BindingError;
 
-use super::{Arguments, Function, Module, ScalarReturn};
+use super::{Arguments, Function, Module, ReturnValue};
 use crate::HostProfile;
 use crate::plan::{
     FunctionTemplateId, FunctionTemplateSignature, FunctionType, HostedLibraryModulePlan,
-    LibraryEntry, LibraryModulePlan,
+    LibraryEntry, LibraryModulePlan, LibraryReturn,
 };
 use crate::{ExecutionPlan, PlanError, TypedProgram};
 use ecow::EcoString;
@@ -61,8 +61,9 @@ pub(super) struct BindingParts<Plan> {
 /// A typed declaration for one Gleam function selected for Rust embedding.
 ///
 /// Arguments are represented by Rust tuples with arity `0..=7`. Supported
-/// scalar values are [`super::BigInt`], `f64`, [`super::EcoString`],
-/// [`super::BitArrayValue`], `char`, `bool`, and `()`.
+/// values are [`super::BigInt`], `f64`, [`super::EcoString`],
+/// [`super::BitArrayValue`], `char`, `bool`, `()`, Rust tuples with arity
+/// `1..=7`, `Result`, and `Option`. Compound values may contain one another.
 ///
 /// Unsupported Rust values and argument arities are rejected by Rust type
 /// checking:
@@ -78,6 +79,12 @@ pub(super) struct BindingParts<Plan> {
 ///
 /// let _ = FunctionDeclaration::<((), (), (), (), (), (), (), ()), ()>::new("too_many");
 /// ```
+///
+/// ```compile_fail
+/// use geam_core::embedding::FunctionDeclaration;
+///
+/// let _ = FunctionDeclaration::<(), ((), (), (), (), (), (), (), ())>::new("wide_tuple");
+/// ```
 pub struct FunctionDeclaration<Arguments, Return> {
     name: EcoString,
     marker: PhantomData<fn(Arguments) -> Return>,
@@ -90,6 +97,11 @@ struct BindingSource<Plan> {
 
 pub(super) trait BindingPlan {
     fn function_signature(&self, name: &EcoString) -> Option<&FunctionTemplateSignature>;
+
+    fn custom_type(
+        &self,
+        name: &crate::plan::CustomTypeName,
+    ) -> Option<&crate::plan::CustomTypeDefinition>;
 }
 
 #[derive(Default)]
@@ -99,8 +111,10 @@ struct LibraryEntryCounts {
     strings: usize,
     bit_arrays: usize,
     utf_codepoints: usize,
+    customs: usize,
     bools: usize,
     nils: usize,
+    tuples: usize,
 }
 
 impl ModuleBuilder {
@@ -133,7 +147,7 @@ impl ModuleBuilder {
     ) -> Result<(ModuleBindings, Function<ArgumentsType, Return>), BindingError>
     where
         ArgumentsType: Arguments,
-        Return: ScalarReturn,
+        Return: ReturnValue,
     {
         self.inner
             .function(declaration)
@@ -150,7 +164,7 @@ impl ModuleBindings {
     ) -> Result<Function<ArgumentsType, Return>, BindingError>
     where
         ArgumentsType: Arguments,
-        Return: ScalarReturn,
+        Return: ReturnValue,
     {
         self.inner.function(declaration)
     }
@@ -172,7 +186,7 @@ impl ModuleBindings {
 impl<ArgumentsType, Return> FunctionDeclaration<ArgumentsType, Return>
 where
     ArgumentsType: Arguments,
-    Return: ScalarReturn,
+    Return: ReturnValue,
 {
     /// Declares the exact Rust signature expected for a named Gleam function.
     pub fn new(name: impl Into<EcoString>) -> Self {
@@ -188,6 +202,7 @@ impl<Plan: BindingPlan> BindingSource<Plan> {
         &self,
         name: EcoString,
         expected: FunctionType,
+        standard_variants: &[crate::plan::StandardVariant],
     ) -> Result<(EcoString, FunctionTemplateId), BindingError> {
         let Some(signature) = self.plan.function_signature(&name) else {
             return Err(BindingError::MissingFunction { name });
@@ -205,6 +220,12 @@ impl<Plan: BindingPlan> BindingSource<Plan> {
                 expected,
                 found,
             });
+        }
+        for variant in standard_variants {
+            let type_name = variant.type_name();
+            if !variant.has_exact_definition(self.plan.custom_type(&type_name)) {
+                return Err(BindingError::standard_type_mismatch(name, type_name));
+            }
         }
 
         Ok((name, signature.id()))
@@ -232,12 +253,18 @@ impl<Plan: BindingPlan> BindingBuilder<Plan> {
     ) -> Result<(Bindings<Plan>, Function<ArgumentsType, Return>), BindingError>
     where
         ArgumentsType: Arguments,
-        Return: ScalarReturn,
+        Return: ReturnValue,
     {
         let expected = FunctionType::new(ArgumentsType::value_types(), Return::value_type());
-        let (name, template) = self.source.validate(declaration.name, expected)?;
+        let input_variants = ArgumentsType::input_variants();
+        let mut standard_variants = input_variants.clone();
+        standard_variants.extend(Return::standard_variants());
+        let (name, template) =
+            self.source
+                .validate(declaration.name, expected, &standard_variants)?;
         let mut counts = LibraryEntryCounts::default();
-        let (slot, first) = counts.reserve(Return::entry(template));
+        let entry = LibraryEntry::new(template, Return::return_(), input_variants);
+        let (slot, first) = counts.reserve(entry);
         let mut selected_names = HashSet::new();
         selected_names.insert(name.clone());
         let function = Function::new(name, slot, &self.owner);
@@ -263,15 +290,19 @@ impl<Plan: BindingPlan> Bindings<Plan> {
     ) -> Result<Function<ArgumentsType, Return>, BindingError>
     where
         ArgumentsType: Arguments,
-        Return: ScalarReturn,
+        Return: ReturnValue,
     {
         let name = declaration.name;
         if self.selected_names.contains(&name) {
             return Err(BindingError::DuplicateFunction { name });
         }
         let expected = FunctionType::new(ArgumentsType::value_types(), Return::value_type());
-        let (name, template) = self.source.validate(name, expected)?;
-        let (slot, entry) = self.counts.reserve(Return::entry(template));
+        let input_variants = ArgumentsType::input_variants();
+        let mut standard_variants = input_variants.clone();
+        standard_variants.extend(Return::standard_variants());
+        let (name, template) = self.source.validate(name, expected, &standard_variants)?;
+        let entry = LibraryEntry::new(template, Return::return_(), input_variants);
+        let (slot, entry) = self.counts.reserve(entry);
         self.selected_names.insert(name.clone());
         self.remaining.push(entry);
 
@@ -295,6 +326,13 @@ impl BindingPlan for LibraryModulePlan {
             .find(|function| function.name() == name)
             .map(|function| function.signature())
     }
+
+    fn custom_type(
+        &self,
+        name: &crate::plan::CustomTypeName,
+    ) -> Option<&crate::plan::CustomTypeDefinition> {
+        self.custom_type(name)
+    }
 }
 
 impl<Profile: HostProfile> BindingPlan for HostedLibraryModulePlan<Profile> {
@@ -303,6 +341,13 @@ impl<Profile: HostProfile> BindingPlan for HostedLibraryModulePlan<Profile> {
             .iter()
             .find(|function| function.name() == name)
             .map(|function| function.signature())
+    }
+
+    fn custom_type(
+        &self,
+        name: &crate::plan::CustomTypeName,
+    ) -> Option<&crate::plan::CustomTypeDefinition> {
+        self.custom_type(name)
     }
 }
 
@@ -318,14 +363,16 @@ fn public_function_names(module: &TypedModule) -> HashSet<EcoString> {
 
 impl LibraryEntryCounts {
     fn reserve(&mut self, entry: LibraryEntry) -> (usize, LibraryEntry) {
-        let count = match entry {
-            LibraryEntry::Int(_) => &mut self.ints,
-            LibraryEntry::Float(_) => &mut self.floats,
-            LibraryEntry::String(_) => &mut self.strings,
-            LibraryEntry::BitArray(_) => &mut self.bit_arrays,
-            LibraryEntry::UtfCodepoint(_) => &mut self.utf_codepoints,
-            LibraryEntry::Bool(_) => &mut self.bools,
-            LibraryEntry::Nil(_) => &mut self.nils,
+        let count = match entry.return_() {
+            LibraryReturn::Int => &mut self.ints,
+            LibraryReturn::Float => &mut self.floats,
+            LibraryReturn::String => &mut self.strings,
+            LibraryReturn::BitArray => &mut self.bit_arrays,
+            LibraryReturn::UtfCodepoint => &mut self.utf_codepoints,
+            LibraryReturn::Custom(_) => &mut self.customs,
+            LibraryReturn::Bool => &mut self.bools,
+            LibraryReturn::Nil => &mut self.nils,
+            LibraryReturn::Tuple(_) => &mut self.tuples,
         };
         let slot = *count;
         *count += 1;
@@ -336,10 +383,11 @@ impl LibraryEntryCounts {
 #[cfg(test)]
 mod tests {
     use super::{BindingError, FunctionDeclaration, ModuleBuilder};
+    use crate::plan::{CustomType, CustomTypeName, StandardVariant};
     use crate::planner::UnsupportedFunctionReason;
     use crate::{
-        FunctionType, ModuleSource, PlanError, ValueType, compile_typed_module,
-        compile_typed_program,
+        FunctionType, ModuleSource, PackageSource, PlanError, ValueType, compile_typed_module,
+        compile_typed_package_program, compile_typed_program,
     };
     use ecow::EcoString;
     use num_bigint::BigInt;
@@ -514,6 +562,113 @@ pub fn text(value: String) { value }
         assert_eq!(
             module.call(&text, (EcoString::from("kept"),), &mut Vec::new()),
             Ok(EcoString::from("kept")),
+        );
+    }
+
+    #[test]
+    fn rejects_a_lookalike_option_before_sealing() {
+        let builder = ModuleBuilder::new(compile(
+            r#"
+pub type Option(value) { Some(value) None }
+
+pub fn number(value: Int) { value }
+pub fn fake_option(value: Option(Int)) { value }
+pub fn text(value: String) { value }
+"#,
+        ))
+        .expect("lookalike library should plan");
+        let (mut bindings, number) = builder
+            .function(FunctionDeclaration::<(BigInt,), BigInt>::new("number"))
+            .expect("first function should bind");
+
+        let error = bindings
+            .function(FunctionDeclaration::<(Option<BigInt>,), Option<BigInt>>::new("fake_option"))
+            .err()
+            .expect("lookalike Option should not bind as the standard type");
+        let expected_option =
+            ValueType::Custom(StandardVariant::Option.custom_type(vec![ValueType::Int]));
+        let found_option = ValueType::Custom(CustomType::new(
+            CustomTypeName::new("geam".into(), "library".into(), "Option".into()),
+            vec![ValueType::Int],
+        ));
+        assert_eq!(
+            error,
+            BindingError::SignatureMismatch {
+                name: "fake_option".into(),
+                expected: FunctionType::new(vec![expected_option.clone()], expected_option,),
+                found: FunctionType::new(vec![found_option.clone()], found_option),
+            },
+        );
+
+        let text = bindings
+            .function(FunctionDeclaration::<(EcoString,), EcoString>::new("text"))
+            .expect("a valid selection should follow the mismatch");
+        let module = bindings.seal();
+        assert_eq!(
+            module.call(&number, (BigInt::from(7),), &mut Vec::new()),
+            Ok(BigInt::from(7)),
+        );
+        assert_eq!(
+            module.call(&text, ("kept".into(),), &mut Vec::new()),
+            Ok("kept".into()),
+        );
+    }
+
+    #[test]
+    fn rejects_a_nonstandard_option_definition_before_sealing() {
+        let program = compile_typed_package_program(
+            "application",
+            "library",
+            [
+                PackageSource::new(
+                    "gleam_stdlib",
+                    Vec::<EcoString>::new(),
+                    [ModuleSource::new(
+                        "gleam/option",
+                        "gleam_stdlib/src/gleam/option.gleam",
+                        "pub type Option(value) { None Some(value) }",
+                    )],
+                ),
+                PackageSource::new(
+                    "application",
+                    ["gleam_stdlib"],
+                    [ModuleSource::new(
+                        "library",
+                        "src/library.gleam",
+                        r#"
+import gleam/option.{type Option}
+
+pub fn number(value: Int) { value }
+pub fn optional(value: Option(Int)) { value }
+"#,
+                    )],
+                ),
+            ],
+        )
+        .expect("nonstandard Option package should still type-check");
+        let builder = ModuleBuilder::from_program(program).expect("library should plan");
+        let (mut bindings, number) = builder
+            .function(FunctionDeclaration::<(BigInt,), BigInt>::new("number"))
+            .expect("unrelated scalar should bind");
+
+        assert_eq!(
+            bindings
+                .function(
+                    FunctionDeclaration::<(Option<BigInt>,), Option<BigInt>>::new("optional",)
+                )
+                .err(),
+            Some(BindingError::StandardTypeMismatch {
+                name: "optional".into(),
+                package: "gleam_stdlib".into(),
+                module: "gleam/option".into(),
+                type_name: "Option".into(),
+            }),
+        );
+
+        let module = bindings.seal();
+        assert_eq!(
+            module.call(&number, (BigInt::from(8),), &mut Vec::new()),
+            Ok(BigInt::from(8)),
         );
     }
 

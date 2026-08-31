@@ -93,10 +93,9 @@ fn lower_plain(
                 erased_specializations,
             );
 
-            let first = reserve_plain_entry(first_entry, &templates, &mut context);
+            let first = reserve_plain_entry(&first_entry, &templates, &mut context);
             let remaining = remaining_entries
                 .iter()
-                .copied()
                 .map(|entry| reserve_plain_entry(entry, &templates, &mut context))
                 .collect::<Vec<_>>();
 
@@ -156,7 +155,7 @@ fn lower_plain(
     (program, entry_ids)
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum PlainEntry {
     Main(FunctionTemplateId),
     Library(library::Entry),
@@ -186,9 +185,9 @@ impl From<LibraryEntry> for PlainEntry {
 }
 
 impl PlainEntry {
-    fn template(self) -> FunctionTemplateId {
+    fn template(&self) -> FunctionTemplateId {
         match self {
-            Self::Main(template) => template,
+            Self::Main(template) => *template,
             Self::Library(entry) => entry.template(),
         }
     }
@@ -253,7 +252,7 @@ impl FunctionTemplates {
 }
 
 fn reserve_plain_entry(
-    entry: PlainEntry,
+    entry: &PlainEntry,
     templates: &FunctionTemplates,
     context: &mut LoweringContext,
 ) -> ReservedPlainEntry {

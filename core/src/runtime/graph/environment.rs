@@ -702,12 +702,6 @@ impl RetainedValues {
         self.values.bit_arrays.push(value);
     }
 
-    pub(crate) fn push_bit_array_value(&mut self, value: crate::BitArrayValue) {
-        self.values
-            .bit_arrays
-            .push(EvaluatedBitArray::from_value(value));
-    }
-
     pub(crate) fn push_utf_codepoint(&mut self, value: char) {
         self.values.utf_codepoints.push(value);
     }

@@ -1,4 +1,4 @@
-use crate::plan::FunctionType;
+use crate::plan::{CustomTypeName, FunctionType};
 use ecow::EcoString;
 use thiserror::Error;
 
@@ -19,6 +19,24 @@ pub enum BindingError {
         expected: FunctionType,
         found: FunctionType,
     },
+    #[error("function {name} uses {package}:{module}.{type_name} with a nonstandard definition")]
+    StandardTypeMismatch {
+        name: EcoString,
+        package: EcoString,
+        module: EcoString,
+        type_name: EcoString,
+    },
+}
+
+impl BindingError {
+    pub(super) fn standard_type_mismatch(name: EcoString, type_: CustomTypeName) -> Self {
+        Self::StandardTypeMismatch {
+            name,
+            package: type_.package().clone(),
+            module: type_.module().clone(),
+            type_name: type_.name().clone(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -52,6 +70,15 @@ mod tests {
                     name: "identity".into(),
                 },
                 "generic function identity cannot be embedded without a concrete specialization",
+            ),
+            (
+                BindingError::StandardTypeMismatch {
+                    name: "optional".into(),
+                    package: "gleam_stdlib".into(),
+                    module: "gleam/option".into(),
+                    type_name: "Option".into(),
+                },
+                "function optional uses gleam_stdlib:gleam/option.Option with a nonstandard definition",
             ),
         ];
 

@@ -153,15 +153,52 @@ pub(crate) struct LibraryModulePlan {
     modules: Vec<PlannedModule>,
 }
 
-#[derive(Clone, Copy)]
-pub(crate) enum LibraryEntry {
-    Int(FunctionTemplateId),
-    Float(FunctionTemplateId),
-    String(FunctionTemplateId),
-    BitArray(FunctionTemplateId),
-    UtfCodepoint(FunctionTemplateId),
-    Bool(FunctionTemplateId),
-    Nil(FunctionTemplateId),
+#[derive(Clone)]
+pub(crate) struct LibraryEntry {
+    template: FunctionTemplateId,
+    return_: LibraryReturn,
+    input_variants: Box<[super::StandardVariant]>,
+}
+
+#[derive(Clone)]
+pub(crate) enum LibraryReturn {
+    Int,
+    Float,
+    String,
+    BitArray,
+    UtfCodepoint,
+    Custom(super::CustomType),
+    Bool,
+    Nil,
+    Tuple(Vec<super::ValueType>),
+}
+
+impl LibraryEntry {
+    pub(crate) fn new(
+        template: FunctionTemplateId,
+        return_: LibraryReturn,
+        input_variants: Vec<super::StandardVariant>,
+    ) -> Self {
+        Self {
+            template,
+            return_,
+            input_variants: input_variants.into_boxed_slice(),
+        }
+    }
+
+    pub(crate) fn return_(&self) -> &LibraryReturn {
+        &self.return_
+    }
+
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        FunctionTemplateId,
+        LibraryReturn,
+        Box<[super::StandardVariant]>,
+    ) {
+        (self.template, self.return_, self.input_variants)
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -329,6 +366,16 @@ impl LibraryModulePlan {
 
     pub(crate) fn functions(&self) -> &[FunctionTemplate] {
         &self.modules[self.root.index()].functions
+    }
+
+    pub(crate) fn custom_type(
+        &self,
+        name: &super::CustomTypeName,
+    ) -> Option<&CustomTypeDefinition> {
+        self.modules
+            .iter()
+            .flat_map(PlannedModule::custom_types)
+            .find(|definition| definition.name() == name)
     }
 
     pub(crate) fn into_parts(self) -> LibraryModulePlanParts {

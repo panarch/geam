@@ -73,6 +73,10 @@ impl HostedPlannedModule {
         &self.external_types
     }
 
+    pub(crate) fn custom_types(&self) -> &[CustomTypeDefinition] {
+        &self.custom_types
+    }
+
     pub(crate) fn into_parts(self) -> HostedPlannedModuleParts {
         HostedPlannedModuleParts {
             id: self.id,

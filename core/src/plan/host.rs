@@ -90,6 +90,16 @@ impl<Profile: HostProfile> HostedLibraryModulePlan<Profile> {
         self.modules[self.root.index()].functions()
     }
 
+    pub(crate) fn custom_type(
+        &self,
+        name: &super::CustomTypeName,
+    ) -> Option<&super::CustomTypeDefinition> {
+        self.modules
+            .iter()
+            .flat_map(HostedPlannedModule::custom_types)
+            .find(|definition| definition.name() == name)
+    }
+
     pub(crate) fn into_parts(self) -> HostedLibraryModulePlanParts<Profile> {
         HostedLibraryModulePlanParts {
             root: self.root,

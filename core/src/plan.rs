@@ -49,7 +49,7 @@ pub(crate) use module::{
     GenericExpr, GenericExprKind, GenericFunctionExpr, GenericFunctionExprKind,
     GenericFunctionLocal, GenericFunctionReference, GenericFunctionReturn, GenericReturn,
     IntCaseBranches, IntExprKind, IntFunctionExprKind, IntFunctionReference, IntFunctionReturn,
-    IntReturn, LibraryEntry, LibraryModulePlan, ListAssertPattern, ListAssertTail,
+    IntReturn, LibraryEntry, LibraryModulePlan, LibraryReturn, ListAssertPattern, ListAssertTail,
     ListCaseBranches, ListElements, ListExpr, ListFunctionExprKind, ListFunctionReference,
     ListFunctionReturn, ListItem, ListLocalExpr, ListSpreadConstructionError, ListSpreadElements,
     NilExprKind, NilFunctionExprKind, NilFunctionReference, NilFunctionReturn, NilReturn,
@@ -114,5 +114,6 @@ pub(crate) use value_shape::{
 };
 pub(crate) use value_type::{
     CustomFunctionType, ExternalFunctionType, FunctionFunctionType, GenericFunctionType,
+    StandardVariant,
 };
 pub use value_type::{CustomType, CustomTypeName, FunctionType, TypeParameterId, ValueType};

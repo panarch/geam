@@ -15,6 +15,7 @@ mod binding;
 mod error;
 mod hosted;
 mod project;
+mod value;
 
 pub use crate::BitArrayValue;
 pub use binding::{BindingError, FunctionDeclaration, ModuleBindings, ModuleBuilder};
@@ -24,10 +25,9 @@ pub use hosted::{HostedModule, HostedModuleBindings, HostedModuleBuilder};
 pub use num_bigint::BigInt;
 pub use project::{HostedProject, Project};
 
+use self::value::{Arguments, ReturnValue};
 use crate::plan::execution::LibraryFunctionEntries;
-use crate::plan::{FunctionTemplateId, LibraryEntry, ValueType};
-use crate::runtime::RetainedValues;
-use crate::{EchoSink, ExecutionError, ExecutionPlan, HostProfile, HostedExecution};
+use crate::{EchoSink, ExecutionPlan};
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -48,180 +48,6 @@ pub struct Module {
     entries: LibraryFunctionEntries,
     owner: Arc<()>,
 }
-
-trait Scalar: Sized {
-    fn value_type() -> ValueType;
-
-    fn push(self, inputs: &mut RetainedValues);
-}
-
-trait Arguments {
-    fn value_types() -> Vec<ValueType>;
-
-    fn into_inputs(self) -> RetainedValues;
-}
-
-trait ScalarReturn: Scalar {
-    fn entry(template: FunctionTemplateId) -> LibraryEntry;
-
-    fn call(
-        module: &Module,
-        slot: usize,
-        inputs: RetainedValues,
-        echo: &mut dyn EchoSink,
-    ) -> Result<Self, ExecutionError>;
-
-    fn call_hosted<Profile: HostProfile>(
-        execution: &HostedExecution<Profile>,
-        entries: &LibraryFunctionEntries,
-        slot: usize,
-        inputs: RetainedValues,
-        state: &mut Profile::RunState,
-        echo: &mut dyn EchoSink,
-    ) -> Result<Self, ExecutionError>;
-}
-
-macro_rules! scalar {
-    ($type:ty, $value_type:ident, $push:ident) => {
-        impl Scalar for $type {
-            fn value_type() -> ValueType {
-                ValueType::$value_type
-            }
-
-            fn push(self, inputs: &mut RetainedValues) {
-                inputs.$push(self);
-            }
-        }
-    };
-}
-
-scalar!(BigInt, Int, push_int);
-scalar!(f64, Float, push_float);
-scalar!(EcoString, String, push_string);
-scalar!(BitArrayValue, BitArray, push_bit_array_value);
-scalar!(char, UtfCodepoint, push_utf_codepoint);
-scalar!(bool, Bool, push_bool);
-
-impl Scalar for () {
-    fn value_type() -> ValueType {
-        ValueType::Nil
-    }
-
-    fn push(self, inputs: &mut RetainedValues) {
-        inputs.push_nil();
-    }
-}
-
-macro_rules! scalar_return {
-    ($type:ty, $entry:ident, $entries:ident, $run:ident, $run_hosted:ident) => {
-        impl ScalarReturn for $type {
-            fn entry(template: FunctionTemplateId) -> LibraryEntry {
-                LibraryEntry::$entry(template)
-            }
-
-            fn call(
-                module: &Module,
-                slot: usize,
-                inputs: RetainedValues,
-                echo: &mut dyn EchoSink,
-            ) -> Result<Self, ExecutionError> {
-                crate::runtime::$run(
-                    &module.execution,
-                    module.entries.$entries[slot],
-                    inputs,
-                    echo,
-                )
-            }
-
-            fn call_hosted<Profile: HostProfile>(
-                execution: &HostedExecution<Profile>,
-                entries: &LibraryFunctionEntries,
-                slot: usize,
-                inputs: RetainedValues,
-                state: &mut Profile::RunState,
-                echo: &mut dyn EchoSink,
-            ) -> Result<Self, ExecutionError> {
-                crate::runtime::$run_hosted(execution, entries.$entries[slot], inputs, state, echo)
-            }
-        }
-    };
-}
-
-scalar_return!(BigInt, Int, ints, run_embedded_int, run_hosted_embedded_int);
-scalar_return!(
-    f64,
-    Float,
-    floats,
-    run_embedded_float,
-    run_hosted_embedded_float
-);
-scalar_return!(
-    EcoString,
-    String,
-    strings,
-    run_embedded_string,
-    run_hosted_embedded_string
-);
-scalar_return!(
-    BitArrayValue,
-    BitArray,
-    bit_arrays,
-    run_embedded_bit_array,
-    run_hosted_embedded_bit_array
-);
-scalar_return!(
-    char,
-    UtfCodepoint,
-    utf_codepoints,
-    run_embedded_utf_codepoint,
-    run_hosted_embedded_utf_codepoint
-);
-scalar_return!(
-    bool,
-    Bool,
-    bools,
-    run_embedded_bool,
-    run_hosted_embedded_bool
-);
-scalar_return!((), Nil, nils, run_embedded_nil, run_hosted_embedded_nil);
-
-impl Arguments for () {
-    fn value_types() -> Vec<ValueType> {
-        Vec::new()
-    }
-
-    fn into_inputs(self) -> RetainedValues {
-        RetainedValues::empty()
-    }
-}
-
-macro_rules! arguments {
-    ($($type:ident => $value:ident),+) => {
-        impl<$($type),+> Arguments for ($($type,)+)
-        where
-            $($type: Scalar,)+
-        {
-            fn value_types() -> Vec<ValueType> {
-                vec![$($type::value_type()),+]
-            }
-
-            fn into_inputs(self) -> RetainedValues {
-                let ($($value,)+) = self;
-                let mut inputs = RetainedValues::empty();
-                $(Scalar::push($value, &mut inputs);)+
-                inputs
-            }
-        }
-    };
-}
-
-arguments!(A => a);
-arguments!(A => a, B => b);
-arguments!(A => a, B => b, C => c);
-arguments!(A => a, B => b, C => c, D => d);
-arguments!(A => a, B => b, C => c, D => d, E => e);
-arguments!(A => a, B => b, C => c, D => d, E => e, F => f);
-arguments!(A => a, B => b, C => c, D => d, E => e, F => f, G => g);
 
 impl<Arguments, Return> Clone for Function<Arguments, Return> {
     fn clone(&self) -> Self {
@@ -261,10 +87,11 @@ impl Module {
     ) -> Result<Return, CallError>
     where
         Arguments: self::Arguments,
-        Return: ScalarReturn,
+        Return: ReturnValue,
     {
         self.check_owner(&function.owner).and_then(|()| {
-            let inputs = arguments.into_inputs();
+            let constructions = Return::input_constructions(&self.entries, function.slot);
+            let inputs = arguments.into_inputs(constructions);
             Return::call(self, function.slot, inputs, echo).map_err(CallError::Execution)
         })
     }
@@ -294,11 +121,12 @@ impl Module {
 mod tests {
     use super::{
         Arguments, CallError, Function, FunctionDeclaration, ModuleBindings, ModuleBuilder,
-        ScalarReturn,
+        ReturnValue,
     };
     use crate::{
-        BitArrayValue, ExecutionError, ModuleSource, PanicKind, PanicSite, SourceContext,
-        SourceSpan, TypedProgram, Value, compile_typed_module, compile_typed_program,
+        BitArrayValue, ExecutionError, ModuleSource, PackageSource, PanicKind, PanicSite,
+        SourceContext, SourceSpan, TypedProgram, Value, compile_typed_module,
+        compile_typed_package_program, compile_typed_program,
     };
     use ecow::EcoString;
     use num_bigint::BigInt;
@@ -318,13 +146,41 @@ mod tests {
         .expect("library program should compile")
     }
 
+    fn compile_option_program(root_source: &str) -> TypedProgram {
+        compile_typed_package_program(
+            "application",
+            "library",
+            [
+                PackageSource::new(
+                    "gleam_stdlib",
+                    Vec::<EcoString>::new(),
+                    [ModuleSource::new(
+                        "gleam/option",
+                        "gleam_stdlib/src/gleam/option.gleam",
+                        "pub type Option(value) { Some(value) None }",
+                    )],
+                ),
+                PackageSource::new(
+                    "application",
+                    ["gleam_stdlib"],
+                    [ModuleSource::new(
+                        "library",
+                        "src/library.gleam",
+                        root_source,
+                    )],
+                ),
+            ],
+        )
+        .expect("stdlib Option program should compile")
+    }
+
     fn bind<ArgumentsType, Return>(
         bindings: &mut ModuleBindings,
         name: &str,
     ) -> Function<ArgumentsType, Return>
     where
         ArgumentsType: Arguments,
-        Return: ScalarReturn,
+        Return: ReturnValue,
     {
         bindings
             .function(FunctionDeclaration::<ArgumentsType, Return>::new(name))
@@ -530,6 +386,171 @@ pub fn mixed(
     }
 
     #[test]
+    fn moves_every_tuple_arity_and_recursive_result_through_one_sealed_module() {
+        let typed = compile(
+            r#"
+pub fn scalar(value: Int) { value }
+pub fn tuple1(value: #(Int)) { value }
+pub fn tuple2(value: #(Int, String)) { value }
+pub fn tuple3(value: #(Int, String, Bool)) { value }
+pub fn tuple4(value: #(Int, String, Bool, Nil)) { value }
+pub fn tuple5(value: #(Int, String, Bool, Nil, Float)) { value }
+pub fn tuple6(value: #(Int, String, Bool, Nil, Float, UtfCodepoint)) { value }
+pub fn tuple7(value: #(Int, String, Bool, Nil, Float, UtfCodepoint, BitArray)) { value }
+
+pub fn swap_result(
+  value: Result(#(Int, String), #(Bool, Nil)),
+) -> Result(#(Bool, Nil), #(Int, String)) {
+  case value {
+    Ok(pair) -> Error(pair)
+    Error(pair) -> Ok(pair)
+  }
+}
+"#,
+        );
+        let builder = ModuleBuilder::new(typed).expect("recursive library should plan");
+        let (mut bindings, tuple1) = builder
+            .function(FunctionDeclaration::<((BigInt,),), (BigInt,)>::new(
+                "tuple1",
+            ))
+            .expect("tuple should bind first");
+        let scalar = bind::<(BigInt,), BigInt>(&mut bindings, "scalar");
+        let tuple2 = bind::<((BigInt, EcoString),), (BigInt, EcoString)>(&mut bindings, "tuple2");
+        let tuple3 = bind::<((BigInt, EcoString, bool),), (BigInt, EcoString, bool)>(
+            &mut bindings,
+            "tuple3",
+        );
+        let tuple4 = bind::<((BigInt, EcoString, bool, ()),), (BigInt, EcoString, bool, ())>(
+            &mut bindings,
+            "tuple4",
+        );
+        let tuple5 = bind::<
+            ((BigInt, EcoString, bool, (), f64),),
+            (BigInt, EcoString, bool, (), f64),
+        >(&mut bindings, "tuple5");
+        let tuple6 = bind::<
+            ((BigInt, EcoString, bool, (), f64, char),),
+            (BigInt, EcoString, bool, (), f64, char),
+        >(&mut bindings, "tuple6");
+        let tuple7 = bind::<
+            ((BigInt, EcoString, bool, (), f64, char, BitArrayValue),),
+            (BigInt, EcoString, bool, (), f64, char, BitArrayValue),
+        >(&mut bindings, "tuple7");
+        let swap_result = bind::<
+            (Result<(BigInt, EcoString), (bool, ())>,),
+            Result<(bool, ()), (BigInt, EcoString)>,
+        >(&mut bindings, "swap_result");
+        let module = bindings.seal();
+        let mut echo = Vec::new();
+        let bits = BitArrayValue::try_from_parts(vec![0b1010_0000], 3)
+            .expect("three bits should fit in one byte");
+
+        assert_eq!(
+            module.call(&scalar, (BigInt::from(9),), &mut echo),
+            Ok(BigInt::from(9)),
+        );
+        assert_eq!(
+            module.call(&tuple1, ((BigInt::from(1),),), &mut echo),
+            Ok((BigInt::from(1),)),
+        );
+        assert_eq!(
+            module.call(&tuple2, ((2.into(), "two".into()),), &mut echo),
+            Ok((2.into(), "two".into())),
+        );
+        assert_eq!(
+            module.call(&tuple3, ((3.into(), "three".into(), true),), &mut echo),
+            Ok((3.into(), "three".into(), true)),
+        );
+        assert_eq!(
+            module.call(&tuple4, ((4.into(), "four".into(), false, ()),), &mut echo,),
+            Ok((4.into(), "four".into(), false, ())),
+        );
+        assert_eq!(
+            module.call(
+                &tuple5,
+                ((5.into(), "five".into(), true, (), 5.5),),
+                &mut echo,
+            ),
+            Ok((5.into(), "five".into(), true, (), 5.5)),
+        );
+        assert_eq!(
+            module.call(
+                &tuple6,
+                ((6.into(), "six".into(), false, (), 6.5, '六'),),
+                &mut echo,
+            ),
+            Ok((6.into(), "six".into(), false, (), 6.5, '六')),
+        );
+        assert_eq!(
+            module.call(
+                &tuple7,
+                ((7.into(), "seven".into(), true, (), 7.5, '七', bits.clone()),),
+                &mut echo,
+            ),
+            Ok((7.into(), "seven".into(), true, (), 7.5, '七', bits)),
+        );
+        assert_eq!(
+            module.call(&swap_result, (Ok((8.into(), "ok".into())),), &mut echo,),
+            Ok(Err((8.into(), "ok".into()))),
+        );
+        assert_eq!(
+            module.call(&swap_result, (Err((true, ())),), &mut echo),
+            Ok(Ok((true, ()))),
+        );
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn preserves_exact_option_identity_aliases_and_recursive_variants() {
+        let program = compile_option_program(
+            r#"
+import gleam/option.{type Option as Maybe}
+
+pub fn keep_option(value: Maybe(#(Int, Result(String, Bool)))) { value }
+
+pub fn keep_nested(
+  value: #(Result(Maybe(Int), String), Maybe(Result(Bool, Nil))),
+) {
+  value
+}
+"#,
+        );
+        let builder =
+            ModuleBuilder::from_program(program).expect("Option library should plan without main");
+        let (mut bindings, keep_option) = builder
+            .function(FunctionDeclaration::<
+                (Option<(BigInt, Result<EcoString, bool>)>,),
+                Option<(BigInt, Result<EcoString, bool>)>,
+            >::new("keep_option"))
+            .expect("aliased Option should bind");
+        let keep_nested = bind::<
+            ((Result<Option<BigInt>, EcoString>, Option<Result<bool, ()>>),),
+            (Result<Option<BigInt>, EcoString>, Option<Result<bool, ()>>),
+        >(&mut bindings, "keep_nested");
+        let module = bindings.seal();
+        let mut echo = Vec::new();
+
+        let some_ok = Some((BigInt::from(1), Ok("one".into())));
+        assert_eq!(
+            module.call(&keep_option, (some_ok.clone(),), &mut echo),
+            Ok(some_ok),
+        );
+        assert_eq!(module.call(&keep_option, (None,), &mut echo), Ok(None));
+
+        let nested = (Ok(Some(BigInt::from(2))), Some(Err(())));
+        assert_eq!(
+            module.call(&keep_nested, (nested.clone(),), &mut echo),
+            Ok(nested),
+        );
+        let opposite = (Err("stopped".into()), Some(Ok(false)));
+        assert_eq!(
+            module.call(&keep_nested, (opposite.clone(),), &mut echo),
+            Ok(opposite),
+        );
+        assert!(echo.is_empty());
+    }
+
+    #[test]
     fn seals_each_scalar_return_family_as_an_independent_entry() {
         let source = r#"
 pub fn int_value() { 1 }
@@ -546,7 +567,7 @@ pub fn nil_value() { Nil }
 
         fn call_only<Return>(source: &str, name: &str) -> Return
         where
-            Return: ScalarReturn,
+            Return: ReturnValue,
         {
             let builder = ModuleBuilder::new(compile(source)).expect("library should plan");
             let (bindings, function) = builder

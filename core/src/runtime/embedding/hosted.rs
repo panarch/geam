@@ -3,11 +3,12 @@ use super::super::function;
 use super::super::graph::RetainedValues;
 use super::super::state::RuntimeState;
 use super::super::{EchoSink, EvaluatedBitArray, ExecutionError};
+use super::EmbeddingOutput;
 use crate::host::HostProfile;
 use crate::plan::execution::HostedExecution;
 use crate::plan::execution::function::{
-    BitArrayFunctionId, BoolFunctionId, FloatFunctionId, IntFunctionId, NilFunctionId,
-    StringFunctionId, UtfCodepointFunctionId,
+    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, IntFunctionId,
+    NilFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
 };
 
 pub(crate) fn run_hosted_embedded_int<Profile: HostProfile>(
@@ -66,6 +67,18 @@ pub(crate) fn run_hosted_embedded_utf_codepoint<Profile: HostProfile>(
     function::run_utf_codepoint(plan, &mut state, function, HostCallOrigin::Entry, inputs)
 }
 
+pub(crate) fn run_hosted_embedded_custom<Profile: HostProfile>(
+    plan: &HostedExecution<Profile>,
+    function: CustomFunctionId,
+    inputs: RetainedValues,
+    host: &mut Profile::RunState,
+    echo: &mut dyn EchoSink,
+) -> Result<EmbeddingOutput, ExecutionError> {
+    let mut state = RuntimeState::with_host(echo, host);
+    function::run_custom(plan, &mut state, function, HostCallOrigin::Entry, inputs)
+        .map(EmbeddingOutput::from_custom)
+}
+
 pub(crate) fn run_hosted_embedded_bool<Profile: HostProfile>(
     plan: &HostedExecution<Profile>,
     function: BoolFunctionId,
@@ -86,4 +99,16 @@ pub(crate) fn run_hosted_embedded_nil<Profile: HostProfile>(
 ) -> Result<(), ExecutionError> {
     let mut state = RuntimeState::with_host(echo, host);
     function::run_nil(plan, &mut state, function, HostCallOrigin::Entry, inputs)
+}
+
+pub(crate) fn run_hosted_embedded_tuple<Profile: HostProfile>(
+    plan: &HostedExecution<Profile>,
+    function: TupleFunctionId,
+    inputs: RetainedValues,
+    host: &mut Profile::RunState,
+    echo: &mut dyn EchoSink,
+) -> Result<EmbeddingOutput, ExecutionError> {
+    let mut state = RuntimeState::with_host(echo, host);
+    function::run_tuple(plan, &mut state, function, HostCallOrigin::Entry, inputs)
+        .map(EmbeddingOutput::from_tuple)
 }

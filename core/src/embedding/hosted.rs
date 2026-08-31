@@ -1,5 +1,5 @@
 use super::binding::{BindingBuilder, BindingParts, Bindings};
-use super::{Arguments, BindingError, CallError, Function, FunctionDeclaration, ScalarReturn};
+use super::{Arguments, BindingError, CallError, Function, FunctionDeclaration, ReturnValue};
 use crate::frontend::HostedTypedProgram;
 use crate::host::HostProfile;
 use crate::plan::HostedLibraryModulePlan;
@@ -55,7 +55,7 @@ impl<Profile: HostProfile> HostedModuleBuilder<Profile> {
     >
     where
         ArgumentsType: Arguments,
-        Return: ScalarReturn,
+        Return: ReturnValue,
     {
         self.inner
             .function(declaration)
@@ -72,7 +72,7 @@ impl<Profile: HostProfile> HostedModuleBindings<Profile> {
     ) -> Result<Function<ArgumentsType, Return>, BindingError>
     where
         ArgumentsType: Arguments,
-        Return: ScalarReturn,
+        Return: ReturnValue,
     {
         self.inner.function(declaration)
     }
@@ -106,10 +106,11 @@ impl<Profile: HostProfile> HostedModule<Profile> {
     ) -> Result<Return, CallError>
     where
         ArgumentsType: Arguments,
-        Return: ScalarReturn,
+        Return: ReturnValue,
     {
         self.check_owner(&function.owner).and_then(|()| {
-            let inputs = arguments.into_inputs();
+            let constructions = Return::input_constructions(&self.entries, function.slot);
+            let inputs = arguments.into_inputs(constructions);
             Return::call_hosted(
                 &self.execution,
                 &self.entries,
@@ -135,14 +136,14 @@ impl<Profile: HostProfile> HostedModule<Profile> {
 mod tests {
     use super::{HostedModuleBindings, HostedModuleBuilder};
     use crate::embedding::{
-        Arguments, BindingError, CallError, Function, FunctionDeclaration, ScalarReturn,
+        Arguments, BindingError, CallError, Function, FunctionDeclaration, ReturnValue,
     };
     use crate::planner::UnsupportedBitArraySegmentReason;
     use crate::{
         BitArrayValue, ExecutionError, FunctionType, HostCall, HostCallCompletion, HostCallError,
         HostCallable, HostFailure, HostFunctionType, HostModule, HostProfile, HostProvider,
         HostProviderModule, HostProviderSet, HostTypeListEnd, HostTypeParameter, ModuleSource,
-        PackageSource, PanicKind, PanicSite, PlanError, SourceSpan, StatelessHostProfile,
+        PackageSource, PanicKind, PanicSite, PlanError, SourceSpan, StatelessHostProfile, Value,
         ValueType, compile_typed_host_program,
     };
     use ecow::EcoString;
@@ -242,6 +243,34 @@ mod tests {
         HostedModuleBuilder::new(program).expect("stateless source should plan")
     }
 
+    fn stateless_option_builder(source: &str) -> HostedModuleBuilder<StatelessHostProfile> {
+        let hosts = HostProviderSet::new(Vec::<HostModule>::new())
+            .expect("empty host module set should be valid");
+        let program = compile_typed_host_program(
+            "application",
+            "library",
+            [
+                PackageSource::new(
+                    "gleam_stdlib",
+                    Vec::<EcoString>::new(),
+                    [ModuleSource::new(
+                        "gleam/option",
+                        "gleam_stdlib/src/gleam/option.gleam",
+                        "pub type Option(value) { Some(value) None }",
+                    )],
+                ),
+                PackageSource::new(
+                    "application",
+                    ["gleam_stdlib"],
+                    [ModuleSource::new("library", "src/library.gleam", source)],
+                ),
+            ],
+            hosts,
+        )
+        .expect("stateless Option source should compile");
+        HostedModuleBuilder::new(program).expect("stateless Option source should plan")
+    }
+
     #[test]
     fn preserves_library_planning_failures() {
         let hosts = HostProviderSet::new(Vec::<HostModule>::new())
@@ -280,7 +309,7 @@ mod tests {
     where
         Profile: HostProfile,
         ArgumentsType: Arguments,
-        Return: ScalarReturn,
+        Return: ReturnValue,
     {
         bindings
             .function(FunctionDeclaration::<ArgumentsType, Return>::new(name))
@@ -406,6 +435,116 @@ pub fn next() { counter.next() }
         );
         assert_eq!(first.calls, 2);
         assert_eq!(second.calls, 1);
+    }
+
+    #[test]
+    fn moves_recursive_values_with_caller_owned_state_and_echo() {
+        let builder = stateful_builder(
+            r#"
+import host/counter
+
+pub fn inspect(value: Result(#(Int, String), #(Bool, Nil))) {
+  let count = counter.next()
+  echo count as "hosted call"
+  #(value, count)
+}
+
+pub fn keep_result(value: Result(#(Int, String), #(Bool, Nil))) {
+  let _ = counter.next()
+  value
+}
+"#,
+        );
+        type Input = Result<(BigInt, EcoString), (bool, ())>;
+        let (mut bindings, inspect) = builder
+            .function(FunctionDeclaration::<(Input,), (Input, BigInt)>::new(
+                "inspect",
+            ))
+            .expect("recursive hosted entry should bind");
+        let keep_result = bind::<_, (Input,), Input>(&mut bindings, "keep_result");
+        let module = bindings.seal().expect("recursive hosted entry should seal");
+        let mut first_state = RunState::default();
+        let mut second_state = RunState::default();
+        let mut first_echo = Vec::new();
+        let mut second_echo = Vec::new();
+
+        let success = Ok((BigInt::from(3), "three".into()));
+        assert_eq!(
+            module.call(
+                &inspect,
+                (success.clone(),),
+                &mut first_state,
+                &mut first_echo,
+            ),
+            Ok((success, BigInt::from(1))),
+        );
+        let failure = Err((true, ()));
+        assert_eq!(
+            module.call(
+                &inspect,
+                (failure.clone(),),
+                &mut first_state,
+                &mut first_echo,
+            ),
+            Ok((failure, BigInt::from(2))),
+        );
+        assert_eq!(
+            module.call(
+                &inspect,
+                (Err((false, ())),),
+                &mut second_state,
+                &mut second_echo,
+            ),
+            Ok((Err((false, ())), BigInt::from(1))),
+        );
+        assert_eq!(first_state.calls, 2);
+        assert_eq!(second_state.calls, 1);
+        assert_eq!(first_echo.len(), 2);
+        assert_eq!(second_echo.len(), 1);
+        assert_eq!(first_echo[0].message(), Some(&"hosted call".into()));
+        assert_eq!(first_echo[0].value(), &Value::Int(BigInt::from(1)));
+        assert_eq!(first_echo[1].value(), &Value::Int(BigInt::from(2)));
+        assert_eq!(second_echo[0].value(), &Value::Int(BigInt::from(1)));
+        assert_eq!(
+            module.call(
+                &keep_result,
+                (Ok((BigInt::from(4), "four".into())),),
+                &mut first_state,
+                &mut Vec::new(),
+            ),
+            Ok(Ok((BigInt::from(4), "four".into()))),
+        );
+        assert_eq!(first_state.calls, 3);
+    }
+
+    #[test]
+    fn moves_exact_option_values_through_the_hosted_custom_family() {
+        let builder = stateless_option_builder(
+            r#"
+import gleam/option.{type Option as Maybe}
+
+pub fn keep(value: Maybe(Result(Int, String))) { value }
+"#,
+        );
+        type Value = Option<Result<BigInt, EcoString>>;
+        let (bindings, keep) = builder
+            .function(FunctionDeclaration::<(Value,), Value>::new("keep"))
+            .expect("hosted Option entry should bind");
+        let module = bindings.seal().expect("hosted Option entry should seal");
+
+        assert_eq!(
+            module.call(
+                &keep,
+                (Some(Ok(BigInt::from(5))),),
+                &mut (),
+                &mut Vec::new(),
+            ),
+            Ok(Some(Ok(BigInt::from(5)))),
+        );
+        assert_eq!(
+            module.call(&keep, (None,), &mut (), &mut Vec::new()),
+            Ok(None),
+        );
     }
 
     #[test]

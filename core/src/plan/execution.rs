@@ -55,14 +55,54 @@ pub struct ExecutionPlan {
     program: ExecutionProgram<Infallible>,
 }
 
+pub(crate) struct LibraryFunctionEntry<Function> {
+    function: Function,
+    inputs: LibraryInputConstructions,
+}
+
+pub(crate) struct LibraryInputConstructions {
+    variants: Box<[[type_::CustomConstructorId; 2]]>,
+}
+
 pub(crate) struct LibraryFunctionEntries {
-    pub(crate) ints: Box<[function::IntFunctionId]>,
-    pub(crate) floats: Box<[function::FloatFunctionId]>,
-    pub(crate) strings: Box<[function::StringFunctionId]>,
-    pub(crate) bit_arrays: Box<[function::BitArrayFunctionId]>,
-    pub(crate) utf_codepoints: Box<[function::UtfCodepointFunctionId]>,
-    pub(crate) bools: Box<[function::BoolFunctionId]>,
-    pub(crate) nils: Box<[function::NilFunctionId]>,
+    pub(crate) ints: Box<[LibraryFunctionEntry<function::IntFunctionId>]>,
+    pub(crate) floats: Box<[LibraryFunctionEntry<function::FloatFunctionId>]>,
+    pub(crate) strings: Box<[LibraryFunctionEntry<function::StringFunctionId>]>,
+    pub(crate) bit_arrays: Box<[LibraryFunctionEntry<function::BitArrayFunctionId>]>,
+    pub(crate) utf_codepoints: Box<[LibraryFunctionEntry<function::UtfCodepointFunctionId>]>,
+    pub(crate) customs: Box<[LibraryFunctionEntry<function::CustomFunctionId>]>,
+    pub(crate) bools: Box<[LibraryFunctionEntry<function::BoolFunctionId>]>,
+    pub(crate) nils: Box<[LibraryFunctionEntry<function::NilFunctionId>]>,
+    pub(crate) tuples: Box<[LibraryFunctionEntry<function::TupleFunctionId>]>,
+}
+
+impl<Function> LibraryFunctionEntry<Function> {
+    pub(in crate::plan::execution) fn new(
+        function: Function,
+        inputs: LibraryInputConstructions,
+    ) -> Self {
+        Self { function, inputs }
+    }
+
+    pub(crate) fn function(&self) -> &Function {
+        &self.function
+    }
+
+    pub(crate) fn inputs(&self) -> &LibraryInputConstructions {
+        &self.inputs
+    }
+}
+
+impl LibraryInputConstructions {
+    pub(in crate::plan::execution) fn new(variants: Vec<[type_::CustomConstructorId; 2]>) -> Self {
+        Self {
+            variants: variants.into_boxed_slice(),
+        }
+    }
+
+    pub(crate) fn variants(&self) -> &[[type_::CustomConstructorId; 2]] {
+        &self.variants
+    }
 }
 
 pub struct HostedExecution<Profile: HostProfile> {
