@@ -191,14 +191,19 @@ cargo clippy --manifest-path examples/rust_embedding_application/Cargo.toml \
 cargo run --quiet --manifest-path examples/rust_embedding_application/Cargo.toml --locked
 ```
 
-The Acceptance workflow's `Rust embedding` job owns this boundary. It starts
-without a separate Gleam download step, checks locked readiness, and verifies
-that tracked application files remain unchanged. It then makes generated source stale,
-requires `embedding check` to fail, and runs production sync to restore the
-exact committed file before formatting, testing, linting, and running the
-application with the exact inventory report and its captured Gleam IO. The
-same job requires one Geam package identity, the exact core/macros/stdlib
-application profile, the text-pattern provider, and no CLI/JSON/Time dependency.
+The Acceptance workflow's `Rust embedding` job owns this boundary. It first
+installs the current checkout with `cargo install --path . --locked` into a
+temporary installation root, using the default features and release profile.
+The following readiness and recovery checks use that installed binary, so CI
+also verifies that feature separation preserves the default CLI installation.
+It starts without a separate Gleam download step, checks locked readiness, and
+verifies that tracked application files remain unchanged. It then makes
+generated source stale, requires `embedding check` to fail, and runs production
+sync to restore the exact committed file before formatting, testing, linting,
+and running the application with the exact inventory report and its captured
+Gleam IO. The same job requires one Geam package identity, the exact
+core/macros/stdlib application profile, the text-pattern provider, and no
+CLI/JSON/Time dependency.
 Provider-example jobs remain separate because they own provider authoring and
 standalone consumption rather than Rust-first application composition.
 
