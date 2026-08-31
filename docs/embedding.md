@@ -27,6 +27,7 @@ application/
     gleam.toml
     manifest.toml
     src/
+      application.gleam
 ```
 
 Cargo build output and downloaded Gleam package source are local artifacts;
@@ -50,13 +51,18 @@ Its text-pattern provider enables `provider` on the same Geam package identity,
 so Cargo unifies the authoring macros without restoring Geam defaults or CLI.
 An application that authors providers directly can add `provider` itself.
 
-Select the nested project and one boundary module in `Cargo.toml`:
+The nested project is always `gleam/`. Its package name and public boundary
+module use the Cargo package name with hyphens replaced by underscores.
+For Cargo package `inventory-app`, use:
 
 ```toml
-[package.metadata.geam.embedding]
-project = "gleam"
-module = "rust_embedding"
+# gleam/gleam.toml
+name = "inventory_app"
 ```
+
+Public functions in `gleam/src/inventory_app.gleam` form the Rust boundary.
+Internal modules can live under `gleam/src/inventory_app/`. There is no
+embedding selector metadata in Cargo.toml or special `lib.gleam` file.
 
 The package must have one enabled direct dependency on `geam`. Each external
 provider required by the selected Gleam source closure must also be an enabled
@@ -70,8 +76,9 @@ the dependency declaration.
 
 ## Synchronize Bindings
 
-Resolve both package graphs before synchronization. Geam deliberately does not
-download dependencies or edit either manifest or lockfile:
+Resolve both package graphs before synchronization. These commands do not
+prepare missing Gleam dependencies or edit either manifest or lockfile;
+Cargo's locked metadata inspection may acquire its resolved dependencies:
 
 ```sh
 cd gleam
@@ -92,9 +99,9 @@ Use the read-only command in review and CI:
 geam embedding check
 ```
 
-Both commands accept `--manifest-path PATH`. Without it, Geam selects the
-nearest Cargo package manifest. A virtual workspace is not guessed; select a
-member manifest explicitly.
+Both commands use the nearest Cargo package manifest. At a virtual workspace
+root, move into the intended member directory. Custom project layouts use the
+manual Rust API rather than selector flags on these commands.
 
 `check` runs the same package selection, validation, and rendering path as
 `sync`, then compares the expected bytes in memory. Missing or stale output
@@ -290,7 +297,7 @@ grammar.
 
 In the canonical application, `inventory_rules` owns normalization, validation,
 and an opaque Stock type, and uses the text-pattern provider. The selected
-`rust_embedding` module exposes only ordinary data through batch validation,
+`geam_rust_embedding_application` module exposes only ordinary data through batch validation,
 total quantity, and first valid row. Rust never needs to represent Stock or
 the provider's external Pattern type. Imported modules may use the ordinary
 supported Gleam profile; only public functions of the selected root become

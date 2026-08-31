@@ -24,14 +24,8 @@ pub(super) struct Embedding {
 
 #[derive(Debug, PartialEq, Eq, Subcommand)]
 pub(super) enum EmbeddingCommand {
-    Check(EmbeddingTarget),
-    Sync(EmbeddingTarget),
-}
-
-#[derive(Debug, PartialEq, Eq, Args)]
-pub(super) struct EmbeddingTarget {
-    #[arg(long, value_name = "PATH")]
-    pub(super) manifest_path: Option<Utf8PathBuf>,
+    Check,
+    Sync,
 }
 
 #[derive(Debug, PartialEq, Eq, Args)]
@@ -93,8 +87,8 @@ pub(super) struct RemoveProvider {
 #[cfg(test)]
 mod tests {
     use super::{
-        AddProvider, Cli, Command, Embedding, EmbeddingCommand, EmbeddingTarget, EntryCommand,
-        Provider, ProviderCommand, RemoveProvider, RunCommand,
+        AddProvider, Cli, Command, Embedding, EmbeddingCommand, EntryCommand, Provider,
+        ProviderCommand, RemoveProvider, RunCommand,
     };
     use camino::Utf8PathBuf;
     use clap::{CommandFactory, Parser};
@@ -143,16 +137,14 @@ mod tests {
     }
 
     #[test]
-    fn parses_embedding_commands_and_manifest_selection() {
+    fn parses_parameterless_embedding_commands() {
         let check = Cli::try_parse_from(["geam", "embedding", "check"])
             .expect("embedding check command should parse");
         assert_eq!(
             check,
             Cli {
                 command: Command::Embedding(Embedding {
-                    command: EmbeddingCommand::Check(EmbeddingTarget {
-                        manifest_path: None,
-                    }),
+                    command: EmbeddingCommand::Check,
                 }),
             },
         );
@@ -163,50 +155,25 @@ mod tests {
             nearest,
             Cli {
                 command: Command::Embedding(Embedding {
-                    command: EmbeddingCommand::Sync(EmbeddingTarget {
-                        manifest_path: None,
-                    }),
+                    command: EmbeddingCommand::Sync,
                 }),
             },
         );
 
-        let explicit = Cli::try_parse_from([
-            "geam",
-            "embedding",
-            "sync",
-            "--manifest-path",
-            "application/Cargo.toml",
-        ])
-        .expect("explicit embedding manifest should parse");
-        assert_eq!(
-            explicit,
-            Cli {
-                command: Command::Embedding(Embedding {
-                    command: EmbeddingCommand::Sync(EmbeddingTarget {
-                        manifest_path: Some(Utf8PathBuf::from("application/Cargo.toml")),
-                    }),
-                }),
-            },
-        );
-
-        let explicit_check = Cli::try_parse_from([
-            "geam",
-            "embedding",
-            "check",
-            "--manifest-path",
-            "application/Cargo.toml",
-        ])
-        .expect("explicit embedding check manifest should parse");
-        assert_eq!(
-            explicit_check,
-            Cli {
-                command: Command::Embedding(Embedding {
-                    command: EmbeddingCommand::Check(EmbeddingTarget {
-                        manifest_path: Some(Utf8PathBuf::from("application/Cargo.toml")),
-                    }),
-                }),
-            },
-        );
+        for operation in ["sync", "check"] {
+            assert_eq!(
+                Cli::try_parse_from([
+                    "geam",
+                    "embedding",
+                    operation,
+                    "--manifest-path",
+                    "Cargo.toml",
+                ])
+                .expect_err("embedding uses the current Cargo package")
+                .kind(),
+                clap::error::ErrorKind::UnknownArgument,
+            );
+        }
     }
 
     #[test]

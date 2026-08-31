@@ -1,7 +1,7 @@
+import geam_rust_embedding_application/inventory_rules
 import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
-import inventory_rules
 
 pub fn validate_batch(
   rows: List(#(String, Int)),

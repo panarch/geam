@@ -75,7 +75,8 @@ pub(super) fn canonical_manifest(path: Utf8PathBuf) -> Result<Utf8PathBuf, CliEr
 #[cfg(test)]
 mod tests {
     use super::{
-        CargoMetadataLoader, CargoMetadataMode, SystemCargoMetadata, parse_metadata_output,
+        CargoMetadataLoader, CargoMetadataMode, SystemCargoMetadata, canonical_manifest,
+        parse_metadata_output,
     };
     use crate::error::CliError;
     use camino::Utf8PathBuf;
@@ -113,5 +114,16 @@ mod tests {
             CliError::ProcessFailure { command, status: Some(101), stderr }
                 if command == expected_command && stderr.contains("manifest path")
         ));
+    }
+
+    #[test]
+    fn preserves_canonical_manifest_filesystem_failures() {
+        let directory = tempfile::tempdir().expect("temporary directory should be created");
+        let path = Utf8PathBuf::from_path_buf(directory.path().join("Cargo.toml"))
+            .expect("temporary path should be UTF-8");
+        let error =
+            canonical_manifest(path.clone()).expect_err("an absent canonical manifest should fail");
+        assert!(matches!(error, CliError::FileRead { path: actual, error }
+            if actual == path && error.kind() == std::io::ErrorKind::NotFound));
     }
 }

@@ -177,8 +177,10 @@ cd examples/rust_embedding_application/gleam
 gleam deps download
 gleam format --check
 cd ../../..
-cargo run --package geam --locked -- embedding check \
-  --manifest-path examples/rust_embedding_application/Cargo.toml
+cargo build --package geam --bin geam --locked
+cd examples/rust_embedding_application
+../../target/debug/geam embedding check
+cd ../..
 cargo tree --manifest-path examples/rust_embedding_application/Cargo.toml \
   --locked --package geam --edges normal --depth 1
 cargo fmt --manifest-path examples/rust_embedding_application/Cargo.toml --all --check

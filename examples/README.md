@@ -23,8 +23,10 @@ IO, and Echo are verified in tests rather than assertions in the entry point.
 cd examples/rust_embedding_application/gleam
 gleam deps download
 cd ../../..
-cargo run --package geam --locked -- embedding check \
-  --manifest-path examples/rust_embedding_application/Cargo.toml
+cargo build --package geam --bin geam --locked
+cd examples/rust_embedding_application
+../../target/debug/geam embedding check
+cd ../..
 cargo test --manifest-path examples/rust_embedding_application/Cargo.toml --locked
 cargo run --quiet --manifest-path examples/rust_embedding_application/Cargo.toml --locked
 ```

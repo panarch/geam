@@ -107,16 +107,21 @@ jobs:
           cargo tree --manifest-path examples/rust_embedding_application/Cargo.toml --locked --package geam-rust-embedding-application --edges normal --depth 1 --prefix none > "$RUNNER_TEMP/application-embedding-graph"
           grep -Eq '^geam-example-text-pattern v' "$RUNNER_TEMP/application-embedding-graph"
 
+      - name: Build checkout CLI
+        run: cargo build --package geam --bin geam --locked
+
       - name: Verify managed binding drift and recovery
+        working-directory: examples/rust_embedding_application
         run: |
-          cargo run --package geam --locked -- embedding check --manifest-path examples/rust_embedding_application/Cargo.toml
-          printf '\n// stale acceptance probe\n' >> examples/rust_embedding_application/src/geam_bindings.rs
-          if cargo run --package geam --locked -- embedding check --manifest-path examples/rust_embedding_application/Cargo.toml; then
+          ../../target/debug/geam embedding check
+          printf '\n// stale acceptance probe\n' >> src/geam_bindings.rs
+          if ../../target/debug/geam embedding check; then
             echo "embedding check accepted stale generated source" >&2
             exit 1
           fi
-          cargo run --package geam --locked -- embedding sync --manifest-path examples/rust_embedding_application/Cargo.toml
-          git diff --exit-code -- examples/rust_embedding_application/src/geam_bindings.rs
+          ../../target/debug/geam embedding sync
+          ../../target/debug/geam embedding check
+          git diff --exit-code -- src/geam_bindings.rs
 
       - name: Check application formatting
         run: |

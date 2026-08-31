@@ -5,7 +5,6 @@ mod package;
 mod profile;
 mod render;
 
-use crate::command::EmbeddingTarget;
 use crate::error::CliError;
 use crate::project::{ResolvedProject, read_existing_resolved_project};
 use boundary::PlainBindings;
@@ -19,20 +18,19 @@ struct GeneratedBindings {
     source: String,
 }
 
-pub(super) fn check(current_directory: &Utf8Path, target: EmbeddingTarget) -> Result<(), CliError> {
-    check_with_project_reader(current_directory, target, read_existing_resolved_project)
+pub(super) fn check(current_directory: &Utf8Path) -> Result<(), CliError> {
+    check_with_project_reader(current_directory, read_existing_resolved_project)
 }
 
-pub(super) fn sync(current_directory: &Utf8Path, target: EmbeddingTarget) -> Result<(), CliError> {
-    sync_with_project_reader(current_directory, target, read_existing_resolved_project)
+pub(super) fn sync(current_directory: &Utf8Path) -> Result<(), CliError> {
+    sync_with_project_reader(current_directory, read_existing_resolved_project)
 }
 
 fn check_with_project_reader(
     current_directory: &Utf8Path,
-    target: EmbeddingTarget,
     read_project: fn(&Utf8Path) -> Result<ResolvedProject, CliError>,
 ) -> Result<(), CliError> {
-    let generated = generate_with_project_reader(current_directory, target, read_project)?;
+    let generated = generate_with_project_reader(current_directory, read_project)?;
     output::check(
         generated.package.manifest(),
         generated.package.output_path(),
@@ -42,10 +40,9 @@ fn check_with_project_reader(
 
 fn sync_with_project_reader(
     current_directory: &Utf8Path,
-    target: EmbeddingTarget,
     read_project: fn(&Utf8Path) -> Result<ResolvedProject, CliError>,
 ) -> Result<(), CliError> {
-    let generated = generate_with_project_reader(current_directory, target, read_project)?;
+    let generated = generate_with_project_reader(current_directory, read_project)?;
     output::sync(
         generated.package.output_directory(),
         generated.package.output_path(),
@@ -56,10 +53,9 @@ fn sync_with_project_reader(
 
 fn generate_with_project_reader(
     current_directory: &Utf8Path,
-    target: EmbeddingTarget,
     read_project: fn(&Utf8Path) -> Result<ResolvedProject, CliError>,
 ) -> Result<GeneratedBindings, CliError> {
-    let package = EmbeddingPackage::load(current_directory, target.manifest_path)?;
+    let package = EmbeddingPackage::load(current_directory)?;
     package.require_geam_feature("embedding", "to generate Rust embedding bindings")?;
     let program = geam_core::compile_typed_project(
         package.project_root().to_path_buf(),
@@ -91,7 +87,6 @@ fn generate_with_project_reader(
 #[cfg(test)]
 mod tests {
     use super::{check, sync, sync_with_project_reader};
-    use crate::command::EmbeddingTarget;
     use crate::error::CliError;
     use camino::Utf8PathBuf;
     use std::fs;
@@ -106,20 +101,9 @@ mod tests {
         let lock_before =
             fs::read(fixture.root.join("Cargo.lock")).expect("fixture lockfile should be readable");
 
-        sync(
-            &fixture.root.join("src/nested"),
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect("plain bindings should synchronize");
-        check(
-            &fixture.root.join("src/nested"),
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect("exact plain bindings should pass checking from a nested directory");
+        sync(&fixture.root.join("src/nested")).expect("plain bindings should synchronize");
+        check(&fixture.root.join("src/nested"))
+            .expect("exact plain bindings should pass checking from a nested directory");
         let generated_path = fixture.root.join("src/geam_bindings.rs");
         let generated = fs::read(&generated_path).expect("generated source should be readable");
         assert!(String::from_utf8_lossy(&generated).contains("use runtime::embedding::EcoString;"));
@@ -157,20 +141,8 @@ mod tests {
             "generated Rust application",
         );
 
-        sync(
-            &fixture.root,
-            EmbeddingTarget {
-                manifest_path: Some(fixture.root.join("Cargo.toml")),
-            },
-        )
-        .expect("identical explicit synchronization should succeed");
-        check(
-            &fixture.root,
-            EmbeddingTarget {
-                manifest_path: Some(fixture.root.join("Cargo.toml")),
-            },
-        )
-        .expect("exact explicit plain bindings should pass checking");
+        sync(&fixture.root).expect("identical synchronization from the root should succeed");
+        check(&fixture.root).expect("exact plain bindings should pass checking from the root");
         assert_eq!(
             fs::read(&generated_path).expect("unchanged generated source should be readable"),
             generated,
@@ -181,16 +153,10 @@ mod tests {
             .expect("fixture manifest should be readable before metadata failure");
         fs::write(
             &manifest_path,
-            manifest.replace("module = \"inventory_rules\"", "module = \"\""),
+            format!("{manifest}\n[package.metadata.geam.embedding]\nproject = \"gleam\"\nmodule = \"obsolete\"\n"),
         )
         .expect("invalid embedding metadata should be written");
-        sync(
-            &fixture.root,
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect_err("invalid embedding metadata should fail synchronization");
+        sync(&fixture.root).expect_err("invalid embedding metadata should fail synchronization");
         assert_eq!(
             fs::read(&generated_path).expect("metadata failure should preserve previous output"),
             generated,
@@ -198,38 +164,31 @@ mod tests {
         fs::write(&manifest_path, manifest).expect("valid embedding metadata should be restored");
 
         fs::write(
-            fixture.root.join("gleam/src/inventory_rules.gleam"),
+            fixture
+                .root
+                .join("gleam/src/plain_embedding_application.gleam"),
             "pub fn invalid(",
         )
         .expect("invalid source fixture should be written");
-        sync(
-            &fixture.root,
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect_err("invalid source should fail synchronization");
+        sync(&fixture.root).expect_err("invalid source should fail synchronization");
         assert_eq!(
             fs::read(&generated_path).expect("previous output should remain readable"),
             generated,
         );
 
         fs::write(
-            fixture.root.join("gleam/src/inventory_rules.gleam"),
+            fixture
+                .root
+                .join("gleam/src/plain_embedding_application.gleam"),
             "pub fn unsupported(_value: List(fn(Int) -> Int)) -> Int { 1 }\n",
         )
         .expect("unsupported boundary fixture should be written");
-        let error = sync(
-            &fixture.root,
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect_err("unsupported boundary should fail synchronization");
+        let error =
+            sync(&fixture.root).expect_err("unsupported boundary should fail synchronization");
         assert!(
             error
                 .to_string()
-                .contains("invalid Rust embedding boundary module inventory_rules")
+                .contains("invalid Rust embedding boundary module plain_embedding_application")
         );
         assert_eq!(
             fs::read(&generated_path).expect("boundary failure should preserve previous output"),
@@ -237,28 +196,24 @@ mod tests {
         );
 
         fs::write(
-            fixture.root.join("gleam/src/inventory_rules.gleam"),
+            fixture
+                .root
+                .join("gleam/src/plain_embedding_application.gleam"),
             r#"
 @external(erlang, "native", "normalize")
 pub fn normalize(value: String) -> String
 "#,
         )
         .expect("host-required source fixture should be written");
-        let error = sync_with_project_reader(
-            &fixture.root,
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-            |project_root| {
-                Err(CliError::FileRead {
-                    path: project_root.join("manifest.toml"),
-                    error: std::io::Error::new(
-                        std::io::ErrorKind::NotFound,
-                        "fixture resolution is unavailable",
-                    ),
-                })
-            },
-        )
+        let error = sync_with_project_reader(&fixture.root, |project_root| {
+            Err(CliError::FileRead {
+                path: project_root.join("manifest.toml"),
+                error: std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "fixture resolution is unavailable",
+                ),
+            })
+        })
         .expect_err("hosted synchronization should require an existing resolution");
         assert!(matches!(
             &error,
@@ -267,17 +222,12 @@ pub fn normalize(value: String) -> String
                     && error.kind() == std::io::ErrorKind::NotFound
         ));
 
-        let error = sync(
-            &fixture.root,
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect_err("host-required project should require a direct provider");
+        let error = sync(&fixture.root)
+            .expect_err("host-required project should require a direct provider");
         assert!(matches!(
             error,
             CliError::InvalidEmbeddingProvider { package, manifest, reason }
-                if package == "embedding_application"
+                if package == "plain_embedding_application"
                     && manifest == fixture.root.join("Cargo.toml")
                     && reason.contains("no enabled direct provider dependency")
         ));
@@ -291,19 +241,16 @@ pub fn normalize(value: String) -> String
             use std::os::unix::fs::PermissionsExt;
 
             fs::write(
-                fixture.root.join("gleam/src/inventory_rules.gleam"),
+                fixture
+                    .root
+                    .join("gleam/src/plain_embedding_application.gleam"),
                 "pub fn changed() -> Int { 1 }\n",
             )
             .expect("changed source fixture should be written");
             let output_directory = fixture.root.join("src");
             fs::set_permissions(&output_directory, fs::Permissions::from_mode(0o500))
                 .expect("output directory should become read-only");
-            let result = sync(
-                &fixture.root,
-                EmbeddingTarget {
-                    manifest_path: None,
-                },
-            );
+            let result = sync(&fixture.root);
             fs::set_permissions(&output_directory, fs::Permissions::from_mode(0o700))
                 .expect("output directory permissions should be restored");
 
@@ -328,20 +275,8 @@ pub fn normalize(value: String) -> String
         fixture.write_hosted_project();
         fixture.generate_lockfile();
 
-        sync(
-            &fixture.root.join("src"),
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect("hosted bindings should synchronize");
-        check(
-            &fixture.root,
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect("exact hosted bindings should pass checking");
+        sync(&fixture.root.join("src")).expect("hosted bindings should synchronize");
+        check(&fixture.root).expect("exact hosted bindings should pass checking");
         let generated_path = fixture.root.join("src/geam_bindings.rs");
         let generated = fs::read(&generated_path).expect("generated source should be readable");
         let source = String::from_utf8_lossy(&generated);
@@ -401,13 +336,8 @@ pub fn normalize(value: String) -> String
         fs::write(&manifest_path, format!("{without_provider}\n"))
             .expect("provider dependency should be removed");
         fixture.generate_lockfile();
-        let checked_error = check(
-            &fixture.root,
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect_err("missing direct provider should fail hosted checking");
+        let checked_error =
+            check(&fixture.root).expect_err("missing direct provider should fail hosted checking");
         assert!(
             matches!(
                 &checked_error,
@@ -423,13 +353,8 @@ pub fn normalize(value: String) -> String
                 .expect("provider check failure should preserve previous output"),
             generated,
         );
-        let error = sync(
-            &fixture.root,
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect_err("missing direct provider should fail hosted synchronization");
+        let error = sync(&fixture.root)
+            .expect_err("missing direct provider should fail hosted synchronization");
         assert!(matches!(
             error,
             CliError::InvalidEmbeddingProvider { package, manifest: path, reason }
@@ -450,20 +375,8 @@ pub fn normalize(value: String) -> String
         fixture.write_built_in_project();
         fixture.generate_lockfile();
 
-        sync(
-            &fixture.root,
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect("built-in hosted bindings should synchronize");
-        check(
-            &fixture.root,
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect("exact built-in bindings should pass checking");
+        sync(&fixture.root).expect("built-in hosted bindings should synchronize");
+        check(&fixture.root).expect("exact built-in bindings should pass checking");
         let generated_path = fixture.root.join("src/geam_bindings.rs");
         let generated = fs::read_to_string(&generated_path)
             .expect("built-in generated source should be readable");
@@ -512,28 +425,17 @@ pub fn normalize(value: String) -> String
         let manifest_path = fixture.root.join("Cargo.toml");
         let generated_path = fixture.root.join("src/geam_bindings.rs");
 
-        let missing = check(
-            &fixture.root,
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect_err("missing generated bindings should fail checking");
+        let missing =
+            check(&fixture.root).expect_err("missing generated bindings should fail checking");
         assert_eq!(
             missing.to_string(),
             format!(
-                "Rust embedding bindings at {generated_path} are missing or stale for {manifest_path}; run `geam embedding sync --manifest-path {manifest_path}`"
+                "Rust embedding bindings at {generated_path} are missing or stale for {manifest_path}; run `geam embedding sync` from the Cargo package directory"
             ),
         );
         assert!(!generated_path.exists());
 
-        sync(
-            &fixture.root,
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect("plain fixture should synchronize");
+        sync(&fixture.root).expect("plain fixture should synchronize");
         let original = fs::read(&generated_path).expect("generated source should be readable");
 
         let support_path = fixture.root.join("gleam/src/support.gleam");
@@ -546,19 +448,15 @@ pub fn normalize(value: String) -> String
             ),
         )
         .expect("body-only and private changes should be written");
-        check(
-            &fixture.root,
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect("body-only and private changes should not alter bindings");
+        check(&fixture.root).expect("body-only and private changes should not alter bindings");
         assert_eq!(
             fs::read(&generated_path).expect("clean generated source should remain readable"),
             original,
         );
 
-        let boundary_path = fixture.root.join("gleam/src/inventory_rules.gleam");
+        let boundary_path = fixture
+            .root
+            .join("gleam/src/plain_embedding_application.gleam");
         let boundary =
             fs::read_to_string(&boundary_path).expect("boundary source should be readable");
         fs::write(
@@ -569,9 +467,6 @@ pub fn normalize(value: String) -> String
         assert!(matches!(
             check(
                 &fixture.root,
-                EmbeddingTarget {
-                    manifest_path: None,
-                },
             ),
             Err(CliError::EmbeddingBindingsOutOfDate { manifest, output })
                 if manifest == manifest_path && output == generated_path
@@ -581,22 +476,13 @@ pub fn normalize(value: String) -> String
             original,
         );
 
-        sync(
-            &fixture.root,
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect("public addition should synchronize");
+        sync(&fixture.root).expect("public addition should synchronize");
         let with_addition =
             fs::read(&generated_path).expect("updated generated source should be readable");
         fs::write(&boundary_path, &boundary).expect("public addition should be removed");
         assert!(matches!(
             check(
                 &fixture.root,
-                EmbeddingTarget {
-                    manifest_path: None,
-                },
             ),
             Err(CliError::EmbeddingBindingsOutOfDate { manifest, output })
                 if manifest == manifest_path && output == generated_path
@@ -606,13 +492,7 @@ pub fn normalize(value: String) -> String
             with_addition,
         );
 
-        sync(
-            &fixture.root,
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect("restored boundary should synchronize");
+        sync(&fixture.root).expect("restored boundary should synchronize");
         let restored = fs::read(&generated_path).expect("restored output should be readable");
         fs::write(
             &boundary_path,
@@ -625,9 +505,6 @@ pub fn normalize(value: String) -> String
         assert!(matches!(
             check(
                 &fixture.root,
-                EmbeddingTarget {
-                    manifest_path: None,
-                },
             ),
             Err(CliError::EmbeddingBindingsOutOfDate { manifest, output })
                 if manifest == manifest_path && output == generated_path
@@ -639,13 +516,7 @@ pub fn normalize(value: String) -> String
 
         fs::write(&boundary_path, "pub fn invalid(")
             .expect("invalid boundary source should be written");
-        check(
-            &fixture.root,
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect_err("invalid source should fail checking");
+        check(&fixture.root).expect_err("invalid source should fail checking");
         assert_eq!(
             fs::read(&generated_path).expect("invalid-source output should remain readable"),
             restored,
@@ -657,19 +528,15 @@ pub fn normalize(value: String) -> String
         let fixture = ApplicationFixture::new();
         fixture.write_hosted_project();
         fixture.generate_lockfile();
-        sync(
-            &fixture.root,
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect("hosted fixture should synchronize");
+        sync(&fixture.root).expect("hosted fixture should synchronize");
         let generated_path = fixture.root.join("src/geam_bindings.rs");
         let generated = fs::read(&generated_path).expect("hosted output should be readable");
         let manifest_path = fixture.root.join("Cargo.toml");
 
         fs::write(
-            fixture.root.join("gleam/src/rust_embedding.gleam"),
+            fixture
+                .root
+                .join("gleam/src/hosted_embedding_application.gleam"),
             r#"pub fn format_words() -> String { "plain" }
 
 pub fn contains_only_words(_text: String) -> Bool { True }
@@ -679,9 +546,6 @@ pub fn contains_only_words(_text: String) -> Bool { True }
         assert!(matches!(
             check(
                 &fixture.root,
-                EmbeddingTarget {
-                    manifest_path: None,
-                },
             ),
             Err(CliError::EmbeddingBindingsOutOfDate { manifest, output })
                 if manifest == manifest_path && output == generated_path
@@ -706,13 +570,8 @@ pub fn contains_only_words(_text: String) -> Bool { True }
         .expect("plain fixture should omit the embedding feature");
         plain.generate_lockfile();
 
-        let error = sync(
-            &plain.root,
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect_err("missing embedding feature should fail synchronization");
+        let error =
+            sync(&plain.root).expect_err("missing embedding feature should fail synchronization");
         assert!(matches!(
             error,
             CliError::InvalidEmbeddingDependency { package, manifest, reason }
@@ -732,13 +591,8 @@ pub fn contains_only_words(_text: String) -> Bool { True }
             .expect("hosted fixture should omit the required Time feature");
         hosted.generate_lockfile();
 
-        let error = sync(
-            &hosted.root,
-            EmbeddingTarget {
-                manifest_path: None,
-            },
-        )
-        .expect_err("missing built-in feature should fail synchronization");
+        let error =
+            sync(&hosted.root).expect_err("missing built-in feature should fail synchronization");
         assert!(matches!(
             error,
             CliError::InvalidEmbeddingDependency { package, manifest, reason }
@@ -805,10 +659,6 @@ edition = "2024"
 
 [dependencies]
 runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding"] }}
-
-[package.metadata.geam.embedding]
-project = "gleam"
-module = "inventory_rules"
 
 [workspace]
 resolver = "3"
@@ -911,7 +761,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .expect("Rust application should be written");
             fs::write(
                 self.root.join("gleam/gleam.toml"),
-                "name = \"embedding_application\"\nversion = \"1.0.0\"\n\n[dependencies]\ngleam_stdlib = { path = \"packages/gleam_stdlib\" }\n",
+                "name = \"plain_embedding_application\"\nversion = \"1.0.0\"\n\n[dependencies]\ngleam_stdlib = { path = \"packages/gleam_stdlib\" }\n",
             )
             .expect("Gleam package config should be written");
             fs::write(
@@ -920,7 +770,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             )
             .expect("Gleam manifest should be written");
             fs::write(
-                self.root.join("gleam/src/inventory_rules.gleam"),
+                self.root
+                    .join("gleam/src/plain_embedding_application.gleam"),
                 r#"import support
 import gleam/option.{type Option}
 
@@ -1007,10 +858,6 @@ edition = "2024"
 runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding"] }}
 flags = {{ package = "geam-example-feature-flags", path = {flags_provider:?} }}
 patterns = {{ package = "geam-example-text-pattern", path = {pattern_provider:?} }}
-
-[package.metadata.geam.embedding]
-project = "gleam"
-module = "rust_embedding"
 
 [patch.crates-io]
 geam = {{ path = {:?} }}
@@ -1110,7 +957,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             fs::write(
                 self.root.join("gleam/gleam.toml"),
                 format!(
-                    r#"name = "embedding_application"
+                    r#"name = "hosted_embedding_application"
 version = "1.0.0"
 
 [dependencies]
@@ -1136,7 +983,8 @@ example_text_pattern = {{ path = {text_pattern:?} }}
             )
             .expect("hosted Gleam manifest should be written");
             fs::write(
-                self.root.join("gleam/src/rust_embedding.gleam"),
+                self.root
+                    .join("gleam/src/hosted_embedding_application.gleam"),
                 r#"import example_feature_flags as flags
 import example_text_pattern as pattern
 
@@ -1209,10 +1057,6 @@ edition = "2024"
 [dependencies]
 runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding", "gleam-json", "gleam-time"] }}
 
-[package.metadata.geam.embedding]
-project = "gleam"
-module = "rust_embedding"
-
 [workspace]
 resolver = "3"
 "#,
@@ -1247,7 +1091,7 @@ fn consume_functions(functions: geam_bindings::Functions) {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    assert_eq!(geam_bindings::ROOT_MODULE, "rust_embedding");
+    assert_eq!(geam_bindings::ROOT_MODULE, "built_in_embedding_application");
     let _consume = consume_functions;
     let _bind = geam_bindings::bind::<Vec<IoOutput>, FixedTime>;
     let _program = geam_bindings::project::<Vec<IoOutput>, FixedTime>()?.compile()?;
@@ -1265,7 +1109,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .expect("built-in Rust application should be written");
             fs::write(
                 self.root.join("gleam/gleam.toml"),
-                r#"name = "embedding_application"
+                r#"name = "built_in_embedding_application"
 version = "1.0.0"
 
 [dependencies]
@@ -1288,7 +1132,8 @@ gleam_time = { path = "packages/gleam_time" }
             )
             .expect("built-in Gleam manifest should be written");
             fs::write(
-                self.root.join("gleam/src/rust_embedding.gleam"),
+                self.root
+                    .join("gleam/src/built_in_embedding_application.gleam"),
                 r#"import json_native
 import time_native
 

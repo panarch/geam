@@ -1,28 +1,20 @@
-use super::identifier::RustIdentifier;
-use crate::cargo::{
-    CargoMetadataLoader, CargoMetadataMode, SystemCargoMetadata, canonical_manifest,
-};
-use crate::error::CliError;
-use camino::{Utf8Path, Utf8PathBuf};
-use cargo_metadata::{DependencyKind, Metadata, Package, PackageId};
-use serde::Deserialize;
-use std::collections::BTreeSet;
+mod project;
 
-const MANIFEST_FILE: &str = "Cargo.toml";
+use super::identifier::RustIdentifier;
+use crate::cargo::{CargoMetadataLoader, CargoMetadataMode, SystemCargoMetadata};
+use crate::error::CliError;
+use camino::Utf8Path;
+use cargo_metadata::{DependencyKind, Metadata, Package, PackageId};
+use project::EmbeddingProject;
+use std::collections::BTreeSet;
 
 #[derive(Debug)]
 pub(super) struct EmbeddingPackage {
-    package_name: String,
-    manifest: Utf8PathBuf,
-    project_path: Utf8PathBuf,
-    project_root: Utf8PathBuf,
-    root_module: String,
+    project: EmbeddingProject,
     geam_alias: RustIdentifier,
     geam_package_id: PackageId,
     geam_features: BTreeSet<String>,
     direct_dependencies: Vec<DirectDependency>,
-    output_directory: Utf8PathBuf,
-    output_path: Utf8PathBuf,
 }
 
 #[derive(Debug, Clone)]
@@ -40,39 +32,22 @@ pub(super) struct ResolvedGeamDependency {
 }
 
 impl EmbeddingPackage {
-    pub(super) fn load(
-        current_directory: &Utf8Path,
-        requested_manifest: Option<Utf8PathBuf>,
-    ) -> Result<Self, CliError> {
-        Self::load_with(current_directory, requested_manifest, &SystemCargoMetadata)
+    pub(super) fn load(current_directory: &Utf8Path) -> Result<Self, CliError> {
+        Self::load_with(current_directory, &SystemCargoMetadata)
     }
 
     fn load_with(
         current_directory: &Utf8Path,
-        requested_manifest: Option<Utf8PathBuf>,
         loader: &dyn CargoMetadataLoader,
     ) -> Result<Self, CliError> {
-        let manifest = select_manifest(current_directory, requested_manifest)?;
-        let metadata = loader.load(current_directory, &manifest, CargoMetadataMode::Locked)?;
-        let package = select_package(&metadata, &manifest)?;
-        let package_name = package.name.to_string();
-        let package_root = manifest.with_file_name("");
-        let embedding = embedding_metadata(package)?;
-        let project_path = Utf8PathBuf::from(embedding.project);
-        if project_path.as_str().is_empty() || project_path.is_absolute() {
-            return Err(CliError::InvalidEmbeddingMetadata {
-                package: package_name,
-                manifest,
-                reason: "`project` must be a non-empty relative path".to_owned(),
-            });
-        }
-        if embedding.module.is_empty() {
-            return Err(CliError::InvalidEmbeddingMetadata {
-                package: package.name.to_string(),
-                manifest,
-                reason: "`module` must be non-empty".to_owned(),
-            });
-        }
+        let project = EmbeddingProject::load_with(current_directory, loader)?;
+        project.validate_gleam_config()?;
+        let metadata = loader.load(
+            current_directory,
+            &project.manifest,
+            CargoMetadataMode::Locked,
+        )?;
+        let package = select_package(&metadata, &project.manifest)?;
         let mut direct_dependencies = direct_normal_dependencies(&metadata, package)?;
         for dependency in &mut direct_dependencies {
             dependency.geam_dependencies =
@@ -86,34 +61,25 @@ impl EmbeddingPackage {
                     .collect();
         }
         let geam = select_geam_dependency(package, &direct_dependencies)?;
-        let output_directory = package_root.join("src");
-        let output_path = output_directory.join("geam_bindings.rs");
-
         Ok(Self {
-            package_name,
-            manifest,
-            project_root: package_root.join(&project_path),
-            project_path,
-            root_module: embedding.module,
+            project,
             geam_alias: geam.alias,
             geam_package_id: geam.package_id,
             geam_features: geam.enabled_features,
             direct_dependencies,
-            output_directory,
-            output_path,
         })
     }
 
     pub(super) fn project_root(&self) -> &Utf8Path {
-        &self.project_root
+        &self.project.project_root
     }
 
     pub(super) fn project_path(&self) -> &Utf8Path {
-        &self.project_path
+        Utf8Path::new("gleam")
     }
 
     pub(super) fn root_module(&self) -> &str {
-        &self.root_module
+        &self.project.root_module
     }
 
     pub(super) fn geam_alias(&self) -> &RustIdentifier {
@@ -121,7 +87,7 @@ impl EmbeddingPackage {
     }
 
     pub(super) fn manifest(&self) -> &Utf8Path {
-        &self.manifest
+        &self.project.manifest
     }
 
     pub(super) fn geam_package_id(&self) -> &PackageId {
@@ -137,8 +103,8 @@ impl EmbeddingPackage {
             return Ok(());
         }
         Err(CliError::InvalidEmbeddingDependency {
-            package: self.package_name.clone(),
-            manifest: self.manifest.clone(),
+            package: self.project.package_name.clone(),
+            manifest: self.project.manifest.clone(),
             reason: format!(
                 "enabled Geam feature `{feature}` is required {purpose}; enable it on the direct Geam dependency",
             ),
@@ -150,37 +116,12 @@ impl EmbeddingPackage {
     }
 
     pub(super) fn output_directory(&self) -> &Utf8Path {
-        &self.output_directory
+        &self.project.output_directory
     }
 
     pub(super) fn output_path(&self) -> &Utf8Path {
-        &self.output_path
+        &self.project.output_path
     }
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct EmbeddingMetadata {
-    project: String,
-    module: String,
-}
-
-fn select_manifest(
-    current_directory: &Utf8Path,
-    requested_manifest: Option<Utf8PathBuf>,
-) -> Result<Utf8PathBuf, CliError> {
-    let path = match requested_manifest {
-        Some(path) if path.is_absolute() => path,
-        Some(path) => current_directory.join(path),
-        None => current_directory
-            .ancestors()
-            .map(|directory| directory.join(MANIFEST_FILE))
-            .find(|manifest| manifest.is_file())
-            .ok_or_else(|| CliError::CargoManifestNotFound {
-                start: current_directory.to_path_buf(),
-            })?,
-    };
-    canonical_manifest(path)
 }
 
 fn select_package<'metadata>(
@@ -196,7 +137,7 @@ fn select_package<'metadata>(
         [package] => Ok(*package),
         [] => Err(CliError::EmbeddingPackageSelection {
             manifest: manifest.to_path_buf(),
-            reason: "the manifest is not a Cargo package; select a workspace member manifest"
+            reason: "the manifest is not a Cargo package; run from a workspace member directory"
                 .to_owned(),
         }),
         _ => Err(CliError::EmbeddingPackageSelection {
@@ -204,26 +145,6 @@ fn select_package<'metadata>(
             reason: "Cargo metadata returned more than one package for the manifest".to_owned(),
         }),
     }
-}
-
-fn embedding_metadata(package: &Package) -> Result<EmbeddingMetadata, CliError> {
-    let manifest = package.manifest_path.clone();
-    let package_name = package.name.to_string();
-    let table = package
-        .metadata
-        .get("geam")
-        .and_then(|geam| geam.get("embedding"))
-        .cloned()
-        .ok_or_else(|| CliError::InvalidEmbeddingMetadata {
-            package: package_name.clone(),
-            manifest: manifest.clone(),
-            reason: "missing [package.metadata.geam.embedding] table".to_owned(),
-        })?;
-    serde_json::from_value(table).map_err(|error| CliError::InvalidEmbeddingMetadata {
-        package: package_name,
-        manifest,
-        reason: error.to_string(),
-    })
 }
 
 fn direct_normal_dependencies(
@@ -362,14 +283,33 @@ mod tests {
 
     struct FailedMetadata;
 
+    struct ResolvedMetadata<'loader> {
+        workspace: &'loader FixedMetadata,
+        resolved: &'loader dyn CargoMetadataLoader,
+    }
+
+    impl CargoMetadataLoader for ResolvedMetadata<'_> {
+        fn load(
+            &self,
+            current_directory: &Utf8Path,
+            manifest: &Utf8Path,
+            mode: CargoMetadataMode,
+        ) -> Result<Metadata, CliError> {
+            if mode == CargoMetadataMode::Workspace {
+                self.workspace.load(current_directory, manifest, mode)
+            } else {
+                self.resolved.load(current_directory, manifest, mode)
+            }
+        }
+    }
+
     impl CargoMetadataLoader for FixedMetadata {
         fn load(
             &self,
             _current_directory: &Utf8Path,
             _manifest: &Utf8Path,
-            mode: CargoMetadataMode,
+            _mode: CargoMetadataMode,
         ) -> Result<Metadata, CliError> {
-            assert_eq!(mode, CargoMetadataMode::Locked);
             Ok(MetadataCommand::parse(&self.source)
                 .expect("fixed Cargo metadata fixture should be valid"))
         }
@@ -380,9 +320,8 @@ mod tests {
             &self,
             _current_directory: &Utf8Path,
             manifest: &Utf8Path,
-            mode: CargoMetadataMode,
+            _mode: CargoMetadataMode,
         ) -> Result<Metadata, CliError> {
-            assert_eq!(mode, CargoMetadataMode::Locked);
             Err(CliError::InvalidCargoMetadata {
                 manifest: manifest.to_path_buf(),
                 reason: "fixture metadata failure".to_owned(),
@@ -391,166 +330,116 @@ mod tests {
     }
 
     #[test]
-    fn selects_nearest_and_explicit_packages_with_the_actual_geam_alias() {
+    fn preserves_actual_geam_aliases_and_unrelated_dependencies() {
         let fixture = package_fixture();
-        let package = fixture.root.join("application");
-        let manifest = package.join("Cargo.toml");
-        let nested = package.join("src/nested");
-        fs::create_dir_all(&nested).expect("nested package directory should be created");
-        let renamed_alias = metadata(
-            &manifest,
-            embedding_metadata("gleam", "inventory_rules"),
-            &[("runtime", "geam-one", "normal")],
-        );
-        let nearest = EmbeddingPackage::load_with(&nested, None, &renamed_alias)
-            .expect("nearest package should be selected");
-        assert_eq!(nearest.project_root, package.join("gleam"));
-        assert_eq!(nearest.project_path, Utf8Path::new("gleam"));
-        assert_eq!(nearest.root_module, "inventory_rules");
-        assert_eq!(nearest.geam_alias.as_str(), "runtime");
-        assert_eq!(nearest.output_path, package.join("src/geam_bindings.rs"));
-
-        let explicit = EmbeddingPackage::load_with(
-            &fixture.root,
-            Some("application/Cargo.toml".into()),
-            &renamed_alias,
-        )
-        .expect("explicit member package should be selected");
-        assert_eq!(explicit.project_root, package.join("gleam"));
-
-        let default_alias = metadata(
-            &manifest,
-            embedding_metadata("gleam", "inventory_rules"),
-            &[("geam", "geam-one", "normal")],
-        );
-        let package = EmbeddingPackage::load_with(&nested, None, &default_alias)
-            .expect("default Geam alias should be accepted");
-        assert_eq!(package.geam_alias.as_str(), "geam");
-
+        let application = fixture.root.join("application");
+        let manifest = application.join("Cargo.toml");
+        for alias in ["runtime", "geam"] {
+            let loader = metadata(&manifest, json!({}), &[(alias, "geam-one", "normal")]);
+            let package = EmbeddingPackage::load_with(&application, &loader)
+                .expect("the actual Geam alias should be accepted");
+            assert_eq!(package.geam_alias.as_str(), alias);
+            assert_eq!(package.project_path(), Utf8Path::new("gleam"));
+            assert_eq!(package.root_module(), "application");
+            assert_eq!(
+                package.output_path(),
+                application.join("src/geam_bindings.rs")
+            );
+        }
         let mixed = metadata(
             &manifest,
-            embedding_metadata("gleam", "inventory_rules"),
+            json!({}),
             &[
                 ("other", "other-one", "normal"),
                 ("runtime", "geam-one", "normal"),
             ],
         );
-        let mut mixed_value = metadata_value(&mixed);
-        mixed_value["packages"][1]["name"] = json!("other");
+        let mut value = metadata_value(&mixed);
+        value["packages"][1]["name"] = json!("other");
         let package = EmbeddingPackage::load_with(
-            &nested,
-            None,
+            &application,
             &FixedMetadata {
-                source: mixed_value.to_string(),
+                source: value.to_string(),
             },
         )
-        .expect("non-Geam dependencies should not become embedding aliases");
+        .expect("unrelated dependencies should not become Geam aliases");
         assert_eq!(package.geam_alias.as_str(), "runtime");
-    }
-
-    #[test]
-    fn rejects_missing_and_virtual_package_manifests() {
-        let directory = tempdir().expect("temporary directory should be created");
-        let root = utf8_path(&directory);
-        let error = EmbeddingPackage::load_with(
-            &root,
-            None,
-            &FixedMetadata {
-                source: String::new(),
-            },
-        )
-        .expect_err("missing Cargo manifest should fail");
-        assert!(matches!(
-            error,
-            CliError::CargoManifestNotFound { start } if start == root
-        ));
-
-        let fixture = package_fixture();
-        let workspace_manifest = fixture.root.join("Cargo.toml");
-        fs::write(
-            &workspace_manifest,
-            "[workspace]\nmembers = [\"application\"]\n",
-        )
-        .expect("virtual workspace manifest should be written");
-        let member_manifest = fixture.root.join("application/Cargo.toml");
-        let metadata = metadata(
-            &member_manifest,
-            embedding_metadata("gleam", "inventory_rules"),
-            &[("geam", "geam-one", "normal")],
-        );
-        let error = EmbeddingPackage::load_with(&fixture.root, Some(workspace_manifest), &metadata)
-            .expect_err("virtual workspace should not select a member");
-        assert!(matches!(
-            error,
-            CliError::EmbeddingPackageSelection { manifest, reason }
-                if manifest == fixture.root.join("Cargo.toml")
-                    && reason.contains("workspace member manifest")
-        ));
     }
 
     #[test]
     fn propagates_cargo_metadata_loader_failures() {
         let fixture = package_fixture();
-        let manifest = fixture.root.join("application/Cargo.toml");
-
-        let error =
-            EmbeddingPackage::load_with(&fixture.root, Some(manifest.clone()), &FailedMetadata)
-                .expect_err("Cargo metadata loader failure should propagate");
+        let application = fixture.root.join("application");
+        let error = EmbeddingPackage::load_with(&application, &FailedMetadata)
+            .expect_err("Cargo metadata failure should propagate");
         assert!(matches!(
             error,
-            CliError::InvalidCargoMetadata { manifest: path, reason }
-                if path == manifest && reason == "fixture metadata failure"
+            CliError::InvalidCargoMetadata { manifest, reason }
+                if manifest == application.join("Cargo.toml") && reason == "fixture metadata failure"
+        ));
+
+        let initial = metadata(
+            &application.join("Cargo.toml"),
+            json!({}),
+            &[("geam", "geam-one", "normal")],
+        );
+        let error = EmbeddingPackage::load_with(
+            &application,
+            &ResolvedMetadata {
+                workspace: &initial,
+                resolved: &FailedMetadata,
+            },
+        )
+        .expect_err("locked metadata failure should propagate after package inspection");
+        assert!(matches!(
+            error,
+            CliError::InvalidCargoMetadata { manifest, reason }
+                if manifest == application.join("Cargo.toml") && reason == "fixture metadata failure"
         ));
     }
 
     #[test]
-    fn validates_exact_embedding_metadata_and_relative_project_paths() {
+    fn validates_configuration_before_resolution_and_rechecks_resolved_identity() {
         let fixture = package_fixture();
-        let manifest = fixture.root.join("application/Cargo.toml");
-        for (metadata_value, expected) in [
-            (json!({}), "missing [package.metadata.geam.embedding] table"),
-            (
-                embedding_metadata("gleam", "inventory_rules")
-                    .as_object()
-                    .map(|metadata| {
-                        let mut metadata = metadata.clone();
-                        metadata["geam"]["embedding"]["extra"] = json!(true);
-                        Value::Object(metadata)
-                    })
-                    .expect("metadata fixture should be an object"),
-                "unknown field `extra`",
-            ),
-            (
-                embedding_metadata("/absolute/gleam", "inventory_rules"),
-                "`project` must be a non-empty relative path",
-            ),
-            (
-                embedding_metadata("gleam", ""),
-                "`module` must be non-empty",
-            ),
-        ] {
-            let loader = metadata(&manifest, metadata_value, &[("geam", "geam-one", "normal")]);
-            let error = EmbeddingPackage::load_with(&fixture.root, Some(manifest.clone()), &loader)
-                .expect_err("invalid embedding metadata should fail");
-            assert!(matches!(
-                error,
-                CliError::InvalidEmbeddingMetadata { package, manifest: path, reason }
-                if package == "application" && path == manifest && reason.contains(expected)
-            ));
-        }
-
-        let parent_relative = metadata(
-            &manifest,
-            embedding_metadata("../gleam project", "inventory_rules"),
-            &[("geam", "geam-one", "normal")],
-        );
-        let package =
-            EmbeddingPackage::load_with(&fixture.root, Some(manifest.clone()), &parent_relative)
-                .expect("parent-relative embedding project should remain valid");
-        assert_eq!(package.project_path(), Utf8Path::new("../gleam project"));
+        let application = fixture.root.join("application");
+        let manifest = application.join("Cargo.toml");
+        let initial = metadata(&manifest, json!({}), &[("geam", "geam-one", "normal")]);
+        let config = application.join("gleam/gleam.toml");
+        fs::write(&config, "name = \"another_application\"\n")
+            .expect("conflicting config should be written");
+        let error = EmbeddingPackage::load_with(
+            &application,
+            &ResolvedMetadata {
+                workspace: &initial,
+                resolved: &FailedMetadata,
+            },
+        )
+        .expect_err("config failure should precede locked metadata inspection");
         assert_eq!(
-            package.project_root(),
-            fixture.root.join("application/../gleam project"),
+            error.to_string(),
+            format!(
+                "invalid Rust embedding project for package application at {manifest}: {config} declares Gleam package `another_application`; expected `application` from the Cargo package name"
+            ),
+        );
+
+        fs::write(&config, "name = \"application\"\n").expect("matching config should be restored");
+        let mut changed = metadata_value(&initial);
+        changed["packages"][0]["manifest_path"] = json!(application.join("changed/Cargo.toml"));
+        let error = EmbeddingPackage::load_with(
+            &application,
+            &ResolvedMetadata {
+                workspace: &initial,
+                resolved: &FixedMetadata {
+                    source: changed.to_string(),
+                },
+            },
+        )
+        .expect_err("resolved metadata must still identify the selected application");
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "cannot select an embedding package from {manifest}: the manifest is not a Cargo package; run from a workspace member directory"
+            ),
         );
     }
 
@@ -572,12 +461,8 @@ mod tests {
                 "an enabled direct normal dependency",
             ),
         ] {
-            let loader = metadata(
-                &manifest,
-                embedding_metadata("gleam", "inventory_rules"),
-                &dependencies,
-            );
-            let error = EmbeddingPackage::load_with(&fixture.root, Some(manifest.clone()), &loader)
+            let loader = metadata(&manifest, json!({}), &dependencies);
+            let error = EmbeddingPackage::load_with(&fixture.root.join("application"), &loader)
                 .expect_err("invalid Geam dependency graph should fail");
             assert!(matches!(
                 error,
@@ -591,11 +476,7 @@ mod tests {
     fn rejects_ambiguous_or_incomplete_cargo_metadata() {
         let fixture = package_fixture();
         let manifest = fixture.root.join("application/Cargo.toml");
-        let base = metadata(
-            &manifest,
-            embedding_metadata("gleam", "inventory_rules"),
-            &[("geam", "geam-one", "normal")],
-        );
+        let base = metadata(&manifest, json!({}), &[("geam", "geam-one", "normal")]);
 
         let mut ambiguous = metadata_value(&base);
         let duplicate = ambiguous["packages"][0].clone();
@@ -603,7 +484,7 @@ mod tests {
             .as_array_mut()
             .expect("packages fixture should be an array")
             .push(duplicate);
-        let error = load_metadata_error(&fixture, &manifest, ambiguous);
+        let error = load_metadata_error(&fixture, ambiguous);
         assert!(matches!(
             error,
             CliError::EmbeddingPackageSelection { reason, .. }
@@ -612,7 +493,7 @@ mod tests {
 
         let mut missing_resolve = metadata_value(&base);
         missing_resolve["resolve"] = Value::Null;
-        let error = load_metadata_error(&fixture, &manifest, missing_resolve);
+        let error = load_metadata_error(&fixture, missing_resolve);
         assert!(matches!(
             error,
             CliError::InvalidCargoMetadata { reason, .. }
@@ -621,7 +502,7 @@ mod tests {
 
         let mut missing_node = metadata_value(&base);
         missing_node["resolve"]["nodes"] = json!([]);
-        let error = load_metadata_error(&fixture, &manifest, missing_node);
+        let error = load_metadata_error(&fixture, missing_node);
         assert!(matches!(
             error,
             CliError::InvalidCargoMetadata { reason, .. }
@@ -633,7 +514,7 @@ mod tests {
             .as_array_mut()
             .expect("resolve nodes fixture should be an array")
             .retain(|node| node["id"] == "path+file:///application#1.0.0");
-        let error = load_metadata_error(&fixture, &manifest, missing_direct_dependency_node);
+        let error = load_metadata_error(&fixture, missing_direct_dependency_node);
         assert!(matches!(
             error,
             CliError::InvalidCargoMetadata { reason, .. }
@@ -653,7 +534,7 @@ mod tests {
             "pkg": "path+file:///missing#1.0.0",
             "dep_kinds": [{ "kind": "normal", "target": null }],
         }]);
-        let error = load_metadata_error(&fixture, &manifest, missing_nested_dependency);
+        let error = load_metadata_error(&fixture, missing_nested_dependency);
         assert!(matches!(
             error,
             CliError::InvalidCargoMetadata { reason, .. }
@@ -665,7 +546,7 @@ mod tests {
             .as_array_mut()
             .expect("packages fixture should be an array")
             .retain(|package| package["name"] != "geam");
-        let error = load_metadata_error(&fixture, &manifest, missing_dependency);
+        let error = load_metadata_error(&fixture, missing_dependency);
         assert!(matches!(
             error,
             CliError::InvalidCargoMetadata { reason, .. }
@@ -677,13 +558,9 @@ mod tests {
     fn rejects_geam_aliases_that_cannot_name_a_rust_crate() {
         let fixture = package_fixture();
         let manifest = fixture.root.join("application/Cargo.toml");
-        let loader = metadata(
-            &manifest,
-            embedding_metadata("gleam", "inventory_rules"),
-            &[("self", "geam-one", "normal")],
-        );
+        let loader = metadata(&manifest, json!({}), &[("self", "geam-one", "normal")]);
 
-        let error = EmbeddingPackage::load_with(&fixture.root, Some(manifest), &loader)
+        let error = EmbeddingPackage::load_with(&fixture.root.join("application"), &loader)
             .expect_err("unusable Geam alias should fail");
         assert!(matches!(
             error,
@@ -707,21 +584,17 @@ mod tests {
             "[package]\nname = \"application\"\nversion = \"1.0.0\"\n",
         )
         .expect("application manifest should be written");
+        fs::create_dir_all(root.join("application/gleam"))
+            .expect("Gleam directory should be created");
+        fs::write(
+            root.join("application/gleam/gleam.toml"),
+            "name = \"application\"\n",
+        )
+        .expect("Gleam config should be written");
         PackageFixture {
             _directory: directory,
             root,
         }
-    }
-
-    fn embedding_metadata(project: &str, module: &str) -> Value {
-        json!({
-            "geam": {
-                "embedding": {
-                    "project": project,
-                    "module": module,
-                }
-            }
-        })
     }
 
     fn metadata(
@@ -792,14 +665,9 @@ mod tests {
         serde_json::from_str(&metadata.source).expect("Cargo metadata fixture should be JSON")
     }
 
-    fn load_metadata_error(
-        fixture: &PackageFixture,
-        manifest: &Utf8Path,
-        value: Value,
-    ) -> CliError {
+    fn load_metadata_error(fixture: &PackageFixture, value: Value) -> CliError {
         EmbeddingPackage::load_with(
-            &fixture.root,
-            Some(manifest.to_path_buf()),
+            &fixture.root.join("application"),
             &FixedMetadata {
                 source: value.to_string(),
             },

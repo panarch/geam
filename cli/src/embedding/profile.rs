@@ -946,10 +946,6 @@ edition = "2024"
 [dependencies]
 {}
 
-[package.metadata.geam.embedding]
-project = "gleam"
-module = "boundary"
-
 [workspace]
 resolver = "3"
 "#,
@@ -997,7 +993,7 @@ resolver = "3"
             required_package: &str,
             remaining_packages: &BTreeSet<String>,
         ) -> Result<HostedBindings, CliError> {
-            let package = EmbeddingPackage::load(&self.application, None)
+            let package = EmbeddingPackage::load(&self.application)
                 .expect("fixture embedding package should load");
             let project = read_existing_resolved_project(package.project_root())
                 .expect("fixture Gleam project should be resolved");

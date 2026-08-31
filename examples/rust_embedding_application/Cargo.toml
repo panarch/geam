@@ -5,10 +5,6 @@ edition = "2024"
 rust-version = "1.96"
 publish = false
 
-[package.metadata.geam.embedding]
-project = "gleam"
-module = "rust_embedding"
-
 [dependencies]
 geam = { path = "../..", default-features = false, features = ["embedding", "gleam-stdlib"] }
 patterns = { package = "geam-example-text-pattern", path = "../text_pattern/provider" }

@@ -20,20 +20,11 @@ fn dispatches_embedding_before_gleam_project_discovery_through_the_binary_bounda
     let directory = tempdir().expect("temporary directory should be created");
 
     for operation in ["check", "sync"] {
-        let output = geam(
-            &directory,
-            [
-                "embedding",
-                operation,
-                "--manifest-path",
-                "missing/Cargo.toml",
-            ],
-        );
+        let output = geam(&directory, ["embedding", operation]);
 
         assert!(!output.status.success());
         let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(stderr.contains("failed to read"));
-        assert!(stderr.contains("missing/Cargo.toml"));
+        assert!(stderr.contains("no Cargo.toml was found"));
         assert!(!stderr.contains("gleam.toml"));
     }
 }

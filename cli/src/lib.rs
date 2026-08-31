@@ -35,10 +35,10 @@ pub fn run() -> ExitCode {
 fn run_command(cli: Cli, current_directory: camino::Utf8PathBuf) -> Result<(), CliError> {
     let command = match cli.command {
         Command::Embedding(command) => match command.command {
-            EmbeddingCommand::Check(target) => {
-                return embedding::check(&current_directory, target);
+            EmbeddingCommand::Check => {
+                return embedding::check(&current_directory);
             }
-            EmbeddingCommand::Sync(target) => return embedding::sync(&current_directory, target),
+            EmbeddingCommand::Sync => return embedding::sync(&current_directory),
         },
         Command::Prepare(command) => ProjectCommand::Prepare(command),
         Command::Run(command) => ProjectCommand::Run(command),
@@ -96,23 +96,15 @@ mod tests {
             .expect("temporary path should be valid UTF-8");
         for operation in ["check", "sync"] {
             let error = run_command(
-                Cli::try_parse_from([
-                    "geam",
-                    "embedding",
-                    operation,
-                    "--manifest-path",
-                    "missing/Cargo.toml",
-                ])
-                .expect("embedding command should parse"),
+                Cli::try_parse_from(["geam", "embedding", operation])
+                    .expect("embedding command should parse"),
                 root.clone(),
             )
-            .expect_err("missing explicit Cargo manifest should fail");
+            .expect_err("missing Cargo manifest should fail");
 
             assert!(matches!(
                 error,
-                CliError::FileRead { path, error }
-                    if path == root.join("missing/Cargo.toml")
-                        && error.kind() == std::io::ErrorKind::NotFound
+                CliError::CargoManifestNotFound { start } if start == root
             ));
         }
     }

@@ -1,4 +1,4 @@
-name = "rust_embedding_application"
+name = "geam_rust_embedding_application"
 version = "0.1.0"
 description = "Provider-backed Gleam code embedded in a Rust application"
 licences = ["Apache-2.0"]

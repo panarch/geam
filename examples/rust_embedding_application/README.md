@@ -12,8 +12,8 @@ ask for a total and the first valid item, then prints the review.
 2. [inventory.rs](src/inventory.rs) calls the three generated functions. Its
    application-owned `Review` retains the checked rows and summary, and
    `write_report` handles Rust Result and Option values for presentation.
-3. [rust_embedding.gleam](gleam/src/rust_embedding.gleam) exposes the batch,
-   total, and first-valid operations. [inventory_rules.gleam](gleam/src/inventory_rules.gleam)
+3. [geam_rust_embedding_application.gleam](gleam/src/geam_rust_embedding_application.gleam) exposes the batch,
+   total, and first-valid operations. [inventory_rules.gleam](gleam/src/geam_rust_embedding_application/inventory_rules.gleam)
    keeps normalization, provider-backed validation, and the opaque Stock type
    on the Gleam side.
 
@@ -33,7 +33,8 @@ From this directory, with Rust and Gleam installed:
 cd gleam
 gleam deps download
 cd ..
-cargo run --manifest-path ../../Cargo.toml --locked -- embedding check --manifest-path Cargo.toml
+cargo build --manifest-path ../../Cargo.toml --bin geam --locked
+../../target/debug/geam embedding check
 cargo run --quiet --locked
 ```
 

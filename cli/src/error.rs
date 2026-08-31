@@ -172,8 +172,8 @@ pub(super) enum CliError {
         reason: String,
     },
 
-    #[error("invalid Rust embedding metadata for package {package} at {manifest}: {reason}")]
-    InvalidEmbeddingMetadata {
+    #[error("invalid Rust embedding project for package {package} at {manifest}: {reason}")]
+    InvalidEmbeddingProject {
         package: String,
         manifest: Utf8PathBuf,
         reason: String,
@@ -194,7 +194,7 @@ pub(super) enum CliError {
     },
 
     #[error(
-        "Rust embedding bindings at {output} are missing or stale for {manifest}; run `geam embedding sync --manifest-path {manifest}`"
+        "Rust embedding bindings at {output} are missing or stale for {manifest}; run `geam embedding sync` from the Cargo package directory"
     )]
     EmbeddingBindingsOutOfDate {
         manifest: Utf8PathBuf,

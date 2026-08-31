@@ -185,7 +185,7 @@ impl DependencyDownloader for ProcessDependencyDownloader {
     }
 }
 
-fn read_package_config(project_root: &Utf8Path) -> Result<PackageConfig, CliError> {
+pub(super) fn read_package_config(project_root: &Utf8Path) -> Result<PackageConfig, CliError> {
     read_toml("Gleam package config", &project_root.join(CONFIG_FILE))
 }
 

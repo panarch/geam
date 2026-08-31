@@ -23,7 +23,7 @@ use geam::embedding::InputShape;
 use geam::embedding::List;
 use std::marker::PhantomData;
 
-pub const ROOT_MODULE: &str = "rust_embedding";
+pub const ROOT_MODULE: &str = "geam_rust_embedding_application";
 
 pub struct Profile<Io>(PhantomData<fn() -> Io>);
 
