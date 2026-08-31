@@ -157,14 +157,18 @@ The independently locked
 [`examples/rust_embedding_application`](../examples/rust_embedding_application)
 owns the canonical managed Rust-first workflow. Its nested resolved Gleam
 project uses imported source, stdlib IO, and the real text-pattern provider.
-The Rust application keeps loading, binding, sealing, capabilities,
-configuration, mutable state, Echo, repeated typed calls, and exact output
-assertions visible. Its generated `src/geam_bindings.rs` is committed.
-The inventory workflow consumes Vec rows, inspects selected retained List
-items, and passes that same List into later total/first-valid calls. Exact
-Tuple, Result, and Option assertions cover the projected data while the domain
-Stock type stays in Gleam. Lazy-read costs, retained lifetime, foreign-owner
-rejection, and recursive permutations remain core/CLI owner-test contracts.
+The Rust entry point keeps loading, binding, sealing, capabilities,
+configuration, mutable state, Echo, and output handling visible. The
+application's `inventory` module owns its typed call sequence and review
+report. Its generated `src/geam_bindings.rs` is committed.
+The inventory workflow consumes Vec rows and passes the retained List into
+later total/first-valid calls before reading the rows for its report. Tests
+beside that workflow fix mixed, all-rejected, and empty inputs, exact
+Tuple/Result/Option values and reports, repeated calls, IO, and Echo. The
+binary integration test fixes the complete stdout and empty stderr. The
+domain Stock type stays in Gleam. Lazy-read costs, retained lifetime,
+foreign-owner rejection, and recursive permutations remain core/CLI
+owner-test contracts.
 
 Run the same focused checks locally after resolving the nested Gleam project:
 
@@ -188,11 +192,11 @@ The Acceptance workflow's `Rust embedding` job owns this boundary. It first
 checks the committed bytes, deliberately makes the generated source stale,
 requires `embedding check` to fail, and runs production sync to restore the
 exact committed file before formatting, testing, linting, and running the
-application with exact `total quantity: 7` stdout. The same job requires one
-Geam package identity, the exact core/macros/stdlib application profile, the
-text-pattern provider, and no CLI/JSON/Time dependency. Provider-example jobs
-remain separate because they own provider authoring and standalone consumption
-rather than Rust-first application composition.
+application with the exact inventory report and its captured Gleam IO. The
+same job requires one Geam package identity, the exact core/macros/stdlib
+application profile, the text-pattern provider, and no CLI/JSON/Time dependency.
+Provider-example jobs remain separate because they own provider authoring and
+standalone consumption rather than Rust-first application composition.
 
 The tracked `cli/tests/fixtures/standalone_cli` fixture verifies the complete CLI
 assembly boundary. Its Gleam project combines a Pure Gleam path package,

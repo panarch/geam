@@ -147,8 +147,11 @@ The application remains explicit about the runtime lifecycle:
 5. Reuse the typed function handles and sealed module for repeated calls.
 
 See the canonical application's
-[`main.rs`](../examples/rust_embedding_application/src/main.rs) for the complete
-hosted sequence and exact state and output assertions.
+[`main.rs`](../examples/rust_embedding_application/src/main.rs) for preparation,
+caller-owned state, and input/output. Its
+[`inventory.rs`](../examples/rust_embedding_application/src/inventory.rs) keeps
+the three typed calls and application report together; the adjacent tests fix
+exact data, repeated-call, IO, and Echo behavior.
 
 The lower-level `compile_typed_project` and `compile_typed_host_project`
 functions remain available when an application deliberately owns project
@@ -187,17 +190,19 @@ from `gleam_stdlib` map to Rust's standard variants. Aliases resolving to those
 types work; custom types with matching names or constructors do not.
 
 A Gleam `Error` is an ordinary Rust `Err` inside the function's return value.
-It is separate from the outer `Result` returned by `module.call`, whose
+For the example's batch function, each List item is a Result. These data errors
+are separate from the outer `Result` returned by `module.call`, whose
 `CallError` reports a foreign handle/value or an execution failure:
 
 ```rust
-let validated = module.call(
-    &functions.validate,
-    (" ab-12 ".into(), 3.into()),
+let rows: Vec<(EcoString, BigInt)> = vec![("invalid".into(), 2.into())];
+let checked = module.call(
+    &functions.validate_batch,
+    (rows,),
     &mut state,
     &mut echo,
 )?;
-assert_eq!(validated, Ok(("AB-12".into(), 3.into())));
+assert_eq!(checked.get(0), Some(Err("invalid code".into())));
 ```
 
 ### Retained Lists
@@ -283,12 +288,13 @@ nested type position instead of being omitted. A domain type can remain in an
 imported Gleam module; a thin root boundary projects it into the supported data
 grammar.
 
-In the canonical application, `inventory_rules` owns an opaque Stock type and
-uses the text-pattern provider. The selected `rust_embedding` module exposes
-only ordinary data: normalize, validate, batch validation, total quantity, and
-first valid row. Rust never needs to represent Stock or the provider's external
-Pattern type. Imported modules may use the ordinary supported Gleam profile;
-only public functions of the selected root become Rust bindings.
+In the canonical application, `inventory_rules` owns normalization, validation,
+and an opaque Stock type, and uses the text-pattern provider. The selected
+`rust_embedding` module exposes only ordinary data through batch validation,
+total quantity, and first valid row. Rust never needs to represent Stock or
+the provider's external Pattern type. Imported modules may use the ordinary
+supported Gleam profile; only public functions of the selected root become
+Rust bindings.
 
 ## Manual Binding
 

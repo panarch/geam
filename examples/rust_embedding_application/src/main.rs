@@ -1,9 +1,13 @@
+// Generated bindings can expose accessors this application does not need.
+#[allow(dead_code)]
 mod geam_bindings;
+mod inventory;
 
 use geam::HostProviderConfiguration;
 use geam::embedding::{BigInt, EcoString, HostedModuleBuilder};
 use geam::gleam_stdlib::{GleamStdlibRunState, IoStream};
 use std::error::Error;
+use std::io::{self, Write};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let program = geam_bindings::project()?.compile()?;
@@ -18,69 +22,26 @@ fn main() -> Result<(), Box<dyn Error>> {
     .initialize()?;
     let mut echo = Vec::new();
 
-    let first = module.call(
-        &functions.normalize,
-        (" ab-12 ".into(),),
-        &mut state,
-        &mut echo,
-    )?;
-    let second = module.call(
-        &functions.normalize,
-        (" c-7 ".into(),),
-        &mut state,
-        &mut echo,
-    )?;
-    let valid = module.call(
-        &functions.validate,
-        (" ab-12 ".into(), 3.into()),
-        &mut state,
-        &mut echo,
-    )?;
-    let invalid = module.call(
-        &functions.validate,
-        ("invalid".into(), 2.into()),
-        &mut state,
-        &mut echo,
-    )?;
-    assert_eq!(first, "AB-12");
-    assert_eq!(second, "C-7");
-    assert_eq!(valid, Ok(("AB-12".into(), 3.into())));
-    assert_eq!(invalid, Err("invalid code".into()));
-
     let rows: Vec<(EcoString, BigInt)> = vec![
-        (first, 3.into()),
+        (" ab-12 ".into(), 3.into()),
         ("invalid".into(), 2.into()),
-        (second, 4.into()),
+        (" c-7 ".into(), 4.into()),
         ("D-1".into(), (-1).into()),
     ];
-    let checked = module.call(&functions.validate_batch, (rows,), &mut state, &mut echo)?;
-    assert_eq!(checked.len(), 4);
-    assert_eq!(checked.get(0), Some(Ok(("AB-12".into(), 3.into()))));
-    assert_eq!(checked.get(1), Some(Err("invalid code".into())));
-    assert_eq!(
-        checked.get(3),
-        Some(Err("quantity must not be negative".into()))
-    );
+    let review = inventory::review(&module, &functions, rows, &mut state, &mut echo)?;
 
-    let total = module.call(
-        &functions.total_quantity,
-        (&checked,),
-        &mut state,
-        &mut echo,
-    )?;
-    let first_valid = module.call(&functions.first_valid, (&checked,), &mut state, &mut echo)?;
-    assert_eq!(total, BigInt::from(7));
-    assert_eq!(first_valid, Some(("AB-12".into(), 3.into())));
-    assert!(echo.is_empty());
-
-    assert_eq!(state.stdlib().io_outputs().len(), 2);
-    let outputs = state.stdlib_mut().take_io_outputs();
-    assert_eq!(outputs.len(), 2);
-    for output in outputs {
-        assert_eq!(output.stream(), IoStream::Stdout);
-        assert_eq!(output.text(), "normalizing code\n");
+    let mut stdout = io::stdout().lock();
+    let mut stderr = io::stderr().lock();
+    for output in state.stdlib_mut().take_io_outputs() {
+        match output.stream() {
+            IoStream::Stdout => stdout.write_all(output.text().as_bytes())?,
+            IoStream::Stderr => stderr.write_all(output.text().as_bytes())?,
+        }
+    }
+    for output in echo {
+        writeln!(stderr, "{output}")?;
     }
 
-    println!("total quantity: {total}");
+    review.write_report(&mut stdout)?;
     Ok(())
 }
