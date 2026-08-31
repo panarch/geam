@@ -41,7 +41,9 @@ pub(super) use draft::{
     DraftUtfCodepointFunction, DraftUtfCodepointList, DraftValueRef, LoweredFunctionGraph,
 };
 pub(super) use freeze::FreezeGraphValue;
-pub(super) use profile::{seal_plain_block_graph, seal_plain_runtime_function_id};
+pub(super) use profile::{
+    seal_plain_block_graph, seal_plain_list_function_id, seal_plain_runtime_function_id,
+};
 
 use super::LoweringContext;
 use super::specialization::Representability;

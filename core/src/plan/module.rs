@@ -148,6 +148,87 @@ pub struct ModulePlan {
     modules: Vec<PlannedModule>,
 }
 
+pub(crate) struct LibraryModulePlan {
+    root: ModuleId,
+    modules: Vec<PlannedModule>,
+}
+
+#[derive(Clone)]
+pub(crate) struct LibraryEntry {
+    template: FunctionTemplateId,
+    return_: LibraryValueType,
+    input_variants: Box<[super::StandardVariant]>,
+    input_lists: Box<[LibraryValueType]>,
+}
+
+#[derive(Clone)]
+pub(crate) enum LibraryValueType {
+    Int,
+    Float,
+    String,
+    BitArray,
+    UtfCodepoint,
+    Custom(super::CustomType),
+    Bool,
+    Nil,
+    Tuple(Vec<super::ValueType>),
+    List(Box<LibraryValueType>),
+}
+
+impl LibraryValueType {
+    pub(crate) fn value_type(&self) -> super::ValueType {
+        use super::ValueType;
+        match self {
+            Self::Int => ValueType::Int,
+            Self::Float => ValueType::Float,
+            Self::String => ValueType::String,
+            Self::BitArray => ValueType::BitArray,
+            Self::UtfCodepoint => ValueType::UtfCodepoint,
+            Self::Custom(type_) => ValueType::Custom(type_.clone()),
+            Self::Bool => ValueType::Bool,
+            Self::Nil => ValueType::Nil,
+            Self::Tuple(elements) => ValueType::Tuple(elements.clone()),
+            Self::List(item) => ValueType::List(Box::new(item.value_type())),
+        }
+    }
+}
+
+impl LibraryEntry {
+    pub(crate) fn new(
+        template: FunctionTemplateId,
+        return_: LibraryValueType,
+        input_variants: Vec<super::StandardVariant>,
+        input_lists: Vec<LibraryValueType>,
+    ) -> Self {
+        Self {
+            template,
+            return_,
+            input_variants: input_variants.into_boxed_slice(),
+            input_lists: input_lists.into_boxed_slice(),
+        }
+    }
+
+    pub(crate) fn return_(&self) -> &LibraryValueType {
+        &self.return_
+    }
+
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        FunctionTemplateId,
+        LibraryValueType,
+        Box<[super::StandardVariant]>,
+        Box<[LibraryValueType]>,
+    ) {
+        (
+            self.template,
+            self.return_,
+            self.input_variants,
+            self.input_lists,
+        )
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct PlannedModule {
     id: ModuleId,
@@ -163,6 +244,11 @@ pub struct PlannedModule {
 pub(crate) struct ModulePlanParts {
     pub(crate) root: ModuleId,
     pub(crate) entry: FunctionTemplateId,
+    pub(crate) modules: Vec<PlannedModule>,
+}
+
+pub(crate) struct LibraryModulePlanParts {
+    pub(crate) root: ModuleId,
     pub(crate) modules: Vec<PlannedModule>,
 }
 
@@ -298,6 +384,33 @@ impl ModulePlan {
     #[cfg(test)]
     fn root_module_mut(&mut self) -> &mut PlannedModule {
         &mut self.modules[self.root.index()]
+    }
+}
+
+impl LibraryModulePlan {
+    pub(crate) fn from_modules(root: ModuleId, modules: Vec<PlannedModule>) -> Self {
+        Self { root, modules }
+    }
+
+    pub(crate) fn functions(&self) -> &[FunctionTemplate] {
+        &self.modules[self.root.index()].functions
+    }
+
+    pub(crate) fn custom_type(
+        &self,
+        name: &super::CustomTypeName,
+    ) -> Option<&CustomTypeDefinition> {
+        self.modules
+            .iter()
+            .flat_map(PlannedModule::custom_types)
+            .find(|definition| definition.name() == name)
+    }
+
+    pub(crate) fn into_parts(self) -> LibraryModulePlanParts {
+        LibraryModulePlanParts {
+            root: self.root,
+            modules: self.modules,
+        }
     }
 }
 

@@ -12,7 +12,6 @@ use crate::planner::module::registry::ProgramRegistry;
 
 pub(super) struct PlannedHostedProgram {
     pub(super) root: ModuleId,
-    pub(super) entry: FunctionTemplateId,
     pub(super) modules: Vec<HostedPlannedModule>,
     pub(super) implementations: Vec<(
         FunctionTemplateId,
@@ -33,7 +32,6 @@ pub(super) fn plan_hosted_modules(
         .collect::<Result<Vec<_>, _>>()
         .map(|modules| PlannedHostedProgram {
             root,
-            entry: FunctionTemplateId::in_module(root, 0),
             modules,
             implementations,
         })

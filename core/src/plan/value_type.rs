@@ -18,6 +18,12 @@ pub enum ValueType {
     External(ExternalType),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StandardVariant {
+    Result,
+    Option,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TypeParameterId(pub(crate) usize);
 
@@ -244,4 +250,52 @@ impl CustomType {
     pub fn arguments(&self) -> &[ValueType] {
         &self.arguments
     }
+}
+
+impl StandardVariant {
+    pub(crate) fn type_name(self) -> CustomTypeName {
+        match self {
+            Self::Result => CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
+            Self::Option => CustomTypeName::new(
+                "gleam_stdlib".into(),
+                "gleam/option".into(),
+                "Option".into(),
+            ),
+        }
+    }
+
+    pub(crate) fn custom_type(self, arguments: Vec<ValueType>) -> CustomType {
+        CustomType::new(self.type_name(), arguments)
+    }
+
+    pub(crate) fn has_exact_definition(
+        self,
+        definition: Option<&super::CustomTypeDefinition>,
+    ) -> bool {
+        match self {
+            Self::Result => true,
+            Self::Option => definition == Some(&standard_option_definition()),
+        }
+    }
+}
+
+fn standard_option_definition() -> super::CustomTypeDefinition {
+    let parameter = super::CustomTypeParameterId(0);
+    super::CustomTypeDefinition::new(
+        StandardVariant::Option.type_name(),
+        super::CustomTypePublicity::Public,
+        false,
+        vec![parameter],
+        vec![
+            super::CustomConstructorDefinition::new(
+                "Some".into(),
+                0,
+                vec![super::CustomFieldDefinition::new(
+                    None,
+                    super::CustomTypeTemplate::Parameter(parameter),
+                )],
+            ),
+            super::CustomConstructorDefinition::new("None".into(), 1, Vec::new()),
+        ],
+    )
 }

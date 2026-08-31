@@ -40,6 +40,7 @@ pub struct HostedTypedProgram<Profile: HostProfile> {
 struct HostedProgram {
     root_package: EcoString,
     root_module: EcoString,
+    root_public_functions: HashSet<EcoString>,
     root_index: usize,
     modules: Vec<HostedTypedProgramModule>,
     providers: Vec<RegisteredHostProviderModule>,
@@ -70,6 +71,11 @@ impl TypedProgram {
         self.modules.iter().map(|module| &module.module)
     }
 
+    /// Returns the selected root module for typed caller-boundary inspection.
+    pub fn root_typed_module(&self) -> &TypedModule {
+        &self.modules[self.root_index].module
+    }
+
     pub(crate) fn into_parts(self) -> (usize, Vec<TypedProgramModule>) {
         (self.root_index, self.modules)
     }
@@ -82,6 +88,10 @@ impl<Profile: HostProfile> HostedTypedProgram<Profile> {
 
     pub fn root_module(&self) -> &EcoString {
         &self.program.root_module
+    }
+
+    pub(crate) fn root_public_functions(&self) -> impl Iterator<Item = &EcoString> {
+        self.program.root_public_functions.iter()
     }
 
     pub(crate) fn into_parts(
@@ -384,6 +394,7 @@ fn compile_parsed_host_program(
     importable_modules.insert(PRELUDE_MODULE_NAME.into(), prelude.clone());
     let dev_dependencies = HashSet::new();
     let mut typed_modules = Vec::with_capacity(order.len());
+    let mut root_public_functions = HashSet::new();
 
     for module in modules {
         match module {
@@ -431,6 +442,19 @@ fn compile_parsed_host_program(
                     errors: errors.into_iter().collect(),
                 })?;
 
+                if module.name == root_module && module.type_info.package == root_package {
+                    root_public_functions.extend(
+                        module
+                            .definitions
+                            .functions
+                            .iter()
+                            .filter(|function| function.publicity == Publicity::Public)
+                            .filter_map(|function| {
+                                function.name.as_ref().map(|(_, name)| name.clone())
+                            }),
+                    );
+                }
+
                 importable_modules.insert(module.name.clone(), module.type_info.clone());
                 typed_modules.push(HostedTypedProgramModule::Source(Box::new(
                     TypedProgramModule {
@@ -451,6 +475,7 @@ fn compile_parsed_host_program(
     Ok(HostedProgram {
         root_package,
         root_module,
+        root_public_functions,
         root_index,
         modules: typed_modules,
         providers,

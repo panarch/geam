@@ -17,9 +17,21 @@ pub struct HostedModulePlan<Profile: HostProfile> {
     implementation_bindings: Vec<HostImplementationBinding<Profile>>,
 }
 
+pub(crate) struct HostedLibraryModulePlan<Profile: HostProfile> {
+    root: ModuleId,
+    modules: Vec<HostedPlannedModule>,
+    implementation_bindings: Vec<HostImplementationBinding<Profile>>,
+}
+
 pub(crate) struct HostedModulePlanParts<Profile: HostProfile> {
     pub(crate) root: ModuleId,
     pub(crate) entry: FunctionTemplateId,
+    pub(crate) modules: Vec<HostedPlannedModule>,
+    pub(crate) implementation_bindings: Vec<HostImplementationBinding<Profile>>,
+}
+
+pub(crate) struct HostedLibraryModulePlanParts<Profile: HostProfile> {
+    pub(crate) root: ModuleId,
     pub(crate) modules: Vec<HostedPlannedModule>,
     pub(crate) implementation_bindings: Vec<HostImplementationBinding<Profile>>,
 }
@@ -55,6 +67,42 @@ impl<Profile: HostProfile> HostedModulePlan<Profile> {
         HostedModulePlanParts {
             root: self.root,
             entry: self.entry,
+            modules: self.modules,
+            implementation_bindings: self.implementation_bindings,
+        }
+    }
+}
+
+impl<Profile: HostProfile> HostedLibraryModulePlan<Profile> {
+    pub(crate) fn new(
+        root: ModuleId,
+        modules: Vec<HostedPlannedModule>,
+        implementation_bindings: Vec<HostImplementationBinding<Profile>>,
+    ) -> Self {
+        Self {
+            root,
+            modules,
+            implementation_bindings,
+        }
+    }
+
+    pub(crate) fn functions(&self) -> &[HostedFunctionTemplate] {
+        self.modules[self.root.index()].functions()
+    }
+
+    pub(crate) fn custom_type(
+        &self,
+        name: &super::CustomTypeName,
+    ) -> Option<&super::CustomTypeDefinition> {
+        self.modules
+            .iter()
+            .flat_map(HostedPlannedModule::custom_types)
+            .find(|definition| definition.name() == name)
+    }
+
+    pub(crate) fn into_parts(self) -> HostedLibraryModulePlanParts<Profile> {
+        HostedLibraryModulePlanParts {
+            root: self.root,
             modules: self.modules,
             implementation_bindings: self.implementation_bindings,
         }

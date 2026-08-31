@@ -1,3 +1,5 @@
+use crate::builtin::BuiltInProvider;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RunnerComponent {
     field: String,
@@ -14,27 +16,23 @@ enum ComponentInitialization {
 }
 
 impl RunnerComponent {
-    fn stdlib() -> Self {
-        Self {
-            field: "stdlib".to_owned(),
-            type_path: "geam::gleam_stdlib::Component<CliIoSink>".to_owned(),
-            initialization: ComponentInitialization::Stdlib,
-        }
-    }
-
-    fn json() -> Self {
-        Self {
-            field: "json".to_owned(),
-            type_path: "geam::gleam_json::Component".to_owned(),
-            initialization: ComponentInitialization::Unit,
-        }
-    }
-
-    fn time() -> Self {
-        Self {
-            field: "time".to_owned(),
-            type_path: "geam::gleam_time::Component".to_owned(),
-            initialization: ComponentInitialization::SystemTime,
+    fn built_in(provider: BuiltInProvider) -> Self {
+        match provider {
+            BuiltInProvider::Stdlib => Self {
+                field: "stdlib".to_owned(),
+                type_path: "geam::gleam_stdlib::Component<CliIoSink>".to_owned(),
+                initialization: ComponentInitialization::Stdlib,
+            },
+            BuiltInProvider::Json => Self {
+                field: "json".to_owned(),
+                type_path: "geam::gleam_json::Component".to_owned(),
+                initialization: ComponentInitialization::Unit,
+            },
+            BuiltInProvider::Time => Self {
+                field: "time".to_owned(),
+                type_path: "geam::gleam_time::Component".to_owned(),
+                initialization: ComponentInitialization::SystemTime,
+            },
         }
     }
 
@@ -126,14 +124,11 @@ fn runner_components(provider_aliases: &[String]) -> Vec<RunnerComponent> {
     provider_aliases.sort();
     provider_aliases.dedup();
 
-    [
-        RunnerComponent::stdlib(),
-        RunnerComponent::json(),
-        RunnerComponent::time(),
-    ]
-    .into_iter()
-    .chain(provider_aliases.into_iter().map(RunnerComponent::external))
-    .collect()
+    BuiltInProvider::ALL
+        .into_iter()
+        .map(RunnerComponent::built_in)
+        .chain(provider_aliases.into_iter().map(RunnerComponent::external))
+        .collect()
 }
 
 pub(super) fn render_source(provider_aliases: &[String]) -> String {

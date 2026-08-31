@@ -9,5 +9,5 @@ path = "tests/public_usage.rs"
 
 [dependencies]
 ecow = "=0.2.6"
-geam = { path = "../../../.." }
+geam = { path = "../../../..", default-features = false }
 provider-sdk-example-provider = { path = "../provider" }

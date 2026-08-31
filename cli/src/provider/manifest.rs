@@ -147,9 +147,10 @@ impl ManagedProject {
         source.push_str(
             "\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[package.metadata.geam.runner]\nschema = 1\n\n[[bin]]\nname = \"geam-runner\"\npath = \"build/geam/runner.rs\"\n\n[dependencies]\n",
         );
-        source.push_str("geam = ");
+        source.push_str("geam = { version = ");
         source.push_str(&quoted(&format!("={}", env!("CARGO_PKG_VERSION"))));
-        source.push_str("\ntoml = \"0.9\"\n");
+        source
+            .push_str(", default-features = false, features = [\"builtins\"] }\ntoml = \"0.9\"\n");
         for provider in self.providers.values() {
             source.push_str(&provider.alias());
             source.push_str(" = { package = ");
@@ -372,6 +373,10 @@ mod tests {
         let source = fs::read_to_string(root.join("Cargo.toml"))
             .expect("managed manifest should be readable");
         assert!(source.starts_with("# Managed by Geam."));
+        assert!(source.contains(&format!(
+            "geam = {{ version = \"={}\", default-features = false, features = [\"builtins\"] }}",
+            env!("CARGO_PKG_VERSION"),
+        )));
         assert!(source.contains(
             "geam_provider_images = { package = \"geam-images\", version = \"=1.2.3\" }"
         ));
@@ -479,6 +484,13 @@ mod tests {
         let error = ManagedProject::load(&root, "application")
             .err()
             .expect("user manifest should be refused");
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "refusing to modify user-owned Cargo manifest {}; for Rust embedding, use `geam embedding init` from the Cargo package directory",
+                root.join("Cargo.toml")
+            )
+        );
         assert!(matches!(
             error,
             CliError::UserOwnedCargoManifest { path } if path == root.join("Cargo.toml")

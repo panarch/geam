@@ -55,6 +55,80 @@ pub struct ExecutionPlan {
     program: ExecutionProgram<Infallible>,
 }
 
+pub(crate) struct LibraryFunctionEntry<Function> {
+    function: Function,
+    inputs: LibraryInputConstructions,
+}
+
+pub(crate) struct LibraryInputConstructions {
+    variants: Box<[[type_::CustomConstructorId; 2]]>,
+    lists: LibraryListConstructions,
+}
+
+#[derive(Default)]
+pub(crate) struct LibraryListConstructions {
+    pub(crate) ints: Vec<type_::IntListTypeId>,
+    pub(crate) floats: Vec<type_::FloatListTypeId>,
+    pub(crate) strings: Vec<type_::StringListTypeId>,
+    pub(crate) bit_arrays: Vec<type_::BitArrayListTypeId>,
+    pub(crate) utf_codepoints: Vec<type_::UtfCodepointListTypeId>,
+    pub(crate) customs: Vec<type_::CustomListTypeId>,
+    pub(crate) bools: Vec<type_::BoolListTypeId>,
+    pub(crate) nils: Vec<type_::NilListTypeId>,
+    pub(crate) tuples: Vec<type_::TupleListTypeId>,
+    pub(crate) lists: Vec<type_::ListListTypeId>,
+}
+
+pub(crate) struct LibraryFunctionEntries {
+    pub(crate) ints: Box<[LibraryFunctionEntry<function::IntFunctionId>]>,
+    pub(crate) floats: Box<[LibraryFunctionEntry<function::FloatFunctionId>]>,
+    pub(crate) strings: Box<[LibraryFunctionEntry<function::StringFunctionId>]>,
+    pub(crate) bit_arrays: Box<[LibraryFunctionEntry<function::BitArrayFunctionId>]>,
+    pub(crate) utf_codepoints: Box<[LibraryFunctionEntry<function::UtfCodepointFunctionId>]>,
+    pub(crate) customs: Box<[LibraryFunctionEntry<function::CustomFunctionId>]>,
+    pub(crate) bools: Box<[LibraryFunctionEntry<function::BoolFunctionId>]>,
+    pub(crate) nils: Box<[LibraryFunctionEntry<function::NilFunctionId>]>,
+    pub(crate) tuples: Box<[LibraryFunctionEntry<function::TupleFunctionId>]>,
+    pub(crate) lists: Box<[LibraryFunctionEntry<function::ProfiledListFunctionId<Infallible>>]>,
+}
+
+impl<Function> LibraryFunctionEntry<Function> {
+    pub(in crate::plan::execution) fn new(
+        function: Function,
+        inputs: LibraryInputConstructions,
+    ) -> Self {
+        Self { function, inputs }
+    }
+
+    pub(crate) fn function(&self) -> &Function {
+        &self.function
+    }
+
+    pub(crate) fn inputs(&self) -> &LibraryInputConstructions {
+        &self.inputs
+    }
+}
+
+impl LibraryInputConstructions {
+    pub(in crate::plan::execution) fn new(
+        variants: Vec<[type_::CustomConstructorId; 2]>,
+        lists: LibraryListConstructions,
+    ) -> Self {
+        Self {
+            variants: variants.into_boxed_slice(),
+            lists,
+        }
+    }
+
+    pub(crate) fn variants(&self) -> &[[type_::CustomConstructorId; 2]] {
+        &self.variants
+    }
+
+    pub(crate) fn lists(&self) -> &LibraryListConstructions {
+        &self.lists
+    }
+}
+
 pub struct HostedExecution<Profile: HostProfile> {
     program: ExecutionProgram<host::HostedExecutionProfile>,
     host_functions: host::HostFunctionTables<Profile>,
@@ -133,6 +207,15 @@ impl ExecutionPlan {
         }
     }
 
+    pub(crate) fn from_library_plan(
+        module_plan: crate::plan::LibraryModulePlan,
+        first: crate::plan::LibraryEntry,
+        remaining: Vec<crate::plan::LibraryEntry>,
+    ) -> (Self, LibraryFunctionEntries) {
+        let (program, entries) = lowering::lower_library(module_plan, first, remaining);
+        (Self { program }, entries)
+    }
+
     pub fn module(&self) -> &EcoString {
         &self.program.common.modules[self.program.common.root.index()].module
     }
@@ -161,6 +244,23 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
             host_functions,
             external_stores: Profile::ExternalStores::default(),
         })
+    }
+
+    pub(crate) fn try_from_library_plan(
+        module_plan: crate::plan::HostedLibraryModulePlan<Profile>,
+        first: crate::plan::LibraryEntry,
+        remaining: Vec<crate::plan::LibraryEntry>,
+    ) -> Result<(Self, LibraryFunctionEntries), HostSpecializationError> {
+        let (program, host_functions, entries) =
+            lowering::lower_hosted_library(module_plan, first, remaining)?;
+        Ok((
+            Self {
+                program,
+                host_functions,
+                external_stores: Profile::ExternalStores::default(),
+            },
+            entries,
+        ))
     }
 
     pub fn run_main(

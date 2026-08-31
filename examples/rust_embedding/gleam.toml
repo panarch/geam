@@ -1,0 +1,4 @@
+name = "rust_embedding_example"
+version = "0.1.0"
+description = "Plain Gleam project embedded in a Rust application"
+licences = ["Apache-2.0"]

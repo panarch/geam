@@ -10,6 +10,6 @@ gleam-version = ">= 1.0.0 and < 2.0.0"
 
 [dependencies]
 ecow = "=0.2.6"
-geam = { path = "../../../.." }
+geam = { path = "../../../..", default-features = false, features = ["provider"] }
 num-bigint = "0.4"
 provider-sdk-example-domain = { path = "../domain" }

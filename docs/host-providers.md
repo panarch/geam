@@ -5,6 +5,17 @@ externals. The crate does not need dynamic loading or a Geam-specific package
 format: a runner adds it as a normal Cargo path, Git, or registry dependency and
 composes it into a concrete hosted profile at compile time.
 
+Provider crates need only Geam's authoring profile:
+
+```sh
+cargo add geam --no-default-features --features provider
+```
+
+This exposes the provider attributes, author-facing values, and hidden static
+macro support without adding `geam-cli` or built-in provider bundles. A runner
+that depends on the provider receives this feature through ordinary Cargo
+feature unification on the same Geam package identity.
+
 This boundary is intentionally static. The standalone CLI can discover and
 approve provider dependencies, parse explicit configuration, and generate a
 concrete runner, but the resulting Rust program still composes every component

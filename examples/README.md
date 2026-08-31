@@ -1,4 +1,58 @@
-# Provider Authoring Examples
+# Examples
+
+## Rust Embedding
+
+[`rust_embedding_application`](rust_embedding_application) is the canonical
+managed workflow. It keeps a resolved Gleam project inside an independently
+locked Rust application, commits the generated bindings, and composes stdlib IO
+with a real external provider while leaving capabilities, configuration, state,
+Echo, loading, sealing, and typed calls visible in Rust.
+
+The inventory workflow consumes a Rust `Vec` of rows and returns a retained
+List of Tuple/Result values. Rust passes the same List back to calculate a
+total and find the first valid row as an Option, then prints accepted items,
+rejection reasons, and the summary. A thin Gleam boundary keeps normalization,
+validation, and the opaque `Stock` type inside Gleam.
+
+Start with [main.rs](rust_embedding_application/src/main.rs) for preparation
+and input/output, then [inventory.rs](rust_embedding_application/src/inventory.rs)
+for the typed calls and result handling. Exact values, repeated calls, captured
+IO, and Echo are verified in tests rather than assertions in the entry point.
+
+From the repository root:
+
+```sh
+cargo build --package geam --bin geam --locked
+cd examples/rust_embedding_application
+../../target/debug/geam embedding check
+cd ../..
+cargo test --manifest-path examples/rust_embedding_application/Cargo.toml --locked
+cargo run --quiet --manifest-path examples/rust_embedding_application/Cargo.toml --locked
+```
+
+Check restores missing locked Gleam sources without rewriting project files.
+For a new application, start with `geam embedding init`; after writing Gleam,
+use `geam embedding sync` and the usual Cargo commands. See
+[Rust embedding](../docs/embedding.md) for the complete first-call workflow,
+project layout, and caller-owned runtime state.
+
+[`rust_embedding.rs`](rust_embedding.rs) loads a no-`main` Gleam project with
+an imported module, binds several public scalar functions from its selected
+root into a shared execution, and calls their typed handles repeatedly from
+Rust:
+
+```sh
+cargo run --example rust_embedding --locked
+```
+
+This provider-free example is the manual embedding boundary. Rust selects the
+project, declares exact function signatures, and seals one shared execution.
+When a selected source closure requires built-in or external providers, use the
+managed application so generated bindings own provider composition while Rust
+keeps capabilities, configuration, mutable state, Echo, loading, sealing, and
+call order explicit.
+
+## Provider Authoring
 
 These examples pair ordinary Gleam packages with independently locked Rust
 provider crates. Start with the smallest authoring surface, then combine the

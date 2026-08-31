@@ -1,4 +1,7 @@
+mod builtin;
+mod cargo;
 mod command;
+mod embedding;
 mod error;
 mod process;
 mod project;
@@ -7,7 +10,9 @@ mod runner;
 mod standalone;
 
 use clap::Parser;
-use command::{Cli, Command, ProviderCommand};
+use command::{
+    Cli, Command, EmbeddingCommand, EntryCommand, Provider, ProviderCommand, RunCommand,
+};
 use error::CliError;
 use std::env;
 use std::process::ExitCode;
@@ -28,21 +33,45 @@ pub fn run() -> ExitCode {
 }
 
 fn run_command(cli: Cli, current_directory: camino::Utf8PathBuf) -> Result<(), CliError> {
+    let command = match cli.command {
+        Command::Embedding(command) => match command.command {
+            EmbeddingCommand::Init => return embedding::init(&current_directory),
+            EmbeddingCommand::Check => {
+                return embedding::check(&current_directory);
+            }
+            EmbeddingCommand::Sync => return embedding::sync(&current_directory),
+        },
+        Command::Prepare(command) => ProjectCommand::Prepare(command),
+        Command::Run(command) => ProjectCommand::Run(command),
+        Command::Provider(command) => ProjectCommand::Provider(command),
+    };
+    run_project_command(command, current_directory)
+}
+
+enum ProjectCommand {
+    Prepare(EntryCommand),
+    Run(RunCommand),
+    Provider(Provider),
+}
+
+fn run_project_command(
+    command: ProjectCommand,
+    current_directory: camino::Utf8PathBuf,
+) -> Result<(), CliError> {
     let project_root = project::find_project_root(&current_directory)?;
-    match cli.command {
-        Command::Prepare(command) => project::entry_module(&project_root, command.module)
+    match command {
+        ProjectCommand::Prepare(command) => project::entry_module(&project_root, command.module)
             .and_then(|module| standalone::prepare(&project_root, module)),
-        Command::Run(command) => {
-            project::entry_module(&project_root, command.module).and_then(|module| {
+        ProjectCommand::Run(command) => project::entry_module(&project_root, command.module)
+            .and_then(|module| {
                 standalone::run(
                     &project_root,
                     &current_directory,
                     module,
                     command.provider_configs,
                 )
-            })
-        }
-        Command::Provider(command) => match command.command {
+            }),
+        ProjectCommand::Provider(command) => match command.command {
             ProviderCommand::Add(command) => {
                 provider::add(&project_root, current_directory.as_std_path(), command)
             }
@@ -60,6 +89,26 @@ mod tests {
     use clap::Parser;
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn routes_embedding_before_gleam_project_discovery() {
+        let directory = tempdir().expect("temporary directory should be created");
+        let root = Utf8PathBuf::from_path_buf(directory.path().to_path_buf())
+            .expect("temporary path should be valid UTF-8");
+        for operation in ["init", "check", "sync"] {
+            let error = run_command(
+                Cli::try_parse_from(["geam", "embedding", operation])
+                    .expect("embedding command should parse"),
+                root.clone(),
+            )
+            .expect_err("missing Cargo manifest should fail");
+
+            assert!(matches!(
+                error,
+                CliError::CargoManifestNotFound { start } if start == root
+            ));
+        }
+    }
 
     #[test]
     fn preserves_entry_resolution_failures_for_prepare_and_run() {

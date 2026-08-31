@@ -10,6 +10,19 @@ targets own the public `geam::...` facade, cross-crate compatibility, and
 standalone distribution behavior; they do not replace package-local owner
 tests or built-in compatibility suites.
 
+The Workspace workflow fixes the root feature profiles independently of the
+default distribution:
+
+```sh
+cargo check --package geam --no-default-features --features embedding --all-targets --locked
+cargo check --package geam --no-default-features --features provider --all-targets --locked
+cargo check --package geam --no-default-features --features embedding,gleam-stdlib --all-targets --locked
+```
+
+Default workspace tests and installation still use the complete `full`
+profile. Minimal checks prove only the selected facade and dependency graph;
+they do not replace owner or acceptance tests.
+
 For guidance on constructing owner tests, promoting diagnostic probes, and
 closing coverage gaps, see [test-development.md](test-development.md).
 
@@ -139,6 +152,74 @@ cargo llvm-cov --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspac
 This workspace is independently locked and needs neither a Gleam CLI nor
 downloaded Gleam package source. Its Rust dependencies use Cargo's ordinary
 locked acquisition path. CI runs it as a separate provider SDK boundary.
+
+The independently locked
+[`examples/rust_embedding_application`](../examples/rust_embedding_application)
+owns the canonical managed Rust-first workflow. Its nested resolved Gleam
+project uses imported source, stdlib IO, and the real text-pattern provider.
+The Rust entry point keeps loading, binding, sealing, capabilities,
+configuration, mutable state, Echo, and output handling visible. The
+application's `inventory` module owns its typed call sequence and review
+report. Its generated `src/geam_bindings.rs` is committed.
+The inventory workflow consumes Vec rows and passes the retained List into
+later total/first-valid calls before reading the rows for its report. Tests
+beside that workflow fix mixed, all-rejected, and empty inputs, exact
+Tuple/Result/Option values and reports, repeated calls, IO, and Echo. The
+binary integration test fixes the complete stdout and empty stderr. The
+domain Stock type stays in Gleam. Lazy-read costs, retained lifetime,
+foreign-owner rejection, and recursive permutations remain core/CLI
+owner-test contracts.
+
+Run the same focused checks locally from the repository root. The first check
+restores missing package sources from the committed Gleam lock without a
+separate dependency-resolution step:
+
+```sh
+cargo build --package geam --bin geam --locked
+cd examples/rust_embedding_application
+../../target/debug/geam embedding check
+cd gleam
+gleam format --check
+cd ..
+cd ../..
+cargo tree --manifest-path examples/rust_embedding_application/Cargo.toml \
+  --locked --package geam --edges normal --depth 1
+cargo fmt --manifest-path examples/rust_embedding_application/Cargo.toml --all --check
+cargo test --manifest-path examples/rust_embedding_application/Cargo.toml --locked
+cargo clippy --manifest-path examples/rust_embedding_application/Cargo.toml \
+  --all-targets --locked -- -D warnings
+cargo run --quiet --manifest-path examples/rust_embedding_application/Cargo.toml --locked
+```
+
+The Acceptance workflow's `Rust embedding` job owns this boundary. It first
+installs the current checkout with `cargo install --path . --locked` into a
+temporary installation root, using the default features and release profile.
+The following readiness and recovery checks use that installed binary, so CI
+also verifies that feature separation preserves the default CLI installation.
+It starts without a separate Gleam download step, checks locked readiness, and
+verifies that tracked application files remain unchanged. It then makes
+generated source stale, requires `embedding check` to fail, and runs production
+sync to restore the exact committed file before formatting, testing, linting,
+and running the application with the exact inventory report and its captured
+Gleam IO. The same job requires one Geam package identity, the exact
+core/macros/stdlib application profile, the text-pattern provider, and no
+CLI/JSON/Time dependency.
+Provider-example jobs remain separate because they own provider authoring and
+standalone consumption rather than Rust-first application composition.
+
+The same job checks Gleam formatting in `examples/rust_embedding` and runs the
+small manual `rust_embedding` example, comparing its complete stdout with the
+expected scalar results. The example's repeated-call and empty-Echo assertions
+also execute; its Rust formatting and Clippy checks remain workspace-owned.
+
+CLI owners separately cover fresh init, repeated sync, required built-in
+features, existing dependency preservation, and explicit native-provider
+approval. Check cases cover locked Hex/Git/local sources, cold and partial
+caches, stale locks or generated files, invalid source, provider incompatibility,
+and acquisition failures while comparing project bytes. Cargo's locked metadata
+path may populate caches; neither it nor the check command compiles or executes
+Rust build scripts, provider initialization, or the application. Runtime typed
+value and ownership contracts remain in core tests.
 
 The tracked `cli/tests/fixtures/standalone_cli` fixture verifies the complete CLI
 assembly boundary. Its Gleam project combines a Pure Gleam path package,
@@ -341,7 +422,7 @@ cargo llvm-cov report --package geam-json --summary-only --fail-under-lines 100 
 cargo llvm-cov report --package geam-time --summary-only --fail-under-lines 100 --fail-under-regions 100
 ```
 
-Run the CLI and binary closure:
+Run the CLI and binary closure with Gleam `v1.18.1` available:
 
 ```sh
 cargo llvm-cov clean --workspace

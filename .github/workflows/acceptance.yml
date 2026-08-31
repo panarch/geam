@@ -59,6 +59,107 @@ jobs:
             (cd "cli/tests/fixtures/standalone_cli/project/packages/$package" && gleam export hex-tarball)
           done
 
+  rust-embedding:
+    name: Rust embedding
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Gleam toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          gleam-version: "1.18.1"
+          rebar3-version: "3"
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+          cache: false
+          rustflags: ""
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            examples/rust_embedding_application -> target
+
+      - name: Verify application dependency graph
+        run: |
+          cargo tree --manifest-path examples/rust_embedding_application/Cargo.toml --locked --package geam --edges normal --depth 1 --prefix none > "$RUNNER_TEMP/geam-embedding-graph"
+          cat "$RUNNER_TEMP/geam-embedding-graph"
+          test "$(grep -Ec '^geam v' "$RUNNER_TEMP/geam-embedding-graph")" -eq 1
+          for package in geam-core geam-macros geam-stdlib; do
+            grep -Eq "^${package} v" "$RUNNER_TEMP/geam-embedding-graph"
+          done
+          if grep -Eq '^geam-(cli|json|time) v' "$RUNNER_TEMP/geam-embedding-graph"; then
+            echo "unexpected Geam dependency in the Rust embedding profile" >&2
+            exit 1
+          fi
+          cargo tree --manifest-path examples/rust_embedding_application/Cargo.toml --locked --package geam-rust-embedding-application --edges normal --depth 1 --prefix none > "$RUNNER_TEMP/application-embedding-graph"
+          grep -Eq '^geam-example-text-pattern v' "$RUNNER_TEMP/application-embedding-graph"
+
+      - name: Install checkout CLI
+        run: cargo install --path . --locked --root "$RUNNER_TEMP/checkout-geam"
+
+      - name: Check manual embedding formatting
+        working-directory: examples/rust_embedding
+        run: gleam format --check
+
+      - name: Run manual embedding example
+        run: |
+          cat > "$RUNNER_TEMP/expected-manual-embedding-output" <<'EOF'
+          code: SKU:AB-12
+          quantity: 42
+          price: 12.5
+          EOF
+          cargo run --quiet --package geam --example rust_embedding --locked > "$RUNNER_TEMP/actual-manual-embedding-output"
+          diff --unified "$RUNNER_TEMP/expected-manual-embedding-output" "$RUNNER_TEMP/actual-manual-embedding-output"
+
+      - name: Verify locked readiness and binding drift recovery
+        working-directory: examples/rust_embedding_application
+        run: |
+          "$RUNNER_TEMP/checkout-geam/bin/geam" embedding check
+          git diff --exit-code -- .
+          printf '\n// stale acceptance probe\n' >> src/geam_bindings.rs
+          if "$RUNNER_TEMP/checkout-geam/bin/geam" embedding check; then
+            echo "embedding check accepted stale generated source" >&2
+            exit 1
+          fi
+          "$RUNNER_TEMP/checkout-geam/bin/geam" embedding sync
+          "$RUNNER_TEMP/checkout-geam/bin/geam" embedding check
+          git diff --exit-code -- .
+
+      - name: Check application formatting
+        run: |
+          (cd examples/rust_embedding_application/gleam && gleam format --check)
+          cargo fmt --manifest-path examples/rust_embedding_application/Cargo.toml --all --check
+
+      - name: Test application
+        run: cargo test --manifest-path examples/rust_embedding_application/Cargo.toml --locked
+
+      - name: Run application clippy
+        run: cargo clippy --manifest-path examples/rust_embedding_application/Cargo.toml --all-targets --locked -- -D warnings
+
+      - name: Run application
+        run: |
+          cat > "$RUNNER_TEMP/expected-embedding-output" <<'EOF'
+          validating inventory
+          Inventory validation:
+            AB-12: 3
+            Row 2 rejected: invalid code
+            C-7: 4
+            Row 4 rejected: quantity must not be negative
+          Total quantity: 7
+          First valid item: AB-12 (3)
+          EOF
+          cargo run --quiet --manifest-path examples/rust_embedding_application/Cargo.toml --locked > "$RUNNER_TEMP/actual-embedding-output"
+          diff --unified "$RUNNER_TEMP/expected-embedding-output" "$RUNNER_TEMP/actual-embedding-output"
+
   published-provider:
     name: Published provider
     runs-on: ubuntu-latest

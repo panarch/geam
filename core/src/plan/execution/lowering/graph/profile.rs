@@ -139,7 +139,7 @@ fn seal_plain_instruction_kind(
     }
 }
 
-fn seal_plain_list_function_id(
+pub(in crate::plan::execution::lowering) fn seal_plain_list_function_id(
     function: ProfiledListFunctionId<HostedExecutionGraph>,
 ) -> Representability<ProfiledListFunctionId<Infallible>> {
     match function {

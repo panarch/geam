@@ -3,7 +3,7 @@ use crate::error::CliError;
 use hexpm::version::Version as GleamVersion;
 use std::io::{BufRead, Write};
 
-pub(super) trait ProviderApproval {
+pub(crate) trait ProviderApproval {
     fn approve(
         &mut self,
         package: &str,
@@ -14,9 +14,15 @@ pub(super) trait ProviderApproval {
 }
 
 pub(crate) struct TerminalApproval<'io> {
+    context: ApprovalContext,
     terminal: bool,
     reader: &'io mut dyn BufRead,
     writer: &'io mut dyn Write,
+}
+
+enum ApprovalContext {
+    Standalone,
+    Embedding,
 }
 
 impl<'io> TerminalApproval<'io> {
@@ -26,9 +32,21 @@ impl<'io> TerminalApproval<'io> {
         writer: &'io mut dyn Write,
     ) -> Self {
         Self {
+            context: ApprovalContext::Standalone,
             terminal,
             reader,
             writer,
+        }
+    }
+
+    pub(crate) fn for_embedding(
+        terminal: bool,
+        reader: &'io mut dyn BufRead,
+        writer: &'io mut dyn Write,
+    ) -> Self {
+        Self {
+            context: ApprovalContext::Embedding,
+            ..Self::new(terminal, reader, writer)
         }
     }
 }
@@ -45,11 +63,14 @@ impl ProviderApproval for TerminalApproval<'_> {
             let candidate = &candidates[0];
             return Err(CliError::ProviderApprovalRequired {
                 package: package.to_owned(),
-                command: format!(
-                    "geam provider add {}@{}",
-                    candidate.crate_name(),
-                    candidate.version(),
-                ),
+                command: match self.context {
+                    ApprovalContext::Standalone => format!(
+                        "geam provider add {}@{}",
+                        candidate.crate_name(),
+                        candidate.version(),
+                    ),
+                    ApprovalContext::Embedding => "geam embedding sync".to_owned(),
+                },
             });
         }
 
@@ -245,6 +266,37 @@ mod tests {
             Err(CliError::ProviderApprovalRequired { ref package, ref command })
                 if package == "images" && command == "geam provider add geam-images-alt@2.3.4"
         ));
+    }
+
+    #[test]
+    fn embedding_uses_the_same_prompt_with_its_own_noninteractive_recovery_command() {
+        let candidates = [candidate("geam-images", "1.2.3", "images", ">= 1.0.0")];
+        let version = hexpm::version::Version::new(1, 0, 0);
+        let mut input = Cursor::new(b"y\n");
+        let mut output = Vec::new();
+        let error = TerminalApproval::for_embedding(false, &mut input, &mut output)
+            .approve("images", &version, None, &candidates)
+            .expect_err("noninteractive embedding must not approve native code");
+        assert_eq!(
+            error.to_string(),
+            "Gleam package images requires native provider approval; run Geam interactively or select it explicitly with `geam embedding sync`"
+        );
+        assert_eq!(input.position(), 0);
+        assert!(output.is_empty());
+
+        let selected = TerminalApproval::for_embedding(true, &mut input, &mut output)
+            .approve("images", &version, None, &candidates)
+            .expect("interactive approval");
+        assert_eq!(selected, candidates[0]);
+        assert_eq!(
+            String::from_utf8(output).expect("UTF-8 prompt"),
+            concat!(
+                "Gleam package images 1.0.0 requires native provider code.\n",
+                "Metadata compatibility is not an endorsement.\n",
+                "  1. geam-images 1.2.3 (Gleam >= 1.0.0)\n",
+                "Approve geam-images 1.2.3? [y/N] ",
+            )
+        );
     }
 
     #[test]

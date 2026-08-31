@@ -15,6 +15,20 @@ fn reports_missing_projects_through_the_binary_boundary() {
     assert!(String::from_utf8_lossy(&output.stderr).contains("no gleam.toml was found"));
 }
 
+#[test]
+fn dispatches_embedding_before_gleam_project_discovery_through_the_binary_boundary() {
+    let directory = tempdir().expect("temporary directory should be created");
+
+    for operation in ["init", "check", "sync"] {
+        let output = geam(&directory, ["embedding", operation]);
+
+        assert!(!output.status.success());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("no Cargo.toml was found"));
+        assert!(!stderr.contains("gleam.toml"));
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn reports_current_directory_failures_through_the_binary_boundary() {

@@ -7,7 +7,7 @@ use hexpm::version::Version as GleamVersion;
 use semver::Version;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::provider) struct ProviderCandidate {
+pub(crate) struct ProviderCandidate {
     version: Version,
     metadata: ProviderMetadata,
 }
@@ -17,16 +17,20 @@ impl ProviderCandidate {
         Self { version, metadata }
     }
 
-    pub(in crate::provider) fn crate_name(&self) -> &str {
+    pub(crate) fn crate_name(&self) -> &str {
         self.metadata.crate_name()
     }
 
-    pub(in crate::provider) fn version(&self) -> &Version {
+    pub(crate) fn version(&self) -> &Version {
         &self.version
     }
 
     pub(in crate::provider) fn gleam_range(&self) -> &hexpm::version::Range {
         self.metadata.gleam_range()
+    }
+
+    pub(crate) fn gleam_package(&self) -> &str {
+        self.metadata.gleam_package()
     }
 }
 

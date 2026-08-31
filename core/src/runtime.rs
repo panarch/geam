@@ -1,5 +1,6 @@
 mod constant;
 mod echo;
+mod embedding;
 mod error;
 mod evaluated;
 mod function;
@@ -7,9 +8,20 @@ mod graph;
 mod host;
 mod materialize;
 mod profile;
+mod retained_list;
 mod state;
 mod value;
 
+pub(crate) use embedding::{
+    EmbeddingCustomInput, EmbeddingInputStorage, EmbeddingInputValue, EmbeddingList,
+    EmbeddingListInput, EmbeddingOutput, EmbeddingTupleInput, run_embedded_bit_array,
+    run_embedded_bool, run_embedded_custom, run_embedded_float, run_embedded_int,
+    run_embedded_list, run_embedded_nil, run_embedded_string, run_embedded_tuple,
+    run_embedded_utf_codepoint, run_hosted_embedded_bit_array, run_hosted_embedded_bool,
+    run_hosted_embedded_custom, run_hosted_embedded_float, run_hosted_embedded_int,
+    run_hosted_embedded_list, run_hosted_embedded_nil, run_hosted_embedded_string,
+    run_hosted_embedded_tuple, run_hosted_embedded_utf_codepoint,
+};
 pub(crate) use host::{
     StoredRuntimeList, StoredRuntimeListCustomFields, StoredRuntimeListItem,
     StoredRuntimeListTupleItems, StoredRuntimeValue,
@@ -30,6 +42,7 @@ pub(in crate::runtime) use evaluated::{
 };
 #[cfg(test)]
 pub(in crate::runtime) use evaluated::{EvaluatedFunctionValue, EvaluatedListCapture};
+pub(crate) use graph::RetainedValues;
 pub(crate) use value::{
     BitArrayFunctionValue, BoolFunctionValue, CaptureListValue, CaptureValue, CustomFunctionValue,
     CustomFunctionValueTarget, ExternalFunctionValue, FloatFunctionValue, FunctionFunctionValue,
@@ -51,7 +64,6 @@ use crate::plan::execution::function::{
 };
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::runtime::error::ExecutionResult;
-use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::{RuntimeState, RuntimeStateFor};
 
 pub fn run_main(plan: &ExecutionPlan, echo: &mut dyn EchoSink) -> Result<Value, ExecutionError> {

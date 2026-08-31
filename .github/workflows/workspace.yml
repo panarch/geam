@@ -109,6 +109,7 @@ jobs:
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          components: rustfmt, clippy
           cache: false
           rustflags: ""
 
@@ -129,6 +130,12 @@ jobs:
             echo "::error file=docs/upstream-gleam.md::Expected compiler pin geam-gleam-core $version; review the upstream baseline manually."
             exit 1
           fi
+
+      - name: Check root feature profiles
+        run: |
+          cargo check --package geam --no-default-features --features embedding --all-targets --locked
+          cargo check --package geam --no-default-features --features provider --all-targets --locked
+          cargo check --package geam --no-default-features --features embedding,gleam-stdlib --all-targets --locked
 
       - name: Test workspace packages
         run: cargo test --workspace --exclude geam --locked

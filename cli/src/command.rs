@@ -10,9 +10,26 @@ pub(super) struct Cli {
 
 #[derive(Debug, PartialEq, Eq, Subcommand)]
 pub(super) enum Command {
+    Embedding(Embedding),
     Prepare(EntryCommand),
     Run(RunCommand),
     Provider(Provider),
+}
+
+#[derive(Debug, PartialEq, Eq, Args)]
+pub(super) struct Embedding {
+    #[command(subcommand)]
+    pub(super) command: EmbeddingCommand,
+}
+
+#[derive(Debug, PartialEq, Eq, Subcommand)]
+pub(super) enum EmbeddingCommand {
+    /// Initialize a Gleam library and bindings for the current Cargo package.
+    Init,
+    /// Check that the project's dependencies and generated bindings agree.
+    Check,
+    /// Prepare dependencies and synchronize Rust bindings with Gleam source.
+    Sync,
 }
 
 #[derive(Debug, PartialEq, Eq, Args)]
@@ -74,8 +91,8 @@ pub(super) struct RemoveProvider {
 #[cfg(test)]
 mod tests {
     use super::{
-        AddProvider, Cli, Command, EntryCommand, Provider, ProviderCommand, RemoveProvider,
-        RunCommand,
+        AddProvider, Cli, Command, Embedding, EmbeddingCommand, EntryCommand, Provider,
+        ProviderCommand, RemoveProvider, RunCommand,
     };
     use camino::Utf8PathBuf;
     use clap::{CommandFactory, Parser};
@@ -121,6 +138,55 @@ mod tests {
                 }),
             },
         );
+    }
+
+    #[test]
+    fn parses_parameterless_embedding_commands() {
+        assert_eq!(
+            Cli::try_parse_from(["geam", "embedding", "init"])
+                .expect("embedding init command should parse"),
+            Cli {
+                command: Command::Embedding(Embedding {
+                    command: EmbeddingCommand::Init,
+                }),
+            },
+        );
+        let check = Cli::try_parse_from(["geam", "embedding", "check"])
+            .expect("embedding check command should parse");
+        assert_eq!(
+            check,
+            Cli {
+                command: Command::Embedding(Embedding {
+                    command: EmbeddingCommand::Check,
+                }),
+            },
+        );
+
+        let nearest = Cli::try_parse_from(["geam", "embedding", "sync"])
+            .expect("embedding sync command should parse");
+        assert_eq!(
+            nearest,
+            Cli {
+                command: Command::Embedding(Embedding {
+                    command: EmbeddingCommand::Sync,
+                }),
+            },
+        );
+
+        for operation in ["init", "sync", "check"] {
+            assert_eq!(
+                Cli::try_parse_from([
+                    "geam",
+                    "embedding",
+                    operation,
+                    "--manifest-path",
+                    "Cargo.toml",
+                ])
+                .expect_err("embedding uses the current Cargo package")
+                .kind(),
+                clap::error::ErrorKind::UnknownArgument,
+            );
+        }
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use crate::frontend::TypedProgram;
 use crate::plan::{
-    FunctionFunctionLocalId, FunctionTemplateId, IntFunctionLocalId, ModuleId, ModulePlan,
-    ParamBinding, ParamLocal, PlannedModule, SourceContext,
+    FunctionFunctionLocalId, FunctionTemplateId, IntFunctionLocalId, LibraryModulePlan, ModuleId,
+    ModulePlan, ParamBinding, ParamLocal, PlannedModule, SourceContext,
 };
 use crate::planner::context::{AnonymousFunctions, FunctionInfo, FunctionParam};
 use crate::planner::error::{
@@ -19,6 +19,7 @@ use constant::{ConstantBodies, plan_constant_bodies, reserve_constants};
 use registry::{ModuleRegistry, ProgramRegistry};
 mod external_type;
 
+pub(crate) use host::plan_host_library_program;
 pub use host::plan_host_program;
 
 pub fn plan_module(module: TypedModule) -> Result<ModulePlan, PlanError> {
@@ -45,17 +46,38 @@ pub fn plan_module_with_source(
 }
 
 pub fn plan_program(program: TypedProgram) -> Result<ModulePlan, PlanError> {
+    let (root_index, modules) = program_inputs(program);
+    plan_modules(root_index, modules)
+}
+
+pub(crate) fn plan_library_module(module: TypedModule) -> Result<LibraryModulePlan, PlanError> {
+    let (root, modules) = plan_module_bodies(
+        0,
+        vec![ModuleInput {
+            module,
+            source_context: None,
+        }],
+        ModuleRole::Library,
+    )?;
+    Ok(LibraryModulePlan::from_modules(root, modules))
+}
+
+pub(crate) fn plan_library_program(program: TypedProgram) -> Result<LibraryModulePlan, PlanError> {
+    let (root_index, modules) = program_inputs(program);
+    let (root, modules) = plan_module_bodies(root_index, modules, ModuleRole::Library)?;
+    Ok(LibraryModulePlan::from_modules(root, modules))
+}
+
+fn program_inputs(program: TypedProgram) -> (usize, Vec<ModuleInput>) {
     let (root_index, modules) = program.into_parts();
-    plan_modules(
-        root_index,
-        modules
-            .into_iter()
-            .map(|module| ModuleInput {
-                module: module.module,
-                source_context: Some(SourceContext::new(module.path, module.source)),
-            })
-            .collect(),
-    )
+    let modules = modules
+        .into_iter()
+        .map(|module| ModuleInput {
+            module: module.module,
+            source_context: Some(SourceContext::new(module.path, module.source)),
+        })
+        .collect();
+    (root_index, modules)
 }
 
 struct ModuleInput {
@@ -104,6 +126,19 @@ struct ModuleFunctions {
 }
 
 fn plan_modules(root_index: usize, modules: Vec<ModuleInput>) -> Result<ModulePlan, PlanError> {
+    let (root, planned_modules) = plan_module_bodies(root_index, modules, ModuleRole::Root)?;
+    Ok(ModulePlan::from_modules(
+        root,
+        FunctionTemplateId::in_module(root, 0),
+        planned_modules,
+    ))
+}
+
+fn plan_module_bodies(
+    root_index: usize,
+    modules: Vec<ModuleInput>,
+    root_role: ModuleRole,
+) -> Result<(ModuleId, Vec<PlannedModule>), PlanError> {
     let root = ModuleId::new(root_index);
     let mut declarations = Vec::with_capacity(modules.len());
 
@@ -128,7 +163,7 @@ fn plan_modules(root_index: usize, modules: Vec<ModuleInput>) -> Result<ModulePl
     let mut function_declarations = Vec::with_capacity(declarations.len());
     for declaration in declarations {
         let role = if declaration.id == root {
-            ModuleRole::Root
+            root_role
         } else {
             ModuleRole::Dependency
         };
@@ -213,16 +248,13 @@ fn plan_modules(root_index: usize, modules: Vec<ModuleInput>) -> Result<ModulePl
         ));
     }
 
-    Ok(ModulePlan::from_modules(
-        root,
-        FunctionTemplateId::in_module(root, 0),
-        planned_modules,
-    ))
+    Ok((root, planned_modules))
 }
 
 #[derive(Clone, Copy)]
 enum ModuleRole {
     Root,
+    Library,
     Dependency,
 }
 
@@ -300,7 +332,7 @@ fn function_table_with_external_types(
             }
             FunctionIndexing::Root { main_index }
         }
-        ModuleRole::Dependency => FunctionIndexing::Dependency,
+        ModuleRole::Library | ModuleRole::Dependency => FunctionIndexing::Dependency,
     };
 
     let mut by_name = HashMap::with_capacity(seeds.len());
@@ -803,7 +835,7 @@ impl FunctionParamFunctionLocalCounters {
 
 #[cfg(test)]
 mod tests {
-    use super::{plan_module, plan_program};
+    use super::{plan_library_program, plan_module, plan_program};
     use crate::frontend::{
         ModuleSource, PackageSource, compile_typed_package_program, compile_typed_program,
     };
@@ -831,6 +863,81 @@ mod tests {
         InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedFunctionReason,
     };
     use gleam_compiler_core::type_;
+
+    #[test]
+    fn plan_library_program_owns_the_resolved_root_and_dependency_modules() {
+        let typed = compile_typed_package_program(
+            "application",
+            "inventory_rules",
+            [
+                PackageSource::new(
+                    "application",
+                    ["inventory_support"],
+                    [ModuleSource::new(
+                        "inventory_rules",
+                        "src/inventory_rules.gleam",
+                        r#"
+import inventory_format
+
+pub fn label(value: String) {
+  inventory_format.decorate("SKU:", value)
+}
+"#,
+                    )],
+                ),
+                PackageSource::new(
+                    "inventory_support",
+                    Vec::<ecow::EcoString>::new(),
+                    [ModuleSource::new(
+                        "inventory_format",
+                        "build/packages/inventory_support/src/inventory_format.gleam",
+                        r#"
+pub fn decorate(prefix: String, value: String) {
+  prefix <> value
+}
+"#,
+                    )],
+                ),
+            ],
+        )
+        .expect("library program should compile");
+        let parts = plan_library_program(typed)
+            .expect("library program should plan without main")
+            .into_parts();
+
+        assert_eq!(parts.root, ModuleId::new(1));
+        assert_eq!(
+            parts
+                .modules
+                .iter()
+                .map(|module| (module.package().as_str(), module.module().as_str()))
+                .collect::<Vec<_>>(),
+            [
+                ("inventory_support", "inventory_format"),
+                ("application", "inventory_rules"),
+            ],
+        );
+        assert_eq!(
+            parts.modules[0]
+                .source_context()
+                .map(|context| context.path().as_str()),
+            Some("build/packages/inventory_support/src/inventory_format.gleam"),
+        );
+        assert_eq!(
+            parts.modules[1]
+                .source_context()
+                .map(|context| context.path().as_str()),
+            Some("src/inventory_rules.gleam"),
+        );
+        assert_eq!(
+            parts.modules[0].functions()[0].id().module(),
+            ModuleId::new(0)
+        );
+        assert_eq!(
+            parts.modules[1].functions()[0].id().module(),
+            ModuleId::new(1)
+        );
+    }
 
     #[test]
     fn plan_program_owns_dependency_first_modules_and_a_root_entry() {

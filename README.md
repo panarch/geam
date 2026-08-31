@@ -31,6 +31,18 @@ Resolved Gleam project or in-memory module sources
 -> Geam runtime value
 ```
 
+## Installation
+
+Install the complete command-line distribution with its default feature
+profile:
+
+```sh
+cargo install geam --locked
+```
+
+Rust library consumers can instead select the smaller embedding or provider
+authoring profiles described below without depending on `geam-cli`.
+
 Unsupported execution semantics are rejected while planning from Gleam's typed
 AST, before runtime evaluation. The resulting `ModulePlan` owns the root entry
 and every supplied module's validated definitions, and is the canonical
@@ -154,6 +166,30 @@ before runtime construction. Provider state remains caller-owned, and nested
 source panics and host failures retain the actual failed source or provider
 identity. See [runtime semantics](docs/runtime-semantics.md) for the ownership,
 re-entry, and sealing rules.
+
+## Rust Embedding
+
+Initialize an ordinary Cargo package with a Gleam project under `gleam/`, then
+prepare dependencies and generate typed bindings for its same-name public module:
+
+```sh
+geam embedding init
+# After writing Gleam functions:
+geam embedding sync
+cargo run
+```
+
+Use `geam embedding check` in review or CI to verify the prepared connection
+without rewriting project files; it may restore locked dependency caches.
+
+The generated `src/geam_bindings.rs` is checked in. It owns only deterministic
+function declarations and static host composition; the Rust application still
+loads and seals the project and supplies capabilities, provider configuration,
+mutable state, Echo, and call order explicitly. The
+[canonical managed application](examples/rust_embedding_application) combines
+imported source, stdlib IO, and an external provider. See
+[Rust embedding](docs/embedding.md) for project layout, synchronization, and
+the recursive data boundary and minimal Cargo feature profiles.
 
 ## Standalone Projects
 

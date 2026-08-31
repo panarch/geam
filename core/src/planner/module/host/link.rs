@@ -46,6 +46,7 @@ pub(super) enum LinkedFunction {
 
 pub(super) fn link_hosted_modules(
     root: ModuleId,
+    root_role: ModuleRole,
     declarations: Vec<HostedModuleDeclaration>,
 ) -> Result<Vec<LinkedModule>, PlanError> {
     let external_types = declarations
@@ -58,12 +59,13 @@ pub(super) fn link_hosted_modules(
         .collect::<HashSet<_>>();
     declarations
         .into_iter()
-        .map(|declaration| link_hosted_module(root, declaration, &external_types))
+        .map(|declaration| link_hosted_module(root, root_role, declaration, &external_types))
         .collect()
 }
 
 fn link_hosted_module(
     root: ModuleId,
+    root_role: ModuleRole,
     declaration: HostedModuleDeclaration,
     external_types: &HashSet<crate::plan::ExternalTypeName>,
 ) -> Result<LinkedModule, PlanError> {
@@ -80,7 +82,7 @@ fn link_hosted_module(
             providers,
         } => {
             let role = if id == root {
-                ModuleRole::Root
+                root_role
             } else {
                 ModuleRole::Dependency
             };

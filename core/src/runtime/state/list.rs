@@ -331,6 +331,12 @@ impl StoredListValueId {
     }
 }
 
+impl From<StoredListValueId> for ListValueId {
+    fn from(value: StoredListValueId) -> Self {
+        value.into_value()
+    }
+}
+
 #[derive(Default)]
 struct ListPool<Value: Default> {
     slots: Vec<Value>,
@@ -491,195 +497,9 @@ impl SharedListStorage {
     }
 }
 
-pub(in crate::runtime) struct RuntimeListStorage {
-    storage: Rc<SharedListStorage>,
-}
+pub(in crate::runtime) struct RuntimeListReader;
 
-impl Default for RuntimeListStorage {
-    fn default() -> Self {
-        Self {
-            storage: Rc::new(SharedListStorage::default()),
-        }
-    }
-}
-
-impl RuntimeListStorage {
-    pub(in crate::runtime) fn clone_handle(&self) -> Self {
-        Self {
-            storage: Rc::clone(&self.storage),
-        }
-    }
-
-    pub(in crate::runtime) fn drain_releases(&mut self) {
-        self.storage.drain_releases();
-    }
-
-    fn prepare_allocation(&mut self) {
-        self.drain_releases();
-    }
-
-    pub(in crate::runtime) fn int(
-        &mut self,
-        type_id: IntListTypeId,
-        values: Vec<BigInt>,
-    ) -> IntListValueId {
-        self.prepare_allocation();
-        let slot = self.storage.pools.borrow_mut().ints.allocate(values);
-        IntListValueId::new(type_id, self.storage.core(ListStorageKey::Int { slot }))
-    }
-
-    pub(in crate::runtime) fn string(
-        &mut self,
-        type_id: StringListTypeId,
-        values: Vec<EcoString>,
-    ) -> StringListValueId {
-        self.prepare_allocation();
-        let slot = self.storage.pools.borrow_mut().strings.allocate(values);
-        StringListValueId::new(type_id, self.storage.core(ListStorageKey::String { slot }))
-    }
-
-    pub(in crate::runtime) fn bit_array(
-        &mut self,
-        type_id: BitArrayListTypeId,
-        values: Vec<EvaluatedBitArray>,
-    ) -> BitArrayListValueId {
-        self.prepare_allocation();
-        let slot = self.storage.pools.borrow_mut().bit_arrays.allocate(values);
-        BitArrayListValueId::new(
-            type_id,
-            self.storage.core(ListStorageKey::BitArray { slot }),
-        )
-    }
-
-    pub(in crate::runtime) fn utf_codepoint(
-        &mut self,
-        type_id: UtfCodepointListTypeId,
-        values: Vec<char>,
-    ) -> UtfCodepointListValueId {
-        self.prepare_allocation();
-        let slot = self
-            .storage
-            .pools
-            .borrow_mut()
-            .utf_codepoints
-            .allocate(values);
-        UtfCodepointListValueId::new(
-            type_id,
-            self.storage.core(ListStorageKey::UtfCodepoint { slot }),
-        )
-    }
-
-    pub(in crate::runtime) fn custom(
-        &mut self,
-        allocation: CustomListAllocation,
-    ) -> CustomListValueId {
-        self.prepare_allocation();
-        let slot = self
-            .storage
-            .pools
-            .borrow_mut()
-            .customs
-            .allocate(allocation.values);
-        CustomListValueId::new(
-            allocation.type_id,
-            self.storage.core(ListStorageKey::Custom { slot }),
-        )
-    }
-
-    pub(in crate::runtime) fn external(
-        &mut self,
-        allocation: ExternalListAllocation,
-    ) -> ExternalListValueId {
-        self.prepare_allocation();
-        let slot = self
-            .storage
-            .pools
-            .borrow_mut()
-            .externals
-            .allocate(allocation.values);
-        ExternalListValueId::new(
-            allocation.type_id,
-            self.storage.core(ListStorageKey::External { slot }),
-        )
-    }
-
-    pub(in crate::runtime) fn float(
-        &mut self,
-        type_id: FloatListTypeId,
-        values: Vec<f64>,
-    ) -> FloatListValueId {
-        self.prepare_allocation();
-        let slot = self.storage.pools.borrow_mut().floats.allocate(values);
-        FloatListValueId::new(type_id, self.storage.core(ListStorageKey::Float { slot }))
-    }
-
-    pub(in crate::runtime) fn bool(
-        &mut self,
-        type_id: BoolListTypeId,
-        values: Vec<bool>,
-    ) -> BoolListValueId {
-        self.prepare_allocation();
-        let slot = self.storage.pools.borrow_mut().bools.allocate(values);
-        BoolListValueId::new(type_id, self.storage.core(ListStorageKey::Bool { slot }))
-    }
-
-    pub(in crate::runtime) fn nil(&mut self, type_id: NilListTypeId, len: usize) -> NilListValueId {
-        self.prepare_allocation();
-        let slot = self.storage.pools.borrow_mut().nils.allocate(len);
-        NilListValueId::new(type_id, self.storage.core(ListStorageKey::Nil { slot }))
-    }
-
-    pub(in crate::runtime) fn tuple(
-        &mut self,
-        type_id: TupleListTypeId,
-        values: Vec<Vec<EvaluatedValue>>,
-    ) -> TupleListValueId {
-        self.prepare_allocation();
-        let slot = self.storage.pools.borrow_mut().tuples.allocate(values);
-        TupleListValueId::new(type_id, self.storage.core(ListStorageKey::Tuple { slot }))
-    }
-
-    pub(in crate::runtime) fn parameter_list_list(
-        &mut self,
-        type_id: ParameterListListTypeId,
-        len: usize,
-    ) -> ParameterListListValueId {
-        self.prepare_allocation();
-        let slot = self
-            .storage
-            .pools
-            .borrow_mut()
-            .parameter_list_lists
-            .allocate(len);
-        ParameterListListValueId::new(
-            type_id,
-            self.storage.core(ListStorageKey::ParameterList { slot }),
-        )
-    }
-
-    pub(in crate::runtime) fn list(
-        &mut self,
-        type_id: ListListTypeId,
-        values: Vec<StoredListValueId>,
-    ) -> ListListValueId {
-        self.prepare_allocation();
-        let slot = self.storage.pools.borrow_mut().lists.allocate(values);
-        ListListValueId::new(type_id, self.storage.core(ListStorageKey::List { slot }))
-    }
-
-    pub(in crate::runtime) fn function(
-        &mut self,
-        type_id: FunctionListTypeId,
-        values: Vec<EvaluatedFunctionValue>,
-    ) -> FunctionListValueId {
-        self.prepare_allocation();
-        let slot = self.storage.pools.borrow_mut().functions.allocate(values);
-        FunctionListValueId::new(
-            type_id,
-            self.storage.core(ListStorageKey::Function { slot }),
-        )
-    }
-
+impl RuntimeListReader {
     pub(in crate::runtime) fn int_values<'value>(
         &self,
         value: &'value IntListValueId,
@@ -985,6 +805,297 @@ impl RuntimeListStorage {
                 .cloned()
                 .map(EvaluatedValue::Function),
         }
+    }
+}
+
+pub(in crate::runtime) struct RuntimeListStorage {
+    storage: Rc<SharedListStorage>,
+}
+
+impl Default for RuntimeListStorage {
+    fn default() -> Self {
+        Self {
+            storage: Rc::new(SharedListStorage::default()),
+        }
+    }
+}
+
+impl RuntimeListStorage {
+    pub(in crate::runtime) fn drain_releases(&mut self) {
+        self.storage.drain_releases();
+    }
+
+    fn prepare_allocation(&mut self) {
+        self.drain_releases();
+    }
+
+    pub(in crate::runtime) fn int(
+        &mut self,
+        type_id: IntListTypeId,
+        values: Vec<BigInt>,
+    ) -> IntListValueId {
+        self.prepare_allocation();
+        let slot = self.storage.pools.borrow_mut().ints.allocate(values);
+        IntListValueId::new(type_id, self.storage.core(ListStorageKey::Int { slot }))
+    }
+
+    pub(in crate::runtime) fn string(
+        &mut self,
+        type_id: StringListTypeId,
+        values: Vec<EcoString>,
+    ) -> StringListValueId {
+        self.prepare_allocation();
+        let slot = self.storage.pools.borrow_mut().strings.allocate(values);
+        StringListValueId::new(type_id, self.storage.core(ListStorageKey::String { slot }))
+    }
+
+    pub(in crate::runtime) fn bit_array(
+        &mut self,
+        type_id: BitArrayListTypeId,
+        values: Vec<EvaluatedBitArray>,
+    ) -> BitArrayListValueId {
+        self.prepare_allocation();
+        let slot = self.storage.pools.borrow_mut().bit_arrays.allocate(values);
+        BitArrayListValueId::new(
+            type_id,
+            self.storage.core(ListStorageKey::BitArray { slot }),
+        )
+    }
+
+    pub(in crate::runtime) fn utf_codepoint(
+        &mut self,
+        type_id: UtfCodepointListTypeId,
+        values: Vec<char>,
+    ) -> UtfCodepointListValueId {
+        self.prepare_allocation();
+        let slot = self
+            .storage
+            .pools
+            .borrow_mut()
+            .utf_codepoints
+            .allocate(values);
+        UtfCodepointListValueId::new(
+            type_id,
+            self.storage.core(ListStorageKey::UtfCodepoint { slot }),
+        )
+    }
+
+    pub(in crate::runtime) fn custom(
+        &mut self,
+        allocation: CustomListAllocation,
+    ) -> CustomListValueId {
+        self.prepare_allocation();
+        let slot = self
+            .storage
+            .pools
+            .borrow_mut()
+            .customs
+            .allocate(allocation.values);
+        CustomListValueId::new(
+            allocation.type_id,
+            self.storage.core(ListStorageKey::Custom { slot }),
+        )
+    }
+
+    pub(in crate::runtime) fn external(
+        &mut self,
+        allocation: ExternalListAllocation,
+    ) -> ExternalListValueId {
+        self.prepare_allocation();
+        let slot = self
+            .storage
+            .pools
+            .borrow_mut()
+            .externals
+            .allocate(allocation.values);
+        ExternalListValueId::new(
+            allocation.type_id,
+            self.storage.core(ListStorageKey::External { slot }),
+        )
+    }
+
+    pub(in crate::runtime) fn float(
+        &mut self,
+        type_id: FloatListTypeId,
+        values: Vec<f64>,
+    ) -> FloatListValueId {
+        self.prepare_allocation();
+        let slot = self.storage.pools.borrow_mut().floats.allocate(values);
+        FloatListValueId::new(type_id, self.storage.core(ListStorageKey::Float { slot }))
+    }
+
+    pub(in crate::runtime) fn bool(
+        &mut self,
+        type_id: BoolListTypeId,
+        values: Vec<bool>,
+    ) -> BoolListValueId {
+        self.prepare_allocation();
+        let slot = self.storage.pools.borrow_mut().bools.allocate(values);
+        BoolListValueId::new(type_id, self.storage.core(ListStorageKey::Bool { slot }))
+    }
+
+    pub(in crate::runtime) fn nil(&mut self, type_id: NilListTypeId, len: usize) -> NilListValueId {
+        self.prepare_allocation();
+        let slot = self.storage.pools.borrow_mut().nils.allocate(len);
+        NilListValueId::new(type_id, self.storage.core(ListStorageKey::Nil { slot }))
+    }
+
+    pub(in crate::runtime) fn tuple(
+        &mut self,
+        type_id: TupleListTypeId,
+        values: Vec<Vec<EvaluatedValue>>,
+    ) -> TupleListValueId {
+        self.prepare_allocation();
+        let slot = self.storage.pools.borrow_mut().tuples.allocate(values);
+        TupleListValueId::new(type_id, self.storage.core(ListStorageKey::Tuple { slot }))
+    }
+
+    pub(in crate::runtime) fn parameter_list_list(
+        &mut self,
+        type_id: ParameterListListTypeId,
+        len: usize,
+    ) -> ParameterListListValueId {
+        self.prepare_allocation();
+        let slot = self
+            .storage
+            .pools
+            .borrow_mut()
+            .parameter_list_lists
+            .allocate(len);
+        ParameterListListValueId::new(
+            type_id,
+            self.storage.core(ListStorageKey::ParameterList { slot }),
+        )
+    }
+
+    pub(in crate::runtime) fn list(
+        &mut self,
+        type_id: ListListTypeId,
+        values: Vec<StoredListValueId>,
+    ) -> ListListValueId {
+        self.prepare_allocation();
+        let slot = self.storage.pools.borrow_mut().lists.allocate(values);
+        ListListValueId::new(type_id, self.storage.core(ListStorageKey::List { slot }))
+    }
+
+    pub(in crate::runtime) fn function(
+        &mut self,
+        type_id: FunctionListTypeId,
+        values: Vec<EvaluatedFunctionValue>,
+    ) -> FunctionListValueId {
+        self.prepare_allocation();
+        let slot = self.storage.pools.borrow_mut().functions.allocate(values);
+        FunctionListValueId::new(
+            type_id,
+            self.storage.core(ListStorageKey::Function { slot }),
+        )
+    }
+
+    pub(in crate::runtime) fn int_values<'value>(
+        &self,
+        value: &'value IntListValueId,
+    ) -> Ref<'value, [BigInt]> {
+        RuntimeListReader.int_values(value)
+    }
+
+    pub(in crate::runtime) fn string_values<'value>(
+        &self,
+        value: &'value StringListValueId,
+    ) -> Ref<'value, [EcoString]> {
+        RuntimeListReader.string_values(value)
+    }
+
+    pub(in crate::runtime) fn bit_array_values<'value>(
+        &self,
+        value: &'value BitArrayListValueId,
+    ) -> Ref<'value, [EvaluatedBitArray]> {
+        RuntimeListReader.bit_array_values(value)
+    }
+
+    pub(in crate::runtime) fn utf_codepoint_values<'value>(
+        &self,
+        value: &'value UtfCodepointListValueId,
+    ) -> Ref<'value, [char]> {
+        RuntimeListReader.utf_codepoint_values(value)
+    }
+
+    pub(in crate::runtime) fn custom_values<'value>(
+        &self,
+        value: &'value CustomListValueId,
+    ) -> Ref<'value, [EvaluatedCustomValue]> {
+        RuntimeListReader.custom_values(value)
+    }
+
+    pub(in crate::runtime) fn external_values<'value>(
+        &self,
+        value: &'value ExternalListValueId,
+    ) -> Ref<'value, [EvaluatedExternalValue]> {
+        RuntimeListReader.external_values(value)
+    }
+
+    pub(in crate::runtime) fn float_values<'value>(
+        &self,
+        value: &'value FloatListValueId,
+    ) -> Ref<'value, [f64]> {
+        RuntimeListReader.float_values(value)
+    }
+
+    pub(in crate::runtime) fn bool_values<'value>(
+        &self,
+        value: &'value BoolListValueId,
+    ) -> Ref<'value, [bool]> {
+        RuntimeListReader.bool_values(value)
+    }
+
+    pub(in crate::runtime) fn tuple_values<'value>(
+        &self,
+        value: &'value TupleListValueId,
+    ) -> Ref<'value, [Vec<EvaluatedValue>]> {
+        RuntimeListReader.tuple_values(value)
+    }
+
+    pub(in crate::runtime) fn list_values<'value>(
+        &self,
+        value: &'value ListListValueId,
+    ) -> Ref<'value, [StoredListValueId]> {
+        RuntimeListReader.list_values(value)
+    }
+
+    pub(in crate::runtime) fn function_values<'value>(
+        &self,
+        value: &'value FunctionListValueId,
+    ) -> Ref<'value, [EvaluatedFunctionValue]> {
+        RuntimeListReader.function_values(value)
+    }
+
+    pub(in crate::runtime) fn nil_len(&self, value: &NilListValueId) -> usize {
+        RuntimeListReader.nil_len(value)
+    }
+
+    pub(in crate::runtime) fn parameter_list_list_len(
+        &self,
+        value: &ParameterListListValueId,
+    ) -> usize {
+        RuntimeListReader.parameter_list_list_len(value)
+    }
+
+    pub(in crate::runtime) fn list_len(&self, value: &ListValueId) -> usize {
+        RuntimeListReader.list_len(value)
+    }
+
+    pub(in crate::runtime) fn evaluated_values(
+        &self,
+        value: &StoredListValueId,
+    ) -> Vec<EvaluatedValue> {
+        RuntimeListReader.evaluated_values(value)
+    }
+
+    pub(in crate::runtime) fn evaluated_value_at(
+        &self,
+        value: &ListValueId,
+        index: usize,
+    ) -> Option<EvaluatedValue> {
+        RuntimeListReader.evaluated_value_at(value, index)
     }
 
     pub(in crate::runtime) fn drop_first(
@@ -2009,7 +2120,7 @@ pub fn main() -> Int {
     }
 
     #[test]
-    fn stored_runtime_value_retains_and_iteratively_releases_nested_lists() {
+    fn retained_owners_preserve_and_iteratively_release_nested_lists() {
         let depth = 64;
         let nested_type = "List(".repeat(depth) + "Int" + &")".repeat(depth);
         let source = format!(
@@ -2036,6 +2147,7 @@ pub fn main() -> Int {
         let evaluated = EvaluatedValue::List(value.clone());
         let value_type = evaluated.value_type(plan.value_metadata());
         let stored = StoredRuntimeValue::new(evaluated, value_type);
+        let retained = crate::runtime::retained_list::RetainedList::new(value.clone());
 
         drop(value);
         state.lists_mut().drain_releases();
@@ -2046,6 +2158,11 @@ pub fn main() -> Int {
         }
 
         drop(stored);
+        state.lists_mut().drain_releases();
+        assert!(state.lists.storage.pools.borrow().ints.free.is_empty());
+        assert!(state.lists.storage.pools.borrow().lists.free.is_empty());
+        assert_eq!(retained.len(), 1);
+        drop(retained);
         state.lists_mut().drain_releases();
         let pools = state.lists.storage.pools.borrow();
         assert_eq!(pools.ints.free.len(), 1);

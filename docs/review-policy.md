@@ -293,8 +293,12 @@ Treat first-time native provider selection and incompatible replacement as
 explicit trust boundaries. Verify bounded registry responses, exact archive
 checksums, packaged metadata, target Gleam package, and compatibility before
 presenting a candidate. Do not execute provider code before approval, silently
-select in noninteractive use, adopt user-owned Cargo manifests, or introduce a
-second provider lock beside `Cargo.lock`.
+select in noninteractive use, let standalone management adopt user-owned Cargo
+manifests, or introduce a second provider lock beside `Cargo.lock`. Explicit
+Rust embedding preparation may amend only the selected application's relevant
+dependency entries, preserving its sources, aliases, existing features, and
+unrelated content; it does not take ownership of the manifest or authorize
+changes to shared workspace declarations.
 
 Source provider selection must finish before function body planning. Match an
 exact external scheme, preserve a declared Gleam fallback when no provider is
@@ -355,6 +359,59 @@ Gleam. Call-scoped runtime-owned handles may remain live across re-entry, but
 they must not escape the host invocation. Nested source panics and host
 failures must retain the actual failed source or provider identity; an outer
 provider must not repackage them as its own failure.
+
+## Rust Embedding Rules
+
+Rust embedding is a statically typed caller layer over the existing planner,
+execution, runtime, and host boundaries, not a second ABI, type system, or
+execution model. Apply these rules when adding or reviewing Rust-facing Gleam
+function bindings and values:
+
+Rust embedding has no internal error domain. Only failures originating outside
+embedding ownership may be returned. After boundary validation, every
+embedding-owned operation must be total by construction; any internal error,
+invariant, fallback, or panic is a blocking representation defect.
+
+- Loading and binding own source selection, exact signature agreement,
+  specialization, and sealing selected entries into one execution. Repeated
+  calls use owner-bound typed handles and prevalidated entries; they must not
+  parse source, plan or lower bodies, look up function names, or revalidate
+  runtime shapes. Function handles may be called only through their owner.
+  Retained values may outlive a call or mutable session, but re-entry must use
+  the same loaded owner.
+- Reuse the existing value families, function tables, retained storage, and
+  hosted execution paths. Do not introduce runtime inventories, reflection,
+  trait-object registries that erase type identity, `Any`, downcasts, string
+  dispatch, serialization, or a universal runtime value as the routine
+  embedding interchange. Do not create a parallel type or identity model for
+  embedding convenience.
+- Directional Rust adapters must preserve the ownership and cost model of the
+  underlying typed runtime path. Move owned inputs directly when their
+  representation permits it, traverse compound values only as required by the
+  public mapping, and retain lazy source storage when the API promises retained
+  identity. Do not add eager whole-container materialization, intermediate
+  whole-value conversion, payload or item clones, or reconstruction of
+  pass-through or same-owner values. Explicit caller-requested materialization
+  remains allowed.
+- One loaded embedding owner shares its sealed execution and immutable function
+  and type identity across selected functions and repeated calls. Retained
+  outputs own the storage needed to preserve their value without borrowing
+  mutable host state. Mutable host state and external capabilities remain
+  explicit caller-owned inputs; do not recreate execution ownership per
+  function or call, or hide configuration, IO, entropy, clocks, or other
+  capabilities behind embedding defaults.
+- Keep the public surface to Rust-native values and narrow embedding wrappers.
+  Static adapter implementations should scale with supported value families
+  and the established Rust function arity boundary, not with the Cartesian
+  product of signatures. Do not expose raw runtime IDs, storage tokens, or
+  low-level construction capabilities, or generate a separate evaluator for
+  each public signature.
+
+Owning tests must prove cost- and lifetime-sensitive embedding behavior at the
+layer that implements it, including repeated-call, retained-identity, lazy
+access, and same-owner guarantees where applicable. Result-equivalence tests
+and external embedding examples verify behavior but do not replace those owner
+tests.
 
 ## Panic Rules
 

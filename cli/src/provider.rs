@@ -1,4 +1,5 @@
 mod approval;
+mod discovery;
 mod list;
 mod manifest;
 mod metadata;
@@ -9,14 +10,15 @@ mod resolution;
 use crate::command::{AddProvider, RemoveProvider};
 use crate::error::CliError;
 use crate::project::{ResolvedProject, read_resolved_project};
-pub(crate) use approval::TerminalApproval;
+pub(crate) use approval::{ProviderApproval, TerminalApproval};
 use camino::Utf8Path;
+pub(crate) use discovery::{ProviderDiscovery, RegistryProviderDiscovery};
 pub(super) use manifest::ManagedProject;
 use manifest::ProviderSelection;
+pub(super) use metadata::ProviderMetadata;
 pub(super) use reconcile::ProviderSelectionReconciler;
+pub(crate) use registry::{CratesIoRegistry, ProviderCandidate};
 use std::path::Path;
-
-const BUILT_IN_PROVIDER_PACKAGES: [&str; 3] = ["gleam_json", "gleam_stdlib", "gleam_time"];
 
 pub(super) struct SystemProviderReconciler<'io> {
     registry: registry::CratesIoRegistry,
@@ -63,7 +65,7 @@ pub(crate) fn reconcile_registry(
     program: &geam_core::TypedProgram,
     managed: &mut ManagedProject,
 ) -> Result<(), CliError> {
-    let discovery = reconcile::RegistryProviderDiscovery::new(registry);
+    let discovery = RegistryProviderDiscovery::new(registry);
     let resolver = reconcile::SystemApprovedProviderResolver;
     reconcile::ProviderReconciler::new(&resolver, &discovery, approval).reconcile(
         project_root,
@@ -151,7 +153,7 @@ fn remove_with(
 }
 
 pub(super) fn is_built_in_package(package: &str) -> bool {
-    BUILT_IN_PROVIDER_PACKAGES.contains(&package)
+    crate::builtin::BuiltInProvider::from_package(package).is_some()
 }
 
 #[cfg(test)]

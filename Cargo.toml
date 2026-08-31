@@ -13,6 +13,8 @@ categories = ["compilers", "development-tools"]
 include = [
     "/assets/geam-mascot.svg",
     "/docs/**",
+    "/examples/rust_embedding.rs",
+    "/examples/rust_embedding/**",
     "/src/**",
     "/LICENSE",
     "/README.md",
@@ -76,7 +78,7 @@ num-traits = "0.2"
 proc-macro-crate = "3"
 proc-macro2 = "1"
 quote = "1"
-rand = { version = "=0.10.0", default-features = false, features = ["std", "chacha", "sys_rng"] }
+rand = { version = "=0.10.2", default-features = false, features = ["std", "chacha", "sys_rng"] }
 ryu = "1"
 semver = "1"
 serde = { version = "1", features = ["derive"] }
@@ -86,24 +88,67 @@ tar = "0.4"
 tempfile = "3"
 thiserror = "2"
 toml = "0.9"
+toml_edit = "0.25"
 trybuild = "1"
 syn = { version = "2", features = ["full"] }
 unicode-segmentation = "1.13"
 ureq = { version = "3", features = ["json"] }
 vec1 = "1"
 
+[features]
+default = ["full"]
+full = ["cli", "embedding", "provider", "builtins"]
+cli = ["dep:geam-cli"]
+embedding = []
+provider = ["dep:geam-macros"]
+builtins = ["gleam-stdlib", "gleam-json", "gleam-time"]
+gleam-stdlib = ["dep:geam-stdlib"]
+gleam-json = ["dep:geam-json", "gleam-stdlib"]
+gleam-time = ["dep:geam-time", "gleam-stdlib"]
+
 [dependencies]
-geam-cli.workspace = true
+geam-cli = { workspace = true, optional = true }
 geam-core.workspace = true
-geam-json.workspace = true
-geam-macros.workspace = true
-geam-stdlib.workspace = true
-geam-time.workspace = true
+geam-json = { workspace = true, optional = true }
+geam-macros = { workspace = true, optional = true }
+geam-stdlib = { workspace = true, optional = true }
+geam-time = { workspace = true, optional = true }
+
+[[bin]]
+name = "geam"
+path = "src/bin/geam.rs"
+required-features = ["cli"]
+
+[[example]]
+name = "rust_embedding"
+path = "examples/rust_embedding.rs"
+required-features = ["embedding"]
+
+[[test]]
+name = "binary"
+path = "tests/binary.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "cross_crate_http"
+path = "tests/cross_crate_http.rs"
+required-features = ["gleam-stdlib"]
+
+[[test]]
+name = "provider_examples"
+path = "tests/provider_examples.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "standalone_distribution"
+path = "tests/standalone_distribution.rs"
+required-features = ["cli"]
 
 [dev-dependencies]
 camino.workspace = true
 ecow.workspace = true
 gleam-core.workspace = true
 miette = { workspace = true, features = ["fancy-no-backtrace"] }
+num-bigint.workspace = true
 tempfile.workspace = true
 toml.workspace = true

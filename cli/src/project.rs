@@ -1,3 +1,5 @@
+mod locked;
+
 use crate::error::CliError;
 use crate::process::run_checked;
 use camino::{Utf8Path, Utf8PathBuf};
@@ -10,6 +12,8 @@ use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::fs;
 use std::process::Command;
+
+pub(super) use locked::restore_locked_dependencies;
 
 const CONFIG_FILE: &str = "gleam.toml";
 const MANIFEST_FILE: &str = "manifest.toml";
@@ -65,6 +69,16 @@ pub(super) fn entry_module(
 
 pub(super) fn read_resolved_project(project_root: &Utf8Path) -> Result<ResolvedProject, CliError> {
     read_resolved_project_with(project_root, &ProcessDependencyDownloader::gleam())
+}
+
+pub(super) fn read_existing_resolved_project(
+    project_root: &Utf8Path,
+) -> Result<ResolvedProject, CliError> {
+    read_resolved_project_files(project_root)
+}
+
+pub(super) fn prepare_dependencies(project_root: &Utf8Path) -> Result<(), CliError> {
+    ProcessDependencyDownloader::gleam().download(project_root)
 }
 
 fn read_resolved_project_with(
@@ -179,7 +193,7 @@ impl DependencyDownloader for ProcessDependencyDownloader {
     }
 }
 
-fn read_package_config(project_root: &Utf8Path) -> Result<PackageConfig, CliError> {
+pub(super) fn read_package_config(project_root: &Utf8Path) -> Result<PackageConfig, CliError> {
     read_toml("Gleam package config", &project_root.join(CONFIG_FILE))
 }
 

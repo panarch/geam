@@ -73,6 +73,10 @@ impl HostedPlannedModule {
         &self.external_types
     }
 
+    pub(crate) fn custom_types(&self) -> &[CustomTypeDefinition] {
+        &self.custom_types
+    }
+
     pub(crate) fn into_parts(self) -> HostedPlannedModuleParts {
         HostedPlannedModuleParts {
             id: self.id,
@@ -89,6 +93,20 @@ impl HostedPlannedModule {
 }
 
 impl HostedFunctionTemplate {
+    pub(crate) fn name(&self) -> &EcoString {
+        match self {
+            Self::GleamBody(function) => function.name(),
+            Self::HostTemplate(function) => function.name(),
+        }
+    }
+
+    pub(crate) fn signature(&self) -> &crate::plan::FunctionTemplateSignature {
+        match self {
+            Self::GleamBody(function) => function.signature(),
+            Self::HostTemplate(function) => function.signature(),
+        }
+    }
+
     pub fn gleam_body(&self) -> Option<&FunctionTemplate> {
         match self {
             Self::GleamBody(function) => Some(function.as_ref()),

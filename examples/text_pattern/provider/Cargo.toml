@@ -18,7 +18,7 @@ gleam-version = ">= 0.1.0 and < 0.2.0"
 
 [dependencies]
 ecow = "=0.2.6"
-geam = "=0.2.1"
+geam = { version = "=0.2.1", default-features = false, features = ["provider"] }
 regex = "1.12"
 
 [workspace]

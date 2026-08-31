@@ -1,6 +1,7 @@
 #[cfg(not(target_pointer_width = "64"))]
 compile_error!("geam requires a 64-bit target");
 
+pub mod embedding;
 pub mod frontend;
 pub mod host;
 pub mod plan;

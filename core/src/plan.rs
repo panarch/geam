@@ -8,7 +8,10 @@ mod value_type;
 pub use host::{
     HostFunctionTemplate, HostedFunctionTemplate, HostedModulePlan, HostedPlannedModule,
 };
-pub(crate) use host::{HostImplementationBinding, HostedModulePlanParts, HostedPlannedModuleParts};
+pub(crate) use host::{
+    HostImplementationBinding, HostedLibraryModulePlan, HostedLibraryModulePlanParts,
+    HostedModulePlanParts, HostedPlannedModuleParts,
+};
 pub(crate) use module::ExternalValueShape;
 pub(crate) use module::{
     AssertBinding, AssertPattern, AssertSubject, BitArrayBindingPattern, BitArrayBitsSize,
@@ -46,8 +49,9 @@ pub(crate) use module::{
     GenericExpr, GenericExprKind, GenericFunctionExpr, GenericFunctionExprKind,
     GenericFunctionLocal, GenericFunctionReference, GenericFunctionReturn, GenericReturn,
     IntCaseBranches, IntExprKind, IntFunctionExprKind, IntFunctionReference, IntFunctionReturn,
-    IntReturn, ListAssertPattern, ListAssertTail, ListCaseBranches, ListElements, ListExpr,
-    ListFunctionExprKind, ListFunctionReference, ListFunctionReturn, ListItem, ListLocalExpr,
+    IntReturn, LibraryEntry, LibraryModulePlan, LibraryValueType, ListAssertPattern,
+    ListAssertTail, ListCaseBranches, ListElements, ListExpr, ListFunctionExprKind,
+    ListFunctionReference, ListFunctionReturn, ListItem, ListLocalExpr,
     ListSpreadConstructionError, ListSpreadElements, NilExprKind, NilFunctionExprKind,
     NilFunctionReference, NilFunctionReturn, NilReturn, PanicExpr, ParamLocal, ParamSlot,
     ParameterListListExpr, ParameterListListItem, PatternBinding, ReturnBody, Signedness,
@@ -110,5 +114,6 @@ pub(crate) use value_shape::{
 };
 pub(crate) use value_type::{
     CustomFunctionType, ExternalFunctionType, FunctionFunctionType, GenericFunctionType,
+    StandardVariant,
 };
 pub use value_type::{CustomType, CustomTypeName, FunctionType, TypeParameterId, ValueType};

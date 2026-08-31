@@ -5,10 +5,9 @@ mod discovery;
 mod index;
 mod search;
 
-pub(super) use crates_io::CratesIoRegistry;
-pub(super) use discovery::{
-    CandidateRejection, ProviderCandidate, RegistryDiscoveryError, discover,
-};
+pub(crate) use crates_io::CratesIoRegistry;
+pub(crate) use discovery::ProviderCandidate;
+pub(super) use discovery::{CandidateRejection, RegistryDiscoveryError, discover};
 
 pub(crate) trait ProviderRegistry {
     fn search(&self, query: &str) -> Result<Vec<u8>, RegistryAccessError>;

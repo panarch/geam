@@ -10,6 +10,9 @@ pub(super) enum CliError {
     #[error("no gleam.toml was found at or above {start}")]
     ProjectRootNotFound { start: Utf8PathBuf },
 
+    #[error("no Cargo.toml was found at or above {start}")]
+    CargoManifestNotFound { start: Utf8PathBuf },
+
     #[error("path is not valid UTF-8: {0:?}")]
     NonUtf8Path(std::path::PathBuf),
 
@@ -33,6 +36,15 @@ pub(super) enum CliError {
     #[error("failed to create a temporary provider candidate workspace")]
     TemporaryProviderWorkspace(#[source] io::Error),
 
+    #[error("failed to create a temporary Gleam dependency download workspace")]
+    TemporaryDependencyWorkspace(#[source] io::Error),
+
+    #[error("Gleam lock {path} is not ready: {reason}; run `geam embedding sync`")]
+    GleamLockOutOfDate { path: Utf8PathBuf, reason: String },
+
+    #[error("Gleam dependency download for {path} did not preserve the locked package set")]
+    GleamDownloadChangedLock { path: Utf8PathBuf },
+
     #[error("invalid {kind} at {path}: {reason}")]
     InvalidToml {
         kind: &'static str,
@@ -41,7 +53,7 @@ pub(super) enum CliError {
     },
 
     #[error(
-        "refusing to modify user-owned Cargo manifest {path}; use the manual embedding workflow tracked by #115"
+        "refusing to modify user-owned Cargo manifest {path}; for Rust embedding, use `geam embedding init` from the Cargo package directory"
     )]
     UserOwnedCargoManifest { path: Utf8PathBuf },
 
@@ -97,6 +109,12 @@ pub(super) enum CliError {
 
     #[error("failed to write provider list")]
     ProviderListIo(#[source] io::Error),
+
+    #[error("failed to write embedding progress")]
+    EmbeddingProgressIo(#[source] io::Error),
+
+    #[error("refusing to replace existing embedding file {path}: {reason}")]
+    EmbeddingFileConflict { path: Utf8PathBuf, reason: String },
 
     #[error("provider configuration {spec} is invalid: {reason}")]
     InvalidProviderConfiguration { spec: String, reason: String },
@@ -162,4 +180,42 @@ pub(super) enum CliError {
         manifest: Utf8PathBuf,
         reason: String,
     },
+
+    #[error("cannot select an embedding package from {manifest}: {reason}")]
+    EmbeddingPackageSelection {
+        manifest: Utf8PathBuf,
+        reason: String,
+    },
+
+    #[error("invalid Rust embedding project for package {package} at {manifest}: {reason}")]
+    InvalidEmbeddingProject {
+        package: String,
+        manifest: Utf8PathBuf,
+        reason: String,
+    },
+
+    #[error("invalid Geam dependency for embedding package {package} at {manifest}: {reason}")]
+    InvalidEmbeddingDependency {
+        package: String,
+        manifest: Utf8PathBuf,
+        reason: String,
+    },
+
+    #[error("invalid Rust embedding provider graph for package {package} at {manifest}: {reason}")]
+    InvalidEmbeddingProvider {
+        package: String,
+        manifest: Utf8PathBuf,
+        reason: String,
+    },
+
+    #[error(
+        "Rust embedding bindings at {output} are missing or stale for {manifest}; run `geam embedding sync` from the Cargo package directory"
+    )]
+    EmbeddingBindingsOutOfDate {
+        manifest: Utf8PathBuf,
+        output: Utf8PathBuf,
+    },
+
+    #[error("invalid Rust embedding boundary module {module}: {reason}")]
+    InvalidEmbeddingBoundary { module: String, reason: String },
 }
