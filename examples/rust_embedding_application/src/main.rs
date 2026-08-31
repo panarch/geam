@@ -1,7 +1,7 @@
 mod geam_bindings;
 
 use geam::HostProviderConfiguration;
-use geam::embedding::HostedModuleBuilder;
+use geam::embedding::{BigInt, EcoString, HostedModuleBuilder};
 use geam::gleam_stdlib::{GleamStdlibRunState, IoStream};
 use std::error::Error;
 
@@ -19,41 +19,58 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut echo = Vec::new();
 
     let first = module.call(
-        &functions.format_words,
-        ("MATCHES: ".into(),),
+        &functions.normalize,
+        (" ab-12 ".into(),),
         &mut state,
         &mut echo,
     )?;
     let second = module.call(
-        &functions.format_words,
-        ("AGAIN: ".into(),),
+        &functions.normalize,
+        (" c-7 ".into(),),
         &mut state,
         &mut echo,
     )?;
-    let words = module.call(
-        &functions.contains_only_words,
-        ("Geam and Gleam".into(),),
+    let valid = module.call(
+        &functions.validate,
+        (" ab-12 ".into(), 3.into()),
         &mut state,
         &mut echo,
     )?;
-    let numbers = module.call(
-        &functions.contains_only_words,
-        ("Geam 2026".into(),),
+    let invalid = module.call(
+        &functions.validate,
+        ("invalid".into(), 2.into()),
         &mut state,
         &mut echo,
     )?;
-    let selected = module.call(
-        &functions.choose_price,
-        (true, 12.5, 9.0),
-        &mut state,
-        &mut echo,
-    )?;
+    assert_eq!(first, "AB-12");
+    assert_eq!(second, "C-7");
+    assert_eq!(valid, Ok(("AB-12".into(), 3.into())));
+    assert_eq!(invalid, Err("invalid code".into()));
 
-    assert_eq!(first, "MATCHES: GEAM, GLEAM");
-    assert_eq!(second, "AGAIN: GEAM, GLEAM");
-    assert!(words);
-    assert!(!numbers);
-    assert_eq!(selected, 12.5);
+    let rows: Vec<(EcoString, BigInt)> = vec![
+        (first, 3.into()),
+        ("invalid".into(), 2.into()),
+        (second, 4.into()),
+        ("D-1".into(), (-1).into()),
+    ];
+    let checked = module.call(&functions.validate_batch, (rows,), &mut state, &mut echo)?;
+    assert_eq!(checked.len(), 4);
+    assert_eq!(checked.get(0), Some(Ok(("AB-12".into(), 3.into()))));
+    assert_eq!(checked.get(1), Some(Err("invalid code".into())));
+    assert_eq!(
+        checked.get(3),
+        Some(Err("quantity must not be negative".into()))
+    );
+
+    let total = module.call(
+        &functions.total_quantity,
+        (&checked,),
+        &mut state,
+        &mut echo,
+    )?;
+    let first_valid = module.call(&functions.first_valid, (&checked,), &mut state, &mut echo)?;
+    assert_eq!(total, BigInt::from(7));
+    assert_eq!(first_valid, Some(("AB-12".into(), 3.into())));
     assert!(echo.is_empty());
 
     assert_eq!(state.stdlib().io_outputs().len(), 2);
@@ -61,9 +78,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     assert_eq!(outputs.len(), 2);
     for output in outputs {
         assert_eq!(output.stream(), IoStream::Stdout);
-        assert_eq!(output.text(), "formatting words\n");
+        assert_eq!(output.text(), "normalizing code\n");
     }
 
-    println!("{first}");
+    println!("total quantity: {total}");
     Ok(())
 }

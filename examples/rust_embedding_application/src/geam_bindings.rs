@@ -11,6 +11,7 @@ use geam::HostProviderInitializationError;
 use geam::HostProviderSet;
 use geam::HostRegistrationError;
 
+use geam::embedding::BigInt;
 use geam::embedding::BindingError;
 use geam::embedding::EcoString;
 use geam::embedding::Function;
@@ -19,6 +20,7 @@ use geam::embedding::HostedModuleBindings;
 use geam::embedding::HostedModuleBuilder;
 use geam::embedding::HostedProject;
 use geam::embedding::InputShape;
+use geam::embedding::List;
 use std::marker::PhantomData;
 
 pub const ROOT_MODULE: &str = "rust_embedding";
@@ -166,9 +168,21 @@ where
 
 #[allow(clippy::type_complexity)]
 pub struct Functions {
-    pub format_words: Function<(EcoString,), EcoString, Function0Input>,
-    pub contains_only_words: Function<(EcoString,), bool, Function1Input>,
-    pub choose_price: Function<(bool, f64, f64), f64, Function2Input>,
+    pub normalize: Function<(EcoString,), EcoString, Function0Input>,
+    pub validate:
+        Function<(EcoString, BigInt), Result<(EcoString, BigInt), EcoString>, Function1Input>,
+    pub validate_batch: Function<
+        (List<(EcoString, BigInt)>,),
+        List<Result<(EcoString, BigInt), EcoString>>,
+        Function2Input,
+    >,
+    pub total_quantity:
+        Function<(List<Result<(EcoString, BigInt), EcoString>>,), BigInt, Function3Input>,
+    pub first_valid: Function<
+        (List<Result<(EcoString, BigInt), EcoString>>,),
+        Option<(EcoString, BigInt)>,
+        Function4Input,
+    >,
 }
 
 pub struct Function0Input;
@@ -177,11 +191,19 @@ impl InputShape<(EcoString,)> for Function0Input {}
 
 pub struct Function1Input;
 
-impl InputShape<(EcoString,)> for Function1Input {}
+impl InputShape<(EcoString, BigInt)> for Function1Input {}
 
 pub struct Function2Input;
 
-impl InputShape<(bool, f64, f64)> for Function2Input {}
+impl<Input0> InputShape<(Input0,)> for Function2Input {}
+
+pub struct Function3Input;
+
+impl<Input0> InputShape<(Input0,)> for Function3Input {}
+
+pub struct Function4Input;
+
+impl<Input0> InputShape<(Input0,)> for Function4Input {}
 
 pub fn bind<Io>(
     builder: HostedModuleBuilder<Profile<Io>>,
@@ -189,15 +211,19 @@ pub fn bind<Io>(
 where
     Io: geam::gleam_stdlib::IoSink + 'static,
 {
-    let (mut bindings, function_0) = builder.function(FunctionDeclaration::new("format_words"))?;
-    let function_1 = bindings.function(FunctionDeclaration::new("contains_only_words"))?;
-    let function_2 = bindings.function(FunctionDeclaration::new("choose_price"))?;
+    let (mut bindings, function_0) = builder.function(FunctionDeclaration::new("normalize"))?;
+    let function_1 = bindings.function(FunctionDeclaration::new("validate"))?;
+    let function_2 = bindings.function(FunctionDeclaration::new("validate_batch"))?;
+    let function_3 = bindings.function(FunctionDeclaration::new("total_quantity"))?;
+    let function_4 = bindings.function(FunctionDeclaration::new("first_valid"))?;
     Ok((
         bindings,
         Functions {
-            format_words: function_0.with_input_shape(),
-            contains_only_words: function_1.with_input_shape(),
-            choose_price: function_2.with_input_shape(),
+            normalize: function_0.with_input_shape(),
+            validate: function_1.with_input_shape(),
+            validate_batch: function_2.with_input_shape(),
+            total_quantity: function_3.with_input_shape(),
+            first_valid: function_4.with_input_shape(),
         },
     ))
 }

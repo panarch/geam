@@ -184,7 +184,7 @@ mutable state, Echo, and call order explicitly. The
 [canonical managed application](examples/rust_embedding_application) combines
 imported source, stdlib IO, and an external provider. See
 [Rust embedding](docs/embedding.md) for project layout, synchronization, and
-the supported scalar boundary and minimal Cargo feature profiles.
+the recursive data boundary and minimal Cargo feature profiles.
 
 ## Standalone Projects
 

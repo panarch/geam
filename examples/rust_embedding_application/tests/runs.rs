@@ -7,6 +7,6 @@ fn runs_the_managed_provider_backed_embedding() {
         .expect("the embedding application should run");
 
     assert!(output.status.success(), "{output:?}");
-    assert_eq!(output.stdout, b"MATCHES: GEAM, GLEAM\n");
+    assert_eq!(output.stdout, b"total quantity: 7\n");
     assert_eq!(output.stderr, b"");
 }

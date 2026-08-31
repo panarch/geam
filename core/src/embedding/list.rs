@@ -18,6 +18,13 @@ use std::sync::Arc;
 /// Reading remains valid after its Module and caller state have been dropped.
 /// Passing it back as an argument requires the same live Module. A consumed
 /// Rust Vec creates a new list; borrowing this value reuses its existing list.
+/// A foreign retained input returns [`super::CallError::ForeignValue`] before
+/// source execution or mutable host state access.
+///
+/// [`Self::len`] and [`Self::is_empty`] are O(1). Reading an item decodes only
+/// that item; [`Self::to_vec`] explicitly materializes one List layer. Nested
+/// List items still retain their own source handles and need explicit
+/// materialization before they can become fresh Vec inputs for another owner.
 ///
 /// Retained lists are not transferable between threads:
 ///

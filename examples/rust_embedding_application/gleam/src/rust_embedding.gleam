@@ -1,23 +1,41 @@
-import example_text_pattern as pattern
 import gleam/io
-import gleam/string
+import gleam/list
+import gleam/option.{type Option, None, Some}
 import inventory_rules
 
-pub fn format_words(prefix: String) -> String {
-  io.println("formatting words")
-  let assert Ok(words) = pattern.compile("[A-Za-z]+")
-  let matches =
-    pattern.find_all(words, "Geam + Gleam 2026")
-    |> string.join(", ")
-    |> string.uppercase
-  inventory_rules.render(prefix, matches)
+pub fn normalize(code: String) -> String {
+  io.println("normalizing code")
+  inventory_rules.normalize(code)
 }
 
-pub fn contains_only_words(text: String) -> Bool {
-  let assert Ok(words) = pattern.compile("^[A-Za-z ]+$")
-  pattern.is_match(words, text)
+pub fn validate(code: String, quantity: Int) -> Result(#(String, Int), String) {
+  case inventory_rules.validate(code, quantity) {
+    Ok(stock) -> Ok(inventory_rules.to_row(stock))
+    Error(message) -> Error(message)
+  }
 }
 
-pub fn choose_price(preferred: Bool, primary: Float, fallback: Float) -> Float {
-  inventory_rules.choose(preferred, primary, fallback)
+pub fn validate_batch(
+  rows: List(#(String, Int)),
+) -> List(Result(#(String, Int), String)) {
+  list.map(rows, fn(row) { validate(row.0, row.1) })
+}
+
+pub fn total_quantity(rows: List(Result(#(String, Int), String))) -> Int {
+  list.fold(rows, 0, fn(total, row) {
+    case row {
+      Ok(#(_, quantity)) -> total + quantity
+      Error(_) -> total
+    }
+  })
+}
+
+pub fn first_valid(
+  rows: List(Result(#(String, Int), String)),
+) -> Option(#(String, Int)) {
+  case rows {
+    [] -> None
+    [Ok(row), ..] -> Some(row)
+    [Error(_), ..rest] -> first_valid(rest)
+  }
 }

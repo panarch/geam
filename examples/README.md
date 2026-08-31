@@ -8,6 +8,13 @@ locked Rust application, commits the generated bindings, and composes stdlib IO
 with a real external provider while leaving capabilities, configuration, state,
 Echo, loading, sealing, and typed calls visible in Rust.
 
+The inventory workflow normalizes and validates codes, consumes a Rust `Vec`
+of rows, and returns a retained List of Tuple/Result values. Rust inspects
+selected items and passes the same List back to calculate a total and find
+the first valid row as an Option. A thin Gleam boundary keeps the domain's
+opaque `Stock` type inside Gleam. The application asserts the exact values,
+captured IO, and Echo before printing `total quantity: 7`.
+
 ```sh
 cd examples/rust_embedding_application/gleam
 gleam deps download

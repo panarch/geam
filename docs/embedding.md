@@ -8,7 +8,8 @@ state, Echo, and call order.
 The complete managed example is
 [`examples/rust_embedding_application`](../examples/rust_embedding_application).
 It combines imported Gleam source, `gleam/io`, and the text-pattern provider in
-one independently locked Rust application.
+one independently locked Rust application. Its inventory workflow passes rows
+from Rust into Gleam, retains validation results, and reuses them across calls.
 
 ## Project Layout
 
@@ -153,12 +154,143 @@ The lower-level `compile_typed_project` and `compile_typed_host_project`
 functions remain available when an application deliberately owns project
 selection or host registration instead of generated bindings.
 
-The first managed boundary supports public functions with zero through seven
-scalar arguments and a scalar return: Int, Float, String, BitArray,
-UtfCodepoint, Bool, or Nil. Public constants, generic signatures, compound
-values, callbacks, and other unsupported exports fail synchronization instead
-of being omitted. Imported modules may contain ordinary supported Gleam code;
-only public functions of the selected root module become Rust bindings.
+## Data Boundary
+
+Function arguments and returns support this recursive ordinary-data grammar:
+
+```text
+Data = Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data)
+```
+
+| Gleam | Rust |
+| --- | --- |
+| `Int` | `BigInt` |
+| `Float` | `f64` |
+| `String` | `EcoString` |
+| `BitArray` | `BitArrayValue` |
+| `UtfCodepoint` | `char` |
+| `Bool` | `bool` |
+| `Nil` | `()` |
+| `#(A, ...)` | `(A, ...)` |
+| prelude `Result(A, B)` | `Result<A, B>` |
+| stdlib `Option(A)` | `Option<A>` |
+| `List(A)` | consumed `Vec<A>` or borrowed `&List<A>` input; retained `List<A>` output |
+
+`BigInt`, `EcoString`, `BitArrayValue`, and the embedding `List` are available
+from `geam::embedding`. Tuple values have one through seven elements; `(T,)`
+is a one-element Tuple, whereas `()` is Nil. A function has zero through seven
+arguments, passed as a Rust tuple independently of any Tuple-valued argument.
+
+All compound types recurse, including `List(List(String))` and Lists inside
+Tuple, Result, or Option. Only the prelude Result and `gleam/option.Option`
+from `gleam_stdlib` map to Rust's standard variants. Aliases resolving to those
+types work; custom types with matching names or constructors do not.
+
+A Gleam `Error` is an ordinary Rust `Err` inside the function's return value.
+It is separate from the outer `Result` returned by `module.call`, whose
+`CallError` reports a foreign handle/value or an execution failure:
+
+```rust
+let validated = module.call(
+    &functions.validate,
+    (" ab-12 ".into(), 3.into()),
+    &mut state,
+    &mut echo,
+)?;
+assert_eq!(validated, Ok(("AB-12".into(), 3.into())));
+```
+
+### Retained Lists
+
+A consumed Vec constructs a new Gleam List. A borrowed List from the same
+loaded module reuses its retained handle without traversing or reconstructing
+items. The canonical application uses both modes:
+
+```rust
+use geam::embedding::{BigInt, EcoString};
+
+let rows: Vec<(EcoString, BigInt)> = vec![
+    ("AB-12".into(), 3.into()),
+    ("invalid".into(), 2.into()),
+];
+let checked = module.call(
+    &functions.validate_batch,
+    (rows,),
+    &mut state,
+    &mut echo,
+)?;
+assert_eq!(checked.len(), 2);
+assert_eq!(checked.get(1), Some(Err("invalid code".into())));
+
+let total = module.call(
+    &functions.total_quantity,
+    (&checked,),
+    &mut state,
+    &mut echo,
+)?;
+assert_eq!(total, BigInt::from(3));
+```
+
+The read-only List API makes materialization explicit:
+
+- `len` and `is_empty` are O(1) and decode no items.
+- `get` returns one owned Rust item, or `None` when the index is out of range.
+- `iter` yields owned items lazily as they are requested.
+- `to_vec` decodes every item into a new Vec.
+
+Retained Lists own the immutable storage needed for reading. They remain
+readable after the call, mutable state, Echo, and module have been dropped.
+They do not borrow or recreate mutable provider state, and do not implement
+`Send` or `Sync`.
+
+Passing a retained List back is restricted to its original live module. A
+different load is a different owner, even for identical source and signatures.
+`CallError::ForeignValue` is returned before source execution or host-state
+mutation. For a List of scalar or non-List compound items, an explicit
+`to_vec()` followed by a fresh Vec input transfers the data to another owner.
+
+Nested Lists can use fresh `Vec<Vec<T>>` input or retained
+`&List<List<T>>` input. A fresh outer Vec cannot contain retained children:
+`Vec<List<T>>` and `Vec<&List<T>>` are not accepted. `to_vec` materializes
+one List layer, so nested items still contain retained handles. Explicitly
+materialize each nested List for a fresh cross-owner input, for example:
+
+```rust
+let rows: Vec<Vec<EcoString>> = nested.iter().map(|row| row.to_vec()).collect();
+```
+
+### Input Inference
+
+Generated bindings fix non-List positions and allow an independent carrier for
+each List position. Callers pass Vecs or borrowed Lists directly; there is no
+public mode wrapper. Ordinary scalar calls keep their `.into()` syntax.
+
+An absent Option/Result branch may not give Rust enough information to choose
+a List carrier. Use an ordinary local type annotation. For a function taking
+`Option(List(#(String, Int)))`, for example:
+
+```rust
+let rows: Option<Vec<(EcoString, BigInt)>> = None;
+module.call(&functions.optional_batch, (rows,), &mut state, &mut echo)?;
+```
+
+### Gleam Boundary Modules
+
+Arbitrary records and custom enums, external values, callbacks, and generic
+signatures are not Rust binding types. Public constants are rejected.
+Unsupported function signatures fail synchronization with their function and
+nested type position instead of being omitted. A domain type can remain in an
+imported Gleam module; a thin root boundary projects it into the supported data
+grammar.
+
+In the canonical application, `inventory_rules` owns an opaque Stock type and
+uses the text-pattern provider. The selected `rust_embedding` module exposes
+only ordinary data: normalize, validate, batch validation, total quantity, and
+first valid row. Rust never needs to represent Stock or the provider's external
+Pattern type. Imported modules may use the ordinary supported Gleam profile;
+only public functions of the selected root become Rust bindings.
+
+## Manual Binding
 
 For provider-free direct control over declarations and binding,
 [`rust_embedding.rs`](../examples/rust_embedding.rs) remains the low-level

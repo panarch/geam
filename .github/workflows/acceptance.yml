@@ -131,7 +131,7 @@ jobs:
 
       - name: Run application
         run: |
-          printf 'MATCHES: GEAM, GLEAM\n' > "$RUNNER_TEMP/expected-embedding-output"
+          printf 'total quantity: 7\n' > "$RUNNER_TEMP/expected-embedding-output"
           cargo run --quiet --manifest-path examples/rust_embedding_application/Cargo.toml --locked > "$RUNNER_TEMP/actual-embedding-output"
           diff --unified "$RUNNER_TEMP/expected-embedding-output" "$RUNNER_TEMP/actual-embedding-output"
 

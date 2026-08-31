@@ -8,6 +8,13 @@
 //! borrow the caller's provider state explicitly. Both accept only the Rust
 //! argument and return shapes that were bound up front.
 //!
+//! Values include scalars and recursive Rust tuples, standard `Result` and
+//! `Option`, and [`List`]. Tuple values have arity one through seven; function
+//! argument tuples have arity zero through seven, and `()` remains Gleam Nil.
+//! Result and Option map only to the exact prelude and stdlib types.
+//! A consumed `Vec` constructs a List; a borrowed same-owner List reuses its
+//! retained storage. See [`List`] for lazy reads and ownership restrictions.
+//!
 //! [`Project`] and [`HostedProject`] retain one source selection until it is
 //! compiled into the corresponding existing typed program owner.
 
