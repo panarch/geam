@@ -4,6 +4,7 @@ mod project;
 use super::identifier::RustIdentifier;
 use crate::cargo::{CargoMetadataLoader, CargoMetadataMode, SystemCargoMetadata};
 use crate::error::CliError;
+use crate::provider::ProviderCandidate;
 use camino::Utf8Path;
 use cargo_metadata::{DependencyKind, Metadata, Package, PackageId};
 pub(super) use project::EmbeddingProject;
@@ -48,6 +49,14 @@ impl EmbeddingPackage {
 
     pub(super) fn resolve(project: EmbeddingProject) -> Result<Self, CliError> {
         Self::resolve_with(project, &SystemCargoMetadata, CargoMetadataMode::Resolve)
+    }
+
+    pub(super) fn add_providers(self, approved: &[ProviderCandidate]) -> Result<Self, CliError> {
+        if approved.is_empty() {
+            return Ok(self);
+        }
+        manifest::add_providers(&self.project, approved)?;
+        Self::resolve(self.project)
     }
 
     fn resolve_with(

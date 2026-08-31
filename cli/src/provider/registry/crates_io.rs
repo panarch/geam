@@ -7,7 +7,7 @@ const INDEX_BODY_LIMIT: usize = 16 * 1024 * 1024;
 const CONFIG_BODY_LIMIT: usize = 64 * 1024;
 const USER_AGENT: &str = concat!("geam/", env!("CARGO_PKG_VERSION"));
 
-pub(in crate::provider) struct CratesIoRegistry {
+pub(crate) struct CratesIoRegistry {
     agent: ureq::Agent,
 }
 

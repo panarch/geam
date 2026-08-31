@@ -74,6 +74,14 @@ provider required by the selected Gleam source closure must also be an enabled
 direct Cargo dependency with valid Geam provider metadata. The dependency's
 actual Cargo alias is retained in generated source.
 
+When a required provider is missing, `sync` discovers metadata-verified registry
+candidates and asks for explicit native-code approval. Only approved providers
+are added, at exact versions. Existing compatible declarations, including path
+or Git sources, are reused without another prompt. Incompatible declarations
+and alias collisions fail instead of being replaced. Noninteractive runs cannot
+approve new providers; prepare them interactively before committing the manifest
+and lockfile.
+
 `sync` adds missing embedding and built-in features without upgrading the
 existing Geam dependency. `check` instead rejects missing required features
 without modifying the manifest. Shared workspace declarations are not edited;
@@ -94,7 +102,9 @@ Gleam source and import closure, validates its public Rust boundary and host
 requirements, then writes
 `src/geam_bindings.rs`. It atomically replaces changed bytes and leaves an
 identical file untouched. It refuses to overwrite a handwritten file at that
-path. Required external providers must already be declared in Cargo.toml.
+path. Unused dependencies and externals with a Gleam fallback do not trigger
+native-provider discovery. Preparation does not execute provider code or Rust
+build scripts; the application's Cargo build remains a separate step.
 
 Use the read-only command in review and CI:
 

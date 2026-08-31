@@ -5,6 +5,7 @@ use crate::builtin::BuiltInProvider;
 use crate::error::CliError;
 use crate::project::ResolvedProject;
 use crate::provider::ProviderMetadata;
+use hexpm::version::Version as GleamVersion;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug)]
@@ -68,6 +69,28 @@ impl HostedBindings {
             components,
         })
     }
+}
+
+pub(super) fn missing_providers(
+    package: &EmbeddingPackage,
+    required_packages: &BTreeSet<String>,
+    resolved_project: &ResolvedProject,
+) -> Result<BTreeMap<String, GleamVersion>, CliError> {
+    let providers = ProviderCandidates::load(package)?;
+    let mut missing = BTreeMap::new();
+    for required in required_packages {
+        if BuiltInProvider::from_package(required).is_some() {
+            continue;
+        }
+        if providers
+            .select(package, required, resolved_project)?
+            .is_none()
+        {
+            let version = required_package_version(package, required, resolved_project)?;
+            missing.insert(required.clone(), version.clone());
+        }
+    }
+    Ok(missing)
 }
 
 impl HostedComponents {
@@ -229,7 +252,12 @@ fn components_for_package(
     }
 
     providers
-        .select(package, required_package, resolved_project)
+        .select(package, required_package, resolved_project)?
+        .ok_or_else(|| provider_error(
+            package,
+            required_package,
+            "no enabled direct provider dependency targets the required Gleam package; run `geam embedding sync` to prepare it",
+        ))
         .map(HostedComponents::from_external)
 }
 
@@ -297,7 +325,7 @@ impl<'metadata> ProviderCandidates<'metadata> {
         package: &EmbeddingPackage,
         required_package: &str,
         resolved_project: &ResolvedProject,
-    ) -> Result<ExternalComponent, CliError> {
+    ) -> Result<Option<ExternalComponent>, CliError> {
         let candidates = self
             .by_gleam_package
             .get(required_package)
@@ -305,13 +333,7 @@ impl<'metadata> ProviderCandidates<'metadata> {
             .unwrap_or_default();
         let candidate = match candidates {
             [candidate] => candidate,
-            [] => {
-                return Err(provider_error(
-                    package,
-                    required_package,
-                    "no enabled direct provider dependency targets the required Gleam package",
-                ));
-            }
+            [] => return Ok(None),
             candidates => {
                 return Err(provider_error(
                     package,
@@ -327,15 +349,7 @@ impl<'metadata> ProviderCandidates<'metadata> {
                 ));
             }
         };
-        let version = resolved_project
-            .package_version(required_package)
-            .ok_or_else(|| {
-                provider_error(
-                    package,
-                    required_package,
-                    "the resolved Gleam project does not contain the required package",
-                )
-            })?;
+        let version = required_package_version(package, required_package, resolved_project)?;
         if !candidate.metadata.supports(version) {
             return Err(provider_error(
                 package,
@@ -360,13 +374,29 @@ impl<'metadata> ProviderCandidates<'metadata> {
                 format!("Cargo alias `{alias}` is unusable in generated Rust: {reason}"),
             )
         })?;
-        Ok(ExternalComponent {
+        Ok(Some(ExternalComponent {
             package: required_package.to_owned(),
             input_field,
             state_field,
             crate_alias,
-        })
+        }))
     }
+}
+
+fn required_package_version<'project>(
+    package: &EmbeddingPackage,
+    required_package: &str,
+    resolved_project: &'project ResolvedProject,
+) -> Result<&'project GleamVersion, CliError> {
+    resolved_project
+        .package_version(required_package)
+        .ok_or_else(|| {
+            provider_error(
+                package,
+                required_package,
+                "the resolved Gleam project does not contain the required package",
+            )
+        })
 }
 
 fn verify_provider_geam_identity(
@@ -432,6 +462,7 @@ fn provider_error(
 mod tests {
     use super::{
         ComponentBinding, ExternalComponent, HostedBindings, HostedCapabilities, HostedComponents,
+        missing_providers,
     };
     use crate::builtin::BuiltInProvider;
     use crate::embedding::boundary::{DataType, FunctionBinding, PlainBindings};
@@ -440,7 +471,8 @@ mod tests {
     use crate::error::CliError;
     use crate::project::read_existing_resolved_project;
     use camino::{Utf8Path, Utf8PathBuf};
-    use std::collections::BTreeSet;
+    use hexpm::version::Version as GleamVersion;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
     use std::process::{Command, Output};
     use tempfile::{TempDir, tempdir};
@@ -612,6 +644,73 @@ mod tests {
                 if package == "missing_package"
                     && reason.contains("no enabled direct provider dependency")
         ));
+    }
+
+    #[test]
+    fn distinguishes_missing_requirements_from_incompatible_existing_selections() {
+        let required = BTreeSet::from(["gleam_stdlib".to_owned(), "images".to_owned()]);
+        let missing = ProviderGraphFixture::new(vec![], Some("1.2.0"));
+        let package = EmbeddingPackage::load(&missing.application).expect("application graph");
+        let project =
+            read_existing_resolved_project(package.project_root()).expect("Gleam versions");
+        assert_eq!(
+            missing_providers(&package, &required, &project).expect("missing provider"),
+            BTreeMap::from([("images".to_owned(), GleamVersion::new(1, 2, 0))])
+        );
+
+        let absent = ProviderGraphFixture::new(vec![], None);
+        let package = EmbeddingPackage::load(&absent.application).expect("application graph");
+        let project =
+            read_existing_resolved_project(package.project_root()).expect("Gleam versions");
+        assert_eq!(
+            missing_providers(&package, &required, &project)
+                .expect_err("required source version is missing")
+                .to_string(),
+            format!(
+                "invalid Rust embedding provider graph for package images at {}: the resolved Gleam project does not contain the required package",
+                package.manifest()
+            )
+        );
+
+        let existing = ProviderGraphFixture::new(
+            vec![ProviderSpec::valid(
+                "custom_alias",
+                "images-provider",
+                "images",
+                "< 1.0.0",
+            )],
+            Some("1.2.0"),
+        );
+        let package = EmbeddingPackage::load(&existing.application).expect("application graph");
+        let project =
+            read_existing_resolved_project(package.project_root()).expect("Gleam versions");
+        assert_eq!(
+            missing_providers(&package, &required, &project)
+                .expect_err("incompatible declaration must not become a new selection")
+                .to_string(),
+            format!(
+                "invalid Rust embedding provider graph for package images at {}: provider crate images-provider does not support resolved Gleam version 1.2.0 (declared range < 1.0.0)",
+                package.manifest()
+            )
+        );
+
+        let malformed = ProviderGraphFixture::new(
+            vec![ProviderSpec::malformed(
+                "broken",
+                "images-provider",
+                "images",
+            )],
+            Some("1.2.0"),
+        );
+        let package = EmbeddingPackage::load(&malformed.application).expect("application graph");
+        let project =
+            read_existing_resolved_project(package.project_root()).expect("Gleam versions");
+        assert!(
+            missing_providers(&package, &required, &project)
+                .expect_err("malformed metadata cannot trigger replacement")
+                .to_string()
+                .contains("provider metadata")
+        );
     }
 
     #[test]
