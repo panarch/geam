@@ -41,6 +41,9 @@ jobs:
         with:
           cache-targets: false
 
+      - name: Fetch workspace dependencies for offline fixtures
+        run: cargo fetch --locked
+
       - name: Test root acceptance boundaries
         run: |
           cargo test --package geam --test binary --locked
@@ -328,6 +331,9 @@ jobs:
           workspaces: |
             . -> target
             examples/${{ matrix.example }}/provider -> ../../../target
+
+      - name: Fetch workspace dependencies for offline fixtures
+        run: cargo fetch --locked
 
       - name: Run documented provider example
         run: cargo test --package geam --test provider_examples --locked -- --exact "${{ matrix.test }}"
