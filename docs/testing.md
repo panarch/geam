@@ -330,8 +330,19 @@ With the Rust toolchain, Gleam `v1.18.1`, and Erlang/OTP `29` installed, run the
 full test suite:
 
 ```sh
+cargo fetch --locked
 cargo test --workspace --locked
 ```
+
+Run `cargo fetch --locked` before the CLI tests, root acceptance targets, or
+CLI coverage closure when starting with an empty Cargo cache or after changing
+the workspace lockfile. These tests run nested Cargo commands in offline
+fixtures. The workspace fetch supplies the complete locked dependency graph,
+including target-specific crates that a native build need not download.
+Provider fixtures separately fetch their own locked dependencies; their minimal
+provider profile does not include every built-in used by a generated runner.
+The relevant Acceptance and Coverage jobs explicitly fetch workspace
+dependencies before testing, whether or not a cache was restored.
 
 The workspace's explicit default members are the same seven packages, so
 `cargo test --locked` remains equivalent for local use. CI spells out

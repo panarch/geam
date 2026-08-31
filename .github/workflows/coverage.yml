@@ -126,6 +126,9 @@ jobs:
         with:
           workspaces: ". -> target"
 
+      - name: Fetch workspace dependencies for offline fixtures
+        run: cargo fetch --locked
+
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@v2
         with:
