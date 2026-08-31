@@ -11,9 +11,10 @@ pub(super) fn push_function_field(output: &mut String, index: usize, function: &
     );
     let prefix = format!("    pub {}:", function.rust_name.as_str());
     let inline = type_.inline();
-    if prefix.len() + 1 + inline.len() <= 100 {
+    let can_inline = type_.can_inline();
+    if can_inline && prefix.len() + 1 + inline.len() < 100 {
         output.push_str(&format!("{prefix} {inline},\n"));
-    } else if 8 + inline.len() < 100 {
+    } else if can_inline && 8 + inline.len() < 100 {
         output.push_str(&format!("{prefix}\n        {inline},\n"));
     } else if prefix.len() + " Function<".len() <= 100 {
         output.push_str(&format!("{prefix} "));
@@ -47,7 +48,7 @@ pub(super) fn push_input_shapes(output: &mut String, bindings: &PlainBindings) {
             "impl{generics} {} for Function{index}Input {{}}\n",
             relation.inline()
         );
-        if line.trim_end().len() <= 100 {
+        if relation.can_inline() && line.trim_end().len() <= 100 {
             output.push_str(&line);
         } else {
             if 4 + generics.len() <= 100 {
@@ -158,7 +159,7 @@ impl TypeExpression {
             Self::Apply(name, arguments) => (format!("{name}<"), arguments, ">"),
         };
         let inline = self.inline();
-        if column + inline.len() <= width {
+        if self.can_inline() && column + inline.len() <= width {
             output.push_str(&inline);
             return column + inline.len();
         }
@@ -174,12 +175,23 @@ impl TypeExpression {
         output.push('\n');
         for element in elements {
             output.push_str(&" ".repeat(indent + 4));
-            element.push(output, indent + 4, indent + 4, 100);
+            element.push(output, indent + 4, indent + 4, 99);
             output.push_str(",\n");
         }
         output.push_str(&" ".repeat(indent));
         output.push_str(closing);
         indent + closing.len()
+    }
+
+    fn can_inline(&self) -> bool {
+        match self {
+            Self::Name(_) => true,
+            Self::Tuple(_) => {
+                // Rustfmt limits tuple contents to its default 60-column call width.
+                self.inline().len() <= 62
+            }
+            Self::Apply(_, arguments) => arguments.iter().all(Self::can_inline),
+        }
     }
 }
 
@@ -289,6 +301,144 @@ mod tests {
 "#
         );
         assert_rustfmt_stable(&format!("pub struct Functions {{\n{field}}}\n"));
+    }
+
+    #[test]
+    fn reserves_the_trailing_comma_at_the_field_width_boundary() {
+        let name = "normalize_inventory_code_before_exporting";
+        let function = FunctionBinding {
+            gleam_name: name.to_owned(),
+            rust_name: RustIdentifier::parse(name).expect("fixture function"),
+            arguments: vec![DataType::String],
+            return_type: DataType::String,
+        };
+        let mut source = "pub struct Functions {\n".to_owned();
+        push_function_field(&mut source, 0, &function);
+        source.push_str("}\n");
+        assert_eq!(
+            source,
+            "pub struct Functions {\n    pub normalize_inventory_code_before_exporting:\n        Function<(EcoString,), EcoString, Function0Input>,\n}\n"
+        );
+        assert_rustfmt_stable(&source);
+    }
+
+    #[test]
+    fn reserves_the_trailing_comma_inside_a_recursive_field() {
+        let function = FunctionBinding {
+            gleam_name: "parse_frames".to_owned(),
+            rust_name: RustIdentifier::parse("parse_frames").expect("fixture function"),
+            arguments: Vec::new(),
+            return_type: DataType::Result(
+                Box::new(DataType::Tuple(vec![
+                    DataType::BitArray,
+                    DataType::BitArray,
+                    DataType::BitArray,
+                    DataType::BitArray,
+                    DataType::String,
+                ])),
+                Box::new(DataType::Option(Box::new(DataType::Float))),
+            ),
+        };
+        let mut source = "pub struct Functions {\n".to_owned();
+        push_function_field(&mut source, 0, &function);
+        source.push_str("}\n");
+        assert_eq!(
+            source,
+            r#"pub struct Functions {
+    pub parse_frames: Function<
+        (),
+        Result<
+            (
+                BitArrayValue,
+                BitArrayValue,
+                BitArrayValue,
+                BitArrayValue,
+                EcoString,
+            ),
+            Option<f64>,
+        >,
+        Function0Input,
+    >,
+}
+"#
+        );
+        assert_rustfmt_stable(&source);
+    }
+
+    #[test]
+    fn follows_the_tuple_content_width_through_nested_types() {
+        let short = FunctionBinding {
+            gleam_name: "short".to_owned(),
+            rust_name: RustIdentifier::parse("short").expect("fixture function"),
+            arguments: Vec::new(),
+            return_type: DataType::Tuple(vec![
+                DataType::BitArray,
+                DataType::BitArray,
+                DataType::BitArray,
+                DataType::Bool,
+                DataType::Bool,
+                DataType::Float,
+            ]),
+        };
+        let long = FunctionBinding {
+            gleam_name: "long".to_owned(),
+            rust_name: RustIdentifier::parse("long").expect("fixture function"),
+            arguments: Vec::new(),
+            return_type: DataType::Tuple(vec![
+                DataType::BitArray,
+                DataType::BitArray,
+                DataType::BitArray,
+                DataType::Bool,
+                DataType::Bool,
+                DataType::UtfCodepoint,
+            ]),
+        };
+        let optional = FunctionBinding {
+            gleam_name: "optional".to_owned(),
+            rust_name: RustIdentifier::parse("optional").expect("fixture function"),
+            arguments: Vec::new(),
+            return_type: DataType::Option(Box::new(DataType::Tuple(vec![DataType::BitArray; 5]))),
+        };
+        let mut source = "pub struct Functions {\n".to_owned();
+        push_function_field(&mut source, 0, &short);
+        push_function_field(&mut source, 1, &long);
+        push_function_field(&mut source, 2, &optional);
+        source.push_str("}\n");
+        assert_eq!(
+            source,
+            r#"pub struct Functions {
+    pub short: Function<
+        (),
+        (BitArrayValue, BitArrayValue, BitArrayValue, bool, bool, f64),
+        Function0Input,
+    >,
+    pub long: Function<
+        (),
+        (
+            BitArrayValue,
+            BitArrayValue,
+            BitArrayValue,
+            bool,
+            bool,
+            char,
+        ),
+        Function1Input,
+    >,
+    pub optional: Function<
+        (),
+        Option<(
+            BitArrayValue,
+            BitArrayValue,
+            BitArrayValue,
+            BitArrayValue,
+            BitArrayValue,
+        )>,
+        Function2Input,
+    >,
+}
+"#
+        );
+        assert_rustfmt_stable(&source);
     }
 
     #[test]
