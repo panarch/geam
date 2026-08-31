@@ -1,3 +1,4 @@
+use super::list::EmbeddingList;
 use crate::runtime::EvaluatedCustomValue;
 use crate::runtime::evaluated::{EvaluatedExternalValue, EvaluatedFunctionValue, EvaluatedValue};
 use crate::runtime::state::list::{ParameterListValueId, StoredListValueId};
@@ -14,11 +15,17 @@ pub(crate) struct EmbeddingOutput {
     _externals: Vec<EvaluatedExternalValue>,
     bools: Vec<bool>,
     _parameter_lists: Vec<ParameterListValueId>,
-    _lists: Vec<StoredListValueId>,
+    lists: Vec<StoredListValueId>,
     _functions: Vec<EvaluatedFunctionValue>,
 }
 
 impl EmbeddingOutput {
+    pub(super) fn from_value(value: EvaluatedValue) -> Self {
+        let mut output = Self::empty();
+        output.push_reversed(value);
+        output
+    }
+
     pub(super) fn from_tuple(values: Vec<EvaluatedValue>) -> Self {
         let mut output = Self::empty();
         for value in values.into_iter().rev() {
@@ -63,6 +70,10 @@ impl EmbeddingOutput {
 
     pub(crate) fn take_nil(&mut self) {}
 
+    pub(crate) fn take_list(&mut self) -> EmbeddingList {
+        EmbeddingList::new(take_last(&mut self.lists))
+    }
+
     fn empty() -> Self {
         Self {
             ints: Vec::new(),
@@ -74,7 +85,7 @@ impl EmbeddingOutput {
             _externals: Vec::new(),
             bools: Vec::new(),
             _parameter_lists: Vec::new(),
-            _lists: Vec::new(),
+            lists: Vec::new(),
             _functions: Vec::new(),
         }
     }
@@ -102,7 +113,7 @@ impl EmbeddingOutput {
                 }
             }
             EvaluatedValue::ParameterList(value) => self._parameter_lists.push(value),
-            EvaluatedValue::List(value) => self._lists.push(value),
+            EvaluatedValue::List(value) => self.lists.push(value),
             EvaluatedValue::Function(value) => self._functions.push(value),
         }
     }
@@ -182,7 +193,7 @@ pub fn main() {
 
         assert_eq!(output._externals.len(), 1);
         assert_eq!(output._parameter_lists.len(), 1);
-        assert_eq!(output._lists.len(), 1);
+        assert_eq!(output.lists.len(), 1);
         assert_eq!(output._functions.len(), 1);
     }
 }

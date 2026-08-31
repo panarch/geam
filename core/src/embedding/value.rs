@@ -1,21 +1,38 @@
 use super::Module;
-use crate::plan::execution::{LibraryFunctionEntries, LibraryInputConstructions};
-use crate::plan::{LibraryReturn, StandardVariant, ValueType};
-use crate::runtime::{EmbeddingInput, EmbeddingOutput, RetainedValues};
+use super::input::{ListFamily, add_list_counts};
+use crate::plan::execution::{
+    LibraryFunctionEntries, LibraryInputConstructions, LibraryListConstructions,
+};
+use crate::plan::{LibraryValueType, StandardVariant, ValueType};
+use crate::runtime::{
+    EmbeddingCustomInput, EmbeddingInputValue, EmbeddingOutput, EmbeddingTupleInput, RetainedValues,
+};
 use crate::{EchoSink, ExecutionError, HostProfile, HostedExecution};
+use std::sync::Arc;
 
 pub(super) trait EmbeddingValue: Sized {
-    const VARIANT_COUNT: usize;
+    type Runtime: EmbeddingInputValue;
 
-    fn value_type() -> ValueType;
+    const VARIANT_COUNT: usize;
+    const LIST_COUNTS: [usize; 10];
+    const LIST_FAMILY: ListFamily;
+
+    fn library_type() -> LibraryValueType;
+
+    fn value_type() -> ValueType {
+        Self::library_type().value_type()
+    }
 
     fn collect_variants(variants: &mut Vec<StandardVariant>);
 
-    fn push(self, inputs: &mut RetainedValues, constructions: &mut InputConstructions<'_>);
+    fn collect_lists(lists: &mut Vec<LibraryValueType>);
 
-    fn into_nested(self, constructions: &mut InputConstructions<'_>) -> EmbeddingInput;
+    fn list_id(
+        lists: &LibraryListConstructions,
+        index: usize,
+    ) -> <Self::Runtime as EmbeddingInputValue>::ListType;
 
-    fn take(output: &mut EmbeddingOutput) -> Self;
+    fn take(output: &mut EmbeddingOutput, owner: &Arc<()>) -> Self;
 }
 
 pub(super) trait Arguments {
@@ -23,12 +40,10 @@ pub(super) trait Arguments {
 
     fn input_variants() -> Vec<StandardVariant>;
 
-    fn into_inputs(self, constructions: &LibraryInputConstructions) -> RetainedValues;
+    fn input_lists() -> Vec<LibraryValueType>;
 }
 
 pub(super) trait ReturnValue: EmbeddingValue {
-    fn return_() -> LibraryReturn;
-
     fn standard_variants() -> Vec<StandardVariant> {
         let mut variants = Vec::with_capacity(Self::VARIANT_COUNT);
         Self::collect_variants(&mut variants);
@@ -54,150 +69,108 @@ pub(super) trait ReturnValue: EmbeddingValue {
         inputs: RetainedValues,
         state: &mut Profile::RunState,
         echo: &mut dyn EchoSink,
+        owner: &Arc<()>,
     ) -> Result<Self, ExecutionError>;
 }
 
-pub(super) struct InputConstructions<'a> {
-    variants: &'a [[crate::plan::execution::type_::CustomConstructorId; 2]],
-    next: usize,
-}
-
-impl InputConstructions<'_> {
-    fn new(constructions: &LibraryInputConstructions) -> InputConstructions<'_> {
-        InputConstructions {
-            variants: constructions.variants(),
-            next: 0,
-        }
-    }
-
-    fn take_variant(&mut self) -> [crate::plan::execution::type_::CustomConstructorId; 2] {
-        let variant = self.variants[self.next];
-        self.next += 1;
-        variant
-    }
-
-    fn skip(&mut self, count: usize) {
-        self.next += count;
-    }
-}
-
 macro_rules! scalar_value {
-    ($type:ty, $value_type:ident, $input:ident, $take:ident) => {
+    ($type:ty, $value_type:ident, $lists:ident, $take:ident) => {
         impl EmbeddingValue for $type {
-            const VARIANT_COUNT: usize = 0;
+            type Runtime = Self;
 
-            fn value_type() -> ValueType {
-                ValueType::$value_type
+            const VARIANT_COUNT: usize = 0;
+            const LIST_COUNTS: [usize; 10] = [0; 10];
+            const LIST_FAMILY: ListFamily = ListFamily::$value_type;
+
+            fn library_type() -> LibraryValueType {
+                LibraryValueType::$value_type
             }
 
             fn collect_variants(_variants: &mut Vec<StandardVariant>) {}
 
-            fn push(
-                self,
-                inputs: &mut RetainedValues,
-                _constructions: &mut InputConstructions<'_>,
-            ) {
-                EmbeddingInput::$input(self).retain(inputs);
+            fn collect_lists(_lists: &mut Vec<LibraryValueType>) {}
+
+            fn list_id(
+                lists: &LibraryListConstructions,
+                index: usize,
+            ) -> <Self::Runtime as EmbeddingInputValue>::ListType {
+                lists.$lists[index]
             }
 
-            fn into_nested(self, _constructions: &mut InputConstructions<'_>) -> EmbeddingInput {
-                EmbeddingInput::$input(self)
-            }
-
-            fn take(output: &mut EmbeddingOutput) -> Self {
+            fn take(output: &mut EmbeddingOutput, _owner: &Arc<()>) -> Self {
                 output.$take()
             }
         }
     };
 }
 
-scalar_value!(super::BigInt, Int, int, take_int);
-scalar_value!(f64, Float, float, take_float);
-scalar_value!(super::EcoString, String, string, take_string);
-scalar_value!(super::BitArrayValue, BitArray, bit_array, take_bit_array);
-scalar_value!(char, UtfCodepoint, utf_codepoint, take_utf_codepoint);
-scalar_value!(bool, Bool, bool, take_bool);
-
-impl EmbeddingValue for () {
-    const VARIANT_COUNT: usize = 0;
-
-    fn value_type() -> ValueType {
-        ValueType::Nil
-    }
-
-    fn collect_variants(_variants: &mut Vec<StandardVariant>) {}
-
-    fn push(self, inputs: &mut RetainedValues, _constructions: &mut InputConstructions<'_>) {
-        EmbeddingInput::nil().retain(inputs);
-    }
-
-    fn into_nested(self, _constructions: &mut InputConstructions<'_>) -> EmbeddingInput {
-        EmbeddingInput::nil()
-    }
-
-    fn take(output: &mut EmbeddingOutput) -> Self {
-        output.take_nil();
-    }
-}
+scalar_value!(super::BigInt, Int, ints, take_int);
+scalar_value!(f64, Float, floats, take_float);
+scalar_value!(super::EcoString, String, strings, take_string);
+scalar_value!(super::BitArrayValue, BitArray, bit_arrays, take_bit_array);
+scalar_value!(char, UtfCodepoint, utf_codepoints, take_utf_codepoint);
+scalar_value!(bool, Bool, bools, take_bool);
+scalar_value!((), Nil, nils, take_nil);
 
 macro_rules! tuple_value {
-    ($($type:ident => $value:ident),+) => {
+    ($($type:ident),+) => {
         impl<$($type),+> EmbeddingValue for ($($type,)+)
         where
             $($type: EmbeddingValue,)+
         {
-            const VARIANT_COUNT: usize = 0 $(+ $type::VARIANT_COUNT)+;
+            type Runtime = EmbeddingTupleInput;
 
-            fn value_type() -> ValueType {
-                ValueType::Tuple(vec![$($type::value_type()),+])
+            const VARIANT_COUNT: usize = 0 $(+ $type::VARIANT_COUNT)+;
+            const LIST_COUNTS: [usize; 10] = {
+                let counts = [0; 10];
+                $(let counts = add_list_counts(counts, $type::LIST_COUNTS);)+
+                counts
+            };
+            const LIST_FAMILY: ListFamily = ListFamily::Tuple;
+
+            fn library_type() -> LibraryValueType {
+                LibraryValueType::Tuple(vec![$($type::value_type()),+])
             }
 
             fn collect_variants(variants: &mut Vec<StandardVariant>) {
                 $($type::collect_variants(variants);)+
             }
 
-            fn push(
-                self,
-                inputs: &mut RetainedValues,
-                constructions: &mut InputConstructions<'_>,
-            ) {
-                let ($($value,)+) = self;
-                EmbeddingInput::tuple([$($value.into_nested(constructions)),+])
-                    .retain(inputs);
+            fn collect_lists(lists: &mut Vec<LibraryValueType>) {
+                $($type::collect_lists(lists);)+
             }
 
-            fn into_nested(
-                self,
-                constructions: &mut InputConstructions<'_>,
-            ) -> EmbeddingInput {
-                let ($($value,)+) = self;
-                EmbeddingInput::tuple([$($value.into_nested(constructions)),+])
+            fn list_id(
+                lists: &LibraryListConstructions,
+                index: usize,
+            ) -> <Self::Runtime as EmbeddingInputValue>::ListType {
+                lists.tuples[index]
             }
 
-            fn take(output: &mut EmbeddingOutput) -> Self {
-                ($($type::take(output),)+)
+            fn take(output: &mut EmbeddingOutput, owner: &Arc<()>) -> Self {
+                ($($type::take(output, owner),)+)
             }
         }
     };
 }
 
-tuple_value!(A => a);
-tuple_value!(A => a, B => b);
-tuple_value!(A => a, B => b, C => c);
-tuple_value!(A => a, B => b, C => c, D => d);
-tuple_value!(A => a, B => b, C => c, D => d, E => e);
-tuple_value!(A => a, B => b, C => c, D => d, E => e, F => f);
-tuple_value!(A => a, B => b, C => c, D => d, E => e, F => f, G => g);
+tuple_value!(A);
+tuple_value!(A, B);
+tuple_value!(A, B, C);
+tuple_value!(A, B, C, D);
+tuple_value!(A, B, C, D, E);
+tuple_value!(A, B, C, D, E, F);
+tuple_value!(A, B, C, D, E, F, G);
 
-impl<Success, Failure> EmbeddingValue for Result<Success, Failure>
-where
-    Success: EmbeddingValue,
-    Failure: EmbeddingValue,
-{
+impl<Success: EmbeddingValue, Failure: EmbeddingValue> EmbeddingValue for Result<Success, Failure> {
+    type Runtime = EmbeddingCustomInput;
+
     const VARIANT_COUNT: usize = 1 + Success::VARIANT_COUNT + Failure::VARIANT_COUNT;
+    const LIST_COUNTS: [usize; 10] = add_list_counts(Success::LIST_COUNTS, Failure::LIST_COUNTS);
+    const LIST_FAMILY: ListFamily = ListFamily::Custom;
 
-    fn value_type() -> ValueType {
-        ValueType::Custom(
+    fn library_type() -> LibraryValueType {
+        LibraryValueType::Custom(
             StandardVariant::Result.custom_type(vec![Success::value_type(), Failure::value_type()]),
         )
     }
@@ -208,31 +181,36 @@ where
         Failure::collect_variants(variants);
     }
 
-    fn push(self, inputs: &mut RetainedValues, constructions: &mut InputConstructions<'_>) {
-        result_value(self, constructions).retain(inputs);
+    fn collect_lists(lists: &mut Vec<LibraryValueType>) {
+        Success::collect_lists(lists);
+        Failure::collect_lists(lists);
     }
 
-    fn into_nested(self, constructions: &mut InputConstructions<'_>) -> EmbeddingInput {
-        result_value(self, constructions)
+    fn list_id(
+        lists: &LibraryListConstructions,
+        index: usize,
+    ) -> <Self::Runtime as EmbeddingInputValue>::ListType {
+        lists.customs[index]
     }
 
-    fn take(output: &mut EmbeddingOutput) -> Self {
+    fn take(output: &mut EmbeddingOutput, owner: &Arc<()>) -> Self {
         if output.take_variant() == 0 {
-            Ok(Success::take(output))
+            Ok(Success::take(output, owner))
         } else {
-            Err(Failure::take(output))
+            Err(Failure::take(output, owner))
         }
     }
 }
 
-impl<Value> EmbeddingValue for Option<Value>
-where
-    Value: EmbeddingValue,
-{
-    const VARIANT_COUNT: usize = 1 + Value::VARIANT_COUNT;
+impl<Value: EmbeddingValue> EmbeddingValue for Option<Value> {
+    type Runtime = EmbeddingCustomInput;
 
-    fn value_type() -> ValueType {
-        ValueType::Custom(StandardVariant::Option.custom_type(vec![Value::value_type()]))
+    const VARIANT_COUNT: usize = 1 + Value::VARIANT_COUNT;
+    const LIST_COUNTS: [usize; 10] = Value::LIST_COUNTS;
+    const LIST_FAMILY: ListFamily = ListFamily::Custom;
+
+    fn library_type() -> LibraryValueType {
+        LibraryValueType::Custom(StandardVariant::Option.custom_type(vec![Value::value_type()]))
     }
 
     fn collect_variants(variants: &mut Vec<StandardVariant>) {
@@ -240,59 +218,22 @@ where
         Value::collect_variants(variants);
     }
 
-    fn push(self, inputs: &mut RetainedValues, constructions: &mut InputConstructions<'_>) {
-        option_value(self, constructions).retain(inputs);
+    fn collect_lists(lists: &mut Vec<LibraryValueType>) {
+        Value::collect_lists(lists);
     }
 
-    fn into_nested(self, constructions: &mut InputConstructions<'_>) -> EmbeddingInput {
-        option_value(self, constructions)
+    fn list_id(
+        lists: &LibraryListConstructions,
+        index: usize,
+    ) -> <Self::Runtime as EmbeddingInputValue>::ListType {
+        lists.customs[index]
     }
 
-    fn take(output: &mut EmbeddingOutput) -> Self {
+    fn take(output: &mut EmbeddingOutput, owner: &Arc<()>) -> Self {
         if output.take_variant() == 0 {
-            Some(Value::take(output))
+            Some(Value::take(output, owner))
         } else {
             None
-        }
-    }
-}
-
-fn result_value<Success, Failure>(
-    value: Result<Success, Failure>,
-    constructions: &mut InputConstructions<'_>,
-) -> EmbeddingInput
-where
-    Success: EmbeddingValue,
-    Failure: EmbeddingValue,
-{
-    let constructors = constructions.take_variant();
-    match value {
-        Ok(value) => {
-            let field = value.into_nested(constructions);
-            constructions.skip(Failure::VARIANT_COUNT);
-            EmbeddingInput::custom(constructors[0], [field])
-        }
-        Err(value) => {
-            constructions.skip(Success::VARIANT_COUNT);
-            let field = value.into_nested(constructions);
-            EmbeddingInput::custom(constructors[1], [field])
-        }
-    }
-}
-
-fn option_value<Value>(
-    value: Option<Value>,
-    constructions: &mut InputConstructions<'_>,
-) -> EmbeddingInput
-where
-    Value: EmbeddingValue,
-{
-    let constructors = constructions.take_variant();
-    match value {
-        Some(value) => EmbeddingInput::custom(constructors[0], [value.into_nested(constructions)]),
-        None => {
-            constructions.skip(Value::VARIANT_COUNT);
-            EmbeddingInput::custom(constructors[1], [])
         }
     }
 }
@@ -306,13 +247,13 @@ impl Arguments for () {
         Vec::new()
     }
 
-    fn into_inputs(self, _constructions: &LibraryInputConstructions) -> RetainedValues {
-        RetainedValues::empty()
+    fn input_lists() -> Vec<LibraryValueType> {
+        Vec::new()
     }
 }
 
 macro_rules! arguments {
-    ($($type:ident => $value:ident),+) => {
+    ($($type:ident),+) => {
         impl<$($type),+> Arguments for ($($type,)+)
         where
             $($type: EmbeddingValue,)+
@@ -327,32 +268,26 @@ macro_rules! arguments {
                 variants
             }
 
-            fn into_inputs(self, constructions: &LibraryInputConstructions) -> RetainedValues {
-                let ($($value,)+) = self;
-                let mut constructions = InputConstructions::new(constructions);
-                let mut inputs = RetainedValues::empty();
-                $($value.push(&mut inputs, &mut constructions);)+
-                inputs
+            fn input_lists() -> Vec<LibraryValueType> {
+                let mut lists = Vec::new();
+                $($type::collect_lists(&mut lists);)+
+                lists
             }
         }
     };
 }
 
-arguments!(A => a);
-arguments!(A => a, B => b);
-arguments!(A => a, B => b, C => c);
-arguments!(A => a, B => b, C => c, D => d);
-arguments!(A => a, B => b, C => c, D => d, E => e);
-arguments!(A => a, B => b, C => c, D => d, E => e, F => f);
-arguments!(A => a, B => b, C => c, D => d, E => e, F => f, G => g);
+arguments!(A);
+arguments!(A, B);
+arguments!(A, B, C);
+arguments!(A, B, C, D);
+arguments!(A, B, C, D, E);
+arguments!(A, B, C, D, E, F);
+arguments!(A, B, C, D, E, F, G);
 
 macro_rules! scalar_return {
-    ($type:ty, $return_:ident, $entries:ident, $run:ident, $run_hosted:ident) => {
+    ($type:ty, $entries:ident, $run:ident, $run_hosted:ident) => {
         impl ReturnValue for $type {
-            fn return_() -> LibraryReturn {
-                LibraryReturn::$return_
-            }
-
             fn input_constructions(
                 entries: &LibraryFunctionEntries,
                 slot: usize,
@@ -377,6 +312,7 @@ macro_rules! scalar_return {
                 inputs: RetainedValues,
                 state: &mut Profile::RunState,
                 echo: &mut dyn EchoSink,
+                _owner: &Arc<()>,
             ) -> Result<Self, ExecutionError> {
                 let entry = &entries.$entries[slot];
                 crate::runtime::$run_hosted(execution, *entry.function(), inputs, state, echo)
@@ -387,47 +323,31 @@ macro_rules! scalar_return {
 
 scalar_return!(
     super::BigInt,
-    Int,
     ints,
     run_embedded_int,
     run_hosted_embedded_int
 );
-scalar_return!(
-    f64,
-    Float,
-    floats,
-    run_embedded_float,
-    run_hosted_embedded_float
-);
+scalar_return!(f64, floats, run_embedded_float, run_hosted_embedded_float);
 scalar_return!(
     super::EcoString,
-    String,
     strings,
     run_embedded_string,
     run_hosted_embedded_string
 );
 scalar_return!(
     super::BitArrayValue,
-    BitArray,
     bit_arrays,
     run_embedded_bit_array,
     run_hosted_embedded_bit_array
 );
 scalar_return!(
     char,
-    UtfCodepoint,
     utf_codepoints,
     run_embedded_utf_codepoint,
     run_hosted_embedded_utf_codepoint
 );
-scalar_return!(
-    bool,
-    Bool,
-    bools,
-    run_embedded_bool,
-    run_hosted_embedded_bool
-);
-scalar_return!((), Nil, nils, run_embedded_nil, run_hosted_embedded_nil);
+scalar_return!(bool, bools, run_embedded_bool, run_hosted_embedded_bool);
+scalar_return!((), nils, run_embedded_nil, run_hosted_embedded_nil);
 
 macro_rules! tuple_return {
     ($($type:ident),+) => {
@@ -435,10 +355,6 @@ macro_rules! tuple_return {
         where
             $($type: EmbeddingValue,)+
         {
-            fn return_() -> LibraryReturn {
-                LibraryReturn::Tuple(vec![$($type::value_type()),+])
-            }
-
             fn input_constructions(
                 entries: &LibraryFunctionEntries,
                 slot: usize,
@@ -459,7 +375,7 @@ macro_rules! tuple_return {
                     inputs,
                     echo,
                 )
-                .map(|mut output| Self::take(&mut output))
+                .map(|mut output| Self::take(&mut output, &module.owner))
             }
 
             fn call_hosted<Profile: HostProfile>(
@@ -469,6 +385,7 @@ macro_rules! tuple_return {
                 inputs: RetainedValues,
                 state: &mut Profile::RunState,
                 echo: &mut dyn EchoSink,
+                owner: &std::sync::Arc<()>,
             ) -> Result<Self, ExecutionError> {
                 let entry = &entries.tuples[slot];
                 crate::runtime::run_hosted_embedded_tuple(
@@ -478,7 +395,7 @@ macro_rules! tuple_return {
                     state,
                     echo,
                 )
-                .map(|mut output| Self::take(&mut output))
+                .map(|mut output| Self::take(&mut output, owner))
             }
         }
     };
@@ -499,13 +416,6 @@ macro_rules! custom_return {
             Success: EmbeddingValue,
             Failure: EmbeddingValue,
         {
-            fn return_() -> LibraryReturn {
-                LibraryReturn::Custom(
-                    StandardVariant::Result
-                        .custom_type(vec![Success::value_type(), Failure::value_type()]),
-                )
-            }
-
             fn input_constructions(
                 entries: &LibraryFunctionEntries,
                 slot: usize,
@@ -526,7 +436,7 @@ macro_rules! custom_return {
                     inputs,
                     echo,
                 )
-                .map(|mut output| Self::take(&mut output))
+                .map(|mut output| Self::take(&mut output, &module.owner))
             }
 
             fn call_hosted<Profile: HostProfile>(
@@ -536,6 +446,7 @@ macro_rules! custom_return {
                 inputs: RetainedValues,
                 state: &mut Profile::RunState,
                 echo: &mut dyn EchoSink,
+                owner: &std::sync::Arc<()>,
             ) -> Result<Self, ExecutionError> {
                 let entry = &entries.customs[slot];
                 crate::runtime::run_hosted_embedded_custom(
@@ -545,7 +456,7 @@ macro_rules! custom_return {
                     state,
                     echo,
                 )
-                .map(|mut output| Self::take(&mut output))
+                .map(|mut output| Self::take(&mut output, owner))
             }
         }
     };
@@ -557,10 +468,6 @@ impl<Value> ReturnValue for Option<Value>
 where
     Value: EmbeddingValue,
 {
-    fn return_() -> LibraryReturn {
-        LibraryReturn::Custom(StandardVariant::Option.custom_type(vec![Value::value_type()]))
-    }
-
     fn input_constructions(
         entries: &LibraryFunctionEntries,
         slot: usize,
@@ -576,7 +483,7 @@ where
     ) -> Result<Self, ExecutionError> {
         let entry = &module.entries.customs[slot];
         crate::runtime::run_embedded_custom(&module.execution, *entry.function(), inputs, echo)
-            .map(|mut output| <Self as EmbeddingValue>::take(&mut output))
+            .map(|mut output| <Self as EmbeddingValue>::take(&mut output, &module.owner))
     }
 
     fn call_hosted<Profile: HostProfile>(
@@ -586,6 +493,7 @@ where
         inputs: RetainedValues,
         state: &mut Profile::RunState,
         echo: &mut dyn EchoSink,
+        owner: &std::sync::Arc<()>,
     ) -> Result<Self, ExecutionError> {
         let entry = &entries.customs[slot];
         crate::runtime::run_hosted_embedded_custom(
@@ -595,6 +503,6 @@ where
             state,
             echo,
         )
-        .map(|mut output| <Self as EmbeddingValue>::take(&mut output))
+        .map(|mut output| <Self as EmbeddingValue>::take(&mut output, owner))
     }
 }

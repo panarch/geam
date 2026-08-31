@@ -14,6 +14,8 @@
 mod binding;
 mod error;
 mod hosted;
+mod input;
+mod list;
 mod project;
 mod value;
 
@@ -22,9 +24,11 @@ pub use binding::{BindingError, FunctionDeclaration, ModuleBindings, ModuleBuild
 pub use ecow::EcoString;
 pub use error::CallError;
 pub use hosted::{HostedModule, HostedModuleBindings, HostedModuleBuilder};
+pub use list::{Iter, List};
 pub use num_bigint::BigInt;
 pub use project::{HostedProject, Project};
 
+use self::input::ArgumentsInput;
 use self::value::{Arguments, ReturnValue};
 use crate::plan::execution::LibraryFunctionEntries;
 use crate::{EchoSink, ExecutionPlan};
@@ -79,19 +83,22 @@ impl<Arguments, Return> Function<Arguments, Return> {
 impl Module {
     /// Calls a bound function with Rust values through its prevalidated entry.
     #[allow(private_bounds)]
-    pub fn call<Arguments, Return>(
+    pub fn call<Arguments, Return, Input>(
         &self,
         function: &Function<Arguments, Return>,
-        arguments: Arguments,
+        arguments: Input,
         echo: &mut dyn EchoSink,
     ) -> Result<Return, CallError>
     where
-        Arguments: self::Arguments,
+        Arguments: ArgumentsInput<Input>,
         Return: ReturnValue,
     {
         self.check_owner(&function.owner).and_then(|()| {
+            if !Arguments::owners_match(&arguments, &self.owner) {
+                return Err(CallError::ForeignValue);
+            }
             let constructions = Return::input_constructions(&self.entries, function.slot);
-            let inputs = arguments.into_inputs(constructions);
+            let inputs = Arguments::into_inputs(arguments, constructions);
             Return::call(self, function.slot, inputs, echo).map_err(CallError::Execution)
         })
     }

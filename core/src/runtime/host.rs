@@ -442,10 +442,7 @@ where
     }
 
     fn retain_list(&self, value: HostListToken) -> StoredRuntimeList {
-        StoredRuntimeList::new(
-            self.scoped.list_value(value),
-            self.state.lists().clone_handle(),
-        )
+        StoredRuntimeList::new(self.scoped.list_value(value))
     }
 
     fn restore_stored(&mut self, value: &StoredRuntimeValue) -> HostValueToken {

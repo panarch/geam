@@ -6,7 +6,7 @@ use super::{Arguments, Function, Module, ReturnValue};
 use crate::HostProfile;
 use crate::plan::{
     FunctionTemplateId, FunctionTemplateSignature, FunctionType, HostedLibraryModulePlan,
-    LibraryEntry, LibraryModulePlan, LibraryReturn,
+    LibraryEntry, LibraryModulePlan, LibraryValueType,
 };
 use crate::{ExecutionPlan, PlanError, TypedProgram};
 use ecow::EcoString;
@@ -63,7 +63,9 @@ pub(super) struct BindingParts<Plan> {
 /// Arguments are represented by Rust tuples with arity `0..=7`. Supported
 /// values are [`super::BigInt`], `f64`, [`super::EcoString`],
 /// [`super::BitArrayValue`], `char`, `bool`, `()`, Rust tuples with arity
-/// `1..=7`, `Result`, and `Option`. Compound values may contain one another.
+/// `1..=7`, `Result`, `Option`, and [`super::List`]. Compound values may contain
+/// one another. A List declaration accepts a consumed Vec or a borrowed List
+/// from the same Module, and returns a retained List.
 ///
 /// Unsupported Rust values and argument arities are rejected by Rust type
 /// checking:
@@ -115,6 +117,7 @@ struct LibraryEntryCounts {
     bools: usize,
     nils: usize,
     tuples: usize,
+    lists: usize,
 }
 
 impl ModuleBuilder {
@@ -263,7 +266,12 @@ impl<Plan: BindingPlan> BindingBuilder<Plan> {
             self.source
                 .validate(declaration.name, expected, &standard_variants)?;
         let mut counts = LibraryEntryCounts::default();
-        let entry = LibraryEntry::new(template, Return::return_(), input_variants);
+        let entry = LibraryEntry::new(
+            template,
+            Return::library_type(),
+            input_variants,
+            ArgumentsType::input_lists(),
+        );
         let (slot, first) = counts.reserve(entry);
         let mut selected_names = HashSet::new();
         selected_names.insert(name.clone());
@@ -301,7 +309,12 @@ impl<Plan: BindingPlan> Bindings<Plan> {
         let mut standard_variants = input_variants.clone();
         standard_variants.extend(Return::standard_variants());
         let (name, template) = self.source.validate(name, expected, &standard_variants)?;
-        let entry = LibraryEntry::new(template, Return::return_(), input_variants);
+        let entry = LibraryEntry::new(
+            template,
+            Return::library_type(),
+            input_variants,
+            ArgumentsType::input_lists(),
+        );
         let (slot, entry) = self.counts.reserve(entry);
         self.selected_names.insert(name.clone());
         self.remaining.push(entry);
@@ -364,15 +377,16 @@ fn public_function_names(module: &TypedModule) -> HashSet<EcoString> {
 impl LibraryEntryCounts {
     fn reserve(&mut self, entry: LibraryEntry) -> (usize, LibraryEntry) {
         let count = match entry.return_() {
-            LibraryReturn::Int => &mut self.ints,
-            LibraryReturn::Float => &mut self.floats,
-            LibraryReturn::String => &mut self.strings,
-            LibraryReturn::BitArray => &mut self.bit_arrays,
-            LibraryReturn::UtfCodepoint => &mut self.utf_codepoints,
-            LibraryReturn::Custom(_) => &mut self.customs,
-            LibraryReturn::Bool => &mut self.bools,
-            LibraryReturn::Nil => &mut self.nils,
-            LibraryReturn::Tuple(_) => &mut self.tuples,
+            LibraryValueType::Int => &mut self.ints,
+            LibraryValueType::Float => &mut self.floats,
+            LibraryValueType::String => &mut self.strings,
+            LibraryValueType::BitArray => &mut self.bit_arrays,
+            LibraryValueType::UtfCodepoint => &mut self.utf_codepoints,
+            LibraryValueType::Custom(_) => &mut self.customs,
+            LibraryValueType::Bool => &mut self.bools,
+            LibraryValueType::Nil => &mut self.nils,
+            LibraryValueType::Tuple(_) => &mut self.tuples,
+            LibraryValueType::List(_) => &mut self.lists,
         };
         let slot = *count;
         *count += 1;

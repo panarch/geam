@@ -62,6 +62,21 @@ pub(crate) struct LibraryFunctionEntry<Function> {
 
 pub(crate) struct LibraryInputConstructions {
     variants: Box<[[type_::CustomConstructorId; 2]]>,
+    lists: LibraryListConstructions,
+}
+
+#[derive(Default)]
+pub(crate) struct LibraryListConstructions {
+    pub(crate) ints: Vec<type_::IntListTypeId>,
+    pub(crate) floats: Vec<type_::FloatListTypeId>,
+    pub(crate) strings: Vec<type_::StringListTypeId>,
+    pub(crate) bit_arrays: Vec<type_::BitArrayListTypeId>,
+    pub(crate) utf_codepoints: Vec<type_::UtfCodepointListTypeId>,
+    pub(crate) customs: Vec<type_::CustomListTypeId>,
+    pub(crate) bools: Vec<type_::BoolListTypeId>,
+    pub(crate) nils: Vec<type_::NilListTypeId>,
+    pub(crate) tuples: Vec<type_::TupleListTypeId>,
+    pub(crate) lists: Vec<type_::ListListTypeId>,
 }
 
 pub(crate) struct LibraryFunctionEntries {
@@ -74,6 +89,7 @@ pub(crate) struct LibraryFunctionEntries {
     pub(crate) bools: Box<[LibraryFunctionEntry<function::BoolFunctionId>]>,
     pub(crate) nils: Box<[LibraryFunctionEntry<function::NilFunctionId>]>,
     pub(crate) tuples: Box<[LibraryFunctionEntry<function::TupleFunctionId>]>,
+    pub(crate) lists: Box<[LibraryFunctionEntry<function::ProfiledListFunctionId<Infallible>>]>,
 }
 
 impl<Function> LibraryFunctionEntry<Function> {
@@ -94,14 +110,22 @@ impl<Function> LibraryFunctionEntry<Function> {
 }
 
 impl LibraryInputConstructions {
-    pub(in crate::plan::execution) fn new(variants: Vec<[type_::CustomConstructorId; 2]>) -> Self {
+    pub(in crate::plan::execution) fn new(
+        variants: Vec<[type_::CustomConstructorId; 2]>,
+        lists: LibraryListConstructions,
+    ) -> Self {
         Self {
             variants: variants.into_boxed_slice(),
+            lists,
         }
     }
 
     pub(crate) fn variants(&self) -> &[[type_::CustomConstructorId; 2]] {
         &self.variants
+    }
+
+    pub(crate) fn lists(&self) -> &LibraryListConstructions {
+        &self.lists
     }
 }
 

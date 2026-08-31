@@ -1,4 +1,5 @@
 use super::binding::{BindingBuilder, BindingParts, Bindings};
+use super::input::ArgumentsInput;
 use super::{Arguments, BindingError, CallError, Function, FunctionDeclaration, ReturnValue};
 use crate::frontend::HostedTypedProgram;
 use crate::host::HostProfile;
@@ -97,20 +98,23 @@ impl<Profile: HostProfile> HostedModuleBindings<Profile> {
 impl<Profile: HostProfile> HostedModule<Profile> {
     /// Calls a bound function with explicit caller-owned provider state.
     #[allow(private_bounds)]
-    pub fn call<ArgumentsType, Return>(
+    pub fn call<ArgumentsType, Return, Input>(
         &self,
         function: &Function<ArgumentsType, Return>,
-        arguments: ArgumentsType,
+        arguments: Input,
         state: &mut Profile::RunState,
         echo: &mut dyn EchoSink,
     ) -> Result<Return, CallError>
     where
-        ArgumentsType: Arguments,
+        ArgumentsType: ArgumentsInput<Input>,
         Return: ReturnValue,
     {
         self.check_owner(&function.owner).and_then(|()| {
+            if !ArgumentsType::owners_match(&arguments, &self.owner) {
+                return Err(CallError::ForeignValue);
+            }
             let constructions = Return::input_constructions(&self.entries, function.slot);
-            let inputs = arguments.into_inputs(constructions);
+            let inputs = ArgumentsType::into_inputs(arguments, constructions);
             Return::call_hosted(
                 &self.execution,
                 &self.entries,
@@ -118,6 +122,7 @@ impl<Profile: HostProfile> HostedModule<Profile> {
                 inputs,
                 state,
                 echo,
+                &self.owner,
             )
             .map_err(CallError::Execution)
         })
@@ -435,6 +440,79 @@ pub fn next() { counter.next() }
         );
         assert_eq!(first.calls, 2);
         assert_eq!(second.calls, 1);
+    }
+
+    #[test]
+    fn retains_lists_after_host_state_drop_and_rejects_foreign_inputs_before_mutation() {
+        use crate::embedding::List;
+
+        let source = r#"
+import host/counter
+
+pub fn batch(values: List(Result(#(String, Int), String))) {
+  echo counter.next()
+  values
+}
+
+pub fn inspect(values: List(Result(#(String, Int), String))) {
+  let count = counter.next()
+  echo count
+  case values { [] -> 0 [_, ..] -> count }
+}
+"#;
+        type Row = Result<(EcoString, BigInt), EcoString>;
+        let rows: Vec<Row> = vec![Ok(("A".into(), 4.into())), Err("invalid".into())];
+        let retained = {
+            let (mut bindings, batch) = stateful_builder(source)
+                .function(FunctionDeclaration::<(List<Row>,), List<Row>>::new("batch"))
+                .expect("hosted List entry");
+            let inspect = bind::<_, (List<Row>,), BigInt>(&mut bindings, "inspect");
+            let module = bindings.seal().expect("hosted List seal");
+            let mut state = RunState::default();
+            let mut echo = Vec::new();
+            let retained = module
+                .call(&batch, (rows.clone(),), &mut state, &mut echo)
+                .expect("new rows");
+            assert_eq!(state.calls, 1);
+            assert_eq!(
+                module.call(&inspect, (&retained,), &mut state, &mut echo),
+                Ok(BigInt::from(2))
+            );
+            assert_eq!(state.calls, 2);
+            assert_eq!(retained.to_vec(), rows);
+
+            let (bindings, other_inspect) = stateful_builder(source)
+                .function(FunctionDeclaration::<(List<Row>,), BigInt>::new("inspect"))
+                .expect("independent owner");
+            let other = bindings.seal().expect("independent seal");
+            let mut other_state = RunState::default();
+            let mut other_echo = Vec::new();
+            assert_eq!(
+                other.call(
+                    &other_inspect,
+                    (&retained,),
+                    &mut other_state,
+                    &mut other_echo
+                ),
+                Err(CallError::ForeignValue)
+            );
+            assert_eq!(other_state.calls, 0);
+            assert!(other_echo.is_empty());
+            assert_eq!(
+                other.call(
+                    &other_inspect,
+                    (retained.to_vec(),),
+                    &mut other_state,
+                    &mut other_echo
+                ),
+                Ok(BigInt::from(1))
+            );
+            assert_eq!(other_state.calls, 1);
+            assert_eq!(other_echo.len(), 1);
+            assert_eq!(echo.len(), 2);
+            retained
+        };
+        assert_eq!(retained.to_vec(), rows);
     }
 
     #[test]

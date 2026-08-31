@@ -156,12 +156,13 @@ pub(crate) struct LibraryModulePlan {
 #[derive(Clone)]
 pub(crate) struct LibraryEntry {
     template: FunctionTemplateId,
-    return_: LibraryReturn,
+    return_: LibraryValueType,
     input_variants: Box<[super::StandardVariant]>,
+    input_lists: Box<[LibraryValueType]>,
 }
 
 #[derive(Clone)]
-pub(crate) enum LibraryReturn {
+pub(crate) enum LibraryValueType {
     Int,
     Float,
     String,
@@ -171,22 +172,43 @@ pub(crate) enum LibraryReturn {
     Bool,
     Nil,
     Tuple(Vec<super::ValueType>),
+    List(Box<LibraryValueType>),
+}
+
+impl LibraryValueType {
+    pub(crate) fn value_type(&self) -> super::ValueType {
+        use super::ValueType;
+        match self {
+            Self::Int => ValueType::Int,
+            Self::Float => ValueType::Float,
+            Self::String => ValueType::String,
+            Self::BitArray => ValueType::BitArray,
+            Self::UtfCodepoint => ValueType::UtfCodepoint,
+            Self::Custom(type_) => ValueType::Custom(type_.clone()),
+            Self::Bool => ValueType::Bool,
+            Self::Nil => ValueType::Nil,
+            Self::Tuple(elements) => ValueType::Tuple(elements.clone()),
+            Self::List(item) => ValueType::List(Box::new(item.value_type())),
+        }
+    }
 }
 
 impl LibraryEntry {
     pub(crate) fn new(
         template: FunctionTemplateId,
-        return_: LibraryReturn,
+        return_: LibraryValueType,
         input_variants: Vec<super::StandardVariant>,
+        input_lists: Vec<LibraryValueType>,
     ) -> Self {
         Self {
             template,
             return_,
             input_variants: input_variants.into_boxed_slice(),
+            input_lists: input_lists.into_boxed_slice(),
         }
     }
 
-    pub(crate) fn return_(&self) -> &LibraryReturn {
+    pub(crate) fn return_(&self) -> &LibraryValueType {
         &self.return_
     }
 
@@ -194,10 +216,16 @@ impl LibraryEntry {
         self,
     ) -> (
         FunctionTemplateId,
-        LibraryReturn,
+        LibraryValueType,
         Box<[super::StandardVariant]>,
+        Box<[LibraryValueType]>,
     ) {
-        (self.template, self.return_, self.input_variants)
+        (
+            self.template,
+            self.return_,
+            self.input_variants,
+            self.input_lists,
+        )
     }
 }
 

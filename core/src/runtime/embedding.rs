@@ -1,14 +1,20 @@
 mod hosted;
 mod input;
+mod list;
 mod output;
 
-pub(crate) use input::EmbeddingInput;
+pub(crate) use input::{
+    EmbeddingCustomInput, EmbeddingInputStorage, EmbeddingInputValue, EmbeddingListInput,
+    EmbeddingTupleInput,
+};
+pub(crate) use list::EmbeddingList;
 pub(crate) use output::EmbeddingOutput;
 
 pub(crate) use hosted::{
     run_hosted_embedded_bit_array, run_hosted_embedded_bool, run_hosted_embedded_custom,
-    run_hosted_embedded_float, run_hosted_embedded_int, run_hosted_embedded_nil,
-    run_hosted_embedded_string, run_hosted_embedded_tuple, run_hosted_embedded_utf_codepoint,
+    run_hosted_embedded_float, run_hosted_embedded_int, run_hosted_embedded_list,
+    run_hosted_embedded_nil, run_hosted_embedded_string, run_hosted_embedded_tuple,
+    run_hosted_embedded_utf_codepoint,
 };
 
 use super::error::HostCallOrigin;
@@ -18,8 +24,9 @@ use super::state::RuntimeState;
 use super::{EchoSink, EvaluatedBitArray, ExecutionError};
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::function::{
-    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, IntFunctionId,
-    NilFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
+    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, ExecutionGraphProfile, FloatFunctionId,
+    IntFunctionId, NilFunctionId, ProfiledListFunctionId, StringFunctionId, TupleFunctionId,
+    UtfCodepointFunctionId,
 };
 
 pub(crate) fn run_embedded_int(
@@ -113,4 +120,16 @@ pub(crate) fn run_embedded_tuple(
     let mut state = RuntimeState::new(echo);
     function::run_tuple(plan, &mut state, function, HostCallOrigin::Entry, inputs)
         .map(EmbeddingOutput::from_tuple)
+}
+
+pub(crate) fn run_embedded_list(
+    plan: &ExecutionPlan,
+    function: &ProfiledListFunctionId<std::convert::Infallible>,
+    inputs: RetainedValues,
+    echo: &mut dyn EchoSink,
+) -> Result<EmbeddingOutput, ExecutionError> {
+    let mut state = RuntimeState::new(echo);
+    let function = std::convert::Infallible::list_function(function);
+    function::run_list(plan, &mut state, function, HostCallOrigin::Entry, inputs)
+        .map(|value| EmbeddingOutput::from_value(value.into()))
 }

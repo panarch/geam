@@ -7,8 +7,9 @@ use super::EmbeddingOutput;
 use crate::host::HostProfile;
 use crate::plan::execution::HostedExecution;
 use crate::plan::execution::function::{
-    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, IntFunctionId,
-    NilFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
+    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, ExecutionGraphProfile, FloatFunctionId,
+    IntFunctionId, NilFunctionId, ProfiledListFunctionId, StringFunctionId, TupleFunctionId,
+    UtfCodepointFunctionId,
 };
 
 pub(crate) fn run_hosted_embedded_int<Profile: HostProfile>(
@@ -111,4 +112,17 @@ pub(crate) fn run_hosted_embedded_tuple<Profile: HostProfile>(
     let mut state = RuntimeState::with_host(echo, host);
     function::run_tuple(plan, &mut state, function, HostCallOrigin::Entry, inputs)
         .map(EmbeddingOutput::from_tuple)
+}
+
+pub(crate) fn run_hosted_embedded_list<Profile: HostProfile>(
+    plan: &HostedExecution<Profile>,
+    function: &ProfiledListFunctionId<std::convert::Infallible>,
+    inputs: RetainedValues,
+    host: &mut Profile::RunState,
+    echo: &mut dyn EchoSink,
+) -> Result<EmbeddingOutput, ExecutionError> {
+    let mut state = RuntimeState::with_host(echo, host);
+    let function = std::convert::Infallible::list_function(function);
+    function::run_list(plan, &mut state, function, HostCallOrigin::Entry, inputs)
+        .map(|value| EmbeddingOutput::from_value(value.into()))
 }

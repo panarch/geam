@@ -268,7 +268,7 @@ impl HostedEntries for library::Entries {
 #[cfg(test)]
 mod tests {
     use super::lower_hosted_library;
-    use crate::plan::{LibraryEntry, LibraryReturn};
+    use crate::plan::{LibraryEntry, LibraryValueType};
     use crate::{
         HostModule, HostProviderSet, ModuleSource, PackageSource, compile_typed_host_program,
     };
@@ -311,7 +311,12 @@ pub fn second(value: Int) { math.add(value, 2) }
                 .iter()
                 .find(|function| function.name() == name)
                 .expect("selected root function should exist");
-            LibraryEntry::new(template.signature().id(), LibraryReturn::Int, Vec::new())
+            LibraryEntry::new(
+                template.signature().id(),
+                LibraryValueType::Int,
+                Vec::new(),
+                Vec::new(),
+            )
         };
         let first = entry("first");
         let second = entry("second");

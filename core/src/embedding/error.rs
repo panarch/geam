@@ -6,6 +6,8 @@ use thiserror::Error;
 pub enum CallError {
     #[error("the function belongs to a different embedding module")]
     ForeignFunction,
+    #[error("the retained value belongs to a different embedding module")]
+    ForeignValue,
     #[error(transparent)]
     Execution(#[from] ExecutionError),
 }
@@ -22,6 +24,13 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "the function belongs to a different embedding module",
+        );
+        assert_eq!(error.clone(), error);
+
+        let error = CallError::ForeignValue;
+        assert_eq!(
+            error.to_string(),
+            "the retained value belongs to a different embedding module"
         );
         assert_eq!(error.clone(), error);
     }

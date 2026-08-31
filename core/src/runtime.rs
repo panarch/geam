@@ -8,16 +8,19 @@ mod graph;
 mod host;
 mod materialize;
 mod profile;
+mod retained_list;
 mod state;
 mod value;
 
 pub(crate) use embedding::{
-    EmbeddingInput, EmbeddingOutput, run_embedded_bit_array, run_embedded_bool,
-    run_embedded_custom, run_embedded_float, run_embedded_int, run_embedded_nil,
-    run_embedded_string, run_embedded_tuple, run_embedded_utf_codepoint,
-    run_hosted_embedded_bit_array, run_hosted_embedded_bool, run_hosted_embedded_custom,
-    run_hosted_embedded_float, run_hosted_embedded_int, run_hosted_embedded_nil,
-    run_hosted_embedded_string, run_hosted_embedded_tuple, run_hosted_embedded_utf_codepoint,
+    EmbeddingCustomInput, EmbeddingInputStorage, EmbeddingInputValue, EmbeddingList,
+    EmbeddingListInput, EmbeddingOutput, EmbeddingTupleInput, run_embedded_bit_array,
+    run_embedded_bool, run_embedded_custom, run_embedded_float, run_embedded_int,
+    run_embedded_list, run_embedded_nil, run_embedded_string, run_embedded_tuple,
+    run_embedded_utf_codepoint, run_hosted_embedded_bit_array, run_hosted_embedded_bool,
+    run_hosted_embedded_custom, run_hosted_embedded_float, run_hosted_embedded_int,
+    run_hosted_embedded_list, run_hosted_embedded_nil, run_hosted_embedded_string,
+    run_hosted_embedded_tuple, run_hosted_embedded_utf_codepoint,
 };
 pub(crate) use host::{
     StoredRuntimeList, StoredRuntimeListCustomFields, StoredRuntimeListItem,
