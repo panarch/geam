@@ -625,7 +625,8 @@ fn push_binding(output: &mut String, pattern: &str, owner: &str, function: &Func
         "    let {pattern} = {owner}.function(FunctionDeclaration::new({:?}))?;\n",
         function.gleam_name
     );
-    if statement.trim_end().len() <= 100 {
+    // Rustfmt wraps this fallible call once the statement exceeds 98 columns.
+    if statement.trim_end().len() <= 98 {
         output.push_str(&statement);
     } else {
         output.push_str(&format!(
@@ -668,13 +669,55 @@ impl DataType {
 
 #[cfg(test)]
 mod tests {
-    use super::{hosted, plain};
+    use super::{hosted, plain, push_binding};
     use crate::builtin::BuiltInProvider;
     use crate::embedding::boundary::{DataType, FunctionBinding, PlainBindings};
     use crate::embedding::identifier::RustIdentifier;
     use crate::embedding::profile::{ExternalComponent, HostedBindings, HostedComponents};
     use camino::Utf8Path;
     use std::fs;
+
+    #[test]
+    fn reserves_layout_space_for_fallible_binding_statements() {
+        let mut source = "fn bind() {\n".to_owned();
+        for (pattern, owner, name) in [
+            ("(mut bindings, function_0)", "builder", "validate_item"),
+            ("(mut bindings, function_0)", "builder", "validate_batch"),
+            ("(bindings, function_0)", "builder", "validate_products"),
+            ("(bindings, function_0)", "builder", "validate_inventory"),
+            ("function_1", "bindings", "normalize_inventory_codes_v1"),
+            ("function_1", "bindings", "normalize_inventory_codes_v12"),
+        ] {
+            push_binding(
+                &mut source,
+                pattern,
+                owner,
+                &FunctionBinding {
+                    gleam_name: name.to_owned(),
+                    rust_name: identifier(name),
+                    arguments: Vec::new(),
+                    return_type: DataType::Nil,
+                },
+            );
+        }
+        source.push_str("}\n");
+        assert_eq!(
+            source,
+            r#"fn bind() {
+    let (mut bindings, function_0) = builder.function(FunctionDeclaration::new("validate_item"))?;
+    let (mut bindings, function_0) =
+        builder.function(FunctionDeclaration::new("validate_batch"))?;
+    let (bindings, function_0) = builder.function(FunctionDeclaration::new("validate_products"))?;
+    let (bindings, function_0) =
+        builder.function(FunctionDeclaration::new("validate_inventory"))?;
+    let function_1 = bindings.function(FunctionDeclaration::new("normalize_inventory_codes_v1"))?;
+    let function_1 =
+        bindings.function(FunctionDeclaration::new("normalize_inventory_codes_v12"))?;
+}
+"#
+        );
+        assert_rustfmt_stable("fallible binding widths", &source);
+    }
 
     #[test]
     fn renders_deterministic_plain_bindings_for_all_scalar_paths() {
