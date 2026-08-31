@@ -202,6 +202,11 @@ application profile, the text-pattern provider, and no CLI/JSON/Time dependency.
 Provider-example jobs remain separate because they own provider authoring and
 standalone consumption rather than Rust-first application composition.
 
+The same job checks Gleam formatting in `examples/rust_embedding` and runs the
+small manual `rust_embedding` example, comparing its complete stdout with the
+expected scalar results. The example's repeated-call and empty-Echo assertions
+also execute; its Rust formatting and Clippy checks remain workspace-owned.
+
 CLI owners separately cover fresh init, repeated sync, required built-in
 features, existing dependency preservation, and explicit native-provider
 approval. Check cases cover locked Hex/Git/local sources, cold and partial

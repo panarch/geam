@@ -106,6 +106,20 @@ jobs:
       - name: Build checkout CLI
         run: cargo build --package geam --bin geam --locked
 
+      - name: Check manual embedding formatting
+        working-directory: examples/rust_embedding
+        run: gleam format --check
+
+      - name: Run manual embedding example
+        run: |
+          cat > "$RUNNER_TEMP/expected-manual-embedding-output" <<'EOF'
+          code: SKU:AB-12
+          quantity: 42
+          price: 12.5
+          EOF
+          cargo run --quiet --package geam --example rust_embedding --locked > "$RUNNER_TEMP/actual-manual-embedding-output"
+          diff --unified "$RUNNER_TEMP/expected-manual-embedding-output" "$RUNNER_TEMP/actual-manual-embedding-output"
+
       - name: Verify locked readiness and binding drift recovery
         working-directory: examples/rust_embedding_application
         run: |
