@@ -1,3 +1,4 @@
+mod manifest;
 mod project;
 
 use super::identifier::RustIdentifier;
@@ -5,7 +6,7 @@ use crate::cargo::{CargoMetadataLoader, CargoMetadataMode, SystemCargoMetadata};
 use crate::error::CliError;
 use camino::Utf8Path;
 use cargo_metadata::{DependencyKind, Metadata, Package, PackageId};
-use project::EmbeddingProject;
+pub(super) use project::EmbeddingProject;
 use std::collections::BTreeSet;
 
 #[derive(Debug)]
@@ -42,10 +43,22 @@ impl EmbeddingPackage {
     ) -> Result<Self, CliError> {
         let project = EmbeddingProject::load_with(current_directory, loader)?;
         project.validate_gleam_config()?;
+        Self::resolve_with(project, loader, CargoMetadataMode::Locked)
+    }
+
+    pub(super) fn resolve(project: EmbeddingProject) -> Result<Self, CliError> {
+        Self::resolve_with(project, &SystemCargoMetadata, CargoMetadataMode::Resolve)
+    }
+
+    fn resolve_with(
+        project: EmbeddingProject,
+        loader: &dyn CargoMetadataLoader,
+        mode: CargoMetadataMode,
+    ) -> Result<Self, CliError> {
         let metadata = loader.load(
-            current_directory,
+            &project.manifest.with_file_name(""),
             &project.manifest,
-            CargoMetadataMode::Locked,
+            mode,
         )?;
         let package = select_package(&metadata, &project.manifest)?;
         let mut direct_dependencies = direct_normal_dependencies(&metadata, package)?;
@@ -106,7 +119,7 @@ impl EmbeddingPackage {
             package: self.project.package_name.clone(),
             manifest: self.project.manifest.clone(),
             reason: format!(
-                "enabled Geam feature `{feature}` is required {purpose}; enable it on the direct Geam dependency",
+                "enabled Geam feature `{feature}` is required {purpose}; run `geam embedding sync` to enable it on the direct Geam dependency",
             ),
         })
     }

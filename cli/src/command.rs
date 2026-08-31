@@ -24,7 +24,11 @@ pub(super) struct Embedding {
 
 #[derive(Debug, PartialEq, Eq, Subcommand)]
 pub(super) enum EmbeddingCommand {
+    /// Initialize a Gleam library and bindings for the current Cargo package.
+    Init,
+    /// Check that the project's dependencies and generated bindings agree.
     Check,
+    /// Prepare dependencies and synchronize Rust bindings with Gleam source.
     Sync,
 }
 
@@ -138,6 +142,15 @@ mod tests {
 
     #[test]
     fn parses_parameterless_embedding_commands() {
+        assert_eq!(
+            Cli::try_parse_from(["geam", "embedding", "init"])
+                .expect("embedding init command should parse"),
+            Cli {
+                command: Command::Embedding(Embedding {
+                    command: EmbeddingCommand::Init,
+                }),
+            },
+        );
         let check = Cli::try_parse_from(["geam", "embedding", "check"])
             .expect("embedding check command should parse");
         assert_eq!(
@@ -160,7 +173,7 @@ mod tests {
             },
         );
 
-        for operation in ["sync", "check"] {
+        for operation in ["init", "sync", "check"] {
             assert_eq!(
                 Cli::try_parse_from([
                     "geam",

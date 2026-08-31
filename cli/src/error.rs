@@ -101,6 +101,12 @@ pub(super) enum CliError {
     #[error("failed to write provider list")]
     ProviderListIo(#[source] io::Error),
 
+    #[error("failed to write embedding progress")]
+    EmbeddingProgressIo(#[source] io::Error),
+
+    #[error("refusing to replace existing embedding file {path}: {reason}")]
+    EmbeddingFileConflict { path: Utf8PathBuf, reason: String },
+
     #[error("provider configuration {spec} is invalid: {reason}")]
     InvalidProviderConfiguration { spec: String, reason: String },
 

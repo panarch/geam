@@ -35,6 +35,7 @@ pub fn run() -> ExitCode {
 fn run_command(cli: Cli, current_directory: camino::Utf8PathBuf) -> Result<(), CliError> {
     let command = match cli.command {
         Command::Embedding(command) => match command.command {
+            EmbeddingCommand::Init => return embedding::init(&current_directory),
             EmbeddingCommand::Check => {
                 return embedding::check(&current_directory);
             }
@@ -94,7 +95,7 @@ mod tests {
         let directory = tempdir().expect("temporary directory should be created");
         let root = Utf8PathBuf::from_path_buf(directory.path().to_path_buf())
             .expect("temporary path should be valid UTF-8");
-        for operation in ["check", "sync"] {
+        for operation in ["init", "check", "sync"] {
             let error = run_command(
                 Cli::try_parse_from(["geam", "embedding", operation])
                     .expect("embedding command should parse"),

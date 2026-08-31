@@ -1,5 +1,7 @@
 use super::select_package;
-use crate::cargo::{CargoMetadataLoader, CargoMetadataMode, canonical_manifest};
+use crate::cargo::{
+    CargoMetadataLoader, CargoMetadataMode, SystemCargoMetadata, canonical_manifest,
+};
 use crate::error::CliError;
 use crate::project::read_package_config;
 use camino::{Utf8Path, Utf8PathBuf};
@@ -7,16 +9,41 @@ use gleam_core::config::PackageConfig;
 use serde_json::json;
 
 #[derive(Debug)]
-pub(super) struct EmbeddingProject {
+pub(in crate::embedding) struct EmbeddingProject {
     pub(super) package_name: String,
     pub(super) manifest: Utf8PathBuf,
     pub(super) project_root: Utf8PathBuf,
     pub(super) root_module: String,
     pub(super) output_directory: Utf8PathBuf,
     pub(super) output_path: Utf8PathBuf,
+    pub(super) dependencies: Vec<cargo_metadata::Dependency>,
 }
 
 impl EmbeddingProject {
+    pub(in crate::embedding) fn load(current_directory: &Utf8Path) -> Result<Self, CliError> {
+        Self::load_with(current_directory, &SystemCargoMetadata)
+    }
+
+    pub(in crate::embedding) fn manifest(&self) -> &Utf8Path {
+        &self.manifest
+    }
+
+    pub(in crate::embedding) fn project_root(&self) -> &Utf8Path {
+        &self.project_root
+    }
+
+    pub(in crate::embedding) fn root_module(&self) -> &str {
+        &self.root_module
+    }
+
+    pub(in crate::embedding) fn output_path(&self) -> &Utf8Path {
+        &self.output_path
+    }
+
+    pub(in crate::embedding) fn prepare_features(&self, features: &[&str]) -> Result<(), CliError> {
+        super::manifest::prepare_features(self, features)
+    }
+
     pub(super) fn load_with(
         current_directory: &Utf8Path,
         loader: &dyn CargoMetadataLoader,
@@ -55,10 +82,11 @@ impl EmbeddingProject {
             root_module,
             output_directory,
             output_path,
+            dependencies: package.dependencies.clone(),
         })
     }
 
-    pub(super) fn validate_gleam_config(&self) -> Result<(), CliError> {
+    pub(in crate::embedding) fn validate_gleam_config(&self) -> Result<(), CliError> {
         let config = read_package_config(&self.project_root)?;
         if config.name.as_str() != self.root_module {
             return Err(CliError::InvalidEmbeddingProject {

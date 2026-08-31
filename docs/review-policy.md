@@ -293,8 +293,12 @@ Treat first-time native provider selection and incompatible replacement as
 explicit trust boundaries. Verify bounded registry responses, exact archive
 checksums, packaged metadata, target Gleam package, and compatibility before
 presenting a candidate. Do not execute provider code before approval, silently
-select in noninteractive use, adopt user-owned Cargo manifests, or introduce a
-second provider lock beside `Cargo.lock`.
+select in noninteractive use, let standalone management adopt user-owned Cargo
+manifests, or introduce a second provider lock beside `Cargo.lock`. Explicit
+Rust embedding preparation may amend only the selected application's relevant
+dependency entries, preserving its sources, aliases, existing features, and
+unrelated content; it does not take ownership of the manifest or authorize
+changes to shared workspace declarations.
 
 Source provider selection must finish before function body planning. Match an
 exact external scheme, preserve a declared Gleam fallback when no provider is

@@ -169,10 +169,11 @@ re-entry, and sealing rules.
 
 ## Rust Embedding
 
-An ordinary Cargo package can keep a resolved Gleam project under `gleam/` and
-generate typed bindings for one public boundary module:
+Initialize an ordinary Cargo package with a Gleam project under `gleam/`, then
+prepare dependencies and generate typed bindings for its same-name public module:
 
 ```sh
+geam embedding init
 geam embedding sync
 geam embedding check
 ```

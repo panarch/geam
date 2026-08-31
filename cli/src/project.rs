@@ -73,6 +73,10 @@ pub(super) fn read_existing_resolved_project(
     read_resolved_project_files(project_root)
 }
 
+pub(super) fn prepare_dependencies(project_root: &Utf8Path) -> Result<(), CliError> {
+    ProcessDependencyDownloader::gleam().download(project_root)
+}
+
 fn read_resolved_project_with(
     project_root: &Utf8Path,
     downloader: &dyn DependencyDownloader,

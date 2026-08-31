@@ -34,13 +34,18 @@ Cargo build output and downloaded Gleam package source are local artifacts;
 ignore `target/` and `gleam/build/`. Keep both lockfiles and
 `src/geam_bindings.rs` in source control.
 
-Add Geam without its command-line or provider-authoring surface:
+Start the conventional project from the Cargo package directory:
 
 ```sh
-cargo add geam --no-default-features --features embedding
+geam embedding init
 ```
 
-Enable only the built-ins reached by the selected Gleam source closure:
+Init creates a pure Gleam starter and generated bindings without changing
+handwritten Rust. When Geam is absent it adds an exact matching dependency with
+defaults disabled and `embedding` enabled. Existing dependency sources, aliases,
+features, and unrelated Cargo content are preserved.
+
+Sync enables the built-ins reached by the selected Gleam source closure:
 
 - `gleam-stdlib` exposes `geam::gleam_stdlib`;
 - `gleam-json` exposes JSON and its stdlib dependency;
@@ -69,29 +74,27 @@ provider required by the selected Gleam source closure must also be an enabled
 direct Cargo dependency with valid Geam provider metadata. The dependency's
 actual Cargo alias is retained in generated source.
 
-`sync` and `check` inspect Cargo's locked resolved feature graph. A missing
-`embedding` or required built-in feature fails with the owning Cargo manifest
-and exact feature name before generated Rust compilation. Geam does not edit
-the dependency declaration.
+`sync` adds missing embedding and built-in features without upgrading the
+existing Geam dependency. `check` instead rejects missing required features
+without modifying the manifest. Shared workspace declarations are not edited;
+inherited dependencies receive only supported member-local feature additions.
 
 ## Synchronize Bindings
 
-Resolve both package graphs before synchronization. These commands do not
-prepare missing Gleam dependencies or edit either manifest or lockfile;
-Cargo's locked metadata inspection may acquire its resolved dependencies:
+After editing Gleam source or adding a Gleam dependency, synchronize from the
+Cargo package directory:
 
 ```sh
-cd gleam
-gleam deps download
-cd ..
-cargo generate-lockfile
 geam embedding sync
 ```
 
-`sync` compiles the selected Gleam source and import closure, validates its
-public Rust boundary and host requirements, then writes
+`sync` prepares dependencies through Gleam and Cargo, retaining their ordinary
+lockfiles rather than requesting version updates. It compiles the selected
+Gleam source and import closure, validates its public Rust boundary and host
+requirements, then writes
 `src/geam_bindings.rs`. It atomically replaces changed bytes and leaves an
-identical file untouched.
+identical file untouched. It refuses to overwrite a handwritten file at that
+path. Required external providers must already be declared in Cargo.toml.
 
 Use the read-only command in review and CI:
 
@@ -99,8 +102,8 @@ Use the read-only command in review and CI:
 geam embedding check
 ```
 
-Both commands use the nearest Cargo package manifest. At a virtual workspace
-root, move into the intended member directory. Custom project layouts use the
+All embedding commands use the nearest Cargo package manifest. At a virtual
+workspace root, move into the intended member directory. Custom project layouts use the
 manual Rust API rather than selector flags on these commands.
 
 `check` runs the same package selection, validation, and rendering path as

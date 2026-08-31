@@ -19,7 +19,7 @@ fn reports_missing_projects_through_the_binary_boundary() {
 fn dispatches_embedding_before_gleam_project_discovery_through_the_binary_boundary() {
     let directory = tempdir().expect("temporary directory should be created");
 
-    for operation in ["check", "sync"] {
+    for operation in ["init", "check", "sync"] {
         let output = geam(&directory, ["embedding", operation]);
 
         assert!(!output.status.success());

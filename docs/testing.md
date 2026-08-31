@@ -401,7 +401,7 @@ cargo llvm-cov report --package geam-json --summary-only --fail-under-lines 100 
 cargo llvm-cov report --package geam-time --summary-only --fail-under-lines 100 --fail-under-regions 100
 ```
 
-Run the CLI and binary closure:
+Run the CLI and binary closure with Gleam `v1.18.1` available:
 
 ```sh
 cargo llvm-cov clean --workspace
