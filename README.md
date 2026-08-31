@@ -174,9 +174,13 @@ prepare dependencies and generate typed bindings for its same-name public module
 
 ```sh
 geam embedding init
+# After writing Gleam functions:
 geam embedding sync
-geam embedding check
+cargo run
 ```
+
+Use `geam embedding check` in review or CI to verify the prepared connection
+without rewriting project files; it may restore locked dependency caches.
 
 The generated `src/geam_bindings.rs` is checked in. It owns only deterministic
 function declarations and static host composition; the Rust application still

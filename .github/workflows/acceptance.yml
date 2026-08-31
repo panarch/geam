@@ -88,10 +88,6 @@ jobs:
             . -> target
             examples/rust_embedding_application -> target
 
-      - name: Download resolved Gleam dependencies
-        working-directory: examples/rust_embedding_application/gleam
-        run: gleam deps download
-
       - name: Verify application dependency graph
         run: |
           cargo tree --manifest-path examples/rust_embedding_application/Cargo.toml --locked --package geam --edges normal --depth 1 --prefix none > "$RUNNER_TEMP/geam-embedding-graph"
@@ -110,10 +106,11 @@ jobs:
       - name: Build checkout CLI
         run: cargo build --package geam --bin geam --locked
 
-      - name: Verify managed binding drift and recovery
+      - name: Verify locked readiness and binding drift recovery
         working-directory: examples/rust_embedding_application
         run: |
           ../../target/debug/geam embedding check
+          git diff --exit-code -- .
           printf '\n// stale acceptance probe\n' >> src/geam_bindings.rs
           if ../../target/debug/geam embedding check; then
             echo "embedding check accepted stale generated source" >&2
@@ -121,7 +118,7 @@ jobs:
           fi
           ../../target/debug/geam embedding sync
           ../../target/debug/geam embedding check
-          git diff --exit-code -- src/geam_bindings.rs
+          git diff --exit-code -- .
 
       - name: Check application formatting
         run: |

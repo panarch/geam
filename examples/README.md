@@ -19,10 +19,9 @@ and input/output, then [inventory.rs](rust_embedding_application/src/inventory.r
 for the typed calls and result handling. Exact values, repeated calls, captured
 IO, and Echo are verified in tests rather than assertions in the entry point.
 
+From the repository root:
+
 ```sh
-cd examples/rust_embedding_application/gleam
-gleam deps download
-cd ../../..
 cargo build --package geam --bin geam --locked
 cd examples/rust_embedding_application
 ../../target/debug/geam embedding check
@@ -31,8 +30,11 @@ cargo test --manifest-path examples/rust_embedding_application/Cargo.toml --lock
 cargo run --quiet --manifest-path examples/rust_embedding_application/Cargo.toml --locked
 ```
 
-See [Rust embedding](../docs/embedding.md) for the project layout and
-sync/check lifecycle.
+Check restores missing locked Gleam sources without rewriting project files.
+For a new application, start with `geam embedding init`; after writing Gleam,
+use `geam embedding sync` and the usual Cargo commands. See
+[Rust embedding](../docs/embedding.md) for the complete first-call workflow,
+project layout, and caller-owned runtime state.
 
 [`rust_embedding.rs`](rust_embedding.rs) loads a no-`main` Gleam project with
 an imported module, binds several public scalar functions from its selected

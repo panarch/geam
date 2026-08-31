@@ -5,6 +5,26 @@ item codes, validates them through the text-pattern provider, and returns a
 retained List of accepted rows and rejection reasons. Rust reuses that List to
 ask for a total and the first valid item, then prints the review.
 
+## Workflow
+
+For a new Rust application, start with `geam embedding init` in its Cargo
+package directory. Write public Gleam functions, run `geam embedding sync`,
+then use the generated bindings from handwritten Rust and build with Cargo.
+The [embedding guide](../../docs/embedding.md#first-call) walks through a first
+call without a provider or manual dependency setup.
+
+This example is already initialized. Its Cargo name
+`geam-rust-embedding-application` determines the Gleam package and public module
+name, `geam_rust_embedding_application`, under `gleam/`. To change its Gleam
+interface, edit that module, run sync, and update the Rust calls. Do not edit
+`src/geam_bindings.rs` directly.
+
+The checked-in path dependencies and Cargo patch connect this repository's
+application to its actual Geam and text-pattern provider sources. They are not
+extra setup requirements for an ordinary application: init adds Geam, and sync
+discovers and asks for approval of missing native providers. Existing compatible
+declarations are reused.
+
 ## Read The Example
 
 1. [main.rs](src/main.rs) loads and seals the generated project, supplies state
@@ -30,13 +50,15 @@ it does not change how the List is passed back to Gleam.
 From this directory, with Rust and Gleam installed:
 
 ```sh
-cd gleam
-gleam deps download
-cd ..
 cargo build --manifest-path ../../Cargo.toml --bin geam --locked
 ../../target/debug/geam embedding check
 cargo run --quiet --locked
 ```
+
+Check restores missing locked Gleam package sources without changing the
+application's declarations, lockfiles, or generated Rust. The existing provider
+declaration needs no new approval. After editing Gleam, use
+`../../target/debug/geam embedding sync` before the next Cargo build.
 
 The application prints:
 
@@ -54,6 +76,7 @@ First valid item: AB-12 (3)
 ## Verify
 
 ```sh
+../../target/debug/geam embedding check
 cargo test --locked
 ```
 
@@ -61,3 +84,7 @@ The tests beside `inventory::review` exercise the same calls as the application
 and check exact values and report text for mixed, all-rejected, and empty
 receipts. They also check repeated use of one module and caller-owned IO and
 Echo. [tests/runs.rs](tests/runs.rs) checks the real binary's complete output.
+
+Keep both lockfiles, Gleam source, and generated Rust in source control. Cargo
+`target/` and `gleam/build/` remain caches. Runtime compilation reads this nested
+source project; the executable does not bundle it.

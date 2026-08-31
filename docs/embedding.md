@@ -1,9 +1,9 @@
 # Rust Embedding
 
-Geam can generate the mechanical Rust bindings for one public Gleam module
-inside an ordinary Cargo package. The Rust application continues to own source
-loading, execution sealing, capabilities, provider configuration, mutable
-state, Echo, and call order.
+Use Gleam functions from an ordinary Rust application. `geam embedding init`
+connects the Cargo package to a nested Gleam project; `geam embedding sync`
+prepares dependencies and generates typed Rust bindings as that project changes.
+Build, test, and run the application with Cargo.
 
 The complete managed example is
 [`examples/rust_embedding_application`](../examples/rust_embedding_application).
@@ -11,13 +11,103 @@ It combines imported Gleam source, `gleam/io`, and the text-pattern provider in
 one independently locked Rust application. Its inventory workflow passes rows
 from Rust into Gleam, retains validation results, and reuses them across calls.
 
-## Project Layout
+## First Call
 
-Keep the resolved Gleam project inside the Rust package and commit the generated
-Rust source:
+With Rust/Cargo, Gleam, and a matching Geam CLI available, start from a Rust
+package. For a new application:
+
+```sh
+cargo new inventory-app
+cd inventory-app
+geam embedding init
+```
+
+Init creates `gleam/`, prepares dependencies and lockfiles, and generates
+`src/geam_bindings.rs`. It adds the matching Geam dependency with default
+features disabled and `embedding` enabled when that dependency is absent.
+There is no separate first-time download or sync step.
+
+The starter in `gleam/src/inventory_app.gleam` is a pure function:
+
+```gleam
+pub fn double(value: Int) -> Int {
+  value * 2
+}
+```
+
+Init leaves handwritten Rust untouched. Use the generated module from
+`src/main.rs`:
+
+```rust
+mod geam_bindings;
+
+use geam::embedding::ModuleBuilder;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let program = geam_bindings::project().compile()?;
+    let builder = ModuleBuilder::from_program(program)?;
+    let (bindings, functions) = geam_bindings::bind(builder)?;
+    let module = bindings.seal();
+    let mut echo = Vec::new();
+
+    let value = module.call(&functions.double, (21.into(),), &mut echo)?;
+    println!("{value}");
+    Ok(())
+}
+```
+
+Run it with `cargo run`; it prints `42`. Keep the sealed module and its function
+handles for repeated calls. This pure example needs no provider state.
+
+## Develop And Sync
+
+Write public functions in `gleam/src/inventory_app.gleam`. For example, add:
+
+```gleam
+pub fn increment(value: Int) -> Int {
+  value + 1
+}
+```
+
+From the Cargo package directory, regenerate the connection:
+
+```sh
+geam embedding sync
+```
+
+The generated `Functions` now includes `increment`. Call it from Rust using the
+same loaded module:
+
+```rust
+let value = module.call(&functions.increment, (41.into(),), &mut echo)?;
+```
+
+Run `cargo run` or `cargo test` as usual. Sync generates declarations and static
+provider composition; the Rust `bind` call connects those declarations to one
+loaded execution. You do not repeat Gleam signatures by hand or run sync for
+each function.
+
+Add Gleam dependencies inside `gleam/`, for example with `gleam add gleam_stdlib`,
+then import and use them from your Gleam source. Run `geam embedding sync` after
+source or dependency changes. It prepares Gleam and Cargo dependencies,
+compiles the selected import closure, validates the public Rust boundary, and
+updates the generated file. An unchanged file is left untouched; changed bytes
+are replaced atomically. A handwritten file at the generated path is never
+silently replaced.
+
+Preparation does not run Rust build scripts, provider initialization, or the
+application. Cargo builds the Rust application separately. On an external tool
+or registry failure, fix the reported problem and rerun init or sync. Earlier
+successful preparation steps may remain, but failed preparation does not
+publish new bindings. Neither command upgrades dependencies indiscriminately
+or automatically removes unused Cargo dependencies.
+
+## Project Convention
+
+The project has one layout:
 
 ```text
-application/
+inventory-app/
   Cargo.toml
   Cargo.lock
   src/
@@ -27,25 +117,29 @@ application/
     gleam.toml
     manifest.toml
     src/
-      application.gleam
+      inventory_app.gleam
 ```
 
-Cargo build output and downloaded Gleam package source are local artifacts;
-ignore `target/` and `gleam/build/`. Keep both lockfiles and
-`src/geam_bindings.rs` in source control.
+The nested project is always `gleam/`. Its package name and public boundary
+module come from the Cargo package name with hyphens replaced by underscores,
+not from the directory or binary name. Internal modules can live under
+`gleam/src/inventory_app/`. There is no selector metadata or special
+`lib.gleam` file. Invalid derived names fail initialization; these commands do
+not offer alternate name, path, or output options.
 
-Start the conventional project from the Cargo package directory:
+All embedding commands use the nearest Cargo package. At a virtual workspace
+root, move into the intended member directory. Repeated init preserves an
+existing valid conventional Gleam project; it does not rename a conflicting
+project or overwrite handwritten source.
 
-```sh
-geam embedding init
-```
+Commit `Cargo.toml`, `Cargo.lock`, the Gleam configuration, `manifest.toml`,
+handwritten source, and `src/geam_bindings.rs`. Ignore Cargo's `target/` and
+Gleam's `gleam/build/` cache. Init creates the nested cache ignore rule. Generated
+Rust is reviewed and committed, not regenerated implicitly by a build script.
 
-Init creates a pure Gleam starter and generated bindings without changing
-handwritten Rust. When Geam is absent it adds an exact matching dependency with
-defaults disabled and `embedding` enabled. Existing dependency sources, aliases,
-features, and unrelated Cargo content are preserved.
+## Built-Ins And Providers
 
-Sync enables the built-ins reached by the selected Gleam source closure:
+Sync enables only built-in features needed by the selected Gleam source closure:
 
 - `gleam-stdlib` exposes `geam::gleam_stdlib`;
 - `gleam-json` exposes JSON and its stdlib dependency;
@@ -56,23 +150,10 @@ Its text-pattern provider enables `provider` on the same Geam package identity,
 so Cargo unifies the authoring macros without restoring Geam defaults or CLI.
 An application that authors providers directly can add `provider` itself.
 
-The nested project is always `gleam/`. Its package name and public boundary
-module use the Cargo package name with hyphens replaced by underscores.
-For Cargo package `inventory-app`, use:
-
-```toml
-# gleam/gleam.toml
-name = "inventory_app"
-```
-
-Public functions in `gleam/src/inventory_app.gleam` form the Rust boundary.
-Internal modules can live under `gleam/src/inventory_app/`. There is no
-embedding selector metadata in Cargo.toml or special `lib.gleam` file.
-
-The package must have one enabled direct dependency on `geam`. Each external
-provider required by the selected Gleam source closure must also be an enabled
-direct Cargo dependency with valid Geam provider metadata. The dependency's
-actual Cargo alias is retained in generated source.
+Preparation ensures one enabled direct Geam dependency and an enabled direct
+Cargo dependency for each required external provider. Existing versions,
+sources, aliases, features, comments, and unrelated Cargo content are preserved.
+The actual dependency aliases are retained in generated source.
 
 When a required provider is missing, `sync` discovers metadata-verified registry
 candidates and asks for explicit native-code approval. Only approved providers
@@ -82,46 +163,39 @@ and alias collisions fail instead of being replaced. Noninteractive runs cannot
 approve new providers; prepare them interactively before committing the manifest
 and lockfile.
 
-`sync` adds missing embedding and built-in features without upgrading the
-existing Geam dependency. `check` instead rejects missing required features
-without modifying the manifest. Shared workspace declarations are not edited;
+Unused Gleam dependencies and externals with a Gleam fallback do not trigger
+native-provider discovery. Shared workspace declarations are not edited;
 inherited dependencies receive only supported member-local feature additions.
+An incompatible Geam/provider version combination is reported for the caller
+to resolve, not silently upgraded or replaced.
 
-## Synchronize Bindings
+## Check A Prepared Checkout
 
-After editing Gleam source or adding a Gleam dependency, synchronize from the
-Cargo package directory:
-
-```sh
-geam embedding sync
-```
-
-`sync` prepares dependencies through Gleam and Cargo, retaining their ordinary
-lockfiles rather than requesting version updates. It compiles the selected
-Gleam source and import closure, validates its public Rust boundary and host
-requirements, then writes
-`src/geam_bindings.rs`. It atomically replaces changed bytes and leaves an
-identical file untouched. It refuses to overwrite a handwritten file at that
-path. Unused dependencies and externals with a Gleam fallback do not trigger
-native-provider discovery. Preparation does not execute provider code or Rust
-build scripts; the application's Cargo build remains a separate step.
-
-Use the read-only command in review and CI:
+Use check in review and CI, or after cloning a prepared application:
 
 ```sh
 geam embedding check
+cargo test --locked
 ```
 
-All embedding commands use the nearest Cargo package manifest. At a virtual
-workspace root, move into the intended member directory. Custom project layouts use the
-manual Rust API rather than selector flags on these commands.
+Check validates the existing declarations, locks, provider graph, and generated
+bindings. Missing or stale inputs fail instead of being repaired. Use init for
+an uninitialized package, or sync to prepare changed dependencies or bindings.
+Check does not initialize, choose providers, ask for approval, or rewrite either
+lockfile. Expected generated bytes are compared in memory.
 
-`check` runs the same package selection, validation, and rendering path as
-`sync`, then compares the expected bytes in memory. Missing or stale output
-fails with the exact sync command needed to restore it and never edits the
-file.
+Read-only here means project files, not an offline command. Cargo may fetch
+packages through its normal `--locked` metadata path. Missing Gleam package
+sources are restored under `gleam/build/packages` using the recorded Hex
+versions and checksums or Git repository, commit, and subdirectory. Local
+dependencies stay at their declared paths. Downloads do not select new versions
+or follow a moving Git branch instead of its locked commit.
 
-## Run The Module
+Check does not execute provider code, Rust build scripts, or the application,
+and it is not a replacement for `cargo check` or `cargo test`. In daily
+development, sync followed by the usual Cargo commands is sufficient.
+
+## Hosted Calls And Runtime Ownership
 
 The generated module exposes the selected `project`, a typed `Functions`
 aggregate, and plain or hosted `bind` support. Compile a provider-free project
@@ -176,6 +250,12 @@ exact data, repeated-call, IO, and Echo behavior.
 The lower-level `compile_typed_project` and `compile_typed_host_project`
 functions remain available when an application deliberately owns project
 selection or host registration instead of generated bindings.
+
+The generated project selection loads source from the Cargo manifest directory's
+`gleam/` at runtime initialization. This source-backed workflow does not bundle
+Gleam source or its dependencies into the executable. A copied binary alone is
+not self-contained: the source project and resolved package sources must still
+be available at that location.
 
 ## Data Boundary
 
@@ -321,7 +401,7 @@ Rust bindings.
 For provider-free direct control over declarations and binding,
 [`rust_embedding.rs`](../examples/rust_embedding.rs) remains the low-level
 typed API reference. Source closures that require built-in or external
-providers should use the managed sync and check workflow shown by the canonical
+providers should use the init and sync workflow shown by the canonical
 application. The lower-level provider assembly contract remains documented in
 [host provider components](host-providers.md); it is not a second application
 workflow.

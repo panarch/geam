@@ -170,16 +170,17 @@ domain Stock type stays in Gleam. Lazy-read costs, retained lifetime,
 foreign-owner rejection, and recursive permutations remain core/CLI
 owner-test contracts.
 
-Run the same focused checks locally after resolving the nested Gleam project:
+Run the same focused checks locally from the repository root. The first check
+restores missing package sources from the committed Gleam lock without a
+separate dependency-resolution step:
 
 ```sh
-cd examples/rust_embedding_application/gleam
-gleam deps download
-gleam format --check
-cd ../../..
 cargo build --package geam --bin geam --locked
 cd examples/rust_embedding_application
 ../../target/debug/geam embedding check
+cd gleam
+gleam format --check
+cd ..
 cd ../..
 cargo tree --manifest-path examples/rust_embedding_application/Cargo.toml \
   --locked --package geam --edges normal --depth 1
@@ -190,8 +191,9 @@ cargo clippy --manifest-path examples/rust_embedding_application/Cargo.toml \
 cargo run --quiet --manifest-path examples/rust_embedding_application/Cargo.toml --locked
 ```
 
-The Acceptance workflow's `Rust embedding` job owns this boundary. It first
-checks the committed bytes, deliberately makes the generated source stale,
+The Acceptance workflow's `Rust embedding` job owns this boundary. It starts
+without a separate Gleam download step, checks locked readiness, and verifies
+that tracked application files remain unchanged. It then makes generated source stale,
 requires `embedding check` to fail, and runs production sync to restore the
 exact committed file before formatting, testing, linting, and running the
 application with the exact inventory report and its captured Gleam IO. The
@@ -199,6 +201,15 @@ same job requires one Geam package identity, the exact core/macros/stdlib
 application profile, the text-pattern provider, and no CLI/JSON/Time dependency.
 Provider-example jobs remain separate because they own provider authoring and
 standalone consumption rather than Rust-first application composition.
+
+CLI owners separately cover fresh init, repeated sync, required built-in
+features, existing dependency preservation, and explicit native-provider
+approval. Check cases cover locked Hex/Git/local sources, cold and partial
+caches, stale locks or generated files, invalid source, provider incompatibility,
+and acquisition failures while comparing project bytes. Cargo's locked metadata
+path may populate caches; neither it nor the check command compiles or executes
+Rust build scripts, provider initialization, or the application. Runtime typed
+value and ownership contracts remain in core tests.
 
 The tracked `cli/tests/fixtures/standalone_cli` fixture verifies the complete CLI
 assembly boundary. Its Gleam project combines a Pure Gleam path package,

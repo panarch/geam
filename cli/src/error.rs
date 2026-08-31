@@ -53,7 +53,7 @@ pub(super) enum CliError {
     },
 
     #[error(
-        "refusing to modify user-owned Cargo manifest {path}; use the manual embedding workflow tracked by #115"
+        "refusing to modify user-owned Cargo manifest {path}; for Rust embedding, use `geam embedding init` from the Cargo package directory"
     )]
     UserOwnedCargoManifest { path: Utf8PathBuf },
 

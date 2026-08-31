@@ -484,6 +484,13 @@ mod tests {
         let error = ManagedProject::load(&root, "application")
             .err()
             .expect("user manifest should be refused");
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "refusing to modify user-owned Cargo manifest {}; for Rust embedding, use `geam embedding init` from the Cargo package directory",
+                root.join("Cargo.toml")
+            )
+        );
         assert!(matches!(
             error,
             CliError::UserOwnedCargoManifest { path } if path == root.join("Cargo.toml")
