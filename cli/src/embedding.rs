@@ -124,7 +124,8 @@ mod tests {
         let generated = fs::read(&generated_path).expect("generated source should be readable");
         assert!(String::from_utf8_lossy(&generated).contains("use runtime::embedding::EcoString;"));
         assert!(
-            String::from_utf8_lossy(&generated).contains("pub double: Function<(BigInt,), BigInt>")
+            String::from_utf8_lossy(&generated)
+                .contains("pub double: Function<(BigInt,), BigInt, Function1Input>")
         );
         assert_eq!(
             fs::read(fixture.root.join("Cargo.lock"))
@@ -135,6 +136,17 @@ mod tests {
         assert_success(
             Command::new("rustfmt").arg("--check").arg(&generated_path),
             "generated Rust formatting",
+        );
+        assert_success(
+            fixture.cargo("clippy").args([
+                "--locked",
+                "--offline",
+                "--all-targets",
+                "--",
+                "-D",
+                "warnings",
+            ]),
+            "plain generated Rust Clippy",
         );
         assert_success(
             fixture
@@ -204,7 +216,7 @@ mod tests {
 
         fs::write(
             fixture.root.join("gleam/src/inventory_rules.gleam"),
-            "pub fn unsupported(_value: List(Int)) -> Int { 1 }\n",
+            "pub fn unsupported(_value: List(fn(Int) -> Int)) -> Int { 1 }\n",
         )
         .expect("unsupported boundary fixture should be written");
         let error = sync(
@@ -770,6 +782,19 @@ pub fn contains_only_words(_text: String) -> Bool { True }
                 .expect("Rust source directory should be created");
             fs::create_dir_all(self.root.join("gleam/src"))
                 .expect("Gleam source directory should be created");
+            fs::create_dir_all(self.root.join("gleam/packages/gleam_stdlib/src/gleam"))
+                .expect("plain Option dependency directory should be created");
+            fs::write(
+                self.root.join("gleam/packages/gleam_stdlib/gleam.toml"),
+                "name = \"gleam_stdlib\"\nversion = \"1.0.0\"\n",
+            )
+            .expect("plain Option package should be written");
+            fs::write(
+                self.root
+                    .join("gleam/packages/gleam_stdlib/src/gleam/option.gleam"),
+                "pub type Option(a) { Some(a) None }\n",
+            )
+            .expect("plain Option source should be written");
             fs::write(
                 self.root.join("Cargo.toml"),
                 format!(
@@ -797,6 +822,7 @@ resolver = "3"
                 r#"mod geam_bindings;
 
 use std::error::Error;
+use runtime::embedding::{BigInt, EcoString};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let program = geam_bindings::project().compile()?;
@@ -840,6 +866,43 @@ fn main() -> Result<(), Box<dyn Error>> {
     assert_eq!(codepoint, 'a');
     assert!(boolean);
     assert!(mixed);
+    let rows = module.call(&functions.keep_rows, (vec![("first".into(), 3.into())],), &mut echo)?;
+    assert_eq!(rows.get(0), Some(("first".into(), BigInt::from(3))));
+    let again = module.call(&functions.other_rows, (&rows,), &mut echo)?;
+    assert_eq!(again.to_vec(), rows.to_vec());
+    let (left, right) = module.call(
+        &functions.combine_rows, (&rows, vec![("second".into(), 4.into())]), &mut echo,
+    )?;
+    assert_eq!(left.to_vec(), rows.to_vec());
+    assert_eq!(right.get(0), Some(("second".into(), BigInt::from(4))));
+    let nested = module.call(&functions.nested, (vec![vec!["nested".into()]],), &mut echo)?;
+    assert_eq!(nested.get(0).expect("nested row").get(0), Some("nested".into()));
+    let nested_again = module.call(&functions.nested, (&nested,), &mut echo)?;
+    assert_eq!(nested_again.get(0).expect("retained nested row").get(0), Some("nested".into()));
+    let optional = module.call(&functions.optional_rows, (Some(&rows),), &mut echo)?;
+    assert_eq!(optional.expect("populated Option").to_vec(), rows.to_vec());
+    let absent: Option<Vec<(EcoString, BigInt)>> = None;
+    assert!(module.call(&functions.optional_rows, (absent,), &mut echo)?.is_none());
+    let accepted = module.call(
+        &functions.result_rows, (Ok(vec![("accepted".into(), 5.into())]),), &mut echo,
+    )?;
+    assert_eq!(accepted.expect("Ok rows").get(0), Some(("accepted".into(), BigInt::from(5))));
+    let rejected: Result<Vec<(EcoString, BigInt)>, EcoString> = Err("rejected".into());
+    assert_eq!(module.call(&functions.result_rows, (rejected,), &mut echo)?.err(), Some("rejected".into()));
+    let (numbers, labels, tag) = module.call(
+        &functions.mixed_data, ((vec![8.into()], Some(vec!["label".into()]), "tag".into()),), &mut echo,
+    )?;
+    assert_eq!(numbers.get(0), Some(BigInt::from(8)));
+    assert_eq!(labels.expect("populated nested Option").get(0), Some("label".into()));
+    assert_eq!(tag, "tag");
+    module.call(
+        &functions.many_lists,
+        (
+            (&numbers, vec![1.into()], &numbers, vec![2.into()], &numbers, vec![3.into()], &numbers),
+            (vec![4.into()], &numbers, vec![5.into()], &numbers, vec![6.into()], &numbers, vec![7.into()]),
+        ),
+        &mut echo,
+    )?;
     assert!(echo.is_empty());
     Ok(())
 }
@@ -848,17 +911,18 @@ fn main() -> Result<(), Box<dyn Error>> {
             .expect("Rust application should be written");
             fs::write(
                 self.root.join("gleam/gleam.toml"),
-                "name = \"embedding_application\"\nversion = \"1.0.0\"\n",
+                "name = \"embedding_application\"\nversion = \"1.0.0\"\n\n[dependencies]\ngleam_stdlib = { path = \"packages/gleam_stdlib\" }\n",
             )
             .expect("Gleam package config should be written");
             fs::write(
                 self.root.join("gleam/manifest.toml"),
-                "packages = []\n\n[requirements]\n",
+                "packages = [{ name = \"gleam_stdlib\", version = \"1.0.0\", build_tools = [\"gleam\"], requirements = [], source = \"local\", path = \"packages/gleam_stdlib\" }]\n\n[requirements]\ngleam_stdlib = { path = \"packages/gleam_stdlib\" }\n",
             )
             .expect("Gleam manifest should be written");
             fs::write(
                 self.root.join("gleam/src/inventory_rules.gleam"),
                 r#"import support
+import gleam/option.{type Option}
 
 pub fn normalize(value: String) -> String {
   support.label(value)
@@ -888,6 +952,19 @@ pub fn mixed(
 ) -> Bool {
   value
 }
+
+pub type Row = #(String, Int)
+pub fn keep_rows(value: List(Row)) { value }
+pub fn other_rows(value: List(Row)) { value }
+pub fn combine_rows(left: List(Row), right: List(Row)) { #(left, right) }
+pub fn nested(value: List(List(String))) { value }
+pub fn optional_rows(value: Option(List(Row))) { value }
+pub fn result_rows(value: Result(List(Row), String)) { value }
+pub fn mixed_data(value: #(List(Int), Option(List(String)), String)) { value }
+pub fn many_lists(
+  _left: #(List(Int), List(Int), List(Int), List(Int), List(Int), List(Int), List(Int)),
+  _right: #(List(Int), List(Int), List(Int), List(Int), List(Int), List(Int), List(Int)),
+) { Nil }
 "#,
             )
             .expect("Gleam boundary source should be written");
@@ -1017,6 +1094,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     assert!(!numbers);
     assert_eq!(environment, "staging");
     assert!(checkout);
+    let checked = module.call(
+        &functions.validate_words, (vec!["Geam".into(), "2026".into()],), &mut state, &mut echo,
+    )?;
+    assert_eq!(checked.to_vec(), [Ok("Geam".into()), Err("2026".into())]);
+    let retained = module.call(&functions.words_again, (&checked,), &mut state, &mut echo)?;
+    assert_eq!(retained.to_vec(), checked.to_vec());
     assert!(echo.is_empty());
     println!("{value}");
     Ok(())
@@ -1074,6 +1157,21 @@ pub fn environment() -> String {
 pub fn checkout_enabled() -> Bool {
   flags.enabled("new_checkout")
 }
+
+pub fn validate_words(values: List(String)) -> List(Result(String, String)) {
+  case values {
+    [] -> []
+    [text, ..rest] -> {
+      let checked = case contains_only_words(text) {
+        True -> Ok(text)
+        False -> Error(text)
+      }
+      [checked, ..validate_words(rest)]
+    }
+  }
+}
+
+pub fn words_again(values: List(Result(String, String))) { values }
 "#,
             )
             .expect("hosted Gleam boundary should be written");

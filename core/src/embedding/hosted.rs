@@ -1,5 +1,5 @@
 use super::binding::{BindingBuilder, BindingParts, Bindings};
-use super::input::ArgumentsInput;
+use super::input::{ArgumentsInput, InputShape};
 use super::{Arguments, BindingError, CallError, Function, FunctionDeclaration, ReturnValue};
 use crate::frontend::HostedTypedProgram;
 use crate::host::HostProfile;
@@ -98,9 +98,9 @@ impl<Profile: HostProfile> HostedModuleBindings<Profile> {
 impl<Profile: HostProfile> HostedModule<Profile> {
     /// Calls a bound function with explicit caller-owned provider state.
     #[allow(private_bounds)]
-    pub fn call<ArgumentsType, Return, Input>(
+    pub fn call<ArgumentsType, Return, Input, Shape>(
         &self,
-        function: &Function<ArgumentsType, Return>,
+        function: &Function<ArgumentsType, Return, Shape>,
         arguments: Input,
         state: &mut Profile::RunState,
         echo: &mut dyn EchoSink,
@@ -108,6 +108,7 @@ impl<Profile: HostProfile> HostedModule<Profile> {
     where
         ArgumentsType: ArgumentsInput<Input>,
         Return: ReturnValue,
+        Shape: InputShape<Input>,
     {
         self.check_owner(&function.owner).and_then(|()| {
             if !ArgumentsType::owners_match(&arguments, &self.owner) {

@@ -24,6 +24,8 @@ pub use binding::{BindingError, FunctionDeclaration, ModuleBindings, ModuleBuild
 pub use ecow::EcoString;
 pub use error::CallError;
 pub use hosted::{HostedModule, HostedModuleBindings, HostedModuleBuilder};
+#[doc(hidden)]
+pub use input::InputShape;
 pub use list::{Iter, List};
 pub use num_bigint::BigInt;
 pub use project::{HostedProject, Project};
@@ -39,11 +41,11 @@ use std::sync::Arc;
 ///
 /// The handle becomes callable only after its binding owner is sealed, and
 /// only the resulting [`Module`] or [`HostedModule`] may call it.
-pub struct Function<Arguments, Return> {
+pub struct Function<Arguments, Return, Shape = Arguments> {
     name: EcoString,
     slot: usize,
     owner: Arc<()>,
-    marker: PhantomData<fn(Arguments) -> Return>,
+    marker: PhantomData<fn(Arguments, Shape) -> Return>,
 }
 
 /// One sealed plain execution shared by all functions selected from a module.
@@ -53,7 +55,7 @@ pub struct Module {
     owner: Arc<()>,
 }
 
-impl<Arguments, Return> Clone for Function<Arguments, Return> {
+impl<Arguments, Return, Shape> Clone for Function<Arguments, Return, Shape> {
     fn clone(&self) -> Self {
         Self {
             name: self.name.clone(),
@@ -64,10 +66,21 @@ impl<Arguments, Return> Clone for Function<Arguments, Return> {
     }
 }
 
-impl<Arguments, Return> Function<Arguments, Return> {
+impl<Arguments, Return, Shape> Function<Arguments, Return, Shape> {
     /// Returns the source name selected for this function.
     pub fn name(&self) -> &EcoString {
         &self.name
+    }
+
+    /// Attaches a generated inference shape without changing the validated signature.
+    #[doc(hidden)]
+    pub fn with_input_shape<NextShape>(self) -> Function<Arguments, Return, NextShape> {
+        Function {
+            name: self.name,
+            slot: self.slot,
+            owner: self.owner,
+            marker: PhantomData,
+        }
     }
 
     fn new(name: EcoString, slot: usize, owner: &Arc<()>) -> Self {
@@ -83,15 +96,16 @@ impl<Arguments, Return> Function<Arguments, Return> {
 impl Module {
     /// Calls a bound function with Rust values through its prevalidated entry.
     #[allow(private_bounds)]
-    pub fn call<Arguments, Return, Input>(
+    pub fn call<Arguments, Return, Input, Shape>(
         &self,
-        function: &Function<Arguments, Return>,
+        function: &Function<Arguments, Return, Shape>,
         arguments: Input,
         echo: &mut dyn EchoSink,
     ) -> Result<Return, CallError>
     where
         Arguments: ArgumentsInput<Input>,
         Return: ReturnValue,
+        Shape: InputShape<Input>,
     {
         self.check_owner(&function.owner).and_then(|()| {
             if !Arguments::owners_match(&arguments, &self.owner) {

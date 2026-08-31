@@ -18,6 +18,7 @@ use geam::embedding::FunctionDeclaration;
 use geam::embedding::HostedModuleBindings;
 use geam::embedding::HostedModuleBuilder;
 use geam::embedding::HostedProject;
+use geam::embedding::InputShape;
 use std::marker::PhantomData;
 
 pub const ROOT_MODULE: &str = "rust_embedding";
@@ -163,11 +164,24 @@ where
     ))
 }
 
+#[allow(clippy::type_complexity)]
 pub struct Functions {
-    pub format_words: Function<(EcoString,), EcoString>,
-    pub contains_only_words: Function<(EcoString,), bool>,
-    pub choose_price: Function<(bool, f64, f64), f64>,
+    pub format_words: Function<(EcoString,), EcoString, Function0Input>,
+    pub contains_only_words: Function<(EcoString,), bool, Function1Input>,
+    pub choose_price: Function<(bool, f64, f64), f64, Function2Input>,
 }
+
+pub struct Function0Input;
+
+impl InputShape<(EcoString,)> for Function0Input {}
+
+pub struct Function1Input;
+
+impl InputShape<(EcoString,)> for Function1Input {}
+
+pub struct Function2Input;
+
+impl InputShape<(bool, f64, f64)> for Function2Input {}
 
 pub fn bind<Io>(
     builder: HostedModuleBuilder<Profile<Io>>,
@@ -181,9 +195,9 @@ where
     Ok((
         bindings,
         Functions {
-            format_words: function_0,
-            contains_only_words: function_1,
-            choose_price: function_2,
+            format_words: function_0.with_input_shape(),
+            contains_only_words: function_1.with_input_shape(),
+            choose_price: function_2.with_input_shape(),
         },
     ))
 }

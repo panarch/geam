@@ -7,6 +7,25 @@ use crate::runtime::{
 };
 use std::sync::Arc;
 
+/// A generated function's static input inference constraint.
+///
+/// This relation cannot supply a codec or establish value compatibility. Calls
+/// independently require the private adapter for their validated signature:
+///
+/// ```compile_fail
+/// use geam_core::embedding::{EcoString, Function, InputShape, Module};
+/// struct Forged;
+/// impl InputShape<(bool,)> for Forged {}
+/// fn invalid(module: &Module, function: Function<(EcoString,), ()>) {
+///     let function = function.with_input_shape::<Forged>();
+///     let _ = module.call(&function, (true,), &mut Vec::new());
+/// }
+/// ```
+#[doc(hidden)]
+pub trait InputShape<Input> {}
+
+impl<Arguments, Input> InputShape<Input> for Arguments where Arguments: ArgumentsInput<Input> {}
+
 pub(super) trait ArgumentsInput<Input>: Arguments {
     fn owners_match(input: &Input, owner: &Arc<()>) -> bool;
 
@@ -258,8 +277,46 @@ impl<Value, Input> FreshInput<Option<Input>> for Option<Value> where Value: Fres
 
 #[cfg(test)]
 mod tests {
-    use crate::embedding::{BigInt, EcoString, FunctionDeclaration, List, ModuleBuilder};
-    use crate::{ModuleSource, PackageSource, compile_typed_package_program};
+    use crate::embedding::{
+        BigInt, EcoString, FunctionDeclaration, InputShape, List, ModuleBuilder,
+    };
+    use crate::{ModuleSource, PackageSource, compile_typed_module, compile_typed_package_program};
+
+    #[test]
+    fn generated_shapes_preserve_scalar_inference_and_the_bound_function_owner() {
+        struct KeepInput;
+        impl<Values> InputShape<(Values, EcoString)> for KeepInput {}
+
+        let typed = compile_typed_module(
+            "library",
+            "library.gleam",
+            "pub fn keep(values: List(String), label: String) { #(values, label) }",
+        )
+        .expect("input shape source");
+        let (bindings, function) = ModuleBuilder::new(typed)
+            .expect("input shape plan")
+            .function(FunctionDeclaration::<
+                (List<EcoString>, EcoString),
+                (List<EcoString>, EcoString),
+            >::new("keep"))
+            .expect("input shape declaration");
+        let function = function.with_input_shape::<KeepInput>();
+        let cloned = function.clone();
+        assert_eq!(cloned.name(), "keep");
+        let module = bindings.seal();
+        let mut echo = Vec::new();
+        let (values, label) = module
+            .call(&function, (vec!["value".into()], "fresh".into()), &mut echo)
+            .expect("fresh shape input");
+        assert_eq!(values.get(0), Some("value".into()));
+        assert_eq!(label, "fresh");
+        let (retained, label) = module
+            .call(&cloned, (&values, "retained".into()), &mut echo)
+            .expect("retained shape input");
+        assert_eq!(retained.get(0), Some("value".into()));
+        assert_eq!(label, "retained");
+        assert!(echo.is_empty());
+    }
 
     #[test]
     fn composes_lists_inside_tuple_result_and_standard_option_boundaries() {

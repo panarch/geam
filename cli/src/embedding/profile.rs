@@ -434,7 +434,7 @@ mod tests {
         ComponentBinding, ExternalComponent, HostedBindings, HostedCapabilities, HostedComponents,
     };
     use crate::builtin::BuiltInProvider;
-    use crate::embedding::boundary::{FunctionBinding, PlainBindings, Scalar};
+    use crate::embedding::boundary::{DataType, FunctionBinding, PlainBindings};
     use crate::embedding::identifier::RustIdentifier;
     use crate::embedding::package::EmbeddingPackage;
     use crate::error::CliError;
@@ -1010,7 +1010,7 @@ resolver = "3"
                         gleam_name: "ready".to_owned(),
                         rust_name: identifier("ready"),
                         arguments: Vec::new(),
-                        return_type: Scalar::Bool,
+                        return_type: DataType::Bool,
                     },
                     remaining: Vec::new(),
                 },
