@@ -4,6 +4,7 @@ mod command;
 mod embedding;
 mod error;
 mod process;
+mod progress;
 mod project;
 mod provider;
 mod runner;
@@ -15,6 +16,7 @@ use command::{
 };
 use error::CliError;
 use std::env;
+use std::io::Write;
 use std::process::ExitCode;
 
 pub fn run() -> ExitCode {
@@ -26,7 +28,8 @@ pub fn run() -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("geam: {error}");
+            // A closed stderr must not turn the original failure into a panic.
+            let _ = writeln!(std::io::stderr(), "geam: {error}");
             ExitCode::FAILURE
         }
     }

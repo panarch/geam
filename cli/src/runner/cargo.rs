@@ -1,17 +1,27 @@
 use crate::error::CliError;
-use crate::process::{run_checked, run_inherited};
+use crate::process::{run_checked_with_progress, run_inherited};
+use crate::progress::Progress;
 use camino::{Utf8Path, Utf8PathBuf};
 use std::fs;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 const TARGET_DIRECTORY: &str = "build/geam/target";
 
 pub(crate) trait CargoLock {
-    fn generate_lockfile(&self, project_root: &Utf8Path) -> Result<(), CliError>;
+    fn generate_lockfile(
+        &self,
+        project_root: &Utf8Path,
+        progress: &mut Progress<'_>,
+    ) -> Result<(), CliError>;
 }
 
 pub(crate) trait RunnerChecker {
-    fn check(&self, project_root: &Utf8Path, module: &str) -> Result<(), CliError>;
+    fn check(
+        &self,
+        project_root: &Utf8Path,
+        module: &str,
+        progress: &mut Progress<'_>,
+    ) -> Result<(), CliError>;
 }
 
 pub(crate) trait RunnerExecutor {
@@ -26,25 +36,36 @@ pub(crate) trait RunnerExecutor {
 pub(crate) struct SystemCargo;
 
 impl CargoLock for SystemCargo {
-    fn generate_lockfile(&self, project_root: &Utf8Path) -> Result<(), CliError> {
-        finish_process(run_checked(
+    fn generate_lockfile(
+        &self,
+        project_root: &Utf8Path,
+        progress: &mut Progress<'_>,
+    ) -> Result<(), CliError> {
+        finish_process(run_checked_with_progress(
             Command::new("cargo")
                 .arg("generate-lockfile")
                 .arg("--manifest-path")
                 .arg(project_root.join("Cargo.toml"))
                 .current_dir(project_root)
                 .env("CARGO_TARGET_DIR", project_root.join(TARGET_DIRECTORY)),
+            progress,
+            Stdio::inherit(),
         ))
     }
 }
 
 impl RunnerChecker for SystemCargo {
-    fn check(&self, project_root: &Utf8Path, module: &str) -> Result<(), CliError> {
-        finish_process(run_checked(&mut runner_command(
-            project_root,
-            "check",
-            module,
-        )))
+    fn check(
+        &self,
+        project_root: &Utf8Path,
+        module: &str,
+        progress: &mut Progress<'_>,
+    ) -> Result<(), CliError> {
+        finish_process(run_checked_with_progress(
+            &mut runner_command(project_root, "check", module),
+            progress,
+            Stdio::inherit(),
+        ))
     }
 }
 
@@ -67,7 +88,6 @@ fn runner_command(project_root: &Utf8Path, mode: &str, module: &str) -> Command 
     let mut command = Command::new("cargo");
     command
         .arg("run")
-        .arg("--quiet")
         .arg("--locked")
         .arg("--bin")
         .arg("geam-runner")
@@ -96,13 +116,17 @@ pub(crate) fn reconcile_lock(
     project_root: &Utf8Path,
     manifest_changed: bool,
     cargo: &dyn CargoLock,
+    progress: &mut Progress<'_>,
 ) -> Result<(), CliError> {
     let lock = project_root.join("Cargo.lock");
     if manifest_changed {
         remove_stale_lock(&lock)?;
     }
     if manifest_changed || !lock.is_file() {
-        cargo.generate_lockfile(project_root)?;
+        progress.report(format_args!(
+            "Resolving Cargo dependencies in {project_root}"
+        ))?;
+        cargo.generate_lockfile(project_root, progress)?;
     }
     Ok(())
 }
@@ -124,6 +148,7 @@ mod tests {
         CargoLock, RunnerChecker, SystemCargo, execution_command, reconcile_lock, runner_command,
     };
     use crate::error::CliError;
+    use crate::progress::Progress;
     use camino::{Utf8Path, Utf8PathBuf};
     use std::cell::RefCell;
     use std::fs;
@@ -135,7 +160,11 @@ mod tests {
     }
 
     impl CargoLock for RecordingCargo {
-        fn generate_lockfile(&self, project_root: &Utf8Path) -> Result<(), CliError> {
+        fn generate_lockfile(
+            &self,
+            project_root: &Utf8Path,
+            _progress: &mut Progress<'_>,
+        ) -> Result<(), CliError> {
             self.operations.borrow_mut().push("lock".to_owned());
             fs::write(project_root.join("Cargo.lock"), "fixture lock\n")
                 .expect("fixture lock should be written");
@@ -146,7 +175,11 @@ mod tests {
     struct FailingCargo;
 
     impl CargoLock for FailingCargo {
-        fn generate_lockfile(&self, _project_root: &Utf8Path) -> Result<(), CliError> {
+        fn generate_lockfile(
+            &self,
+            _project_root: &Utf8Path,
+            _progress: &mut Progress<'_>,
+        ) -> Result<(), CliError> {
             Err(CliError::ProcessFailure {
                 command: "cargo generate-lockfile".to_owned(),
                 status: Some(1),
@@ -169,7 +202,6 @@ mod tests {
                 .collect::<Vec<_>>(),
             [
                 "run",
-                "--quiet",
                 "--locked",
                 "--bin",
                 "geam-runner",
@@ -191,7 +223,6 @@ mod tests {
                 .collect::<Vec<_>>(),
             [
                 "run".to_owned(),
-                "--quiet".to_owned(),
                 "--locked".to_owned(),
                 "--bin".to_owned(),
                 "geam-runner".to_owned(),
@@ -213,17 +244,51 @@ mod tests {
         let root = Utf8PathBuf::from_path_buf(project.path().to_path_buf())
             .expect("temporary path should be valid UTF-8");
         let cargo = RecordingCargo::default();
+        let mut output = Vec::new();
 
-        reconcile_lock(&root, true, &cargo).expect("initial lock should reconcile");
+        reconcile_lock(&root, true, &cargo, &mut Progress::Visible(&mut output))
+            .expect("initial lock should reconcile");
         assert_eq!(cargo.operations.borrow().as_slice(), ["lock"]);
+        assert_eq!(
+            output,
+            format!("geam: Resolving Cargo dependencies in {root}\n").as_bytes()
+        );
 
         cargo.operations.borrow_mut().clear();
-        reconcile_lock(&root, false, &cargo).expect("unchanged lock should reconcile");
+        output.clear();
+        reconcile_lock(&root, false, &cargo, &mut Progress::Visible(&mut output))
+            .expect("unchanged lock should reconcile");
         assert!(cargo.operations.borrow().is_empty());
+        assert!(output.is_empty());
 
         fs::remove_file(root.join("Cargo.lock")).expect("fixture lock should be removed");
-        reconcile_lock(&root, false, &cargo).expect("missing lock should be regenerated");
+        reconcile_lock(&root, false, &cargo, &mut Progress::Visible(&mut output))
+            .expect("missing lock should be regenerated");
         assert_eq!(cargo.operations.borrow().as_slice(), ["lock"]);
+        assert_eq!(
+            output,
+            format!("geam: Resolving Cargo dependencies in {root}\n").as_bytes()
+        );
+    }
+
+    #[test]
+    fn failed_progress_stops_before_generating_a_lock() {
+        let project = tempdir().expect("temporary project should be created");
+        let root = Utf8PathBuf::from_path_buf(project.path().to_path_buf())
+            .expect("temporary path should be valid UTF-8");
+        let cargo = RecordingCargo::default();
+        let path = root.join("output");
+        fs::write(&path, "read-only\n").expect("output fixture");
+        let mut output = fs::File::open(&path).expect("read-only output");
+        let error = reconcile_lock(&root, false, &cargo, &mut Progress::Visible(&mut output))
+            .expect_err("progress failure should prevent Cargo execution");
+        assert_eq!(error.to_string(), "failed to write preparation progress");
+        assert!(cargo.operations.borrow().is_empty());
+        assert!(!root.join("Cargo.lock").exists());
+        assert_eq!(
+            fs::read(path).expect("unchanged output fixture"),
+            b"read-only\n"
+        );
     }
 
     #[test]
@@ -233,7 +298,7 @@ mod tests {
             .expect("temporary path should be valid UTF-8");
         fs::write(root.join("Cargo.lock"), "stale lock\n")
             .expect("stale fixture lock should be written");
-        let error = reconcile_lock(&root, true, &FailingCargo)
+        let error = reconcile_lock(&root, true, &FailingCargo, &mut Progress::Hidden)
             .expect_err("lock failure should be preserved");
         assert!(matches!(
             error,
@@ -250,7 +315,7 @@ mod tests {
         let expected_kind = fs::remove_file(&lock)
             .expect_err("directory should reject file removal")
             .kind();
-        let error = reconcile_lock(&root, true, &FailingCargo)
+        let error = reconcile_lock(&root, true, &FailingCargo, &mut Progress::Hidden)
             .expect_err("an unremovable stale lock should fail before Cargo");
         assert!(matches!(
             error,
@@ -266,7 +331,7 @@ mod tests {
             .expect("temporary path should be valid UTF-8");
 
         let generation = SystemCargo
-            .generate_lockfile(&root)
+            .generate_lockfile(&root, &mut Progress::Hidden)
             .expect_err("missing manifest should reject lock generation");
         assert!(matches!(
             generation,
@@ -280,14 +345,14 @@ mod tests {
         ));
 
         let check = SystemCargo
-            .check(&root, "application")
+            .check(&root, "application", &mut Progress::Hidden)
             .expect_err("missing manifest should reject runner checking");
         assert!(matches!(
             check,
             CliError::ProcessFailure { command, status: Some(101), stderr }
                 if command
                     == format!(
-                        "cargo run --quiet --locked --bin geam-runner -- check {root} application"
+                        "cargo run --locked --bin geam-runner -- check {root} application"
                     )
                     && stderr.contains("could not find `Cargo.toml`")
         ));

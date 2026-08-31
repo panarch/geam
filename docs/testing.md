@@ -234,6 +234,14 @@ the real root Cargo lock, generated runner check, and runner execution.
 Fixture-only Cargo patches keep acquisition local while preserving the
 production manifest, resolution, build, and execution path.
 
+CLI owner tests fix the exact preparation messages, conditional acquisition
+and lock work, and native byte forwarding without newline buffering. Process
+tests cover private metadata stdout, checked-process stdin isolation, large
+output, failure diagnostics, and draining after output failure. The fake-registry
+test also checks progress/approval ordering and repeated preparation. Binary and
+distribution tests keep application stdout and IO/Echo ordering separate from
+preparation stderr; native Cargo/Gleam wording is not a version-pinned assertion.
+
 The [provider authoring examples](../examples) are consumer-facing macro
 acceptance cases. `text_tools` maps one stateless provider to three Gleam
 modules, `value_types` fixes every scalar mapping plus one-, multi-, and

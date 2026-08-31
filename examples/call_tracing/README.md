@@ -36,7 +36,7 @@ geam run
 geam run
 ```
 
-A successful run produces no output. Read
+A successful run produces no application output. Read
 [`project/packages/example_call_tracing/src/example_call_tracing.gleam`](project/packages/example_call_tracing/src/example_call_tracing.gleam),
 [`provider/src/lib.rs`](provider/src/lib.rs), and
 [`project/src/call_tracing_example.gleam`](project/src/call_tracing_example.gleam)

@@ -4,6 +4,7 @@ mod project;
 use super::identifier::RustIdentifier;
 use crate::cargo::{CargoMetadataLoader, CargoMetadataMode, SystemCargoMetadata};
 use crate::error::CliError;
+use crate::progress::Progress;
 use crate::provider::ProviderCandidate;
 use camino::Utf8Path;
 use cargo_metadata::{DependencyKind, Metadata, Package, PackageId};
@@ -68,6 +69,7 @@ impl EmbeddingPackage {
             &project.manifest.with_file_name(""),
             &project.manifest,
             mode,
+            &mut Progress::Hidden,
         )?;
         let package = select_package(&metadata, &project.manifest)?;
         let mut direct_dependencies = direct_normal_dependencies(&metadata, package)?;
@@ -293,6 +295,7 @@ mod tests {
     use super::EmbeddingPackage;
     use crate::cargo::{CargoMetadataLoader, CargoMetadataMode};
     use crate::error::CliError;
+    use crate::progress::Progress;
     use camino::{Utf8Path, Utf8PathBuf};
     use cargo_metadata::{Metadata, MetadataCommand};
     use serde_json::{Value, json};
@@ -316,11 +319,14 @@ mod tests {
             current_directory: &Utf8Path,
             manifest: &Utf8Path,
             mode: CargoMetadataMode,
+            progress: &mut Progress<'_>,
         ) -> Result<Metadata, CliError> {
             if mode == CargoMetadataMode::Workspace {
-                self.workspace.load(current_directory, manifest, mode)
+                self.workspace
+                    .load(current_directory, manifest, mode, progress)
             } else {
-                self.resolved.load(current_directory, manifest, mode)
+                self.resolved
+                    .load(current_directory, manifest, mode, progress)
             }
         }
     }
@@ -331,6 +337,7 @@ mod tests {
             _current_directory: &Utf8Path,
             _manifest: &Utf8Path,
             _mode: CargoMetadataMode,
+            _progress: &mut Progress<'_>,
         ) -> Result<Metadata, CliError> {
             Ok(MetadataCommand::parse(&self.source)
                 .expect("fixed Cargo metadata fixture should be valid"))
@@ -343,6 +350,7 @@ mod tests {
             _current_directory: &Utf8Path,
             manifest: &Utf8Path,
             _mode: CargoMetadataMode,
+            _progress: &mut Progress<'_>,
         ) -> Result<Metadata, CliError> {
             Err(CliError::InvalidCargoMetadata {
                 manifest: manifest.to_path_buf(),

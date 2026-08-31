@@ -38,7 +38,7 @@ geam prepare
 geam run
 ```
 
-A successful run produces no output. The entrypoint executes every public
+A successful run produces no application output. The entrypoint executes every public
 function and checks persistent old values, duplicate insertion, membership,
 size, and equality between independently constructed values.
 

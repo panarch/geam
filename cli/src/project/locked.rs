@@ -285,6 +285,7 @@ mod tests {
     };
     use crate::error::CliError;
     use crate::process::run_checked;
+    use crate::progress::Progress;
     use crate::project::{DependencyDownloader, ProcessDependencyDownloader, prepare_dependencies};
     use camino::{Utf8Path, Utf8PathBuf};
     use geam_core::{ExecutionPlan, Value, compile_typed_project, plan_program, run_main};
@@ -300,7 +301,7 @@ mod tests {
     struct UnavailableDownloader(Cell<usize>);
 
     impl DependencyDownloader for UnavailableDownloader {
-        fn download(&self, _root: &Utf8Path) -> Result<(), CliError> {
+        fn download(&self, _root: &Utf8Path, _progress: &mut Progress<'_>) -> Result<(), CliError> {
             self.0.set(self.0.get() + 1);
             Err(CliError::ProcessFailure {
                 command: "gleam deps download".to_owned(),

@@ -9,6 +9,7 @@ mod resolution;
 
 use crate::command::{AddProvider, RemoveProvider};
 use crate::error::CliError;
+use crate::progress::Progress;
 use crate::project::{ResolvedProject, read_resolved_project};
 pub(crate) use approval::{ProviderApproval, TerminalApproval};
 use camino::Utf8Path;
@@ -45,6 +46,7 @@ impl ProviderSelectionReconciler for SystemProviderReconciler<'_> {
         project: &ResolvedProject,
         program: &geam_core::TypedProgram,
         managed: &mut ManagedProject,
+        progress: &mut Progress<'_>,
     ) -> Result<(), CliError> {
         reconcile_registry(
             &self.registry,
@@ -53,6 +55,7 @@ impl ProviderSelectionReconciler for SystemProviderReconciler<'_> {
             project,
             program,
             managed,
+            progress,
         )
     }
 }
@@ -64,6 +67,7 @@ pub(crate) fn reconcile_registry(
     project: &ResolvedProject,
     program: &geam_core::TypedProgram,
     managed: &mut ManagedProject,
+    progress: &mut Progress<'_>,
 ) -> Result<(), CliError> {
     let discovery = RegistryProviderDiscovery::new(registry);
     let resolver = reconcile::SystemApprovedProviderResolver;
@@ -72,6 +76,7 @@ pub(crate) fn reconcile_registry(
         project,
         program,
         managed,
+        progress,
     )
 }
 
@@ -129,7 +134,7 @@ fn add_with(
     ))?;
     crate::runner::reconcile_source(project_root, &managed.provider_aliases())?;
     let manifest_changed = managed.write()?;
-    crate::runner::reconcile_lock(project_root, manifest_changed, cargo)?;
+    crate::runner::reconcile_lock(project_root, manifest_changed, cargo, &mut Progress::Hidden)?;
     Ok(())
 }
 
@@ -148,7 +153,7 @@ fn remove_with(
     managed.retain_packages(&project.package_names());
     crate::runner::reconcile_source(project_root, &managed.provider_aliases())?;
     let manifest_changed = managed.write()?;
-    crate::runner::reconcile_lock(project_root, manifest_changed, cargo)?;
+    crate::runner::reconcile_lock(project_root, manifest_changed, cargo, &mut Progress::Hidden)?;
     Ok(())
 }
 
@@ -161,6 +166,7 @@ mod tests {
     use super::{add_with, remove_with};
     use crate::command::{AddProvider, RemoveProvider};
     use crate::error::CliError;
+    use crate::progress::Progress;
     use crate::runner::CargoLock;
     use camino::Utf8PathBuf;
     use std::fs;
@@ -169,7 +175,11 @@ mod tests {
     struct TestCargo;
 
     impl CargoLock for TestCargo {
-        fn generate_lockfile(&self, project_root: &camino::Utf8Path) -> Result<(), CliError> {
+        fn generate_lockfile(
+            &self,
+            project_root: &camino::Utf8Path,
+            _progress: &mut Progress<'_>,
+        ) -> Result<(), CliError> {
             fs::write(project_root.join("Cargo.lock"), "fixture lock\n")
                 .expect("fixture lock should be written");
             Ok(())
@@ -179,7 +189,11 @@ mod tests {
     struct FailingCargoLock;
 
     impl CargoLock for FailingCargoLock {
-        fn generate_lockfile(&self, _project_root: &camino::Utf8Path) -> Result<(), CliError> {
+        fn generate_lockfile(
+            &self,
+            _project_root: &camino::Utf8Path,
+            _progress: &mut Progress<'_>,
+        ) -> Result<(), CliError> {
             Err(CliError::ProcessFailure {
                 command: "cargo generate-lockfile".to_owned(),
                 status: Some(1),

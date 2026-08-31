@@ -30,6 +30,33 @@ initializes state and executes directly without a separate check run. A main
 return value is not printed; Gleam IO writes to its selected stream and Echo
 writes to stderr in source order.
 
+## Preparation Output
+
+`prepare` and `run` write plain `geam: ...` progress lines to stderr before each
+preparation phase. These identify the selected module, Gleam dependency
+acquisition, provider resolution or discovery, Cargo dependency resolution,
+and runner check or execution. Provider approval prompts also use stderr;
+responses still come from stdin.
+
+Cargo and Gleam output is shown as those tools produce it, without Geam adding
+prefixes or changing their color, progress, or verbosity settings. Output needed
+for structured failures is forwarded while the command runs and retained for
+diagnostics. Native output stays on its original stream; Cargo metadata JSON
+stays private. Native rendering can differ between a terminal and a pipe; Geam
+does not emulate a terminal.
+
+Repeated commands still report work they actually perform, such as checking
+source and invoking the runner. A dependency acquisition, registry discovery,
+or lock-resolution line appears only when that operation is invoked. Cargo
+decides whether a rebuild is necessary and reports its own build activity.
+
+`prepare` ends with `geam: Prepared MODULE` only after its check succeeds. `run`
+prints `geam: Starting standalone runner for MODULE` before handing control to
+Cargo, then leaves application stdin, stdout, and stderr directly connected.
+There is no completion footer after the application. Geam's preparation lines
+and approval prompts do not go to stdout. On failure, the final diagnostic can
+repeat native stderr that was already forwarded.
+
 ## Managed Files
 
 Geam creates these files in the Gleam project root:

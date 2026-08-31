@@ -119,6 +119,9 @@ fn runs_the_canonical_standalone_project_with_independent_path_providers() {
             "\"count:3/count:4\"\n"
         );
         let stderr = String::from_utf8_lossy(&run.stderr);
+        let handoff = stderr
+            .find("geam: Starting standalone runner for standalone_fixture\n")
+            .expect("preparation should finish before application output");
         let before = stderr
             .find("provider-before\n")
             .expect("first IO event should be present");
@@ -128,7 +131,8 @@ fn runs_the_canonical_standalone_project_with_independent_path_providers() {
         let after = stderr
             .find("provider-after\n")
             .expect("final IO event should be present");
-        assert!(before < echo && echo < after);
+        assert!(handoff < before && before < echo && echo < after);
+        assert!(stderr.ends_with("provider-after\n"));
     }
     assert_eq!(
         fs::read_to_string(project.join("build/geam/runner.rs"))
@@ -154,7 +158,9 @@ fn runs_the_canonical_standalone_project_with_independent_path_providers() {
         String::from_utf8_lossy(&alternate.stderr),
     );
     assert_eq!(String::from_utf8_lossy(&alternate.stdout), "alternate\n");
-    assert!(alternate.stderr.is_empty());
+    let stderr = String::from_utf8_lossy(&alternate.stderr);
+    assert!(stderr.contains("geam: Starting standalone runner for alternate\n"));
+    assert!(!stderr.contains("geam: Prepared "));
 
     let missing_configuration = geam_at(&project, ["run"]);
     assert!(!missing_configuration.status.success());

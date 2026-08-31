@@ -163,7 +163,7 @@ geam prepare
 geam run
 ```
 
-A successful run produces no output. The entrypoint executes every public
+A successful run produces no application output. The entrypoint executes every public
 function and checks all scalar mappings, one-, two-, three-element and nested
 tuples, empty, indexed, pass-through, reversed and tuple-item Lists, unit,
 tuple, named, nested and List-bearing custom constructors, plus source Result
