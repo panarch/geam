@@ -118,15 +118,16 @@ authoring macros. The bounded fake-registry tests separately verify discovery,
 approval, archive validation, and the same production runner path
 deterministically against the current checkout.
 
-The Gleam package and Rust provider are also published as
-`example_text_pattern 0.1.0` on Hex and `geam-example-text-pattern 0.1.0` on
-crates.io. A separate CI acceptance job installs the published `geam 0.2.1`,
-creates a clean Gleam project, adds the Hex package, discovers and approves the
-real crates.io provider without `geam provider add`, and then locks, builds, and
-executes the generated runner. Repeating `prepare` and `run` must preserve the
-managed manifest, lock, and runner source. This fixed released combination
-monitors the public distribution path; it does not replace checkout regression
-tests and changes only when the corresponding artifacts have been published.
+The Gleam package is published as `example_text_pattern` on Hex, and its Rust
+provider is published as `geam-example-text-pattern` on crates.io. A separate CI
+acceptance job installs a known published combination, creates a clean Gleam
+project, discovers and approves the provider without `geam provider add`, and
+then locks, builds, and executes the generated runner. Repeating `prepare` and
+`run` must preserve the managed manifest, lock, and runner source. The separately
+recoverable reference-example publication workflow verifies each new
+same-version Geam, provider, and Hex package combination before release
+finalization. These released-artifact checks do not replace checkout regression
+tests.
 
 Explicit selection is itself approval:
 

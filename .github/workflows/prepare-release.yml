@@ -49,10 +49,17 @@ jobs:
         with:
           toolchain: "1.96"
 
+      - name: Install Gleam toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          gleam-version: "1.18.1"
+          rebar3-version: "3"
+
       - name: Install release tools
         run: |
           cargo install cargo-release --version 1.1.4 --locked
-          cargo install cargo-edit --version 0.13.13 --locked --no-default-features --features upgrade
+          cargo install cargo-edit --version 0.13.13 --locked --no-default-features --features upgrade,set-version
 
       - name: Bump workspace versions
         env:
@@ -83,6 +90,34 @@ jobs:
             (cd "$(dirname "$manifest")" && cargo upgrade --package "geam@=$RELEASE_VERSION" --pinned --recursive false)
           done
 
+      - name: Align published reference packages
+        run: |
+          provider=examples/text_pattern/provider
+          package=examples/text_pattern/project/packages/example_text_pattern
+          project=examples/text_pattern/project
+
+          (cd "$provider" && cargo set-version "$RELEASE_VERSION")
+          test "$(grep -Ec '^gleam-version = "[^"]+"$' "$provider/Cargo.toml")" = 1
+          sed -i.bak -E "s/^gleam-version = \"[^\"]+\"$/gleam-version = \"$RELEASE_VERSION\"/" "$provider/Cargo.toml"
+          rm "$provider/Cargo.toml.bak"
+
+          test "$(grep -Ec '^version = "[^"]+"$' "$package/gleam.toml")" = 1
+          sed -i.bak -E "s/^version = \"[^\"]+\"$/version = \"$RELEASE_VERSION\"/" "$package/gleam.toml"
+          rm "$package/gleam.toml.bak"
+          (cd "$project" && gleam deps update example_text_pattern)
+
+          metadata=$(cargo metadata --manifest-path "$provider/Cargo.toml" --locked --no-deps --format-version 1)
+          jq -e --arg version "$RELEASE_VERSION" '
+            (.packages | length == 1)
+            and (.packages[0].version == $version)
+            and (.packages[0].metadata.geam.provider["gleam-version"] == $version)
+            and ([
+              .packages[0].dependencies[]
+              | select(.name == "geam" and .req == ("=" + $version))
+            ] | length == 1)
+          ' <<< "$metadata" > /dev/null
+          grep -F "name = \"example_text_pattern\", version = \"$RELEASE_VERSION\"" "$project/manifest.toml"
+
       - name: Refresh tracked Cargo locks
         run: |
           while IFS= read -r lock; do
@@ -97,12 +132,12 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add --update -- '*Cargo.toml' '*Cargo.lock'
+          git add --update -- '*Cargo.toml' '*Cargo.lock' '*gleam.toml' '*manifest.toml'
           git commit -F - <<EOF
           Prepare Geam $RELEASE_VERSION
 
-          - Bump workspace versions and provider requirements together.
-          - Refresh independently owned Cargo locks.
+          - Bump workspace and published reference packages together.
+          - Update provider requirements and dependency locks.
           EOF
           git push --set-upstream origin "release/$RELEASE_VERSION"
           gh pr create --draft --base main --head "release/$RELEASE_VERSION" \
