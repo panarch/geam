@@ -16,7 +16,8 @@
 //! retained storage. See [`List`] for lazy reads and ownership restrictions.
 //!
 //! [`Project`] and [`HostedProject`] retain one source selection until it is
-//! compiled into the corresponding existing typed program owner.
+//! compiled into the corresponding existing typed program owner. Hosted
+//! compilation also performs the generated static provider registration.
 
 mod binding;
 mod error;
@@ -35,7 +36,7 @@ pub use hosted::{HostedModule, HostedModuleBindings, HostedModuleBuilder};
 pub use input::InputShape;
 pub use list::{Iter, List};
 pub use num_bigint::BigInt;
-pub use project::{HostedProject, Project};
+pub use project::{HostedProject, HostedProjectError, Project};
 
 use self::input::ArgumentsInput;
 use self::value::{Arguments, ReturnValue};
