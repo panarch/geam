@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 #[cfg(feature = "gleam-json")]
 pub mod gleam_json;
 #[cfg(feature = "gleam-stdlib")]

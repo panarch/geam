@@ -91,6 +91,28 @@ jobs:
             (cd "examples/$example/provider" && cargo clippy --all-targets --locked -- -D warnings)
           done
 
+  documentation:
+    name: Documentation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+          rustflags: ""
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Build workspace documentation
+        run: cargo doc --workspace --no-deps --locked
+
   workspace-tests:
     name: Tests
     runs-on: ubuntu-latest
