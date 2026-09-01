@@ -15,6 +15,10 @@ implemented in Rust.
 These are three entrances to the same runtime, not three steps you must learn in
 order. Start with the project you already have.
 
+Geam is experimental and has not reached a stable `1.0` API. See
+[compatibility](reference/compatibility.md) for verified versions, supported
+integrations, and current deployment limits.
+
 ## Before you start
 
 The supported toolchain baseline is:
