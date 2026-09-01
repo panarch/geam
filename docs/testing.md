@@ -267,14 +267,15 @@ owns deterministic checkout coverage of search, sparse-index, checksum,
 archive metadata, approval, registry-shaped dependency, lock, check, and run.
 
 A separate `Published provider` acceptance job exercises the released
-distribution rather than the checkout. It installs `geam 0.2.1`, creates a
-clean project, pins `example_text_pattern 0.1.0` from Hex, and uses a real PTY
-approval to select `geam-example-text-pattern 0.1.0` from crates.io without an
-explicit provider add. Cargo metadata must show exact registry dependencies,
-the generated runner must include the provider component, and repeated
-prepare/run must preserve the managed manifest, lock, and runner source. The
-small Gleam entry module is kept inline in the workflow because this job owns a
-single released command sequence rather than reusable source behavior.
+distribution rather than the checkout. It installs a known published Geam,
+creates a clean project, pins the matching Hex package, and uses a real PTY
+approval to select the matching crates.io provider without an explicit provider
+add. Metadata must show exact registry dependencies, the generated runner must
+include the provider component, and repeated prepare/run must preserve the
+managed manifest, lock, and runner source. The reference-example publication
+workflow runs the same path against every new same-version combination before
+release finalization. The small Gleam entry module is kept inline because these
+jobs own released command sequences rather than reusable source behavior.
 
 The same text-pattern test first runs the common Gleam entrypoint and the
 Erlang-specific example using the package's native `re` implementation, before
@@ -308,8 +309,9 @@ The normal suite executes the full generated runner with the fixture's locked
 Gleam and Rust dependencies. CI exports the standalone fixture's three local
 Gleam dependencies and all nine example Gleam packages. It also packages the
 two standalone fixture providers and every example provider. No test-only
-fixture package is published; the text-pattern packages are public
-documentation examples with their own release cycle.
+fixture package is published. The text-pattern provider and matching Hex package
+are release-coupled public documentation artifacts and share every Geam release
+version.
 
 The root package keeps four explicit acceptance targets:
 

@@ -466,25 +466,19 @@ Geam metadata. The component demonstrates:
 - scalar arguments and returns plus `List(String)` output; and
 - generated stateless component initialization and typed registration.
 
-Its Cargo manifest uses the canonical discovery name and schema-1 metadata:
-
-```toml
-[package]
-name = "geam-example-text-pattern"
-
-[package.metadata.geam.provider]
-schema = 1
-gleam-package = "example_text_pattern"
-gleam-version = ">= 0.1.0 and < 0.2.0"
-```
+Its [Cargo manifest](../examples/text_pattern/provider/Cargo.toml) uses the
+canonical `geam-example-text-pattern` discovery name and schema-1 metadata. This
+release-coupled provider pins the actual `example_text_pattern` Hex package
+version exactly.
 
 The [complete example](../examples/text_pattern/README.md) executes this crate
 through explicit path selection and packages it with ordinary Cargo tooling.
 The matching Gleam package and provider are also published on Hex and crates.io;
 the package's [public usage guide](../examples/text_pattern/project/packages/example_text_pattern/README.md)
 shows discovery and approval without an explicit provider selection. CI keeps
-that released path separate from checkout tests and verifies it with a fixed
-combination of published Geam, Gleam package, and provider versions. The
+that released path separate from checkout tests and verifies a known published
+combination. The reference-example publication workflow verifies each new
+same-version combination before the GitHub Release is created. The
 [provider README](../examples/text_pattern/provider/README.md) explains the
 complete macro-authored Rust mapping and why `Pattern` owns manual source
 semantics.

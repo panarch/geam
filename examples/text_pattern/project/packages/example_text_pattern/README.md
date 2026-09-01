@@ -48,7 +48,7 @@ output.
 The same source also runs with the
 [geam-example-text-pattern provider](https://github.com/panarch/geam/tree/main/examples/text_pattern/provider),
 which uses Rust's `regex` crate. This workflow requires Geam and Rust/Cargo,
-plus the matching Rust provider published on crates.io:
+plus the same-version Rust provider published on crates.io:
 
 ```sh
 geam prepare
