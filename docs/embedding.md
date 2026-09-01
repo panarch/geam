@@ -20,6 +20,11 @@ cargo install geam --locked
 Start from an ordinary Cargo package, not a virtual workspace root. Geam uses
 the Cargo package name for the nested Gleam package and its public module.
 
+The generated Gleam project uses `target = "erlang"` because Geam analyses the
+Erlang-compatible source path. It does not execute BEAM code. A bodyless Erlang
+external needs a matching Rust provider, while a bodyless JavaScript-only
+external cannot be called through the standard embedding workflow.
+
 ## Make your first call
 
 Create a Rust application and initialize its Gleam project:

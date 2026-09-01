@@ -29,6 +29,12 @@ Install Geam with:
 cargo install geam --locked
 ```
 
+Geam uses Gleam's Erlang target to choose and analyse source; it does not run
+BEAM code. Ordinary Gleam bodies and built-in integrations can run directly. A
+bodyless Erlang external needs a matching Rust provider, and a bodyless
+JavaScript-only external is not available to the standard workflow. See
+[compatibility](reference/compatibility.md) for the exact rules.
+
 ## See your first result
 
 From an existing Gleam application:

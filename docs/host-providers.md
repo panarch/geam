@@ -34,6 +34,13 @@ Imagine a Gleam package with one casing function implemented outside Gleam:
 pub fn upper(value: String) -> String
 ```
 
+The `erlang` target in this declaration is intentional. Standard Geam workflows
+analyse the Erlang-compatible source path and treat bodyless Erlang externals as
+Rust provider requirements. Geam does not call the named Erlang module or
+function; the provider links the Gleam declaration to Rust by its package,
+module, function, and type signature. A bodyless JavaScript-only external is not
+discovered as a provider requirement in this workflow.
+
 Create an ordinary Rust library crate for the provider:
 
 ```sh

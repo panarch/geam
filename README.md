@@ -13,6 +13,13 @@ static types when it connects the two and generates Rust bindings.
 
 ## Try it
 
+Geam currently uses Gleam's Erlang target to choose and analyse source, but it
+does not execute BEAM code. Ordinary Gleam bodies and built-in integrations can
+run directly. A bodyless Erlang external needs a matching Rust provider, while
+a bodyless JavaScript-only external is not available to the standard Geam
+workflow. See [compatibility](docs/reference/compatibility.md) for the exact
+boundary.
+
 You will need Gleam `v1.18.1`, Rust `1.96` or newer, and a 64-bit Rust target.
 Ready? Install Geam with Cargo:
 

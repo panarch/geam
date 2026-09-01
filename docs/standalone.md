@@ -17,6 +17,19 @@ cargo install geam --locked
 Run Geam from a directory containing `gleam.toml` or one of its descendants.
 Geam walks upward to the nearest Gleam project root.
 
+Geam explicitly analyses the Erlang-compatible path through the selected
+modules, regardless of the project's default build target. This chooses which
+Gleam code is available; Geam does not execute BEAM code.
+
+In the standard standalone workflow:
+
+- ordinary Gleam bodies and Gleam fallback bodies can run directly;
+- built-in Geam integrations supply their supported native operations;
+- a bodyless `@external(erlang, ...)` needs a matching Rust provider; and
+- a bodyless JavaScript-only external cannot be called from the selected code.
+
+If the last case is reached, source analysis fails before provider discovery.
+
 ## Run your first project
 
 Create a Gleam application or move into an existing one:

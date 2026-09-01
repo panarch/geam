@@ -32,10 +32,17 @@ constants, functions, imports, pattern matching, records, custom types,
 generics, and read-only loading of resolved Gleam projects. Every supplied
 module body is validated from the typed AST before executable lowering.
 
-Project loading selects the Erlang-target import closure. Erlang external
-declarations can bind to Geam providers or use available Gleam fallback bodies.
-JavaScript-only native implementations are not Rust providers and cannot by
-themselves satisfy a bodyless external in this profile.
+Project loading always selects and analyses the Erlang-target import closure,
+regardless of the package's default build target. This selects the source path;
+Geam does not execute BEAM code. Ordinary Gleam bodies and available fallback
+bodies are planned for the Rust runtime. A bodyless Erlang external must bind to
+a built-in or selected Rust provider.
+
+A bodyless JavaScript-only external is unavailable on this path. If selected
+Gleam code calls it, Gleam analysis fails before automatic provider discovery.
+If it is unreachable, Geam omits it from the planned module. A JavaScript native
+implementation does not become a Rust provider merely because it is present in
+the package.
 
 Provider call signatures support zero through seven source arguments. Direct
 owned closures cover `Int`, `Float`, `String`, `BitArray`, `UtfCodepoint`,
