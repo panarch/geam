@@ -1,0 +1,67 @@
+[project]
+site_name = "Geam"
+site_url = "https://geam.run/"
+site_description = "Run Gleam projects through Rust, embed Gleam in Rust applications, and extend Gleam packages with Rust host providers."
+docs_dir = "docs"
+site_dir = "site"
+repo_url = "https://github.com/panarch/geam"
+repo_name = "panarch/geam"
+edit_uri = "edit/main/docs/"
+extra_css = [
+  "https://fonts.googleapis.com/css2?family=Lexend:wght@400;700&display=swap",
+  "stylesheets/extra.css",
+]
+nav = [
+  { "Home" = "index.md" },
+  { "Guides" = [
+    { "Run a Gleam project" = "standalone.md" },
+    { "Embed Gleam in Rust" = "embedding.md" },
+    { "Author a host provider" = "host-providers.md" },
+  ] },
+  { "Reference" = [
+    "reference/README.md",
+    { "Compatibility" = "reference/compatibility.md" },
+    { "Architecture" = "reference/architecture.md" },
+    { "Embedding boundary" = "reference/embedding-boundary.md" },
+    { "Provider boundary" = "reference/provider-boundary.md" },
+    { "Runtime semantics" = "reference/runtime-semantics.md" },
+  ] },
+  { "Releases" = [
+    "releases/README.md",
+    { "0.2.1" = "releases/0.2.1.md" },
+  ] },
+  { "Development" = [
+    "development/README.md",
+    { "Testing" = "development/testing.md" },
+    { "Test development" = "development/test-development.md" },
+    { "Review policy" = "development/review-policy.md" },
+    { "Upstream Gleam" = "development/upstream-gleam.md" },
+    { "Release notes" = "development/release-notes.md" },
+    { "Publishing" = "development/publishing.md" },
+  ] },
+]
+
+[project.theme]
+language = "en"
+font.text = "Outfit"
+features = [
+  "content.action.view",
+  "content.code.copy",
+  "navigation.footer",
+  "navigation.indexes",
+  "navigation.sections",
+  "navigation.top",
+  "toc.follow",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
