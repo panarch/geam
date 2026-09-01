@@ -110,9 +110,10 @@ fn reverse(values: List<EcoString>) -> Vec<EcoString> {
 }
 ```
 
-List items currently compose the supported scalar and tuple mappings. The view
-is intentionally not an eager `Vec`: provider code chooses whether to inspect
-zero, one, or every item.
+List items support scalar, external, directional custom, Result, and Option
+values plus recursive tuples of those values. A List item cannot itself be a
+List or Vec. The view is intentionally not an eager `Vec`: provider code
+chooses whether to inspect zero, one, or every item.
 
 ## Result And Option
 
