@@ -21,8 +21,9 @@ manifests and the provider's exact Geam and Gleam requirements.
    `release/<version>`. It refuses an existing release branch, PR, or tag and
    never force-pushes.
 3. Add `docs/releases/<version>.md` to the PR following the
-   [release note guide](releases/README.md). Write and review user-facing changes
-   manually. Preparation does not invent release notes.
+   [release note guide](release-notes.md), and add the new version to the release
+   index. Write and review user-facing changes manually. Preparation does not
+   invent release notes.
 4. Approve workflow runs requested for the generated PR and wait for all checks.
    The workflow uses `GITHUB_TOKEN`, not an App or personal token. The repository
    must allow Actions to create PRs. If PR creation fails after pushing, open the
@@ -41,7 +42,7 @@ package entry in `manifest.toml`. Each tracked Cargo lock is reconciled by
 `cargo update --workspace` from its own directory, preserving its local Cargo
 configuration and checkout patches before the new crates exist on crates.io.
 
-The [prepare workflow](../.github/workflows/prepare-release.yml) pins the release
+The [prepare workflow](https://github.com/panarch/geam/blob/main/.github/workflows/prepare-release.yml) pins the release
 tool versions and owns this sequence; there is no separate release script.
 To preview only the workspace version change, run
 `cargo release version patch --workspace` without `--execute`.
@@ -77,7 +78,7 @@ Before workspace authentication or uploads, the workflow checks:
 - an existing release tag, if any, pointing to that same SHA.
 
 After the workspace succeeds, the workflow calls
-[Geam: Publish reference example](../.github/workflows/publish-reference-example.yml)
+[Geam: Publish reference example](https://github.com/panarch/geam/blob/main/.github/workflows/publish-reference-example.yml)
 synchronously. That workflow independently validates the provider and Hex
 package versions, publishes or dry-runs the two reference artifacts, and checks
 the public execution path. The GitHub Release job starts only after both owners

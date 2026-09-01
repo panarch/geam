@@ -1,8 +1,12 @@
 # Runtime Semantics
 
-Geam is a Rust embedding runtime for Gleam programs. It follows Gleam semantics
-for accepted source, but it does not try to emulate every backend detail when
-Gleam itself leaves behavior to the target runtime.
+Geam is a Rust-owned execution runtime for typed Gleam programs. It follows
+Gleam semantics for accepted source, but it does not try to emulate every
+backend detail when Gleam itself leaves behavior to the target runtime.
+
+This document assumes source has passed the supported execution profile. See
+[compatibility](compatibility.md) for the current language, package, target, and
+deployment boundary.
 
 ## Compatibility Policy
 
@@ -448,4 +452,5 @@ future runtime policy says otherwise.
 
 When a new value family or host/runtime feature reaches an implementation edge,
 record the decision here if it affects observable execution behavior. Keep
-review rules in `review-policy.md`; keep runtime meaning decisions here.
+review rules in [the review policy](../development/review-policy.md); keep
+runtime meaning decisions here.

@@ -10,7 +10,7 @@ ask for a total and the first valid item, then prints the review.
 For a new Rust application, start with `geam embedding init` in its Cargo
 package directory. Write public Gleam functions, run `geam embedding sync`,
 then use the generated bindings from handwritten Rust and build with Cargo.
-The [embedding guide](../../docs/embedding.md#first-call) walks through a first
+The [embedding guide](../../docs/embedding.md#make-your-first-call) walks through a first
 call without a provider or manual dependency setup.
 
 This example is already initialized. Its Cargo name

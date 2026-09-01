@@ -1,617 +1,204 @@
-# Host Provider Components
+# Author a host provider
 
-An ordinary Rust crate can provide implementations for source-declared Gleam
-externals. The crate does not need dynamic loading or a Geam-specific package
-format: a runner adds it as a normal Cargo path, Git, or registry dependency and
-composes it into a concrete hosted profile at compile time.
+Gleam packages can already provide target-specific implementations for Erlang
+and JavaScript. A Geam host provider adds a Rust-hosted path alongside that
+model while the Gleam package continues to define the source-facing API.
 
-Provider crates need only Geam's authoring profile:
+Gleam users still import the same modules and call the same functions. The
+provider is the native capability side: a Rust crate that implements the
+package's external functions or values for Geam.
+
+Use a provider when that API needs a native library, process capability,
+persistent opaque value, or caller-owned state that cannot be expressed by its
+Gleam source alone.
+
+The Gleam package and Rust provider remain separate distributable packages:
+
+```text
+Gleam package on Hex
+  declares the public Gleam API and externals
+
+Rust provider on crates.io, Git, or a local path
+  implements those externals for Geam
+```
+
+Standalone projects approve and compose the provider through Geam's managed
+runner. Rust embedding applications compose the same provider through generated
+bindings. Provider authors do not implement separate integrations for the two
+workflows.
+
+## Start with a small provider
+
+Imagine a Gleam package that declares one native casing function:
+
+```gleam
+// src/example_text_tools/casing.gleam
+@external(erlang, "geam_example_text_tools_casing", "upper")
+pub fn upper(value: String) -> String
+```
+
+Create an ordinary Rust library crate for the provider:
 
 ```sh
+cargo new --lib geam-example-text-tools
+cd geam-example-text-tools
 cargo add geam --no-default-features --features provider
+cargo add ecow@0.2.6
 ```
 
-This exposes the provider attributes, author-facing values, and hidden static
-macro support without adding `geam-cli` or built-in provider bundles. A runner
-that depends on the provider receives this feature through ordinary Cargo
-feature unification on the same Geam package identity.
-
-This boundary is intentionally static. The standalone CLI can discover and
-approve provider dependencies, parse explicit configuration, and generate a
-concrete runner, but the resulting Rust program still composes every component
-at compile time. It does not choose or type-erase implementations at runtime.
-
-Start with the [provider authoring examples](../examples/README.md). They present
-multi-module registration, scalar, tuple, List, custom, Result, and Option value
-mappings, stateless, default-state, configured-state, default external, and
-manual external choices plus generic retention as complete Gleam/Rust pairs
-before this document describes the generated and low-level contracts.
-
-## Value Type Provider Authoring
-
-The [value-types example](../examples/value_types/README.md) is the canonical map
-from Gleam source values to macro-authored Rust signatures. Its scalar module
-maps `String`, `Int`, `Float`, `BitArray`, `UtfCodepoint`, `Bool`, and `Nil` to
-`EcoString`, `BigInt`, `f64`, `BitArrayValue`, `char`, `bool`, and `()`. Its
-tuple module recursively composes those leaves with native Rust tuples, and its
-List module provides lazy indexed views plus explicit new-list construction. A
-tuple remains one Gleam source argument even when it contains several elements:
-
-```rust
-#[geam::function]
-fn swap(value: (EcoString, BigInt)) -> (BigInt, EcoString) {
-    let (label, count) = value;
-    (count, label)
-}
-
-#[geam::function]
-fn reassociate(
-    value: (EcoString, (BigInt, bool)),
-) -> ((EcoString, BigInt), bool) {
-    let (label, (count, enabled)) = value;
-    ((label, count), enabled)
-}
-```
-
-Rust `(T,)` corresponds to Gleam `#(T)`, while Rust `()` keeps its existing
-Gleam `Nil` meaning. Tuple elements can recursively use the scalar and external
-payload forms supported by the macro; external arguments remain immutable
-payload views and external returns remain owned payloads.
-
-A top-level Gleam `List(T)` argument maps to opaque `geam::List<T>`. Retaining
-that view and asking for its length are O(1); `get` decodes only the requested
-item. Returning a received `geam::List<T>` passes through the original runtime
-List, while returning `Vec<T>` constructs one new source List:
-
-```rust
-#[geam::function]
-fn first_or(
-    values: geam::List<EcoString>,
-    fallback: EcoString,
-) -> EcoString {
-    values.get(0).unwrap_or(fallback)
-}
-
-#[geam::function]
-fn identity(values: geam::List<BigInt>) -> geam::List<BigInt> {
-    values
-}
-
-#[geam::function]
-fn reverse(values: geam::List<EcoString>) -> Vec<EcoString> {
-    (0..values.len())
-        .rev()
-        .filter_map(|index| values.get(index))
-        .collect()
-}
-```
-
-List items support scalar, external, directional custom, Result, and Option
-values plus recursive tuples of those values. External items are opaque guards
-that dereference to the provider payload without cloning it. Function inputs
-may nest a List view inside a tuple, Result, or Option, but a List item cannot
-itself be a List or Vec. A pass-through `List<T>` return remains top-level;
-newly constructed and nested source Lists use owned `Vec<T>` output values.
-
-## Custom Value Provider Authoring
-
-An ordinary Gleam custom type maps to one Rust output enum and, when existing
-source values are accepted, one explicit generated input enum:
-
-```gleam
-pub type Job {
-  Pending
-  Named(String)
-  Scheduled(label: String, attempt: Int)
-  Prioritized(Priority)
-  Tags(List(String))
-}
-```
-
-```rust
-#[geam::custom(input = JobInput)]
-enum Job {
-    Pending,
-    Named(EcoString),
-    Scheduled { label: EcoString, attempt: BigInt },
-    Prioritized(Priority),
-    Tags(Vec<EcoString>),
-}
-
-#[geam::function]
-fn describe(job: JobInput) -> EcoString {
-    // Match the source constructors directly.
-    todo!()
-}
-```
-
-The owned `Job` form constructs a new source value. `JobInput` decodes only the
-active constructor and is call-scoped; nested custom fields use the nested
-declaration's input form. A Gleam List field is a lazy `geam::List<T>` in the
-generated input enum and a `Vec<T>` in the owned output enum. Unit, tuple, and
-named variants preserve lexical constructor order and Rust field names become
-Gleam field labels.
-
-The declaration protocol is static across sibling modules and provider crates.
-The consuming macro refers to the declaring type's sealed schema and codec; it
-does not inspect source files, compare runtime type names, or copy external
-payloads. An output-only enum omits `input = ...`, and using it as a source
-argument produces a diagnostic that asks for an explicit input type.
-
-## External Value Provider Authoring
-
-The [run-metrics example](../examples/run_metrics/README.md) gives the Rust
-provider one constructorless source type and four functions. The Gleam package
-owns the visible value flow:
-
-```gleam
-@external(erlang, "geam_example_run_metrics", "Metrics")
-pub type Metrics
-
-@external(erlang, "geam_example_run_metrics", "new")
-pub fn new() -> Metrics
-
-@external(erlang, "geam_example_run_metrics", "record")
-pub fn record(metrics: Metrics, name: String, value: Float) -> Metrics
-
-@external(erlang, "geam_example_run_metrics", "count")
-pub fn count(metrics: Metrics, name: String) -> Int
-
-@external(erlang, "geam_example_run_metrics", "total")
-pub fn total(metrics: Metrics, name: String) -> Float
-```
-
-The matching Rust module declares the payload and source semantics at the same
-site as its functions:
+Declare which Gleam package and modules the crate implements:
 
 ```rust
 use ecow::EcoString;
-use geam::provider::ExternalPayload;
-use num_bigint::BigInt;
-use std::collections::BTreeMap;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 
 #[geam::provider(
-    package = "example_run_metrics",
-    modules = [metrics],
+    package = "example_text_tools",
+    modules = [casing],
 )]
 pub struct Component;
 
-#[geam::module(path = "example_run_metrics")]
-mod metrics {
-    use super::*;
-
-    #[geam::external(name = "Metrics", manual)]
-    #[derive(Clone, Default, PartialEq)]
-    struct Metrics {
-        entries: BTreeMap<EcoString, Metric>,
-    }
-
-    #[derive(Clone, Default, PartialEq)]
-    struct Metric {
-        count: BigInt,
-        total: f64,
-    }
-
-    impl ExternalPayload for Metrics {
-        fn source_equal(&self, other: &Self) -> bool {
-            self == other
-        }
-
-        fn source_hash(&self) -> u64 {
-            let mut hasher = DefaultHasher::new();
-            for (name, metric) in &self.entries {
-                name.hash(&mut hasher);
-                metric.count.hash(&mut hasher);
-                let total = if metric.total == 0.0 {
-                    0
-                } else {
-                    metric.total.to_bits()
-                };
-                total.hash(&mut hasher);
-            }
-            hasher.finish()
-        }
-
-        fn inspect(&self) -> EcoString {
-            let entries = self.entries.iter().map(|(name, metric)| {
-                let total = if metric.total == 0.0 { 0.0 } else { metric.total };
-                format!("#({name:?}, #({}, {total:?}))", metric.count)
-            }).collect::<Vec<_>>().join(", ");
-            format!("Metrics([{entries}])").into()
-        }
-    }
+#[geam::module(path = "example_text_tools/casing")]
+mod casing {
+    use super::EcoString;
 
     #[geam::function]
-    fn new() -> Metrics {
-        Metrics::default()
-    }
-
-    #[geam::function]
-    fn record(metrics: &Metrics, name: EcoString, value: f64) -> Metrics {
-        let mut updated = metrics.clone();
-        let metric = updated.entries.entry(name).or_default();
-        metric.count += 1u8;
-        metric.total += value;
-        updated
-    }
-
-    #[geam::function]
-    fn count(metrics: &Metrics, name: EcoString) -> BigInt {
-        metrics.entries.get(&name)
-            .map(|metric| metric.count.clone())
-            .unwrap_or_default()
-    }
-
-    #[geam::function]
-    fn total(metrics: &Metrics, name: EcoString) -> f64 {
-        metrics.entries.get(&name).map_or(0.0, |metric| metric.total)
+    fn upper(value: EcoString) -> EcoString {
+        value.to_uppercase()
     }
 }
 ```
 
-`#[geam::external]` generates one typed schema, payload store, storage adapter,
-and provider binding. By default it also implements source equality and hashing
-through the payload's `PartialEq` and `Hash` implementations, with sealed
-`TypeName(<opaque>)` inspection. The `manual` flag keeps registration generation
-but leaves `ExternalPayload` to the provider, as above, when source semantics
-need specialized equality, hashing, or inspection. Equal signed-zero totals in
-this example must share a hash.
+The provider macro generates the static component, schemas, and registration
+needed by a Geam runner. Rust compilation checks the declaration shape and
+supported Rust types. `geam prepare` later checks the generated schemas against
+the actual typed Gleam package before any provider state is initialized or
+application code runs.
 
-An external source argument is an immutable `&Metrics` payload view in Rust; an
-external source return is an owned `Metrics` that Geam seals into the store.
-`record` therefore returns a persistent update rather than mutating the old
-source value.
+## Tell Geam what the provider supports
 
-Scalar positions still use Geam's existing host types: `EcoString`, `f64`, and
-`BigInt` correspond to `String`, `Float`, and `Int`. Native tuples recursively
-compose those scalars and declared external payloads. The macro does not parse
-Gleam source or maintain another Rust-to-Gleam type table. Erlang annotation
-strings only establish external availability; Geam links by source package,
-module, function or type, and exact scheme.
+Provider metadata names the exact Gleam package and the range of that package's
+versions supported by the Rust implementation:
 
-Rust compilation validates the macro targets, payload trait, borrowing rules,
-and generated typed registrations. `geam prepare` then compiles the complete
-Gleam project and links those schemas against the source declarations before
-initialization or execution. A provider with no process-local state or
-configuration omits both declarations; Geam supplies unit state and rejects
-unexpected configuration instead of ignoring it.
+```toml
+[package]
+name = "geam-example-text-tools"
+version = "0.1.0"
 
-The current macro surface supports scalars, native tuples composed from
-supported leaves, top-level Lists with lazy item access or Vec construction,
-non-recursive custom values, Rust `Result`/`Option` mapped to their standard
-source types, constructorless external values, generic retained values, and
-typed callbacks. Existential retained values use the explicit
-`provider::advanced` API; nested Lists remain unsupported.
-
-## Typed Callback Invocation
-
-[`call_tracing`](../examples/call_tracing/README.md) separates opaque function
-pass-through from invocation. `Value<fn(...) -> ...>` remains an opaque source
-handle; `Callback<fn(...) -> ...>` grants one active `&mut Call` permission to
-invoke the function:
-
-```rust
-fn around<Item>(
-    #[geam::call] call: &mut Call<RunState>,
-    callback: Callback<fn() -> Value<Item>>,
-) -> HostResult<Value<Item>> {
-    call.state_mut().entries.push("before".into());
-    let returned = call.invoke(callback, ())?;
-    call.state_mut().entries.push("after".into());
-    Ok(returned)
-}
+[package.metadata.geam.provider]
+schema = 1
+gleam-package = "example_text_tools"
+gleam-version = ">= 1.0.0 and < 2.0.0"
 ```
 
-Callback arguments use provider output types and callback results use provider
-input views. The generated adapter registers any required constructions once,
-then invokes the existing typed host ABI without materializing generic values.
-`Call::invoke` preserves nested source panics and provider failures. A live
-state borrow prevents callback re-entry through Rust's borrow checker, so state
-must be released before invoking source code.
+The `gleam-version` field describes the target Hex package, not the Gleam
+compiler. Geam verifies metadata before recording a path, Git, or registry
+selection, but compatibility metadata is never treated as user approval.
 
-## Generic Values And Retention
-
-[`generic_box`](../examples/generic_box/README.md) shows the ordinary generic
-retention path. `Value<Item>` is an opaque value for the current call;
-`Stored<Item>` is the non-cloneable field of one source-visible external
-payload. The external declaration fixes the source parameter position once, so
-`Box(Int)` and `Box(String)` share one Rust external store while each restore
-uses its exact specialization:
-
-```rust
-#[geam::external(
-    name = "Box",
-    parameters = [Item],
-    input = BoxInput,
-)]
-pub struct BoxValue<Item> {
-    #[geam::stored]
-    value: Stored<Item>,
-}
-
-fn get<Item>(
-    #[geam::call] call: &mut Call<()>,
-    boxed: BoxInput<Item>,
-) -> Value<Item> {
-    call.restore(boxed.value())
-}
-```
-
-`Call::store` retains the existing runtime value without converting it to an
-eager Rust representation. `Call::restore` recreates only a call-scoped typed
-handle. Neither operation clones the source payload, and returning an old box
-does not reconstruct its external value.
-
-Providers with a persistent Rust collection of retained entries use the
-explicit advanced form instead of pretending that collection is a generic Rust
-payload:
-
-```rust
-#[geam::external(
-    name = "PriorityQueue",
-    parameters = [Item],
-    input = PriorityQueueInput,
-    payload = PriorityQueuePayload,
-    manual,
-)]
-pub struct PriorityQueue<Item>;
-```
-
-The non-generic payload stores
-`provider::advanced::Retained<PriorityQueuePayload, Index0>` inside its own
-immutable persistent structure. The generated input exposes the payload and a
-typed `stored_item` selector; source equality, hashing, and inspection are
-implemented with the narrow `RetainedExternalPayload` operation contexts.
-This advanced form exposes no runtime type name, downcast, mutable graph, or
-per-specialization store.
-
-## Generated Component Boundary
-
-Each provider crate exports one marker that implements
-`HostProviderComponent`. The component owns its store and run-state types.
-Provider crates that consume configuration implement the separate
-`HostProviderComponentInitialization` contract. Authoring macros generate these
-implementations together with module registrations and external stores. The
-explicit typed-host form remains the low-level SDK boundary and its canonical
-fixture, rather than boilerplate required by ordinary provider authors.
-
-The provider component identity defaults to the Cargo package name and can be
-overridden with `id = "..."` when diagnostics need a distinct stable identity.
-This identity is separate from the required Gleam `package` and module paths.
-When `state` is omitted the component uses unit state. When `state = RunState`
-is present without `initialize`, empty configuration constructs
-`RunState::default()`. Both default forms reject non-empty configuration. A
-configured provider supplies both `state` and `initialize`; an initializer
-without a state declaration is rejected by the macro.
-
-A function may inject its active provider call as the first parameter with
-`#[geam::call]`. Use `&Call<RunState>` for read-only state access and
-`&mut Call<RunState>` for mutation or call-scoped capabilities. Read state with
-`call.state()` and mutate it with `call.state_mut()`. The injected parameter is
-not part of the Gleam function signature; all following parameters remain
-ordinary source arguments.
-
-A provider function that can stop execution returns `HostResult<T>` and creates
-the failure with `HostFailure::new(reason)`. This outer envelope is not part of
-the Gleam function shape. Rust `Result<T, E>` remains the source-visible Gleam
-`Result(T, E)`, so recoverable source errors and host execution failures cannot
-be confused.
-
-```rust
-pub struct Component;
-
-impl HostProviderComponent for Component {
-    const ID: &'static str = "example";
-    type Stores = Stores;
-    type RunState = RunState;
-}
-
-impl HostProviderComponentInitialization for Component {
-    fn initialize(
-        configuration: &HostProviderConfiguration,
-    ) -> Result<RunState, HostProviderInitializationError> {
-        // Read owned String, i64, f64, bool, array, or table values here.
-        todo!()
-    }
-}
-```
-
-Configuration has no environment-variable lookup, global state, parser, or
-hidden defaults. A runner constructs `HostProviderConfiguration` explicitly.
-Initialization failure names the component and remains an assembly error before
-planning or execution; it is not an `ExecutionError` or host callback failure.
-Geam's built-in stdlib, JSON, and Time components do not implement configured
-initialization: the runner separately constructs their IO, entropy, stateless
-JSON, and clock capabilities.
-
-The same component implements `HostProviderComponentRegistration<Profile>` for
-every concrete profile that projects it. Registration returns source-backed
-`HostProviderModule`s and uses the normal typed host APIs.
-
-```rust
-impl<Profile> HostProviderComponentRegistration<Profile> for Component
-where
-    Profile: HostComponentProfile<Self>,
-{
-    fn providers() -> Result<Vec<HostProviderModule<Profile>>, HostRegistrationError> {
-        HostProviderModule::new("example_package", "example/module")
-            .and_then(|provider| {
-                provider.with_scoped_function::<Provider, _, _, _>(
-                    "run",
-                    run::<Profile>,
-                )
-            })
-            .map(|provider| vec![provider])
-    }
-}
-```
-
-The provider callback marker implements `HostProvider<Profile>` generically and
-projects only this component's state through `HostComponentProfile<Component>`.
-That keeps callback state concrete without making the aggregate runner profile
-part of the provider crate.
-
-## Advanced Provider Example
-
-[`geam-example-text-pattern`](../examples/text_pattern/provider) is a compact
-provider intended to be read as normal crate source. It maps the ordinary
-`example_text_pattern` Gleam package to Rust `regex` without adding package-side
-Geam metadata. The component demonstrates:
-
-- a constructorless `Pattern` external backed by immutable provider storage;
-- source equality, hashing, and canonical inspection for opaque values;
-- a named `CompileError` custom value and ordinary Rust `Result` mapping;
-- scalar arguments and returns plus `List(String)` output; and
-- generated stateless component initialization and typed registration.
-
-Its [Cargo manifest](../examples/text_pattern/provider/Cargo.toml) uses the
-canonical `geam-example-text-pattern` discovery name and schema-1 metadata. This
-release-coupled provider pins the actual `example_text_pattern` Hex package
-version exactly.
-
-The [complete example](../examples/text_pattern/README.md) executes this crate
-through explicit path selection and packages it with ordinary Cargo tooling.
-The matching Gleam package and provider are also published on Hex and crates.io;
-the package's [public usage guide](../examples/text_pattern/project/packages/example_text_pattern/README.md)
-shows discovery and approval without an explicit provider selection. CI keeps
-that released path separate from checkout tests and verifies a known published
-combination. The reference-example publication workflow verifies each new
-same-version combination before the GitHub Release is created. The
-[provider README](../examples/text_pattern/provider/README.md) explains the
-complete macro-authored Rust mapping and why `Pattern` owns manual source
-semantics.
-
-## Runner Profile
-
-A runner combines selected components with ordinary struct fields. An embedding
-application can write this regular Rust directly, while the standalone CLI
-emits the same shape for a managed project.
-
-```rust
-struct Profile;
-
-#[derive(Default)]
-struct Stores {
-    example: <Component as HostProviderComponent>::Stores,
-}
-
-struct RunState {
-    example: <Component as HostProviderComponent>::RunState,
-}
-
-impl HostProfile for Profile {
-    type ExternalStores = Stores;
-    type RunState = RunState;
-}
-
-impl HostComponentProfile<Component> for Profile {
-    fn component_stores(
-        stores: &Stores,
-    ) -> &<Component as HostProviderComponent>::Stores {
-        &stores.example
-    }
-
-    fn component_state(
-        state: &mut RunState,
-    ) -> &mut <Component as HostProviderComponent>::RunState {
-        &mut state.example
-    }
-}
-```
-
-For multiple components, the aggregate structs add one concrete field and one
-projection implementation per component. No trait object, type-erased map, or
-runtime registry is involved. Geam built-ins and approved Cargo dependencies
-use this same field, projection, and registration path; discovery and state
-construction are the parts that differ.
-
-The runner then performs the complete hosted pipeline explicitly:
+For crates.io discovery, derive the Rust package name from the Gleam package by
+adding `geam-` and replacing underscores with hyphens:
 
 ```text
-Component::providers
--> HostProviderSet
--> compile_typed_host_program or compile_typed_host_project
--> configured Component::initialize and runner capability construction
--> plan_host_program
--> HostedExecution::try_from_module_plan
--> HostedExecution::run_main with aggregate RunState
+example_text_tools -> geam-example-text-tools
 ```
 
-The readable, executable version of this assembly is
-[`tests/fixtures/provider_sdk/runner/tests/public_usage.rs`](../tests/fixtures/provider_sdk/runner/tests/public_usage.rs).
-It keeps the complete Gleam declarations, provider composition, expected value,
-and state assertions visible in one file.
+Explicitly selected providers can use another crate name, but metadata remains
+the authority for the target Gleam package.
 
-## External Storage
+## Try it from a Gleam project
 
-External payload ownership stays in the provider crate. A local adapter
-implements `HostExternalStorage<Profile, Schema>` generically for profiles that
-project the component, and the provider marker selects it with
-`HostExternalBinding<Profile, Schema>`.
+Keep a complete Gleam application beside the provider while authoring it:
 
 ```text
-provider marker
--> external schema
--> provider-owned storage adapter
--> component Stores field
--> aggregate profile projection
+example/
+  project/   Gleam application and package source
+  provider/  Rust provider crate
 ```
 
-This avoids requiring the final runner profile to implement a foreign storage
-trait for a foreign schema. The adapter supplies Gleam equality, source hashing,
-and canonical inspection. Public external values retain opaque payload leases;
-they never expose the Rust payload or borrow the runner state.
+Select the local crate and run the same path users rely on:
 
-## Compound Construction
-
-An exact return type can still be built with the return-specific `HostCall`
-methods. Intermediate lists, tuples, ordinary custom values, and externals must
-be declared when the callback is registered:
-
-```rust
-type Constructions = HostTypeList<HostListType<EcoString>, HostTypeListEnd>;
-
-provider.with_scoped_function_and_constructions::<
-    Provider,
-    Arguments,
-    Return,
-    Constructions,
-    _,
->("summarize", summarize::<Profile>)?;
+```sh
+cd project
+geam provider add --path ../provider
+geam prepare
+geam run
 ```
 
-The callback receives `HostConstructions<'call, Constructions>` immediately
-after `HostCall`. `constructions.at::<HostTypeIndex0>()` produces a token for
-the exact registered list type, which can be passed to
-`HostCall::construct_list`. The token cannot be forged, selected at the wrong
-type or index, or retained beyond the active call. Registration metadata and
-the callback capability come from the same type list, so runtime does not need
-signature or permission checks. Generic construction types may refer only to
-type parameters already bound by the function signature.
+This verifies the provider metadata, Gleam declarations, generated static
+runner, Rust implementation, and application behavior together. Unit tests in
+the provider crate remain useful for Rust-only logic, but they do not replace
+the complete source-linkage check.
 
-## Standalone CLI Boundary
+The repository's
+[text tools example](https://github.com/panarch/geam/tree/main/examples/text_tools)
+is the smallest complete provider. Read its Gleam declarations, provider
+`src/lib.rs`, and application entry point together.
 
-The standalone CLI emits one aggregate `Stores`, `RunState`, `Profile`,
-projection, and registration graph for Geam built-ins and approved Cargo
-dependencies. A provider crate advertises one component through
-`[package.metadata.geam.provider]`; the CLI verifies that metadata before
-recording the crate as an ordinary exact Cargo dependency. Generated code uses
-only the crate-root `Component` and the public component contracts. Configured
-dependency initialization and runner-owned capability construction remain
-separate strategies within that graph.
+## Add only what the package needs
 
-To make a published provider discoverable, derive its Cargo package name from
-the target Gleam package: add the `geam-` prefix and replace underscores with
-hyphens. A provider whose metadata targets `company_image` therefore publishes
-as `geam-company-image`; alternatives may append a kebab-case suffix. The name
-only places the crate in the discovery namespace. Packaged metadata remains the
-authority for the exact `company_image` identity, and explicitly selected
-registry, path, or Git crates may use other names.
+Start with scalar functions and add only the capabilities the Gleam package
+actually needs:
 
-Discovery, native-code approval, managed Cargo files, and runtime configuration
-belong to the CLI rather than this SDK. Provider callbacks, stores, and state
-remain governed by the same static ABI whether a runner is generated or written
-by an embedding application. See [standalone execution](standalone.md) for the
-CLI workflow and trust boundary.
+- Use native Rust tuples, `Result`, `Option`, and Geam's List boundary for
+  ordinary source values.
+- Add generated custom-value mappings when Rust constructs or receives a
+  source custom type.
+- Add an external payload when the source value must remain opaque to Gleam.
+- Add component state for process-local mutable or read-only capabilities.
+- Add explicit configuration when state construction needs caller input.
+- Add typed callbacks only when provider code must call a supplied Gleam
+  function.
+- Use retained generic or advanced storage only when an external value must own
+  source values across calls.
+
+The [provider examples](https://github.com/panarch/geam/tree/main/examples)
+form an ordered learning path:
+
+```text
+text_tools
+-> value_types
+-> tag_set
+-> request_ids
+-> feature_flags
+-> run_metrics
+-> call_tracing
+-> generic_box
+-> text_pattern
+```
+
+Each example introduces one additional ownership or type boundary instead of
+combining every provider capability at once.
+
+## Keep native code explicit
+
+Provider crates are native code. Geam verifies their package metadata and
+typed linkage, but neither step is a security endorsement. A standalone user
+must approve a discovered provider before Cargo receives it. An embedding
+application records the provider as an ordinary Cargo dependency and reviews
+the generated static composition.
+
+Provider configuration is caller-owned TOML data supplied during standalone
+execution or constructed explicitly by an embedding application. Provider
+state and external values are not stored in global registries, generated source,
+or package metadata.
+
+## Release each package on its own schedule
+
+Publish the Gleam package with Gleam's Hex tooling and the Rust provider with
+Cargo. Their versions do not have to match, but the provider metadata must
+declare the actual compatible Gleam package range. Test the packaged provider
+with `cargo publish --locked --dry-run` and verify the public Gleam-to-provider
+path before widening that range.
+
+The published
+[text-pattern package and provider](https://github.com/panarch/geam/tree/main/examples/text_pattern)
+show independent Hex and crates.io packages that can also run on Erlang through
+the package's separate Erlang implementation.
+
+## Exact reference
+
+Continue with the [host provider boundary](reference/provider-boundary.md) for
+the complete Rust type mappings, custom and external values, state,
+configuration, callback invocation, retained storage, generated component
+contract, and runner profile. The [runtime semantics](reference/runtime-semantics.md)
+document defines ownership, equality, hashing, inspection, and failure behavior
+after linkage.

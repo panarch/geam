@@ -5,6 +5,11 @@ published compiler front-end, then starts Geam-specific work at the typed AST
 boundary. This document records the upstream baseline, what is used directly,
 and where Geam's runtime-specific boundary begins.
 
+For the concise user-facing support matrix, see
+[compatibility](../reference/compatibility.md). This document retains the exact
+upstream evidence and manual synchronization procedure used to maintain that
+claim.
+
 ## Baseline
 
 Geam's compiler boundary reference is:
@@ -118,7 +123,7 @@ module graph. `compile_typed_module` is the one-module convenience view of this
 same implementation.
 
 Runtime behavior decisions that start after this compiler boundary are recorded
-in [runtime-semantics.md](runtime-semantics.md).
+in [runtime semantics](../reference/runtime-semantics.md).
 
 ## Geam Boundary
 
@@ -217,7 +222,7 @@ exact typed Gleam values and existential values carrying their specialized
 Gleam shapes. Existential decode remains a typed host-call operation and shape
 mismatch is provider-level `Option` semantics. These are Geam host-ABI
 constraints, not additions to Gleam's analyzer or typed AST. See [runtime
-semantics](runtime-semantics.md) for the value, state, specialization,
+semantics](../reference/runtime-semantics.md) for the value, state, specialization,
 re-entry, and failure contracts.
 
 External storage providers also define source equality, runtime hashing, and
@@ -437,7 +442,7 @@ This document is maintained manually when the upstream baseline or mirror
 packaging revision changes. Geam release-version automation must not update
 compiler or official package baselines.
 
-The [Workspace workflow](../.github/workflows/workspace.yml) checks the `Cargo:`
+The [Workspace workflow](https://github.com/panarch/geam/blob/main/.github/workflows/workspace.yml) checks the `Cargo:`
 line against the compiler version resolved by `cargo metadata --locked`. This
 only detects pin drift: release identity, publication date, and compatibility
 claims still require manual verification against the upstream and mirror

@@ -148,8 +148,8 @@ jobs:
             if length == 1 then .[0]
             else error("expected exactly one geam-gleam-core package") end
           ')
-          if ! grep -Fxq "Cargo:      geam-gleam-core $version" docs/upstream-gleam.md; then
-            echo "::error file=docs/upstream-gleam.md::Expected compiler pin geam-gleam-core $version; review the upstream baseline manually."
+          if ! grep -Fxq "Cargo:      geam-gleam-core $version" docs/development/upstream-gleam.md; then
+            echo "::error file=docs/development/upstream-gleam.md::Expected compiler pin geam-gleam-core $version; review the upstream baseline manually."
             exit 1
           fi
 

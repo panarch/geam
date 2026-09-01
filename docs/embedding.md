@@ -1,20 +1,37 @@
-# Rust Embedding
+# Embed Gleam in Rust
 
-Use Gleam functions from an ordinary Rust application. `geam embedding init`
-connects the Cargo package to a nested Gleam project; `geam embedding sync`
-prepares dependencies and generates typed Rust bindings as that project changes.
-Build, test, and run the application with Cargo.
+Have a Rust application and some logic that belongs in Gleam? Keep each side in
+the language that suits it. The Rust application owns the process and native
+capabilities, the nested Gleam project owns the typed application logic, and
+Geam provides the runtime and generated bridge between them.
 
-The complete managed example is
-[`examples/rust_embedding_application`](../examples/rust_embedding_application).
-It combines imported Gleam source, `gleam/io`, and the text-pattern provider in
-one independently locked Rust application. Its inventory workflow passes rows
-from Rust into Gleam, retains validation results, and reuses them across calls.
+Geam creates a conventional nested Gleam project, generates typed Rust bindings
+for its public boundary module, and lets the Rust application control loading,
+state, IO, and call order.
 
-## First Call
+The result is not a second executable hidden beside the Rust application or a
+set of untyped foreign calls. The Gleam module becomes one explicit typed
+component that the application can initialize once and call repeatedly.
 
-With Rust/Cargo, Gleam, and a matching Geam CLI available, start from a Rust
-package. For a new application:
+By the end of the first section, `cargo run` will call Gleam from Rust and print
+`42`.
+
+## Before you start
+
+This guide assumes Rust `1.96` or newer and Gleam `v1.18.1` are installed.
+Install the Geam command with:
+
+```sh
+cargo install geam --locked
+```
+
+Start from an ordinary Cargo package, not a virtual workspace root. Geam uses
+the nearest package's name to derive one conventional Gleam package and public
+module name.
+
+## Make your first call
+
+Create a Rust application and initialize its Gleam project:
 
 ```sh
 cargo new inventory-app
@@ -22,21 +39,21 @@ cd inventory-app
 geam embedding init
 ```
 
-Init creates `gleam/`, prepares dependencies and lockfiles, and generates
-`src/geam_bindings.rs`. It adds the matching Geam dependency with default
-features disabled and `embedding` enabled when that dependency is absent.
-There is no separate first-time download or sync step.
+Initialization creates `gleam/`, prepares both dependency graphs, adds Geam's
+embedding feature profile when needed, and generates `src/geam_bindings.rs`.
+It leaves handwritten Rust files untouched.
 
-The starter in `gleam/src/inventory_app.gleam` is a pure function:
+The generated starter module is named after the Cargo package, with hyphens
+replaced by underscores:
 
 ```gleam
+// gleam/src/inventory_app.gleam
 pub fn double(value: Int) -> Int {
   value * 2
 }
 ```
 
-Init leaves handwritten Rust untouched. Use the generated module from
-`src/main.rs`:
+Use the generated bindings from `src/main.rs`:
 
 ```rust
 mod geam_bindings;
@@ -56,12 +73,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Run it with `cargo run`; it prints `42`. Keep the sealed module and its function
-handles for repeated calls. This pure example needs no provider state.
+Run the Rust application normally:
 
-## Develop And Sync
+```sh
+cargo run
+```
 
-Write public functions in `gleam/src/inventory_app.gleam`. For example, add:
+It prints `42`. Keep the sealed module and its generated function handles when
+the application needs repeated calls; initialization is not part of every
+function invocation.
+
+## Keep Gleam and Rust in sync
+
+Add or change public functions in the boundary module. For example:
 
 ```gleam
 pub fn increment(value: Int) -> Int {
@@ -69,42 +93,39 @@ pub fn increment(value: Int) -> Int {
 }
 ```
 
-From the Cargo package directory, regenerate the connection:
+Regenerate the typed declarations after changing the public Gleam surface,
+imports, or dependencies:
 
 ```sh
 geam embedding sync
 ```
 
-The generated `Functions` now includes `increment`. Call it from Rust using the
-same loaded module:
+The generated `Functions` aggregate now exposes `increment`:
 
 ```rust
 let value = module.call(&functions.increment, (41.into(),), &mut echo)?;
 ```
 
-Run `cargo run` or `cargo test` as usual. Sync generates declarations and static
-provider composition; the Rust `bind` call connects those declarations to one
-loaded execution. You do not repeat Gleam signatures by hand or run sync for
-each function.
+The normal loop is:
 
-Add Gleam dependencies inside `gleam/`, for example with `gleam add gleam_stdlib`,
-then import and use them from your Gleam source. Run `geam embedding sync` after
-source or dependency changes. It prepares Gleam and Cargo dependencies,
-compiles the selected import closure, validates the public Rust boundary, and
-updates the generated file. An unchanged file is left untouched; changed bytes
-are replaced atomically. A handwritten file at the generated path is never
-silently replaced.
+```text
+edit Gleam source
+-> geam embedding sync
+-> update handwritten Rust calls when the public boundary changed
+-> cargo run or cargo test
+```
 
-Preparation does not run Rust build scripts, provider initialization, or the
-application. Cargo builds the Rust application separately. On an external tool
-or registry failure, fix the reported problem and rerun init or sync. Earlier
-successful preparation steps may remain, but failed preparation does not
-publish new bindings. Neither command upgrades dependencies indiscriminately
-or automatically removes unused Cargo dependencies.
+Sync prepares locked Gleam and Cargo dependencies, compiles the selected source
+closure, validates every public boundary function, and replaces generated Rust
+atomically only when its bytes change. It does not run the Rust application,
+provider initialization, or Cargo build scripts.
 
-## Project Convention
+Do not edit `src/geam_bindings.rs` manually. Geam refuses to silently replace a
+handwritten file at that path.
 
-The project has one layout:
+## Know where the files live
+
+Embedding uses one fixed project convention:
 
 ```text
 inventory-app/
@@ -120,288 +141,102 @@ inventory-app/
       inventory_app.gleam
 ```
 
-The nested project is always `gleam/`. Its package name and public boundary
-module come from the Cargo package name with hyphens replaced by underscores,
-not from the directory or binary name. Internal modules can live under
-`gleam/src/inventory_app/`. There is no selector metadata or special
-`lib.gleam` file. Invalid derived names fail initialization; these commands do
-not offer alternate name, path, or output options.
+The `gleam/` directory is an ordinary Gleam project. Use Gleam's formatter,
+tests, and package commands there as usual; return to the Cargo package root for
+`geam embedding sync` and Rust builds.
 
-All embedding commands use the nearest Cargo package. At a virtual workspace
-root, move into the intended member directory. Repeated init preserves an
-existing valid conventional Gleam project; it does not rename a conflicting
-project or overwrite handwritten source.
+Internal Gleam modules can live below `gleam/src/inventory_app/`. Only public
+functions from the same-name root module become Rust bindings. Imported modules
+can keep domain-specific custom types and provider-backed values behind that
+ordinary-data boundary.
 
-Commit `Cargo.toml`, `Cargo.lock`, the Gleam configuration, `manifest.toml`,
-handwritten source, and `src/geam_bindings.rs`. Ignore Cargo's `target/` and
-Gleam's `gleam/build/` cache. Init creates the nested cache ignore rule. Generated
-Rust is reviewed and committed, not regenerated implicitly by a build script.
+Commit the Cargo and Gleam manifests and lockfiles, handwritten Gleam and Rust
+source, and generated `src/geam_bindings.rs`. Ignore Cargo's `target/` and
+Gleam's `gleam/build/` cache. Generated Rust is reviewed and committed; no build
+script regenerates it implicitly.
 
-## Built-Ins And Providers
+Embedding commands intentionally do not offer alternate project, module, or
+output paths. A fixed layout makes checkouts, generated code, CI, and examples
+agree on the same connection.
 
-Sync enables only built-in features needed by the selected Gleam source closure:
+## Bring in Gleam packages and Rust providers
 
-- `gleam-stdlib` exposes `geam::gleam_stdlib`;
-- `gleam-json` exposes JSON and its stdlib dependency;
-- `gleam-time` exposes Time and its stdlib dependency.
+Add Gleam dependencies from the nested project:
 
-For example, the canonical application enables `embedding,gleam-stdlib`.
-Its text-pattern provider enables `provider` on the same Geam package identity,
-so Cargo unifies the authoring macros without restoring Geam defaults or CLI.
-An application that authors providers directly can add `provider` itself.
+```sh
+cd gleam
+gleam add gleam_stdlib
+cd ..
+geam embedding sync
+```
 
-Preparation ensures one enabled direct Geam dependency and an enabled direct
-Cargo dependency for each required external provider. Existing versions,
-sources, aliases, features, comments, and unrelated Cargo content are preserved.
-The actual dependency aliases are retained in generated source.
+Sync enables only the built-in Geam features required by the selected source
+closure. Official stdlib, JSON, and Time integrations are composed explicitly;
+unused Gleam dependencies do not add components.
 
-When a required provider is missing, `sync` discovers metadata-verified registry
-candidates and asks for explicit native-code approval. Only approved providers
-are added, at exact versions. Existing compatible declarations, including path
-or Git sources, are reused without another prompt. Incompatible declarations
-and alias collisions fail instead of being replaced. Noninteractive runs cannot
-approve new providers; prepare them interactively before committing the manifest
-and lockfile.
+When an imported package requires another native provider, sync verifies
+registry candidates and asks before adding an exact Cargo dependency. Existing
+compatible registry, path, or Git declarations are reused. A noninteractive
+sync cannot approve new native code, so perform and commit provider selection
+before relying on CI.
 
-Unused Gleam dependencies and externals with a Gleam fallback do not trigger
-native-provider discovery. Shared workspace declarations are not edited;
-inherited dependencies receive only supported member-local feature additions.
-An incompatible Geam/provider version combination is reported for the caller
-to resolve, not silently upgraded or replaced.
+Generated hosted bindings expose the capabilities and provider configuration
+that Rust must supply. They do not hide mutable state or invent configuration.
+The canonical [Rust embedding
+application](https://github.com/panarch/geam/tree/main/examples/rust_embedding_application)
+shows stdlib IO, a published-style external provider, retained Lists, and
+repeated calls in one application.
 
-## Check A Prepared Checkout
+## Verify a prepared checkout
 
-Use check in review and CI, or after cloning a prepared application:
+Use `check` after cloning, in review, or in CI:
 
 ```sh
 geam embedding check
 cargo test --locked
 ```
 
-Check validates the existing declarations, locks, provider graph, and generated
-bindings. Missing or stale inputs fail instead of being repaired. Use init for
-an uninitialized package, or sync to prepare changed dependencies or bindings.
-Check does not initialize, choose providers, ask for approval, or rewrite either
-lockfile. Expected generated bytes are compared in memory.
+Check validates existing Cargo and Gleam declarations, both locks, provider
+composition, and the expected generated bindings without rewriting project
+files. It may fetch locked Cargo packages or restore missing locked Gleam
+package sources. It never selects a new version, follows a moving Git branch in
+place of its locked commit, approves a provider, or regenerates stale bindings.
 
-Read-only here means project files, not an offline command. Cargo may fetch
-packages through its normal `--locked` metadata path. Missing Gleam package
-sources are restored under `gleam/build/packages` using the recorded Hex
-versions and checksums or Git repository, commit, and subdirectory. Local
-dependencies stay at their declared paths. Downloads do not select new versions
-or follow a moving Git branch instead of its locked commit.
+Use `init` for an uninitialized package and `sync` after intentional source or
+dependency changes. `embedding check` verifies the connection; it does not
+replace `cargo check` or `cargo test`.
 
-Check does not execute provider code, Rust build scripts, or the application,
-and it is not a replacement for `cargo check` or `cargo test`. In daily
-development, sync followed by the usual Cargo commands is sufficient.
+## Keep the Rust boundary small
 
-## Hosted Calls And Runtime Ownership
-
-The generated module exposes the selected `project`, a typed `Functions`
-aggregate, and plain or hosted `bind` support. Compile a provider-free project
-with:
-
-```rust
-let program = geam_bindings::project().compile()?;
-```
-
-Hosted composition performs static provider registration separately before
-the same project compilation boundary:
-
-```rust
-let program = geam_bindings::project()?.compile()?;
-```
-
-For hosted execution, generated `RunStateInputs` lists every runtime value the
-caller must choose. The canonical application supplies stdlib state and its
-external provider configuration explicitly:
-
-```rust
-let mut state = geam_bindings::RunStateInputs {
-    stdlib: GleamStdlibRunState::from_seed([7; 32]),
-    example_text_pattern: HostProviderConfiguration::empty(),
-}
-.initialize()?;
-```
-
-Time-backed source closures add a caller-owned `time` field. Component-owned
-unit state, including JSON state, is initialized internally and does not become
-a synthetic input. Initialization returns `RunState` directly when every
-selected component is total, and preserves `HostProviderInitializationError`
-when an external provider can reject its configuration.
-
-The application remains explicit about the runtime lifecycle:
-
-1. Compile the generated project selection through the existing read-only
-   plain or hosted project loader.
-2. Build and bind all selected functions into one owner.
-3. Seal that owner once.
-4. Construct caller-owned capabilities, provider configuration, state, and
-   Echo storage.
-5. Reuse the typed function handles and sealed module for repeated calls.
-
-See the canonical application's
-[`main.rs`](../examples/rust_embedding_application/src/main.rs) for preparation,
-caller-owned state, and input/output. Its
-[`inventory.rs`](../examples/rust_embedding_application/src/inventory.rs) keeps
-the three typed calls and application report together; the adjacent tests fix
-exact data, repeated-call, IO, and Echo behavior.
-
-The lower-level `compile_typed_project` and `compile_typed_host_project`
-functions remain available when an application deliberately owns project
-selection or host registration instead of generated bindings.
-
-The generated project selection loads source from the Cargo manifest directory's
-`gleam/` at runtime initialization. This source-backed workflow does not bundle
-Gleam source or its dependencies into the executable. A copied binary alone is
-not self-contained: the source project and resolved package sources must still
-be available at that location.
-
-## Data Boundary
-
-Function arguments and returns support this recursive ordinary-data grammar:
+Generated bindings support recursive ordinary data:
 
 ```text
-Data = Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data)
+Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data)
 ```
 
-| Gleam | Rust |
-| --- | --- |
-| `Int` | `BigInt` |
-| `Float` | `f64` |
-| `String` | `EcoString` |
-| `BitArray` | `BitArrayValue` |
-| `UtfCodepoint` | `char` |
-| `Bool` | `bool` |
-| `Nil` | `()` |
-| `#(A, ...)` | `(A, ...)` |
-| prelude `Result(A, B)` | `Result<A, B>` |
-| stdlib `Option(A)` | `Option<A>` |
-| `List(A)` | consumed `Vec<A>` or borrowed `&List<A>` input; retained `List<A>` output |
+This includes nested Lists and combinations of Tuple, Result, and Option.
+Records, arbitrary custom types, external values, callbacks, and generic public
+signatures stay inside Gleam modules. Expose a small boundary function that
+projects domain values into ordinary data instead of duplicating the domain
+model in Rust.
 
-`BigInt`, `EcoString`, `BitArrayValue`, and the embedding `List` are available
-from `geam::embedding`. Tuple values have one through seven elements; `(T,)`
-is a one-element Tuple, whereas `()` is Nil. A function has zero through seven
-arguments, passed as a Rust tuple independently of any Tuple-valued argument.
+Lists returned from Gleam are retained, immutable handles. Rust can inspect
+them lazily or pass them back to the same loaded module without reconstructing
+their items. See the [embedding boundary](reference/embedding-boundary.md) for
+the complete type map, ownership rules, list transfer behavior, provider state,
+and lower-level manual binding API.
 
-All compound types recurse, including `List(List(String))` and Lists inside
-Tuple, Result, or Option. Only the prelude Result and `gleam/option.Option`
-from `gleam_stdlib` map to Rust's standard variants. Aliases resolving to those
-types work; custom types with matching names or constructors do not.
+## Ship the Gleam sources with your application
 
-A Gleam `Error` is an ordinary Rust `Err` inside the function's return value.
-For the example's batch function, each List item is a Result. These data errors
-are separate from the outer `Result` returned by `module.call`, whose
-`CallError` reports a foreign handle/value or an execution failure:
+The generated project selection reads `gleam/` and its resolved package sources
+from the Cargo manifest directory when the application initializes. The current
+workflow does not bundle that source graph into the executable. Copying only the
+compiled binary is therefore not a self-contained deployment.
 
-```rust
-let rows: Vec<(EcoString, BigInt)> = vec![("invalid".into(), 2.into())];
-let checked = module.call(
-    &functions.validate_batch,
-    (rows,),
-    &mut state,
-    &mut echo,
-)?;
-assert_eq!(checked.get(0), Some(Err("invalid code".into())));
-```
+Keep the nested Gleam project beside the application in the layout expected by
+the binary. Source bundling is a separate deployment capability rather than a
+hidden behavior of sync or Cargo builds.
 
-### Retained Lists
-
-A consumed Vec constructs a new Gleam List. A borrowed List from the same
-loaded module reuses its retained handle without traversing or reconstructing
-items. The canonical application uses both modes:
-
-```rust
-use geam::embedding::{BigInt, EcoString};
-
-let rows: Vec<(EcoString, BigInt)> = vec![
-    ("AB-12".into(), 3.into()),
-    ("invalid".into(), 2.into()),
-];
-let checked = module.call(
-    &functions.validate_batch,
-    (rows,),
-    &mut state,
-    &mut echo,
-)?;
-assert_eq!(checked.len(), 2);
-assert_eq!(checked.get(1), Some(Err("invalid code".into())));
-
-let total = module.call(
-    &functions.total_quantity,
-    (&checked,),
-    &mut state,
-    &mut echo,
-)?;
-assert_eq!(total, BigInt::from(3));
-```
-
-The read-only List API makes materialization explicit:
-
-- `len` and `is_empty` are O(1) and decode no items.
-- `get` returns one owned Rust item, or `None` when the index is out of range.
-- `iter` yields owned items lazily as they are requested.
-- `to_vec` decodes every item into a new Vec.
-
-Retained Lists own the immutable storage needed for reading. They remain
-readable after the call, mutable state, Echo, and module have been dropped.
-They do not borrow or recreate mutable provider state, and do not implement
-`Send` or `Sync`.
-
-Passing a retained List back is restricted to its original live module. A
-different load is a different owner, even for identical source and signatures.
-`CallError::ForeignValue` is returned before source execution or host-state
-mutation. For a List of scalar or non-List compound items, an explicit
-`to_vec()` followed by a fresh Vec input transfers the data to another owner.
-
-Nested Lists can use fresh `Vec<Vec<T>>` input or retained
-`&List<List<T>>` input. A fresh outer Vec cannot contain retained children:
-`Vec<List<T>>` and `Vec<&List<T>>` are not accepted. `to_vec` materializes
-one List layer, so nested items still contain retained handles. Explicitly
-materialize each nested List for a fresh cross-owner input, for example:
-
-```rust
-let rows: Vec<Vec<EcoString>> = nested.iter().map(|row| row.to_vec()).collect();
-```
-
-### Input Inference
-
-Generated bindings fix non-List positions and allow an independent carrier for
-each List position. Callers pass Vecs or borrowed Lists directly; there is no
-public mode wrapper. Ordinary scalar calls keep their `.into()` syntax.
-
-An absent Option/Result branch may not give Rust enough information to choose
-a List carrier. Use an ordinary local type annotation. For a function taking
-`Option(List(#(String, Int)))`, for example:
-
-```rust
-let rows: Option<Vec<(EcoString, BigInt)>> = None;
-module.call(&functions.optional_batch, (rows,), &mut state, &mut echo)?;
-```
-
-### Gleam Boundary Modules
-
-Arbitrary records and custom enums, external values, callbacks, and generic
-signatures are not Rust binding types. Public constants are rejected.
-Unsupported function signatures fail synchronization with their function and
-nested type position instead of being omitted. A domain type can remain in an
-imported Gleam module; a thin root boundary projects it into the supported data
-grammar.
-
-In the canonical application, `inventory_rules` owns normalization, validation,
-and an opaque Stock type, and uses the text-pattern provider. The selected
-`geam_rust_embedding_application` module exposes only ordinary data through batch validation,
-total quantity, and first valid row. Rust never needs to represent Stock or
-the provider's external Pattern type. Imported modules may use the ordinary
-supported Gleam profile; only public functions of the selected root become
-Rust bindings.
-
-## Manual Binding
-
-For provider-free direct control over declarations and binding,
-[`rust_embedding.rs`](../examples/rust_embedding.rs) remains the low-level
-typed API reference. Source closures that require built-in or external
-providers should use the init and sync workflow shown by the canonical
-application. The lower-level provider assembly contract remains documented in
-[host provider components](host-providers.md); it is not a second application
-workflow.
+For the planner, runtime, and host ownership model, continue with
+[architecture](reference/architecture.md) and
+[runtime semantics](reference/runtime-semantics.md).

@@ -1,65 +1,169 @@
-# Standalone Execution
+# Run a Gleam project
 
-The `geam` binary prepares and runs already resolved Gleam projects through a
-project-local Rust runner. Gleam remains responsible for Gleam dependencies;
-Cargo resolves Geam and approved Rust provider crates.
+Already have a Gleam application? Keep writing and managing it as a Gleam
+project. Geam supplies the Rust host behind it, so Rust remains an
+implementation detail rather than another application you must maintain.
 
-## Quick Start
+Geam reads the resolved Gleam project, prepares a project-local Rust runner,
+and executes the selected Gleam module. You choose any required native
+providers; Geam connects them and looks after the runner.
 
-Run commands from the project directory or one of its descendants. Geam walks
-upward to the first `gleam.toml`.
+## Before you start
+
+This guide assumes Rust `1.96` or newer and Gleam `v1.18.1` are installed.
+Install the Geam command with:
 
 ```sh
-gleam add gleam_json
-geam prepare
+cargo install geam --locked
+```
+
+Run Geam from a directory containing `gleam.toml` or one of its descendants.
+Geam walks upward to the nearest Gleam project root.
+
+## Run your first project
+
+Create a Gleam application or move into an existing one:
+
+```sh
+gleam new hello_geam
+cd hello_geam
+```
+
+Run the application:
+
+```sh
 geam run
 ```
 
-The default entry module is the root package name. Select another supplied
-module explicitly when needed:
+That is the complete first workflow. On the first run, Geam resolves the
+selected source closure, acquires locked Gleam dependencies when needed,
+selects the required built-in and approved external providers, prepares the
+Rust runner, and then executes the package module's `main`.
+
+When you want to prepare and check the runner without executing application
+code, use:
+
+```sh
+geam prepare
+```
+
+`prepare` performs the same reconciliation and verifies that the complete
+program can be planned and sealed. `run` continues by initializing provider
+state and starting the application. Gleam IO keeps its selected output stream;
+language Echo is written to stderr. A value returned by `main` is not printed
+automatically.
+
+## Keep working in Gleam
+
+Edit the Gleam project as usual, then run:
+
+```sh
+geam run
+```
+
+Use `prepare` when you want to verify the complete runner without executing
+application code, such as before review or while diagnosing provider setup:
+
+```sh
+geam prepare
+```
+
+Both commands select the root package module by default. Choose another module
+from the resolved project explicitly when it owns the entry point:
 
 ```sh
 geam prepare --module worker
 geam run --module worker
 ```
 
-`prepare` resolves the selected source closure, reconciles providers, generates
-the static runner, and checks planning and hosted sealing. It does not initialize
-provider state or execute `main`. `run` performs the same reconciliation, then
-initializes state and executes directly without a separate check run. A main
-return value is not printed; Gleam IO writes to its selected stream and Echo
-writes to stderr in source order.
+## Use Gleam packages
 
-## Preparation Output
+Add Gleam dependencies exactly as you normally would:
 
-`prepare` and `run` write plain `geam: ...` progress lines to stderr before each
-preparation phase. These identify the selected module, Gleam dependency
-acquisition, provider resolution or discovery, Cargo dependency resolution,
-and runner check or execution. Provider approval prompts also use stderr;
-responses still come from stdin.
+```sh
+gleam add gleam_json
+```
 
-Cargo and Gleam output is shown as those tools produce it, without Geam adding
-prefixes or changing their color, progress, or verbosity settings. Output needed
-for structured failures is forwarded while the command runs and retained for
-diagnostics. Native output stays on its original stream; Cargo metadata JSON
-stays private. Native rendering can differ between a terminal and a pipe; Geam
-does not emulate a terminal.
+Adding a dependency does not by itself add work to the Geam runner. The package
+must be imported by the selected module or its source closure. This keeps
+unused dependencies and their native requirements out of the executable.
 
-Repeated commands still report work they actually perform, such as checking
-source and invoking the runner. A dependency acquisition, registry discovery,
-or lock-resolution line appears only when that operation is invoked. Cargo
-decides whether a rebuild is necessary and reports its own build activity.
+Geam includes explicit support for the verified `gleam_stdlib`, `gleam_json`,
+and `gleam_time` integrations. These built-in components do not require
+registry discovery or native-code approval. `gleam_http` uses its unchanged
+Gleam source and the stdlib support selected by its imported closure.
 
-`prepare` ends with `geam: Prepared MODULE` only after its check succeeds. `run`
-prints `geam: Starting standalone runner for MODULE` before handing control to
-Cargo, then leaves application stdin, stdout, and stderr directly connected.
-There is no completion footer after the application. Geam's preparation lines
-and approval prompts do not go to stdout. On failure, the final diagnostic can
-repeat native stderr that was already forwarded.
+See [compatibility](reference/compatibility.md) for the exact package baselines
+and supported effects.
 
-## Managed Files
+## Bring Rust capabilities to a Gleam package
 
-Geam creates these files in the Gleam project root:
+A Gleam package may already pair its source API with an Erlang or JavaScript
+external implementation. A Geam provider lets the same package gain a Rust
+implementation without moving that API out of Gleam.
+
+When an imported source closure contains a required external that is not built
+in, Geam searches crates.io for metadata-compatible provider crates and asks
+before adding native code:
+
+```text
+Gleam package company_image 1.4.0 requires native provider code.
+Metadata compatibility is not an endorsement.
+  1. geam-company-image 0.3.1 (Gleam >= 1.0.0 and < 2.0.0)
+Approve geam-company-image 0.3.1? [y/N]
+```
+
+Approval records an exact Cargo dependency. Geam never treats matching metadata
+as consent, and noninteractive commands do not approve a new provider.
+
+Before presenting a registry candidate, Geam checks its sparse-index version,
+archive checksum, packaged provider metadata, exact target Gleam package, and
+declared package-version range. Discovery does not extract the crate or execute
+provider code. Cargo receives the selected crate only after approval.
+
+You can select a provider explicitly before preparation:
+
+```sh
+geam provider add geam-company-image@0.3.1
+geam provider add --path ../geam-company-image
+geam provider add --git https://example.com/provider.git --rev COMMIT
+```
+
+Inspect and remove stored external selections without compiling or contacting
+a registry:
+
+```sh
+geam provider list
+geam provider remove company_image
+```
+
+An explicit selection is still verified against its packaged provider metadata
+and the resolved Gleam package. One Gleam package has at most one selected
+external provider. Built-in components are not stored selections and do not
+appear in `provider list`.
+
+To implement a provider, start with [host provider authoring](host-providers.md).
+
+## Pass provider configuration at run time
+
+Pass runtime configuration by Gleam package name when starting the application:
+
+```sh
+geam run \
+  --provider-config company_image=config/company_image.toml \
+  --provider-config search=config/search.toml
+```
+
+Each file is a top-level TOML table containing strings, signed 64-bit integers,
+floats, booleans, arrays, and recursive tables. Paths are resolved from the
+directory where the command is invoked. Configuration is supplied only during
+state initialization; Geam does not copy credentials or state into Cargo
+metadata, generated source, or execution plans.
+
+## Files Geam looks after
+
+Most of the project stays exactly where Gleam put it. The first Geam preparation
+adds this Rust-owned state to the Gleam project root:
 
 ```text
 Cargo.toml
@@ -68,117 +172,51 @@ build/geam/runner.rs
 build/geam/target/
 ```
 
-The generated `Cargo.toml` begins with an exact Geam managed marker and has
-`publish = false`. Provider selections are ordinary exact Cargo dependencies,
-and `Cargo.lock` is their only lock. Runner source and Cargo artifacts belong
-under `build/geam/`; add that directory to source-control ignores.
+`Cargo.toml` carries an exact Geam-managed marker and the approved provider
+selections. `Cargo.lock` fixes the Rust dependency graph. Commit both files so
+review and CI retain the approved native-code choices. Ignore `build/geam/`;
+its runner source and Cargo target are reproducible build artifacts.
 
-Geam regenerates the whole managed manifest canonically and leaves unchanged
-bytes alone. It removes selections for Gleam packages no longer present in the
-resolved manifest. It refuses to modify any existing `Cargo.toml` without its
-managed marker. Rust applications and libraries that own their Cargo manifest
-use the separate checked-in binding workflow described in
-[Rust embedding](embedding.md). Embedding sync reads the caller-owned Cargo and
-Gleam package graphs; it does not adopt them as standalone managed files.
+Geam rewrites the managed manifest canonically and removes selections whose
+Gleam packages are no longer in the resolved project. It refuses to adopt or
+overwrite a user-owned Cargo manifest without its exact managed marker. A Rust
+application that already owns `Cargo.toml` must use the separate
+[Rust embedding workflow](embedding.md).
 
-## Provider Selection
+Gleam still owns `gleam.toml`, `manifest.toml`, package sources, and its package
+cache. Geam may run `gleam deps download` once when a locked manifest or package
+source is missing, but it does not choose a new Gleam dependency version.
 
-Built-in stdlib, JSON, and Time support occupies the first entries in the same
-static component graph as approved dependencies, but is never searched on
-crates.io, added to the managed manifest, approved, or configured. For another
-resolved package with mandatory Erlang externals, Geam derives a crates.io
-search name from the Gleam package. A requirement for `company_image` searches
-for `geam-company-image` and considers that exact crate plus kebab-case
-alternatives under `geam-company-image-*`. Before presenting any result, Geam
-verifies the sparse-index version, archive checksum, packaged provider metadata,
-exact `company_image` target, and declared Gleam version range. Explicit
-registry, path, and Git selections bypass discovery naming because the user
-names and approves the crate directly.
+## See what Geam is doing
 
-Metadata compatibility is not an endorsement. Geam presents verified
-candidates and asks before adding native code. It does not select a new provider
-when stdin is noninteractive, and it asks again before replacing an approved
-provider that no longer supports the resolved Gleam version. Existing compatible
-exact selections remain pinned until changed explicitly.
+Geam writes plain `geam: ...` progress lines to stderr at real preparation
+boundaries. Gleam and Cargo output remains on the streams those tools select;
+Geam does not add prefixes, emulate a terminal, or replace their progress
+display.
 
-The repository's [text pattern example](../examples/text_pattern/README.md)
-exercises the same runner through an explicit path selection:
+The first command can spend most of its time downloading or compiling Rust
+dependencies. Later commands still report phases they actually invoke, while
+Cargo decides whether a rebuild is needed.
 
-```text
-example_text_pattern
--> geam provider add --path ../provider
--> validated provider metadata
--> exact path dependency and root lock
--> generated runner check and execution
-```
+`prepare` ends with `geam: Prepared MODULE` only after the runner check
+succeeds. `run` prints `geam: Starting standalone runner for MODULE` before
+handing stdin, stdout, and stderr to the application. It does not print a
+completion footer after application output.
 
-The example project contains an ordinary local Gleam dependency and no Geam
-mapping metadata. Its independently packageable provider uses Geam's public
-authoring macros. The bounded fake-registry tests separately verify discovery,
-approval, archive validation, and the same production runner path
-deterministically against the current checkout.
+## When something fails
 
-The Gleam package is published as `example_text_pattern` on Hex, and its Rust
-provider is published as `geam-example-text-pattern` on crates.io. A separate CI
-acceptance job installs a known published combination, creates a clean Gleam
-project, discovers and approves the provider without `geam provider add`, and
-then locks, builds, and executes the generated runner. Repeating `prepare` and
-`run` must preserve the managed manifest, lock, and runner source. The separately
-recoverable reference-example publication workflow verifies each new
-same-version Geam, provider, and Hex package combination before release
-finalization. These released-artifact checks do not replace checkout regression
-tests.
+- If `manifest.toml` or a locked package source is missing, let Geam perform its
+  single `gleam deps download` recovery and inspect any native Gleam error.
+- If a provider is required in noninteractive CI, approve and commit its managed
+  Cargo selection from an interactive checkout first.
+- If Geam refuses an existing `Cargo.toml`, do not add its marker manually. Use
+  Rust embedding or move the user-owned Cargo project outside the Gleam root.
+- If a provider version is incompatible, choose a compatible exact version or
+  update the provider; Geam does not silently replace it.
+- Registry, Cargo, configuration, planning, and runtime errors preserve the
+  failed operation or source identity. Fix the reported boundary and rerun the
+  same command.
 
-Explicit selection is itself approval:
-
-```sh
-geam provider add geam-company-image@0.3.1
-geam provider add --path ../geam-company-image
-geam provider add --path ../provider-workspace --package geam-company-image
-geam provider add --git https://example.com/provider.git --rev COMMIT
-geam provider list
-geam provider remove company_image
-```
-
-Registry versions are recorded exactly. Git revisions and path packages follow
-Cargo source and lock semantics. One Gleam package has at most one provider, and
-provider metadata must declare that exact package and a compatible Hex version
-range. Provider crates export their component as `Component` at the crate root.
-`geam provider list` reads the stored external selections without compiling the
-project, contacting a registry, or changing the managed runner files. Built-in
-providers are not selections and are not included.
-
-## Configuration
-
-Pass provider configuration only when running:
-
-```sh
-geam run \
-  --provider-config company_image=config/company_image.toml \
-  --provider-config search=config/search.toml
-```
-
-Paths are resolved from the invocation directory. Each file is a top-level TOML
-table containing strings, signed 64-bit integers, floats, booleans, arrays, and
-recursive tables. Unknown packages, duplicate entries, TOML datetimes, and
-invalid files are command errors. Omitting a file supplies an empty
-configuration; a component that requires values reports its own initialization
-error.
-
-Configuration, credentials, state, and runtime values are never stored in Cargo
-metadata, generated Rust source, process-global state, or execution plans.
-
-## Failure Boundaries
-
-- Missing `manifest.toml` or downloaded package source triggers one
-  `gleam deps download` retry. Invalid project data and compiler errors do not.
-- Registry and Cargo failures preserve the failed operation, status, and stderr.
-- Configured provider initialization and runner capability construction finish
-  before planning and execution.
-- Missing registrations and schema mismatches remain hosted linkage errors.
-- IO already emitted before a later source panic or host failure remains visible.
-- OS output failures are CLI output errors, not Gleam execution errors.
-
-Provider discovery never extracts an archive or executes code. Cargo first sees
-the selected crate only after approval, when it locks and builds the generated
-static runner.
+For exact provider linkage and execution contracts, continue with the
+[provider reference](reference/provider-boundary.md) and
+[runtime semantics](reference/runtime-semantics.md).
