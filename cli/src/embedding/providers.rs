@@ -569,7 +569,7 @@ mod words {
                 r#"mod geam_bindings;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let program = geam_bindings::project()?.compile()?;
+    let program = geam_bindings::project().compile()?;
     let builder = runtime::embedding::HostedModuleBuilder::new(program)?;
     let (bindings, functions) = geam_bindings::bind(builder)?;
     let module = bindings.seal()?;

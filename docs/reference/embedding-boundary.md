@@ -23,24 +23,24 @@ expected to be reviewed and committed.
 Unsupported public declarations fail synchronization with the function and
 nested type position. They are not silently omitted from `Functions`.
 
-## Plain And Hosted Loading
+## Project Loading
 
-A provider-free generated project compiles through the plain project loader:
+Generated bindings expose one loading shape whether the selected source closure
+is provider-free or hosted:
 
 ```rust
 let program = geam_bindings::project().compile()?;
 ```
 
-A source closure with built-in or external providers performs static
-registration before the same project compilation boundary:
+`project()` only constructs a project selection. When the source closure uses
+built-in or external providers, `compile()` performs the generated static
+provider registration before loading the selected Gleam source. Registration
+and project-loading failures remain distinguishable through the returned error.
 
-```rust
-let program = geam_bindings::project()?.compile()?;
-```
-
-Both forms read `gleam.toml`, `manifest.toml`, root source, and locked package
-source from the conventional `gleam/` directory. They do not invoke Gleam CLI,
-download packages, or rewrite project files at runtime.
+Provider-free and hosted loading both read `gleam.toml`, `manifest.toml`, root
+source, and locked package source from the conventional `gleam/` directory.
+They do not invoke Gleam CLI, download packages, or rewrite project files at
+runtime.
 
 The lower-level `compile_typed_project` and `compile_typed_host_project`
 functions remain available when an application deliberately owns source

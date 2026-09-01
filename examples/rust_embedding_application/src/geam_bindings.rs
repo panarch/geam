@@ -155,15 +155,15 @@ where
     HostProviderSet::with_providers(Vec::<HostModule<Profile<Io>>>::new(), providers)
 }
 
-pub fn project<Io>() -> Result<HostedProject<Profile<Io>>, HostRegistrationError>
+pub fn project<Io>() -> HostedProject<Profile<Io>>
 where
     Io: geam::gleam_stdlib::IoSink + 'static,
 {
-    Ok(HostedProject::new(
+    HostedProject::new(
         concat!(env!("CARGO_MANIFEST_DIR"), "/gleam"),
         ROOT_MODULE,
-        host_providers()?,
-    ))
+        host_providers::<Io>,
+    )
 }
 
 #[allow(clippy::type_complexity)]

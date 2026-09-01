@@ -173,13 +173,18 @@ fn push_hosted_project(
 ) {
     let profile = profile_type(components);
     output.push_str(&format!(
-        "pub fn project{}() -> Result<HostedProject<{profile}>, HostRegistrationError>",
+        "pub fn project{}() -> HostedProject<{profile}>",
         generics(components),
     ));
     push_bounds_open(output, alias, components);
-    output.push_str("    Ok(HostedProject::new(\n");
+    output.push_str("    HostedProject::new(\n");
     push_project_root_argument(output, project_path, "        ");
-    output.push_str("        ROOT_MODULE,\n        host_providers()?,\n    ))\n}\n\n");
+    output.push_str("        ROOT_MODULE,\n");
+    let registration = match generics(components) {
+        "" => "host_providers".to_owned(),
+        generics => format!("host_providers::{generics}"),
+    };
+    output.push_str(&format!("        {registration},\n    )\n}}\n\n"));
 }
 
 fn project_root(project_path: &Utf8Path) -> String {
@@ -859,10 +864,8 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
     fn renders_exact_host_capability_and_component_closures() {
         let stdlib = hosted_source(HostedComponents::from_builtin(BuiltInProvider::Stdlib));
         assert!(stdlib.contains("pub struct Profile<Io>"));
-        assert!(stdlib.contains(
-            "pub fn project<Io>() -> Result<HostedProject<Profile<Io>>, HostRegistrationError>"
-        ));
-        assert!(stdlib.contains("host_providers()?"));
+        assert!(stdlib.contains("pub fn project<Io>() -> HostedProject<Profile<Io>>"));
+        assert!(stdlib.contains("host_providers::<Io>"));
         assert!(stdlib.contains("pub struct RunStateInputs<Io>"));
         assert!(stdlib.contains("pub stdlib: runtime::gleam_stdlib::GleamStdlibRunState<Io>"));
         assert!(stdlib.contains("pub fn initialize(self) -> RunState<Io>"));
@@ -914,6 +917,8 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         let external = external_components();
         let external_only = hosted_source(external_components());
         assert!(external_only.contains("pub struct Profile;"));
+        assert!(external_only.contains("pub fn project() -> HostedProject<Profile>"));
+        assert!(external_only.contains("        host_providers,"));
         assert!(external_only.contains("pub struct RunStateInputs"));
         assert!(external_only.contains("pub example_text_pattern: HostProviderConfiguration"));
         assert!(external_only.contains(

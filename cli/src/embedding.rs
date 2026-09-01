@@ -1421,7 +1421,7 @@ fn feature_flags_configuration() -> HostProviderConfiguration {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let program = geam_bindings::project()?.compile()?;
+    let program = geam_bindings::project().compile()?;
     let builder = HostedModuleBuilder::new(program)?;
     let (bindings, functions) = geam_bindings::bind(builder)?;
     let module = bindings.seal()?;
@@ -1623,7 +1623,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     assert_eq!(geam_bindings::ROOT_MODULE, "built_in_embedding_application");
     let _consume = consume_functions;
     let _bind = geam_bindings::bind::<Vec<IoOutput>, FixedTime>;
-    let _program = geam_bindings::project::<Vec<IoOutput>, FixedTime>()?.compile()?;
+    let _program = geam_bindings::project::<Vec<IoOutput>, FixedTime>().compile()?;
     let mut state = geam_bindings::RunStateInputs {
         stdlib: GleamStdlibRunState::from_seed([7; 32]),
         time: FixedTime,

@@ -2,9 +2,12 @@ use crate::frontend::{
     HostedTypedProgram, ProjectError, TypedProgram, compile_typed_host_project,
     compile_typed_project,
 };
-use crate::host::{HostProfile, HostProviderSet};
+use crate::host::{HostProfile, HostProviderSet, HostRegistrationError};
 use camino::Utf8PathBuf;
 use ecow::EcoString;
+
+mod error;
+pub use error::HostedProjectError;
 
 /// One resolved Gleam project selection for plain Rust embedding.
 pub struct Project {
@@ -12,11 +15,12 @@ pub struct Project {
     module: EcoString,
 }
 
-/// One resolved Gleam project selection and provider set for hosted Rust embedding.
+/// One resolved Gleam project selection and static provider registration for
+/// hosted embedding.
 pub struct HostedProject<Profile: HostProfile> {
     root: Utf8PathBuf,
     module: EcoString,
-    providers: HostProviderSet<Profile>,
+    register_providers: fn() -> Result<HostProviderSet<Profile>, HostRegistrationError>,
 }
 
 impl Project {
@@ -35,31 +39,36 @@ impl Project {
 }
 
 impl<Profile: HostProfile> HostedProject<Profile> {
-    /// Selects a root module and its already registered static providers.
+    /// Selects a root module and defers its static provider registration until
+    /// compilation.
     pub fn new(
         root: impl Into<Utf8PathBuf>,
         module: impl Into<EcoString>,
-        providers: HostProviderSet<Profile>,
+        register_providers: fn() -> Result<HostProviderSet<Profile>, HostRegistrationError>,
     ) -> Self {
         Self {
             root: root.into(),
             module: module.into(),
-            providers,
+            register_providers,
         }
     }
 
-    /// Compiles the selected project and consumes its loading inputs.
-    pub fn compile(self) -> Result<HostedTypedProgram<Profile>, ProjectError> {
-        compile_typed_host_project(self.root, self.module, self.providers)
+    /// Registers static providers, then compiles the selected project and
+    /// consumes its inputs.
+    pub fn compile(self) -> Result<HostedTypedProgram<Profile>, HostedProjectError> {
+        let providers = (self.register_providers)()?;
+        compile_typed_host_project(self.root, self.module, providers)
+            .map_err(HostedProjectError::from)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{HostedProject, Project};
+    use super::{HostedProject, HostedProjectError, Project};
     use crate::embedding::{FunctionDeclaration, HostedModuleBuilder};
     use crate::{
-        HostModule, HostProviderModule, HostProviderSet, ProjectError, StatelessHostProfile,
+        HostModule, HostProviderModule, HostProviderSet, HostRegistrationError, ProjectError,
+        StatelessHostProfile,
     };
     use camino::{Utf8Path, Utf8PathBuf};
     use num_bigint::BigInt;
@@ -90,7 +99,7 @@ mod tests {
     }
 
     #[test]
-    fn carries_host_providers_into_project_compilation() {
+    fn registers_host_providers_during_project_compilation() {
         let project = project();
         write_file(
             &project,
@@ -111,20 +120,13 @@ pub fn quantity() -> Int {
 pub fn quantity() -> Int
 "#,
         );
-        let provider =
-            HostProviderModule::<StatelessHostProfile>::new("application", "inventory_support")
-                .expect("provider module should be valid")
-                .with_function("quantity", || BigInt::from(42))
-                .expect("provider function should be valid");
-        let providers = HostProviderSet::with_providers(
-            Vec::<HostModule<StatelessHostProfile>>::new(),
-            [provider],
+        let program = HostedProject::new(
+            project_root(&project),
+            "inventory_rules",
+            inventory_providers,
         )
-        .expect("provider set should be valid");
-
-        let program = HostedProject::new(project_root(&project), "inventory_rules", providers)
-            .compile()
-            .expect("hosted project descriptor should preserve its providers");
+        .compile()
+        .expect("hosted project descriptor should register its providers during compilation");
         let builder = HostedModuleBuilder::new(program).expect("hosted project should plan");
         let (bindings, quantity) = builder
             .function(FunctionDeclaration::<(), BigInt>::new("quantity"))
@@ -149,6 +151,60 @@ pub fn quantity() -> Int
             error,
             ProjectError::ConfigIo { path, .. } if path == root.join("gleam.toml")
         ));
+    }
+
+    #[test]
+    fn preserves_host_registration_error_identity() {
+        let project = project();
+        let error =
+            HostedProject::new(project_root(&project), "inventory_rules", invalid_providers)
+                .compile()
+                .err()
+                .expect("invalid static provider registration should fail during compilation");
+
+        assert!(matches!(
+            error,
+            HostedProjectError::HostRegistration(
+                HostRegistrationError::InvalidModuleName { module }
+            ) if module == "invalid module"
+        ));
+    }
+
+    #[test]
+    fn preserves_hosted_project_error_identity() {
+        let directory = tempdir().expect("temporary directory should be created");
+        let root = project_root(&directory).join("missing");
+        let error = HostedProject::new(root.clone(), "inventory_rules", inventory_providers)
+            .compile()
+            .err()
+            .expect("missing hosted project should retain its config read failure");
+
+        assert!(matches!(
+            error,
+            HostedProjectError::Project(ProjectError::ConfigIo { path, .. })
+                if path == root.join("gleam.toml")
+        ));
+    }
+
+    fn inventory_providers() -> Result<HostProviderSet<StatelessHostProfile>, HostRegistrationError>
+    {
+        let provider =
+            HostProviderModule::<StatelessHostProfile>::new("application", "inventory_support")
+                .expect("provider module should be valid")
+                .with_function("quantity", || BigInt::from(42))
+                .expect("provider function should be valid");
+        let providers = HostProviderSet::with_providers(
+            Vec::<HostModule<StatelessHostProfile>>::new(),
+            [provider],
+        )
+        .expect("provider set should be valid");
+        Ok(providers)
+    }
+
+    fn invalid_providers() -> Result<HostProviderSet<StatelessHostProfile>, HostRegistrationError> {
+        Err(HostRegistrationError::InvalidModuleName {
+            module: "invalid module".into(),
+        })
     }
 
     fn project() -> TempDir {

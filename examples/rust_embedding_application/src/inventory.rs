@@ -61,7 +61,6 @@ mod tests {
     #[test]
     fn reviews_receipts_with_reusable_bindings_and_caller_owned_outputs() {
         let program = geam_bindings::project()
-            .expect("example providers")
             .compile()
             .expect("example Gleam project");
         let builder = HostedModuleBuilder::new(program).expect("example library");
