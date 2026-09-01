@@ -16,8 +16,8 @@ pub mod provider {
     }
 
     pub use geam_core::provider::{
-        Call, Callback, Configuration, ExternalPayload, HostFailure, HostResult,
-        InitializationError, Stored, Value,
+        BigInt, BitArrayValue, Call, Callback, Configuration, EcoString, ExternalPayload,
+        HostFailure, HostResult, InitializationError, List, Stored, Value,
     };
 }
 

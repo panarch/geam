@@ -986,9 +986,7 @@ dependencies = [
 name = "geam-example-value-types"
 version = "0.1.0"
 dependencies = [
- "ecow",
  "geam",
- "num-bigint",
 ]
 
 [[package]]

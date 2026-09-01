@@ -1,6 +1,4 @@
-use ecow::EcoString;
-use geam::BitArrayValue;
-use num_bigint::BigInt;
+use geam::provider::{BigInt, BitArrayValue, EcoString};
 
 #[geam::provider(
     package = "example_value_types",
@@ -86,22 +84,22 @@ mod lists {
     use super::{BigInt, EcoString};
 
     #[geam::function]
-    fn length(values: geam::List<BigInt>) -> BigInt {
+    fn length(values: geam::provider::List<BigInt>) -> BigInt {
         values.len().into()
     }
 
     #[geam::function]
-    fn first_or(values: geam::List<EcoString>, fallback: EcoString) -> EcoString {
+    fn first_or(values: geam::provider::List<EcoString>, fallback: EcoString) -> EcoString {
         values.get(0).unwrap_or(fallback)
     }
 
     #[geam::function]
-    fn identity(values: geam::List<BigInt>) -> geam::List<BigInt> {
+    fn identity(values: geam::provider::List<BigInt>) -> geam::provider::List<BigInt> {
         values
     }
 
     #[geam::function]
-    fn reverse(values: geam::List<EcoString>) -> Vec<EcoString> {
+    fn reverse(values: geam::provider::List<EcoString>) -> Vec<EcoString> {
         (0..values.len())
             .rev()
             .filter_map(|index| values.get(index))
@@ -109,7 +107,7 @@ mod lists {
     }
 
     #[geam::function]
-    fn labels(values: geam::List<(EcoString, BigInt)>) -> Vec<EcoString> {
+    fn labels(values: geam::provider::List<(EcoString, BigInt)>) -> Vec<EcoString> {
         (0..values.len())
             .filter_map(|index| values.get(index).map(|(label, _)| label))
             .collect()
@@ -193,7 +191,7 @@ mod customs {
     }
 
     #[geam::function]
-    fn first_priority(values: geam::List<PriorityInput>) -> EcoString {
+    fn first_priority(values: geam::provider::List<PriorityInput>) -> EcoString {
         match values.get(0) {
             Some(PriorityInput::Low) => "low".into(),
             Some(PriorityInput::Normal) => "normal".into(),
@@ -248,7 +246,7 @@ mod results {
     }
 
     #[geam::function]
-    fn first(values: geam::List<Result<BigInt, ParseErrorInput>>) -> EcoString {
+    fn first(values: geam::provider::List<Result<BigInt, ParseErrorInput>>) -> EcoString {
         values.get(0).map_or_else(|| "missing".into(), describe)
     }
 

@@ -44,6 +44,8 @@ List module provides lazy indexed views plus explicit new-list construction. A
 tuple remains one Gleam source argument even when it contains several elements:
 
 ```rust
+use geam::provider::{BigInt, EcoString};
+
 #[geam::function]
 fn swap(value: (EcoString, BigInt)) -> (BigInt, EcoString) {
     let (label, count) = value;
@@ -59,32 +61,38 @@ fn reassociate(
 }
 ```
 
+Provider crates import the Geam-owned boundary types from `geam::provider`;
+they do not add direct dependencies on `ecow` or `num-bigint` merely to name
+Gleam values. `BitArrayValue` and `List` follow the same rule.
+
 Rust `(T,)` corresponds to Gleam `#(T)`, while Rust `()` keeps its existing
 Gleam `Nil` meaning. Tuple elements can recursively use the scalar and external
 payload forms supported by the macro; external arguments remain immutable
 payload views and external returns remain owned payloads.
 
-A top-level Gleam `List(T)` argument maps to opaque `geam::List<T>`. Retaining
+A top-level Gleam `List(T)` argument maps to opaque `List<T>`. Retaining
 that view and asking for its length are O(1); `get` decodes only the requested
-item. Returning a received `geam::List<T>` passes through the original runtime
+item. Returning a received `List<T>` passes through the original runtime
 List, while returning `Vec<T>` constructs one new source List:
 
 ```rust
+use geam::provider::{BigInt, EcoString, List};
+
 #[geam::function]
 fn first_or(
-    values: geam::List<EcoString>,
+    values: List<EcoString>,
     fallback: EcoString,
 ) -> EcoString {
     values.get(0).unwrap_or(fallback)
 }
 
 #[geam::function]
-fn identity(values: geam::List<BigInt>) -> geam::List<BigInt> {
+fn identity(values: List<BigInt>) -> List<BigInt> {
     values
 }
 
 #[geam::function]
-fn reverse(values: geam::List<EcoString>) -> Vec<EcoString> {
+fn reverse(values: List<EcoString>) -> Vec<EcoString> {
     (0..values.len())
         .rev()
         .filter_map(|index| values.get(index))
@@ -133,7 +141,7 @@ fn describe(job: JobInput) -> EcoString {
 
 The owned `Job` form constructs a new source value. `JobInput` decodes only the
 active constructor and is call-scoped; nested custom fields use the nested
-declaration's input form. A Gleam List field is a lazy `geam::List<T>` in the
+declaration's input form. A Gleam List field is a lazy `List<T>` in the
 generated input enum and a `Vec<T>` in the owned output enum. Unit, tuple, and
 named variants preserve lexical constructor order and Rust field names become
 Gleam field labels.
@@ -173,9 +181,7 @@ The matching Rust module declares the payload and source semantics at the same
 site as its functions:
 
 ```rust
-use ecow::EcoString;
-use geam::provider::ExternalPayload;
-use num_bigint::BigInt;
+use geam::provider::{BigInt, EcoString, ExternalPayload};
 use std::collections::BTreeMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};

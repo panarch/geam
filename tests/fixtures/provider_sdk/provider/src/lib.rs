@@ -1,4 +1,4 @@
-use ecow::EcoString;
+use geam::provider::{BigInt, EcoString};
 use geam::{
     HostCall, HostCallCompletion, HostCallError, HostCallable, HostComponentProfile,
     HostConstructions, HostCustomConstructorAt, HostCustomConstructorDefinition,
@@ -10,7 +10,6 @@ use geam::{
     HostProviderComponentRegistration, HostProviderConfiguration, HostProviderInitializationError,
     HostProviderModule, HostRegistrationError, HostTypeIndex0, HostTypeList, HostTypeListEnd,
 };
-use num_bigint::BigInt;
 use provider_sdk_example_domain::Catalog;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -293,7 +292,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::{Component, RunState};
-    use ecow::EcoString;
+    use geam::provider::EcoString;
     use geam::{
         HostProviderComponentInitialization, HostProviderConfiguration,
         HostProviderInitializationError,

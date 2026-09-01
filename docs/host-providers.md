@@ -47,13 +47,15 @@ Create an ordinary Rust library crate for the provider:
 cargo new --lib geam-example-text-tools
 cd geam-example-text-tools
 cargo add geam --no-default-features --features provider
-cargo add ecow@0.2.6
 ```
+
+Geam re-exports its author-facing value types from `geam::provider`, so the
+provider does not need direct dependencies on their implementation crates.
 
 Declare which Gleam package and modules the crate implements:
 
 ```rust
-use ecow::EcoString;
+use geam::provider::EcoString;
 
 #[geam::provider(
     package = "example_text_tools",

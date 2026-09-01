@@ -22,10 +22,13 @@ pub fn invert(value: Bool) -> Bool
 pub fn keep_nil(value: Nil) -> Nil
 ```
 
-The matching Rust signatures use `EcoString`, `BigInt`, `f64`,
-`BitArrayValue`, `char`, `bool`, and `()`, respectively:
+The matching Rust signatures import Geam's boundary types from
+`geam::provider` and use `EcoString`, `BigInt`, `f64`, `BitArrayValue`, `char`,
+`bool`, and `()`, respectively:
 
 ```rust
+use geam::provider::BigInt;
+
 #[geam::function]
 fn add(left: BigInt, right: BigInt) -> BigInt {
     left + right
@@ -86,18 +89,20 @@ pub fn reverse(values: List(String)) -> List(String)
 pub fn labels(values: List(#(String, Int))) -> List(String)
 ```
 
-Rust receives an opaque `geam::List<T>` view. `len` does not decode an item,
+Rust receives an opaque `List<T>` view. `len` does not decode an item,
 and `get` decodes only the requested index. Returning the view preserves the
 original Gleam List handle; returning `Vec<T>` constructs one new Gleam List:
 
 ```rust
+use geam::provider::{BigInt, EcoString, List};
+
 #[geam::function]
-fn identity(values: geam::List<BigInt>) -> geam::List<BigInt> {
+fn identity(values: List<BigInt>) -> List<BigInt> {
     values
 }
 
 #[geam::function]
-fn reverse(values: geam::List<EcoString>) -> Vec<EcoString> {
+fn reverse(values: List<EcoString>) -> Vec<EcoString> {
     (0..values.len())
         .rev()
         .map(|index| values.get(index).expect("index comes from the List length"))
@@ -128,7 +133,7 @@ fn describe(value: Result<BigInt, ParseErrorInput>) -> EcoString {
 ```
 
 The mapping composes recursively with tuples and custom values. A List of
-Result values remains a lazy `geam::List`; returning `Vec<Result<...>>` builds
+Result values remains a lazy `List`; returning `Vec<Result<...>>` builds
 one new source List.
 
 ## Custom Values
@@ -151,7 +156,7 @@ enum Job {
 
 Unit, tuple, and named variants retain lexical source order and field labels.
 Nested custom values use their generated input type, and a source `List` field
-is a lazy `geam::List` view in `JobInput`; the output enum uses `Vec` only when
+is a lazy `List` view in `JobInput`; the output enum uses `Vec` only when
 constructing a new source List.
 
 Run all five modules through the generated standalone runner:

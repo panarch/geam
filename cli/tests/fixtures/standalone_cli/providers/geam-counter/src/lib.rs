@@ -1,5 +1,4 @@
-use ecow::EcoString;
-use geam::provider::{Call, Configuration, InitializationError};
+use geam::provider::{Call, Configuration, EcoString, InitializationError};
 
 pub struct RunState {
     next: i64,

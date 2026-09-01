@@ -986,9 +986,7 @@ dependencies = [
 name = "geam-example-tag-set"
 version = "0.1.0"
 dependencies = [
- "ecow",
  "geam",
- "num-bigint",
 ]
 
 [[package]]

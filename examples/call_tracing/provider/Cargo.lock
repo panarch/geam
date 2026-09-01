@@ -986,7 +986,6 @@ dependencies = [
 name = "geam-example-call-tracing"
 version = "0.1.0"
 dependencies = [
- "ecow",
  "geam",
 ]
 

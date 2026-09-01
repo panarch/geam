@@ -1,5 +1,4 @@
-use ecow::EcoString;
-use geam::provider::{Call, Configuration, InitializationError};
+use geam::provider::{Call, Configuration, EcoString, InitializationError};
 use std::collections::BTreeSet;
 
 pub struct RunState {
@@ -61,8 +60,7 @@ mod feature_flags {
 #[cfg(test)]
 mod tests {
     use super::Component;
-    use ecow::EcoString;
-    use geam::provider::Configuration;
+    use geam::provider::{Configuration, EcoString};
     use geam::{HostProviderComponentInitialization, HostProviderConfigurationValue};
     use std::collections::BTreeMap;
 

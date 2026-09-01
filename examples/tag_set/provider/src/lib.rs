@@ -1,5 +1,4 @@
-use ecow::EcoString;
-use num_bigint::BigInt;
+use geam::provider::{BigInt, EcoString};
 use std::collections::BTreeSet;
 
 #[geam::provider(

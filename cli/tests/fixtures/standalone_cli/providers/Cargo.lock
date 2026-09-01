@@ -969,9 +969,7 @@ dependencies = [
 name = "geam-catalog"
 version = "1.0.0"
 dependencies = [
- "ecow",
  "geam",
- "num-bigint",
  "standalone-catalog-domain",
 ]
 
@@ -996,7 +994,6 @@ dependencies = [
 name = "geam-counter"
 version = "1.0.0"
 dependencies = [
- "ecow",
  "geam",
 ]
 
