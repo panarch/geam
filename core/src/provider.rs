@@ -1,4 +1,3 @@
-use ecow::EcoString;
 use std::fmt::{self, Display, Formatter};
 
 pub mod advanced;
@@ -10,7 +9,7 @@ mod prelude;
 mod stored;
 mod value;
 
-pub use crate::HostFailure;
+pub use crate::{BitArrayValue, HostFailure};
 pub use call::{Call, HostResult};
 #[doc(hidden)]
 pub use call::{ProviderActiveCall, ProviderCallPlaceholder, ProviderSharedCall};
@@ -25,6 +24,8 @@ pub use codec::{
     ProviderListInputValue, ProviderNoConstructions, ProviderOutputValue, ProviderRootOutputValue,
     ProviderValue,
 };
+pub use ecow::EcoString;
+pub use num_bigint::BigInt;
 
 pub use list::List;
 #[doc(hidden)]

@@ -17,7 +17,6 @@ gleam-package = "example_feature_flags"
 gleam-version = ">= 1.0.0 and < 2.0.0"
 
 [dependencies]
-ecow = "=0.2.6"
 geam = { version = "=0.2.1", default-features = false, features = ["provider"] }
 
 [workspace]

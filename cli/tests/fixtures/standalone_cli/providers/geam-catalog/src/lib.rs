@@ -1,4 +1,4 @@
-use ecow::EcoString;
+use geam::provider::{BigInt, EcoString};
 use geam::{
     HostCall, HostCallCompletion, HostCallError, HostCallable, HostComponentProfile,
     HostConstructions, HostCustomConstructorAt, HostCustomConstructorDefinition,
@@ -10,7 +10,6 @@ use geam::{
     HostProviderComponentRegistration, HostProviderConfiguration, HostProviderInitializationError,
     HostProviderModule, HostRegistrationError, HostTypeIndex0, HostTypeList, HostTypeListEnd,
 };
-use num_bigint::BigInt;
 use standalone_catalog_domain::Catalog;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};

@@ -1,4 +1,4 @@
-use ecow::EcoString;
+use geam::provider::EcoString;
 
 #[geam::provider(
     package = "example_text_tools",

@@ -1,5 +1,4 @@
-use ecow::EcoString;
-use geam::provider::{Call, Callback, HostResult, Value};
+use geam::provider::{Call, Callback, EcoString, HostResult, Value};
 
 #[derive(Default)]
 pub struct RunState {

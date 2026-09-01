@@ -149,5 +149,5 @@ jobs:
           - [ ] Approve the PR workflow runs and wait for all checks.
           - [ ] Mark ready and squash-merge; wait for main's checks at the merge SHA.
 
-          Publish separately using the [publishing guide](https://github.com/$GITHUB_REPOSITORY/blob/main/docs/publishing.md).
+          Publish separately using the [publishing guide](https://github.com/$GITHUB_REPOSITORY/blob/main/docs/development/publishing.md).
           EOF

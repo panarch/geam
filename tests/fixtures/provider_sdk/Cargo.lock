@@ -1934,9 +1934,7 @@ dependencies = [
 name = "provider-sdk-example-provider"
 version = "0.1.0"
 dependencies = [
- "ecow",
  "geam",
- "num-bigint",
  "provider-sdk-example-domain",
 ]
 

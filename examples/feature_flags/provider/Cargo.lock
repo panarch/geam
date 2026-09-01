@@ -986,7 +986,6 @@ dependencies = [
 name = "geam-example-feature-flags"
 version = "0.1.0"
 dependencies = [
- "ecow",
  "geam",
 ]
 
