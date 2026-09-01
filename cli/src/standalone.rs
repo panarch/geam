@@ -1,5 +1,6 @@
 use crate::error::CliError;
-use crate::project::{compile_resolved_project, read_resolved_project};
+use crate::progress::Progress;
+use crate::project::{compile_resolved_project, read_resolved_project_with_progress};
 use crate::provider::{ManagedProject, ProviderSelectionReconciler, SystemProviderReconciler};
 use camino::{Utf8Path, Utf8PathBuf};
 use std::collections::BTreeMap;
@@ -10,17 +11,17 @@ mod integration;
 
 pub(super) fn prepare(project_root: &Utf8Path, module: String) -> Result<(), CliError> {
     let stdin = std::io::stdin();
-    let stdout = std::io::stdout();
     let mut input = stdin.lock();
-    let mut output = stdout.lock();
+    let mut output = std::io::stderr();
+    let mut progress_output = std::io::stderr();
     let mut providers = SystemProviderReconciler::new(stdin.is_terminal(), &mut input, &mut output);
-    prepare_with(
+    Preparation {
         project_root,
-        module,
-        &crate::runner::SystemCargo,
-        &crate::runner::SystemCargo,
-        &mut providers,
-    )
+        lock: &crate::runner::SystemCargo,
+        providers: &mut providers,
+        progress: Progress::Visible(&mut progress_output),
+    }
+    .prepare(module, &crate::runner::SystemCargo)
 }
 
 pub(super) fn run(
@@ -30,66 +31,93 @@ pub(super) fn run(
     configuration_specs: Vec<String>,
 ) -> Result<(), CliError> {
     let stdin = std::io::stdin();
-    let stdout = std::io::stdout();
     let mut input = stdin.lock();
-    let mut output = stdout.lock();
+    let mut output = std::io::stderr();
+    let mut progress_output = std::io::stderr();
     let mut providers = SystemProviderReconciler::new(stdin.is_terminal(), &mut input, &mut output);
-    run_with(
+    Preparation {
         project_root,
+        lock: &crate::runner::SystemCargo,
+        providers: &mut providers,
+        progress: Progress::Visible(&mut progress_output),
+    }
+    .run(
         current_directory,
         module,
         configuration_specs,
         &crate::runner::SystemCargo,
-        &crate::runner::SystemCargo,
-        &mut providers,
     )
 }
 
-fn prepare_with(
-    project_root: &Utf8Path,
-    module: String,
-    lock: &dyn crate::runner::CargoLock,
-    checker: &dyn crate::runner::RunnerChecker,
-    providers: &mut dyn ProviderSelectionReconciler,
-) -> Result<(), CliError> {
-    reconcile(project_root, &module, lock, providers)?;
-    checker.check(project_root, &module)
+struct Preparation<'a> {
+    project_root: &'a Utf8Path,
+    lock: &'a dyn crate::runner::CargoLock,
+    providers: &'a mut dyn ProviderSelectionReconciler,
+    progress: Progress<'a>,
 }
 
-fn run_with(
-    project_root: &Utf8Path,
-    current_directory: &Utf8Path,
-    module: String,
-    configuration_specs: Vec<String>,
-    lock: &dyn crate::runner::CargoLock,
-    executor: &dyn crate::runner::RunnerExecutor,
-    providers: &mut dyn ProviderSelectionReconciler,
-) -> Result<(), CliError> {
-    let managed = reconcile(project_root, &module, lock, providers)?;
-    let configurations =
-        resolve_provider_configurations(current_directory, &managed, configuration_specs)?;
-    executor.execute(project_root, &module, &configurations)
-}
-
-fn reconcile(
-    project_root: &Utf8Path,
-    module: &str,
-    lock: &dyn crate::runner::CargoLock,
-    providers: &mut dyn ProviderSelectionReconciler,
-) -> Result<ManagedProject, CliError> {
-    let project = read_resolved_project(project_root)?;
-    let typed = compile_resolved_project(project_root, module.to_owned())?;
-    let mut managed = ManagedProject::load(project_root, project.root_package())?;
-    managed.retain_packages(&project.package_names());
-    if managed.has_providers() {
-        let manifest_changed = managed.write()?;
-        crate::runner::reconcile_lock(project_root, manifest_changed, lock)?;
+impl Preparation<'_> {
+    fn prepare(
+        &mut self,
+        module: String,
+        checker: &dyn crate::runner::RunnerChecker,
+    ) -> Result<(), CliError> {
+        self.reconcile(&module)?;
+        self.progress
+            .report(format_args!("Checking standalone runner for {module}"))?;
+        checker.check(self.project_root, &module, &mut self.progress)?;
+        self.progress.report(format_args!("Prepared {module}"))
     }
-    providers.reconcile(project_root, &project, &typed, &mut managed)?;
-    crate::runner::reconcile_source(project_root, &managed.provider_aliases())?;
-    let manifest_changed = managed.write()?;
-    crate::runner::reconcile_lock(project_root, manifest_changed, lock)?;
-    Ok(managed)
+
+    fn run(
+        &mut self,
+        current_directory: &Utf8Path,
+        module: String,
+        configuration_specs: Vec<String>,
+        executor: &dyn crate::runner::RunnerExecutor,
+    ) -> Result<(), CliError> {
+        let managed = self.reconcile(&module)?;
+        let configurations =
+            resolve_provider_configurations(current_directory, &managed, configuration_specs)?;
+        self.progress
+            .report(format_args!("Starting standalone runner for {module}"))?;
+        executor.execute(self.project_root, &module, &configurations)
+    }
+
+    fn reconcile(&mut self, module: &str) -> Result<ManagedProject, CliError> {
+        let project_root = self.project_root;
+        self.progress
+            .report(format_args!("Preparing {module} in {project_root}"))?;
+        let project = read_resolved_project_with_progress(project_root, &mut self.progress)?;
+        let typed = compile_resolved_project(project_root, module.to_owned(), &mut self.progress)?;
+        let mut managed = ManagedProject::load(project_root, project.root_package())?;
+        managed.retain_packages(&project.package_names());
+        if managed.has_providers() {
+            let manifest_changed = managed.write()?;
+            crate::runner::reconcile_lock(
+                project_root,
+                manifest_changed,
+                self.lock,
+                &mut self.progress,
+            )?;
+        }
+        self.providers.reconcile(
+            project_root,
+            &project,
+            &typed,
+            &mut managed,
+            &mut self.progress,
+        )?;
+        crate::runner::reconcile_source(project_root, &managed.provider_aliases())?;
+        let manifest_changed = managed.write()?;
+        crate::runner::reconcile_lock(
+            project_root,
+            manifest_changed,
+            self.lock,
+            &mut self.progress,
+        )?;
+        Ok(managed)
+    }
 }
 
 fn resolve_provider_configurations(
@@ -130,12 +158,14 @@ fn resolve_provider_configurations(
 mod tests {
     use super::resolve_provider_configurations;
     use crate::error::CliError;
+    use crate::progress::Progress;
     use crate::project::ResolvedProject;
     use crate::provider::{ManagedProject, ProviderSelectionReconciler};
     use crate::runner::{CargoLock, RunnerChecker, RunnerExecutor};
     use camino::{Utf8Path, Utf8PathBuf};
     use std::cell::{Cell, RefCell};
     use std::fs;
+    use std::io::{self, Write};
     use tempfile::{TempDir, tempdir};
 
     const MANAGED_HEADER: &str =
@@ -147,7 +177,11 @@ mod tests {
     }
 
     impl CargoLock for RecordingCargo {
-        fn generate_lockfile(&self, project_root: &Utf8Path) -> Result<(), CliError> {
+        fn generate_lockfile(
+            &self,
+            project_root: &Utf8Path,
+            _progress: &mut Progress<'_>,
+        ) -> Result<(), CliError> {
             self.operations.borrow_mut().push("lock".to_owned());
             fs::write(project_root.join("Cargo.lock"), "fixture lock\n")
                 .expect("fixture lock should be written");
@@ -156,7 +190,12 @@ mod tests {
     }
 
     impl RunnerChecker for RecordingCargo {
-        fn check(&self, _project_root: &Utf8Path, module: &str) -> Result<(), CliError> {
+        fn check(
+            &self,
+            _project_root: &Utf8Path,
+            module: &str,
+            _progress: &mut Progress<'_>,
+        ) -> Result<(), CliError> {
             self.operations.borrow_mut().push(format!("check:{module}"));
             Ok(())
         }
@@ -184,7 +223,11 @@ mod tests {
     struct FailingCheck;
 
     impl CargoLock for FailingCheck {
-        fn generate_lockfile(&self, project_root: &Utf8Path) -> Result<(), CliError> {
+        fn generate_lockfile(
+            &self,
+            project_root: &Utf8Path,
+            _progress: &mut Progress<'_>,
+        ) -> Result<(), CliError> {
             fs::write(project_root.join("Cargo.lock"), "fixture lock\n")
                 .expect("fixture lock should be written");
             Ok(())
@@ -192,7 +235,12 @@ mod tests {
     }
 
     impl RunnerChecker for FailingCheck {
-        fn check(&self, _project_root: &Utf8Path, _module: &str) -> Result<(), CliError> {
+        fn check(
+            &self,
+            _project_root: &Utf8Path,
+            _module: &str,
+            _progress: &mut Progress<'_>,
+        ) -> Result<(), CliError> {
             Err(CliError::ProcessFailure {
                 command: "cargo run".to_owned(),
                 status: Some(1),
@@ -204,7 +252,11 @@ mod tests {
     struct FailingLock;
 
     impl CargoLock for FailingLock {
-        fn generate_lockfile(&self, _project_root: &Utf8Path) -> Result<(), CliError> {
+        fn generate_lockfile(
+            &self,
+            _project_root: &Utf8Path,
+            _progress: &mut Progress<'_>,
+        ) -> Result<(), CliError> {
             Err(CliError::ProcessFailure {
                 command: "cargo generate-lockfile".to_owned(),
                 status: Some(1),
@@ -238,6 +290,7 @@ mod tests {
             _project: &ResolvedProject,
             _program: &geam_core::TypedProgram,
             _managed: &mut ManagedProject,
+            _progress: &mut Progress<'_>,
         ) -> Result<(), CliError> {
             Ok(())
         }
@@ -254,6 +307,7 @@ mod tests {
             _project: &ResolvedProject,
             _program: &geam_core::TypedProgram,
             managed: &mut ManagedProject,
+            _progress: &mut Progress<'_>,
         ) -> Result<(), CliError> {
             assert_eq!(
                 fs::read_to_string(project_root.join("Cargo.lock"))
@@ -278,7 +332,13 @@ mod tests {
         lock: &dyn CargoLock,
         checker: &dyn RunnerChecker,
     ) -> Result<(), CliError> {
-        super::prepare_with(project_root, module, lock, checker, &mut UnchangedProviders)
+        super::Preparation {
+            project_root,
+            lock,
+            providers: &mut UnchangedProviders,
+            progress: Progress::Hidden,
+        }
+        .prepare(module, checker)
     }
 
     fn run_with(
@@ -289,15 +349,13 @@ mod tests {
         lock: &dyn CargoLock,
         executor: &dyn RunnerExecutor,
     ) -> Result<(), CliError> {
-        super::run_with(
+        super::Preparation {
             project_root,
-            current_directory,
-            module,
-            configuration_specs,
             lock,
-            executor,
-            &mut UnchangedProviders,
-        )
+            providers: &mut UnchangedProviders,
+            progress: Progress::Hidden,
+        }
+        .run(current_directory, module, configuration_specs, executor)
     }
 
     #[test]
@@ -305,22 +363,64 @@ mod tests {
         let project = project("application", "pub fn main() { 1 }\n");
         let root = utf8_path(&project);
         let cargo = RecordingCargo::default();
+        let mut output = Vec::new();
 
-        prepare_with(&root, "application".to_owned(), &cargo, &cargo)
-            .expect("pure project should prepare");
+        super::Preparation {
+            project_root: &root,
+            lock: &cargo,
+            providers: &mut UnchangedProviders,
+            progress: Progress::Visible(&mut output),
+        }
+        .prepare("application".to_owned(), &cargo)
+        .expect("pure project should prepare");
         assert_eq!(
             cargo.operations.borrow().as_slice(),
             ["lock", "check:application"],
+        );
+        assert_eq!(
+            output,
+            format!(
+                concat!(
+                    "geam: Preparing application in {}\n",
+                    "geam: Checking Gleam source for application\n",
+                    "geam: Resolving Cargo dependencies in {}\n",
+                    "geam: Checking standalone runner for application\n",
+                    "geam: Prepared application\n",
+                ),
+                root, root
+            )
+            .as_bytes()
         );
         let manifest = fs::read_to_string(root.join("Cargo.toml"))
             .expect("managed manifest should be readable");
         let source = fs::read_to_string(root.join("build/geam/runner.rs"))
             .expect("runner source should be readable");
+        let lock = fs::read(root.join("Cargo.lock")).expect("lock should be readable");
 
         cargo.operations.borrow_mut().clear();
-        prepare_with(&root, "application".to_owned(), &cargo, &cargo)
-            .expect("repeated prepare should succeed");
+        output.clear();
+        super::Preparation {
+            project_root: &root,
+            lock: &cargo,
+            providers: &mut UnchangedProviders,
+            progress: Progress::Visible(&mut output),
+        }
+        .prepare("application".to_owned(), &cargo)
+        .expect("repeated prepare should succeed");
         assert_eq!(cargo.operations.borrow().as_slice(), ["check:application"]);
+        assert_eq!(
+            output,
+            format!(
+                concat!(
+                    "geam: Preparing application in {}\n",
+                    "geam: Checking Gleam source for application\n",
+                    "geam: Checking standalone runner for application\n",
+                    "geam: Prepared application\n",
+                ),
+                root
+            )
+            .as_bytes()
+        );
         assert_eq!(
             fs::read_to_string(root.join("Cargo.toml"))
                 .expect("managed manifest should remain readable"),
@@ -331,6 +431,156 @@ mod tests {
                 .expect("runner source should remain readable"),
             source,
         );
+        assert_eq!(
+            fs::read(root.join("Cargo.lock")).expect("lock should remain readable"),
+            lock
+        );
+    }
+
+    #[test]
+    fn reports_run_handoff_without_a_check_or_completion_footer() {
+        let project = project("application", "pub fn main() { 1 }\n");
+        let root = utf8_path(&project);
+        let cargo = RecordingCargo::default();
+        let mut output = Vec::new();
+        super::Preparation {
+            project_root: &root,
+            lock: &cargo,
+            providers: &mut UnchangedProviders,
+            progress: Progress::Visible(&mut output),
+        }
+        .run(&root, "application".to_owned(), Vec::new(), &cargo)
+        .expect("run should prepare and execute once");
+        assert_eq!(
+            cargo.operations.borrow().as_slice(),
+            ["lock", "run:application:"]
+        );
+        assert_eq!(
+            output,
+            format!(
+                concat!(
+                    "geam: Preparing application in {}\n",
+                    "geam: Checking Gleam source for application\n",
+                    "geam: Resolving Cargo dependencies in {}\n",
+                    "geam: Starting standalone runner for application\n",
+                ),
+                root, root
+            )
+            .as_bytes()
+        );
+    }
+
+    #[test]
+    fn failed_runner_checks_have_no_prepared_message() {
+        let project = project("application", "pub fn main() { 1 }\n");
+        let root = utf8_path(&project);
+        let cargo = RecordingCargo::default();
+        let mut output = Vec::new();
+        let error = super::Preparation {
+            project_root: &root,
+            lock: &cargo,
+            providers: &mut UnchangedProviders,
+            progress: Progress::Visible(&mut output),
+        }
+        .prepare("application".to_owned(), &FailingCheck)
+        .expect_err("runner check should fail");
+        assert_eq!(
+            error.to_string(),
+            "`cargo run` failed with status Some(1): fixture check failed"
+        );
+        assert_eq!(
+            output,
+            format!(
+                concat!(
+                    "geam: Preparing application in {}\n",
+                    "geam: Checking Gleam source for application\n",
+                    "geam: Resolving Cargo dependencies in {}\n",
+                    "geam: Checking standalone runner for application\n",
+                ),
+                root, root
+            )
+            .as_bytes()
+        );
+    }
+
+    #[test]
+    fn failed_progress_stops_preparation_before_mutation() {
+        let project = project("application", "pub fn main() { 1 }\n");
+        let root = utf8_path(&project);
+        let cargo = RecordingCargo::default();
+        let mut output = fs::File::open(root.join("gleam.toml")).expect("open read-only output");
+        let error = super::Preparation {
+            project_root: &root,
+            lock: &cargo,
+            providers: &mut UnchangedProviders,
+            progress: Progress::Visible(&mut output),
+        }
+        .prepare("application".to_owned(), &cargo)
+        .expect_err("closed progress output should stop preparation");
+        assert_eq!(error.to_string(), "failed to write preparation progress");
+        assert!(cargo.operations.borrow().is_empty());
+        assert!(!root.join("Cargo.toml").exists());
+        assert!(!root.join("build/geam").exists());
+    }
+
+    #[test]
+    fn failed_handoff_progress_stops_before_checking_or_running() {
+        struct OutputBeforeHandoff {
+            remaining_lines: usize,
+            bytes: Vec<u8>,
+        }
+
+        impl Write for OutputBeforeHandoff {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                if self.remaining_lines == 0 {
+                    return Err(io::Error::new(io::ErrorKind::BrokenPipe, "closed output"));
+                }
+                self.bytes.extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                self.remaining_lines -= 1;
+                Ok(())
+            }
+        }
+
+        for run in [false, true] {
+            let project = project("application", "pub fn main() { 1 }\n");
+            let root = utf8_path(&project);
+            let cargo = RecordingCargo::default();
+            let mut output = OutputBeforeHandoff {
+                remaining_lines: 3,
+                bytes: Vec::new(),
+            };
+            let mut providers = UnchangedProviders;
+            let mut preparation = super::Preparation {
+                project_root: &root,
+                lock: &cargo,
+                providers: &mut providers,
+                progress: Progress::Visible(&mut output),
+            };
+            let result = if run {
+                preparation.run(&root, "application".to_owned(), Vec::new(), &cargo)
+            } else {
+                preparation.prepare("application".to_owned(), &cargo)
+            };
+            let error = result.expect_err("handoff should stop before invoking the runner");
+            assert_eq!(error.to_string(), "failed to write preparation progress");
+            assert_eq!(cargo.operations.borrow().as_slice(), ["lock"]);
+            assert_eq!(
+                output.bytes,
+                format!(
+                    concat!(
+                        "geam: Preparing application in {}\n",
+                        "geam: Checking Gleam source for application\n",
+                        "geam: Resolving Cargo dependencies in {}\n",
+                    ),
+                    root, root
+                )
+                .as_bytes()
+            );
+        }
     }
 
     #[test]
@@ -355,13 +605,13 @@ pub fn main() { required() }
             observed: &observed,
         };
 
-        super::prepare_with(
-            &root,
-            "application".to_owned(),
-            &cargo,
-            &cargo,
-            &mut providers,
-        )
+        super::Preparation {
+            project_root: &root,
+            lock: &cargo,
+            providers: &mut providers,
+            progress: Progress::Hidden,
+        }
+        .prepare("application".to_owned(), &cargo)
         .expect("missing root lock should be restored before provider resolution");
 
         assert!(observed.get());
@@ -397,13 +647,13 @@ pub fn main() { required() }
             observed: &observed,
         };
 
-        let error = super::prepare_with(
-            &root,
-            "application".to_owned(),
-            &cargo,
-            &cargo,
-            &mut providers,
-        )
+        let error = super::Preparation {
+            project_root: &root,
+            lock: &cargo,
+            providers: &mut providers,
+            progress: Progress::Hidden,
+        }
+        .prepare("application".to_owned(), &cargo)
         .expect_err("pruned manifest write failure should stop before provider resolution");
 
         assert!(matches!(
@@ -429,13 +679,13 @@ pub fn main() { required() }
             observed: &observed,
         };
 
-        let error = super::prepare_with(
-            &root,
-            "application".to_owned(),
-            &FailingLock,
-            &RecordingCargo::default(),
-            &mut providers,
-        )
+        let error = super::Preparation {
+            project_root: &root,
+            lock: &FailingLock,
+            providers: &mut providers,
+            progress: Progress::Hidden,
+        }
+        .prepare("application".to_owned(), &RecordingCargo::default())
         .expect_err("missing root lock failure should stop before provider resolution");
 
         assert!(matches!(
@@ -611,6 +861,7 @@ pub fn main() { 1 }
                 _project: &ResolvedProject,
                 _program: &geam_core::TypedProgram,
                 _managed: &mut ManagedProject,
+                _progress: &mut Progress<'_>,
             ) -> Result<(), CliError> {
                 Err(CliError::ProviderApprovalRequired {
                     package: "application".to_owned(),
@@ -620,13 +871,13 @@ pub fn main() { 1 }
         }
 
         assert!(matches!(
-            super::prepare_with(
-                &root,
-                "application".to_owned(),
-                &RecordingCargo::default(),
-                &RecordingCargo::default(),
-                &mut FailingProviders,
-            )
+            super::Preparation {
+                project_root: &root,
+                lock: &RecordingCargo::default(),
+                providers: &mut FailingProviders,
+                progress: Progress::Hidden,
+            }
+            .prepare("application".to_owned(), &RecordingCargo::default())
             .expect_err("provider reconciliation should fail"),
             CliError::ProviderApprovalRequired { package, command }
                 if package == "application"

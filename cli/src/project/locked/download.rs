@@ -24,7 +24,7 @@ pub(super) fn acquire(
         write_documents(&root, config, manifest)
             .and_then(|()| read_toml::<Manifest>("Gleam download manifest", &path))
             .and_then(|expected| {
-                downloader.download(&root)?;
+                downloader.download(&root, &mut crate::progress::Progress::Hidden)?;
                 let mut actual = read_toml::<Manifest>("Gleam download manifest", &path)?;
                 actual.packages.sort();
                 let mut expected_packages = expected.packages;
@@ -124,6 +124,7 @@ fn documents(packages: &[ManifestPackage]) -> (DocumentMut, DocumentMut) {
 mod tests {
     use super::{acquire, documents, write_documents};
     use crate::error::CliError;
+    use crate::progress::Progress;
     use crate::project::{DependencyDownloader, ProcessDependencyDownloader};
     use camino::{Utf8Path, Utf8PathBuf};
     use gleam_core::config::PackageConfig;
@@ -179,7 +180,7 @@ git_root = { git = "https://example.invalid/root", ref = "root_commit" }
     }
 
     impl DependencyDownloader for ManifestDownload<'_> {
-        fn download(&self, root: &Utf8Path) -> Result<(), CliError> {
+        fn download(&self, root: &Utf8Path, _progress: &mut Progress<'_>) -> Result<(), CliError> {
             fs::create_dir_all(root.join("build/packages/unexpected"))
                 .expect("downloaded cache fixture");
             match self.manifest {

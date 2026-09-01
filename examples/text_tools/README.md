@@ -49,7 +49,7 @@ geam prepare
 geam run
 ```
 
-A successful run produces no output. The entrypoint imports all three modules
+A successful run produces no application output. The entrypoint imports all three modules
 and executes every public function.
 
 Read the three files under

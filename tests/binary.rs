@@ -55,6 +55,25 @@ fn reports_current_directory_failures_through_the_binary_boundary() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn fails_without_panicking_when_preparation_stderr_is_closed() {
+    let project = gleam_project();
+    for operation in ["prepare", "run"] {
+        let (reader, writer) = std::io::pipe().expect("stderr pipe should open");
+        drop(reader);
+        let output = geam_command(&project, [operation])
+            .stderr(writer)
+            .output()
+            .expect("Geam CLI should start with a closed stderr reader");
+        assert_eq!(output.status.code(), Some(1));
+        assert!(output.stdout.is_empty());
+        assert!(output.stderr.is_empty());
+        assert!(!project.path().join("Cargo.toml").exists());
+        assert!(!project.path().join("build/geam").exists());
+    }
+}
+
 #[test]
 fn prepares_and_runs_pure_projects_without_printing_main_results() {
     let project = gleam_project();
@@ -67,6 +86,22 @@ fn prepares_and_runs_pure_projects_without_printing_main_results() {
     );
     assert!(project.path().join("Cargo.lock").is_file());
     assert!(project.path().join("build/geam/runner.rs").is_file());
+    assert!(prepare.stdout.is_empty());
+    let root = fs::canonicalize(project.path()).expect("project path should canonicalize");
+    let prepared = String::from_utf8_lossy(&prepare.stderr);
+    assert_eq!(
+        prepared
+            .lines()
+            .filter(|line| line.starts_with("geam: "))
+            .collect::<Vec<_>>(),
+        [
+            format!("geam: Preparing application in {}", root.display()),
+            "geam: Checking Gleam source for application".to_owned(),
+            format!("geam: Resolving Cargo dependencies in {}", root.display()),
+            "geam: Checking standalone runner for application".to_owned(),
+            "geam: Prepared application".to_owned(),
+        ],
+    );
 
     let run = geam(&project, ["run", "--module", "application"]);
     assert!(
@@ -75,10 +110,17 @@ fn prepares_and_runs_pure_projects_without_printing_main_results() {
         String::from_utf8_lossy(&run.stderr),
     );
     assert!(run.stdout.is_empty());
-    assert!(
-        run.stderr.is_empty(),
-        "run wrote unexpected stderr: {}",
-        String::from_utf8_lossy(&run.stderr),
+    let running = String::from_utf8_lossy(&run.stderr);
+    assert_eq!(
+        running
+            .lines()
+            .filter(|line| line.starts_with("geam: "))
+            .collect::<Vec<_>>(),
+        [
+            format!("geam: Preparing application in {}", root.display()),
+            "geam: Checking Gleam source for application".to_owned(),
+            "geam: Starting standalone runner for application".to_owned(),
+        ],
     );
 }
 
@@ -94,6 +136,9 @@ fn streams_gleam_io_and_echo_in_source_order_before_runtime_failure() {
     );
     assert_eq!(String::from_utf8_lossy(&run.stdout), "stdout");
     let stderr = String::from_utf8_lossy(&run.stderr);
+    let handoff = stderr
+        .find("geam: Starting standalone runner for application\n")
+        .expect("preparation should hand off to the runner before application output");
     let first = stderr
         .find("stderr-one\n")
         .expect("first stderr IO should be present");
@@ -103,7 +148,8 @@ fn streams_gleam_io_and_echo_in_source_order_before_runtime_failure() {
     let last = stderr
         .find("stderr-two\n")
         .expect("last stderr IO should be present");
-    assert!(first < echo && echo < last);
+    assert!(handoff < first && first < echo && echo < last);
+    assert!(stderr.ends_with("stderr-two\n"));
 
     #[cfg(unix)]
     {
@@ -137,7 +183,17 @@ pub fn main() {
     assert!(!failed.status.success());
     assert!(failed.stdout.is_empty());
     let stderr = String::from_utf8_lossy(&failed.stderr);
-    assert!(stderr.starts_with("before panic\n"));
+    let handoff = stderr
+        .find("geam: Starting standalone runner for application\n")
+        .expect("preparation should finish before the failing application starts");
+    let before = stderr
+        .find("before panic\n")
+        .expect("IO before panic should be preserved");
+    let failure = stderr
+        .find("geam runner:")
+        .expect("runner should report the source failure");
+    assert!(handoff < before && before < failure);
+    assert!(!stderr.contains("geam: Prepared "));
     assert!(stderr.contains("stop"));
 }
 

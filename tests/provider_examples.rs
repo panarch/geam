@@ -33,7 +33,10 @@ fn runs_the_documented_run_metrics_provider_without_configuration() {
         String::from_utf8_lossy(&run.stderr),
     );
     assert!(run.stdout.is_empty());
-    assert!(run.stderr.is_empty());
+    assert!(
+        String::from_utf8_lossy(&run.stderr)
+            .contains("geam: Starting standalone runner for run_metrics_example\n")
+    );
 
     let independent_run = geam_at(&project, ["run"]);
     assert!(
@@ -42,7 +45,10 @@ fn runs_the_documented_run_metrics_provider_without_configuration() {
         String::from_utf8_lossy(&independent_run.stderr),
     );
     assert!(independent_run.stdout.is_empty());
-    assert!(independent_run.stderr.is_empty());
+    assert!(
+        String::from_utf8_lossy(&independent_run.stderr)
+            .contains("geam: Starting standalone runner for run_metrics_example\n")
+    );
 }
 
 #[test]
@@ -72,7 +78,10 @@ fn runs_the_documented_text_tools_provider_across_three_modules() {
             String::from_utf8_lossy(&run.stderr),
         );
         assert!(run.stdout.is_empty());
-        assert!(run.stderr.is_empty());
+        assert!(
+            String::from_utf8_lossy(&run.stderr)
+                .contains("geam: Starting standalone runner for text_tools_example\n")
+        );
     }
 }
 
@@ -103,7 +112,10 @@ fn runs_the_documented_value_types_provider_without_configuration() {
             String::from_utf8_lossy(&run.stderr),
         );
         assert!(run.stdout.is_empty());
-        assert!(run.stderr.is_empty());
+        assert!(
+            String::from_utf8_lossy(&run.stderr)
+                .contains("geam: Starting standalone runner for value_types_example\n")
+        );
     }
 }
 
@@ -134,7 +146,10 @@ fn runs_the_documented_tag_set_provider_without_configuration() {
             String::from_utf8_lossy(&run.stderr),
         );
         assert!(run.stdout.is_empty());
-        assert!(run.stderr.is_empty());
+        assert!(
+            String::from_utf8_lossy(&run.stderr)
+                .contains("geam: Starting standalone runner for tag_set_example\n")
+        );
     }
 }
 
@@ -165,7 +180,10 @@ fn runs_the_documented_request_ids_provider_with_fresh_default_state() {
             String::from_utf8_lossy(&run.stderr),
         );
         assert!(run.stdout.is_empty());
-        assert!(run.stderr.is_empty());
+        assert!(
+            String::from_utf8_lossy(&run.stderr)
+                .contains("geam: Starting standalone runner for request_ids_example\n")
+        );
     }
 }
 
@@ -196,7 +214,10 @@ fn runs_the_documented_call_tracing_provider_with_fresh_callback_state() {
             String::from_utf8_lossy(&run.stderr),
         );
         assert!(run.stdout.is_empty());
-        assert!(run.stderr.is_empty());
+        assert!(
+            String::from_utf8_lossy(&run.stderr)
+                .contains("geam: Starting standalone runner for call_tracing_example\n")
+        );
     }
 }
 
@@ -227,7 +248,10 @@ fn runs_the_documented_generic_box_provider_with_persistent_values() {
             String::from_utf8_lossy(&run.stderr),
         );
         assert!(run.stdout.is_empty());
-        assert!(run.stderr.is_empty());
+        assert!(
+            String::from_utf8_lossy(&run.stderr)
+                .contains("geam: Starting standalone runner for generic_box_example\n")
+        );
     }
 }
 
@@ -265,7 +289,10 @@ fn runs_the_documented_feature_flags_provider_with_explicit_configuration() {
             String::from_utf8_lossy(&run.stderr),
         );
         assert!(run.stdout.is_empty());
-        assert!(run.stderr.is_empty());
+        assert!(
+            String::from_utf8_lossy(&run.stderr)
+                .contains("geam: Starting standalone runner for feature_flags_example\n")
+        );
     }
 
     let missing = geam_at(&project, ["run"]);
@@ -362,7 +389,10 @@ fn runs_the_documented_text_pattern_on_erlang_and_geam() {
             String::from_utf8_lossy(&run.stderr),
         );
         assert!(run.stdout.is_empty());
-        assert!(run.stderr.is_empty());
+        assert!(
+            String::from_utf8_lossy(&run.stderr)
+                .contains("geam: Starting standalone runner for text_pattern_example\n")
+        );
     }
 
     let run = geam_at(&project, ["run", "--module", "text_pattern_geam"]);
@@ -374,8 +404,19 @@ fn runs_the_documented_text_pattern_on_erlang_and_geam() {
     assert!(run.stdout.is_empty());
     let canonical_project =
         fs::canonicalize(&project).expect("text pattern project should canonicalize");
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    let handoff = stderr
+        .find("geam: Starting standalone runner for text_pattern_geam\n")
+        .expect("Geam should hand off before Echo output");
+    let echo = stderr
+        .find(&format!(
+            "{}/src/text_pattern_geam.gleam:8",
+            canonical_project.display()
+        ))
+        .expect("Geam-specific Echo should be preserved");
+    assert!(handoff < echo);
     assert_eq!(
-        String::from_utf8_lossy(&run.stderr),
+        &stderr[echo..],
         format!(
             "{}/src/text_pattern_geam.gleam:8 compiled pattern\nPattern(\"[A-Za-z]+\")\n",
             canonical_project.display(),

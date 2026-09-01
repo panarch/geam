@@ -49,7 +49,12 @@ impl EmbeddingProject {
         loader: &dyn CargoMetadataLoader,
     ) -> Result<Self, CliError> {
         let manifest = find_manifest(current_directory)?;
-        let metadata = loader.load(current_directory, &manifest, CargoMetadataMode::Workspace)?;
+        let metadata = loader.load(
+            current_directory,
+            &manifest,
+            CargoMetadataMode::Workspace,
+            &mut crate::progress::Progress::Hidden,
+        )?;
         let package = select_package(&metadata, &manifest)?;
         let package_name = package.name.to_string();
         if package

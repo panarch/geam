@@ -3,6 +3,7 @@ use super::discovery::ProviderDiscovery;
 use super::manifest::{ManagedProject, ProviderSelection, ProviderSource};
 use super::metadata::ProviderMetadata;
 use crate::error::CliError;
+use crate::progress::Progress;
 use crate::project::ResolvedProject;
 use camino::Utf8Path;
 use hexpm::version::Version as GleamVersion;
@@ -15,6 +16,7 @@ pub(crate) trait ProviderSelectionReconciler {
         project: &ResolvedProject,
         program: &geam_core::TypedProgram,
         managed: &mut ManagedProject,
+        progress: &mut Progress<'_>,
     ) -> Result<(), CliError>;
 }
 
@@ -23,6 +25,7 @@ pub(super) trait ApprovedProviderResolver {
         &self,
         project_root: &Utf8Path,
         selection: &ProviderSelection,
+        progress: &mut Progress<'_>,
     ) -> Result<ProviderMetadata, CliError>;
 }
 
@@ -33,8 +36,9 @@ impl ApprovedProviderResolver for SystemApprovedProviderResolver {
         &self,
         project_root: &Utf8Path,
         selection: &ProviderSelection,
+        progress: &mut Progress<'_>,
     ) -> Result<ProviderMetadata, CliError> {
-        super::resolution::resolve_selection(project_root, selection)
+        super::resolution::resolve_selection(project_root, selection, progress)
     }
 }
 
@@ -63,6 +67,7 @@ impl<'a> ProviderReconciler<'a> {
         project: &ResolvedProject,
         required_packages: BTreeSet<String>,
         managed: &mut ManagedProject,
+        progress: &mut Progress<'_>,
     ) -> Result<(), CliError> {
         let mut compatible = BTreeSet::new();
         let mut pending = BTreeMap::new();
@@ -76,7 +81,11 @@ impl<'a> ProviderReconciler<'a> {
                     package: package.to_owned(),
                 });
             }
-            let metadata = self.resolver.resolve(project_root, &selection)?;
+            progress.report(format_args!(
+                "Resolving provider {} for {package} {version}",
+                selection.crate_name()
+            ))?;
+            let metadata = self.resolver.resolve(project_root, &selection, progress)?;
             validate_selected_metadata(&selection, &metadata)?;
             if metadata.supports(version) {
                 compatible.insert(package.to_owned());
@@ -112,6 +121,10 @@ impl<'a> ProviderReconciler<'a> {
 
         let mut discovered = Vec::new();
         for pending in pending.into_values() {
+            progress.report(format_args!(
+                "Discovering native providers for {} {}",
+                pending.package, pending.version
+            ))?;
             let candidates = self
                 .discovery
                 .discover(&pending.package, &pending.version)?;
@@ -156,12 +169,13 @@ impl ProviderSelectionReconciler for ProviderReconciler<'_> {
         project: &ResolvedProject,
         program: &geam_core::TypedProgram,
         managed: &mut ManagedProject,
+        progress: &mut Progress<'_>,
     ) -> Result<(), CliError> {
         let required_packages = geam_core::required_host_functions(program)
             .into_iter()
             .map(|requirement| requirement.package().to_string())
             .collect();
-        self.reconcile_packages(project_root, project, required_packages, managed)
+        self.reconcile_packages(project_root, project, required_packages, managed, progress)
     }
 }
 
@@ -205,6 +219,7 @@ mod tests {
         SystemApprovedProviderResolver,
     };
     use crate::error::CliError;
+    use crate::progress::Progress;
     use crate::project::read_resolved_project;
     use crate::provider::approval::ProviderApproval;
     use crate::provider::manifest::{ManagedProject, ProviderSelection, ProviderSource};
@@ -245,6 +260,7 @@ mod tests {
         )]);
         let mut approval = FixedApproval::new([Decision::Select("geam-search-alt")]);
         let mut reconciler = ProviderReconciler::new(&resolver, &discovery, &mut approval);
+        let mut output = Vec::new();
 
         reconciler
             .reconcile_packages(
@@ -252,8 +268,19 @@ mod tests {
                 &resolved,
                 BTreeSet::from(["images".to_owned(), "search".to_owned()]),
                 &mut managed,
+                &mut Progress::Visible(&mut output),
             )
             .expect("missing provider should be approved");
+
+        assert_eq!(
+            output,
+            concat!(
+                "geam: Resolving provider geam-fallback for fallback 1.0.0\n",
+                "geam: Resolving provider geam-images for images 1.5.0\n",
+                "geam: Discovering native providers for search 2.0.0\n",
+            )
+            .as_bytes()
+        );
 
         assert_eq!(
             resolver.calls.borrow().as_slice(),
@@ -281,6 +308,39 @@ mod tests {
             },
         );
         assert!(managed.has_provider("fallback"));
+    }
+
+    #[test]
+    fn failed_progress_stops_resolution_or_discovery_before_approval_and_mutation() {
+        let project = resolved_project(&[("images", "1.0.0")]);
+        let root = utf8_path(&project);
+        let resolved = read_resolved_project(&root).expect("project should resolve");
+        for selected in [false, true] {
+            let mut managed = ManagedProject::load(&root, "application")
+                .expect("managed project should initialize");
+            if selected {
+                managed.replace(selection("images", "geam-images", "1.0.0"));
+            }
+            let original = managed.provider("images").cloned();
+            let resolver = FixedResolver::new([]);
+            let discovery = FixedDiscovery::new([]);
+            let mut approval = FixedApproval::new([]);
+            let mut output = fs::File::open(root.join("gleam.toml")).expect("read-only output");
+            let error = ProviderReconciler::new(&resolver, &discovery, &mut approval)
+                .reconcile_packages(
+                    &root,
+                    &resolved,
+                    BTreeSet::from(["images".to_owned()]),
+                    &mut managed,
+                    &mut Progress::Visible(&mut output),
+                )
+                .expect_err("progress failure should stop before provider work");
+            assert_eq!(error.to_string(), "failed to write preparation progress");
+            assert!(resolver.calls.borrow().is_empty());
+            assert!(discovery.calls.borrow().is_empty());
+            assert!(approval.calls.borrow().is_empty());
+            assert_eq!(managed.provider("images"), original.as_ref());
+        }
     }
 
     #[test]
@@ -320,6 +380,7 @@ mod tests {
                 &resolved,
                 BTreeSet::from(["images".to_owned(), "search".to_owned()]),
                 &mut managed,
+                &mut Progress::Hidden,
             ),
             Err(CliError::ProviderApprovalCancelled { ref package }) if package == "search"
         ));
@@ -341,6 +402,7 @@ mod tests {
                 &resolved,
                 BTreeSet::from(["images".to_owned(), "search".to_owned()]),
                 &mut managed,
+                &mut Progress::Hidden,
             )
             .expect("all approved replacements should commit together");
         assert_eq!(
@@ -372,6 +434,7 @@ mod tests {
                 &builtin_resolved,
                 BTreeSet::new(),
                 &mut managed,
+                &mut Progress::Hidden,
             ),
             Err(CliError::BuiltInProviderPackage { ref package }) if package == "gleam_json"
         ));
@@ -405,6 +468,7 @@ mod tests {
                     &resolved,
                     BTreeSet::new(),
                     &mut managed,
+                    &mut Progress::Hidden,
                 ),
                 Err(CliError::InvalidProviderMetadata { package, reason })
                     if package == "geam-images" && reason == expected_reason
@@ -423,6 +487,7 @@ mod tests {
                 &resolved,
                 BTreeSet::from(["images".to_owned()]),
                 &mut managed,
+                &mut Progress::Hidden,
             ),
             Err(CliError::ProviderCandidatesUnavailable {
                 package,
@@ -456,6 +521,7 @@ mod tests {
                 &resolved,
                 BTreeSet::new(),
                 &mut managed,
+                &mut Progress::Hidden,
             ),
             Err(CliError::InvalidProviderMetadata { package, reason })
                 if package == "geam-images" && reason == "fixture resolution failure"
@@ -473,6 +539,7 @@ mod tests {
                 &resolved,
                 BTreeSet::from(["images".to_owned()]),
                 &mut managed,
+                &mut Progress::Hidden,
             ),
             Err(CliError::ProviderRegistryAccess { package, reason })
                 if package == "images" && reason == "fixture discovery failure"
@@ -513,7 +580,7 @@ mod tests {
             },
         );
         let metadata = SystemApprovedProviderResolver
-            .resolve(&root, &selection)
+            .resolve(&root, &selection, &mut Progress::Hidden)
             .expect("path provider should resolve through Cargo metadata");
         assert_eq!(metadata.gleam_package(), "images");
     }
@@ -550,6 +617,7 @@ mod tests {
             &self,
             _project_root: &Utf8Path,
             selection: &ProviderSelection,
+            _progress: &mut Progress<'_>,
         ) -> Result<ProviderMetadata, CliError> {
             self.calls
                 .borrow_mut()
@@ -569,6 +637,7 @@ mod tests {
             &self,
             _project_root: &Utf8Path,
             selection: &ProviderSelection,
+            _progress: &mut Progress<'_>,
         ) -> Result<ProviderMetadata, CliError> {
             Err(CliError::InvalidProviderMetadata {
                 package: selection.crate_name().to_owned(),

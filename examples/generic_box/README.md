@@ -60,7 +60,7 @@ geam run
 geam run
 ```
 
-A successful run produces no output. Read
+A successful run produces no application output. Read
 [`project/packages/example_generic_box/src/example_generic_box.gleam`](project/packages/example_generic_box/src/example_generic_box.gleam),
 [`provider/src/lib.rs`](provider/src/lib.rs), and
 [`project/src/generic_box_example.gleam`](project/src/generic_box_example.gleam)

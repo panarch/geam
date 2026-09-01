@@ -1,7 +1,8 @@
 mod locked;
 
 use crate::error::CliError;
-use crate::process::run_checked;
+use crate::process::run_checked_with_progress;
+use crate::progress::Progress;
 use camino::{Utf8Path, Utf8PathBuf};
 use geam_core::{ProjectError, TypedProgram, compile_typed_project};
 use gleam_core::config::PackageConfig;
@@ -11,7 +12,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::fs;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 pub(super) use locked::restore_locked_dependencies;
 
@@ -68,7 +69,18 @@ pub(super) fn entry_module(
 }
 
 pub(super) fn read_resolved_project(project_root: &Utf8Path) -> Result<ResolvedProject, CliError> {
-    read_resolved_project_with(project_root, &ProcessDependencyDownloader::gleam())
+    read_resolved_project_with_progress(project_root, &mut Progress::Hidden)
+}
+
+pub(super) fn read_resolved_project_with_progress(
+    project_root: &Utf8Path,
+    progress: &mut Progress<'_>,
+) -> Result<ResolvedProject, CliError> {
+    read_resolved_project_with(
+        project_root,
+        &ProcessDependencyDownloader::gleam(),
+        progress,
+    )
 }
 
 pub(super) fn read_existing_resolved_project(
@@ -78,19 +90,20 @@ pub(super) fn read_existing_resolved_project(
 }
 
 pub(super) fn prepare_dependencies(project_root: &Utf8Path) -> Result<(), CliError> {
-    ProcessDependencyDownloader::gleam().download(project_root)
+    ProcessDependencyDownloader::gleam().download(project_root, &mut Progress::Hidden)
 }
 
 fn read_resolved_project_with(
     project_root: &Utf8Path,
     downloader: &dyn DependencyDownloader,
+    progress: &mut Progress<'_>,
 ) -> Result<ResolvedProject, CliError> {
     match read_resolved_project_files(project_root) {
         Err(CliError::FileRead { path, error })
             if path == project_root.join(MANIFEST_FILE)
                 && error.kind() == std::io::ErrorKind::NotFound =>
         {
-            downloader.download(project_root)?;
+            download_dependencies(project_root, downloader, progress)?;
             read_resolved_project_files(project_root)
         }
         result => result,
@@ -123,11 +136,13 @@ fn read_resolved_project_files(project_root: &Utf8Path) -> Result<ResolvedProjec
 pub(super) fn compile_resolved_project(
     project_root: &Utf8Path,
     root_module: String,
+    progress: &mut Progress<'_>,
 ) -> Result<TypedProgram, CliError> {
     compile_resolved_project_with(
         project_root,
         root_module,
         &ProcessDependencyDownloader::gleam(),
+        progress,
     )
 }
 
@@ -135,11 +150,13 @@ fn compile_resolved_project_with(
     project_root: &Utf8Path,
     root_module: String,
     downloader: &dyn DependencyDownloader,
+    progress: &mut Progress<'_>,
 ) -> Result<TypedProgram, CliError> {
+    progress.report(format_args!("Checking Gleam source for {root_module}"))?;
     match compile_typed_project(project_root, root_module.clone()) {
         Ok(program) => Ok(program),
         Err(error) if should_download_dependencies(&error) => {
-            downloader.download(project_root)?;
+            download_dependencies(project_root, downloader, progress)?;
             compile_typed_project(project_root, root_module).map_err(CliError::from)
         }
         Err(error) => Err(error.into()),
@@ -154,7 +171,22 @@ fn should_download_dependencies(error: &ProjectError) -> bool {
 }
 
 trait DependencyDownloader {
-    fn download(&self, project_root: &Utf8Path) -> Result<(), CliError>;
+    fn download(
+        &self,
+        project_root: &Utf8Path,
+        progress: &mut Progress<'_>,
+    ) -> Result<(), CliError>;
+}
+
+fn download_dependencies(
+    project_root: &Utf8Path,
+    downloader: &dyn DependencyDownloader,
+    progress: &mut Progress<'_>,
+) -> Result<(), CliError> {
+    progress.report(format_args!(
+        "Preparing Gleam dependencies in {project_root}"
+    ))?;
+    downloader.download(project_root, progress)
 }
 
 struct ProcessDependencyDownloader {
@@ -183,11 +215,17 @@ impl ProcessDependencyDownloader {
 }
 
 impl DependencyDownloader for ProcessDependencyDownloader {
-    fn download(&self, project_root: &Utf8Path) -> Result<(), CliError> {
-        run_checked(
+    fn download(
+        &self,
+        project_root: &Utf8Path,
+        progress: &mut Progress<'_>,
+    ) -> Result<(), CliError> {
+        run_checked_with_progress(
             Command::new(&self.program)
                 .args(&self.arguments)
                 .current_dir(project_root),
+            progress,
+            Stdio::inherit(),
         )?;
         Ok(())
     }
@@ -220,6 +258,7 @@ mod tests {
         read_resolved_project, read_resolved_project_with, should_download_dependencies,
     };
     use crate::error::CliError;
+    use crate::progress::Progress;
     use camino::{Utf8Path, Utf8PathBuf};
     use geam_core::ProjectError;
     use std::cell::Cell;
@@ -232,7 +271,11 @@ mod tests {
     }
 
     impl DependencyDownloader for RecordingDownloader {
-        fn download(&self, project_root: &Utf8Path) -> Result<(), CliError> {
+        fn download(
+            &self,
+            project_root: &Utf8Path,
+            _progress: &mut Progress<'_>,
+        ) -> Result<(), CliError> {
             self.calls.set(self.calls.get() + 1);
             fs::write(project_root.join("manifest.toml"), self.manifest)
                 .expect("recording downloader should write its fixture manifest");
@@ -243,7 +286,11 @@ mod tests {
     struct FailingDownloader;
 
     impl DependencyDownloader for FailingDownloader {
-        fn download(&self, _project_root: &Utf8Path) -> Result<(), CliError> {
+        fn download(
+            &self,
+            _project_root: &Utf8Path,
+            _progress: &mut Progress<'_>,
+        ) -> Result<(), CliError> {
             Err(CliError::ProcessFailure {
                 command: "gleam deps download".to_owned(),
                 status: Some(1),
@@ -399,8 +446,9 @@ packages = [
             calls: Cell::new(0),
             manifest: "packages = []\n[requirements]\n",
         };
-        let resolved = read_resolved_project_with(&utf8_path(&project), &downloader)
-            .expect("missing resolved manifest should be downloaded once");
+        let resolved =
+            read_resolved_project_with(&utf8_path(&project), &downloader, &mut Progress::Hidden)
+                .expect("missing resolved manifest should be downloaded once");
         assert_eq!(resolved.root_package(), "application");
         assert_eq!(downloader.calls.get(), 1);
 
@@ -409,9 +457,10 @@ packages = [
             calls: Cell::new(0),
             manifest: "invalid",
         };
-        let error = read_resolved_project_with(&utf8_path(&project), &downloader)
-            .err()
-            .expect("invalid downloaded resolution should be preserved");
+        let error =
+            read_resolved_project_with(&utf8_path(&project), &downloader, &mut Progress::Hidden)
+                .err()
+                .expect("invalid downloaded resolution should be preserved");
         assert!(matches!(
             error,
             CliError::InvalidToml { kind, path, reason }
@@ -428,15 +477,24 @@ packages = [
             manifest: "packages = []\n[requirements]\n",
         };
 
-        let program = compile_resolved_project_with(&root, "application".to_owned(), &downloader)
-            .expect("missing manifest should be resolved once");
+        let program = compile_resolved_project_with(
+            &root,
+            "application".to_owned(),
+            &downloader,
+            &mut Progress::Hidden,
+        )
+        .expect("missing manifest should be resolved once");
         assert_eq!(program.root_package(), "application");
         assert_eq!(downloader.calls.get(), 1);
 
         let project = project_without_manifest("application", "1.0.0");
-        let error = read_resolved_project_with(&utf8_path(&project), &FailingDownloader)
-            .err()
-            .expect("resolved manifest download failure should be preserved");
+        let error = read_resolved_project_with(
+            &utf8_path(&project),
+            &FailingDownloader,
+            &mut Progress::Hidden,
+        )
+        .err()
+        .expect("resolved manifest download failure should be preserved");
         assert!(matches!(
             error,
             CliError::ProcessFailure { command, status: Some(1), stderr }
@@ -452,6 +510,7 @@ packages = [
             &utf8_path(&project),
             "application".to_owned(),
             &downloader,
+            &mut Progress::Hidden,
         )
         .expect_err("invalid downloaded manifest should be preserved");
         assert!(matches!(
@@ -463,8 +522,13 @@ packages = [
         assert_eq!(downloader.calls.get(), 1);
 
         fs::write(root.join("manifest.toml"), "invalid").expect("manifest should be replaced");
-        let error = compile_resolved_project_with(&root, "application".to_owned(), &downloader)
-            .expect_err("invalid manifest should not trigger dependency download");
+        let error = compile_resolved_project_with(
+            &root,
+            "application".to_owned(),
+            &downloader,
+            &mut Progress::Hidden,
+        )
+        .expect_err("invalid manifest should not trigger dependency download");
         assert!(matches!(
             error,
             CliError::Project(ProjectError::InvalidManifest { path, reason })
@@ -477,6 +541,7 @@ packages = [
             &utf8_path(&project),
             "application".to_owned(),
             &FailingDownloader,
+            &mut Progress::Hidden,
         )
         .expect_err("dependency download failure should be preserved");
         assert!(matches!(
@@ -484,6 +549,97 @@ packages = [
             CliError::ProcessFailure { command, status: Some(1), stderr }
                 if command == "gleam deps download" && stderr == "fixture failure"
         ));
+    }
+
+    #[test]
+    fn reports_acquisition_only_when_invoked_and_source_checks_on_each_attempt() {
+        let project = project_without_manifest("application", "1.0.0");
+        let root = utf8_path(&project);
+        let downloader = RecordingDownloader {
+            calls: Cell::new(0),
+            manifest: "packages = []\n[requirements]\n",
+        };
+        let mut output = Vec::new();
+        read_resolved_project_with(&root, &downloader, &mut Progress::Visible(&mut output))
+            .expect("missing manifest should be acquired");
+        assert_eq!(
+            output,
+            format!("geam: Preparing Gleam dependencies in {root}\n").as_bytes()
+        );
+        output.clear();
+        read_resolved_project_with(&root, &downloader, &mut Progress::Visible(&mut output))
+            .expect("existing manifest should be reused");
+        assert!(output.is_empty());
+        assert_eq!(downloader.calls.get(), 1);
+
+        fs::remove_file(root.join("manifest.toml")).expect("remove acquired manifest");
+        compile_resolved_project_with(
+            &root,
+            "application".to_owned(),
+            &downloader,
+            &mut Progress::Visible(&mut output),
+        )
+        .expect("source loading should acquire missing inputs before retrying");
+        assert_eq!(output, format!(
+            "geam: Checking Gleam source for application\ngeam: Preparing Gleam dependencies in {root}\n",
+        ).as_bytes());
+        assert_eq!(downloader.calls.get(), 2);
+
+        output.clear();
+        fs::write(
+            root.join("src/application.gleam"),
+            "pub fn main() { missing }",
+        )
+        .expect("write invalid source");
+        let error = compile_resolved_project_with(
+            &root,
+            "application".to_owned(),
+            &downloader,
+            &mut Progress::Visible(&mut output),
+        )
+        .expect_err("source errors should not trigger acquisition");
+        assert_eq!(error.to_string(), "failed to analyse Gleam module");
+        assert_eq!(output, b"geam: Checking Gleam source for application\n");
+        assert_eq!(downloader.calls.get(), 2);
+    }
+
+    #[test]
+    fn stops_before_acquisition_or_source_check_when_progress_cannot_be_written() {
+        let project = project_without_manifest("application", "1.0.0");
+        let root = utf8_path(&project);
+        let downloader = RecordingDownloader {
+            calls: Cell::new(0),
+            manifest: "packages = []\n[requirements]\n",
+        };
+        let mut output = fs::File::open(root.join("gleam.toml")).expect("open read-only output");
+        let error =
+            read_resolved_project_with(&root, &downloader, &mut Progress::Visible(&mut output))
+                .err()
+                .expect("failed progress should prevent acquisition");
+        assert_eq!(error.to_string(), "failed to write preparation progress");
+        let error = compile_resolved_project_with(
+            &root,
+            "application".to_owned(),
+            &downloader,
+            &mut Progress::Visible(&mut output),
+        )
+        .expect_err("failed source-check progress should prevent compilation and acquisition");
+        assert_eq!(error.to_string(), "failed to write preparation progress");
+        assert_eq!(downloader.calls.get(), 0);
+        assert!(!root.join("manifest.toml").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn forwards_native_dependency_output_without_interpreting_it() {
+        let project = project_without_manifest("application", "1.0.0");
+        let downloader =
+            ProcessDependencyDownloader::new("sh", ["-c", "printf 'native\\rpartial' >&2"]);
+        let mut output = Vec::new();
+        downloader
+            .download(&utf8_path(&project), &mut Progress::Visible(&mut output))
+            .expect("native dependency output should be visible");
+        assert_eq!(output, b"native\rpartial");
     }
 
     #[test]
@@ -509,7 +665,7 @@ packages = [
         let project = project_without_manifest("application", "1.0.0");
         let downloader = ProcessDependencyDownloader::new("rustc", ["--version"]);
         downloader
-            .download(&utf8_path(&project))
+            .download(&utf8_path(&project), &mut Progress::Hidden)
             .expect("configured process should run");
 
         let downloader = ProcessDependencyDownloader::new(
@@ -517,7 +673,7 @@ packages = [
             std::iter::empty::<&str>(),
         );
         let error = downloader
-            .download(&utf8_path(&project))
+            .download(&utf8_path(&project), &mut Progress::Hidden)
             .expect_err("missing downloader process should be preserved");
         assert!(matches!(
             error,
@@ -532,8 +688,9 @@ packages = [
         let project = project("application", "1.0.0", "packages = []\n[requirements]\n");
         let root = utf8_path(&project);
 
-        let program = compile_resolved_project(&root, "application".to_owned())
-            .expect("resolved project should compile directly");
+        let program =
+            compile_resolved_project(&root, "application".to_owned(), &mut Progress::Hidden)
+                .expect("resolved project should compile directly");
 
         assert_eq!(program.root_module(), "application");
     }

@@ -4,6 +4,7 @@ use crate::cargo::{CargoMetadataLoader, CargoMetadataMode, SystemCargoMetadata};
 use crate::command::AddProvider;
 use crate::error::CliError;
 use crate::process::run_checked;
+use crate::progress::Progress;
 use camino::{Utf8Path, Utf8PathBuf};
 use cargo_metadata::{Metadata, Package};
 use semver::Version;
@@ -32,8 +33,9 @@ pub(super) fn resolve(
 pub(super) fn resolve_selection(
     project_root: &Utf8Path,
     selection: &super::manifest::ProviderSelection,
+    progress: &mut Progress<'_>,
 ) -> Result<ProviderMetadata, CliError> {
-    resolve_selection_with(project_root, selection, &SystemCargoMetadata)
+    resolve_selection_with(project_root, selection, &SystemCargoMetadata, progress)
 }
 
 fn resolve_with(
@@ -56,6 +58,7 @@ fn resolve_with_candidate(
         project_root,
         candidate.manifest(),
         CargoMetadataMode::Resolve,
+        &mut Progress::Hidden,
     )?;
     let package = resolved_dependency(&metadata, CANDIDATE_ALIAS)?;
     let provider = ProviderMetadata::from_package(package)?;
@@ -70,9 +73,10 @@ fn resolve_selection_with(
     project_root: &Utf8Path,
     selection: &super::manifest::ProviderSelection,
     loader: &dyn CargoMetadataLoader,
+    progress: &mut Progress<'_>,
 ) -> Result<ProviderMetadata, CliError> {
     let manifest = project_root.join("Cargo.toml");
-    let metadata = loader.load(project_root, &manifest, CargoMetadataMode::Locked)?;
+    let metadata = loader.load(project_root, &manifest, CargoMetadataMode::Locked, progress)?;
     let package = resolved_dependency(&metadata, &selection.alias())?;
     ProviderMetadata::from_package(package)
 }
@@ -198,7 +202,12 @@ fn inspect_workspace(
     if !manifest.is_file() {
         return Err(CliError::MissingProviderManifest { path: manifest });
     }
-    let metadata = loader.load(path, &manifest, CargoMetadataMode::Workspace)?;
+    let metadata = loader.load(
+        path,
+        &manifest,
+        CargoMetadataMode::Workspace,
+        &mut Progress::Hidden,
+    )?;
     let workspace = metadata.workspace_packages();
     let package = if let Some(requested) = requested_package {
         workspace
@@ -533,6 +542,7 @@ mod tests {
     use crate::cargo::{CargoMetadataLoader, CargoMetadataMode, SystemCargoMetadata};
     use crate::command::AddProvider;
     use crate::error::CliError;
+    use crate::progress::Progress;
     use crate::provider::manifest::{ProviderSelection, ProviderSource};
     use camino::{Utf8Path, Utf8PathBuf};
     use cargo_metadata::Metadata;
@@ -551,6 +561,7 @@ mod tests {
             _current_directory: &camino::Utf8Path,
             manifest: &camino::Utf8Path,
             _mode: CargoMetadataMode,
+            _progress: &mut Progress<'_>,
         ) -> Result<Metadata, CliError> {
             Err(CliError::InvalidCargoMetadata {
                 manifest: manifest.to_path_buf(),
@@ -567,6 +578,7 @@ mod tests {
             _current_directory: &camino::Utf8Path,
             _manifest: &camino::Utf8Path,
             _mode: CargoMetadataMode,
+            _progress: &mut Progress<'_>,
         ) -> Result<Metadata, CliError> {
             Ok(self.0.clone())
         }
@@ -582,6 +594,7 @@ mod tests {
             _current_directory: &camino::Utf8Path,
             manifest: &camino::Utf8Path,
             mode: CargoMetadataMode,
+            _progress: &mut Progress<'_>,
         ) -> Result<Metadata, CliError> {
             self.call.replace(Some((manifest.to_path_buf(), mode)));
             Err(CliError::InvalidCargoMetadata {
@@ -1089,8 +1102,13 @@ mod tests {
             ProviderSource::Registry { version },
         );
 
-        let metadata = resolve_selection_with(&project, &selection, &SystemCargoMetadata)
-            .expect("approved provider should resolve from the managed graph");
+        let metadata = resolve_selection_with(
+            &project,
+            &selection,
+            &SystemCargoMetadata,
+            &mut Progress::Hidden,
+        )
+        .expect("approved provider should resolve from the managed graph");
 
         assert_eq!(metadata.crate_name(), "geam-images");
         assert_eq!(metadata.gleam_package(), "images");
@@ -1099,8 +1117,13 @@ mod tests {
             lock_before,
         );
         fs::remove_file(&root_lock).expect("root lock should be removable");
-        let error = resolve_selection_with(&project, &selection, &SystemCargoMetadata)
-            .expect_err("approved provider resolution must not recreate a missing root lock");
+        let error = resolve_selection_with(
+            &project,
+            &selection,
+            &SystemCargoMetadata,
+            &mut Progress::Hidden,
+        )
+        .expect_err("approved provider resolution must not recreate a missing root lock");
         assert!(matches!(
             error,
             CliError::ProcessFailure {
@@ -1127,7 +1150,12 @@ mod tests {
         let candidate =
             CandidateWorkspace::new(&request).expect("candidate workspace should be written");
         let metadata = SystemCargoMetadata
-            .load(&project, candidate.manifest(), CargoMetadataMode::Resolve)
+            .load(
+                &project,
+                candidate.manifest(),
+                CargoMetadataMode::Resolve,
+                &mut Progress::Hidden,
+            )
             .expect("candidate metadata should load");
         let selection = ProviderSelection::new(
             "images".to_owned(),
@@ -1137,8 +1165,13 @@ mod tests {
             },
         );
 
-        let error = resolve_selection_with(&project, &selection, &FixedLoader(metadata))
-            .expect_err("missing approved dependency alias should be preserved");
+        let error = resolve_selection_with(
+            &project,
+            &selection,
+            &FixedLoader(metadata),
+            &mut Progress::Hidden,
+        )
+        .expect_err("missing approved dependency alias should be preserved");
 
         assert!(matches!(
             error,
@@ -1156,6 +1189,7 @@ mod tests {
                 &path,
                 &path.join("Cargo.toml"),
                 CargoMetadataMode::Workspace,
+                &mut Progress::Hidden,
             )
             .expect("provider metadata should load");
         let package = metadata
@@ -1359,6 +1393,7 @@ mod tests {
                 &path,
                 &path.join("Cargo.toml"),
                 CargoMetadataMode::Workspace,
+                &mut Progress::Hidden,
             )
             .expect("provider metadata should load");
         metadata
@@ -1636,7 +1671,12 @@ mod tests {
         let candidate =
             CandidateWorkspace::new(&path_request).expect("candidate manifest should be written");
         let metadata = SystemCargoMetadata
-            .load(&project, candidate.manifest(), CargoMetadataMode::Resolve)
+            .load(
+                &project,
+                candidate.manifest(),
+                CargoMetadataMode::Resolve,
+                &mut Progress::Hidden,
+            )
             .expect("candidate metadata should load");
         let resolution_request = ProviderRequest::Registry {
             crate_name: "geam-images".to_owned(),
@@ -1690,7 +1730,12 @@ mod tests {
         let candidate =
             CandidateWorkspace::new(&request).expect("candidate manifest should be written");
         let metadata = SystemCargoMetadata
-            .load(&project, candidate.manifest(), CargoMetadataMode::Resolve)
+            .load(
+                &project,
+                candidate.manifest(),
+                CargoMetadataMode::Resolve,
+                &mut Progress::Hidden,
+            )
             .expect("candidate metadata should load");
         assert_eq!(
             resolved_dependency(&metadata, CANDIDATE_ALIAS)

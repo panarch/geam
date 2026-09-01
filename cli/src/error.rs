@@ -113,6 +113,9 @@ pub(super) enum CliError {
     #[error("failed to write embedding progress")]
     EmbeddingProgressIo(#[source] io::Error),
 
+    #[error("failed to write preparation progress")]
+    PreparationProgressIo(#[source] io::Error),
+
     #[error("refusing to replace existing embedding file {path}: {reason}")]
     EmbeddingFileConflict { path: Utf8PathBuf, reason: String },
 
@@ -154,6 +157,13 @@ pub(super) enum CliError {
 
     #[error("failed to start `{command}`")]
     ProcessIo {
+        command: String,
+        #[source]
+        error: io::Error,
+    },
+
+    #[error("failed to forward output from `{command}`")]
+    ProcessOutputIo {
         command: String,
         #[source]
         error: io::Error,

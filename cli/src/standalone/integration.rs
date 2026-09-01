@@ -1,5 +1,6 @@
 use crate::error::CliError;
 use crate::process::run_checked;
+use crate::progress::Progress;
 use crate::project::ResolvedProject;
 use crate::provider::registry::{ProviderRegistry, RegistryAccessError};
 use crate::provider::{ManagedProject, ProviderSelectionReconciler, TerminalApproval};
@@ -12,9 +13,10 @@ use sha2::{Digest, Sha256};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::Cursor;
+use std::io::{self, Cursor, Write};
 use std::path::Path;
 use std::process::Command;
+use std::sync::{Arc, Mutex};
 use tempfile::{TempDir, tempdir};
 
 #[test]
@@ -24,21 +26,25 @@ fn discovers_approves_locks_builds_and_runs_registry_providers() {
     let catalog = provider_archive("geam-catalog");
     let counter = provider_archive("geam-counter");
     let registry = FakeRegistry::new([catalog, counter]);
-    let mut reconciler = RegistryReconciler::new(&registry, b"y\ny\n".to_vec());
+    let mut output = Transcript::default();
+    let mut reconciler = RegistryReconciler::new(&registry, b"y\ny\n".to_vec(), output.clone());
 
-    super::prepare_with(
-        &project_root,
-        "standalone_fixture".to_owned(),
-        &SystemCargo,
-        &SystemCargo,
-        &mut reconciler,
-    )
+    super::Preparation {
+        project_root: &project_root,
+        lock: &SystemCargo,
+        providers: &mut reconciler,
+        progress: Progress::Visible(&mut output),
+    }
+    .prepare("standalone_fixture".to_owned(), &SystemCargo)
     .expect("discovered providers should prepare through the generated runner");
 
-    let prompt =
-        String::from_utf8(reconciler.prompt().to_vec()).expect("approval prompt should be UTF-8");
+    let initial = output.take();
+    let prompt_start = initial.find("Gleam package catalog").expect("first prompt");
+    let lock_start = initial
+        .find("geam: Resolving Cargo dependencies")
+        .expect("Cargo resolution");
     assert_eq!(
-        prompt,
+        &initial[prompt_start..lock_start],
         concat!(
             "Gleam package catalog 1.0.0 requires native provider code.\n",
             "Metadata compatibility is not an endorsement.\n",
@@ -50,6 +56,23 @@ fn discovers_approves_locks_builds_and_runs_registry_providers() {
             "Approve geam-counter 1.0.0? [y/N] ",
         ),
     );
+    assert_eq!(
+        &initial[..prompt_start],
+        format!(
+            concat!(
+                "geam: Preparing standalone_fixture in {}\n",
+                "geam: Checking Gleam source for standalone_fixture\n",
+                "geam: Discovering native providers for catalog 1.0.0\n",
+                "geam: Discovering native providers for counter 1.0.0\n",
+            ),
+            project_root
+        ),
+    );
+    let check_start = initial
+        .find("geam: Checking standalone runner")
+        .expect("runner check");
+    assert!(lock_start < check_start);
+    assert!(initial.ends_with("geam: Prepared standalone_fixture\n"));
 
     let manifest = fs::read_to_string(project_root.join("Cargo.toml"))
         .expect("managed manifest should be readable");
@@ -110,14 +133,30 @@ fn discovers_approves_locks_builds_and_runs_registry_providers() {
         ],
     );
 
-    super::prepare_with(
-        &project_root,
-        "standalone_fixture".to_owned(),
-        &SystemCargo,
-        &SystemCargo,
-        &mut reconciler,
-    )
+    super::Preparation {
+        project_root: &project_root,
+        lock: &SystemCargo,
+        providers: &mut reconciler,
+        progress: Progress::Visible(&mut output),
+    }
+    .prepare("standalone_fixture".to_owned(), &SystemCargo)
     .expect("approved providers should prepare without rediscovery");
+    let repeated = output.take();
+    assert_eq!(
+        repeated
+            .lines()
+            .filter(|line| line.starts_with("geam: "))
+            .collect::<Vec<_>>(),
+        [
+            format!("geam: Preparing standalone_fixture in {project_root}"),
+            "geam: Checking Gleam source for standalone_fixture".to_owned(),
+            "geam: Resolving provider geam-catalog for catalog 1.0.0".to_owned(),
+            "geam: Resolving provider geam-counter for counter 1.0.0".to_owned(),
+            "geam: Checking standalone runner for standalone_fixture".to_owned(),
+            "geam: Prepared standalone_fixture".to_owned(),
+        ],
+    );
+    assert!(!repeated.contains("Approve "));
     assert_eq!(
         fs::read_to_string(project_root.join("Cargo.toml"))
             .expect("managed manifest should remain readable"),
@@ -134,8 +173,13 @@ fn discovers_approves_locks_builds_and_runs_registry_providers() {
     );
     assert_eq!(registry.calls().len(), 8);
 
-    super::run_with(
-        &project_root,
+    super::Preparation {
+        project_root: &project_root,
+        lock: &SystemCargo,
+        providers: &mut reconciler,
+        progress: Progress::Visible(&mut output),
+    }
+    .run(
         &project_root,
         "standalone_fixture".to_owned(),
         vec![
@@ -143,10 +187,23 @@ fn discovers_approves_locks_builds_and_runs_registry_providers() {
             "counter=config/counter.toml".to_owned(),
         ],
         &SystemCargo,
-        &SystemCargo,
-        &mut reconciler,
     )
     .expect("approved providers should execute through the generated runner");
+    let running = output.take();
+    assert_eq!(
+        running
+            .lines()
+            .filter(|line| line.starts_with("geam: "))
+            .collect::<Vec<_>>(),
+        [
+            format!("geam: Preparing standalone_fixture in {project_root}"),
+            "geam: Checking Gleam source for standalone_fixture".to_owned(),
+            "geam: Resolving provider geam-catalog for catalog 1.0.0".to_owned(),
+            "geam: Resolving provider geam-counter for counter 1.0.0".to_owned(),
+            "geam: Starting standalone runner for standalone_fixture".to_owned(),
+        ],
+    );
+    assert!(!running.contains("Approve "));
     assert_eq!(registry.calls().len(), 8);
     assert_eq!(
         cargo_locks(&project_root),
@@ -157,20 +214,16 @@ fn discovers_approves_locks_builds_and_runs_registry_providers() {
 struct RegistryReconciler<'registry> {
     registry: &'registry dyn ProviderRegistry,
     input: Cursor<Vec<u8>>,
-    prompt: Vec<u8>,
+    output: Transcript,
 }
 
 impl<'registry> RegistryReconciler<'registry> {
-    fn new(registry: &'registry dyn ProviderRegistry, input: Vec<u8>) -> Self {
+    fn new(registry: &'registry dyn ProviderRegistry, input: Vec<u8>, output: Transcript) -> Self {
         Self {
             registry,
             input: Cursor::new(input),
-            prompt: Vec::new(),
+            output,
         }
-    }
-
-    fn prompt(&self) -> &[u8] {
-        &self.prompt
     }
 }
 
@@ -181,8 +234,9 @@ impl ProviderSelectionReconciler for RegistryReconciler<'_> {
         project: &ResolvedProject,
         program: &geam_core::TypedProgram,
         managed: &mut ManagedProject,
+        progress: &mut Progress<'_>,
     ) -> Result<(), CliError> {
-        let mut approval = TerminalApproval::new(true, &mut self.input, &mut self.prompt);
+        let mut approval = TerminalApproval::new(true, &mut self.input, &mut self.output);
         crate::provider::reconcile_registry(
             self.registry,
             &mut approval,
@@ -190,7 +244,32 @@ impl ProviderSelectionReconciler for RegistryReconciler<'_> {
             project,
             program,
             managed,
+            progress,
         )
+    }
+}
+
+#[derive(Clone, Default)]
+struct Transcript(Arc<Mutex<Vec<u8>>>);
+
+impl Transcript {
+    fn take(&self) -> String {
+        let bytes = std::mem::take(&mut *self.0.lock().expect("transcript should be available"));
+        String::from_utf8(bytes).expect("fixture transcript should be UTF-8")
+    }
+}
+
+impl Write for Transcript {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.0
+            .lock()
+            .expect("transcript should be available")
+            .extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 

@@ -31,7 +31,7 @@ geam run
 ```
 
 Each run checks the initial count, two generated IDs, and the read-only count
-after each mutation. A successful run produces no output.
+after each mutation. A successful run produces no application output.
 
 Read [`project/packages/example_request_ids/src/example_request_ids.gleam`](project/packages/example_request_ids/src/example_request_ids.gleam),
 [`provider/src/lib.rs`](provider/src/lib.rs), and

@@ -37,7 +37,7 @@ geam run
 No provider configuration file is needed, so the component omits both state and
 initialization. All metrics data lives in the source-visible `Metrics` values.
 The entrypoint checks empty, one-sample, multi-sample, missing-key, old-value
-preservation, and equality behavior. A successful run produces no output.
+preservation, and equality behavior. A successful run produces no application output.
 
 The tracked `.cargo/config.toml` files only redirect the unreleased Geam
 authoring API to this repository checkout. They are development wiring for this

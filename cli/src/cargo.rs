@@ -1,8 +1,9 @@
 use crate::error::CliError;
-use crate::process::run_checked;
+use crate::process::run_checked_with_progress;
+use crate::progress::Progress;
 use camino::{Utf8Path, Utf8PathBuf};
 use cargo_metadata::{Metadata, MetadataCommand};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum CargoMetadataMode {
@@ -17,6 +18,7 @@ pub(super) trait CargoMetadataLoader {
         current_directory: &Utf8Path,
         manifest: &Utf8Path,
         mode: CargoMetadataMode,
+        progress: &mut Progress<'_>,
     ) -> Result<Metadata, CliError>;
 }
 
@@ -28,6 +30,7 @@ impl CargoMetadataLoader for SystemCargoMetadata {
         current_directory: &Utf8Path,
         manifest: &Utf8Path,
         mode: CargoMetadataMode,
+        progress: &mut Progress<'_>,
     ) -> Result<Metadata, CliError> {
         let mut command = Command::new("cargo");
         command
@@ -46,7 +49,7 @@ impl CargoMetadataLoader for SystemCargoMetadata {
                 command.arg("--locked");
             }
         }
-        let output = run_checked(&mut command)?;
+        let output = run_checked_with_progress(&mut command, progress, Stdio::piped())?;
         parse_metadata_output(manifest, &output.stdout)
     }
 }
@@ -79,6 +82,7 @@ mod tests {
         parse_metadata_output,
     };
     use crate::error::CliError;
+    use crate::progress::Progress;
     use camino::Utf8PathBuf;
 
     #[test]
@@ -104,7 +108,12 @@ mod tests {
             .expect("temporary path should be valid UTF-8");
         let manifest = root.join("missing/Cargo.toml");
         let error = SystemCargoMetadata
-            .load(&root, &manifest, CargoMetadataMode::Locked)
+            .load(
+                &root,
+                &manifest,
+                CargoMetadataMode::Locked,
+                &mut Progress::Hidden,
+            )
             .expect_err("missing manifest should fail");
         let expected_command =
             format!("cargo metadata --format-version 1 --manifest-path {manifest} --locked");
