@@ -1,12 +1,9 @@
 # Run a Gleam project
 
 Already have a Gleam application? Keep writing and managing it as a Gleam
-project. Geam supplies the Rust host behind it, so Rust remains an
-implementation detail rather than another application you must maintain.
-
-Geam reads the resolved Gleam project, prepares a project-local Rust runner,
-and executes the selected Gleam module. You choose any required native
-providers; Geam connects them and looks after the runner.
+project. Run it with `geam run`, and Geam prepares and maintains the
+project-local Rust runner for you. You do not have to write or maintain that
+runner yourself.
 
 ## Before you start
 
@@ -35,10 +32,10 @@ Run the application:
 geam run
 ```
 
-That is the complete first workflow. On the first run, Geam resolves the
-selected source closure, acquires locked Gleam dependencies when needed,
-selects the required built-in and approved external providers, prepares the
-Rust runner, and then executes the package module's `main`.
+That is the complete first workflow. On the first run, Geam restores locked
+Gleam dependencies when needed, prepares the Rust runner, and executes the
+package module's `main`. If imported code needs an external Rust provider, Geam
+asks for approval before adding it.
 
 When you want to prepare and check the runner without executing application
 code, use:
@@ -47,11 +44,10 @@ code, use:
 geam prepare
 ```
 
-`prepare` performs the same reconciliation and verifies that the complete
-program can be planned and sealed. `run` continues by initializing provider
-state and starting the application. Gleam IO keeps its selected output stream;
-language Echo is written to stderr. A value returned by `main` is not printed
-automatically.
+`prepare` performs the same setup checks but stops before running application
+code. `run` continues by starting the application. Normal Gleam IO keeps its
+selected output stream, while Gleam's `echo` output is written to stderr. A
+value returned by `main` is not printed automatically.
 
 ## Keep working in Gleam
 
@@ -68,8 +64,8 @@ application code, such as before review or while diagnosing provider setup:
 geam prepare
 ```
 
-Both commands select the root package module by default. Choose another module
-from the resolved project explicitly when it owns the entry point:
+Both commands use the root package module by default. Choose another module
+when it contains the `main` you want to run:
 
 ```sh
 geam prepare --module worker
@@ -84,14 +80,14 @@ Add Gleam dependencies exactly as you normally would:
 gleam add gleam_json
 ```
 
-Adding a dependency does not by itself add work to the Geam runner. The package
-must be imported by the selected module or its source closure. This keeps
-unused dependencies and their native requirements out of the executable.
+Adding a dependency does not by itself add work to the Geam runner. Only
+packages imported by the selected module or its imports are included. This
+keeps unused dependencies and their native requirements out of the executable.
 
 Geam includes explicit support for the verified `gleam_stdlib`, `gleam_json`,
 and `gleam_time` integrations. These built-in components do not require
 registry discovery or native-code approval. `gleam_http` uses its unchanged
-Gleam source and the stdlib support selected by its imported closure.
+Gleam source and the stdlib support required by its imported code.
 
 See [compatibility](reference/compatibility.md) for the exact package baselines
 and supported effects.
@@ -102,8 +98,8 @@ A Gleam package may already pair its source API with an Erlang or JavaScript
 external implementation. A Geam provider lets the same package gain a Rust
 implementation without moving that API out of Gleam.
 
-When an imported source closure contains a required external that is not built
-in, Geam searches crates.io for metadata-compatible provider crates and asks
+When imported code requires an external implementation that is not built in,
+Geam searches crates.io for provider crates with matching metadata and asks
 before adding native code:
 
 ```text

@@ -1,20 +1,12 @@
 # Embed Gleam in Rust
 
-Have a Rust application and some logic that belongs in Gleam? Keep each side in
-the language that suits it. The Rust application owns the process and native
-capabilities, the nested Gleam project owns the typed application logic, and
-Geam provides the runtime and generated bridge between them.
+Have a Rust application and want to call Gleam from it? By the end of the first
+section, `cargo run` will call a Gleam function and print `42`.
 
-Geam creates a conventional nested Gleam project, generates typed Rust bindings
-for its public boundary module, and lets the Rust application control loading,
-state, IO, and call order.
-
-The result is not a second executable hidden beside the Rust application or a
-set of untyped foreign calls. The Gleam module becomes one explicit typed
-component that the application can initialize once and call repeatedly.
-
-By the end of the first section, `cargo run` will call Gleam from Rust and print
-`42`.
+Geam keeps the Gleam source in a nested project and generates typed Rust
+bindings for the Gleam functions Rust can call. The Gleam code runs inside the
+Rust application rather than as a second executable. The Rust application stays
+in control of when and how those functions are called.
 
 ## Before you start
 
@@ -26,8 +18,7 @@ cargo install geam --locked
 ```
 
 Start from an ordinary Cargo package, not a virtual workspace root. Geam uses
-the nearest package's name to derive one conventional Gleam package and public
-module name.
+the Cargo package name for the nested Gleam package and its public module.
 
 ## Make your first call
 
@@ -39,9 +30,9 @@ cd inventory-app
 geam embedding init
 ```
 
-Initialization creates `gleam/`, prepares both dependency graphs, adds Geam's
-embedding feature profile when needed, and generates `src/geam_bindings.rs`.
-It leaves handwritten Rust files untouched.
+Initialization creates the nested `gleam/` project and generates
+`src/geam_bindings.rs`. It makes sure `Cargo.toml` enables Geam embedding and
+leaves handwritten Rust files untouched.
 
 The generated starter module is named after the Cargo package, with hyphens
 replaced by underscores:
@@ -79,13 +70,13 @@ Run the Rust application normally:
 cargo run
 ```
 
-It prints `42`. Keep the sealed module and its generated function handles when
-the application needs repeated calls; initialization is not part of every
-function invocation.
+It prints `42`. For repeated calls, initialize and seal the module once, then
+keep the module and its generated function handles. You do not repeat that
+setup for every function call.
 
 ## Keep Gleam and Rust in sync
 
-Add or change public functions in the boundary module. For example:
+Add or change public functions in the generated Gleam module. For example:
 
 ```gleam
 pub fn increment(value: Int) -> Int {
@@ -93,8 +84,8 @@ pub fn increment(value: Int) -> Int {
 }
 ```
 
-Regenerate the typed declarations after changing the public Gleam surface,
-imports, or dependencies:
+Regenerate the Rust bindings after changing public Gleam functions, imports, or
+dependencies:
 
 ```sh
 geam embedding sync
@@ -111,14 +102,14 @@ The normal loop is:
 ```text
 edit Gleam source
 -> geam embedding sync
--> update handwritten Rust calls when the public boundary changed
+-> update handwritten Rust calls when the public Gleam API changed
 -> cargo run or cargo test
 ```
 
-Sync prepares locked Gleam and Cargo dependencies, compiles the selected source
-closure, validates every public boundary function, and replaces generated Rust
-atomically only when its bytes change. It does not run the Rust application,
-provider initialization, or Cargo build scripts.
+Sync restores locked Gleam and Cargo dependencies, checks that every public
+function exposed to Rust uses supported types, and updates the generated Rust
+only when its contents change. It does not run the Rust application, initialize
+providers, or run Cargo build scripts.
 
 Do not edit `src/geam_bindings.rs` manually. Geam refuses to silently replace a
 handwritten file at that path.
@@ -170,9 +161,9 @@ cd ..
 geam embedding sync
 ```
 
-Sync enables only the built-in Geam features required by the selected source
-closure. Official stdlib, JSON, and Time integrations are composed explicitly;
-unused Gleam dependencies do not add components.
+Sync enables only the built-in Geam support used by imported Gleam code.
+Official stdlib, JSON, and Time integrations are added explicitly; unused Gleam
+dependencies do not add Rust components.
 
 When an imported package requires another native provider, sync verifies
 registry candidates and asks before adding an exact Cargo dependency. Existing

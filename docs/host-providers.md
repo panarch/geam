@@ -1,18 +1,17 @@
 # Author a host provider
 
-Gleam packages can already provide target-specific implementations for Erlang
-and JavaScript. A Geam host provider adds a Rust-hosted path alongside that
-model while the Gleam package continues to define the source-facing API.
+Some Gleam packages declare functions or values that have a separate
+implementation for each target. A Geam host provider supplies the Rust
+implementation.
 
-Gleam users still import the same modules and call the same functions. The
-provider is the native capability side: a Rust crate that implements the
-package's external functions or values for Geam.
+The Gleam package keeps its public API, and users keep importing the same
+modules and calling the same functions. The provider is a separate Rust crate
+that supplies the Rust implementation for Geam.
 
-Use a provider when that API needs a native library, process capability,
-persistent opaque value, or caller-owned state that cannot be expressed by its
-Gleam source alone.
+Use a provider when a Gleam package needs a native Rust library, access to the
+host process, or a value or state that must remain in Rust.
 
-The Gleam package and Rust provider remain separate distributable packages:
+The Gleam package and Rust provider remain separate packages:
 
 ```text
 Gleam package on Hex
@@ -22,14 +21,12 @@ Rust provider on crates.io, Git, or a local path
   implements those externals for Geam
 ```
 
-Standalone projects approve and compose the provider through Geam's managed
-runner. Rust embedding applications compose the same provider through generated
-bindings. Provider authors do not implement separate integrations for the two
-workflows.
+Standalone and Rust embedding projects can use the same provider. Provider
+authors do not implement a separate integration for each workflow.
 
 ## Start with a small provider
 
-Imagine a Gleam package that declares one native casing function:
+Imagine a Gleam package with one casing function implemented outside Gleam:
 
 ```gleam
 // src/example_text_tools/casing.gleam
@@ -68,11 +65,10 @@ mod casing {
 }
 ```
 
-The provider macro generates the static component, schemas, and registration
-needed by a Geam runner. Rust compilation checks the declaration shape and
-supported Rust types. `geam prepare` later checks the generated schemas against
-the actual typed Gleam package before any provider state is initialized or
-application code runs.
+The provider macro generates the Geam wiring for the Rust crate. Rust
+compilation checks its declarations and supported Rust types. `geam prepare`
+then compares the generated description with the typed Gleam package before any
+provider state is initialized or application code runs.
 
 ## Tell Geam what the provider supports
 

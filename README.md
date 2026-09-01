@@ -1,18 +1,15 @@
 # Geam
 
-Gleam already lets typed programs run on Erlang and JavaScript. Geam helps that
-same friendly language reach Rust-owned applications and execution environments
+Gleam already runs on Erlang and JavaScript. Geam lets you use Gleam with Rust
 too.
 
-You keep writing Gleam and using Gleam packages. Rust keeps control of the
-process, native capabilities, and application integration. Geam connects the
-two by analysing the selected Gleam modules, preparing their Rust execution
-environment, and generating typed Rust boundaries when an application needs
-them.
+You can run a Gleam project through Geam, call Gleam functions from Rust, or
+give Gleam access to capabilities implemented in Rust. You keep writing Gleam
+and using Gleam packages; Geam looks after the Rust side.
 
-If you have embedded Lua in a native application, the shape is similar: Rust is
-the host and Gleam supplies application logic. The difference is that Gleam's
-static types guide Geam's planning and the Rust bindings it generates.
+If you have embedded Lua in a native application, the basic idea is similar:
+Rust is the host and Gleam supplies application logic. Geam also uses Gleam's
+static types when it connects the two and generates Rust bindings.
 
 ## Try it
 
@@ -38,8 +35,8 @@ in Gleam and do not have to write that runner yourself. The
 
 ### Start with a Rust application
 
-Want to call Gleam functions from Rust? Add a conventional nested Gleam project
-and its generated bindings:
+Want to call Gleam functions from Rust? Create a nested Gleam project and its
+Rust bindings:
 
 ```sh
 cargo new my_rust_app
@@ -47,51 +44,41 @@ cd my_rust_app
 geam embedding init
 ```
 
-Initialization creates a starter Gleam function and its typed Rust declarations
+Initialization creates a starter Gleam function and generated Rust bindings
 without replacing your `src/main.rs`. The [Rust embedding
 guide](docs/embedding.md) adds the small Rust call that prints `42`, then shows
 how to add functions, packages, providers, and repeated calls.
 
-## Choose your path
+### Start with a Gleam package that needs Rust
 
-- **Run Gleam without writing a Rust runner.** Standalone projects let Gleam
-  remain the application while Geam looks after its Rust execution environment.
-- **Call Gleam from Rust.** Rust embedding gives an application generated typed
-  handles for public Gleam functions while Rust keeps ownership of loading,
-  state, IO, and call order.
-- **Give Gleam access to Rust capabilities.** A host provider is an ordinary
-  Rust crate that implements native functions and external values declared by a
-  Gleam package. Start with the [host provider guide](docs/host-providers.md).
-
-All three paths use the same runtime and static provider model. Pick the one
-that matches the project you already own; you do not need to learn the other two
-before getting started.
+Building a Gleam package that needs native Rust code? Keep its public API in
+Gleam and implement the target-specific functions in a separate Rust crate. The
+[host provider guide](docs/host-providers.md) starts with one function and shows
+how Geam connects the two packages.
 
 ## Where Geam fits
 
 Geam is a separate project, not an official third Gleam target or a replacement
-for the Erlang and JavaScript targets. Use those targets when they already
-provide the runtime and deployment model your application needs. Choose Geam
-when the process must live in Rust, when Gleam needs Rust-native capabilities,
-or when a Rust application wants a typed Gleam boundary.
+for the Erlang and JavaScript targets. Use those targets when they already fit
+how your application runs and deploys. Choose Geam when Rust needs to host the
+application, provide native capabilities, or call Gleam through generated
+bindings.
 
-Gleam remains the source language and compiler front-end. Geam uses Gleam's
-parser and type analysis, then plans and executes the selected module graph
-without introducing another language or asking you to reproduce Gleam logic in
-Rust.
+Gleam remains the source language. Geam uses Gleam's parser and type analysis to
+prepare and run the selected modules, so you do not have to reproduce their
+logic in Rust.
 
-Providers also stay separate from Hex packages. A Gleam package can keep its
-normal source and existing target implementations while Geam users select a
-Rust provider for its external declarations. The Gleam-facing package can
-therefore serve its existing targets and a Rust-hosted application without
-turning the Hex package into a Rust package.
+Providers also stay separate from Hex packages. A Gleam package keeps its source
+and existing target implementations, while Geam users add a separate Rust
+provider for the same API. The Hex package does not have to become a Rust
+package.
 
 ## Growing, but experimental
 
 Geam is experimental and has not reached a stable `1.0` API. The current
-profile supports the core Gleam value families, functions, imports, custom
-types, pattern matching, generics, official package integrations, native host
-providers, and a recursive ordinary-data boundary for Rust embedding.
+profile supports everyday Gleam data, functions, imports, custom types, pattern
+matching, generics, official package integrations, native host providers, and
+nested ordinary data passed between Gleam and Rust.
 
 See [compatibility](docs/reference/compatibility.md) for the verified Gleam and
 package baselines, current limits, and platform requirements. See

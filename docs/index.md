@@ -1,13 +1,8 @@
-# Geam Documentation
+# Geam documentation
 
-Gleam already makes it pleasant to build typed programs for Erlang and
-JavaScript. Geam carries that experience into Rust-hosted applications, so
-Gleam code can take part where Rust owns the process, native capabilities, or
-integration boundary.
-
-You still write Gleam, use Gleam packages, and rely on Gleam's parser and type
-analysis. Geam looks after the Rust execution environment and, when Rust is the
-application host, generates the typed bridge used to call your Gleam functions.
+Geam connects Gleam and Rust. You can run a Gleam project through Geam, call
+Gleam functions from a Rust application, or give a Gleam package capabilities
+implemented in Rust.
 
 ## What do you want to build?
 
@@ -15,10 +10,24 @@ application host, generates the typed bridge used to call your Gleam functions.
 | --- | --- | --- |
 | Run a Gleam application without writing a Rust runner | Standalone | [Run a Gleam project](standalone.md) |
 | Call selected Gleam functions from a Rust application | Rust embedding | [Embed Gleam in Rust](embedding.md) |
-| Implement Gleam externals with native Rust code | Host provider | [Author a host provider](host-providers.md) |
+| Give a Gleam package capabilities implemented in Rust | Host provider | [Author a host provider](host-providers.md) |
 
 These are three entrances to the same runtime, not three steps you must learn in
 order. Start with the project you already have.
+
+## Before you start
+
+The supported toolchain baseline is:
+
+- Rust `1.96` or newer on a 64-bit target;
+- Gleam `v1.18.1`; and
+- Cargo for installation, provider resolution, and Rust application builds.
+
+Install Geam with:
+
+```sh
+cargo install geam --locked
+```
 
 ## See your first result
 
@@ -29,7 +38,7 @@ cd my_gleam_app
 geam run
 ```
 
-Geam prepares the Rust runner and then executes the package module's `main`.
+Geam prepares the Rust runner and then executes the application's `main`.
 
 From a new Rust application:
 
@@ -39,45 +48,33 @@ cd my_rust_app
 geam embedding init
 ```
 
-Initialization creates the nested Gleam project and typed Rust declarations
+Initialization creates the nested Gleam project and generated Rust bindings
 without replacing your application code. The [embedding guide](embedding.md)
 adds the small Rust call that prints `42`. From there, edit the Gleam module,
 run `geam embedding sync`, and keep using Cargo as usual.
 
 ## What Geam takes care of
 
-The owner of the application determines the workflow:
+What Geam manages depends on where you start:
 
-- In a **standalone project**, Gleam owns the application and its package graph.
-  Geam manages the project-local Rust runner and approved native providers.
-- In a **Rust embedding project**, Cargo owns the application. Geam manages the
-  conventional nested Gleam connection and generated typed bindings.
-- A **provider author** supplies a native Rust capability that either workflow
-  can compose statically for a Gleam package.
+- In a **standalone project**, Gleam remains the application. Geam manages the
+  project-local Rust runner and approved providers.
+- In a **Rust embedding project**, Rust remains the application. Geam manages
+  the nested Gleam project and generated bindings.
+- A **host provider** supplies Rust capabilities that either kind of project can
+  use from Gleam.
 
 A provider remains separate from the Gleam package. The package can keep its
-existing source and target implementations while a Rust crate implements its
-external declarations for Geam. Users keep importing and calling the Gleam
+existing source and target implementations while a Rust crate implements the
+functions that need native code. Users keep importing and calling the Gleam
 modules they already know.
 
-## Before you start
-
-The supported toolchain baseline is:
-
-- Rust `1.96` or newer on a 64-bit target;
-- Gleam `v1.18.1`; and
-- Cargo for installation, provider resolution, and Rust application builds.
-
-Ready? Install Geam with:
-
-```sh
-cargo install geam --locked
-```
+## When Geam fits
 
 Geam is a separate project rather than an official third Gleam target. Choose
-Erlang or JavaScript when either already provides the process and deployment
-model you need. Choose Geam when Rust needs to own the process or when Gleam and
-Rust need an explicit typed boundary.
+Erlang or JavaScript when either already fits how your application runs and
+deploys. Choose Geam when Rust needs to host the application, provide native
+capabilities, or call Gleam through generated bindings.
 
 ## How the pieces fit
 
