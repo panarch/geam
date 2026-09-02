@@ -971,7 +971,7 @@ dependencies = [
 
 [[package]]
 name = "geam"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "geam-core",
  "geam-macros",
@@ -980,7 +980,7 @@ dependencies = [
 
 [[package]]
 name = "geam-core"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "bitvec",
  "camino",
@@ -997,7 +997,7 @@ dependencies = [
 
 [[package]]
 name = "geam-example-text-pattern"
-version = "0.1.0"
+version = "0.2.2"
 dependencies = [
  "geam",
  "regex",
@@ -1124,7 +1124,7 @@ dependencies = [
 
 [[package]]
 name = "geam-macros"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1142,7 +1142,7 @@ dependencies = [
 
 [[package]]
 name = "geam-stdlib"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "base64 0.22.1",
  "bitvec",
