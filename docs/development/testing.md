@@ -153,10 +153,41 @@ This workspace is independently locked and needs neither a Gleam CLI nor
 downloaded Gleam package source. Its Rust dependencies use Cargo's ordinary
 locked acquisition path. CI runs it as a separate provider SDK boundary.
 
+The independently locked managed embedding examples fix the user-facing
+progression from the first generated function call through recursive ordinary
+data, a Gleam package, caller-owned IO, and an external provider. Each example
+owns a nested Gleam project, generated Rust bindings, a handwritten entry point,
+and an integration test that executes the binary and fixes complete stdout and
+stderr. Their READMEs explain one new boundary at a time; none depends on an
+earlier example at build or run time.
+
+Run the guided examples locally from the repository root:
+
+```sh
+cargo build --package geam --bin geam --locked
+for example in \
+  rust_embedding_first_call \
+  rust_embedding_data \
+  rust_embedding_package \
+  rust_embedding_io \
+  rust_embedding_provider
+do
+  (
+    cd "examples/$example"
+    ../../target/debug/geam embedding check
+    (cd gleam && gleam format --check)
+    cargo fmt --all --check
+    CARGO_TARGET_DIR=../../target/embedding-examples cargo test --locked
+    CARGO_TARGET_DIR=../../target/embedding-examples \
+      cargo clippy --all-targets --locked -- -D warnings
+  )
+done
+```
+
 The independently locked
 [`examples/rust_embedding_application`](https://github.com/panarch/geam/tree/main/examples/rust_embedding_application)
-owns the canonical managed Rust-first workflow. Its nested resolved Gleam
-project uses imported source, stdlib IO, and the real text-pattern provider.
+is the capstone managed Rust-first workflow. Its nested resolved Gleam project
+uses imported source, stdlib IO, and the real text-pattern provider.
 The Rust entry point keeps loading, binding, sealing, capabilities,
 configuration, mutable state, Echo, and output handling visible. The
 application's `inventory` module owns its typed call sequence and review
@@ -191,19 +222,20 @@ cargo clippy --manifest-path examples/rust_embedding_application/Cargo.toml \
 cargo run --quiet --manifest-path examples/rust_embedding_application/Cargo.toml --locked
 ```
 
-The Acceptance workflow's `Rust embedding` job owns this boundary. It first
+The Acceptance workflow's `Rust embedding` job owns these boundaries. It first
 installs the current checkout with `cargo install --path . --locked` into a
 temporary installation root, using the default features and release profile.
-The following readiness and recovery checks use that installed binary, so CI
-also verifies that feature separation preserves the default CLI installation.
-It starts without a separate Gleam download step, checks locked readiness, and
-verifies that tracked application files remain unchanged. It then makes
-generated source stale, requires `embedding check` to fail, and runs production
-sync to restore the exact committed file before formatting, testing, linting,
-and running the application with the exact inventory report and its captured
-Gleam IO. The same job requires one Geam package identity, the exact
-core/macros/stdlib application profile, the text-pattern provider, and no
-CLI/JSON/Time dependency.
+It checks, formats, tests, and lints every guided example; their integration
+tests execute each binary and compare exact output. The following capstone
+readiness and recovery checks use that installed binary, so CI also verifies
+that feature separation preserves the default CLI installation. The job starts
+without a separate Gleam download step, checks locked readiness, and verifies
+that tracked application files remain unchanged. It then makes generated source
+stale, requires `embedding check` to fail, and runs production sync to restore
+the exact committed file before formatting, testing, linting, and running the
+application with the exact inventory report and its captured Gleam IO. The same
+job requires one Geam package identity, the exact core/macros/stdlib application
+profile, the text-pattern provider, and no CLI/JSON/Time dependency.
 Provider-example jobs remain separate because they own provider authoring and
 standalone consumption rather than Rust-first application composition.
 

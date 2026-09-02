@@ -1,9 +1,11 @@
 # Rust Embedding Application
 
-A Rust application reviews incoming inventory with Gleam. Gleam normalizes
-item codes, validates them through the text-pattern provider, and returns a
-retained List of accepted rows and rejection reasons. Rust reuses that List to
-ask for a total and the first valid item, then prints the review.
+This capstone example combines the boundaries introduced by the smaller
+managed embedding examples. A Rust application reviews incoming inventory with
+Gleam. Gleam normalizes item codes, validates them through the text-pattern
+provider, and returns a retained List of accepted rows and rejection reasons.
+Rust reuses that List to ask for a total and the first valid item, then prints
+the review.
 
 ## Workflow
 
@@ -11,7 +13,9 @@ For a new Rust application, start with `geam embedding init` in its Cargo
 package directory. Write public Gleam functions, run `geam embedding sync`,
 then use the generated bindings from handwritten Rust and build with Cargo.
 The [embedding guide](../../docs/embedding.md#make-your-first-call) walks through a first
-call without a provider or manual dependency setup.
+call without a provider or manual dependency setup. The preceding [external
+provider example](../rust_embedding_provider) isolates provider setup before
+this application combines it with stdlib IO and structured retained data.
 
 This example is already initialized. Its Cargo name
 `geam-rust-embedding-application` determines the Gleam package and public module

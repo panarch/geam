@@ -96,9 +96,12 @@ The complete lifecycle is:
    and Echo storage.
 5. Reuse typed function handles and the sealed module for repeated calls.
 
-The canonical [Rust embedding
+The [package](https://github.com/panarch/geam/tree/main/examples/rust_embedding_package),
+[IO](https://github.com/panarch/geam/tree/main/examples/rust_embedding_io), and
+[external-provider](https://github.com/panarch/geam/tree/main/examples/rust_embedding_provider)
+examples isolate each hosted input. The complete [Rust embedding
 application](https://github.com/panarch/geam/tree/main/examples/rust_embedding_application)
-shows this hosted lifecycle with stdlib IO and the text-pattern provider.
+combines stdlib IO and the text-pattern provider in one lifecycle.
 
 ## Data Grammar
 

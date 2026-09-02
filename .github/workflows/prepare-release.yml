@@ -90,12 +90,25 @@ jobs:
             (cd "$(dirname "$manifest")" && cargo upgrade --package "geam@=$RELEASE_VERSION" --pinned --recursive false)
           done
 
+      - name: Update embedding example requirements
+        run: |
+          for project in \
+            examples/rust_embedding_first_call \
+            examples/rust_embedding_data \
+            examples/rust_embedding_package \
+            examples/rust_embedding_io \
+            examples/rust_embedding_provider
+          do
+            (cd "$project" && cargo upgrade --package "geam@=$RELEASE_VERSION" --pinned --recursive false)
+          done
+
       - name: Align published reference packages
         run: |
           provider=examples/text_pattern/provider
           package=examples/text_pattern/project/packages/example_text_pattern
           reference_project=examples/text_pattern/project
           embedding_project=examples/rust_embedding_application/gleam
+          embedding_provider_project=examples/rust_embedding_provider/gleam
 
           (cd "$provider" && cargo set-version "$RELEASE_VERSION")
           test "$(grep -Ec '^gleam-version = "[^"]+"$' "$provider/Cargo.toml")" = 1
@@ -105,7 +118,7 @@ jobs:
           test "$(grep -Ec '^version = "[^"]+"$' "$package/gleam.toml")" = 1
           sed -i.bak -E "s/^version = \"[^\"]+\"$/version = \"$RELEASE_VERSION\"/" "$package/gleam.toml"
           rm "$package/gleam.toml.bak"
-          for project in "$reference_project" "$embedding_project"; do
+          for project in "$reference_project" "$embedding_project" "$embedding_provider_project"; do
             (cd "$project" && gleam deps update example_text_pattern)
           done
 
@@ -119,7 +132,7 @@ jobs:
               | select(.name == "geam" and .req == ("=" + $version))
             ] | length == 1)
           ' <<< "$metadata" > /dev/null
-          for project in "$reference_project" "$embedding_project"; do
+          for project in "$reference_project" "$embedding_project" "$embedding_provider_project"; do
             grep -F "name = \"example_text_pattern\", version = \"$RELEASE_VERSION\"" "$project/manifest.toml"
           done
 

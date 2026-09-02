@@ -58,9 +58,32 @@ geam embedding init
 ```
 
 Initialization creates a starter Gleam function and generated Rust bindings
-without replacing your `src/main.rs`. The [Rust embedding
-guide](docs/embedding.md) adds the small Rust call that prints `42`, then shows
-how to add functions, packages, providers, and repeated calls.
+without replacing your `src/main.rs`. Replace Cargo's starter program with the
+smallest complete call:
+
+```rust
+mod geam_bindings;
+
+use geam::embedding::ModuleBuilder;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let program = geam_bindings::project().compile()?;
+    let builder = ModuleBuilder::from_program(program)?;
+    let (bindings, functions) = geam_bindings::bind(builder)?;
+    let module = bindings.seal();
+    let mut echo = Vec::new();
+
+    let value = module.call(&functions.double, (21.into(),), &mut echo)?;
+    println!("{value}");
+    Ok(())
+}
+```
+
+`cargo run` now prints `42`. The [Rust embedding guide](docs/embedding.md)
+explains each part of this lifecycle. The executable [embedding
+examples](https://github.com/panarch/geam/tree/main/examples#rust-embedding)
+then add structured data, Gleam packages, caller-owned IO, an external provider,
+and repeated calls one step at a time.
 
 ### Start with a Gleam package that needs Rust
 
@@ -102,6 +125,7 @@ planning, Rust providers, and execution fit together.
 - [Documentation overview](docs/index.md)
 - [Standalone projects](docs/standalone.md)
 - [Rust embedding](docs/embedding.md)
+- [Executable examples](https://github.com/panarch/geam/tree/main/examples)
 - [Host provider authoring](docs/host-providers.md)
 - [Technical reference](docs/reference/README.md)
 - [Geam development](docs/development/README.md)

@@ -109,6 +109,28 @@ jobs:
       - name: Install checkout CLI
         run: cargo install --path . --locked --root "$RUNNER_TEMP/checkout-geam"
 
+      - name: Verify guided embedding examples
+        run: |
+          for example in \
+            rust_embedding_first_call \
+            rust_embedding_data \
+            rust_embedding_package \
+            rust_embedding_io \
+            rust_embedding_provider
+          do
+            echo "::group::$example"
+            (
+              cd "examples/$example"
+              "$RUNNER_TEMP/checkout-geam/bin/geam" embedding check
+              (cd gleam && gleam format --check)
+              cargo fmt --all --check
+              CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding-examples" cargo test --locked
+              CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding-examples" cargo clippy --all-targets --locked -- -D warnings
+              git diff --exit-code -- .
+            )
+            echo "::endgroup::"
+          done
+
       - name: Check manual embedding formatting
         working-directory: examples/rust_embedding
         run: gleam format --check

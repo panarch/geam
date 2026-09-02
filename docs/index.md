@@ -64,9 +64,11 @@ geam embedding init
 ```
 
 Initialization creates the nested Gleam project and generated Rust bindings
-without replacing your application code. The [embedding guide](embedding.md)
-adds the small Rust call that prints `42`. From there, edit the Gleam module,
-run `geam embedding sync`, and keep using Cargo as usual.
+without replacing your application code. Your `src/main.rs` remains
+handwritten. The [embedding guide](embedding.md) supplies and explains the
+complete first call that prints `42`, then links independently runnable
+examples for structured data, packages, IO, and providers. From there, edit the
+Gleam module, run `geam embedding sync`, and keep using Cargo as usual.
 
 ## What Geam takes care of
 

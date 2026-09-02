@@ -49,7 +49,7 @@ pub fn double(value: Int) -> Int {
 }
 ```
 
-Use the generated bindings from `src/main.rs`:
+Replace Cargo's starter `src/main.rs` with this application code:
 
 ```rust
 mod geam_bindings;
@@ -78,6 +78,38 @@ cargo run
 It prints `42`. For repeated calls, initialize and seal the module once, then
 keep the module and its generated function handles. You do not repeat that
 setup for every function call.
+
+The setup has four distinct responsibilities:
+
+- `project().compile()` reads the nested Gleam project and produces its checked
+  Geam program.
+- `ModuleBuilder` selects a provider-free execution owner for that program.
+- `bind` registers the generated function handles before `seal` closes the
+  module to further registration.
+- `module.call` invokes one typed handle. The final mutable argument collects
+  any Gleam `echo` output for the Rust caller.
+
+The complete [first-call
+example](https://github.com/panarch/geam/tree/main/examples/rust_embedding_first_call)
+keeps the Gleam source, generated bindings, handwritten Rust, lockfiles, and
+exact-output test together.
+
+## Learn one boundary at a time
+
+The repository examples form a progression, but each one is an independently
+locked application that can be run and tested on its own:
+
+| Stage | Adds | Example |
+| --- | --- | --- |
+| First call | Plain loading, binding, sealing, and one scalar call | [`rust_embedding_first_call`](https://github.com/panarch/geam/tree/main/examples/rust_embedding_first_call) |
+| Structured data | Recursive List, Tuple, Result, and retained List reuse | [`rust_embedding_data`](https://github.com/panarch/geam/tree/main/examples/rust_embedding_data) |
+| Gleam package | A locked package, hosted bindings, and explicit stdlib state | [`rust_embedding_package`](https://github.com/panarch/geam/tree/main/examples/rust_embedding_package) |
+| Caller-owned IO | Explicit stdlib state, IO routing, and Echo separation | [`rust_embedding_io`](https://github.com/panarch/geam/tree/main/examples/rust_embedding_io) |
+| External provider | Provider selection, configuration, and opaque Gleam values | [`rust_embedding_provider`](https://github.com/panarch/geam/tree/main/examples/rust_embedding_provider) |
+| Complete application | Packages, IO, a provider, retained data, and repeated calls together | [`rust_embedding_application`](https://github.com/panarch/geam/tree/main/examples/rust_embedding_application) |
+
+Follow the stages in order when learning the API, or open the smallest example
+that contains the boundary your application needs.
 
 ## Keep Gleam and Rust in sync
 
@@ -178,10 +210,16 @@ before relying on CI.
 
 Generated hosted bindings make every required capability, provider
 configuration, and mutable state dependency explicit in the Rust API.
-The canonical [Rust embedding
+The staged examples show a [Gleam
+package](https://github.com/panarch/geam/tree/main/examples/rust_embedding_package),
+[caller-owned
+IO](https://github.com/panarch/geam/tree/main/examples/rust_embedding_io), and
+an [external
+provider](https://github.com/panarch/geam/tree/main/examples/rust_embedding_provider)
+separately. The complete [Rust embedding
 application](https://github.com/panarch/geam/tree/main/examples/rust_embedding_application)
-shows stdlib IO, a published-style external provider, retained Lists, and
-repeated calls in one application.
+then combines stdlib IO, a published-style external provider, retained Lists,
+and repeated calls in one application.
 
 ## Verify a prepared checkout
 
@@ -219,9 +257,12 @@ model in Rust.
 
 Lists returned from Gleam are retained, immutable handles. Rust can inspect
 them lazily or pass them back to the same loaded module without reconstructing
-their items. See the [embedding boundary](reference/embedding-boundary.md) for
-the complete type map, ownership rules, list transfer behavior, provider state,
-and lower-level manual binding API.
+their items. The [structured-data
+example](https://github.com/panarch/geam/tree/main/examples/rust_embedding_data)
+shows both operations without adding providers. See the [embedding
+boundary](reference/embedding-boundary.md) for the complete type map, ownership
+rules, list transfer behavior, provider state, and lower-level manual binding
+API.
 
 ## Ship the Gleam sources with your application
 
