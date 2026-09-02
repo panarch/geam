@@ -18,8 +18,8 @@ manifests and the provider's exact Geam and Gleam requirements.
 2. The workflow updates workspace, fixture, and example-provider requirements;
    aligns both published reference packages to the release version; reconciles
    tracked Cargo and Gleam manifests; and opens a draft PR on
-   `release/<version>`. It refuses an existing release branch, PR, or tag and
-   never force-pushes.
+   `release/<version>`. It refuses an existing release branch or tag, or an open
+   PR from that branch, and never force-pushes.
 3. Add `docs/releases/<version>.md` to the PR following the
    [release note guide](release-notes.md), and add the new version to the release
    index. Write and review user-facing changes manually. Preparation does not
@@ -28,6 +28,9 @@ manifests and the provider's exact Geam and Gleam requirements.
    The workflow uses `GITHUB_TOKEN`, not an App or personal token. The repository
    must allow Actions to create PRs. If PR creation fails after pushing, open the
    PR from the retained branch instead of overwriting it with another prepare.
+   To discard an unsuccessful preparation, close its PR and delete its remote
+   release branch. A later dispatch may then prepare the same version again;
+   the closed PR remains as the history of the abandoned attempt.
 5. Review the manifest/lock changes and notes, mark the PR ready, squash-merge,
    then wait for the `Workspace`, `Coverage`, and `Acceptance` push runs at the
    merged commit.
@@ -38,9 +41,10 @@ Preparation delegates workspace versions and exact internal requirements to
 requirements in standalone fixtures and example providers, and sets the
 reference provider package version. The workflow sets the matching Hex package
 and provider metadata to the same version, then asks Gleam to update the local
-package entry in `manifest.toml`. Each tracked Cargo lock is reconciled by
-`cargo update --workspace` from its own directory, preserving its local Cargo
-configuration and checkout patches before the new crates exist on crates.io.
+package entry in both the reference project and the canonical Rust embedding
+application. Each tracked Cargo lock is reconciled by `cargo update --workspace`
+from its own directory, preserving its local Cargo configuration and checkout
+patches before the new crates exist on crates.io.
 
 The [prepare workflow](https://github.com/panarch/geam/blob/main/.github/workflows/prepare-release.yml) pins the release
 tool versions and owns this sequence; there is no separate release script.
