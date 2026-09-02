@@ -99,6 +99,8 @@ For a new release, run `Publish release` again with **dry-run** disabled and the
 Trusted Publishing. The reference workflow publishes the provider against the
 released workspace, waits until crates.io serves it, then runs
 `gleam publish --yes` with the Hex API key stored in the release environment.
+For pre-1.0 versions, it supplies Gleam's required textual acknowledgement on
+standard input and rejects Gleam's successful `Not publishing.` no-op result.
 
 After uploading, `cargo info <crate>@<version> --registry crates-io` checks every
 Rust package from outside the checkout, so local packages and patches cannot
