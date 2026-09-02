@@ -193,11 +193,18 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run }}
           HEXPM_API_KEY: ${{ secrets.HEXPM_API_KEY }}
         run: |
+          set -o pipefail
           if [[ "$DRY_RUN" == true ]]; then
             gleam export hex-tarball
           else
             test -n "$HEXPM_API_KEY"
-            gleam publish --yes
+            log="$RUNNER_TEMP/hex-publish.log"
+            # Gleam requires this exact acknowledgement for pre-1.0 packages.
+            printf '%s\n' 'I am not using semantic versioning' | gleam publish --yes | tee "$log"
+            if grep -Fqx 'Not publishing.' "$log"; then
+              echo "Gleam declined to publish the Hex package" >&2
+              exit 1
+            fi
           fi
 
       - name: Verify published example
