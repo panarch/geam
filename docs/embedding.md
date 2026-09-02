@@ -116,8 +116,9 @@ function exposed to Rust uses supported types, and updates the generated Rust
 only when its contents change. It does not run the Rust application, initialize
 providers, or run Cargo build scripts.
 
-Do not edit `src/geam_bindings.rs` manually. Geam refuses to silently replace a
-handwritten file at that path.
+Keep `src/geam_bindings.rs` as generated, tool-owned code and make Rust changes
+in neighboring handwritten modules. Geam protects handwritten files at the
+generated path from replacement.
 
 ## Know where the files live
 
@@ -151,9 +152,8 @@ source, and generated `src/geam_bindings.rs`. Ignore Cargo's `target/` and
 Gleam's `gleam/build/` cache. Generated Rust is reviewed and committed; no build
 script regenerates it implicitly.
 
-Embedding commands intentionally do not offer alternate project, module, or
-output paths. A fixed layout makes checkouts, generated code, CI, and examples
-agree on the same connection.
+Embedding commands use one fixed project, module, and output layout. This makes
+checkouts, generated code, CI, and examples agree on the same connection.
 
 ## Bring in Gleam packages and Rust providers
 
@@ -176,8 +176,8 @@ compatible registry, path, or Git declarations are reused. A noninteractive
 sync cannot approve new native code, so perform and commit provider selection
 before relying on CI.
 
-Generated hosted bindings expose the capabilities and provider configuration
-that Rust must supply. They do not hide mutable state or invent configuration.
+Generated hosted bindings make every required capability, provider
+configuration, and mutable state dependency explicit in the Rust API.
 The canonical [Rust embedding
 application](https://github.com/panarch/geam/tree/main/examples/rust_embedding_application)
 shows stdlib IO, a published-style external provider, retained Lists, and
@@ -199,8 +199,9 @@ package sources. It never selects a new version, follows a moving Git branch in
 place of its locked commit, approves a provider, or regenerates stale bindings.
 
 Use `init` for an uninitialized package and `sync` after intentional source or
-dependency changes. `embedding check` verifies the connection; it does not
-replace `cargo check` or `cargo test`.
+dependency changes. `embedding check` verifies the generated Gleam-Rust
+connection, while `cargo check` and `cargo test` remain responsible for Rust
+compilation and tests.
 
 ## Keep the Rust boundary small
 
@@ -225,13 +226,10 @@ and lower-level manual binding API.
 ## Ship the Gleam sources with your application
 
 The generated project selection reads `gleam/` and its resolved package sources
-from the Cargo manifest directory when the application initializes. The current
-workflow does not bundle that source graph into the executable. Copying only the
-compiled binary is therefore not a self-contained deployment.
-
-Keep the nested Gleam project beside the application in the layout expected by
-the binary. Source bundling is a separate deployment capability rather than a
-hidden behavior of sync or Cargo builds.
+from the Cargo manifest directory when the application initializes. A deployment
+therefore includes both the compiled binary and that source graph, kept in the
+layout expected by the binary. Executable source bundling is a separate
+deployment capability.
 
 For the planner, runtime, and host ownership model, continue with
 [architecture](reference/architecture.md) and
