@@ -1,8 +1,9 @@
 # Geam documentation
 
-Geam connects Gleam and Rust. You can run a Gleam project through Geam, call
-Gleam functions from a Rust application, or give a Gleam package capabilities
-implemented in Rust.
+Geam connects [Gleam](https://gleam.run/) and
+[Rust](https://www.rust-lang.org/). You can run a Gleam project through Geam,
+call Gleam functions from a Rust application, or give a Gleam package
+capabilities implemented in Rust.
 
 ## What do you want to build?
 

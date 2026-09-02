@@ -1,7 +1,7 @@
 # Geam
 
-Gleam already runs on Erlang and JavaScript. Geam lets you use Gleam with Rust
-too.
+[Gleam](https://gleam.run/) already runs on Erlang and JavaScript. Geam lets
+you use Gleam with [Rust](https://www.rust-lang.org/) too.
 
 You can run a Gleam project through Geam, call Gleam functions from Rust, or
 give Gleam access to capabilities implemented in Rust. You keep writing Gleam
