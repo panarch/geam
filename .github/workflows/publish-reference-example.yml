@@ -158,14 +158,14 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
           DRY_RUN: ${{ inputs.dry_run }}
-          RELEASE_VERSION: ${{ steps.release.outputs.version }}
         run: |
           manifest=examples/text_pattern/provider/Cargo.toml
           if [[ "$DRY_RUN" == true ]]; then
             cargo publish --manifest-path "$manifest" --locked --dry-run \
               --config "patch.crates-io.geam.path='$GITHUB_WORKSPACE'"
           else
-            cargo update --manifest-path "$manifest" --package geam --precise "$RELEASE_VERSION"
+            # Replace checkout-patched lock entries with the released registry packages.
+            cargo metadata --manifest-path "$manifest" --format-version 1 > /dev/null
             test "$(git diff --name-only)" = examples/text_pattern/provider/Cargo.lock
             cargo publish --manifest-path "$manifest" --locked --allow-dirty
           fi
