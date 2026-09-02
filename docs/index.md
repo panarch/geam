@@ -1,9 +1,10 @@
-# Geam documentation
+# Geam
 
-Geam connects [Gleam](https://gleam.run/) and
-[Rust](https://www.rust-lang.org/). You can run a Gleam project through Geam,
-call Gleam functions from a Rust application, or give a Gleam package
-capabilities implemented in Rust.
+Geam runs [Gleam](https://gleam.run/) programs with
+[Rust](https://www.rust-lang.org/).
+
+Run a Gleam project, call Gleam functions from a Rust application, or add Rust
+capabilities to a Gleam package.
 
 ## What do you want to build?
 
@@ -82,10 +83,11 @@ modules they already know.
 
 ## When Geam fits
 
-Geam is a separate project rather than an official third Gleam target. Choose
-Erlang or JavaScript when either already fits how your application runs and
-deploys. Choose Geam when Rust needs to host the application, provide native
-capabilities, or call Gleam through generated bindings.
+Geam is an independent project that brings Gleam code into Rust-hosted
+applications. It complements Gleam's Erlang and JavaScript targets, which remain
+the natural choice when they fit how your application runs and deploys. Choose
+Geam when Rust needs to host the application, provide native capabilities, or
+call Gleam through generated bindings.
 
 ## How the pieces fit
 
