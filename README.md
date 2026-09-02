@@ -1,5 +1,10 @@
 # Geam
 
+[![crates.io](https://img.shields.io/crates/v/geam.svg)](https://crates.io/crates/geam)
+[![LICENSE](https://img.shields.io/crates/l/geam.svg)](https://github.com/panarch/geam/blob/main/LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/panarch/geam/workspace.yml?branch=main&label=CI)](https://github.com/panarch/geam/actions/workflows/workspace.yml)
+[![docs.rs](https://docs.rs/geam/badge.svg)](https://docs.rs/geam)
+
 Geam is a [Rust](https://www.rust-lang.org/) runtime and embedding layer for
 [Gleam](https://gleam.run/).
 
