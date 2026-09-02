@@ -1,9 +1,8 @@
 # Run a Gleam project
 
-Already have a Gleam application? Keep writing and managing it as a Gleam
-project. Run it with `geam run`, and Geam prepares and maintains the
-project-local Rust runner for you. You do not have to write or maintain that
-runner yourself.
+An existing Gleam application remains an ordinary Gleam project. Run it with
+`geam run`, and Geam prepares and maintains the project-local Rust runner. No
+handwritten Rust runner is required.
 
 ## Before you start
 

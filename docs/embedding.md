@@ -1,7 +1,7 @@
 # Embed Gleam in Rust
 
-Have a Rust application and want to call Gleam from it? By the end of the first
-section, `cargo run` will call a Gleam function and print `42`.
+This guide connects a Rust application to Gleam. The first workflow ends with
+`cargo run` calling a Gleam function and printing `42`.
 
 Geam keeps the Gleam source in a nested project and generates typed Rust
 bindings for the Gleam functions Rust can call. The Gleam code runs inside the
