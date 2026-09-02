@@ -21,8 +21,8 @@ providers, while bodyless JavaScript-only externals sit outside the standard
 Geam workflow. See [compatibility](docs/reference/compatibility.md) for the
 exact boundary.
 
-You will need Gleam `v1.18.1`, Rust `1.96` or newer, and a 64-bit Rust target.
-Ready? Install Geam with Cargo:
+Geam requires Gleam `v1.18.1`, Rust `1.96` or newer, and a 64-bit Rust target.
+Install Geam with Cargo:
 
 ```sh
 cargo install geam --locked
@@ -30,7 +30,7 @@ cargo install geam --locked
 
 ### Start with a Gleam project
 
-Already have a Gleam application? Run it with Rust behind the scenes:
+Run an existing Gleam application on Geam's Rust runtime:
 
 ```sh
 cd my_gleam_app
@@ -43,8 +43,8 @@ in Gleam and do not have to write that runner yourself. The
 
 ### Start with a Rust application
 
-Want to call Gleam functions from Rust? Create a nested Gleam project and its
-Rust bindings:
+To call Gleam functions from Rust, create a Rust application and initialize its
+nested Gleam project and generated bindings:
 
 ```sh
 cargo new my_rust_app
@@ -59,8 +59,8 @@ how to add functions, packages, providers, and repeated calls.
 
 ### Start with a Gleam package that needs Rust
 
-Building a Gleam package that needs native Rust code? Keep its public API in
-Gleam and implement the target-specific functions in a separate Rust crate. The
+For a Gleam package that needs native Rust code, keep its public API in Gleam and
+implement the target-specific functions in a separate Rust crate. The
 [host provider guide](docs/host-providers.md) starts with one function and shows
 how Geam connects the two packages.
 
