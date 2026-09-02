@@ -1,7 +1,7 @@
 [project]
 site_name = "Geam"
 site_url = "https://geam.run/"
-site_description = "Run Gleam projects through Rust, embed Gleam in Rust applications, and extend Gleam packages with Rust host providers."
+site_description = "A Rust runtime and embedding layer for running Gleam projects, calling Gleam from Rust, and adding Rust host capabilities."
 docs_dir = "docs"
 site_dir = "site"
 repo_url = "https://github.com/panarch/geam"

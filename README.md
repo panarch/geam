@@ -1,15 +1,16 @@
 # Geam
 
-Geam runs [Gleam](https://gleam.run/) programs with
-[Rust](https://www.rust-lang.org/).
+Geam is a [Rust](https://www.rust-lang.org/) runtime and embedding layer for
+[Gleam](https://gleam.run/).
 
 Run a Gleam project, call Gleam functions from Rust, or add Rust capabilities
 to a Gleam package. You keep writing Gleam and using Gleam packages; Geam looks
 after the Rust side.
 
-If you have embedded Lua in a native application, the basic idea is similar:
-Rust is the host and Gleam supplies application logic. Geam also uses Gleam's
-static types when it connects the two and generates Rust bindings.
+The basic arrangement is similar to embedding Lua in a native application: Rust
+owns the process, while Gleam supplies statically typed application logic. Gleam
+source stays Gleam; Geam runs the type-checked program and generates the Rust
+runner or bindings that connect it to the host.
 
 ## Try it
 
@@ -71,9 +72,9 @@ the natural choice when they fit how your application runs and deploys. Choose
 Geam when Rust needs to host the application, provide native capabilities, or
 call Gleam through generated bindings.
 
-Gleam remains the source language. Geam uses Gleam's parser and type analysis to
-prepare and run the selected modules, so you do not have to reproduce their
-logic in Rust.
+Geam uses Gleam's parser and type analysis to build executable plans for its
+Rust runtime. Generated Rust provides host integration: a managed standalone
+runner or typed embedding bindings.
 
 A Gleam package keeps its Hex identity, source, and existing target
 implementations. A companion Rust crate implements its target-specific

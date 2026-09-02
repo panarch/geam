@@ -1,10 +1,13 @@
 # Geam
 
-Geam runs [Gleam](https://gleam.run/) programs with
-[Rust](https://www.rust-lang.org/).
+Geam is a [Rust](https://www.rust-lang.org/) runtime and embedding layer for
+[Gleam](https://gleam.run/).
 
 Run a Gleam project, call Gleam functions from a Rust application, or add Rust
 capabilities to a Gleam package.
+
+Gleam source stays Gleam. Geam runs the type-checked program and generates the
+Rust runner or bindings that connect it to the host.
 
 ## What do you want to build?
 
@@ -99,6 +102,9 @@ resolved Gleam sources
 -> Geam module and execution plans
 -> Rust-owned runtime
 ```
+
+Generated Rust stays at the host boundary, supplying the standalone runner or
+embedding bindings around this pipeline.
 
 Unsupported execution semantics are rejected during planning rather than
 becoming partially defined runtime behavior. The runtime can be provider-free
