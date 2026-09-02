@@ -77,7 +77,7 @@ jobs:
           branch="release/$RELEASE_VERSION"
           refs=$(git ls-remote origin "refs/heads/$branch" "refs/tags/v$RELEASE_VERSION")
           test -z "$refs" || { echo "Release branch or tag already exists" >&2; exit 1; }
-          test "$(gh pr list --state all --head "$branch" --json number --jq length)" = 0
+          test "$(gh pr list --state open --head "$branch" --json number --jq length)" = 0
           git switch -c "$branch"
 
       - name: Update standalone provider requirements
@@ -94,7 +94,8 @@ jobs:
         run: |
           provider=examples/text_pattern/provider
           package=examples/text_pattern/project/packages/example_text_pattern
-          project=examples/text_pattern/project
+          reference_project=examples/text_pattern/project
+          embedding_project=examples/rust_embedding_application/gleam
 
           (cd "$provider" && cargo set-version "$RELEASE_VERSION")
           test "$(grep -Ec '^gleam-version = "[^"]+"$' "$provider/Cargo.toml")" = 1
@@ -104,7 +105,9 @@ jobs:
           test "$(grep -Ec '^version = "[^"]+"$' "$package/gleam.toml")" = 1
           sed -i.bak -E "s/^version = \"[^\"]+\"$/version = \"$RELEASE_VERSION\"/" "$package/gleam.toml"
           rm "$package/gleam.toml.bak"
-          (cd "$project" && gleam deps update example_text_pattern)
+          for project in "$reference_project" "$embedding_project"; do
+            (cd "$project" && gleam deps update example_text_pattern)
+          done
 
           metadata=$(cargo metadata --manifest-path "$provider/Cargo.toml" --locked --no-deps --format-version 1)
           jq -e --arg version "$RELEASE_VERSION" '
@@ -116,7 +119,9 @@ jobs:
               | select(.name == "geam" and .req == ("=" + $version))
             ] | length == 1)
           ' <<< "$metadata" > /dev/null
-          grep -F "name = \"example_text_pattern\", version = \"$RELEASE_VERSION\"" "$project/manifest.toml"
+          for project in "$reference_project" "$embedding_project"; do
+            grep -F "name = \"example_text_pattern\", version = \"$RELEASE_VERSION\"" "$project/manifest.toml"
+          done
 
       - name: Refresh tracked Cargo locks
         run: |

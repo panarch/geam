@@ -1372,6 +1372,14 @@ pub fn double(value: Int) -> Int {
             let text_pattern = self
                 .repository
                 .join("examples/text_pattern/project/packages/example_text_pattern");
+            let text_pattern_config = fs::read_to_string(text_pattern.join("gleam.toml"))
+                .expect("text pattern Gleam config should be readable");
+            let text_pattern_config = text_pattern_config
+                .parse::<toml_edit::DocumentMut>()
+                .expect("text pattern Gleam config should be valid TOML");
+            let text_pattern_version = text_pattern_config["version"]
+                .as_str()
+                .expect("text pattern Gleam version should be a string");
             let feature_flags = self
                 .repository
                 .join("examples/feature_flags/project/packages/example_feature_flags");
@@ -1501,7 +1509,7 @@ example_text_pattern = {{ path = {text_pattern:?} }}
                 format!(
                     r#"packages = [
   {{ name = "example_feature_flags", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "local", path = {feature_flags:?} }},
-  {{ name = "example_text_pattern", version = "0.1.0", build_tools = ["gleam"], requirements = [], source = "local", path = {text_pattern:?} }},
+  {{ name = "example_text_pattern", version = {text_pattern_version:?}, build_tools = ["gleam"], requirements = [], source = "local", path = {text_pattern:?} }},
 ]
 
 [requirements]
