@@ -187,9 +187,9 @@ review and CI retain the approved native-code choices. Ignore `build/geam/`;
 its runner source and Cargo target are reproducible build artifacts.
 
 Geam rewrites the managed manifest canonically and removes selections whose
-Gleam packages are no longer in the resolved project. It refuses to adopt or
-overwrite a user-owned Cargo manifest without its exact managed marker. A Rust
-application that already owns `Cargo.toml` must use the separate
+Gleam packages are no longer in the resolved project. Geam manages only Cargo
+manifests carrying its exact marker, leaving existing user-owned manifests
+unchanged. For a Rust application that already owns `Cargo.toml`, use the
 [Rust embedding workflow](embedding.md).
 
 Gleam still owns `gleam.toml`, `manifest.toml`, package sources, and its package
@@ -199,9 +199,8 @@ source is missing, but it does not choose a new Gleam dependency version.
 ## See what Geam is doing
 
 Geam writes plain `geam: ...` progress lines to stderr at real preparation
-boundaries. Gleam and Cargo output remains on the streams those tools select;
-Geam does not add prefixes, emulate a terminal, or replace their progress
-display.
+boundaries. Gleam and Cargo output passes through unchanged on the streams those
+tools select, including their native progress displays.
 
 The first command can spend most of its time downloading or compiling Rust
 dependencies. Later commands still report phases they actually invoke, while
@@ -209,8 +208,8 @@ Cargo decides whether a rebuild is needed.
 
 `prepare` ends with `geam: Prepared MODULE` only after the runner check
 succeeds. `run` prints `geam: Starting standalone runner for MODULE` before
-handing stdin, stdout, and stderr to the application. It does not print a
-completion footer after application output.
+handing stdin, stdout, and stderr to the application. Application output remains
+the final output.
 
 ## When something fails
 

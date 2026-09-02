@@ -16,6 +16,6 @@ type, compatibility, or runtime behavior.
 - [Runtime semantics](runtime-semantics.md) defines values, equality, control
   flow, host re-entry, IO, errors, and execution-plan behavior.
 
-The generated Rust API is published separately on
-[docs.rs](https://docs.rs/geam). These documents explain cross-API contracts
-that are not useful as isolated item documentation.
+The generated Rust API is published on [docs.rs](https://docs.rs/geam), which
+documents individual Rust items. These pages explain how those items compose
+across execution, embedding, and provider boundaries.

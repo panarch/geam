@@ -21,8 +21,7 @@ Rust provider on crates.io, Git, or a local path
   implements those externals for Geam
 ```
 
-Standalone and Rust embedding projects can use the same provider. Provider
-authors do not implement a separate integration for each workflow.
+The same provider works in standalone and Rust embedding projects.
 
 ## Start with a small provider
 
@@ -49,8 +48,8 @@ cd geam-example-text-tools
 cargo add geam --no-default-features --features provider
 ```
 
-Geam re-exports its author-facing value types from `geam::provider`, so the
-provider does not need direct dependencies on their implementation crates.
+Geam re-exports its author-facing value types from `geam::provider`, so one Geam
+dependency supplies the types used in provider declarations.
 
 Declare which Gleam package and modules the crate implements:
 

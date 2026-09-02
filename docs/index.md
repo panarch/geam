@@ -1,8 +1,10 @@
-# Geam documentation
+# Geam
 
-Geam connects Gleam and Rust. You can run a Gleam project through Geam, call
-Gleam functions from a Rust application, or give a Gleam package capabilities
-implemented in Rust.
+Geam runs [Gleam](https://gleam.run/) programs with
+[Rust](https://www.rust-lang.org/).
+
+Run a Gleam project, call Gleam functions from a Rust application, or add Rust
+capabilities to a Gleam package.
 
 ## What do you want to build?
 
@@ -12,12 +14,12 @@ implemented in Rust.
 | Call selected Gleam functions from a Rust application | Rust embedding | [Embed Gleam in Rust](embedding.md) |
 | Give a Gleam package capabilities implemented in Rust | Host provider | [Author a host provider](host-providers.md) |
 
-These are three entrances to the same runtime, not three steps you must learn in
-order. Start with the project you already have.
+Each workflow is a complete starting point for the same runtime. Start with the
+project you already have.
 
-Geam is experimental and has not reached a stable `1.0` API. See
-[compatibility](reference/compatibility.md) for verified versions, supported
-integrations, and current deployment limits.
+Geam is actively evolving toward a stable `1.0` API, so public APIs may still
+change. See [compatibility](reference/compatibility.md) for verified versions,
+supported integrations, and current deployment limits.
 
 ## Before you start
 
@@ -33,11 +35,11 @@ Install Geam with:
 cargo install geam --locked
 ```
 
-Geam uses Gleam's Erlang target to choose and analyse source; it does not run
-BEAM code. Ordinary Gleam bodies and built-in integrations can run directly. A
-bodyless Erlang external needs a matching Rust provider, and a bodyless
-JavaScript-only external is not available to the standard workflow. See
-[compatibility](reference/compatibility.md) for the exact rules.
+Geam selects Gleam's Erlang-compatible source path and runs ordinary Gleam
+bodies and built-in integrations directly in its Rust runtime. It does not
+execute BEAM code. Bodyless Erlang externals connect through matching Rust
+providers, while bodyless JavaScript-only externals sit outside the standard
+workflow. See [compatibility](reference/compatibility.md) for the exact rules.
 
 ## See your first result
 
@@ -81,10 +83,11 @@ modules they already know.
 
 ## When Geam fits
 
-Geam is a separate project rather than an official third Gleam target. Choose
-Erlang or JavaScript when either already fits how your application runs and
-deploys. Choose Geam when Rust needs to host the application, provide native
-capabilities, or call Gleam through generated bindings.
+Geam is an independent project that brings Gleam code into Rust-hosted
+applications. It complements Gleam's Erlang and JavaScript targets, which remain
+the natural choice when they fit how your application runs and deploys. Choose
+Geam when Rust needs to host the application, provide native capabilities, or
+call Gleam through generated bindings.
 
 ## How the pieces fit
 

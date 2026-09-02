@@ -8,7 +8,9 @@ repo_url = "https://github.com/panarch/geam"
 repo_name = "panarch/geam"
 edit_uri = "edit/main/docs/"
 extra_css = [
+  "https://rsms.me/inter/inter.css",
   "https://fonts.googleapis.com/css2?family=Lexend:wght@400;700&display=swap",
+  "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap",
   "stylesheets/extra.css",
 ]
 nav = [
@@ -43,7 +45,8 @@ nav = [
 
 [project.theme]
 language = "en"
-font.text = "Outfit"
+font = false
+favicon = "assets/images/favicon.svg"
 features = [
   "content.action.view",
   "content.code.copy",

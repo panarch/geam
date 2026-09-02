@@ -5,8 +5,8 @@ smaller execution profile in Rust. Source acceptance follows Gleam parsing and
 type analysis; executable compatibility is decided while Geam plans the typed
 module graph.
 
-An unchecked package or module is not automatically incompatible. It has not
-been verified end to end until its source and required providers pass the
+Packages and modules beyond the verified list may also work. End-to-end
+compatibility is established when their source and required providers pass the
 integration path described here.
 
 ## Toolchain Baseline

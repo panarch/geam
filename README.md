@@ -1,11 +1,11 @@
 # Geam
 
-Gleam already runs on Erlang and JavaScript. Geam lets you use Gleam with Rust
-too.
+Geam runs [Gleam](https://gleam.run/) programs with
+[Rust](https://www.rust-lang.org/).
 
-You can run a Gleam project through Geam, call Gleam functions from Rust, or
-give Gleam access to capabilities implemented in Rust. You keep writing Gleam
-and using Gleam packages; Geam looks after the Rust side.
+Run a Gleam project, call Gleam functions from Rust, or add Rust capabilities
+to a Gleam package. You keep writing Gleam and using Gleam packages; Geam looks
+after the Rust side.
 
 If you have embedded Lua in a native application, the basic idea is similar:
 Rust is the host and Gleam supplies application logic. Geam also uses Gleam's
@@ -13,12 +13,12 @@ static types when it connects the two and generates Rust bindings.
 
 ## Try it
 
-Geam currently uses Gleam's Erlang target to choose and analyse source, but it
-does not execute BEAM code. Ordinary Gleam bodies and built-in integrations can
-run directly. A bodyless Erlang external needs a matching Rust provider, while
-a bodyless JavaScript-only external is not available to the standard Geam
-workflow. See [compatibility](docs/reference/compatibility.md) for the exact
-boundary.
+Geam selects Gleam's Erlang-compatible source path and runs ordinary Gleam
+bodies and built-in integrations directly in its Rust runtime. It does not
+execute BEAM code. Bodyless Erlang externals connect through matching Rust
+providers, while bodyless JavaScript-only externals sit outside the standard
+Geam workflow. See [compatibility](docs/reference/compatibility.md) for the
+exact boundary.
 
 You will need Gleam `v1.18.1`, Rust `1.96` or newer, and a 64-bit Rust target.
 Ready? Install Geam with Cargo:
@@ -65,27 +65,26 @@ how Geam connects the two packages.
 
 ## Where Geam fits
 
-Geam is a separate project, not an official third Gleam target or a replacement
-for the Erlang and JavaScript targets. Use those targets when they already fit
-how your application runs and deploys. Choose Geam when Rust needs to host the
-application, provide native capabilities, or call Gleam through generated
-bindings.
+Geam is an independent project that brings Gleam code into Rust-hosted
+applications. It complements Gleam's Erlang and JavaScript targets, which remain
+the natural choice when they fit how your application runs and deploys. Choose
+Geam when Rust needs to host the application, provide native capabilities, or
+call Gleam through generated bindings.
 
 Gleam remains the source language. Geam uses Gleam's parser and type analysis to
 prepare and run the selected modules, so you do not have to reproduce their
 logic in Rust.
 
-Providers also stay separate from Hex packages. A Gleam package keeps its source
-and existing target implementations, while Geam users add a separate Rust
-provider for the same API. The Hex package does not have to become a Rust
-package.
+A Gleam package keeps its Hex identity, source, and existing target
+implementations. A companion Rust crate implements its target-specific
+functions for Geam, and each package follows its own release schedule.
 
 ## Growing, but experimental
 
-Geam is experimental and has not reached a stable `1.0` API. The current
-profile supports everyday Gleam data, functions, imports, custom types, pattern
-matching, generics, official package integrations, native host providers, and
-nested ordinary data passed between Gleam and Rust.
+Geam is actively evolving toward a stable `1.0` API, so public APIs may still
+change. The current profile supports everyday Gleam data, functions, imports,
+custom types, pattern matching, generics, official package integrations, native
+host providers, and nested ordinary data passed between Gleam and Rust.
 
 See [compatibility](docs/reference/compatibility.md) for the verified Gleam and
 package baselines, current limits, and platform requirements. See
@@ -102,10 +101,9 @@ planning, Rust providers, and execution fit together.
 - [Geam development](docs/development/README.md)
 - [Release notes](docs/releases/README.md)
 
-The Rust API reference is published on
-[docs.rs](https://docs.rs/geam). Repository documentation explains user
-workflows, execution contracts, and project development rather than duplicating
-generated Rust API pages.
+The Rust API reference is published on [docs.rs](https://docs.rs/geam).
+Repository documentation covers user workflows, execution contracts, and
+project development, while docs.rs documents individual Rust API items.
 
 ## License
 

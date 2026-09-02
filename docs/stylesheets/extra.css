@@ -1,5 +1,13 @@
 :root {
+  --md-text-font: "Inter", sans-serif;
+  --md-code-font: "JetBrains Mono", monospace;
   --geam-heading-font: "Lexend", var(--md-text-font);
+}
+
+@supports (font-variation-settings: normal) {
+  :root {
+    --md-text-font: "InterVariable", sans-serif;
+  }
 }
 
 .md-header__button.md-logo,
