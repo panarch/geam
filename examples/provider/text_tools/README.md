@@ -1,10 +1,20 @@
-# Text Tools Provider Example
+# Host Provider: Text Tools
 
-This is the smallest macro-authored provider example. It has no state,
-configuration, or external values. One Rust provider crate implements three
-ordinary Gleam modules using scalar arguments and return values only.
+This is the smallest complete provider. A Gleam package declares six text
+functions, and one companion Rust crate implements them for Geam. It uses only
+scalar arguments and returns, with no provider state, configuration, or opaque
+external values.
 
-The complete Gleam API is:
+## Read The Example
+
+1. [`project/packages/example_text_tools/src`](project/packages/example_text_tools/src)
+   contains the public Gleam API across three modules.
+2. [`provider/src/lib.rs`](provider/src/lib.rs) implements the same package,
+   module paths, functions, and signatures in Rust.
+3. [`project/src/text_tools_example.gleam`](project/src/text_tools_example.gleam)
+   imports the Gleam modules and checks every call through the provider.
+
+The package API is ordinary Gleam:
 
 ```gleam
 // example_text_tools
@@ -20,8 +30,8 @@ pub fn starts_with(value: String, prefix: String) -> Bool
 pub fn ends_with(value: String, suffix: String) -> Bool
 ```
 
-The provider lists Rust module identifiers in component order, while each
-module declares its exact Gleam module path:
+The provider declares the package once, lists its Rust modules, and gives each
+module the exact Gleam path it implements:
 
 ```rust
 #[geam::provider(
@@ -40,7 +50,9 @@ mod casing { /* ... */ }
 mod checks { /* ... */ }
 ```
 
-Run it through the generated standalone runner:
+## Run
+
+With Gleam, Rust, and Geam installed, run from the repository root:
 
 ```sh
 cd examples/provider/text_tools/project
@@ -49,11 +61,9 @@ geam prepare
 geam run
 ```
 
-A successful run produces no application output. The entrypoint imports all three modules
-and executes every public function.
+The entrypoint checks results including `upper("Geam") == "GEAM"`,
+`surround("ready", "[", "]") == "[ready]"`, and both Boolean predicates. A
+successful run is silent because all assertions pass.
 
-Read the three files under
-[`project/packages/example_text_tools/src`](project/packages/example_text_tools/src),
-[`provider/src/lib.rs`](provider/src/lib.rs), and
-[`project/src/text_tools_example.gleam`](project/src/text_tools_example.gleam)
-together.
+Continue with [value types](../value_types/README.md) to map Gleam scalars,
+tuples, Lists, custom types, Result, and Option to provider signatures.

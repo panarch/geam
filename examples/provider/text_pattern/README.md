@@ -1,14 +1,31 @@
-# Text Pattern Provider Example
+# Host Provider: Text Pattern
 
-This example pairs a Gleam package published on Hex with a Rust provider
-published on crates.io for [Geam](https://github.com/panarch/geam). The Gleam
-package includes an Erlang `re` implementation. The Rust crate implements the
-same API with `regex` through Geam's public provider authoring macros.
-The release workflow keeps all three at the same version.
+This final example turns the side-by-side authoring layout into two separately
+published packages. Applications add `example_text_pattern` from Hex and keep
+calling its Gleam API. Geam hosts select `geam-example-text-pattern` from
+crates.io to implement that API with Rust's `regex` crate.
 
-See the [Gleam package README](project/packages/example_text_pattern/README.md)
-for installation and API usage, and the [provider README](provider/README.md)
-for the matching Rust implementation and authoring macros.
+The Hex package also ships an Erlang `re` implementation, so the same public
+Gleam modules can run on Erlang without Geam. This repository releases the
+example package and provider at the same version, although provider metadata is
+what declares their compatibility.
+
+## Read The Pair
+
+1. [`project/packages/example_text_pattern/src/example_text_pattern.gleam`](project/packages/example_text_pattern/src/example_text_pattern.gleam)
+   declares the constructorless `Pattern`, `CompileError`, and public API.
+2. [`project/packages/example_text_pattern/src/example_text_pattern_ffi.erl`](project/packages/example_text_pattern/src/example_text_pattern_ffi.erl)
+   implements that API for Erlang.
+3. [`provider/src/lib.rs`](provider/src/lib.rs) implements the same Gleam shapes
+   for Geam with `#[geam::external]`, `#[geam::custom]`, and
+   `#[geam::function]`.
+4. [`project/src/text_pattern_example.gleam`](project/src/text_pattern_example.gleam)
+   runs the shared behavior against either implementation.
+
+The [Gleam package README](project/packages/example_text_pattern/README.md)
+documents its public API. The [provider crate README](provider/README.md)
+explains the Rust implementation and why this advanced external value uses
+custom behavior.
 
 ```text
 project/
@@ -20,42 +37,38 @@ provider/                          geam-example-text-pattern crate
 
 ### Erlang
 
-With Gleam and Erlang/OTP installed, the example runs without Geam or Rust:
+With Gleam and Erlang/OTP installed, run from the repository root without Geam
+or Rust:
 
 ```sh
-git clone https://github.com/panarch/geam.git
-cd geam/examples/provider/text_pattern/project
+cd examples/provider/text_pattern/project
 gleam run --target erlang
 ```
 
 ### Geam
 
-With Gleam, Rust, and Cargo installed, start from the repository root to install
-Geam, select the local provider, and run the same project:
+With Gleam, Rust, and Geam installed, return to the repository root, select the
+local provider, and run the same project:
 
 ```sh
-cargo install --path . --locked
 cd examples/provider/text_pattern/project
 geam provider add --path ../provider
 geam prepare
 geam run
 ```
 
-No provider configuration is required. Both runtimes execute
+No provider configuration is required. Both commands execute
 [`text_pattern_example.gleam`](project/src/text_pattern_example.gleam), checking
 compilation, matching, literal replacement, Unicode, empty results, and invalid
-patterns. A successful run prints no application output. Running the command
-again repeats the same checks.
+patterns. A successful run is silent because all assertions pass.
 
 This checkout uses the Gleam package as a local path dependency. Provider
 selection comes from the Rust crate's Cargo metadata; the Gleam package needs no
 Geam-specific metadata. The provider is not a Geam built-in.
 
-This checkout workflow uses an explicit path selection so changes to the
-provider can be tested without publishing it. The local
-[Cargo patch](.cargo/config.toml) selects the same Geam checkout for provider
-and runner builds. See the [standalone guide](../../../docs/standalone.md) for
-provider selection and managed project files.
+This checkout uses an explicit path selection so provider changes can be tested
+before publication. See the [standalone guide](../../../docs/standalone.md) for
+registry selection and managed project files.
 
 ## Runtime-Specific Examples
 
@@ -77,19 +90,6 @@ The package keeps the engines' native syntax instead of translating between
 them. See its [runtime semantics](project/packages/example_text_pattern/README.md#runtime-semantics)
 for the boundary shared by the public API.
 
-## Read the Implementation
-
-Read the matching declarations together:
-
-- [`project/packages/example_text_pattern/src/example_text_pattern.gleam`](project/packages/example_text_pattern/src/example_text_pattern.gleam)
-  declares the constructorless `Pattern`, `CompileError`, and public functions;
-- [`project/packages/example_text_pattern/src/example_text_pattern_ffi.erl`](project/packages/example_text_pattern/src/example_text_pattern_ffi.erl)
-  supplies the native Erlang implementation shipped in the Hex package;
-- [`provider/src/lib.rs`](provider/src/lib.rs) implements the same shapes with
-  `#[geam::external]`, `#[geam::custom]`, and `#[geam::function]`; and
-- [`provider/README.md`](provider/README.md) explains why this advanced example
-  uses manual external semantics while ordinary registration remains generated.
-
 The [provider authoring guide](../../../docs/host-providers.md) covers the API
-contracts. The [examples index](../README.md) offers smaller examples of the
-individual authoring patterns used here.
+from the first function through packaging. The [examples index](../README.md)
+offers smaller examples for each individual capability combined here.

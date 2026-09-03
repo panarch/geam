@@ -105,13 +105,20 @@ and supported effects.
 
 ## Bring Rust capabilities to a Gleam package
 
-A Gleam package may already pair its source API with an Erlang or JavaScript
-external implementation. A Geam provider lets the same package gain a Rust
-implementation without moving that API out of Gleam.
+Most Gleam packages run without an additional Rust crate. When an imported
+package declares a target-specific function that Geam cannot execute from
+Gleam source, the package needs a companion Rust implementation. Geam calls
+that crate a provider.
 
-When imported code requires an external implementation that is not built in,
-Geam searches crates.io for provider crates with matching metadata and asks
-before adding native code:
+The two dependencies have different jobs: the Hex package contains the Gleam
+API and source that the application imports, while the provider crate contains
+the native implementation compiled into the Rust runner. A package may keep
+its existing Erlang or JavaScript implementation; adding a provider does not
+replace it or change how Gleam code imports the package.
+
+When imported code reaches a provider-backed function that is not built in,
+Geam searches crates.io for a companion crate with matching metadata and asks
+before adding that native code:
 
 ```text
 Gleam package company_image 1.4.0 requires native provider code.
@@ -149,7 +156,8 @@ and the resolved Gleam package. One Gleam package has at most one selected
 external provider. Built-in components are not stored selections and do not
 appear in `provider list`.
 
-To implement a provider, start with [host provider authoring](host-providers.md).
+To author the companion crate, continue with
+[Add Rust to a Gleam package](host-providers.md).
 
 ## Pass provider configuration at run time
 

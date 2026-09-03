@@ -1,8 +1,20 @@
-# Request IDs Provider Example
+# Host Provider: Request IDs
 
-This example adds process-local state without configuration. Omitting an
-initializer makes Geam construct `RunState::default()` for every execution.
-The Rust signatures distinguish mutation from observation:
+This example adds process-local state without configuration. The provider owns
+one request counter for the duration of a run, while the Gleam API remains two
+argument-free functions. Omitting an initializer makes Geam construct
+`RunState::default()` for every execution.
+
+## Read The Example
+
+1. [`project/packages/example_request_ids/src/example_request_ids.gleam`](project/packages/example_request_ids/src/example_request_ids.gleam)
+   declares the small source API.
+2. [`provider/src/lib.rs`](provider/src/lib.rs) owns the counter and distinguishes
+   mutable from read-only calls.
+3. [`project/src/request_ids_example.gleam`](project/src/request_ids_example.gleam)
+   checks the counter before and after issuing two IDs.
+
+The Rust signatures make mutation and observation explicit:
 
 ```rust
 #[geam::function]
@@ -19,8 +31,10 @@ pub fn next() -> String
 pub fn issued() -> Int
 ```
 
-Run the example twice to see that each standalone execution starts with an
-independent default state:
+## Run
+
+Run the example twice to see that each standalone execution starts with fresh
+default state:
 
 ```sh
 cd examples/provider/request_ids/project
@@ -30,9 +44,9 @@ geam run
 geam run
 ```
 
-Each run checks the initial count, two generated IDs, and the read-only count
-after each mutation. A successful run produces no application output.
+Each run checks `issued() == 0`, then receives `"request-1"` and `"request-2"`
+while observing the count after each mutation. Both runs are silent when every
+assertion passes, showing that state is not shared between executions.
 
-Read [`project/packages/example_request_ids/src/example_request_ids.gleam`](project/packages/example_request_ids/src/example_request_ids.gleam),
-[`provider/src/lib.rs`](provider/src/lib.rs), and
-[`project/src/request_ids_example.gleam`](project/src/request_ids_example.gleam) together.
+Continue with [feature flags](../feature_flags/README.md) to initialize provider
+state from application-supplied configuration.

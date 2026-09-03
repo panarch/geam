@@ -202,11 +202,13 @@ Sync enables only the built-in Geam support used by imported Gleam code.
 Official stdlib, JSON, and Time integrations are added explicitly; unused Gleam
 dependencies do not add Rust components.
 
-When an imported package requires another native provider, sync verifies
-registry candidates and asks before adding an exact Cargo dependency. Existing
-compatible registry, path, or Git declarations are reused. A noninteractive
-sync cannot approve new native code, so perform and commit provider selection
-before relying on CI.
+Most packages need nothing else. If an imported package declares a
+target-specific function that needs Rust, its Hex package remains the Gleam
+dependency and a companion provider crate supplies the implementation compiled
+into the host application. Sync verifies registry candidates and asks before
+adding that exact Cargo dependency. Existing compatible registry, path, or Git
+declarations are reused. A noninteractive sync cannot approve new native code,
+so perform and commit provider selection before relying on CI.
 
 When imported code needs IO, time, or provider state, the generated Rust API
 asks the application for those inputs.

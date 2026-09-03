@@ -93,10 +93,13 @@ provider, and repeated calls one step at a time.
 
 ### Start with a Gleam package that needs Rust
 
-For a Gleam package that needs native Rust code, keep its public API in Gleam and
-implement the target-specific functions in a separate Rust crate. The
-[host provider guide](docs/host-providers.md) starts with one function and shows
-how Geam connects the two packages.
+Most Gleam packages need no additional Rust code. When a package declares
+target-specific functions that should run in Geam, its Hex package still owns
+the Gleam API and a companion Rust crate supplies the Geam implementation. Geam
+calls that crate a host provider.
+
+The [host provider guide](docs/host-providers.md) follows one function from its
+Gleam declaration to Rust and then through `geam run`.
 
 ## Where Geam fits
 
@@ -111,8 +114,8 @@ Rust runtime. Generated Rust provides host integration: a managed standalone
 runner or typed embedding bindings.
 
 A Gleam package keeps its Hex identity, source, and existing target
-implementations. A companion Rust crate implements its target-specific
-functions for Geam, and each package follows its own release schedule.
+implementations when it gains a Geam provider. The companion Rust crate adds a
+Geam implementation; it does not replace or translate the Gleam package.
 
 ## Growing, but experimental
 
@@ -132,7 +135,7 @@ planning, Rust providers, and execution fit together.
 - [Standalone projects](docs/standalone.md)
 - [Rust embedding](docs/embedding.md)
 - [Executable examples](examples)
-- [Host provider authoring](docs/host-providers.md)
+- [Add Rust to a Gleam package](docs/host-providers.md)
 - [Technical reference](docs/reference/README.md)
 - [Geam development](docs/development/README.md)
 - [Release notes](docs/releases/README.md)

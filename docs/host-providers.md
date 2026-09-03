@@ -1,31 +1,41 @@
-# Author a host provider
+# Add Rust to a Gleam package
 
-Some Gleam packages declare functions or values that have a separate
-implementation for each target. A Geam host provider supplies the Rust
-implementation.
+Most Gleam packages need no provider. Geam can run ordinary Gleam source and
+its built-in package integrations directly.
 
-The Gleam package keeps its public API, and users keep importing the same
-modules and calling the same functions. The provider is a separate Rust crate
-that supplies the Rust implementation for Geam.
+A package needs a companion Rust implementation only when its Gleam API relies
+on native code that should run inside the Rust host. Geam calls that companion
+crate a **host provider**.
 
-Use a provider when a Gleam package needs a native Rust library, access to the
-host process, or a value or state that must remain in Rust.
+## One API, two packages
 
-The Gleam package and Rust provider remain separate packages:
+The Gleam package and provider have separate jobs:
+
+| Artifact | Contains | Used for |
+| --- | --- | --- |
+| Gleam package, usually on Hex | Public Gleam modules, types, and external declarations | What applications add, import, and call |
+| Rust provider on crates.io, Git, or a local path | Native implementations for those declarations | What Cargo compiles into the Geam host |
+
+The provider does not replace or translate the Gleam package. Users keep
+writing the same Gleam calls:
 
 ```text
-Gleam package on Hex
-  declares the public Gleam API and externals
-
-Rust provider on crates.io, Git, or a local path
-  implements those externals for Geam
+Gleam application
+  adds and imports example_text_tools as a Gleam dependency
+  calls example_text_tools/casing.upper("Geam")
+                              |
+                              v
+Geam links the declaration to geam-example-text-tools from Cargo
 ```
 
-The same provider works in standalone and Rust embedding projects.
+A package can keep separate Erlang or JavaScript implementations for the same
+API. The provider adds the implementation used when Geam runs the package. The
+same provider can be used by a standalone Gleam project or a Rust embedding
+application.
 
-## Start with a small provider
+## Follow one function from Gleam to Rust
 
-Imagine a Gleam package with one casing function implemented outside Gleam:
+Start with a Gleam declaration whose implementation is supplied by a target:
 
 ```gleam
 // src/example_text_tools/casing.gleam
@@ -33,14 +43,14 @@ Imagine a Gleam package with one casing function implemented outside Gleam:
 pub fn upper(value: String) -> String
 ```
 
-The `erlang` target in this declaration is intentional. Standard Geam workflows
-analyse the Erlang-compatible source path and treat bodyless Erlang externals as
-Rust provider requirements. Geam does not call the named Erlang module or
-function; the provider links the Gleam declaration to Rust by its package,
-module, function, and type signature. A bodyless JavaScript-only external is not
-discovered as a provider requirement in this workflow.
+The `erlang` target is intentional. Standard Geam workflows analyse the
+Erlang-compatible source path and treat a bodyless Erlang external as a Rust
+provider requirement. Geam does not call the named Erlang module or function;
+it links the declaration to Rust by package, module, function, and exact type
+signature. A bodyless JavaScript-only external is not available in this
+workflow.
 
-Create an ordinary Rust library crate for the provider:
+Create an ordinary Rust library crate beside the Gleam package:
 
 ```sh
 cargo new --lib geam-example-text-tools
@@ -48,10 +58,7 @@ cd geam-example-text-tools
 cargo add geam --no-default-features --features provider
 ```
 
-Geam re-exports its author-facing value types from `geam::provider`, so one Geam
-dependency supplies the types used in provider declarations.
-
-Declare which Gleam package and modules the crate implements:
+Then declare the package and implement the matching module and function:
 
 ```rust
 use geam::provider::EcoString;
@@ -73,15 +80,18 @@ mod casing {
 }
 ```
 
-The provider macro generates the Geam wiring for the Rust crate. Rust
-compilation checks its declarations and supported Rust types. `geam prepare`
-then compares the generated description with the typed Gleam package before any
-provider state is initialized or application code runs.
+The macros generate provider registration and typed wiring. Rust checks the
+declarations and supported Rust types at compile time. During preparation,
+Geam compares that generated description with the typed Gleam declaration
+before provider state is initialized or application code runs.
 
-## Tell Geam what the provider supports
+Geam re-exports its author-facing value types from `geam::provider`, so this
+single dependency supplies types such as `EcoString`, `BigInt`, and `List`.
 
-Provider metadata names the exact Gleam package and the range of that package's
-versions supported by the Rust implementation:
+## Declare which Gleam versions it supports
+
+Cargo metadata connects the crate to its Gleam package and states the package
+versions implemented by this Rust code:
 
 ```toml
 [package]
@@ -94,31 +104,43 @@ gleam-package = "example_text_tools"
 gleam-version = ">= 1.0.0 and < 2.0.0"
 ```
 
-The `gleam-version` field describes the target Hex package, not the Gleam
-compiler. Geam verifies metadata before recording a path, Git, or registry
-selection, but compatibility metadata is never treated as user approval.
+`gleam-version` refers to the target Hex package, not the Gleam compiler. The
+provider and Gleam package versions do not need to match.
 
-For crates.io discovery, derive the Rust package name from the Gleam package by
-adding `geam-` and replacing underscores with hyphens:
+For automatic crates.io discovery, derive the crate name by adding `geam-` to
+the Gleam package name and replacing underscores with hyphens:
 
 ```text
 example_text_tools -> geam-example-text-tools
 ```
 
-Explicitly selected providers can use another crate name, but metadata remains
-the authority for the target Gleam package.
+An explicitly selected provider may use another crate name. Its packaged
+metadata still has to identify the exact Gleam package and a compatible
+version range. Compatibility metadata helps Geam verify a selection; it is
+never treated as approval to add native code.
 
-## Try it from a Gleam project
+## Run the complete pair
 
-Keep a complete Gleam application beside the provider while authoring it:
+Keep a small Gleam application beside the provider while authoring it:
 
 ```text
 example/
-  project/   Gleam application and package source
+  project/   Gleam application and local Gleam package
   provider/  Rust provider crate
 ```
 
-Select the local crate and run the same path users rely on:
+The application imports the Gleam package and calls its API normally:
+
+```gleam
+import example_text_tools/casing
+
+pub fn main() {
+  assert casing.upper("Geam") == "GEAM"
+}
+```
+
+From the Gleam project, select the local companion crate and run the same path
+that a standalone user relies on:
 
 ```sh
 cd project
@@ -127,81 +149,73 @@ geam prepare
 geam run
 ```
 
-This checks that the provider metadata and Rust implementation match the Gleam
-declarations, then runs the application through the generated runner. Keep unit
-tests for Rust-only logic and use this end-to-end run to verify the complete
-Gleam-to-Rust connection.
+`provider add` verifies the crate metadata and records the local selection.
+`prepare` checks the Rust implementation against the Gleam declarations and
+builds the generated runner. `run` executes the Gleam application with that
+implementation.
 
-The repository's
-[text tools example](../examples/provider/text_tools)
-is the smallest complete provider. Read its Gleam declarations, provider
-`src/lib.rs`, and application entry point together.
+The repository's [text tools example](../examples/provider/text_tools) is this
+complete flow with three Gleam modules. Its entrypoint asserts results such as
+`upper("Geam") == "GEAM"`; a successful run is silent because every check
+passes.
 
-## Add only what the package needs
+Keep unit tests for Rust-only logic and use this end-to-end run to verify the
+Gleam declaration, provider metadata, generated component, and application call
+together.
 
-Start with scalar functions and add only the capabilities the Gleam package
-actually needs:
+## Add only the capabilities the package needs
 
-- Use native Rust tuples, `Result`, `Option`, and Geam's List boundary for
-  ordinary source values.
-- Add generated custom-value mappings when Rust constructs or receives a
-  source custom type.
-- Add an external payload when the source value must remain opaque to Gleam.
+The smallest provider is a collection of ordinary Rust functions. Add other
+capabilities only when the Gleam API calls for them:
+
+- Use Rust scalars, tuples, `Result`, `Option`, and Geam's lazy `List` boundary
+  for ordinary source values.
+- Map a Gleam custom type when Rust constructs or receives its constructors.
+- Use an external value when an opaque payload must remain owned by Rust.
 - Add component state for process-local mutable or read-only capabilities.
-- Add explicit configuration when state construction needs caller input.
-- Add typed callbacks only when provider code must call a supplied Gleam
-  function.
-- Use retained generic or advanced storage only when an external value must own
-  source values across calls.
+- Add explicit configuration when constructing that state needs caller input.
+- Accept a typed callback when provider code must call a Gleam function.
+- Retain a generic source value only when an external value must own it across
+  calls.
 
-The [provider examples](../examples/provider)
-form an ordered learning path:
+The [provider examples](../examples/provider) form an executable path through
+those choices, beginning with scalar functions and ending with a separately
+published Hex package and provider crate.
 
-```text
-text_tools
--> value_types
--> tag_set
--> request_ids
--> feature_flags
--> run_metrics
--> call_tracing
--> generic_box
--> text_pattern
-```
+## Use the provider from an application
 
-Each example adds one provider capability before the later examples combine
-them.
+Provider crates are native code. In a standalone project, Geam verifies a
+registry candidate and asks for approval before Cargo receives it. In a Rust
+embedding project, `geam embedding sync` performs the same selection and
+records the provider as an ordinary Cargo dependency. Geam verifies metadata
+and typed linkage, but neither step is a security endorsement.
 
-## Keep native code explicit
+Standalone applications pass provider configuration as TOML at run time.
+Embedding applications construct the corresponding Rust configuration and
+state values through generated bindings. External values and mutable state stay
+inside the running application in both workflows.
 
-Provider crates are native code. Geam verifies their package metadata and
-typed linkage, but neither step is a security endorsement. A standalone user
-must approve a discovered provider before Cargo receives it. An embedding
-application records the provider as an ordinary Cargo dependency and includes
-it in the generated bindings.
+See [standalone provider selection](standalone.md#bring-rust-capabilities-to-a-gleam-package)
+and [embedding package synchronization](embedding.md#bring-in-gleam-packages-and-rust-providers)
+for the consuming side of each workflow.
 
-Standalone applications read provider configuration from TOML at run time;
-embedding applications construct the corresponding Rust values. Provider state
-and external values stay in the running application.
+## Publish the pair
 
-## Release each package on its own schedule
+Publish the Gleam package with Gleam's Hex tooling and the provider with Cargo.
+The Hex release contains the API that applications import. The crates.io
+release contains the native code that Rust hosts compile. Test the packaged
+provider with `cargo publish --locked --dry-run`, verify the public
+Gleam-to-provider path, and widen `gleam-version` only when that package range
+has been checked.
 
-Publish the Gleam package with Gleam's Hex tooling and the Rust provider with
-Cargo. Their versions do not have to match, but the provider metadata must
-declare the actual compatible Gleam package range. Test the packaged provider
-with `cargo publish --locked --dry-run` and verify the public Gleam-to-provider
-path before widening that range.
-
-The published
-[text-pattern package and provider](../examples/provider/text_pattern)
-show independent Hex and crates.io packages that can also run on Erlang through
-the package's separate Erlang implementation.
+The final [text pattern example](../examples/provider/text_pattern) shows a Hex
+package, a crates.io provider, and a separate Erlang implementation of the same
+Gleam API.
 
 ## Exact reference
 
 Continue with the [host provider boundary](reference/provider-boundary.md) for
-the complete Rust type mappings, custom and external values, state,
-configuration, callback invocation, retained storage, generated component
-contract, and runner profile. The [runtime semantics](reference/runtime-semantics.md)
-document defines ownership, equality, hashing, inspection, and failure behavior
-after linkage.
+the complete type mappings, custom and external values, state, configuration,
+callbacks, retained storage, generated component contract, and runner profile.
+The [runtime semantics](reference/runtime-semantics.md) document defines
+ownership, equality, hashing, inspection, and failure behavior after linkage.

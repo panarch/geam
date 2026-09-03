@@ -1,35 +1,33 @@
-# Provider Authoring Examples
+# Host Provider Examples
 
-These examples build a Rust provider one capability at a time. Start with
-scalar functions, then choose the example that matches the state,
-configuration, external value, callback, or generic value your package needs.
+A host provider is the companion Rust crate that implements target-specific
+functions declared by a Gleam package. These examples let you read the public
+Gleam API, its Rust implementation, and the application that connects them as
+one complete flow.
 
-| Example | State | Configuration | External semantics | Purpose |
-| --- | --- | --- | --- | --- |
-| [`text_tools`](text_tools/README.md) | None | None | None | One provider implementing three Gleam modules |
-| [`value_types`](value_types/README.md) | None | None | None | Scalar, tuple, lazy List, custom, Result, and Option mapping |
-| [`tag_set`](tag_set/README.md) | None | None | Generated | Stateless persistent external value |
-| [`request_ids`](request_ids/README.md) | `Default` | None | None | Mutable and read-only state access |
-| [`feature_flags`](feature_flags/README.md) | Configured | Required | None | Shared configuration and state |
-| [`run_metrics`](run_metrics/README.md) | None | None | Manual | Specialized equality, hashing, and inspection |
-| [`call_tracing`](call_tracing/README.md) | `Default` | None | None | Typed callback invocation and same-component re-entry |
-| [`generic_box`](generic_box/README.md) | None | None | Retained generic | Persistent generic source values and callback mapping |
-| [`text_pattern`](text_pattern/README.md) | None | None | Manual | Regex-backed external, custom error, Result, and List output |
+Read the examples in order when learning provider authoring. Each stage is an
+independently runnable Gleam project and Rust provider crate.
 
-The recommended reading order is:
+| Stage | Example | Adds |
+| --- | --- | --- |
+| First provider | [`text_tools`](text_tools/README.md) | Implement scalar functions across three Gleam modules |
+| Value boundary | [`value_types`](value_types/README.md) | Map scalars, tuples, Lists, custom types, Result, and Option |
+| Opaque Rust value | [`tag_set`](tag_set/README.md) | Keep a persistent `TagSet` payload owned by Rust |
+| Process state | [`request_ids`](request_ids/README.md) | Read and mutate fresh state for each execution |
+| Configuration | [`feature_flags`](feature_flags/README.md) | Initialize shared state from explicit TOML input |
+| Custom value behavior | [`run_metrics`](run_metrics/README.md) | Define equality, hashing, and inspection for an external value |
+| Gleam callback | [`call_tracing`](call_tracing/README.md) | Invoke a typed Gleam function and re-enter the same provider |
+| Retained Gleam value | [`generic_box`](generic_box/README.md) | Store a generic source value across provider calls |
+| Published pair | [`text_pattern`](text_pattern/README.md) | Pair a Hex package with a crates.io provider while keeping its Erlang implementation |
 
-```text
-text_tools -> value_types -> tag_set -> request_ids -> feature_flags -> run_metrics -> call_tracing -> generic_box -> text_pattern
-```
+Start with [`text_tools`](text_tools/README.md), then follow the next-example
+link in each README through [`text_pattern`](text_pattern/README.md). The
+[provider guide](../../docs/host-providers.md) explains why the Gleam package
+and Rust crate are separate before walking through the same first connection.
 
-Every example keeps the Gleam package and Rust provider separate:
+## Run the first provider
 
-```text
-project/   ordinary Gleam application and local Gleam dependency
-provider/  separately buildable and testable Rust provider crate
-```
-
-Run a macro-authored example with the same standalone workflow:
+With Gleam, Rust, and Geam installed, run from the repository root:
 
 ```sh
 cd examples/provider/text_tools/project
@@ -38,13 +36,48 @@ geam prepare
 geam run
 ```
 
-`feature_flags` additionally passes its checked-in configuration:
+The example imports three modules from the Gleam package and checks calls such
+as `upper("Geam") == "GEAM"` and
+`join("geam", "-", "provider") == "geam-provider"`. A successful run is
+silent because its assertions pass.
+
+## Choose an example by capability
+
+After the first provider works, use this table when you need one particular
+host boundary:
+
+| Example | Provider state | Runtime configuration | Rust-owned value |
+| --- | --- | --- | --- |
+| [`text_tools`](text_tools/README.md) | None | None | None |
+| [`value_types`](value_types/README.md) | None | None | None |
+| [`tag_set`](tag_set/README.md) | None | None | Generated equality, hashing, and inspection |
+| [`request_ids`](request_ids/README.md) | `Default` | None | None |
+| [`feature_flags`](feature_flags/README.md) | Configured | Required | None |
+| [`run_metrics`](run_metrics/README.md) | None | None | Custom equality, hashing, and inspection |
+| [`call_tracing`](call_tracing/README.md) | `Default` | None | None |
+| [`generic_box`](generic_box/README.md) | None | None | Retained generic Gleam value |
+| [`text_pattern`](text_pattern/README.md) | None | None | Regex payload with custom behavior |
+
+## Example layout
+
+Every example keeps the two packages side by side:
+
+```text
+project/   Gleam application and local Gleam package
+provider/  separately buildable and testable Rust provider crate
+```
+
+The application adds and imports the Gleam package. `geam provider add` selects
+the companion Rust crate for the checkout. The provider's Cargo metadata names
+the Gleam package and compatible versions so Geam can verify the pair before
+it runs.
+
+`feature_flags` is the only staged example that needs runtime configuration:
 
 ```sh
 geam run --provider-config example_feature_flags=config/feature_flags.toml
 ```
 
-The generated project `Cargo.toml`, `Cargo.lock`, and `build/` tree are ignored.
-Each provider's own `Cargo.lock` is tracked so its Rust package can be formatted,
-tested, linted, and packaged with `--locked` independently. See [host provider
-authoring](../../docs/host-providers.md) for the complete workflow and contract.
+Generated project `Cargo.toml`, `Cargo.lock`, and `build/` files are ignored in
+these checkouts. Each provider's own `Cargo.lock` is tracked so the Rust crate
+can be formatted, tested, linted, and packaged with `--locked` independently.

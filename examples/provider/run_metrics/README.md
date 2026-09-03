@@ -1,7 +1,20 @@
-# Run Metrics Provider Example
+# Host Provider: Run Metrics
 
-This example pairs one constructorless Gleam type with a macro-authored Rust
-payload:
+The tag set example derives ordinary source behavior from its Rust payload.
+This example takes control of that boundary: a provider defines how a
+Rust-owned `Metrics` value compares, hashes, and appears when inspected from
+Gleam.
+
+## Read The Example
+
+1. [`project/packages/example_run_metrics/src/example_run_metrics.gleam`](project/packages/example_run_metrics/src/example_run_metrics.gleam)
+   declares the constructorless type and source-visible operations.
+2. [`provider/src/lib.rs`](provider/src/lib.rs) defines the payload, persistent
+   update, and custom external behavior.
+3. [`project/src/run_metrics_example.gleam`](project/src/run_metrics_example.gleam)
+   checks old values, aggregate results, and equality.
+
+The Gleam API is:
 
 ```gleam
 pub type Metrics
@@ -17,13 +30,7 @@ opaque payload, and `record` clones that payload before returning an updated
 version. Earlier values remain readable and independently constructed values
 with the same entries compare equal in Gleam source.
 
-```text
-project/
-  packages/example_run_metrics/  ordinary local Gleam package
-provider/                          geam-example-run-metrics crate
-```
-
-## Run The Example
+## Run
 
 With `geam` available on `PATH`, select the local provider and run the project:
 
@@ -36,22 +43,10 @@ geam run
 
 No provider configuration file is needed, so the component omits both state and
 initialization. All metrics data lives in the source-visible `Metrics` values.
-The entrypoint checks empty, one-sample, multi-sample, missing-key, old-value
-preservation, and equality behavior. A successful run produces no application output.
+The entrypoint checks counts and totals for empty, one-sample, multi-sample,
+and missing-key cases. It also checks that an update preserves the old value
+and that independently built metrics with the same entries compare equal. A
+successful run is silent because all assertions pass.
 
-The tracked `.cargo/config.toml` files only redirect the unreleased Geam
-authoring API to this repository checkout. They are development wiring for this
-example, not consumer metadata.
-
-## What To Read
-
-- [`project/packages/example_run_metrics/src/example_run_metrics.gleam`](project/packages/example_run_metrics/src/example_run_metrics.gleam)
-  is the complete source-visible API.
-- [`provider/src/lib.rs`](provider/src/lib.rs) is the matching Rust payload and
-  component.
-- [`project/src/run_metrics_example.gleam`](project/src/run_metrics_example.gleam)
-  exercises every function through the standalone runner.
-
-Together they show generated external schema and storage ownership, mixed
-external/scalar signatures, persistent updates, source equality, and canonical
-inspection without low-level host registration boilerplate.
+Continue with [call tracing](../call_tracing/README.md) when provider code needs
+to invoke a typed Gleam callback.
