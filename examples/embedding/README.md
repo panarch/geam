@@ -14,36 +14,10 @@ tests.
 | [`provider`](provider) | Call Gleam code backed by a configured Rust provider |
 | [`application`](application) | Combine packages, IO, a provider, structured data, and repeated calls |
 
-Start with [`first_call`](first_call). Its README follows the files created by
-`geam embedding init` through the first generated function call.
-
-## Complete Application
-
-[`application`](application) puts every stage into one inventory workflow. Rust
-sends rows to Gleam, Gleam normalizes and validates them with a Rust provider,
-and Rust prints the accepted items, rejection reasons, and summary.
-
-The returned List is passed back to Gleam to calculate a total and find the
-first valid row, so the example also shows repeated calls with the same loaded
-module. The internal Gleam module uses an opaque `Stock` type and converts it to
-a Tuple before returning it through the generated Rust API.
-
-Start with [main.rs](application/src/main.rs) for preparation and input/output,
-then [inventory.rs](application/src/inventory.rs) for the typed calls and result
-handling. Tests verify exact values, repeated calls, captured IO, and Echo.
-
-With Geam, Rust, and Gleam installed, run from the repository root:
-
-```sh
-(cd examples/embedding/application && geam embedding check)
-cargo test --manifest-path examples/embedding/application/Cargo.toml --locked
-cargo run --quiet --manifest-path examples/embedding/application/Cargo.toml --locked
-```
-
-For a new application, start with `geam embedding init`; after writing Gleam,
-use `geam embedding sync` and the usual Cargo commands. See [Rust
-embedding](../../docs/embedding.md) for the complete first-call workflow,
-project layout, staged examples, and runtime inputs.
+Start with [`first_call`](first_call) and follow each README's next step through
+[`application`](application). Every example keeps its file tour, run commands,
+and expected output together. See [Rust embedding](../../docs/embedding.md) for
+the initial project setup, synchronization workflow, and supported data.
 
 ## Manual Embedding API
 

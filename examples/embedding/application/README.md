@@ -1,10 +1,9 @@
-# Rust Embedding Application
+# Rust Embedding: Application
 
-This complete example uses Gleam to review incoming inventory in a Rust
-application. Gleam normalizes item codes, validates them through the
-text-pattern provider, and returns accepted rows and rejection reasons. Rust
-passes the returned List back to Gleam for a total and the first valid item,
-then prints the review.
+This example uses Gleam to review incoming inventory in a Rust application.
+Gleam normalizes item codes, validates them through the text-pattern provider,
+and returns accepted rows and rejection reasons. Rust passes the returned List
+back to Gleam for a total and the first valid item, then prints the review.
 
 ## Workflow
 

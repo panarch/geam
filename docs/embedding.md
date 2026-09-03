@@ -105,7 +105,7 @@ application that can be run and tested on its own:
 | Gleam package | Call a function from `gleam_stdlib` | [`package`](../examples/embedding/package) |
 | Gleam IO | Route Gleam IO through Rust and capture Echo separately | [`io`](../examples/embedding/io) |
 | External provider | Call Gleam code backed by a configured Rust provider | [`provider`](../examples/embedding/provider) |
-| Complete application | Combine packages, IO, a provider, structured data, and repeated calls | [`application`](../examples/embedding/application) |
+| Application | Combine packages, IO, a provider, structured data, and repeated calls | [`application`](../examples/embedding/application) |
 
 Follow the stages in order when learning the API, or open the smallest example
 that contains the feature your application needs.
@@ -215,10 +215,8 @@ package](../examples/embedding/package),
 [IO routed through Rust](../examples/embedding/io), and
 an [external
 provider](../examples/embedding/provider)
-separately. The complete [Rust embedding
-application](../examples/embedding/application)
-then combines stdlib IO, an external provider, structured data, and repeated
-calls in one application.
+separately. The [application example](../examples/embedding/application) then
+combines stdlib IO, an external provider, structured data, and repeated calls.
 
 ## Verify a prepared checkout
 

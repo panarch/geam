@@ -11,7 +11,7 @@ another Gleam function without rebuilding it.
    Tuples, and Results.
 2. [main.rs](src/main.rs) supplies Rust-native inputs, reads the returned List,
    and borrows it for the second call.
-3. [runs.rs](tests/runs.rs) fixes the complete application output.
+3. [runs.rs](tests/runs.rs) fixes the expected binary output.
 
 The two calls share one loaded and sealed module. `&reviewed` refers to the
 retained List owned by that module, so Geam does not materialize and reconstruct

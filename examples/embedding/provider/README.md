@@ -39,6 +39,6 @@ The application prints:
 matched: true
 ```
 
-Continue with the [complete embedding application](../application),
-which combines provider-backed validation, stdlib IO, structured data, and
-repeated calls in one workflow.
+Continue with the [embedding application](../application), which combines
+provider-backed validation, stdlib IO, structured data, and repeated calls in
+one workflow.
