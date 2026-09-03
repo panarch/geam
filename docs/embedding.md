@@ -187,7 +187,7 @@ script regenerates it implicitly.
 Embedding commands use one fixed project, module, and output layout. This makes
 checkouts, generated code, CI, and examples agree on the same connection.
 
-## Bring in Gleam packages and Rust providers
+## Use Gleam packages and Rust providers
 
 Add Gleam dependencies from the nested project:
 
@@ -202,11 +202,39 @@ Sync enables only the built-in Geam support used by imported Gleam code.
 Official stdlib, JSON, and Time integrations are added explicitly; unused Gleam
 dependencies do not add Rust components.
 
-When an imported package requires another native provider, sync verifies
-registry candidates and asks before adding an exact Cargo dependency. Existing
-compatible registry, path, or Git declarations are reused. A noninteractive
-sync cannot approve new native code, so perform and commit provider selection
-before relying on CI.
+Most packages need nothing else. If an imported package has native functions
+implemented for Geam, its Hex package remains the Gleam dependency and a
+companion provider crate supplies the Rust implementation compiled into the
+host application.
+
+Automatic crates.io discovery uses the Gleam package name. For
+`company_image`, sync considers `geam-company-image` and
+`geam-company-image-<suffix>`, where the optional suffix is lowercase
+kebab-case. It lists the exact name first, but neither form is treated as
+official, trusted, or automatically selected. A differently named crate is not
+found from metadata alone. The
+[provider names for automatic discovery](host-providers.md#provider-names-for-automatic-discovery)
+section defines the complete rule.
+
+Sync verifies each candidate's metadata and package-version range before showing
+it. With several verified candidates, an interactive sync asks which provider
+to use and then asks for approval:
+
+```text
+Gleam package company_image 1.4.0 requires native provider code.
+Metadata compatibility is not an endorsement.
+  1. geam-company-image 0.3.1 (Gleam >= 1.0.0 and < 2.0.0)
+  2. geam-company-image-aws 0.2.0 (Gleam >= 1.4.0 and < 2.0.0)
+Select a provider [1-2], or 0 to cancel: 2
+Approve geam-company-image-aws 0.2.0? [y/N] y
+```
+
+With one verified candidate, sync skips the numbered selection and asks for
+approval directly. After approval, it records that exact Cargo dependency and
+regenerates the Rust bindings. Existing compatible registry, path, or Git
+declarations are reused and may use another crate name. A noninteractive sync
+cannot approve new native code, so perform and commit provider selection before
+relying on CI.
 
 When imported code needs IO, time, or provider state, the generated Rust API
 asks the application for those inputs.

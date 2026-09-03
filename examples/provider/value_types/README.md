@@ -1,9 +1,17 @@
-# Value Types Provider Example
+# Host Provider: Value Types
 
-This example shows how Gleam values map to Rust types in provider functions.
-Separate modules cover scalars, tuples, Lists, custom values, Result, and
-Option, so you can open the mapping you need. The later provider examples add
-state, configuration, and external values.
+This example keeps the provider stateless and expands the first example's
+scalar signatures into the ordinary values most APIs need: tuples, Lists,
+custom types, Result, and Option.
+
+## Read The Example
+
+1. [`project/packages/example_value_types/src/example_value_types`](project/packages/example_value_types/src/example_value_types)
+   separates the Gleam API by value family.
+2. [`provider/src/lib.rs`](provider/src/lib.rs) shows the matching Rust input
+   and output types in one provider.
+3. [`project/src/value_types_example.gleam`](project/src/value_types_example.gleam)
+   constructs each source value and checks the provider result.
 
 ## Scalars
 
@@ -157,6 +165,8 @@ Nested custom values use their generated input type, and a source `List` field
 is a lazy `List` view in `JobInput`; the output enum uses `Vec` only when
 constructing a new source List.
 
+## Run
+
 Run all five modules through the generated standalone runner:
 
 ```sh
@@ -166,18 +176,10 @@ geam prepare
 geam run
 ```
 
-A successful run produces no application output. The entrypoint executes every public
-function and checks all scalar mappings, one-, two-, three-element and nested
-tuples, empty, indexed, pass-through, reversed and tuple-item Lists, unit,
-tuple, named, nested and List-bearing custom constructors, plus source Result
-and Option values.
+The entrypoint checks every public function, including `add(20, 22) == 42`,
+nested tuple reassociation, lazy List pass-through and traversal, custom
+constructors, and successful and failed Result and Option values. A successful
+run is silent because all assertions pass.
 
-Read
-[`project/packages/example_value_types/src/example_value_types/scalars.gleam`](project/packages/example_value_types/src/example_value_types/scalars.gleam),
-[`project/packages/example_value_types/src/example_value_types/tuples.gleam`](project/packages/example_value_types/src/example_value_types/tuples.gleam),
-[`project/packages/example_value_types/src/example_value_types/lists.gleam`](project/packages/example_value_types/src/example_value_types/lists.gleam),
-[`project/packages/example_value_types/src/example_value_types/customs.gleam`](project/packages/example_value_types/src/example_value_types/customs.gleam),
-[`project/packages/example_value_types/src/example_value_types/results.gleam`](project/packages/example_value_types/src/example_value_types/results.gleam),
-[`provider/src/lib.rs`](provider/src/lib.rs), and
-[`project/src/value_types_example.gleam`](project/src/value_types_example.gleam)
-together.
+Continue with [tag set](../tag_set/README.md) when a Gleam value should carry an
+opaque payload owned by Rust.

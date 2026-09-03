@@ -18,7 +18,7 @@ nav = [
   { "Guides" = [
     { "Run a Gleam project" = "standalone.md" },
     { "Embed Gleam in Rust" = "embedding.md" },
-    { "Author a host provider" = "host-providers.md" },
+    { "Add Rust to a Gleam package" = "host-providers.md" },
   ] },
   { "Reference" = [
     "reference/README.md",

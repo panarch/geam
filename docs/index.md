@@ -3,8 +3,8 @@
 Geam is a [Rust](https://www.rust-lang.org/) runtime and embedding layer for
 [Gleam](https://gleam.run/).
 
-Run a Gleam project, call Gleam functions from a Rust application, or add Rust
-capabilities to a Gleam package.
+Run a Gleam project, call Gleam functions from a Rust application, or connect a
+Gleam package to native Rust code.
 
 Gleam source stays Gleam. Geam runs the type-checked program and generates the
 Rust runner or bindings that connect it to the host.
@@ -15,7 +15,7 @@ Rust runner or bindings that connect it to the host.
 | --- | --- | --- |
 | Run a Gleam application without writing a Rust runner | Standalone | [Run a Gleam project](standalone.md) |
 | Call selected Gleam functions from a Rust application | Rust embedding | [Embed Gleam in Rust](embedding.md) |
-| Give a Gleam package capabilities implemented in Rust | Host provider | [Author a host provider](host-providers.md) |
+| Add a Rust implementation to a Gleam package | Host provider | [Add Rust to a Gleam package](host-providers.md) |
 
 Each workflow is a complete starting point for the same runtime. Start with the
 project you already have.
@@ -76,13 +76,13 @@ What Geam manages depends on where you start:
   project-local Rust runner and approved providers.
 - In a **Rust embedding project**, Rust remains the application. Geam manages
   the nested Gleam project and generated bindings.
-- A **host provider** supplies Rust capabilities that either kind of project can
-  use from Gleam.
+- A **host provider** is the companion Rust crate that implements a Gleam
+  package's native functions for Geam. Either kind of project can use one.
 
-A provider remains separate from the Gleam package. The package can keep its
-existing source and target implementations while a Rust crate implements the
-functions that need native code. Users keep importing and calling the Gleam
-modules they already know.
+Most Gleam packages need no provider. When a package includes native functions,
+users still add the Hex package and import its Gleam modules as usual. The
+separate provider crate is compiled into the Rust host only to implement those
+functions for Geam.
 
 ## When Geam fits
 

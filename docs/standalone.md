@@ -103,25 +103,50 @@ Gleam source and the stdlib support required by its imported code.
 See [compatibility](reference/compatibility.md) for the exact package baselines
 and supported effects.
 
-## Bring Rust capabilities to a Gleam package
+## Use a Gleam package with a Rust provider
 
-A Gleam package may already pair its source API with an Erlang or JavaScript
-external implementation. A Geam provider lets the same package gain a Rust
-implementation without moving that API out of Gleam.
+Most Gleam packages run without an additional Rust crate. Some packages expose
+functions whose implementation is supplied separately for each execution
+target. When Geam runs one of those functions, a companion Rust crate supplies
+the implementation. Geam calls that crate a provider.
 
-When imported code requires an external implementation that is not built in,
-Geam searches crates.io for provider crates with matching metadata and asks
-before adding native code:
+The two dependencies have different jobs: the Hex package contains the Gleam
+API and source that the application imports, while the provider crate contains
+the native implementation compiled into the Rust runner. A package may keep
+its existing Erlang or JavaScript implementation; adding a provider does not
+replace it or change how Gleam code imports the package.
+
+When imported code reaches a provider-backed function that is not built in,
+Geam searches crates.io for a companion crate with matching metadata and asks
+before adding that native code:
+
+| Role | Name |
+| --- | --- |
+| Gleam package | `company_image` |
+| Exact provider name | `geam-company-image` |
+| Suffixed provider name | `geam-company-image-<suffix>` |
+
+Geam searches both provider name forms. The exact name is listed first, but
+neither form is treated as official, trusted, or automatically selected. The
+optional suffix must use lowercase kebab-case. For example,
+`company-image-rust` is not found automatically, even if it carries provider
+metadata for `company_image`. See the
+[provider names for automatic discovery](host-providers.md#provider-names-for-automatic-discovery)
+section when publishing a provider.
 
 ```text
 Gleam package company_image 1.4.0 requires native provider code.
 Metadata compatibility is not an endorsement.
   1. geam-company-image 0.3.1 (Gleam >= 1.0.0 and < 2.0.0)
-Approve geam-company-image 0.3.1? [y/N]
+  2. geam-company-image-aws 0.2.0 (Gleam >= 1.4.0 and < 2.0.0)
+Select a provider [1-2], or 0 to cancel: 2
+Approve geam-company-image-aws 0.2.0? [y/N] y
 ```
 
-Approval records an exact Cargo dependency. Geam never treats matching metadata
-as consent, and noninteractive commands do not approve a new provider.
+With one verified candidate, Geam skips the numbered selection and asks for
+approval directly. Approval records an exact Cargo dependency. Geam never
+treats matching metadata as consent, and noninteractive commands do not approve
+a new provider.
 
 Before presenting a registry candidate, Geam checks its sparse-index version,
 archive checksum, packaged provider metadata, exact target Gleam package, and
@@ -144,12 +169,14 @@ geam provider list
 geam provider remove company_image
 ```
 
-An explicit selection is still verified against its packaged provider metadata
-and the resolved Gleam package. One Gleam package has at most one selected
-external provider. Built-in components are not stored selections and do not
-appear in `provider list`.
+An explicit registry, path, or Git selection does not have to follow the
+automatic discovery naming convention. It is still verified against its
+packaged provider metadata and the resolved Gleam package. One Gleam package
+has at most one selected external provider. Built-in components are not stored
+selections and do not appear in `provider list`.
 
-To implement a provider, start with [host provider authoring](host-providers.md).
+To author the companion crate, continue with
+[Add Rust to a Gleam package](host-providers.md).
 
 ## Pass provider configuration at run time
 
