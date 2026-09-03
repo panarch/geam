@@ -29,8 +29,10 @@ typed calls visible in Rust.
 The inventory workflow consumes a Rust `Vec` of rows and returns a retained List
 of Tuple/Result values. Rust passes the same List back to calculate a total and
 find the first valid row as an Option, then prints accepted items, rejection
-reasons, and the summary. A thin Gleam boundary keeps normalization, validation,
-and the opaque `Stock` type inside Gleam.
+reasons, and the summary. The internal Gleam module uses an opaque `Stock` type,
+which cannot currently appear in a generated Rust function signature. The root
+module converts `Stock` to a Tuple before returning data through supported
+Result, List, and Option types.
 
 Start with [main.rs](application/src/main.rs) for preparation and input/output,
 then [inventory.rs](application/src/inventory.rs) for the typed calls and result

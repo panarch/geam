@@ -220,17 +220,21 @@ let rows: Option<Vec<(EcoString, BigInt)>> = None;
 module.call(&functions.optional_batch, (rows,), &mut state, &mut echo)?;
 ```
 
-## Gleam Boundary Modules
+## Types Outside Generated Bindings
 
-Arbitrary records and custom enums, external values, callbacks, public
-constants, and generic signatures are not generated Rust binding types. Keep
-those values in an imported Gleam module and expose a thin same-name root module
-that projects them into the supported ordinary-data grammar.
+Generated bindings do not currently support public constants in the same-name
+root module. Public function arguments and returns also cannot use arbitrary
+records and custom enums, external values, callbacks, or generic types.
+Imported Gleam modules may use all these declarations. Rust can reach logic
+that uses an unsupported type through generated bindings only when the root
+module exposes a public function whose arguments and return value use the
+supported data grammar.
 
-The canonical application keeps normalization, validation, and its opaque
-`Stock` type inside Gleam. Rust sees only batch validation, total quantity, and
-first-valid-row operations. This preserves the source domain model while
-keeping the cross-language ABI small.
+The canonical application demonstrates this current limit. Its internal module
+uses normalization, validation, and an opaque `Stock` type. The root module
+converts `Stock` to `#(String, Int)`, so the generated Rust bindings expose
+batch validation, total quantity, and first-valid-row operations using
+supported types.
 
 ## Echo And IO
 

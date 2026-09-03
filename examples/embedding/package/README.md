@@ -1,6 +1,6 @@
 # Rust Embedding: Gleam Package
 
-This example adds `gleam_stdlib` to a nested Gleam project. Its public boundary
+This example adds `gleam_stdlib` to a nested Gleam project. Its public function
 uses `gleam/list.first` and converts the Result into `gleam/option.Option`, which
 the generated Rust binding exposes as `Option<EcoString>`.
 
@@ -8,7 +8,7 @@ the generated Rust binding exposes as `Option<EcoString>`.
 
 1. [gleam.toml](gleam/gleam.toml) declares the Gleam package dependency.
 2. [geam_rust_embedding_package.gleam](gleam/src/geam_rust_embedding_package.gleam)
-   keeps the package call behind one ordinary-data boundary function.
+   defines the public function selected for the generated Rust binding.
 3. [main.rs](src/main.rs) initializes the generated stdlib host profile and
    calls the same function with populated and empty Lists.
 

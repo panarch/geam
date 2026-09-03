@@ -175,9 +175,10 @@ tests, and package commands there as usual; return to the Cargo package root for
 `geam embedding sync` and Rust builds.
 
 Internal Gleam modules can live below `gleam/src/inventory_app/`. Only public
-functions from the same-name root module become Rust bindings. Imported modules
-can keep domain-specific custom types and provider-backed values behind that
-ordinary-data boundary.
+functions from the same-name root module become Rust bindings. Their arguments
+and returns must use the generated binding types described below. Imported
+modules may use records, custom types, and provider-backed values, but those
+values cannot cross the generated binding boundary directly.
 
 Commit the Cargo and Gleam manifests and lockfiles, handwritten Gleam and Rust
 source, and generated `src/geam_bindings.rs`. Ignore Cargo's `target/` and
@@ -241,19 +242,20 @@ dependency changes. `embedding check` verifies the generated Gleam-Rust
 connection, while `cargo check` and `cargo test` remain responsible for Rust
 compilation and tests.
 
-## Keep the Rust boundary small
+## Pass data between Gleam and Rust
 
-Generated bindings support recursive ordinary data:
+Generated bindings currently support this recursive data grammar:
 
 ```text
 Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data)
 ```
 
 This includes nested Lists and combinations of Tuple, Result, and Option.
-Records, arbitrary custom types, external values, callbacks, and generic public
-signatures stay inside Gleam modules. Expose a small boundary function that
-projects domain values into ordinary data instead of duplicating the domain
-model in Rust.
+Records, arbitrary custom types, external values, callbacks, and generic types
+cannot currently be used in generated Rust function signatures. Gleam code may
+use them internally. Through generated bindings, Rust can call such code only
+through a public function in the same-name root module whose arguments and
+return value use supported types.
 
 Lists returned from Gleam are retained, immutable handles. Rust can inspect
 them lazily or pass them back to the same loaded module without reconstructing

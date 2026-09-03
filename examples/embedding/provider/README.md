@@ -9,8 +9,9 @@ Geam.
 
 1. [gleam.toml](gleam/gleam.toml) selects the local reference Gleam package.
 2. [geam_rust_embedding_provider.gleam](gleam/src/geam_rust_embedding_provider.gleam)
-   keeps the provider's opaque Pattern and custom CompileError inside Gleam and
-   exposes `Result(Bool, String)` to Rust.
+   uses the provider's opaque Pattern and custom CompileError internally.
+   Neither can currently appear in a generated Rust function signature, so the
+   public function returns `Result(Bool, String)` to Rust.
 3. [Cargo.toml](Cargo.toml) selects the matching provider crate explicitly.
 4. [main.rs](src/main.rs) supplies provider configuration and calls the
    generated function handle.
