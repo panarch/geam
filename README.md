@@ -58,8 +58,16 @@ geam embedding init
 ```
 
 `geam embedding init` adds a nested Gleam project and generated Rust bindings
-to the Cargo package. To try the starter function it creates, use this as
-`src/main.rs`:
+to the Cargo package. The starter module it creates contains this function:
+
+```gleam
+// gleam/src/my_rust_app.gleam
+pub fn double(value: Int) -> Int {
+  value * 2
+}
+```
+
+To call `double` from Rust, use this as `src/main.rs`:
 
 ```rust
 mod geam_bindings;
