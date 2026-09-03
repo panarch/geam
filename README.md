@@ -1,7 +1,7 @@
 # Geam
 
 [![crates.io](https://img.shields.io/crates/v/geam.svg)](https://crates.io/crates/geam)
-[![LICENSE](https://img.shields.io/crates/l/geam.svg)](https://github.com/panarch/geam/blob/main/LICENSE)
+[![LICENSE](https://img.shields.io/crates/l/geam.svg)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/panarch/geam/workspace.yml?branch=main&label=CI)](https://github.com/panarch/geam/actions/workflows/workspace.yml)
 [![docs.rs](https://docs.rs/geam/badge.svg)](https://docs.rs/geam)
 
@@ -81,7 +81,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 `cargo run` now prints `42`. The [Rust embedding guide](docs/embedding.md)
 explains each part of this lifecycle. The executable [embedding
-examples](https://github.com/panarch/geam/tree/main/examples/embedding)
+examples](examples/embedding)
 then add structured data, Gleam packages, caller-owned IO, an external provider,
 and repeated calls one step at a time.
 
@@ -125,7 +125,7 @@ planning, Rust providers, and execution fit together.
 - [Documentation overview](docs/index.md)
 - [Standalone projects](docs/standalone.md)
 - [Rust embedding](docs/embedding.md)
-- [Executable examples](https://github.com/panarch/geam/tree/main/examples)
+- [Executable examples](examples)
 - [Host provider authoring](docs/host-providers.md)
 - [Technical reference](docs/reference/README.md)
 - [Geam development](docs/development/README.md)

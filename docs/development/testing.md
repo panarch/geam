@@ -185,7 +185,7 @@ done
 ```
 
 The independently locked
-[`examples/embedding/application`](https://github.com/panarch/geam/tree/main/examples/embedding/application)
+[`examples/embedding/application`](../../examples/embedding/application)
 is the capstone managed Rust-first workflow. Its nested resolved Gleam project
 uses imported source, stdlib IO, and the real text-pattern provider.
 The Rust entry point keeps loading, binding, sealing, capabilities,
@@ -270,7 +270,7 @@ test also checks progress/approval ordering and repeated preparation. Binary and
 distribution tests keep application stdout and IO/Echo ordering separate from
 preparation stderr; native Cargo/Gleam wording is not a version-pinned assertion.
 
-The [provider authoring examples](https://github.com/panarch/geam/tree/main/examples/provider) are consumer-facing macro
+The [provider authoring examples](../../examples/provider) are consumer-facing macro
 acceptance cases. `text_tools` maps one stateless provider to three Gleam
 modules, `value_types` fixes every scalar mapping plus one-, multi-, and
 nested-tuple mapping, lazy top-level Lists, directional custom values, and
@@ -287,7 +287,7 @@ The complete Gleam entrypoints execute every public example function.
 Repository-local Cargo patches select the current checkout until the authoring
 crates are released.
 
-The [`examples/provider/text_pattern`](https://github.com/panarch/geam/tree/main/examples/provider/text_pattern) example adds a
+The [`examples/provider/text_pattern`](../../examples/provider/text_pattern) example adds a
 distribution-ready advanced macro provider. Its path test executes manual
 external semantics, a custom error, source Result, and List output through the
 managed root lock and generated runner. The fake-registry orchestration test
@@ -318,7 +318,7 @@ repository-local patches and complete standalone execution. The independent
 Provider SDK fixture remains the canonical low-level typed-host ABI acceptance
 owner.
 
-The [Acceptance workflow](https://github.com/panarch/geam/blob/main/.github/workflows/acceptance.yml) runs one matrix
+The [Acceptance workflow](../../.github/workflows/acceptance.yml) runs one matrix
 job per documented example. Each job selects its exact `provider_examples`
 test, runs the independent provider's tests, verifies its Cargo package, and
 exports its Gleam package. A failed example does not cancel the other matrix

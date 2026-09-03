@@ -47,7 +47,7 @@ provider example. Each tracked Cargo lock is reconciled by `cargo update
 --workspace` from its own directory, preserving its local Cargo configuration
 and checkout patches before the new crates exist on crates.io.
 
-The [prepare workflow](https://github.com/panarch/geam/blob/main/.github/workflows/prepare-release.yml) pins the release
+The [prepare workflow](../../.github/workflows/prepare-release.yml) pins the release
 tool versions and owns this sequence; there is no separate release script.
 To preview only the workspace version change, run
 `cargo release version patch --workspace` without `--execute`.
@@ -83,7 +83,7 @@ Before workspace authentication or uploads, the workflow checks:
 - an existing release tag, if any, pointing to that same SHA.
 
 After the workspace succeeds, the workflow calls
-[Geam: Publish reference example](https://github.com/panarch/geam/blob/main/.github/workflows/publish-reference-example.yml)
+[Geam: Publish reference example](../../.github/workflows/publish-reference-example.yml)
 synchronously. That workflow independently validates the provider and Hex
 package versions, publishes or dry-runs the two reference artifacts, and checks
 the public execution path. The GitHub Release job starts only after both owners
