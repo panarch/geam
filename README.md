@@ -57,9 +57,9 @@ cd my_rust_app
 geam embedding init
 ```
 
-Initialization creates a starter Gleam function and generated Rust bindings
-without replacing your `src/main.rs`. Replace Cargo's starter program with the
-smallest complete call:
+`geam embedding init` adds a nested Gleam project and generated Rust bindings
+to the Cargo package. To try the starter function it creates, use this as
+`src/main.rs`:
 
 ```rust
 mod geam_bindings;
