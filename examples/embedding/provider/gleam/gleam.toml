@@ -1,0 +1,6 @@
+name = "geam_rust_embedding_provider"
+version = "0.1.0"
+target = "erlang"
+
+[dependencies]
+example_text_pattern = { path = "../../../provider/text_pattern/project/packages/example_text_pattern" }

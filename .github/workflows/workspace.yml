@@ -40,7 +40,7 @@ jobs:
       - name: Check example provider formatting
         run: |
           for example in text_tools value_types tag_set request_ids feature_flags run_metrics call_tracing generic_box text_pattern; do
-            (cd "examples/$example/provider" && cargo fmt --all --check)
+            (cd "examples/provider/$example/provider" && cargo fmt --all --check)
           done
 
   clippy:
@@ -64,15 +64,15 @@ jobs:
           workspaces: |
             . -> target
             cli/tests/fixtures/standalone_cli/providers -> target
-            examples/text_tools/provider -> target
-            examples/value_types/provider -> target
-            examples/tag_set/provider -> target
-            examples/request_ids/provider -> target
-            examples/feature_flags/provider -> target
-            examples/run_metrics/provider -> target
-            examples/call_tracing/provider -> target
-            examples/generic_box/provider -> target
-            examples/text_pattern/provider -> target
+            examples/provider/text_tools/provider -> target
+            examples/provider/value_types/provider -> target
+            examples/provider/tag_set/provider -> target
+            examples/provider/request_ids/provider -> target
+            examples/provider/feature_flags/provider -> target
+            examples/provider/run_metrics/provider -> target
+            examples/provider/call_tracing/provider -> target
+            examples/provider/generic_box/provider -> target
+            examples/provider/text_pattern/provider -> target
 
       - name: Fetch standalone provider dependencies
         working-directory: cli/tests/fixtures/standalone_cli/providers
@@ -88,7 +88,7 @@ jobs:
       - name: Run example provider clippy
         run: |
           for example in text_tools value_types tag_set request_ids feature_flags run_metrics call_tracing generic_box text_pattern; do
-            (cd "examples/$example/provider" && cargo clippy --all-targets --locked -- -D warnings)
+            (cd "examples/provider/$example/provider" && cargo clippy --all-targets --locked -- -D warnings)
           done
 
   documentation:

@@ -1,0 +1,3 @@
+name = "geam_rust_embedding_data"
+version = "0.1.0"
+target = "erlang"

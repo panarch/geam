@@ -15,11 +15,11 @@ manifests and the provider's exact Geam and Gleam requirements.
 
 1. Run **Geam: Prepare release** from `main` and choose `patch`, `minor`, or
    `major`. The default is `patch`; cargo-release computes the next version.
-2. The workflow updates workspace, fixture, and example-provider requirements;
-   aligns both published reference packages to the release version; reconciles
-   tracked Cargo and Gleam manifests; and opens a draft PR on
-   `release/<version>`. It refuses an existing release branch or tag, or an open
-   PR from that branch, and never force-pushes.
+2. The workflow updates workspace, fixture, provider-example, and embedding
+   example requirements; aligns both published reference packages to the
+   release version; reconciles tracked Cargo and Gleam manifests; and opens a
+   draft PR on `release/<version>`. It refuses an existing release branch or
+   tag, or an open PR from that branch, and never force-pushes.
 3. Add `docs/releases/<version>.md` to the PR following the
    [release note guide](release-notes.md), and add the new version to the release
    index. Write and review user-facing changes manually. Preparation does not
@@ -38,15 +38,16 @@ manifests and the provider's exact Geam and Gleam requirements.
 Preparation delegates workspace versions and exact internal requirements to
 [cargo-release](https://github.com/crate-ci/cargo-release/blob/master/docs/reference.md).
 [cargo-edit](https://github.com/killercup/cargo-edit) updates exact Geam
-requirements in standalone fixtures and example providers, and sets the
-reference provider package version. The workflow sets the matching Hex package
-and provider metadata to the same version, then asks Gleam to update the local
-package entry in both the reference project and the canonical Rust embedding
-application. Each tracked Cargo lock is reconciled by `cargo update --workspace`
-from its own directory, preserving its local Cargo configuration and checkout
-patches before the new crates exist on crates.io.
+requirements in standalone fixtures, example providers, and independently
+locked embedding examples, and sets the reference provider package version. The
+workflow sets the matching Hex package and provider metadata to the same
+version, then asks Gleam to update the local package entry in the reference
+project, the complete Rust embedding application, and the staged external
+provider example. Each tracked Cargo lock is reconciled by `cargo update
+--workspace` from its own directory, preserving its local Cargo configuration
+and checkout patches before the new crates exist on crates.io.
 
-The [prepare workflow](https://github.com/panarch/geam/blob/main/.github/workflows/prepare-release.yml) pins the release
+The [prepare workflow](../../.github/workflows/prepare-release.yml) pins the release
 tool versions and owns this sequence; there is no separate release script.
 To preview only the workspace version change, run
 `cargo release version patch --workspace` without `--execute`.
@@ -82,7 +83,7 @@ Before workspace authentication or uploads, the workflow checks:
 - an existing release tag, if any, pointing to that same SHA.
 
 After the workspace succeeds, the workflow calls
-[Geam: Publish reference example](https://github.com/panarch/geam/blob/main/.github/workflows/publish-reference-example.yml)
+[Geam: Publish reference example](../../.github/workflows/publish-reference-example.yml)
 synchronously. That workflow independently validates the provider and Hex
 package versions, publishes or dry-runs the two reference artifacts, and checks
 the public execution path. The GitHub Release job starts only after both owners

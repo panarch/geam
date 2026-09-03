@@ -153,10 +153,41 @@ This workspace is independently locked and needs neither a Gleam CLI nor
 downloaded Gleam package source. Its Rust dependencies use Cargo's ordinary
 locked acquisition path. CI runs it as a separate provider SDK boundary.
 
+The independently locked managed embedding examples fix the user-facing
+progression from the first generated function call through recursive ordinary
+data, a Gleam package, caller-owned IO, and an external provider. Each example
+owns a nested Gleam project, generated Rust bindings, a handwritten entry point,
+and an integration test that executes the binary and fixes complete stdout and
+stderr. Their READMEs explain one new boundary at a time; none depends on an
+earlier example at build or run time.
+
+Run the guided examples locally from the repository root:
+
+```sh
+cargo build --package geam --bin geam --locked
+for example in \
+  first_call \
+  data \
+  package \
+  io \
+  provider
+do
+  (
+    cd "examples/embedding/$example"
+    ../../../target/debug/geam embedding check
+    (cd gleam && gleam format --check)
+    cargo fmt --all --check
+    CARGO_TARGET_DIR=../../../target/embedding cargo test --locked
+    CARGO_TARGET_DIR=../../../target/embedding \
+      cargo clippy --all-targets --locked -- -D warnings
+  )
+done
+```
+
 The independently locked
-[`examples/rust_embedding_application`](https://github.com/panarch/geam/tree/main/examples/rust_embedding_application)
-owns the canonical managed Rust-first workflow. Its nested resolved Gleam
-project uses imported source, stdlib IO, and the real text-pattern provider.
+[`examples/embedding/application`](../../examples/embedding/application)
+is the capstone managed Rust-first workflow. Its nested resolved Gleam project
+uses imported source, stdlib IO, and the real text-pattern provider.
 The Rust entry point keeps loading, binding, sealing, capabilities,
 configuration, mutable state, Echo, and output handling visible. The
 application's `inventory` module owns its typed call sequence and review
@@ -176,38 +207,35 @@ separate dependency-resolution step:
 
 ```sh
 cargo build --package geam --bin geam --locked
-cd examples/rust_embedding_application
-../../target/debug/geam embedding check
-cd gleam
-gleam format --check
-cd ..
-cd ../..
-cargo tree --manifest-path examples/rust_embedding_application/Cargo.toml \
+(cd examples/embedding/application && ../../../target/debug/geam embedding check)
+(cd examples/embedding/application/gleam && gleam format --check)
+cargo tree --manifest-path examples/embedding/application/Cargo.toml \
   --locked --package geam --edges normal --depth 1
-cargo fmt --manifest-path examples/rust_embedding_application/Cargo.toml --all --check
-cargo test --manifest-path examples/rust_embedding_application/Cargo.toml --locked
-cargo clippy --manifest-path examples/rust_embedding_application/Cargo.toml \
+cargo fmt --manifest-path examples/embedding/application/Cargo.toml --all --check
+cargo test --manifest-path examples/embedding/application/Cargo.toml --locked
+cargo clippy --manifest-path examples/embedding/application/Cargo.toml \
   --all-targets --locked -- -D warnings
-cargo run --quiet --manifest-path examples/rust_embedding_application/Cargo.toml --locked
+cargo run --quiet --manifest-path examples/embedding/application/Cargo.toml --locked
 ```
 
-The Acceptance workflow's `Rust embedding` job owns this boundary. It first
+The Acceptance workflow's `Rust embedding` job owns these boundaries. It first
 installs the current checkout with `cargo install --path . --locked` into a
 temporary installation root, using the default features and release profile.
-The following readiness and recovery checks use that installed binary, so CI
-also verifies that feature separation preserves the default CLI installation.
-It starts without a separate Gleam download step, checks locked readiness, and
-verifies that tracked application files remain unchanged. It then makes
-generated source stale, requires `embedding check` to fail, and runs production
-sync to restore the exact committed file before formatting, testing, linting,
-and running the application with the exact inventory report and its captured
-Gleam IO. The same job requires one Geam package identity, the exact
-core/macros/stdlib application profile, the text-pattern provider, and no
-CLI/JSON/Time dependency.
+It checks, formats, tests, and lints every guided example; their integration
+tests execute each binary and compare exact output. The following capstone
+readiness and recovery checks use that installed binary, so CI also verifies
+that feature separation preserves the default CLI installation. The job starts
+without a separate Gleam download step, checks locked readiness, and verifies
+that tracked application files remain unchanged. It then makes generated source
+stale, requires `embedding check` to fail, and runs production sync to restore
+the exact committed file before formatting, testing, linting, and running the
+application with the exact inventory report and its captured Gleam IO. The same
+job requires one Geam package identity, the exact core/macros/stdlib application
+profile, the text-pattern provider, and no CLI/JSON/Time dependency.
 Provider-example jobs remain separate because they own provider authoring and
 standalone consumption rather than Rust-first application composition.
 
-The same job checks Gleam formatting in `examples/rust_embedding` and runs the
+The same job checks Gleam formatting in `examples/embedding/manual` and runs the
 small manual `rust_embedding` example, comparing its complete stdout with the
 expected scalar results. The example's repeated-call and empty-Echo assertions
 also execute; its Rust formatting and Clippy checks remain workspace-owned.
@@ -242,7 +270,7 @@ test also checks progress/approval ordering and repeated preparation. Binary and
 distribution tests keep application stdout and IO/Echo ordering separate from
 preparation stderr; native Cargo/Gleam wording is not a version-pinned assertion.
 
-The [provider authoring examples](https://github.com/panarch/geam/tree/main/examples) are consumer-facing macro
+The [provider authoring examples](../../examples/provider) are consumer-facing macro
 acceptance cases. `text_tools` maps one stateless provider to three Gleam
 modules, `value_types` fixes every scalar mapping plus one-, multi-, and
 nested-tuple mapping, lazy top-level Lists, directional custom values, and
@@ -259,7 +287,7 @@ The complete Gleam entrypoints execute every public example function.
 Repository-local Cargo patches select the current checkout until the authoring
 crates are released.
 
-The [`examples/text_pattern`](https://github.com/panarch/geam/tree/main/examples/text_pattern) example adds a
+The [`examples/provider/text_pattern`](../../examples/provider/text_pattern) example adds a
 distribution-ready advanced macro provider. Its path test executes manual
 external semantics, a custom error, source Result, and List output through the
 managed root lock and generated runner. The fake-registry orchestration test
@@ -290,7 +318,7 @@ repository-local patches and complete standalone execution. The independent
 Provider SDK fixture remains the canonical low-level typed-host ABI acceptance
 owner.
 
-The [Acceptance workflow](https://github.com/panarch/geam/blob/main/.github/workflows/acceptance.yml) runs one matrix
+The [Acceptance workflow](../../.github/workflows/acceptance.yml) runs one matrix
 job per documented example. Each job selects its exact `provider_examples`
 test, runs the independent provider's tests, verifies its Cargo package, and
 exports its Gleam package. A failed example does not cancel the other matrix

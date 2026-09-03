@@ -1,0 +1,6 @@
+name = "geam_rust_embedding_io"
+version = "0.1.0"
+target = "erlang"
+
+[dependencies]
+gleam_stdlib = ">= 1.0.3 and < 1.0.4"

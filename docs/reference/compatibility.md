@@ -50,15 +50,18 @@ owned closures cover `Int`, `Float`, `String`, `BitArray`, `UtfCodepoint`,
 generic, retained, and callback forms documented in the
 [provider boundary](provider-boundary.md).
 
-Rust embedding intentionally exposes a narrower public function boundary:
+Generated Rust function bindings currently support this recursive data grammar:
 
 ```text
 Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data)
 ```
 
-Use a small Gleam boundary module to project records, domain custom types,
-external values, callbacks, or generic APIs into that ordinary-data grammar.
-See [Rust embedding](embedding-boundary.md) for the exact recursive type map.
+Records, domain custom types, external values, callbacks, and generic types
+cannot currently appear in generated Rust function signatures. Gleam modules
+may still use them internally. Rust can reach such logic through generated
+bindings only when the same-name root module exposes a public function with
+supported arguments and return values. See [Rust embedding](embedding-boundary.md)
+for the exact recursive type map.
 
 ## Verified Package Integrations
 

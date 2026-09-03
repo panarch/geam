@@ -5,8 +5,8 @@ environment. It preserves Gleam as the source language and compiler front-end,
 then introduces a Rust-owned planner, runtime, and host-capability boundary.
 
 This lets a Gleam application use native Rust providers without maintaining a
-Rust runner, and lets a Rust application call a deliberate Gleam boundary
-without reproducing the Gleam domain model by hand.
+Rust runner, and lets a Rust application call supported public Gleam functions
+through generated typed bindings.
 
 ## Source And Runtime Ownership
 

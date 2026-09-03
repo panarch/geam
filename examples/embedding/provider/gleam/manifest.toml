@@ -1,0 +1,14 @@
+# Do not manually edit this file, it is managed by Gleam.
+#
+# This file locks the dependency versions used, to make your build
+# deterministic and to prevent unexpected versions from being included
+# in your application.
+#
+# You should check this file into your source control repository.
+
+packages = [
+  { name = "example_text_pattern", version = "0.2.2", build_tools = ["gleam"], requirements = [], source = "local", path = "../../../provider/text_pattern/project/packages/example_text_pattern" },
+]
+
+[requirements]
+example_text_pattern = { path = "../../../provider/text_pattern/project/packages/example_text_pattern" }

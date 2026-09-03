@@ -117,7 +117,7 @@ jobs:
           version=$(jq -r '.packages[] | select(.name == "geam") | .version' <<< "$workspace_metadata")
           jq -e --arg version "$version" 'all(.packages[]; .version == $version)' <<< "$workspace_metadata" > /dev/null
 
-          provider_metadata=$(cargo metadata --manifest-path examples/text_pattern/provider/Cargo.toml --locked --no-deps --format-version 1)
+          provider_metadata=$(cargo metadata --manifest-path examples/provider/text_pattern/provider/Cargo.toml --locked --no-deps --format-version 1)
           jq -e --arg version "$version" --arg provider "$REFERENCE_PROVIDER" --arg package "$REFERENCE_GLEAM_PACKAGE" '
             (.packages | length == 1)
             and (.packages[0].name == $provider)
@@ -130,10 +130,10 @@ jobs:
             ] | length == 1)
           ' <<< "$provider_metadata" > /dev/null
 
-          gleam_manifest=examples/text_pattern/project/packages/example_text_pattern/gleam.toml
+          gleam_manifest=examples/provider/text_pattern/project/packages/example_text_pattern/gleam.toml
           test "$(grep -Ec '^version = "[^"]+"$' "$gleam_manifest")" = 1
           test "$(sed -n 's/^version = "\([^"]*\)"$/\1/p' "$gleam_manifest")" = "$version"
-          grep -F "name = \"$REFERENCE_GLEAM_PACKAGE\", version = \"$version\"" examples/text_pattern/project/manifest.toml
+          grep -F "name = \"$REFERENCE_GLEAM_PACKAGE\", version = \"$version\"" examples/provider/text_pattern/project/manifest.toml
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Require successful main checks
@@ -159,14 +159,14 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          manifest=examples/text_pattern/provider/Cargo.toml
+          manifest=examples/provider/text_pattern/provider/Cargo.toml
           if [[ "$DRY_RUN" == true ]]; then
             cargo publish --manifest-path "$manifest" --locked --dry-run \
               --config "patch.crates-io.geam.path='$GITHUB_WORKSPACE'"
           else
             # Replace checkout-patched lock entries with the released registry packages.
             cargo metadata --manifest-path "$manifest" --format-version 1 > /dev/null
-            test "$(git diff --name-only)" = examples/text_pattern/provider/Cargo.lock
+            test "$(git diff --name-only)" = examples/provider/text_pattern/provider/Cargo.lock
             cargo publish --manifest-path "$manifest" --locked --allow-dirty
           fi
 
@@ -188,7 +188,7 @@ jobs:
 
       - name: Publish or dry-run Hex package
         if: ${{ inputs.operation == 'Publish reference example' || inputs.operation == 'Publish Hex package' }}
-        working-directory: examples/text_pattern/project/packages/example_text_pattern
+        working-directory: examples/provider/text_pattern/project/packages/example_text_pattern
         env:
           DRY_RUN: ${{ inputs.dry_run }}
           HEXPM_API_KEY: ${{ secrets.HEXPM_API_KEY }}

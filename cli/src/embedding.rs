@@ -1367,11 +1367,15 @@ pub fn double(value: Int) -> Int {
                 .expect("Rust source directory should be created");
             fs::create_dir_all(self.root.join("gleam/src"))
                 .expect("Gleam source directory should be created");
-            let pattern_provider = self.repository.join("examples/text_pattern/provider");
-            let flags_provider = self.repository.join("examples/feature_flags/provider");
+            let pattern_provider = self
+                .repository
+                .join("examples/provider/text_pattern/provider");
+            let flags_provider = self
+                .repository
+                .join("examples/provider/feature_flags/provider");
             let text_pattern = self
                 .repository
-                .join("examples/text_pattern/project/packages/example_text_pattern");
+                .join("examples/provider/text_pattern/project/packages/example_text_pattern");
             let text_pattern_config = fs::read_to_string(text_pattern.join("gleam.toml"))
                 .expect("text pattern Gleam config should be readable");
             let text_pattern_config = text_pattern_config
@@ -1382,7 +1386,7 @@ pub fn double(value: Int) -> Int {
                 .expect("text pattern Gleam version should be a string");
             let feature_flags = self
                 .repository
-                .join("examples/feature_flags/project/packages/example_feature_flags");
+                .join("examples/provider/feature_flags/project/packages/example_feature_flags");
             fs::write(
                 self.root.join("Cargo.toml"),
                 format!(

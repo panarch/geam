@@ -452,6 +452,7 @@ fn provider_example(name: &str) -> TempDir {
     prepare_provider_dependency(name);
     let source = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("examples")
+        .join("provider")
         .join(name);
 
     let fixture = tempdir().expect("temporary provider example fixture should be created");
@@ -505,7 +506,11 @@ fn prepare_provider_dependency(name: &str) {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     workspace_dependencies::prepare(
         prepared,
-        &root.join("examples").join(name).join("provider"),
+        &root
+            .join("examples")
+            .join("provider")
+            .join(name)
+            .join("provider"),
         "cargo",
         &["fetch", "--locked", "--config", "net.offline=false"],
         "`cargo fetch --locked --config net.offline=false`",

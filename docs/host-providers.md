@@ -127,13 +127,13 @@ geam prepare
 geam run
 ```
 
-This verifies the provider metadata, Gleam declarations, generated static
-runner, Rust implementation, and application behavior together. Unit tests in
-the provider crate remain useful for Rust-only logic, but they do not replace
-the complete source-linkage check.
+This checks that the provider metadata and Rust implementation match the Gleam
+declarations, then runs the application through the generated runner. Keep unit
+tests for Rust-only logic and use this end-to-end run to verify the complete
+Gleam-to-Rust connection.
 
 The repository's
-[text tools example](https://github.com/panarch/geam/tree/main/examples/text_tools)
+[text tools example](../examples/provider/text_tools)
 is the smallest complete provider. Read its Gleam declarations, provider
 `src/lib.rs`, and application entry point together.
 
@@ -154,7 +154,7 @@ actually needs:
 - Use retained generic or advanced storage only when an external value must own
   source values across calls.
 
-The [provider examples](https://github.com/panarch/geam/tree/main/examples)
+The [provider examples](../examples/provider)
 form an ordered learning path:
 
 ```text
@@ -169,21 +169,20 @@ text_tools
 -> text_pattern
 ```
 
-Each example introduces one additional ownership or type boundary instead of
-combining every provider capability at once.
+Each example adds one provider capability before the later examples combine
+them.
 
 ## Keep native code explicit
 
 Provider crates are native code. Geam verifies their package metadata and
 typed linkage, but neither step is a security endorsement. A standalone user
 must approve a discovered provider before Cargo receives it. An embedding
-application records the provider as an ordinary Cargo dependency and reviews
-the generated static composition.
+application records the provider as an ordinary Cargo dependency and includes
+it in the generated bindings.
 
-Provider configuration is caller-owned TOML data supplied during standalone
-execution or constructed explicitly by an embedding application. Provider
-state and external values are not stored in global registries, generated source,
-or package metadata.
+Standalone applications read provider configuration from TOML at run time;
+embedding applications construct the corresponding Rust values. Provider state
+and external values stay in the running application.
 
 ## Release each package on its own schedule
 
@@ -194,7 +193,7 @@ with `cargo publish --locked --dry-run` and verify the public Gleam-to-provider
 path before widening that range.
 
 The published
-[text-pattern package and provider](https://github.com/panarch/geam/tree/main/examples/text_pattern)
+[text-pattern package and provider](../examples/provider/text_pattern)
 show independent Hex and crates.io packages that can also run on Erlang through
 the package's separate Erlang implementation.
 

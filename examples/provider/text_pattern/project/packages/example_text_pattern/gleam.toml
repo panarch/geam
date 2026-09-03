@@ -1,0 +1,14 @@
+name = "example_text_pattern"
+version = "0.2.2"
+description = "Regular expressions for Gleam on Erlang and Geam"
+licences = ["Apache-2.0"]
+
+links = [
+  { title = "Geam", href = "https://github.com/panarch/geam" },
+  { title = "Rust provider", href = "https://github.com/panarch/geam/tree/main/examples/provider/text_pattern/provider" },
+  { title = "Complete example", href = "https://github.com/panarch/geam/tree/main/examples/provider/text_pattern" },
+]
+
+[repository]
+type = "custom"
+url = "https://github.com/panarch/geam/tree/main/examples/provider/text_pattern/project/packages/example_text_pattern"

@@ -38,11 +38,10 @@ Install Geam with:
 cargo install geam --locked
 ```
 
-Geam selects Gleam's Erlang-compatible source path and runs ordinary Gleam
-bodies and built-in integrations directly in its Rust runtime. It does not
-execute BEAM code. Bodyless Erlang externals connect through matching Rust
-providers, while bodyless JavaScript-only externals sit outside the standard
-workflow. See [compatibility](reference/compatibility.md) for the exact rules.
+Geam runs the Erlang-compatible path of a Gleam project in its Rust runtime.
+Packages that use bodyless Erlang externals need matching Rust providers;
+JavaScript-only externals are unavailable in this workflow. See
+[compatibility](reference/compatibility.md) for the exact rules.
 
 ## See your first result
 
@@ -63,10 +62,11 @@ cd my_rust_app
 geam embedding init
 ```
 
-Initialization creates the nested Gleam project and generated Rust bindings
-without replacing your application code. The [embedding guide](embedding.md)
-adds the small Rust call that prints `42`. From there, edit the Gleam module,
-run `geam embedding sync`, and keep using Cargo as usual.
+Initialization adds the nested Gleam project and generated Rust bindings beside
+your handwritten `src/main.rs`. The [embedding guide](embedding.md) supplies
+and explains the complete first call that prints `42`, then links independently
+runnable examples for structured data, packages, IO, and providers. From there,
+edit the Gleam module, run `geam embedding sync`, and keep using Cargo as usual.
 
 ## What Geam takes care of
 
@@ -103,12 +103,9 @@ resolved Gleam sources
 -> Rust-owned runtime
 ```
 
-Generated Rust stays at the host boundary, supplying the standalone runner or
-embedding bindings around this pipeline.
-
-Unsupported execution semantics are rejected during planning rather than
-becoming partially defined runtime behavior. The runtime can be provider-free
-or statically composed with Rust host providers.
+Geam generates the standalone runner or typed embedding bindings around this
+pipeline. Planning checks that the selected Gleam code and Rust providers fit
+the runtime before the application starts.
 
 Read [architecture](reference/architecture.md) for the complete pipeline and
 ownership model. Read [compatibility](reference/compatibility.md) before relying

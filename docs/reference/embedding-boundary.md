@@ -96,9 +96,12 @@ The complete lifecycle is:
    and Echo storage.
 5. Reuse typed function handles and the sealed module for repeated calls.
 
-The canonical [Rust embedding
-application](https://github.com/panarch/geam/tree/main/examples/rust_embedding_application)
-shows this hosted lifecycle with stdlib IO and the text-pattern provider.
+The [package](../../examples/embedding/package),
+[IO](../../examples/embedding/io), and
+[external-provider](../../examples/embedding/provider)
+examples isolate each hosted input. The complete [Rust embedding
+application](../../examples/embedding/application)
+combines stdlib IO and the text-pattern provider in one lifecycle.
 
 ## Data Grammar
 
@@ -217,17 +220,21 @@ let rows: Option<Vec<(EcoString, BigInt)>> = None;
 module.call(&functions.optional_batch, (rows,), &mut state, &mut echo)?;
 ```
 
-## Gleam Boundary Modules
+## Types Outside Generated Bindings
 
-Arbitrary records and custom enums, external values, callbacks, public
-constants, and generic signatures are not generated Rust binding types. Keep
-those values in an imported Gleam module and expose a thin same-name root module
-that projects them into the supported ordinary-data grammar.
+Generated bindings do not currently support public constants in the same-name
+root module. Public function arguments and returns also cannot use arbitrary
+records and custom enums, external values, callbacks, or generic types.
+Imported Gleam modules may use all these declarations. Rust can reach logic
+that uses an unsupported type through generated bindings only when the root
+module exposes a public function whose arguments and return value use the
+supported data grammar.
 
-The canonical application keeps normalization, validation, and its opaque
-`Stock` type inside Gleam. Rust sees only batch validation, total quantity, and
-first-valid-row operations. This preserves the source domain model while
-keeping the cross-language ABI small.
+The canonical application demonstrates this current limit. Its internal module
+uses normalization, validation, and an opaque `Stock` type. The root module
+converts `Stock` to `#(String, Int)`, so the generated Rust bindings expose
+batch validation, total quantity, and first-valid-row operations using
+supported types.
 
 ## Echo And IO
 
@@ -242,7 +249,7 @@ captured for tests, forwarded elsewhere, or ignored.
 ## Manual Binding
 
 For provider-free direct control over source declarations and binding, the
-[low-level embedding example](https://github.com/panarch/geam/blob/main/examples/rust_embedding.rs)
+[low-level embedding example](../../examples/embedding/manual.rs)
 loads a no-`main` Gleam project, declares exact scalar signatures, seals one
 shared execution, and calls its handles repeatedly.
 

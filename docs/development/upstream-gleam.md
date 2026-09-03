@@ -442,7 +442,7 @@ This document is maintained manually when the upstream baseline or mirror
 packaging revision changes. Geam release-version automation must not update
 compiler or official package baselines.
 
-The [Workspace workflow](https://github.com/panarch/geam/blob/main/.github/workflows/workspace.yml) checks the `Cargo:`
+The [Workspace workflow](../../.github/workflows/workspace.yml) checks the `Cargo:`
 line against the compiler version resolved by `cargo metadata --locked`. This
 only detects pin drift: release identity, publication date, and compatibility
 claims still require manual verification against the upstream and mirror
