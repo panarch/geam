@@ -12,4 +12,4 @@ gleam-package = "counter"
 gleam-version = ">= 1.0.0 and < 2.0.0"
 
 [dependencies]
-geam = { version = "=0.2.2", default-features = false, features = ["provider"] }
+geam = { version = "=0.2.3", default-features = false, features = ["provider"] }

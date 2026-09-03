@@ -7,7 +7,7 @@
 # You should check this file into your source control repository.
 
 packages = [
-  { name = "example_text_pattern", version = "0.2.2", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/example_text_pattern" },
+  { name = "example_text_pattern", version = "0.2.3", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/example_text_pattern" },
 ]
 
 [requirements]

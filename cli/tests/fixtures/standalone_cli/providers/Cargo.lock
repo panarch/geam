@@ -959,7 +959,7 @@ dependencies = [
 
 [[package]]
 name = "geam"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "geam-core",
  "geam-macros",
@@ -975,7 +975,7 @@ dependencies = [
 
 [[package]]
 name = "geam-core"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "bitvec",
  "camino",
@@ -1118,7 +1118,7 @@ dependencies = [
 
 [[package]]
 name = "geam-macros"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
