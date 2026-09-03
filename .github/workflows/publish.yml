@@ -179,6 +179,7 @@ jobs:
       operation: ${{ inputs.operation == 'Create GitHub Release' && 'Verify published example' || 'Publish reference example' }}
       commit: ${{ inputs.commit }}
       dry_run: ${{ inputs.dry_run }}
+    secrets: inherit
 
   github-release:
     name: Create GitHub Release
