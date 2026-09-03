@@ -1,5 +1,5 @@
 name = "example_text_pattern"
-version = "0.2.2"
+version = "0.2.3"
 description = "Regular expressions for Gleam on Erlang and Geam"
 licences = ["Apache-2.0"]
 

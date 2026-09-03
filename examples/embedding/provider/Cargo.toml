@@ -6,7 +6,7 @@ rust-version = "1.96"
 publish = false
 
 [dependencies]
-geam = { version = "=0.2.2", default-features = false, features = ["embedding"] }
+geam = { version = "=0.2.3", default-features = false, features = ["embedding"] }
 patterns = { package = "geam-example-text-pattern", path = "../../provider/text_pattern/provider" }
 
 [patch.crates-io]
