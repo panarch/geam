@@ -24,12 +24,11 @@ provider owns its initialization contract.
 
 ## Run
 
-From the repository root:
+With Geam, Rust, and Gleam installed, run from the repository root:
 
 ```sh
-cargo build --package geam --bin geam --locked
 cd examples/embedding/provider
-../../../target/debug/geam embedding check
+geam embedding check
 cargo test --locked
 cargo run --quiet --locked
 ```

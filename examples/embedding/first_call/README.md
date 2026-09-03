@@ -24,12 +24,11 @@ before calls begin. The final `Vec` receives any Gleam `echo` output.
 
 ## Run
 
-From the repository root:
+With Geam, Rust, and Gleam installed, run from the repository root:
 
 ```sh
-cargo build --package geam --bin geam --locked
 cd examples/embedding/first_call
-../../../target/debug/geam embedding check
+geam embedding check
 cargo test --locked
 cargo run --quiet --locked
 ```

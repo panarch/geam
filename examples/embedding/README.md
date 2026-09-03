@@ -39,11 +39,10 @@ then [inventory.rs](application/src/inventory.rs) for the typed calls and result
 handling. Exact values, repeated calls, captured IO, and Echo are verified in
 tests rather than assertions in the entry point.
 
-From the repository root:
+With Geam, Rust, and Gleam installed, run from the repository root:
 
 ```sh
-cargo build --package geam --bin geam --locked
-(cd examples/embedding/application && ../../../target/debug/geam embedding check)
+(cd examples/embedding/application && geam embedding check)
 cargo test --manifest-path examples/embedding/application/Cargo.toml --locked
 cargo run --quiet --manifest-path examples/embedding/application/Cargo.toml --locked
 ```

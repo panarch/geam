@@ -53,18 +53,17 @@ it does not change how the List is passed back to Gleam.
 
 ## Run
 
-From this directory, with Rust and Gleam installed:
+From this directory, with Geam, Rust, and Gleam installed:
 
 ```sh
-cargo build --manifest-path ../../../Cargo.toml --bin geam --locked
-../../../target/debug/geam embedding check
+geam embedding check
 cargo run --quiet --locked
 ```
 
 Check restores missing locked Gleam package sources without changing the
 application's declarations, lockfiles, or generated Rust. The existing provider
 declaration needs no new approval. After editing Gleam, use
-`../../../target/debug/geam embedding sync` before the next Cargo build.
+`geam embedding sync` before the next Cargo build.
 
 The application prints:
 
@@ -82,7 +81,7 @@ First valid item: AB-12 (3)
 ## Verify
 
 ```sh
-../../../target/debug/geam embedding check
+geam embedding check
 cargo test --locked
 ```
 
