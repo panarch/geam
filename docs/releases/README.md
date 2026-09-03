@@ -6,6 +6,7 @@ verbatim as the corresponding GitHub Release body.
 
 ## Releases
 
+- [Geam 0.2.3](0.2.3.md)
 - [Geam 0.2.2](0.2.2.md)
 - [Geam 0.2.1](0.2.1.md)
 
