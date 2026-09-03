@@ -24,7 +24,7 @@ concrete runner, but the resulting Rust program still composes every component
 at compile time. It does not choose or type-erase implementations at runtime.
 
 Start with the
-[provider authoring examples](https://github.com/panarch/geam/tree/main/examples).
+[provider authoring examples](https://github.com/panarch/geam/tree/main/examples/provider).
 They present
 multi-module registration, scalar, tuple, List, custom, Result, and Option value
 mappings, stateless, default-state, configured-state, default external, and
@@ -34,7 +34,7 @@ before this document describes the generated and low-level contracts.
 ## Value Type Provider Authoring
 
 The
-[value-types example](https://github.com/panarch/geam/tree/main/examples/value_types)
+[value-types example](https://github.com/panarch/geam/tree/main/examples/provider/value_types)
 is the canonical map
 from Gleam source values to macro-authored Rust signatures. Its scalar module
 maps `String`, `Int`, `Float`, `BitArray`, `UtfCodepoint`, `Bool`, and `Nil` to
@@ -155,7 +155,7 @@ argument produces a diagnostic that asks for an explicit input type.
 ## External Value Provider Authoring
 
 The
-[run-metrics example](https://github.com/panarch/geam/tree/main/examples/run_metrics)
+[run-metrics example](https://github.com/panarch/geam/tree/main/examples/provider/run_metrics)
 gives the Rust
 provider one constructorless source type and four functions. The Gleam package
 owns the visible value flow:
@@ -301,7 +301,7 @@ typed callbacks. Existential retained values use the explicit
 
 ## Typed Callback Invocation
 
-[`call_tracing`](https://github.com/panarch/geam/tree/main/examples/call_tracing)
+[`call_tracing`](https://github.com/panarch/geam/tree/main/examples/provider/call_tracing)
 separates opaque function
 pass-through from invocation. `Value<fn(...) -> ...>` remains an opaque source
 handle; `Callback<fn(...) -> ...>` grants one active `&mut Call` permission to
@@ -328,7 +328,7 @@ must be released before invoking source code.
 
 ## Generic Values And Retention
 
-[`generic_box`](https://github.com/panarch/geam/tree/main/examples/generic_box)
+[`generic_box`](https://github.com/panarch/geam/tree/main/examples/provider/generic_box)
 shows the ordinary generic
 retention path. `Value<Item>` is an opaque value for the current call;
 `Stored<Item>` is the non-cloneable field of one source-visible external
@@ -471,7 +471,7 @@ part of the provider crate.
 
 ## Advanced Provider Example
 
-[`geam-example-text-pattern`](https://github.com/panarch/geam/tree/main/examples/text_pattern/provider)
+[`geam-example-text-pattern`](https://github.com/panarch/geam/tree/main/examples/provider/text_pattern/provider)
 is a compact
 provider intended to be read as normal crate source. It maps the ordinary
 `example_text_pattern` Gleam package to Rust `regex` without adding package-side
@@ -484,24 +484,24 @@ Geam metadata. The component demonstrates:
 - generated stateless component initialization and typed registration.
 
 Its
-[Cargo manifest](https://github.com/panarch/geam/blob/main/examples/text_pattern/provider/Cargo.toml)
+[Cargo manifest](https://github.com/panarch/geam/blob/main/examples/provider/text_pattern/provider/Cargo.toml)
 uses the
 canonical `geam-example-text-pattern` discovery name and schema-1 metadata. This
 release-coupled provider pins the actual `example_text_pattern` Hex package
 version exactly.
 
 The
-[complete example](https://github.com/panarch/geam/tree/main/examples/text_pattern)
+[complete example](https://github.com/panarch/geam/tree/main/examples/provider/text_pattern)
 executes this crate
 through explicit path selection and packages it with ordinary Cargo tooling.
 The matching Gleam package and provider are also published on Hex and crates.io;
 the package's
-[public usage guide](https://github.com/panarch/geam/blob/main/examples/text_pattern/project/packages/example_text_pattern/README.md)
+[public usage guide](https://github.com/panarch/geam/blob/main/examples/provider/text_pattern/project/packages/example_text_pattern/README.md)
 shows discovery and approval without an explicit provider selection. CI keeps
 that released path separate from checkout tests and verifies a known published
 combination. The reference-example publication workflow verifies each new
 same-version combination before the GitHub Release is created. The
-[provider README](https://github.com/panarch/geam/blob/main/examples/text_pattern/provider/README.md)
+[provider README](https://github.com/panarch/geam/blob/main/examples/provider/text_pattern/provider/README.md)
 explains the
 complete macro-authored Rust mapping and why `Pattern` owns manual source
 semantics.

@@ -86,29 +86,29 @@ jobs:
 
       - name: Update example provider requirements
         run: |
-          for manifest in examples/*/provider/Cargo.toml; do
+          for manifest in examples/provider/*/provider/Cargo.toml; do
             (cd "$(dirname "$manifest")" && cargo upgrade --package "geam@=$RELEASE_VERSION" --pinned --recursive false)
           done
 
       - name: Update embedding example requirements
         run: |
           for project in \
-            examples/rust_embedding_first_call \
-            examples/rust_embedding_data \
-            examples/rust_embedding_package \
-            examples/rust_embedding_io \
-            examples/rust_embedding_provider
+            examples/embedding/first_call \
+            examples/embedding/data \
+            examples/embedding/package \
+            examples/embedding/io \
+            examples/embedding/provider
           do
             (cd "$project" && cargo upgrade --package "geam@=$RELEASE_VERSION" --pinned --recursive false)
           done
 
       - name: Align published reference packages
         run: |
-          provider=examples/text_pattern/provider
-          package=examples/text_pattern/project/packages/example_text_pattern
-          reference_project=examples/text_pattern/project
-          embedding_project=examples/rust_embedding_application/gleam
-          embedding_provider_project=examples/rust_embedding_provider/gleam
+          provider=examples/provider/text_pattern/provider
+          package=examples/provider/text_pattern/project/packages/example_text_pattern
+          reference_project=examples/provider/text_pattern/project
+          embedding_project=examples/embedding/application/gleam
+          embedding_provider_project=examples/embedding/provider/gleam
 
           (cd "$provider" && cargo set-version "$RELEASE_VERSION")
           test "$(grep -Ec '^gleam-version = "[^"]+"$' "$provider/Cargo.toml")" = 1

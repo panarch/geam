@@ -81,7 +81,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 `cargo run` now prints `42`. The [Rust embedding guide](docs/embedding.md)
 explains each part of this lifecycle. The executable [embedding
-examples](https://github.com/panarch/geam/tree/main/examples#rust-embedding)
+examples](https://github.com/panarch/geam/tree/main/examples/embedding)
 then add structured data, Gleam packages, caller-owned IO, an external provider,
 and repeated calls one step at a time.
 

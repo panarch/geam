@@ -13,8 +13,8 @@ categories = ["compilers", "development-tools"]
 include = [
     "/assets/geam-mascot.svg",
     "/docs/**",
-    "/examples/rust_embedding.rs",
-    "/examples/rust_embedding/**",
+    "/examples/embedding/manual.rs",
+    "/examples/embedding/manual/**",
     "/src/**",
     "/LICENSE",
     "/README.md",
@@ -121,7 +121,7 @@ required-features = ["cli"]
 
 [[example]]
 name = "rust_embedding"
-path = "examples/rust_embedding.rs"
+path = "examples/embedding/manual.rs"
 required-features = ["embedding"]
 
 [[test]]

@@ -166,26 +166,26 @@ Run the guided examples locally from the repository root:
 ```sh
 cargo build --package geam --bin geam --locked
 for example in \
-  rust_embedding_first_call \
-  rust_embedding_data \
-  rust_embedding_package \
-  rust_embedding_io \
-  rust_embedding_provider
+  first_call \
+  data \
+  package \
+  io \
+  provider
 do
   (
-    cd "examples/$example"
-    ../../target/debug/geam embedding check
+    cd "examples/embedding/$example"
+    ../../../target/debug/geam embedding check
     (cd gleam && gleam format --check)
     cargo fmt --all --check
-    CARGO_TARGET_DIR=../../target/embedding-examples cargo test --locked
-    CARGO_TARGET_DIR=../../target/embedding-examples \
+    CARGO_TARGET_DIR=../../../target/embedding cargo test --locked
+    CARGO_TARGET_DIR=../../../target/embedding \
       cargo clippy --all-targets --locked -- -D warnings
   )
 done
 ```
 
 The independently locked
-[`examples/rust_embedding_application`](https://github.com/panarch/geam/tree/main/examples/rust_embedding_application)
+[`examples/embedding/application`](https://github.com/panarch/geam/tree/main/examples/embedding/application)
 is the capstone managed Rust-first workflow. Its nested resolved Gleam project
 uses imported source, stdlib IO, and the real text-pattern provider.
 The Rust entry point keeps loading, binding, sealing, capabilities,
@@ -207,19 +207,15 @@ separate dependency-resolution step:
 
 ```sh
 cargo build --package geam --bin geam --locked
-cd examples/rust_embedding_application
-../../target/debug/geam embedding check
-cd gleam
-gleam format --check
-cd ..
-cd ../..
-cargo tree --manifest-path examples/rust_embedding_application/Cargo.toml \
+(cd examples/embedding/application && ../../../target/debug/geam embedding check)
+(cd examples/embedding/application/gleam && gleam format --check)
+cargo tree --manifest-path examples/embedding/application/Cargo.toml \
   --locked --package geam --edges normal --depth 1
-cargo fmt --manifest-path examples/rust_embedding_application/Cargo.toml --all --check
-cargo test --manifest-path examples/rust_embedding_application/Cargo.toml --locked
-cargo clippy --manifest-path examples/rust_embedding_application/Cargo.toml \
+cargo fmt --manifest-path examples/embedding/application/Cargo.toml --all --check
+cargo test --manifest-path examples/embedding/application/Cargo.toml --locked
+cargo clippy --manifest-path examples/embedding/application/Cargo.toml \
   --all-targets --locked -- -D warnings
-cargo run --quiet --manifest-path examples/rust_embedding_application/Cargo.toml --locked
+cargo run --quiet --manifest-path examples/embedding/application/Cargo.toml --locked
 ```
 
 The Acceptance workflow's `Rust embedding` job owns these boundaries. It first
@@ -239,7 +235,7 @@ profile, the text-pattern provider, and no CLI/JSON/Time dependency.
 Provider-example jobs remain separate because they own provider authoring and
 standalone consumption rather than Rust-first application composition.
 
-The same job checks Gleam formatting in `examples/rust_embedding` and runs the
+The same job checks Gleam formatting in `examples/embedding/manual` and runs the
 small manual `rust_embedding` example, comparing its complete stdout with the
 expected scalar results. The example's repeated-call and empty-Echo assertions
 also execute; its Rust formatting and Clippy checks remain workspace-owned.
@@ -274,7 +270,7 @@ test also checks progress/approval ordering and repeated preparation. Binary and
 distribution tests keep application stdout and IO/Echo ordering separate from
 preparation stderr; native Cargo/Gleam wording is not a version-pinned assertion.
 
-The [provider authoring examples](https://github.com/panarch/geam/tree/main/examples) are consumer-facing macro
+The [provider authoring examples](https://github.com/panarch/geam/tree/main/examples/provider) are consumer-facing macro
 acceptance cases. `text_tools` maps one stateless provider to three Gleam
 modules, `value_types` fixes every scalar mapping plus one-, multi-, and
 nested-tuple mapping, lazy top-level Lists, directional custom values, and
@@ -291,7 +287,7 @@ The complete Gleam entrypoints execute every public example function.
 Repository-local Cargo patches select the current checkout until the authoring
 crates are released.
 
-The [`examples/text_pattern`](https://github.com/panarch/geam/tree/main/examples/text_pattern) example adds a
+The [`examples/provider/text_pattern`](https://github.com/panarch/geam/tree/main/examples/provider/text_pattern) example adds a
 distribution-ready advanced macro provider. Its path test executes manual
 external semantics, a custom error, source Result, and List output through the
 managed root lock and generated runner. The fake-registry orchestration test

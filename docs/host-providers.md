@@ -133,7 +133,7 @@ the provider crate remain useful for Rust-only logic, but they do not replace
 the complete source-linkage check.
 
 The repository's
-[text tools example](https://github.com/panarch/geam/tree/main/examples/text_tools)
+[text tools example](https://github.com/panarch/geam/tree/main/examples/provider/text_tools)
 is the smallest complete provider. Read its Gleam declarations, provider
 `src/lib.rs`, and application entry point together.
 
@@ -154,7 +154,7 @@ actually needs:
 - Use retained generic or advanced storage only when an external value must own
   source values across calls.
 
-The [provider examples](https://github.com/panarch/geam/tree/main/examples)
+The [provider examples](https://github.com/panarch/geam/tree/main/examples/provider)
 form an ordered learning path:
 
 ```text
@@ -194,7 +194,7 @@ with `cargo publish --locked --dry-run` and verify the public Gleam-to-provider
 path before widening that range.
 
 The published
-[text-pattern package and provider](https://github.com/panarch/geam/tree/main/examples/text_pattern)
+[text-pattern package and provider](https://github.com/panarch/geam/tree/main/examples/provider/text_pattern)
 show independent Hex and crates.io packages that can also run on Erlang through
 the package's separate Erlang implementation.
 

@@ -1,0 +1,2 @@
+[patch.crates-io]
+geam = { path = "../../.." }

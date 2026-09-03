@@ -96,11 +96,11 @@ The complete lifecycle is:
    and Echo storage.
 5. Reuse typed function handles and the sealed module for repeated calls.
 
-The [package](https://github.com/panarch/geam/tree/main/examples/rust_embedding_package),
-[IO](https://github.com/panarch/geam/tree/main/examples/rust_embedding_io), and
-[external-provider](https://github.com/panarch/geam/tree/main/examples/rust_embedding_provider)
+The [package](https://github.com/panarch/geam/tree/main/examples/embedding/package),
+[IO](https://github.com/panarch/geam/tree/main/examples/embedding/io), and
+[external-provider](https://github.com/panarch/geam/tree/main/examples/embedding/provider)
 examples isolate each hosted input. The complete [Rust embedding
-application](https://github.com/panarch/geam/tree/main/examples/rust_embedding_application)
+application](https://github.com/panarch/geam/tree/main/examples/embedding/application)
 combines stdlib IO and the text-pattern provider in one lifecycle.
 
 ## Data Grammar
@@ -245,7 +245,7 @@ captured for tests, forwarded elsewhere, or ignored.
 ## Manual Binding
 
 For provider-free direct control over source declarations and binding, the
-[low-level embedding example](https://github.com/panarch/geam/blob/main/examples/rust_embedding.rs)
+[low-level embedding example](https://github.com/panarch/geam/blob/main/examples/embedding/manual.rs)
 loads a no-`main` Gleam project, declares exact scalar signatures, seals one
 shared execution, and calls its handles repeatedly.
 

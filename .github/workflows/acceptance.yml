@@ -89,11 +89,11 @@ jobs:
         with:
           workspaces: |
             . -> target
-            examples/rust_embedding_application -> target
+            examples/embedding/application -> target
 
       - name: Verify application dependency graph
         run: |
-          cargo tree --manifest-path examples/rust_embedding_application/Cargo.toml --locked --package geam --edges normal --depth 1 --prefix none > "$RUNNER_TEMP/geam-embedding-graph"
+          cargo tree --manifest-path examples/embedding/application/Cargo.toml --locked --package geam --edges normal --depth 1 --prefix none > "$RUNNER_TEMP/geam-embedding-graph"
           cat "$RUNNER_TEMP/geam-embedding-graph"
           test "$(grep -Ec '^geam v' "$RUNNER_TEMP/geam-embedding-graph")" -eq 1
           for package in geam-core geam-macros geam-stdlib; do
@@ -103,7 +103,7 @@ jobs:
             echo "unexpected Geam dependency in the Rust embedding profile" >&2
             exit 1
           fi
-          cargo tree --manifest-path examples/rust_embedding_application/Cargo.toml --locked --package geam-rust-embedding-application --edges normal --depth 1 --prefix none > "$RUNNER_TEMP/application-embedding-graph"
+          cargo tree --manifest-path examples/embedding/application/Cargo.toml --locked --package geam-rust-embedding-application --edges normal --depth 1 --prefix none > "$RUNNER_TEMP/application-embedding-graph"
           grep -Eq '^geam-example-text-pattern v' "$RUNNER_TEMP/application-embedding-graph"
 
       - name: Install checkout CLI
@@ -112,27 +112,27 @@ jobs:
       - name: Verify guided embedding examples
         run: |
           for example in \
-            rust_embedding_first_call \
-            rust_embedding_data \
-            rust_embedding_package \
-            rust_embedding_io \
-            rust_embedding_provider
+            first_call \
+            data \
+            package \
+            io \
+            provider
           do
             echo "::group::$example"
             (
-              cd "examples/$example"
+              cd "examples/embedding/$example"
               "$RUNNER_TEMP/checkout-geam/bin/geam" embedding check
               (cd gleam && gleam format --check)
               cargo fmt --all --check
-              CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding-examples" cargo test --locked
-              CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding-examples" cargo clippy --all-targets --locked -- -D warnings
+              CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding" cargo test --locked
+              CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding" cargo clippy --all-targets --locked -- -D warnings
               git diff --exit-code -- .
             )
             echo "::endgroup::"
           done
 
       - name: Check manual embedding formatting
-        working-directory: examples/rust_embedding
+        working-directory: examples/embedding/manual
         run: gleam format --check
 
       - name: Run manual embedding example
@@ -146,7 +146,7 @@ jobs:
           diff --unified "$RUNNER_TEMP/expected-manual-embedding-output" "$RUNNER_TEMP/actual-manual-embedding-output"
 
       - name: Verify locked readiness and binding drift recovery
-        working-directory: examples/rust_embedding_application
+        working-directory: examples/embedding/application
         run: |
           "$RUNNER_TEMP/checkout-geam/bin/geam" embedding check
           git diff --exit-code -- .
@@ -161,14 +161,14 @@ jobs:
 
       - name: Check application formatting
         run: |
-          (cd examples/rust_embedding_application/gleam && gleam format --check)
-          cargo fmt --manifest-path examples/rust_embedding_application/Cargo.toml --all --check
+          (cd examples/embedding/application/gleam && gleam format --check)
+          cargo fmt --manifest-path examples/embedding/application/Cargo.toml --all --check
 
       - name: Test application
-        run: cargo test --manifest-path examples/rust_embedding_application/Cargo.toml --locked
+        run: cargo test --manifest-path examples/embedding/application/Cargo.toml --locked
 
       - name: Run application clippy
-        run: cargo clippy --manifest-path examples/rust_embedding_application/Cargo.toml --all-targets --locked -- -D warnings
+        run: cargo clippy --manifest-path examples/embedding/application/Cargo.toml --all-targets --locked -- -D warnings
 
       - name: Run application
         run: |
@@ -182,7 +182,7 @@ jobs:
           Total quantity: 7
           First valid item: AB-12 (3)
           EOF
-          cargo run --quiet --manifest-path examples/rust_embedding_application/Cargo.toml --locked > "$RUNNER_TEMP/actual-embedding-output"
+          cargo run --quiet --manifest-path examples/embedding/application/Cargo.toml --locked > "$RUNNER_TEMP/actual-embedding-output"
           diff --unified "$RUNNER_TEMP/expected-embedding-output" "$RUNNER_TEMP/actual-embedding-output"
 
   published-provider:
@@ -352,7 +352,7 @@ jobs:
           key: ${{ matrix.example }}
           workspaces: |
             . -> target
-            examples/${{ matrix.example }}/provider -> ../../../target
+            examples/provider/${{ matrix.example }}/provider -> ../../../../target
 
       - name: Fetch workspace dependencies for offline fixtures
         run: cargo fetch --locked
@@ -361,15 +361,15 @@ jobs:
         run: cargo test --package geam --test provider_examples --locked -- --exact "${{ matrix.test }}"
 
       - name: Test example provider
-        working-directory: examples/${{ matrix.example }}/provider
+        working-directory: examples/provider/${{ matrix.example }}/provider
         run: cargo test --locked
 
       - name: Verify example provider package
-        working-directory: examples/${{ matrix.example }}/provider
+        working-directory: examples/provider/${{ matrix.example }}/provider
         run: cargo package --locked
 
       - name: Verify example Gleam package
-        working-directory: examples/${{ matrix.example }}/project/packages/example_${{ matrix.example }}
+        working-directory: examples/provider/${{ matrix.example }}/project/packages/example_${{ matrix.example }}
         run: gleam export hex-tarball
 
   external-provider-sdk:
