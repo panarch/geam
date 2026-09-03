@@ -1,4 +1,4 @@
-# Rust Embedding: Caller-Owned IO
+# Rust Embedding: Gleam IO
 
 This example calls `gleam/io` from embedded Gleam while the Rust application
 owns the output destination. The Gleam function both prints a message and
@@ -12,10 +12,10 @@ returns it, making the effect and the ordinary return value visible separately.
    function, and routes collected stdout and stderr events.
 3. [runs.rs](tests/runs.rs) verifies both the emitted IO and returned value.
 
-`GleamStdlibRunState` keeps randomness and IO caller-owned. This example uses a
-fixed seed because it does not need system entropy. Standard-library IO events
-are collected in that state; Gleam's language-level `echo` output remains a
-separate call argument.
+Rust controls randomness and IO through `GleamStdlibRunState`. This example uses
+a fixed seed because it does not need system entropy. Standard-library IO
+events are collected in that state; Gleam's language-level `echo` output
+remains a separate call argument.
 
 ## Run
 

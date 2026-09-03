@@ -20,10 +20,10 @@ cargo install geam --locked
 Start from an ordinary Cargo package, not a virtual workspace root. Geam uses
 the Cargo package name for the nested Gleam package and its public module.
 
-The generated Gleam project uses `target = "erlang"` because Geam analyses the
-Erlang-compatible source path. It does not execute BEAM code. A bodyless Erlang
-external needs a matching Rust provider, while a bodyless JavaScript-only
-external cannot be called through the standard embedding workflow.
+The generated Gleam project uses `target = "erlang"` because Geam runs the
+Erlang-compatible source path in its Rust runtime. A bodyless Erlang external
+needs a matching Rust provider; JavaScript-only externals are unavailable in
+the standard embedding workflow.
 
 ## Make your first call
 
@@ -35,9 +35,9 @@ cd inventory-app
 geam embedding init
 ```
 
-Initialization creates the nested `gleam/` project and generates
-`src/geam_bindings.rs`. It makes sure `Cargo.toml` enables Geam embedding and
-leaves handwritten Rust files untouched.
+Initialization creates the nested `gleam/` project, generates
+`src/geam_bindings.rs`, and enables Geam embedding in `Cargo.toml`. You write
+the application calls in `src/main.rs`.
 
 The generated starter module is named after the Cargo package, with hyphens
 replaced by underscores:
@@ -76,40 +76,39 @@ cargo run
 ```
 
 It prints `42`. For repeated calls, initialize and seal the module once, then
-keep the module and its generated function handles. You do not repeat that
-setup for every function call.
+reuse the module and its generated function handles.
 
 The setup has four distinct responsibilities:
 
 - `project().compile()` reads the nested Gleam project and produces its checked
   Geam program.
-- `ModuleBuilder` selects a provider-free execution owner for that program.
-- `bind` registers the generated function handles before `seal` closes the
-  module to further registration.
+- `ModuleBuilder` starts the callable module for that program.
+- `bind` returns the generated function handles, and `seal` finishes
+  registration before calls begin.
 - `module.call` invokes one typed handle. The final mutable argument collects
   any Gleam `echo` output for the Rust caller.
 
 The complete [first-call
 example](../examples/embedding/first_call)
-keeps the Gleam source, generated bindings, handwritten Rust, lockfiles, and
-exact-output test together.
+keeps the runnable Gleam source, generated bindings, handwritten Rust, and test
+together.
 
-## Learn one boundary at a time
+## Learn with runnable examples
 
-The repository examples form a progression, but each one is an independently
-locked application that can be run and tested on its own:
+The repository examples add one practical feature at a time. Each is a complete
+application that can be run and tested on its own:
 
 | Stage | Adds | Example |
 | --- | --- | --- |
-| First call | Plain loading, binding, sealing, and one scalar call | [`first_call`](../examples/embedding/first_call) |
-| Structured data | Recursive List, Tuple, Result, and retained List reuse | [`data`](../examples/embedding/data) |
-| Gleam package | A locked package, hosted bindings, and explicit stdlib state | [`package`](../examples/embedding/package) |
-| Caller-owned IO | Explicit stdlib state, IO routing, and Echo separation | [`io`](../examples/embedding/io) |
-| External provider | Provider selection, configuration, and opaque Gleam values | [`provider`](../examples/embedding/provider) |
-| Complete application | Packages, IO, a provider, retained data, and repeated calls together | [`application`](../examples/embedding/application) |
+| First call | Call one scalar Gleam function from Rust | [`first_call`](../examples/embedding/first_call) |
+| Structured data | Pass nested Lists, Tuples, and Results, then reuse a returned List | [`data`](../examples/embedding/data) |
+| Gleam package | Call a function from `gleam_stdlib` | [`package`](../examples/embedding/package) |
+| Gleam IO | Route Gleam IO through Rust and capture Echo separately | [`io`](../examples/embedding/io) |
+| External provider | Call Gleam code backed by a configured Rust provider | [`provider`](../examples/embedding/provider) |
+| Complete application | Combine packages, IO, a provider, structured data, and repeated calls | [`application`](../examples/embedding/application) |
 
 Follow the stages in order when learning the API, or open the smallest example
-that contains the boundary your application needs.
+that contains the feature your application needs.
 
 ## Keep Gleam and Rust in sync
 
@@ -145,12 +144,12 @@ edit Gleam source
 
 Sync restores locked Gleam and Cargo dependencies, checks that every public
 function exposed to Rust uses supported types, and updates the generated Rust
-only when its contents change. It does not run the Rust application, initialize
-providers, or run Cargo build scripts.
+only when its contents change. Run the Rust application and Cargo build scripts
+separately with the usual Cargo commands.
 
 Keep `src/geam_bindings.rs` as generated, tool-owned code and make Rust changes
-in neighboring handwritten modules. Geam protects handwritten files at the
-generated path from replacement.
+in neighboring handwritten modules. If a handwritten file already occupies the
+generated path, sync stops instead of replacing it.
 
 ## Know where the files live
 
@@ -209,18 +208,17 @@ compatible registry, path, or Git declarations are reused. A noninteractive
 sync cannot approve new native code, so perform and commit provider selection
 before relying on CI.
 
-Generated hosted bindings make every required capability, provider
-configuration, and mutable state dependency explicit in the Rust API.
+When imported code needs IO, time, or provider state, the generated Rust API
+asks the application for those inputs.
 The staged examples show a [Gleam
 package](../examples/embedding/package),
-[caller-owned
-IO](../examples/embedding/io), and
+[IO routed through Rust](../examples/embedding/io), and
 an [external
 provider](../examples/embedding/provider)
 separately. The complete [Rust embedding
 application](../examples/embedding/application)
-then combines stdlib IO, a published-style external provider, retained Lists,
-and repeated calls in one application.
+then combines stdlib IO, an external provider, structured data, and repeated
+calls in one application.
 
 ## Verify a prepared checkout
 

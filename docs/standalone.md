@@ -1,8 +1,8 @@
 # Run a Gleam project
 
 An existing Gleam application remains an ordinary Gleam project. Run it with
-`geam run`, and Geam prepares and maintains the project-local Rust runner. No
-handwritten Rust runner is required.
+`geam run`, and Geam prepares and maintains the project-local Rust runner while
+the application source stays in Gleam.
 
 ## Before you start
 
@@ -16,9 +16,8 @@ cargo install geam --locked
 Run Geam from a directory containing `gleam.toml` or one of its descendants.
 Geam walks upward to the nearest Gleam project root.
 
-Geam explicitly analyses the Erlang-compatible path through the selected
-modules, regardless of the project's default build target. This chooses which
-Gleam code is available; Geam does not execute BEAM code.
+Geam runs the Erlang-compatible path through the selected modules in its Rust
+runtime, regardless of the project's default build target.
 
 In the standard standalone workflow:
 

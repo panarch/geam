@@ -19,12 +19,10 @@ runner or bindings that connect it to the host.
 
 ## Try it
 
-Geam selects Gleam's Erlang-compatible source path and runs ordinary Gleam
-bodies and built-in integrations directly in its Rust runtime. It does not
-execute BEAM code. Bodyless Erlang externals connect through matching Rust
-providers, while bodyless JavaScript-only externals sit outside the standard
-Geam workflow. See [compatibility](docs/reference/compatibility.md) for the
-exact boundary.
+Geam runs the Erlang-compatible path of a Gleam project in its Rust runtime.
+Packages that use bodyless Erlang externals need matching Rust providers;
+JavaScript-only externals are unavailable in this workflow. See
+[compatibility](docs/reference/compatibility.md) for the exact rules.
 
 Geam requires Gleam `v1.18.1`, Rust `1.96` or newer, and a 64-bit Rust target.
 Install Geam with Cargo:
@@ -42,8 +40,8 @@ cd my_gleam_app
 geam run
 ```
 
-Geam prepares and maintains the project-local Rust runner. You continue working
-in Gleam and do not have to write that runner yourself. The
+Geam prepares and maintains the project-local Rust runner while you continue
+working in Gleam. The
 [standalone guide](docs/standalone.md) continues from here.
 
 ### Start with a Rust application
@@ -90,8 +88,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 `cargo run` now prints `42`. The [Rust embedding guide](docs/embedding.md)
 explains each part of this lifecycle. The executable [embedding
 examples](examples/embedding)
-then add structured data, Gleam packages, caller-owned IO, an external provider,
-and repeated calls one step at a time.
+then add structured data, Gleam packages, IO routed through Rust, an external
+provider, and repeated calls one step at a time.
 
 ### Start with a Gleam package that needs Rust
 
@@ -119,9 +117,9 @@ functions for Geam, and each package follows its own release schedule.
 ## Growing, but experimental
 
 Geam is actively evolving toward a stable `1.0` API, so public APIs may still
-change. The current profile supports everyday Gleam data, functions, imports,
-custom types, pattern matching, generics, official package integrations, native
-host providers, and nested ordinary data passed between Gleam and Rust.
+change. Geam currently supports everyday Gleam data, functions, imports, custom
+types, pattern matching, generics, official package integrations, native host
+providers, and nested ordinary data passed between Gleam and Rust.
 
 See [compatibility](docs/reference/compatibility.md) for the verified Gleam and
 package baselines, current limits, and platform requirements. See

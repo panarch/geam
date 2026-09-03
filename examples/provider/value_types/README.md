@@ -1,12 +1,9 @@
 # Value Types Provider Example
 
-This stateless, configuration-free provider is the curated map between Gleam
-source values and the Rust types accepted by Geam's authoring macros. It keeps
-scalar, tuple, List, custom, Result, and Option declarations in separate modules
-so each mapping can be read without unrelated provider state, configuration,
-or external-value semantics. As the macro gains more value families, this
-example grows with focused sibling modules; state, configuration, and other provider
-capabilities stay in their own semantic examples.
+This example shows how Gleam values map to Rust types in provider functions.
+Separate modules cover scalars, tuples, Lists, custom values, Result, and
+Option, so you can open the mapping you need. The later provider examples add
+state, configuration, and external values.
 
 ## Scalars
 

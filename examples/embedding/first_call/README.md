@@ -1,8 +1,8 @@
 # Rust Embedding: First Call
 
-This is the smallest managed Rust embedding example. A handwritten Rust
-application loads the generated Gleam project, binds one public function, and
-calls it through its typed handle.
+This is the smallest complete call from Rust to Gleam. A handwritten Rust
+application loads the generated Gleam project and calls one public function
+through its typed handle.
 
 It matches the project created by `geam embedding init`. Initialization creates
 the Gleam function and `src/geam_bindings.rs`; the application author writes
@@ -18,9 +18,9 @@ the Gleam function and `src/geam_bindings.rs`; the application author writes
    handwritten application code.
 
 `project().compile()` reads and checks the nested Gleam project.
-`ModuleBuilder` prepares the selected functions for one execution owner,
-`bind` returns their generated typed handles, and `seal` finishes the module
-before calls begin. The final `Vec` receives any Gleam `echo` output.
+`ModuleBuilder` starts the module, `bind` returns its generated typed handles,
+and `seal` finishes registration before calls begin. The final `Vec` receives
+any Gleam `echo` output.
 
 ## Run
 
@@ -43,5 +43,5 @@ The Cargo patch in this example selects the repository checkout. An ordinary
 application receives its Geam dependency from `embedding init` and does not
 need that patch.
 
-Continue with [structured data](../data) to pass Lists, Tuples,
-and Results across the same boundary and reuse a returned List.
+Continue with [structured data](../data) to pass Lists, Tuples, and Results
+between Rust and Gleam and reuse a returned List.

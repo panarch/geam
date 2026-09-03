@@ -1,8 +1,8 @@
 # Rust Embedding: Structured Data
 
-This example adds recursive ordinary data to the provider-free first call.
-Rust passes a `Vec` of Tuple rows to Gleam, receives a retained List of Results,
-and passes that same List back to another Gleam function without rebuilding it.
+This example passes structured data between Rust and Gleam. Rust sends a `Vec`
+of Tuple rows, receives a List of Results, and passes that same List back to
+another Gleam function without rebuilding it.
 
 ## Read The Example
 
@@ -37,5 +37,5 @@ accepted: C-3 (4)
 total: 7
 ```
 
-Continue with [a Gleam package](../package) to add a locked
-dependency and regenerate the host profile.
+Continue with [a Gleam package](../package) to use `gleam_stdlib` and regenerate
+the Rust bindings.

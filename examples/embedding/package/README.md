@@ -9,14 +9,14 @@ the generated Rust binding exposes as `Option<EcoString>`.
 1. [gleam.toml](gleam/gleam.toml) declares the Gleam package dependency.
 2. [geam_rust_embedding_package.gleam](gleam/src/geam_rust_embedding_package.gleam)
    defines the public function selected for the generated Rust binding.
-3. [main.rs](src/main.rs) initializes the generated stdlib host profile and
-   calls the same function with populated and empty Lists.
+3. [main.rs](src/main.rs) supplies the stdlib state requested by the generated
+   bindings and calls the function with populated and empty Lists.
 
 After changing Gleam dependencies, run `geam embedding sync` from the Cargo
-package directory. Sync resolves the Gleam lock, enables the required Geam
-features, and regenerates the typed Rust bindings. In this example the selected
-stdlib closure produces hosted bindings, so Rust supplies explicit stdlib run
-state even though the boundary function itself performs no IO.
+package directory. Sync resolves the Gleam dependencies, enables the required
+Geam features, and regenerates the typed Rust bindings. The generated API asks
+for `GleamStdlibRunState`; this example shows how to supply it before the next
+example uses stdlib IO.
 
 ## Run
 
@@ -36,5 +36,4 @@ first: Gleam
 empty: none
 ```
 
-Continue with [caller-owned IO](../io) to use that hosted state
-for an observable Rust capability.
+Continue with [Gleam IO](../io) to route stdlib output through Rust.

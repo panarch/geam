@@ -1,8 +1,8 @@
 # Provider Authoring Examples
 
-These examples pair ordinary Gleam packages with independently locked Rust
-provider crates. Start with the smallest authoring surface, then combine the
-same static macros into stateful, retained, callback, and advanced providers.
+These examples build a Rust provider one capability at a time. Start with
+scalar functions, then choose the example that matches the state,
+configuration, external value, callback, or generic value your package needs.
 
 | Example | State | Configuration | External semantics | Purpose |
 | --- | --- | --- | --- | --- |
@@ -10,7 +10,7 @@ same static macros into stateful, retained, callback, and advanced providers.
 | [`value_types`](value_types/README.md) | None | None | None | Scalar, tuple, lazy List, custom, Result, and Option mapping |
 | [`tag_set`](tag_set/README.md) | None | None | Generated | Stateless persistent external value |
 | [`request_ids`](request_ids/README.md) | `Default` | None | None | Mutable and read-only state access |
-| [`feature_flags`](feature_flags/README.md) | Configured | Required | None | Explicit configuration and shared state |
+| [`feature_flags`](feature_flags/README.md) | Configured | Required | None | Shared configuration and state |
 | [`run_metrics`](run_metrics/README.md) | None | None | Manual | Specialized equality, hashing, and inspection |
 | [`call_tracing`](call_tracing/README.md) | `Default` | None | None | Typed callback invocation and same-component re-entry |
 | [`generic_box`](generic_box/README.md) | None | None | Retained generic | Persistent generic source values and callback mapping |
@@ -26,7 +26,7 @@ Every example keeps the Gleam package and Rust provider separate:
 
 ```text
 project/   ordinary Gleam application and local Gleam dependency
-provider/  independently locked Rust provider crate
+provider/  separately buildable and testable Rust provider crate
 ```
 
 Run a macro-authored example with the same standalone workflow:

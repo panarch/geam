@@ -1,7 +1,7 @@
 # Rust Embedding: External Provider
 
-This example adds one external Rust provider to the hosted embedding lifecycle.
-The Gleam package declares a regular-expression API, while the selected
+This example lets embedded Gleam call a Rust provider. The Gleam package
+declares a regular-expression API, while the selected
 `geam-example-text-pattern` crate implements its bodyless Erlang externals for
 Geam.
 
@@ -19,8 +19,8 @@ Geam.
 For an ordinary registry dependency, `geam embedding sync` verifies provider
 metadata and asks for approval before adding its exact Cargo declaration. This
 repository uses path declarations so the example tests the current package and
-provider sources directly. Empty configuration is still explicit because the
-provider owns its initialization contract.
+provider sources directly. The generated API requests provider configuration;
+this provider has no settings, so the example supplies an empty value.
 
 ## Run
 
@@ -40,5 +40,5 @@ matched: true
 ```
 
 Continue with the [complete embedding application](../application),
-which combines provider-backed validation, stdlib IO, structured retained data,
-and repeated calls in one workflow.
+which combines provider-backed validation, stdlib IO, structured data, and
+repeated calls in one workflow.

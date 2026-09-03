@@ -127,10 +127,10 @@ geam prepare
 geam run
 ```
 
-This verifies the provider metadata, Gleam declarations, generated static
-runner, Rust implementation, and application behavior together. Unit tests in
-the provider crate remain useful for Rust-only logic, but they do not replace
-the complete source-linkage check.
+This checks that the provider metadata and Rust implementation match the Gleam
+declarations, then runs the application through the generated runner. Keep unit
+tests for Rust-only logic and use this end-to-end run to verify the complete
+Gleam-to-Rust connection.
 
 The repository's
 [text tools example](../examples/provider/text_tools)
@@ -169,21 +169,20 @@ text_tools
 -> text_pattern
 ```
 
-Each example introduces one additional ownership or type boundary instead of
-combining every provider capability at once.
+Each example adds one provider capability before the later examples combine
+them.
 
 ## Keep native code explicit
 
 Provider crates are native code. Geam verifies their package metadata and
 typed linkage, but neither step is a security endorsement. A standalone user
 must approve a discovered provider before Cargo receives it. An embedding
-application records the provider as an ordinary Cargo dependency and reviews
-the generated static composition.
+application records the provider as an ordinary Cargo dependency and includes
+it in the generated bindings.
 
-Provider configuration is caller-owned TOML data supplied during standalone
-execution or constructed explicitly by an embedding application. Provider
-state and external values are not stored in global registries, generated source,
-or package metadata.
+Standalone applications read provider configuration from TOML at run time;
+embedding applications construct the corresponding Rust values. Provider state
+and external values stay in the running application.
 
 ## Release each package on its own schedule
 
