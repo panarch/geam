@@ -8,9 +8,9 @@
 Geam is a [Rust](https://www.rust-lang.org/) runtime and embedding layer for
 [Gleam](https://gleam.run/).
 
-Run a Gleam project, call Gleam functions from Rust, or add Rust capabilities
-to a Gleam package. You keep writing Gleam and using Gleam packages; Geam looks
-after the Rust side.
+Run a Gleam project, call Gleam functions from Rust, or connect a Gleam package
+to native Rust code. You keep writing Gleam and using Gleam packages; Geam
+looks after the Rust side.
 
 The basic arrangement is similar to embedding Lua in a native application: Rust
 owns the process, while Gleam supplies statically typed application logic. Gleam
@@ -31,7 +31,7 @@ Install Geam with Cargo:
 cargo install geam --locked
 ```
 
-### Start with a Gleam project
+### Run a Gleam project
 
 Run an existing Gleam application on Geam's Rust runtime:
 
@@ -44,7 +44,7 @@ Geam prepares and maintains the project-local Rust runner while you continue
 working in Gleam. The
 [standalone guide](docs/standalone.md) continues from here.
 
-### Start with a Rust application
+### Call Gleam from Rust
 
 To call Gleam functions from Rust, create a Rust application and initialize its
 nested Gleam project and generated bindings:
@@ -91,12 +91,57 @@ examples](examples/embedding)
 then add structured data, Gleam packages, IO routed through Rust, an external
 provider, and repeated calls one step at a time.
 
-### Start with a Gleam package that needs Rust
+### Add Rust to a Gleam package
 
-Most Gleam packages need no additional Rust code. When a package declares
-target-specific functions that should run in Geam, its Hex package still owns
-the Gleam API and a companion Rust crate supplies the Geam implementation. Geam
-calls that crate a host provider.
+Ordinary Gleam packages run without this extra step. When a function is
+implemented outside Gleam, the Gleam package still owns the public API and a
+companion Rust crate can provide its Geam implementation. Geam calls that crate
+a host provider.
+
+The Gleam package declares the function:
+
+```gleam
+// src/example_text_tools/casing.gleam
+@external(erlang, "geam_example_text_tools_casing", "upper")
+pub fn upper(value: String) -> String
+```
+
+`@external` marks the function as implemented outside Gleam. Geam follows the
+Erlang-compatible source path, but links this declaration to Rust instead of
+calling the named Erlang function.
+
+The provider implements the same package, module, function, and signature in
+Rust:
+
+```rust
+#[geam::provider(
+    package = "example_text_tools",
+    modules = [casing],
+)]
+pub struct Component;
+
+#[geam::module(path = "example_text_tools/casing")]
+mod casing {
+    use geam::provider::EcoString;
+
+    #[geam::function]
+    fn upper(value: EcoString) -> EcoString {
+        value.to_uppercase()
+    }
+}
+```
+
+The application keeps using the Gleam module:
+
+```gleam
+import example_text_tools/casing
+
+pub fn main() {
+  assert casing.upper("Geam") == "GEAM"
+}
+```
+
+Geam links that call to the Rust implementation.
 
 The [host provider guide](docs/host-providers.md) follows one function from its
 Gleam declaration to Rust and then through `geam run`.

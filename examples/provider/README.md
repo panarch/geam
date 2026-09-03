@@ -41,7 +41,7 @@ as `upper("Geam") == "GEAM"` and
 `join("geam", "-", "provider") == "geam-provider"`. A successful run is
 silent because its assertions pass.
 
-## Choose an example by capability
+## Find the feature you need
 
 After the first provider works, use this table when you need one particular
 host boundary:

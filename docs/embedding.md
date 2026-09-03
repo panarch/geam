@@ -187,7 +187,7 @@ script regenerates it implicitly.
 Embedding commands use one fixed project, module, and output layout. This makes
 checkouts, generated code, CI, and examples agree on the same connection.
 
-## Bring in Gleam packages and Rust providers
+## Use Gleam packages and Rust providers
 
 Add Gleam dependencies from the nested project:
 
@@ -202,11 +202,11 @@ Sync enables only the built-in Geam support used by imported Gleam code.
 Official stdlib, JSON, and Time integrations are added explicitly; unused Gleam
 dependencies do not add Rust components.
 
-Most packages need nothing else. If an imported package declares a
-target-specific function that needs Rust, its Hex package remains the Gleam
-dependency and a companion provider crate supplies the implementation compiled
-into the host application. Sync verifies registry candidates and asks before
-adding that exact Cargo dependency. Existing compatible registry, path, or Git
+Most packages need nothing else. If an imported package has native functions
+implemented for Geam, its Hex package remains the Gleam dependency and a
+companion provider crate supplies the Rust implementation compiled into the
+host application. Sync verifies registry candidates and asks before adding
+that exact Cargo dependency. Existing compatible registry, path, or Git
 declarations are reused. A noninteractive sync cannot approve new native code,
 so perform and commit provider selection before relying on CI.
 

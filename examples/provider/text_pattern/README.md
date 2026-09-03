@@ -92,4 +92,4 @@ for the boundary shared by the public API.
 
 The [provider authoring guide](../../../docs/host-providers.md) covers the API
 from the first function through packaging. The [examples index](../README.md)
-offers smaller examples for each individual capability combined here.
+offers smaller examples for each provider feature combined here.

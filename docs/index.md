@@ -3,8 +3,8 @@
 Geam is a [Rust](https://www.rust-lang.org/) runtime and embedding layer for
 [Gleam](https://gleam.run/).
 
-Run a Gleam project, call Gleam functions from a Rust application, or add Rust
-capabilities to a Gleam package.
+Run a Gleam project, call Gleam functions from a Rust application, or connect a
+Gleam package to native Rust code.
 
 Gleam source stays Gleam. Geam runs the type-checked program and generates the
 Rust runner or bindings that connect it to the host.
@@ -76,13 +76,13 @@ What Geam manages depends on where you start:
   project-local Rust runner and approved providers.
 - In a **Rust embedding project**, Rust remains the application. Geam manages
   the nested Gleam project and generated bindings.
-- A **host provider** is the companion Rust implementation for target-specific
-  functions in a Gleam package. Either kind of project can use one.
+- A **host provider** is the companion Rust crate that implements a Gleam
+  package's native functions for Geam. Either kind of project can use one.
 
-Most Gleam packages need no provider. When one does, users still add the Hex
-package and import its Gleam modules as usual. The separate provider crate is
-compiled into the Rust host only to implement the functions that need native
-code.
+Most Gleam packages need no provider. When a package includes native functions,
+users still add the Hex package and import its Gleam modules as usual. The
+separate provider crate is compiled into the Rust host only to implement those
+functions for Geam.
 
 ## When Geam fits
 

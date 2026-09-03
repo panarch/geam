@@ -103,12 +103,12 @@ Gleam source and the stdlib support required by its imported code.
 See [compatibility](reference/compatibility.md) for the exact package baselines
 and supported effects.
 
-## Bring Rust capabilities to a Gleam package
+## Use a Gleam package with a Rust provider
 
-Most Gleam packages run without an additional Rust crate. When an imported
-package declares a target-specific function that Geam cannot execute from
-Gleam source, the package needs a companion Rust implementation. Geam calls
-that crate a provider.
+Most Gleam packages run without an additional Rust crate. Some packages expose
+functions whose implementation is supplied separately for each execution
+target. When Geam runs one of those functions, a companion Rust crate supplies
+the implementation. Geam calls that crate a provider.
 
 The two dependencies have different jobs: the Hex package contains the Gleam
 API and source that the application imports, while the provider crate contains

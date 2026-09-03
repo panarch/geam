@@ -3,9 +3,9 @@
 Most Gleam packages need no provider. Geam can run ordinary Gleam source and
 its built-in package integrations directly.
 
-A package needs a companion Rust implementation only when its Gleam API relies
-on native code that should run inside the Rust host. Geam calls that companion
-crate a **host provider**.
+A **host provider** is a companion Rust crate that implements native functions
+from a Gleam package for Geam. Use one when part of the package API must run
+inside the Rust host.
 
 ## One API, two packages
 
@@ -35,7 +35,7 @@ application.
 
 ## Follow one function from Gleam to Rust
 
-Start with a Gleam declaration whose implementation is supplied by a target:
+The Gleam package declares a function without a Gleam body:
 
 ```gleam
 // src/example_text_tools/casing.gleam
@@ -163,10 +163,10 @@ Keep unit tests for Rust-only logic and use this end-to-end run to verify the
 Gleam declaration, provider metadata, generated component, and application call
 together.
 
-## Add only the capabilities the package needs
+## Grow the provider with the package
 
 The smallest provider is a collection of ordinary Rust functions. Add other
-capabilities only when the Gleam API calls for them:
+features only when the Gleam API calls for them:
 
 - Use Rust scalars, tuples, `Result`, `Option`, and Geam's lazy `List` boundary
   for ordinary source values.
@@ -195,8 +195,8 @@ Embedding applications construct the corresponding Rust configuration and
 state values through generated bindings. External values and mutable state stay
 inside the running application in both workflows.
 
-See [standalone provider selection](standalone.md#bring-rust-capabilities-to-a-gleam-package)
-and [embedding package synchronization](embedding.md#bring-in-gleam-packages-and-rust-providers)
+See [standalone provider selection](standalone.md#use-a-gleam-package-with-a-rust-provider)
+and [embedding package synchronization](embedding.md#use-gleam-packages-and-rust-providers)
 for the consuming side of each workflow.
 
 ## Publish the pair
