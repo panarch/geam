@@ -33,6 +33,34 @@ API. The provider adds the implementation used when Geam runs the package. The
 same provider can be used by a standalone Gleam project or a Rust embedding
 application.
 
+## Provider names for automatic discovery
+
+Automatic provider discovery starts with the Gleam package name. Name a
+published provider by adding `geam-` and replacing underscores with hyphens:
+
+| Name form | Example for `company_image` |
+| --- | --- |
+| Exact name | `geam-company-image` |
+| Suffixed name | `geam-company-image-aws` |
+
+The suffix must use lowercase kebab-case. `geam prepare`, `geam run`, and
+`geam embedding sync` search both forms on crates.io. These are search patterns,
+not ownership claims. The exact name is listed first when both forms produce
+verified candidates, but neither form is treated as official, trusted, or
+automatically selected. A crate named `company-image-rust` is not found
+automatically, even if its metadata targets `company_image`.
+
+The naming pattern only determines which crates Geam examines. Packaged
+metadata declares which Gleam package and versions a crate implements. Geam
+checks that declaration before presenting a candidate, but neither the name nor
+compatible metadata is an endorsement. With one verified candidate, Geam asks
+for approval directly; with several, it asks the user to select one and then
+approve it.
+
+An explicitly selected registry, path, or Git provider may use another crate
+name. It still needs valid provider metadata for the exact Gleam package and a
+compatible version range.
+
 ## Follow one function from Gleam to Rust
 
 The Gleam package declares a function without a Gleam body:
@@ -107,17 +135,9 @@ gleam-version = ">= 1.0.0 and < 2.0.0"
 `gleam-version` refers to the target Hex package, not the Gleam compiler. The
 provider and Gleam package versions do not need to match.
 
-For automatic crates.io discovery, derive the crate name by adding `geam-` to
-the Gleam package name and replacing underscores with hyphens:
-
-```text
-example_text_tools -> geam-example-text-tools
-```
-
-An explicitly selected provider may use another crate name. Its packaged
-metadata still has to identify the exact Gleam package and a compatible
-version range. Compatibility metadata helps Geam verify a selection; it is
-never treated as approval to add native code.
+The discovery name alone is not enough. Geam uses this metadata to check the
+exact package identity and supported range. Compatibility metadata helps Geam
+verify a selection; it is never treated as approval to add native code.
 
 ## Run the complete pair
 

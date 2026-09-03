@@ -143,8 +143,12 @@ pub fn main() {
 
 Geam links that call to the Rust implementation.
 
-The [host provider guide](docs/host-providers.md) follows one function from its
-Gleam declaration to Rust and then through `geam run`.
+For automatic crates.io discovery, a provider for `example_text_tools` is named
+`geam-example-text-tools` or `geam-example-text-tools-<suffix>`. The name makes
+the crate discoverable; its metadata declares the Gleam package and versions it
+implements. The [provider names for automatic discovery](docs/host-providers.md#provider-names-for-automatic-discovery)
+section defines this rule. The same guide follows one function from its Gleam
+declaration to Rust and then through `geam run`.
 
 ## Where Geam fits
 

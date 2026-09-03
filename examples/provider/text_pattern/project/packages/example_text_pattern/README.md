@@ -61,6 +61,11 @@ native Rust code. Geam records the selected dependency and Cargo lock, then
 builds and checks the runner. No explicit `geam provider add` or provider
 configuration is needed for this workflow.
 
+`geam-example-text-pattern` uses the exact crates.io discovery-name form derived
+from `example_text_pattern`. Provider authors can read
+[provider names for automatic discovery](https://github.com/panarch/geam/blob/main/docs/host-providers.md#provider-names-for-automatic-discovery)
+for the complete rule, including suffixed provider names.
+
 Geam uses the Rust provider, not the packaged Erlang implementation. See the
 [standalone guide](https://github.com/panarch/geam/blob/main/docs/standalone.md)
 for provider approval, managed files, and entry module selection.

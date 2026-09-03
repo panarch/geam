@@ -72,6 +72,12 @@ the companion Rust crate for the checkout. The provider's Cargo metadata names
 the Gleam package and compatible versions so Geam can verify the pair before
 it runs.
 
+These checkouts select local paths explicitly, but every provider crate also
+uses the exact discovery-name form. For example, `example_text_tools` maps to
+`geam-example-text-tools`. The suffixed form appends a lowercase kebab-case
+suffix; the [provider names for automatic discovery](../../docs/host-providers.md#provider-names-for-automatic-discovery)
+section defines the complete crates.io rule.
+
 `feature_flags` is the only staged example that needs runtime configuration:
 
 ```sh

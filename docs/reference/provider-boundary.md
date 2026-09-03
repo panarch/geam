@@ -485,8 +485,8 @@ Geam metadata. The component demonstrates:
 
 Its
 [Cargo manifest](../../examples/provider/text_pattern/provider/Cargo.toml)
-uses the
-canonical `geam-example-text-pattern` discovery name and schema-1 metadata. This
+uses the exact `geam-example-text-pattern` discovery-name form and schema-1
+metadata. This
 release-coupled provider pins the actual `example_text_pattern` Hex package
 version exactly.
 
@@ -627,11 +627,13 @@ separate strategies within that graph.
 
 To make a published provider discoverable, derive its Cargo package name from
 the target Gleam package: add the `geam-` prefix and replace underscores with
-hyphens. A provider whose metadata targets `company_image` therefore publishes
-as `geam-company-image`; alternatives may append a kebab-case suffix. The name
-only places the crate in the discovery namespace. Packaged metadata remains the
-authority for the exact `company_image` identity, and explicitly selected
-registry, path, or Git crates may use other names.
+hyphens. A provider whose metadata targets `company_image` can therefore use
+the exact name `geam-company-image` or a suffixed name such as
+`geam-company-image-aws`. The exact form is sorted first but has no authority
+over the suffixed form. Either name only places the crate in the discovery
+namespace. Packaged metadata supplies the target identity and version range Geam
+validates, but does not establish publisher authority or endorsement. Explicitly
+selected registry, path, or Git crates may use other names.
 
 Discovery, native-code approval, managed Cargo files, and runtime configuration
 belong to the CLI rather than this SDK. Provider callbacks, stores, and state

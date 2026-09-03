@@ -59,10 +59,13 @@ matches the [Gleam declarations](https://github.com/panarch/geam/blob/main/examp
 - ordinary Rust `Result<Pattern, CompileError>` maps to Gleam `Result`; and
 - `Vec<EcoString>` constructs the returned Gleam `List(String)` once.
 
-The crate's Cargo metadata identifies the target Gleam package and version for
-Geam's provider discovery. This release-coupled reference provider pins the
-same version published for Geam and the Hex package. The Gleam package itself
-carries no Geam-specific metadata.
+The Gleam package name `example_text_pattern` maps to this crate's exact
+discovery-name form, `geam-example-text-pattern`. That name lets
+`geam prepare`, `geam run`, and `geam embedding sync` find the crate on
+crates.io. It does not make the crate official or trusted. Cargo metadata then
+identifies the exact target Gleam package and compatible version range. This
+release-coupled reference provider pins the same version published for Geam and
+the Hex package. The Gleam package itself carries no Geam-specific metadata.
 
 See the [provider authoring guide](https://github.com/panarch/geam/blob/main/docs/host-providers.md)
 for the API contracts, or the [other provider examples](https://github.com/panarch/geam/tree/main/examples/provider)
