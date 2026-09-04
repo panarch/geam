@@ -355,10 +355,61 @@ becoming invocable. Keep symbolic and invocable function storage distinct, and
 do not add a runtime generic callback branch.
 
 End provider-state and actual payload borrows before nested execution re-enters
-Gleam. Call-scoped runtime-owned handles may remain live across re-entry, but
-they must not escape the host invocation. Nested source panics and host
-failures must retain the actual failed source or provider identity; an outer
-provider must not repackage them as its own failure.
+Gleam or host execution suspends. Call-scoped runtime-owned handles may remain
+live across re-entry. If a resumable path carries equivalent handles across
+suspension, its continuation must own them without retaining the active runtime
+borrow. Neither form may escape the host invocation. Nested source panics and
+host failures must retain the actual failed source or provider identity; an
+outer provider must not repackage them as its own failure.
+
+## Resumable Execution Rules
+
+Treat immediate and resumable host implementations as distinct static
+capabilities. Registration and sealing must preserve that distinction through
+the typed host call paths. An operation that may suspend must enter through an
+explicit resumable caller boundary. Do not make synchronous execution
+accommodate a resumable implementation by discovering suspension at runtime,
+starting or polling an executor, blocking an execution worker, or wrapping
+immediate host calls in future allocation or async dispatch.
+
+Suspension is owned runtime control flow, not a borrowed Rust stack or replay
+strategy. Preserve the exact planner-selected return family, instruction
+destination, block environment, call origin, and nested host and callback
+frames. Resume that continuation exactly once. Do not restart completed Gleam
+instructions, repeat host effects, serialize through a public runtime value, or
+revalidate the sealed type shape when execution resumes.
+
+State retained while execution is pending must use an owned,
+worker-transferable representation. When explicitly supplied caller state and
+capabilities satisfy the required transfer bounds, the pending execution and
+host future must not acquire local-executor or thread affinity from Geam
+internals. Apply those bounds at resumable registration and caller boundaries;
+do not add `Sync` to data that is not shared concurrently or widen the immediate
+provider surface solely for async support. Any borrow held for the full async
+call must remain explicit in its public type; it must not conceal an inner
+provider-state, payload, or poll-local runtime borrow.
+
+Resumable execution composes with a caller-owned executor through the standard
+Rust `Future` contract. Core must not select or start an async runtime, call a
+blocking executor internally, or detach an invocation from the owner that
+drives it. Cancelling or dropping a resumable call must deterministically
+release the pending host future, continuation frames, and retained runtime
+values.
+
+Completion across suspension must preserve the existing typed return path,
+Echo order, source panic, host failure, and actual source or provider origin.
+A resumable host implementation may invoke a typed Gleam callback that itself
+suspends; nested completion must return to the same host continuation exactly
+once without replaying work or introducing a new async error domain.
+
+Resumability does not itself grant detached execution, multiple concurrent
+execution units, scheduler ownership, or background lifecycle. Those features
+require their own explicit ownership and compatibility contracts.
+
+Owning tests for resumable execution must control pending, wake, completion,
+and cancellation deterministically. They must prove exact continuation without
+duplicating completed effects; executor-specific integration tests do not
+replace those owner tests.
 
 ## Rust Embedding Rules
 
