@@ -527,9 +527,11 @@ support evidence must run normally in a mandatory verification path.
 
 ## Helper And DSL Rules
 
-Test helpers may reduce real repetition and fixture setup, but they must not
-hide the reviewed shape or create a second constructor API for plan/runtime
-shapes.
+Tests must exercise the same behavioral surface as production. Test helpers may
+reduce repetition, assemble fixtures, or expose observations, but they must not
+hide the reviewed shape or introduce alternate constructors, parsers, or state
+transitions for reachable behavior. Keep synthetic state local to tests that
+explicitly cover invalid or unreachable boundaries.
 
 - Avoid single-use shallow wrapper helpers.
 - Name helpers after their fixture role, not their implementation detail.
