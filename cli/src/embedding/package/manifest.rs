@@ -1,7 +1,6 @@
 use super::project::EmbeddingProject;
 use crate::embedding::output;
 use crate::error::CliError;
-use crate::provider::ProviderCandidate;
 use cargo_metadata::DependencyKind;
 use std::fs;
 use toml_edit::{Array, DocumentMut, InlineTable, Item, Table, Value};
@@ -94,64 +93,6 @@ pub(super) fn prepare_features(
     Ok(())
 }
 
-pub(super) fn add_providers(
-    project: &EmbeddingProject,
-    approved: &[ProviderCandidate],
-) -> Result<(), CliError> {
-    let source = fs::read_to_string(&project.manifest).map_err(|error| CliError::FileRead {
-        path: project.manifest.clone(),
-        error,
-    })?;
-    let mut document = source
-        .parse::<DocumentMut>()
-        .map_err(|error| CliError::InvalidToml {
-            kind: "Cargo manifest",
-            path: project.manifest.clone(),
-            reason: error.to_string(),
-        })?;
-    let dependencies = document
-        .entry("dependencies")
-        .or_insert(Item::Table(Table::new()));
-    let table = dependencies
-        .as_table_like_mut()
-        .ok_or_else(|| CliError::InvalidToml {
-            kind: "Cargo dependencies",
-            path: project.manifest.clone(),
-            reason: "dependencies must be a table".to_owned(),
-        })?;
-    for candidate in approved {
-        let alias = format!("geam_provider_{}", candidate.gleam_package());
-        if table.contains_key(&alias)
-            || project.dependencies.iter().any(|dependency| {
-                dependency
-                    .rename
-                    .as_deref()
-                    .unwrap_or(&dependency.name)
-                    .replace('-', "_")
-                    == alias
-            })
-        {
-            return Err(CliError::InvalidEmbeddingProvider {
-                package: candidate.gleam_package().to_owned(),
-                manifest: project.manifest.clone(),
-                reason: format!(
-                    "dependency alias `{alias}` is already declared; no provider dependencies were added"
-                ),
-            });
-        }
-        let mut declaration = InlineTable::new();
-        declaration.insert("package", Value::from(candidate.crate_name()));
-        declaration.insert("version", Value::from(format!("={}", candidate.version())));
-        table.insert(&alias, Item::Value(Value::InlineTable(declaration)));
-    }
-    output::sync(
-        &project.manifest.with_file_name(""),
-        &project.manifest,
-        document.to_string().as_bytes(),
-    )?;
-    Ok(())
-}
-
 fn add_features(declaration: &mut Item, required: &[&str]) -> Result<(), &'static str> {
     if let Item::Value(Value::String(version)) = declaration {
         let decor = version.decor().clone();
@@ -186,14 +127,10 @@ fn add_features(declaration: &mut Item, required: &[&str]) -> Result<(), &'stati
 
 #[cfg(test)]
 mod tests {
-    use super::{add_features, add_providers, prepare_features};
+    use super::{add_features, prepare_features};
     use crate::embedding::package::EmbeddingProject;
     use crate::error::CliError;
-    use crate::provider::registry::{ProviderRegistry, RegistryAccessError};
-    use crate::provider::{ProviderCandidate, ProviderDiscovery, RegistryProviderDiscovery};
     use camino::Utf8PathBuf;
-    use flate2::{Compression, write::GzEncoder};
-    use sha2::{Digest, Sha256};
     use std::fs;
     use tempfile::{TempDir, tempdir};
     use toml_edit::DocumentMut;
@@ -231,114 +168,6 @@ mod tests {
             )
             .expect("repeated feature addition should be unchanged");
             assert_eq!(document.to_string(), expected);
-        }
-    }
-
-    #[test]
-    fn appends_exact_approved_providers_without_rewriting_application_declarations() {
-        let fixture = ManifestFixture::new(
-            "# keep this selection\n[dependencies]\nengine = { package = 'geam', path = 'runtime', features = ['provider'] } # custom alias\n",
-        );
-        let project = EmbeddingProject::load(&fixture.root).expect("application declaration");
-        add_providers(&project, &[verified_candidate("words")])
-            .expect("append exact registry selection");
-        assert_eq!(
-            fs::read_to_string(project.manifest()).expect("updated manifest"),
-            concat!(
-                "[package]\nname = 'manifest_app'\nversion = '0.1.0'\n\n",
-                "# keep this selection\n[dependencies]\n",
-                "engine = { package = 'geam', path = 'runtime', features = ['provider'] } # custom alias\n",
-                "geam_provider_words = { package = \"geam-words\", version = \"=1.2.3\" }\n",
-                "\n[workspace]\n",
-            )
-        );
-
-        let before = fs::read(project.manifest()).expect("approved manifest");
-        let error = add_providers(
-            &project,
-            &[verified_candidate("numbers"), verified_candidate("words")],
-        )
-        .expect_err("one collision must preserve every declaration");
-        assert_eq!(
-            error.to_string(),
-            format!(
-                "invalid Rust embedding provider graph for package words at {}: dependency alias `geam_provider_words` is already declared; no provider dependencies were added",
-                project.manifest()
-            )
-        );
-        assert_eq!(
-            fs::read(project.manifest()).expect("no partial insertion"),
-            before
-        );
-
-        let target = ManifestFixture::new(
-            "[target.'cfg(unix)'.dependencies]\ngeam-provider-words = { package = 'unrelated', version = '1', optional = true }\n",
-        );
-        let project = EmbeddingProject::load(&target.root).expect("target dependency");
-        let before = fs::read(project.manifest()).expect("target manifest");
-        let error = add_providers(&project, &[verified_candidate("words")])
-            .expect_err("normalized alias already exists");
-        assert_eq!(
-            error.to_string(),
-            format!(
-                "invalid Rust embedding provider graph for package words at {}: dependency alias `geam_provider_words` is already declared; no provider dependencies were added",
-                project.manifest()
-            )
-        );
-        assert_eq!(
-            fs::read(project.manifest()).expect("unchanged target declaration"),
-            before
-        );
-    }
-
-    #[test]
-    fn preserves_provider_manifest_io_and_parse_failures() {
-        let fixture = ManifestFixture::new("");
-        let project = EmbeddingProject::load(&fixture.root).expect("application declaration");
-        let approved = [verified_candidate("words")];
-        fs::remove_file(project.manifest()).expect("external file removal");
-        assert!(
-            matches!(add_providers(&project, &approved), Err(CliError::FileRead { error, .. }) if error.kind() == std::io::ErrorKind::NotFound)
-        );
-        fs::write(project.manifest(), "[").expect("external invalid edit");
-        assert!(matches!(
-            add_providers(&project, &approved),
-            Err(CliError::InvalidToml {
-                kind: "Cargo manifest",
-                ..
-            })
-        ));
-        fs::write(project.manifest(), "dependencies = false\n")
-            .expect("external invalid dependencies");
-        assert_eq!(
-            add_providers(&project, &approved)
-                .expect_err("invalid dependencies must be preserved")
-                .to_string(),
-            format!(
-                "invalid Cargo dependencies at {}: dependencies must be a table",
-                project.manifest()
-            )
-        );
-        assert_eq!(
-            fs::read_to_string(project.manifest()).expect("preserved invalid declaration"),
-            "dependencies = false\n"
-        );
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::write(project.manifest(), "[dependencies]\n").expect("empty dependencies");
-            fs::set_permissions(&fixture.root, fs::Permissions::from_mode(0o500))
-                .expect("read-only manifest directory");
-            let error = add_providers(&project, &approved).expect_err("manifest write failure");
-            fs::set_permissions(&fixture.root, fs::Permissions::from_mode(0o700))
-                .expect("restore permissions");
-            assert!(
-                matches!(error, CliError::FileWrite { path, .. } if path == project.manifest())
-            );
-            assert_eq!(
-                fs::read_to_string(project.manifest()).expect("preserved declaration"),
-                "[dependencies]\n"
-            );
         }
     }
 
@@ -533,60 +362,6 @@ mod tests {
                 fs::read_to_string(project.manifest()).expect("unchanged manifest"),
                 "[dependencies]\n"
             );
-        }
-    }
-
-    fn verified_candidate(package: &str) -> ProviderCandidate {
-        let crate_name = format!("geam-{package}");
-        let manifest = format!(
-            "[package]\nname = '{crate_name}'\nversion = '1.2.3'\n[package.metadata.geam.provider]\nschema = 1\ngleam-package = '{package}'\ngleam-version = '>= 1.0.0'\n"
-        );
-        let mut archive = tar::Builder::new(GzEncoder::new(Vec::new(), Compression::default()));
-        let mut header = tar::Header::new_gnu();
-        header.set_mode(0o644);
-        header.set_size(manifest.len() as u64);
-        header.set_cksum();
-        archive
-            .append_data(
-                &mut header,
-                format!("{crate_name}-1.2.3/Cargo.toml"),
-                manifest.as_bytes(),
-            )
-            .expect("packaged metadata");
-        let archive = archive
-            .into_inner()
-            .expect("archive writer")
-            .finish()
-            .expect("gzip archive");
-        let checksum = hex::encode(Sha256::digest(&archive));
-        let registry = ManifestRegistry { crate_name: crate_name.clone(), archive, index: serde_json::to_vec(&serde_json::json!({"name":crate_name,"vers":"1.2.3","cksum":checksum,"yanked":false})).expect("index fixture") };
-        RegistryProviderDiscovery::new(&registry)
-            .discover(package, &hexpm::version::Version::new(1, 0, 0))
-            .expect("verified candidate")
-            .remove(0)
-    }
-
-    struct ManifestRegistry {
-        crate_name: String,
-        archive: Vec<u8>,
-        index: Vec<u8>,
-    }
-
-    impl ProviderRegistry for ManifestRegistry {
-        fn search(&self, _query: &str) -> Result<Vec<u8>, RegistryAccessError> {
-            Ok(serde_json::to_vec(
-                &serde_json::json!({"crates":[{"id":self.crate_name}],"meta":{"total":1}}),
-            )
-            .expect("search fixture"))
-        }
-        fn configuration(&self) -> Result<Vec<u8>, RegistryAccessError> {
-            Ok(br#"{"dl":"https://fixture.invalid/{crate}/{version}/download"}"#.to_vec())
-        }
-        fn index(&self, _crate_name: &str) -> Result<Vec<u8>, RegistryAccessError> {
-            Ok(self.index.clone())
-        }
-        fn download(&self, _url: &str) -> Result<Vec<u8>, RegistryAccessError> {
-            Ok(self.archive.clone())
         }
     }
 

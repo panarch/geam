@@ -79,11 +79,6 @@ impl ManagedProject {
         Ok(())
     }
 
-    pub(super) fn replace(&mut self, provider: ProviderSelection) {
-        self.providers
-            .insert(provider.gleam_package.clone(), provider);
-    }
-
     pub(super) fn remove(&mut self, gleam_package: &str) -> Result<(), CliError> {
         self.providers
             .remove(gleam_package)

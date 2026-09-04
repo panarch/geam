@@ -56,24 +56,6 @@ impl ProviderMetadata {
         .map(Some)
     }
 
-    pub(super) fn from_manifest(crate_name: &str, package: &toml::Table) -> Result<Self, String> {
-        let provider = package
-            .get("metadata")
-            .and_then(toml::Value::as_table)
-            .and_then(|metadata| metadata.get("geam"))
-            .and_then(toml::Value::as_table)
-            .and_then(|geam| geam.get("provider"))
-            .and_then(toml::Value::as_table)
-            .ok_or_else(|| "missing [package.metadata.geam.provider] table".to_owned())?;
-        Self::from_fields(
-            crate_name.to_owned(),
-            provider.keys().map(String::as_str).collect(),
-            provider.get("schema").and_then(toml::Value::as_integer),
-            provider.get("gleam-package").and_then(toml::Value::as_str),
-            provider.get("gleam-version").and_then(toml::Value::as_str),
-        )
-    }
-
     fn from_fields(
         crate_name: String,
         fields: BTreeSet<&str>,
@@ -221,43 +203,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn parses_and_rejects_packaged_toml_metadata_through_the_same_schema() {
-        let package = packaged_table(
-            r#"
-[package]
-name = "geam-images"
-version = "1.2.3"
-
-[package.metadata.geam.provider]
-schema = 1
-gleam-package = "images"
-gleam-version = ">= 1.0.0 and < 2.0.0"
-"#,
-        );
-        let metadata = ProviderMetadata::from_manifest("geam-images", &package)
-            .expect("packaged provider metadata should parse");
-        assert_eq!(metadata.crate_name(), "geam-images");
-        assert_eq!(metadata.gleam_package(), "images");
-
-        let missing_tables = [
-            "[package]",
-            "[package]\nmetadata = 1",
-            "[package.metadata]",
-            "[package.metadata]\ngeam = 1",
-            "[package.metadata.geam]",
-            "[package.metadata.geam]\nprovider = 1",
-        ];
-        for source in missing_tables {
-            let package = packaged_table(source);
-            assert_eq!(
-                ProviderMetadata::from_manifest("geam-images", &package)
-                    .expect_err("missing provider table should fail"),
-                "missing [package.metadata.geam.provider] table",
-            );
-        }
-    }
-
     fn package_with_metadata(metadata: &str) -> cargo_metadata::Package {
         let source = format!(
             r#"{{
@@ -302,14 +247,5 @@ gleam-version = ">= 1.0.0 and < 2.0.0"
             .packages
             .pop()
             .expect("package should be present")
-    }
-
-    fn packaged_table(source: &str) -> toml::Table {
-        source
-            .parse::<toml::Table>()
-            .expect("packaged manifest fixture should parse")
-            .remove("package")
-            .and_then(|package| package.as_table().cloned())
-            .expect("packaged manifest fixture should contain [package]")
     }
 }

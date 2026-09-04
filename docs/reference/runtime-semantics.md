@@ -167,21 +167,21 @@ component identity, and mutable state do not enter ModulePlan, the execution
 graph, Explain metadata, or `ExecutionError`.
 
 The standalone CLI inventories mandatory Erlang externals from the selected
-typed program, reconciles approved provider crates, and generates one concrete
-Cargo runner. Registry discovery and process execution stay outside the
-read-only project loader. First-time native provider selection and incompatible
-replacement require approval; accepted selections are exact Cargo dependencies
-and `Cargo.lock` is the only dependency lock. Source edits and entry-module
-selection do not alter the generated profile while the approved provider set is
-unchanged.
+typed program, validates explicitly selected provider crates, and generates one
+concrete Cargo runner. Provider selection and process execution stay outside the
+read-only project loader. Selections are exact Cargo dependencies and
+`Cargo.lock` is the only dependency lock. Missing or incompatible providers are
+reported with guidance to update the explicit selection. Source edits and
+entry-module selection do not alter the generated profile while the selected
+provider set is unchanged.
 
 `prepare` compiles, plans, and seals the hosted project without creating
 component state. `run` reads explicit dependency configuration, initializes
-approved Cargo components, constructs built-in runner capabilities, and then
+selected Cargo components, constructs built-in runner capabilities, and then
 plans, seals, and executes. Configuration and credentials do not enter generated
 source, Cargo metadata, global state, canonical plans, or runtime values.
 Built-in stdlib, JSON, and Time components use the same static composition and
-registration path while remaining outside registry discovery and approval.
+registration path without requiring an external provider selection.
 
 ### Time Sources
 

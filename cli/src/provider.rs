@@ -1,56 +1,38 @@
-mod approval;
-mod discovery;
 mod list;
 mod manifest;
 mod metadata;
-mod reconcile;
-pub(crate) mod registry;
 mod resolution;
+mod validation;
 
 use crate::command::{AddProvider, RemoveProvider};
 use crate::error::CliError;
 use crate::progress::Progress;
 use crate::project::{ResolvedProject, read_resolved_project};
-pub(crate) use approval::{ProviderApproval, TerminalApproval};
 use camino::Utf8Path;
-pub(crate) use discovery::{ProviderDiscovery, RegistryProviderDiscovery};
 pub(super) use manifest::ManagedProject;
 use manifest::ProviderSelection;
 pub(super) use metadata::ProviderMetadata;
-pub(super) use reconcile::ProviderSelectionReconciler;
-pub(crate) use registry::{CratesIoRegistry, ProviderCandidate};
 use std::path::Path;
+pub(super) use validation::ProviderSelectionValidator;
 
-pub(super) struct SystemProviderReconciler<'io> {
-    registry: registry::CratesIoRegistry,
-    approval: TerminalApproval<'io>,
-}
+pub(super) struct SystemProviderValidator;
 
-impl<'io> SystemProviderReconciler<'io> {
-    pub(super) fn new(
-        terminal: bool,
-        reader: &'io mut dyn std::io::BufRead,
-        writer: &'io mut dyn std::io::Write,
-    ) -> Self {
-        Self {
-            registry: registry::CratesIoRegistry::default(),
-            approval: TerminalApproval::new(terminal, reader, writer),
-        }
+impl SystemProviderValidator {
+    pub(super) fn new() -> Self {
+        Self
     }
 }
 
-impl ProviderSelectionReconciler for SystemProviderReconciler<'_> {
-    fn reconcile(
-        &mut self,
+impl ProviderSelectionValidator for SystemProviderValidator {
+    fn validate(
+        &self,
         project_root: &Utf8Path,
         project: &ResolvedProject,
         program: &geam_core::TypedProgram,
-        managed: &mut ManagedProject,
+        managed: &ManagedProject,
         progress: &mut Progress<'_>,
     ) -> Result<(), CliError> {
-        reconcile_registry(
-            &self.registry,
-            &mut self.approval,
+        validation::ProviderValidator::new(&validation::SystemProviderResolver).validate(
             project_root,
             project,
             program,
@@ -58,26 +40,6 @@ impl ProviderSelectionReconciler for SystemProviderReconciler<'_> {
             progress,
         )
     }
-}
-
-pub(crate) fn reconcile_registry(
-    registry: &dyn registry::ProviderRegistry,
-    approval: &mut TerminalApproval<'_>,
-    project_root: &Utf8Path,
-    project: &ResolvedProject,
-    program: &geam_core::TypedProgram,
-    managed: &mut ManagedProject,
-    progress: &mut Progress<'_>,
-) -> Result<(), CliError> {
-    let discovery = RegistryProviderDiscovery::new(registry);
-    let resolver = reconcile::SystemApprovedProviderResolver;
-    reconcile::ProviderReconciler::new(&resolver, &discovery, approval).reconcile(
-        project_root,
-        project,
-        program,
-        managed,
-        progress,
-    )
 }
 
 pub(super) fn add(

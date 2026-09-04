@@ -51,24 +51,19 @@ which uses Rust's `regex` crate. This workflow requires Geam and Rust/Cargo,
 plus the same-version Rust provider published on crates.io:
 
 ```sh
+geam provider add geam-example-text-pattern
 geam prepare
 geam run
 ```
 
-On the first `prepare`, review and approve the matching
-`geam-example-text-pattern` candidate in an interactive terminal. This approves
-native Rust code. Geam records the selected dependency and Cargo lock, then
-builds and checks the runner. No explicit `geam provider add` or provider
-configuration is needed for this workflow.
-
-`geam-example-text-pattern` uses the exact crates.io discovery-name form derived
-from `example_text_pattern`. Provider authors can read
-[provider names for automatic discovery](https://github.com/panarch/geam/blob/main/docs/host-providers.md#provider-names-for-automatic-discovery)
-for the complete rule, including suffixed provider names.
+`provider add` verifies the provider metadata, records the resolved crate
+version and Cargo lock, and selects it for `example_text_pattern`. Pin an exact
+provider version with `geam-example-text-pattern@VERSION` when the application
+requires one.
 
 Geam uses the Rust provider, not the packaged Erlang implementation. See the
 [standalone guide](https://github.com/panarch/geam/blob/main/docs/standalone.md)
-for provider approval, managed files, and entry module selection.
+for provider selection, managed files, and entry module selection.
 
 ## API
 

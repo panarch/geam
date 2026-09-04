@@ -207,34 +207,36 @@ implemented for Geam, its Hex package remains the Gleam dependency and a
 companion provider crate supplies the Rust implementation compiled into the
 host application.
 
-Automatic crates.io discovery uses the Gleam package name. For
-`company_image`, sync considers `geam-company-image` and
-`geam-company-image-<suffix>`, where the optional suffix is lowercase
-kebab-case. It lists the exact name first, but neither form is treated as
-official, trusted, or automatically selected. A differently named crate is not
-found from metadata alone. The
-[provider names for automatic discovery](host-providers.md#provider-names-for-automatic-discovery)
-section defines the complete rule.
+Add the provider crate named by the package or provider documentation as a
+direct dependency of the Rust application, then synchronize the generated
+bindings:
 
-Sync verifies each candidate's metadata and package-version range before showing
-it. With several verified candidates, an interactive sync asks which provider
-to use and then asks for approval:
-
-```text
-Gleam package company_image 1.4.0 requires native provider code.
-Metadata compatibility is not an endorsement.
-  1. geam-company-image 0.3.1 (Gleam >= 1.0.0 and < 2.0.0)
-  2. geam-company-image-aws 0.2.0 (Gleam >= 1.4.0 and < 2.0.0)
-Select a provider [1-2], or 0 to cancel: 2
-Approve geam-company-image-aws 0.2.0? [y/N] y
+```sh
+cd gleam
+gleam add example_text_pattern
+cd ..
+cargo add geam-example-text-pattern
+geam embedding sync
 ```
 
-With one verified candidate, sync skips the numbered selection and asks for
-approval directly. After approval, it records that exact Cargo dependency and
-regenerates the Rust bindings. Existing compatible registry, path, or Git
-declarations are reused and may use another crate name. A noninteractive sync
-cannot approve new native code, so perform and commit provider selection before
-relying on CI.
+Use Cargo's `crate@version` form when the documentation requires a particular
+provider release.
+
+For a local path or Git revision, choose the corresponding Cargo form instead:
+
+```sh
+# Local path
+cargo add --path ../provider
+
+# Git revision
+cargo add --git https://example.com/provider.git --rev COMMIT
+```
+
+During sync, Geam reads provider metadata from direct Cargo dependencies,
+verifies the target Gleam package and supported package-version range, and
+regenerates the Rust bindings. If a required provider is missing or
+incompatible, update the Cargo dependency and run sync again. Commit the Cargo
+manifest and lockfile with the generated bindings before relying on CI.
 
 When imported code needs IO, time, or provider state, the generated Rust API
 asks the application for those inputs.
@@ -259,7 +261,8 @@ Check validates existing Cargo and Gleam declarations, both locks, provider
 composition, and the expected generated bindings without rewriting project
 files. It may fetch locked Cargo packages or restore missing locked Gleam
 package sources. It never selects a new version, follows a moving Git branch in
-place of its locked commit, approves a provider, or regenerates stale bindings.
+place of its locked commit, changes a provider dependency, or regenerates stale
+bindings.
 
 Use `init` for an uninitialized package and `sync` after intentional source or
 dependency changes. `embedding check` verifies the generated Gleam-Rust

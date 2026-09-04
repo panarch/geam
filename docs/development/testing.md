@@ -242,7 +242,7 @@ also execute; its Rust formatting and Clippy checks remain workspace-owned.
 
 CLI owners separately cover fresh init, repeated sync, required built-in
 features, existing dependency preservation, and explicit native-provider
-approval. Check cases cover locked Hex/Git/local sources, cold and partial
+validation. Check cases cover locked Hex/Git/local sources, cold and partial
 caches, stale locks or generated files, invalid source, provider incompatibility,
 and acquisition failures while comparing project bytes. Cargo's locked metadata
 path may populate caches; neither it nor the check command compiles or executes
@@ -255,18 +255,18 @@ version-locked stdlib, JSON, and Time dependencies, and two provider-backed path
 packages. Upstream package source is downloaded outside Git, while the local
 packages remain visible test-owned fixtures. The independent Rust providers
 exercise state, callbacks, external storage, and a compound return through the
-generated static profile. A standalone orchestration test feeds packaged
-provider manifests through a fake bounded registry, checksum and metadata
-verification, and approval, then carries the registry-shaped selections through
-the real root Cargo lock, generated runner check, and runner execution.
-Fixture-only Cargo patches keep acquisition local while preserving the
-production manifest, resolution, build, and execution path.
+generated static profile. A standalone orchestration test adds both providers
+through explicit local path selections, verifies their packaged metadata, and
+carries those selections through the real root Cargo lock, generated runner
+check, and runner execution. Fixture-only Cargo patches keep acquisition local
+while preserving the production manifest, resolution, build, and execution
+path.
 
 CLI owner tests fix the exact preparation messages, conditional acquisition
 and lock work, and native byte forwarding without newline buffering. Process
 tests cover private metadata stdout, checked-process stdin isolation, large
-output, failure diagnostics, and draining after output failure. The fake-registry
-test also checks progress/approval ordering and repeated preparation. Binary and
+output, failure diagnostics, and draining after output failure. The standalone
+orchestration test also checks progress and repeated preparation. Binary and
 distribution tests keep application stdout and IO/Echo ordering separate from
 preparation stderr; native Cargo/Gleam wording is not a version-pinned assertion.
 
@@ -290,20 +290,20 @@ crates are released.
 The [`examples/provider/text_pattern`](../../examples/provider/text_pattern) example adds a
 distribution-ready advanced macro provider. Its path test executes manual
 external semantics, a custom error, source Result, and List output through the
-managed root lock and generated runner. The fake-registry orchestration test
-owns deterministic checkout coverage of search, sparse-index, checksum,
-archive metadata, approval, registry-shaped dependency, lock, check, and run.
+managed root lock and generated runner. Provider-resolution tests separately
+cover explicit registry, path, and Git requests, Cargo metadata, exact selected
+dependencies, lock preservation, and provider metadata validation.
 
 A separate `Published provider` acceptance job exercises the released
 distribution rather than the checkout. It installs a known published Geam,
-creates a clean project, pins the matching Hex package, and uses a real PTY
-approval to select the matching crates.io provider without an explicit provider
-add. Metadata must show exact registry dependencies, the generated runner must
-include the provider component, and repeated prepare/run must preserve the
-managed manifest, lock, and runner source. The reference-example publication
-workflow runs the same path against every new same-version combination before
-release finalization. The small Gleam entry module is kept inline because these
-jobs own released command sequences rather than reusable source behavior.
+creates a clean project, pins the matching Hex package, and explicitly adds the
+matching crates.io provider. Metadata must show exact registry dependencies,
+the generated runner must include the provider component, and repeated
+prepare/run must preserve the managed manifest, lock, and runner source. The
+reference-example publication workflow runs the same path against every new
+same-version combination before release finalization. The small Gleam entry
+module is kept inline because these jobs own released command sequences rather
+than reusable source behavior.
 
 The same text-pattern test first runs the common Gleam entrypoint and the
 Erlang-specific example using the package's native `re` implementation, before
@@ -353,9 +353,10 @@ The root package keeps four explicit acceptance targets:
 - `standalone_distribution` combines built-ins and two independent providers
   in one canonical managed-project flow.
 
-Detailed project loading, provider reconciliation, registry, manifest, lock,
-and runner behavior remains in `geam-cli`; the root targets only retain the
-process, facade, cross-crate, or distribution boundary named above.
+Detailed project loading, provider selection validation, explicit provider
+resolution, manifest, lock, and runner behavior remain in `geam-cli`; the root
+targets only retain the process, facade, cross-crate, or distribution boundary
+named above.
 
 Source-level rejection fixtures live under categorized
 `tests/fixtures/rejection/**/*.gleam` paths. They are reserved for public

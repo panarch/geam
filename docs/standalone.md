@@ -26,7 +26,7 @@ In the standard standalone workflow:
 - a bodyless `@external(erlang, ...)` needs a matching Rust provider; and
 - a bodyless JavaScript-only external cannot be called from the selected code.
 
-If the last case is reached, source analysis fails before provider discovery.
+If the last case is reached, source analysis fails before provider validation.
 
 ## Run your first project
 
@@ -45,8 +45,8 @@ geam run
 
 That is the complete first workflow. On the first run, Geam restores locked
 Gleam dependencies when needed, prepares the Rust runner, and executes the
-package module's `main`. If imported code needs an external Rust provider, Geam
-asks for approval before adding it.
+package module's `main`. If imported code needs an external Rust provider that
+has not been selected, Geam stops and tells you to add one explicitly.
 
 When you want to prepare and check the runner without executing application
 code, use:
@@ -96,9 +96,9 @@ packages imported by the selected module or its imports are included. This
 keeps unused dependencies and their native requirements out of the executable.
 
 Geam includes explicit support for the verified `gleam_stdlib`, `gleam_json`,
-and `gleam_time` integrations. These built-in components do not require
-registry discovery or native-code approval. `gleam_http` uses its unchanged
-Gleam source and the stdlib support required by its imported code.
+and `gleam_time` integrations. These built-in components do not require an
+external provider selection. `gleam_http` uses its unchanged Gleam source and
+the stdlib support required by its imported code.
 
 See [compatibility](reference/compatibility.md) for the exact package baselines
 and supported effects.
@@ -116,64 +116,40 @@ the native implementation compiled into the Rust runner. A package may keep
 its existing Erlang or JavaScript implementation; adding a provider does not
 replace it or change how Gleam code imports the package.
 
-When imported code reaches a provider-backed function that is not built in,
-Geam searches crates.io for a companion crate with matching metadata and asks
-before adding that native code:
-
-| Role | Name |
-| --- | --- |
-| Gleam package | `company_image` |
-| Exact provider name | `geam-company-image` |
-| Suffixed provider name | `geam-company-image-<suffix>` |
-
-Geam searches both provider name forms. The exact name is listed first, but
-neither form is treated as official, trusted, or automatically selected. The
-optional suffix must use lowercase kebab-case. For example,
-`company-image-rust` is not found automatically, even if it carries provider
-metadata for `company_image`. See the
-[provider names for automatic discovery](host-providers.md#provider-names-for-automatic-discovery)
-section when publishing a provider.
-
-```text
-Gleam package company_image 1.4.0 requires native provider code.
-Metadata compatibility is not an endorsement.
-  1. geam-company-image 0.3.1 (Gleam >= 1.0.0 and < 2.0.0)
-  2. geam-company-image-aws 0.2.0 (Gleam >= 1.4.0 and < 2.0.0)
-Select a provider [1-2], or 0 to cancel: 2
-Approve geam-company-image-aws 0.2.0? [y/N] y
-```
-
-With one verified candidate, Geam skips the numbered selection and asks for
-approval directly. Approval records an exact Cargo dependency. Geam never
-treats matching metadata as consent, and noninteractive commands do not approve
-a new provider.
-
-Before presenting a registry candidate, Geam checks its sparse-index version,
-archive checksum, packaged provider metadata, exact target Gleam package, and
-declared package-version range. Discovery does not extract the crate or execute
-provider code. Cargo receives the selected crate only after approval.
-
-You can select a provider explicitly before preparation:
+Select the provider named by the package or provider documentation before
+preparing the project. Choose the command for its source:
 
 ```sh
-geam provider add geam-company-image@0.3.1
-geam provider add --path ../geam-company-image
+# Published reference package and provider
+gleam add example_text_pattern
+geam provider add geam-example-text-pattern
+
+# Local path
+geam provider add --path ../provider
+
+# Git revision
 geam provider add --git https://example.com/provider.git --rev COMMIT
 ```
+
+Append `@VERSION` to a crates.io name when selecting a particular release.
 
 Inspect and remove stored external selections without compiling or contacting
 a registry:
 
 ```sh
 geam provider list
-geam provider remove company_image
+geam provider remove example_text_pattern
 ```
 
-An explicit registry, path, or Git selection does not have to follow the
-automatic discovery naming convention. It is still verified against its
-packaged provider metadata and the resolved Gleam package. One Gleam package
-has at most one selected external provider. Built-in components are not stored
-selections and do not appear in `provider list`.
+A provider crate may use any Cargo package name. Geam verifies its packaged
+metadata against the resolved Gleam package and package version, then records
+an exact registry version, path, or Git revision in the managed Cargo project.
+One Gleam package has at most one selected external provider. Built-in
+components are not stored selections and do not appear in `provider list`.
+
+`prepare` and `run` validate the current selections. If no provider is selected,
+or the selected version is incompatible, choose one explicitly and rerun the
+command.
 
 To author the companion crate, continue with
 [Add Rust to a Gleam package](host-providers.md).
@@ -206,9 +182,9 @@ build/geam/runner.rs
 build/geam/target/
 ```
 
-`Cargo.toml` carries an exact Geam-managed marker and the approved provider
-selections. `Cargo.lock` fixes the Rust dependency graph. Commit both files so
-review and CI retain the approved native-code choices. Ignore `build/geam/`;
+`Cargo.toml` carries an exact Geam-managed marker and the selected provider
+dependencies. `Cargo.lock` fixes the Rust dependency graph. Commit both files
+so review and CI retain the native-code choices. Ignore `build/geam/`;
 its runner source and Cargo target are reproducible build artifacts.
 
 Geam rewrites the managed manifest canonically and removes selections whose
@@ -240,8 +216,8 @@ the final output.
 
 - If `manifest.toml` or a locked package source is missing, let Geam perform its
   single `gleam deps download` recovery and inspect any native Gleam error.
-- If a provider is required in noninteractive CI, approve and commit its managed
-  Cargo selection from an interactive checkout first.
+- If a provider is required, add it explicitly and commit the resulting managed
+  Cargo manifest and lock before relying on CI.
 - If Geam refuses an existing `Cargo.toml`, do not add its marker manually. Use
   Rust embedding or move the user-owned Cargo project outside the Gleam root.
 - If a provider version is incompatible, choose a compatible exact version or

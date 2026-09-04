@@ -16,11 +16,12 @@ Geam.
 4. [main.rs](src/main.rs) supplies provider configuration and calls the
    generated function handle.
 
-For an ordinary registry dependency, `geam embedding sync` verifies provider
-metadata and asks for approval before adding its exact Cargo declaration. This
-repository uses path declarations so the example tests the current package and
-provider sources directly. The generated API requests provider configuration;
-this provider has no settings, so the example supplies an empty value.
+For an ordinary registry dependency, add the provider directly to the Rust
+application with Cargo, then run `geam embedding sync`. Sync verifies its
+metadata and package-version range before generating bindings. This repository
+uses a path declaration so the example tests the current package and provider
+sources directly. The generated API requests provider configuration; this
+provider has no settings, so the example supplies an empty value.
 
 ## Run
 
