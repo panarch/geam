@@ -239,9 +239,9 @@ supported types.
 ## Echo And IO
 
 Provider-free calls receive a caller-owned Echo sink. Hosted calls receive both
-the generated mutable state and Echo sink. Official `gleam/io` writes through
-the stdlib state selected by the application; it does not share a hidden queue
-with Echo.
+the generated mutable state and Echo sink. The upstream `gleam/io` functions
+write through the stdlib state selected by the application when run through
+Geam; they do not share a hidden queue with Echo.
 
 The application decides whether collected output is written to a terminal,
 captured for tests, forwarded elsewhere, or ignored.

@@ -88,7 +88,7 @@ the frontend owner tests. These tests construct Hex, Git, and Local package
 layouts without network access or an installed Gleam CLI, keeping loader owner
 coverage independent of external package acquisition.
 
-The tracked `builtins/stdlib/tests/fixtures/project` project locks official
+The tracked `builtins/stdlib/tests/fixtures/project` project locks upstream
 `gleam_stdlib` `v1.0.3` but does not track downloaded package source. The
 `geam-stdlib` integration target downloads that exact source before executing
 its package-local compatibility suite.
@@ -108,7 +108,7 @@ integration suite does not replace hermetic synthetic owner coverage for the
 loader or providers.
 
 The tracked `tests/fixtures/projects/gleam_http` project independently locks
-official `gleam_http` `v4.3.0` and `gleam_stdlib` `v1.0.3`. It likewise keeps
+upstream `gleam_http` `v4.3.0` and `gleam_stdlib` `v1.0.3`. It likewise keeps
 downloaded package source out of Git and downloads the exact locked source
 automatically before the integration target runs.
 
@@ -119,7 +119,7 @@ It fixes the public surface of all five package modules and executes every
 public function.
 
 The tracked `builtins/json/tests/fixtures/project` project independently locks
-official `gleam_json` `v3.1.0` and `gleam_stdlib` `v1.0.3`. The `geam-json`
+upstream `gleam_json` `v3.1.0` and `gleam_stdlib` `v1.0.3`. The `geam-json`
 integration target downloads its exact locked source before executing the
 package-local compatibility suite.
 
@@ -127,7 +127,7 @@ This target explicitly composes the stdlib and JSON provider bundles, fixes the
 complete public `gleam/json` surface, and executes every public function.
 
 The tracked `builtins/time/tests/fixtures/project` project independently locks
-official `gleam_time` `v1.8.0` and `gleam_stdlib` `v1.0.3`. The `geam-time`
+upstream `gleam_time` `v1.8.0` and `gleam_stdlib` `v1.0.3`. The `geam-time`
 integration target downloads its exact locked source before executing the
 package-local compatibility suite.
 
@@ -252,7 +252,7 @@ value and ownership contracts remain in core tests.
 The tracked `cli/tests/fixtures/standalone_cli` fixture verifies the complete CLI
 assembly boundary. Its Gleam project combines a Pure Gleam path package,
 version-locked stdlib, JSON, and Time dependencies, and two provider-backed path
-packages. Official package source is downloaded outside Git, while the local
+packages. Upstream package source is downloaded outside Git, while the local
 packages remain visible test-owned fixtures. The independent Rust providers
 exercise state, callbacks, external storage, and a compound return through the
 generated static profile. A standalone orchestration test feeds packaged

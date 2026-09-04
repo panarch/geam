@@ -28,7 +28,7 @@ GitHub Actions.
 ## Upstream And Releases
 
 - [Upstream Gleam](upstream-gleam.md) records the exact compiler mirror,
-  official package baselines, compatibility evidence, and manual sync policy.
+  upstream package baselines, compatibility evidence, and manual sync policy.
 - [Publishing](publishing.md) documents release preparation, artifact ownership,
   recovery operations, authentication, and GitHub Release creation.
 - [Writing release notes](release-notes.md) defines the user-facing release-note

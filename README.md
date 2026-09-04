@@ -161,9 +161,10 @@ the natural choice when they fit how your application runs and deploys. Choose
 Geam when Rust needs to host the application, provide native capabilities, or
 call Gleam through generated bindings.
 
-Geam uses Gleam's parser and type analysis to build executable plans for its
-Rust runtime. Generated Rust provides host integration: a managed standalone
-runner or typed embedding bindings.
+Geam uses the parser and type analysis from the supported Gleam release without
+modifying their implementation, then builds executable plans for its Rust
+runtime. Generated Rust provides host integration: a managed standalone runner
+or typed embedding bindings.
 
 A Gleam package keeps its Hex identity, source, and existing target
 implementations when it gains a Geam provider. The companion Rust crate adds a
@@ -173,7 +174,7 @@ Geam implementation; it does not replace or translate the Gleam package.
 
 Geam is actively evolving toward a stable `1.0` API, so public APIs may still
 change. Geam currently supports everyday Gleam data, functions, imports, custom
-types, pattern matching, generics, official package integrations, native host
+types, pattern matching, generics, verified package integrations, native host
 providers, and nested ordinary data passed between Gleam and Rust.
 
 See [compatibility](docs/reference/compatibility.md) for the verified Gleam and
