@@ -263,10 +263,10 @@ retained graph remains acyclic. Geam does not enforce a consumed-token state at
 runtime and does not provide general mutable external references or cycle
 collection.
 
-The explicit official `gleam/dict` provider is one concrete use of this model.
+Geam's explicit `gleam/dict` provider is one concrete use of this model.
 It selects persistent buckets by Gleam source hash and resolves every collision
 with source equality. `Dict` and private `TransientDict` remain nominally
-distinct immutable payload versions, official Gleam fallback bodies remain the
+distinct immutable payload versions, upstream Gleam fallback bodies remain the
 source owner of their operations, and dictionary iteration order is not a
 runtime contract. Canonical inspection sorts rendered entries only to make
 escaped values deterministic to read; that display order does not define
@@ -366,10 +366,11 @@ metadata is a separate design concern.
 
 ## Standard-Library IO
 
-Official `gleam/io` functions emit through the `IoSink` projected by the
-caller's `GleamStdlibHostProfile`. Each owned `IoOutput` records either stdout
-or stderr and one exact text chunk. `print` operations preserve their input;
-`println` operations append exactly one newline before emitting. All four
+The upstream `gleam/io` functions emit through the `IoSink` projected by the
+caller's `GleamStdlibHostProfile` when run through Geam. Each owned `IoOutput`
+records either stdout or stderr and one exact text chunk. `print` operations
+preserve their input; `println` operations append exactly one newline before
+emitting. All four
 operations emit before returning `Nil`, so output remains caller-owned if a
 later source expression panics.
 

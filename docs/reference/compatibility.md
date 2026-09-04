@@ -1,9 +1,9 @@
 # Compatibility
 
-Geam uses Gleam's published compiler front-end but implements a separate,
-smaller execution profile in Rust. Source acceptance follows Gleam parsing and
-type analysis; executable compatibility is decided while Geam plans the typed
-module graph.
+Geam uses the parser and type checker from the supported Gleam release without
+changing their language behavior, then implements a separate, smaller execution
+profile in Rust. Source acceptance follows that compiler behavior; executable
+compatibility is decided while Geam plans the typed module graph.
 
 Packages and modules beyond the verified list may also work. End-to-end
 compatibility is established when their source and required providers pass the
@@ -21,9 +21,9 @@ integration path described here.
 | `gleam_json` | `v3.1.0` |
 | `gleam_time` | `v1.8.0` |
 
-Geam pins its compiler crate exactly and updates the baseline deliberately. It
-does not follow Gleam `main` or silently reinterpret a project with another
-compiler release.
+`geam-gleam-core` packages the matching compiler source for this integration.
+Geam pins it exactly and updates the baseline deliberately. It does not follow
+Gleam `main` or silently reinterpret a project with another compiler release.
 
 ## Source Profile
 
@@ -68,7 +68,7 @@ for the exact recursive type map.
 ### Gleam Standard Library
 
 Geam verifies all 19 public modules in `gleam_stdlib v1.0.3` against unchanged
-official source:
+upstream package source:
 
 ```text
 gleam/bit_array        gleam/bool          gleam/bytes_tree
@@ -99,7 +99,7 @@ service runtime.
 
 Geam verifies unchanged `gleam_json v3.1.0` through a separate explicit JSON
 provider and the stdlib provider. It covers JSON construction, encoding,
-parsing, `Dynamic` conversion, and official decode behavior without introducing
+parsing, `Dynamic` conversion, and upstream decode behavior without introducing
 a generic JSON runtime value.
 
 The Erlang implementation path is selected. A JavaScript-only external does not
@@ -108,9 +108,9 @@ become a Rust callback merely because it is present in the package.
 ### Gleam Time
 
 Geam verifies all three `gleam_time v1.8.0` modules. Duration arithmetic,
-calendar conversion, and RFC3339 behavior remain in official Gleam source. The
-Time provider supplies only wall-clock time and the current local UTC offset
-through caller-owned state.
+calendar conversion, and RFC3339 behavior remain in unchanged upstream package
+source. The Time provider supplies only wall-clock time and the current local
+UTC offset through caller-owned state.
 
 This integration does not provide timezone history, a monotonic clock, timers,
 sleep, or an implicit system-clock fallback after provider failure.

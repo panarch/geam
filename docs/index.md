@@ -94,7 +94,9 @@ call Gleam through generated bindings.
 
 ## How the pieces fit
 
-Geam starts after Gleam has parsed and analysed the selected source graph:
+Geam uses the parser and type analysis from the supported Gleam release without
+modifying their implementation. Geam-specific planning begins from the
+resulting typed program:
 
 ```text
 resolved Gleam sources

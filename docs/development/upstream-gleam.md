@@ -1,9 +1,19 @@
 # Upstream Gleam Compiler Boundary
 
-Geam does not own a separate source language front-end. It relies on Gleam's
-published compiler front-end, then starts Geam-specific work at the typed AST
-boundary. This document records the upstream baseline, what is used directly,
-and where Geam's runtime-specific boundary begins.
+Geam does not implement a separate source-language front end. It packages
+compiler components from the matching Gleam release and starts Geam-specific
+work at the typed AST boundary. It does not change the parser, type checker, or
+language behavior. Differences are limited to Cargo packaging metadata and
+generated version identification required to publish the components as crates.
+This keeps source handling aligned with the recorded Gleam release and avoids
+maintaining a separate front end.
+
+The Gleam project does not publish or support these compiler components as a
+Rust library. Geam packages the matching source for this integration and is
+responsible for keeping it compatible with each supported Gleam release.
+
+This document records the upstream baseline, what Geam uses directly, and where
+Geam's runtime-specific boundary begins.
 
 For the concise user-facing support matrix, see
 [compatibility](../reference/compatibility.md). This document retains the exact
@@ -29,13 +39,16 @@ The release, commit, and publication date above refer to the
 (UTC), not the compiler crate's publication date.
 
 The `geam-gleam-core` package and its compiler-component dependencies are
-published from the release-tracking `panarch/gleam` mirror. Its
+published from the Geam-maintained, release-tracking `panarch/gleam` packaging
+fork. Its
 [packaging release](https://github.com/panarch/gleam/releases/tag/geam-v1.18.1-geam.2)
 records the same upstream commit. Geam pins that package exactly; the `geam.2`
 suffix is a mirror packaging revision, not a different Gleam release or Geam's
-own lockstep version.
+own lockstep version. Apart from distribution metadata and generated version
+identification, the compiler implementation source matches that upstream
+commit.
 
-The official standard library has an independent baseline:
+The upstream standard library has an independent baseline:
 
 ```text
 Repository: https://github.com/gleam-lang/stdlib
@@ -45,7 +58,7 @@ Release:     v1.0.3
 
 Geam does not bundle or patch that source. A dedicated integration test uses
 Gleam CLI `v1.18.1` to download the locked package, then executes selected
-official modules through Geam's resolved-project pipelines. Provider-free
+upstream modules through Geam's resolved-project pipelines. Provider-free
 modules use the plain pipeline, while modules whose selected closure contains
 externals use the hosted pipeline with the explicit Rust provider bundle. Each
 tracked module locks its public names, argument labels, and signatures while
@@ -104,8 +117,8 @@ compiler-core/src/ast/untyped.rs
 compiler-core/src/ast/typed.rs
 ```
 
-The boundary wrapper also uses Gleam support APIs required to run analyse in the
-same shape as Gleam itself:
+The boundary wrapper also uses internal compiler modules required to run
+analysis in the same shape as the pinned compiler release:
 
 ```text
 compiler-core/src/build.rs
@@ -238,7 +251,7 @@ not add a general mutable external-value model or cyclic runtime graph support.
 ### Gleam Stdlib v1.0.3 Compatibility
 
 Checked modules have exact public-surface coverage and execute unchanged
-official source through the upstream integration suite. An unchecked module is
+upstream package source through the integration suite. An unchecked module is
 not necessarily rejected; it has not yet been verified end to end.
 Geam currently verifies all 19 public modules in this baseline.
 
@@ -281,7 +294,7 @@ collision bucket. Dynamic values retain their exact specialized shape for
 typed Decode operations. StringTree uses persistent acyclic structure, and
 BitArray values preserve logical bit ranges over shared immutable backing.
 Random operations use caller-owned `GleamStdlibRunState`; there is no hidden
-seed or global random state. Official IO operations emit owned stdout and
+seed or global random state. Upstream IO operations emit owned stdout and
 stderr events through the `IoSink` projected by `GleamStdlibHostProfile`. The
 default run state collects those events, and project loading does not select a
 terminal destination.
@@ -297,8 +310,9 @@ The HTTP compatibility suite tracks all five unchanged package modules:
 - [x] `gleam/http/service`
 
 The package declares no external functions or external types, so Geam adds no
-HTTP provider. Its 44 public functions execute through official source, while
-the suite separately fixes 9 public custom types and 3 public type aliases.
+HTTP provider. Its 44 public functions execute through unchanged upstream
+source, while the suite separately fixes 9 public custom types and 3 public
+type aliases.
 The deprecated service aliases and functions remain part of the `v4.3.0`
 compatibility surface.
 
@@ -324,7 +338,7 @@ consumes bytes iteratively and constructs exact Dynamic scalar, List, and Dict
 values directly rather than a generic JSON AST. Nested values are assembled
 child-first to keep the external graph acyclic. JSON objects become
 Dynamic-keyed dictionaries whose keys are Dynamic String values, matching the
-official Decode ABI; duplicate encoded object fields remain ordered, while
+upstream Decode ABI; duplicate encoded object fields remain ordered, while
 decoded dictionaries preserve the first key occurrence.
 
 ### Gleam Time v1.8.0 Compatibility
@@ -338,7 +352,7 @@ The Time compatibility suite tracks all three unchanged package modules:
 The explicit package provider binds only
 `calendar.local_time_offset_seconds` and `timestamp.get_system_time`. All 34
 public functions, 6 public types, and the `utc_offset` and `unix_epoch`
-constants are exercised through official source. Duration arithmetic,
+constants are exercised through unchanged upstream source. Duration arithmetic,
 calendar conversion, RFC3339 parsing, and formatting remain Pure Gleam.
 
 `GleamTimeRunState` owns the stdlib state and a caller-selected `TimeSource`.
@@ -414,7 +428,7 @@ state remains owned by the caller and is borrowed only for
 The caller supplies the `EchoSink` used by `run_main`. Each emitted
 `EchoOutput` owns its materialized value, optional message, and compact source
 location; Geam does not select an output destination for the host.
-The official `gleam/io` provider uses a separate caller-owned `IoSink` for
+Geam's `gleam/io` provider uses a separate caller-owned `IoSink` for
 stdout and stderr text events. Echo and stdlib IO do not share a hidden queue.
 
 ## Intentionally Out Of Scope
@@ -432,15 +446,15 @@ milestone:
 
 ## Current Source Boundary
 
-Source acceptance follows Gleam `v1.18.1` parser and analyse rules. Geam's
-smaller execution profile is enforced by typed-AST planning, not by forking
-Gleam's parser or type inferencer.
+Source acceptance follows the pinned Gleam `v1.18.1` parser and analysis rules.
+Geam's smaller execution profile is enforced by typed-AST planning. Geam does
+not add language behavior changes to the packaged parser or type inferencer.
 
 ## Sync Policy
 
 This document is maintained manually when the upstream baseline or mirror
 packaging revision changes. Geam release-version automation must not update
-compiler or official package baselines.
+compiler or upstream package baselines.
 
 The [Workspace workflow](../../.github/workflows/workspace.yml) checks the `Cargo:`
 line against the compiler version resolved by `cargo metadata --locked`. This

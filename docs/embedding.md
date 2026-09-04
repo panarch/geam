@@ -198,8 +198,8 @@ cd ..
 geam embedding sync
 ```
 
-Sync enables only the built-in Geam support used by imported Gleam code.
-Official stdlib, JSON, and Time integrations are added explicitly; unused Gleam
+Sync enables only the built-in Geam support used by imported Gleam code. Geam's
+stdlib, JSON, and Time integrations are added explicitly; unused Gleam
 dependencies do not add Rust components.
 
 Most packages need nothing else. If an imported package has native functions

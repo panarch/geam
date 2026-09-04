@@ -1,8 +1,9 @@
 # Architecture
 
 Geam exists to run typed Gleam modules where Rust owns the execution
-environment. It preserves Gleam as the source language and compiler front-end,
-then introduces a Rust-owned planner, runtime, and host-capability boundary.
+environment. Gleam remains the source language; Geam uses the parser and type
+checker from the supported Gleam release, then applies a Rust-owned planner,
+runtime, and host-capability boundary.
 
 This lets a Gleam application use native Rust providers without maintaining a
 Rust runner, and lets a Rust application call supported public Gleam functions
@@ -10,7 +11,7 @@ through generated typed bindings.
 
 ## Source And Runtime Ownership
 
-Gleam continues to own:
+The Gleam language and package ecosystem define:
 
 - source syntax, parsing, and type inference;
 - package names, imports, and dependency resolution;
@@ -35,14 +36,18 @@ resolved Gleam project or in-memory package sources
 -> Rust-owned runtime values and effects
 ```
 
-Geam does not define another parser, source AST, package manager, or official
-Gleam target. It relies on a pinned published Gleam compiler front-end and
-starts Geam-specific work at the typed-program boundary.
+Geam reuses Gleam's source-language front end rather than implementing a
+separate parser, source AST, or package manager. Its parser and type checker come
+from the supported Gleam release without modifications to their implementation.
+Geam-specific work starts at the typed-program boundary. Packaging differences
+are limited to distribution metadata and generated version identification,
+while Geam owns planning and execution.
 
 ## Planning Before Execution
 
-The frontend parses and analyses the complete selected module graph. Geam then
-validates that graph while constructing an inspectable `ModulePlan`.
+The compiler integration parses and analyses the complete selected module
+graph. Geam then validates that graph while constructing an inspectable
+`ModulePlan`.
 Unsupported execution semantics are rejected at this boundary, including in
 supplied dependency definitions, rather than becoming conditional runtime
 errors.
@@ -115,10 +120,11 @@ runtime ownership do not change.
 
 ## Effects Stay Caller-Owned
 
-Language Echo uses a caller-supplied `EchoSink`. Official `gleam/io` functions
-use a separate caller-supplied `IoSink`. Entropy, wall-clock access, provider
-configuration, and mutable state are similarly constructed by the runner or
-embedding application rather than read from process-global defaults.
+Language Echo uses a caller-supplied `EchoSink`. The upstream `gleam/io`
+functions use a separate caller-supplied `IoSink` when run through Geam.
+Entropy, wall-clock access, provider configuration, and mutable state are
+similarly constructed by the runner or embedding application rather than read
+from process-global defaults.
 
 This separation makes effects visible at assembly time and keeps execution
 plans independent from credentials, output destinations, and mutable process
