@@ -244,12 +244,12 @@ jobs:
           }
           GLEAM
 
-      - name: Approve discovered crates.io provider
+      - name: Select published crates.io provider
         working-directory: ${{ runner.temp }}/published-provider
         run: |
           test ! -e Cargo.toml
-          printf 'y\n' | script --quiet --return --command "$RUNNER_TEMP/published-geam/bin/geam prepare" "$RUNNER_TEMP/provider-approval.log"
-          test "$(grep -Fc "Approve geam-example-text-pattern $PROVIDER_VERSION? [y/N]" "$RUNNER_TEMP/provider-approval.log")" -eq 1
+          "$RUNNER_TEMP/published-geam/bin/geam" provider add "geam-example-text-pattern@$PROVIDER_VERSION"
+          "$RUNNER_TEMP/published-geam/bin/geam" prepare
 
       - name: Verify published provider selection
         working-directory: ${{ runner.temp }}/published-provider

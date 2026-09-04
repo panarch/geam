@@ -1,78 +1,66 @@
-use crate::error::CliError;
+use crate::command::AddProvider;
 use crate::process::run_checked;
 use crate::progress::Progress;
-use crate::project::ResolvedProject;
-use crate::provider::registry::{ProviderRegistry, RegistryAccessError};
-use crate::provider::{ManagedProject, ProviderSelectionReconciler, TerminalApproval};
+use crate::provider::SystemProviderValidator;
 use crate::runner::SystemCargo;
 use camino::{Utf8Path, Utf8PathBuf};
 use cargo_metadata::MetadataCommand;
-use flate2::{Compression, write::GzEncoder};
 use semver::Version;
-use sha2::{Digest, Sha256};
-use std::cell::RefCell;
-use std::collections::BTreeMap;
 use std::fs;
-use std::io::{self, Cursor, Write};
+use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use tempfile::{TempDir, tempdir};
 
 #[test]
-fn discovers_approves_locks_builds_and_runs_registry_providers() {
+fn selects_locks_builds_and_runs_explicit_path_providers() {
     let fixture = standalone_fixture();
-    let project_root = utf8_path(&fixture).join("project");
-    let catalog = provider_archive("geam-catalog");
-    let counter = provider_archive("geam-counter");
-    let registry = FakeRegistry::new([catalog, counter]);
+    let fixture_root = utf8_path(&fixture);
+    let project_root = fixture_root.join("project");
+    let catalog_path = canonical_utf8(&fixture_root.join("providers/geam-catalog"));
+    let counter_path = canonical_utf8(&fixture_root.join("providers/geam-counter"));
+    for path in [&catalog_path, &counter_path] {
+        crate::provider::add(
+            &project_root,
+            fixture.path(),
+            AddProvider {
+                crate_spec: None,
+                path: Some(path.clone()),
+                git: None,
+                rev: None,
+                package: None,
+            },
+        )
+        .expect("path provider should be selected explicitly");
+    }
     let mut output = Transcript::default();
-    let mut reconciler = RegistryReconciler::new(&registry, b"y\ny\n".to_vec(), output.clone());
+    let providers = SystemProviderValidator::new();
 
     super::Preparation {
         project_root: &project_root,
         lock: &SystemCargo,
-        providers: &mut reconciler,
+        providers: &providers,
         progress: Progress::Visible(&mut output),
     }
     .prepare("standalone_fixture".to_owned(), &SystemCargo)
-    .expect("discovered providers should prepare through the generated runner");
+    .expect("selected providers should prepare through the generated runner");
 
     let initial = output.take();
-    let prompt_start = initial.find("Gleam package catalog").expect("first prompt");
-    let lock_start = initial
-        .find("geam: Resolving Cargo dependencies")
-        .expect("Cargo resolution");
     assert_eq!(
-        &initial[prompt_start..lock_start],
-        concat!(
-            "Gleam package catalog 1.0.0 requires native provider code.\n",
-            "Metadata compatibility is not an endorsement.\n",
-            "  1. geam-catalog 1.0.0 (Gleam >= 1.0.0 and < 2.0.0)\n",
-            "Approve geam-catalog 1.0.0? [y/N] ",
-            "Gleam package counter 1.0.0 requires native provider code.\n",
-            "Metadata compatibility is not an endorsement.\n",
-            "  1. geam-counter 1.0.0 (Gleam >= 1.0.0 and < 2.0.0)\n",
-            "Approve geam-counter 1.0.0? [y/N] ",
-        ),
+        initial
+            .lines()
+            .filter(|line| line.starts_with("geam: "))
+            .collect::<Vec<_>>(),
+        [
+            format!("geam: Preparing standalone_fixture in {project_root}"),
+            "geam: Checking Gleam source for standalone_fixture".to_owned(),
+            "geam: Resolving provider geam-catalog for catalog 1.0.0".to_owned(),
+            "geam: Resolving provider geam-counter for counter 1.0.0".to_owned(),
+            "geam: Checking standalone runner for standalone_fixture".to_owned(),
+            "geam: Prepared standalone_fixture".to_owned(),
+        ],
     );
-    assert_eq!(
-        &initial[..prompt_start],
-        format!(
-            concat!(
-                "geam: Preparing standalone_fixture in {}\n",
-                "geam: Checking Gleam source for standalone_fixture\n",
-                "geam: Discovering native providers for catalog 1.0.0\n",
-                "geam: Discovering native providers for counter 1.0.0\n",
-            ),
-            project_root
-        ),
-    );
-    let check_start = initial
-        .find("geam: Checking standalone runner")
-        .expect("runner check");
-    assert!(lock_start < check_start);
-    assert!(initial.ends_with("geam: Prepared standalone_fixture\n"));
 
     let manifest = fs::read_to_string(project_root.join("Cargo.toml"))
         .expect("managed manifest should be readable");
@@ -94,12 +82,14 @@ fn discovers_approves_locks_builds_and_runs_registry_providers() {
                 "[dependencies]\n",
                 "geam = {{ version = \"={}\", default-features = false, features = [\"builtins\"] }}\n",
                 "toml = \"0.9\"\n",
-                "geam_provider_catalog = {{ package = \"geam-catalog\", version = \"=1.0.0\" }}\n",
-                "geam_provider_counter = {{ package = \"geam-counter\", version = \"=1.0.0\" }}\n\n",
+                "geam_provider_catalog = {{ package = \"geam-catalog\", path = {} }}\n",
+                "geam_provider_counter = {{ package = \"geam-counter\", path = {} }}\n\n",
                 "[workspace]\n",
                 "resolver = \"3\"\n",
             ),
             env!("CARGO_PKG_VERSION"),
+            toml::Value::String(catalog_path.to_string()).to_string(),
+            toml::Value::String(counter_path.to_string()).to_string(),
         ),
     );
     let lock = fs::read(project_root.join("Cargo.lock")).expect("root lock should be readable");
@@ -119,28 +109,14 @@ fn discovers_approves_locks_builds_and_runs_registry_providers() {
         .find("geam_provider_counter::Component")
         .expect("counter component should be generated");
     assert!(catalog < counter);
-    assert_eq!(
-        registry.calls(),
-        [
-            "search:geam-catalog",
-            "configuration",
-            "index:geam-catalog",
-            "download:https://fixture.invalid/geam-catalog/1.0.0/download",
-            "search:geam-counter",
-            "configuration",
-            "index:geam-counter",
-            "download:https://fixture.invalid/geam-counter/1.0.0/download",
-        ],
-    );
-
     super::Preparation {
         project_root: &project_root,
         lock: &SystemCargo,
-        providers: &mut reconciler,
+        providers: &providers,
         progress: Progress::Visible(&mut output),
     }
     .prepare("standalone_fixture".to_owned(), &SystemCargo)
-    .expect("approved providers should prepare without rediscovery");
+    .expect("selected providers should prepare repeatedly");
     let repeated = output.take();
     assert_eq!(
         repeated
@@ -156,7 +132,6 @@ fn discovers_approves_locks_builds_and_runs_registry_providers() {
             "geam: Prepared standalone_fixture".to_owned(),
         ],
     );
-    assert!(!repeated.contains("Approve "));
     assert_eq!(
         fs::read_to_string(project_root.join("Cargo.toml"))
             .expect("managed manifest should remain readable"),
@@ -171,12 +146,10 @@ fn discovers_approves_locks_builds_and_runs_registry_providers() {
             .expect("runner source should remain readable"),
         runner,
     );
-    assert_eq!(registry.calls().len(), 8);
-
     super::Preparation {
         project_root: &project_root,
         lock: &SystemCargo,
-        providers: &mut reconciler,
+        providers: &providers,
         progress: Progress::Visible(&mut output),
     }
     .run(
@@ -188,7 +161,7 @@ fn discovers_approves_locks_builds_and_runs_registry_providers() {
         ],
         &SystemCargo,
     )
-    .expect("approved providers should execute through the generated runner");
+    .expect("selected providers should execute through the generated runner");
     let running = output.take();
     assert_eq!(
         running
@@ -203,50 +176,10 @@ fn discovers_approves_locks_builds_and_runs_registry_providers() {
             "geam: Starting standalone runner for standalone_fixture".to_owned(),
         ],
     );
-    assert!(!running.contains("Approve "));
-    assert_eq!(registry.calls().len(), 8);
     assert_eq!(
         cargo_locks(&project_root),
         [project_root.join("Cargo.lock")]
     );
-}
-
-struct RegistryReconciler<'registry> {
-    registry: &'registry dyn ProviderRegistry,
-    input: Cursor<Vec<u8>>,
-    output: Transcript,
-}
-
-impl<'registry> RegistryReconciler<'registry> {
-    fn new(registry: &'registry dyn ProviderRegistry, input: Vec<u8>, output: Transcript) -> Self {
-        Self {
-            registry,
-            input: Cursor::new(input),
-            output,
-        }
-    }
-}
-
-impl ProviderSelectionReconciler for RegistryReconciler<'_> {
-    fn reconcile(
-        &mut self,
-        project_root: &Utf8Path,
-        project: &ResolvedProject,
-        program: &geam_core::TypedProgram,
-        managed: &mut ManagedProject,
-        progress: &mut Progress<'_>,
-    ) -> Result<(), CliError> {
-        let mut approval = TerminalApproval::new(true, &mut self.input, &mut self.output);
-        crate::provider::reconcile_registry(
-            self.registry,
-            &mut approval,
-            project_root,
-            project,
-            program,
-            managed,
-            progress,
-        )
-    }
 }
 
 #[derive(Clone, Default)]
@@ -271,115 +204,6 @@ impl Write for Transcript {
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
-}
-
-struct ProviderArchive {
-    crate_name: String,
-    version: Version,
-    bytes: Vec<u8>,
-    checksum: String,
-}
-
-fn provider_archive(crate_name: &str) -> ProviderArchive {
-    // Standalone CI verifies Cargo packaging; this unit path keeps registry
-    // reconciliation independent of Cargo's shared download cache.
-    let version = Version::new(1, 0, 0);
-    let manifest = fs::read(
-        fixture_source()
-            .join("providers")
-            .join(crate_name)
-            .join("Cargo.toml"),
-    )
-    .expect("provider manifest should be readable");
-    let encoder = GzEncoder::new(Vec::new(), Compression::default());
-    let mut archive = tar::Builder::new(encoder);
-    let mut header = tar::Header::new_gnu();
-    header.set_mode(0o644);
-    header.set_size(manifest.len() as u64);
-    header.set_cksum();
-    archive
-        .append_data(
-            &mut header,
-            format!("{crate_name}-{version}/Cargo.toml"),
-            manifest.as_slice(),
-        )
-        .expect("provider manifest should enter the archive");
-    let encoder = archive
-        .into_inner()
-        .expect("provider archive should finish writing");
-    let bytes = encoder
-        .finish()
-        .expect("provider archive should finish compressing");
-    let checksum = hex::encode(Sha256::digest(&bytes));
-    ProviderArchive {
-        crate_name: crate_name.to_owned(),
-        version,
-        bytes,
-        checksum,
-    }
-}
-
-struct FakeRegistry {
-    indexes: BTreeMap<String, Vec<u8>>,
-    downloads: BTreeMap<String, Vec<u8>>,
-    calls: RefCell<Vec<String>>,
-}
-
-impl FakeRegistry {
-    fn new<const N: usize>(providers: [ProviderArchive; N]) -> Self {
-        let mut indexes = BTreeMap::new();
-        let mut downloads = BTreeMap::new();
-        for provider in providers {
-            let crate_name = provider.crate_name;
-            let record = serde_json::json!({
-                "name": crate_name,
-                "vers": provider.version.to_string(),
-                "cksum": provider.checksum,
-                "yanked": false,
-            });
-            indexes.insert(crate_name.clone(), format!("{record}\n").into_bytes());
-            downloads.insert(download_url(&crate_name), provider.bytes);
-        }
-        Self {
-            indexes,
-            downloads,
-            calls: RefCell::new(Vec::new()),
-        }
-    }
-
-    fn calls(&self) -> Vec<String> {
-        self.calls.borrow().clone()
-    }
-}
-
-impl ProviderRegistry for FakeRegistry {
-    fn search(&self, query: &str) -> Result<Vec<u8>, RegistryAccessError> {
-        self.calls.borrow_mut().push(format!("search:{query}"));
-        Ok(serde_json::to_vec(&serde_json::json!({
-            "crates": [{ "id": query }],
-            "meta": { "total": 1 },
-        }))
-        .expect("search fixture should serialize"))
-    }
-
-    fn index(&self, crate_name: &str) -> Result<Vec<u8>, RegistryAccessError> {
-        self.calls.borrow_mut().push(format!("index:{crate_name}"));
-        Ok(self.indexes[crate_name].clone())
-    }
-
-    fn configuration(&self) -> Result<Vec<u8>, RegistryAccessError> {
-        self.calls.borrow_mut().push("configuration".to_owned());
-        Ok(br#"{"dl":"https://fixture.invalid/{crate}/{version}/download"}"#.to_vec())
-    }
-
-    fn download(&self, url: &str) -> Result<Vec<u8>, RegistryAccessError> {
-        self.calls.borrow_mut().push(format!("download:{url}"));
-        Ok(self.downloads[url].clone())
-    }
-}
-
-fn download_url(crate_name: &str) -> String {
-    format!("https://fixture.invalid/{crate_name}/1.0.0/download")
 }
 
 fn assert_locked_provider_aliases(project_root: &Utf8Path) {
@@ -482,7 +306,7 @@ fn standalone_fixture() -> TempDir {
         project.join("gleam.toml"),
         r#"name = "standalone_fixture"
 version = "0.0.0"
-description = "Standalone registry integration fixture"
+description = "Standalone explicit provider integration fixture"
 licences = ["Apache-2.0"]
 
 [dependencies]
@@ -590,4 +414,9 @@ fn copy_directory(source: &Path, destination: &Path) {
 fn utf8_path(directory: &TempDir) -> Utf8PathBuf {
     Utf8PathBuf::from_path_buf(directory.path().to_path_buf())
         .expect("temporary path should be valid UTF-8")
+}
+
+fn canonical_utf8(path: &Utf8Path) -> Utf8PathBuf {
+    Utf8PathBuf::from_path_buf(fs::canonicalize(path).expect("fixture path should canonicalize"))
+        .expect("canonical fixture path should be valid UTF-8")
 }

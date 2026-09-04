@@ -58,6 +58,7 @@ cargo clippy --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace 
 
 The fixture is deliberately a separate locked workspace rather than a root
 development dependency. It proves path-based manual embedding and static
-composition only. Standalone discovery, configuration-file parsing, runner
-generation, and build ownership are verified by the standalone CLI fixture
-rather than duplicated here. Cargo publication remains a distribution concern.
+composition only. Standalone provider selection, configuration-file parsing,
+runner generation, and build ownership are verified by the standalone CLI
+fixture rather than duplicated here. Cargo publication remains a distribution
+concern.

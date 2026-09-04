@@ -33,33 +33,35 @@ API. The provider adds the implementation used when Geam runs the package. The
 same provider can be used by a standalone Gleam project or a Rust embedding
 application.
 
-## Provider names for automatic discovery
+## Select a provider explicitly
 
-Automatic provider discovery starts with the Gleam package name. Name a
-published provider by adding `geam-` and replacing underscores with hyphens:
+A provider may use any Cargo package name. Its documentation should tell
+applications which crate to select and identify a particular version only when
+one is required.
 
-| Name form | Example for `company_image` |
-| --- | --- |
-| Exact name | `geam-company-image` |
-| Suffixed name | `geam-company-image-aws` |
+In a standalone Gleam project that contains the matching Gleam package, choose
+one provider source and select it with the corresponding Geam command:
 
-The suffix must use lowercase kebab-case. `geam prepare`, `geam run`, and
-`geam embedding sync` search both forms on crates.io. These are search patterns,
-not ownership claims. The exact name is listed first when both forms produce
-verified candidates, but neither form is treated as official, trusted, or
-automatically selected. A crate named `company-image-rust` is not found
-automatically, even if its metadata targets `company_image`.
+```sh
+# Published reference provider on crates.io
+geam provider add geam-example-text-pattern
 
-The naming pattern only determines which crates Geam examines. Packaged
-metadata declares which Gleam package and versions a crate implements. Geam
-checks that declaration before presenting a candidate, but neither the name nor
-compatible metadata is an endorsement. With one verified candidate, Geam asks
-for approval directly; with several, it asks the user to select one and then
-approve it.
+# Local path
+geam provider add --path ../provider
 
-An explicitly selected registry, path, or Git provider may use another crate
-name. It still needs valid provider metadata for the exact Gleam package and a
-compatible version range.
+# Git revision
+geam provider add --git https://example.com/provider.git --rev COMMIT
+```
+
+Append `@VERSION` to a crates.io name when selecting a particular release.
+
+In a Rust embedding application, add the provider directly to the application's
+`Cargo.toml`, using `cargo add` or an equivalent manifest edit, then run
+`geam embedding sync`.
+
+In both workflows, packaged metadata declares which Gleam package and versions
+the crate implements. Geam uses that metadata to validate the application's
+selection before planning or running application code.
 
 ## Follow one function from Gleam to Rust
 
@@ -135,9 +137,8 @@ gleam-version = ">= 1.0.0 and < 2.0.0"
 `gleam-version` refers to the target Hex package, not the Gleam compiler. The
 provider and Gleam package versions do not need to match.
 
-The discovery name alone is not enough. Geam uses this metadata to check the
-exact package identity and supported range. Compatibility metadata helps Geam
-verify a selection; it is never treated as approval to add native code.
+Geam uses this metadata to check the exact package identity and supported range.
+The Cargo package name itself does not establish that relationship.
 
 ## Run the complete pair
 
@@ -204,11 +205,11 @@ published Hex package and provider crate.
 
 ## Use the provider from an application
 
-Provider crates are native code. In a standalone project, Geam verifies a
-registry candidate and asks for approval before Cargo receives it. In a Rust
-embedding project, `geam embedding sync` performs the same selection and
-records the provider as an ordinary Cargo dependency. Geam verifies metadata
-and typed linkage, but neither step is a security endorsement.
+Provider crates are native code. A standalone project records an explicit
+`geam provider add` selection in its managed Cargo files. A Rust embedding
+application owns the provider as an ordinary direct Cargo dependency. Geam
+verifies metadata and typed linkage in both workflows, but neither check is a
+security endorsement.
 
 Standalone applications pass provider configuration as TOML at run time.
 Embedding applications construct the corresponding Rust configuration and
@@ -226,7 +227,8 @@ The Hex release contains the API that applications import. The crates.io
 release contains the native code that Rust hosts compile. Test the packaged
 provider with `cargo publish --locked --dry-run`, verify the public
 Gleam-to-provider path, and widen `gleam-version` only when that package range
-has been checked.
+has been checked. Document the provider crate in both the package and provider
+guides, and identify a particular release only when applications need one.
 
 The final [text pattern example](../examples/provider/text_pattern) shows a Hex
 package, a crates.io provider, and a separate Erlang implementation of the same

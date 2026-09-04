@@ -106,8 +106,8 @@ standard input and rejects Gleam's successful `Not publishing.` no-op result.
 After uploading, `cargo info <crate>@<version> --registry crates-io` checks every
 Rust package from outside the checkout, so local packages and patches cannot
 satisfy the check. A clean Gleam project then installs the exact same-version Hex
-package, discovers and approves the same-version provider, and runs with the
-released Geam. Only then does `gh release create` publish the reviewed note file
+package, explicitly adds the same-version provider, and runs with the released
+Geam. Only then does `gh release create` publish the reviewed note file
 verbatim, creating `v<version>` at the selected SHA. It does not move existing
 tags or overwrite existing releases.
 

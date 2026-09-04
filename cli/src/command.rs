@@ -55,8 +55,11 @@ pub(super) struct Provider {
 
 #[derive(Debug, PartialEq, Eq, Subcommand)]
 pub(super) enum ProviderCommand {
+    /// Select a provider crate for the current Gleam project.
     Add(AddProvider),
+    /// List the project's selected external providers.
     List,
+    /// Remove the provider selected for a Gleam package.
     Remove(RemoveProvider),
 }
 

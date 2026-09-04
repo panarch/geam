@@ -281,24 +281,22 @@ into canonical plans, graphs, Explain metadata, runtime registries, or host
 callback errors.
 
 Keep standalone package management outside the read-only project loader.
-Registry access, dependency download, process execution, approval prompts, and
-managed file mutation belong to CLI owners. A generated runner must compose
-Geam built-ins and approved Cargo dependencies through one ordered static
+Registry access, dependency download, process execution, and managed file
+mutation belong to CLI owners. A generated runner must compose Geam built-ins
+and selected Cargo dependencies through one ordered static
 component graph. Stores, run state, projections, and registration derive from
 that graph, while configured initialization and runner capability construction
 remain separate owners. Ordinary source edits, module selection, and runtime
 configuration must not change its profile.
 
-Treat first-time native provider selection and incompatible replacement as
-explicit trust boundaries. Verify bounded registry responses, exact archive
-checksums, packaged metadata, target Gleam package, and compatibility before
-presenting a candidate. Do not execute provider code before approval, silently
-select in noninteractive use, let standalone management adopt user-owned Cargo
-manifests, or introduce a second provider lock beside `Cargo.lock`. Explicit
-Rust embedding preparation may amend only the selected application's relevant
-dependency entries, preserving its sources, aliases, existing features, and
-unrelated content; it does not take ownership of the manifest or authorize
-changes to shared workspace declarations.
+Treat native provider selection as application-owned input. Verify each
+selected dependency's Cargo identity, packaged metadata, target Gleam package,
+and compatibility before including it in a generated host. Standalone package
+management records exact provider dependencies in Geam-owned Cargo state, while
+Rust embedding consumes direct dependencies from the application-owned
+manifest. Preserve these ownership boundaries, existing dependency sources and
+aliases, unrelated manifest content, and shared workspace declarations. Use
+`Cargo.lock` as the single Rust dependency lock.
 
 Source provider selection must finish before function body planning. Match an
 exact external scheme, preserve a declared Gleam fallback when no provider is
