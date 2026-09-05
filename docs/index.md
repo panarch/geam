@@ -73,7 +73,7 @@ edit the Gleam module, run `geam embedding sync`, and keep using Cargo as usual.
 What Geam manages depends on where you start:
 
 - In a **standalone project**, Gleam remains the application. Geam manages the
-  project-local Rust runner and approved providers.
+  project-local Rust runner and explicitly selected providers.
 - In a **Rust embedding project**, Rust remains the application. Geam manages
   the nested Gleam project and generated bindings.
 - A **host provider** is the companion Rust crate that implements a Gleam

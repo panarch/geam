@@ -51,7 +51,7 @@ impl HostedBindings {
         remaining_required_packages: &BTreeSet<String>,
         resolved_project: &ResolvedProject,
     ) -> Result<Self, CliError> {
-        let providers = ProviderCandidates::load(package)?;
+        let providers = DirectProviders::load(package)?;
         let mut components = components_for_package(
             package,
             &providers,
@@ -69,28 +69,6 @@ impl HostedBindings {
             components,
         })
     }
-}
-
-pub(super) fn missing_providers(
-    package: &EmbeddingPackage,
-    required_packages: &BTreeSet<String>,
-    resolved_project: &ResolvedProject,
-) -> Result<BTreeMap<String, GleamVersion>, CliError> {
-    let providers = ProviderCandidates::load(package)?;
-    let mut missing = BTreeMap::new();
-    for required in required_packages {
-        if BuiltInProvider::from_package(required).is_some() {
-            continue;
-        }
-        if providers
-            .select(package, required, resolved_project)?
-            .is_none()
-        {
-            let version = required_package_version(package, required, resolved_project)?;
-            missing.insert(required.clone(), version.clone());
-        }
-    }
-    Ok(missing)
 }
 
 impl HostedComponents {
@@ -243,7 +221,7 @@ fn input_field_candidate(package: &str) -> (u8, RustIdentifier) {
 
 fn components_for_package(
     package: &EmbeddingPackage,
-    providers: &ProviderCandidates,
+    providers: &DirectProviders,
     required_package: &str,
     resolved_project: &ResolvedProject,
 ) -> Result<HostedComponents, CliError> {
@@ -251,14 +229,15 @@ fn components_for_package(
         return Ok(HostedComponents::from_builtin(built_in));
     }
 
-    providers
-        .select(package, required_package, resolved_project)?
-        .ok_or_else(|| provider_error(
-            package,
-            required_package,
-            "no enabled direct provider dependency targets the required Gleam package; run `geam embedding sync` to prepare it",
-        ))
-        .map(HostedComponents::from_external)
+    if let Some(component) = providers.select(package, required_package, resolved_project)? {
+        return Ok(HostedComponents::from_external(component));
+    }
+    let version = required_package_version(package, required_package, resolved_project)?;
+    Err(CliError::MissingEmbeddingProvider {
+        package: required_package.to_owned(),
+        version: version.to_string(),
+        manifest: package.manifest().to_path_buf(),
+    })
 }
 
 impl From<BuiltInProvider> for ComponentBinding {
@@ -282,18 +261,18 @@ impl ComponentBinding {
     }
 }
 
-struct ProviderCandidates<'metadata> {
-    by_gleam_package: BTreeMap<String, Vec<ProviderCandidate<'metadata>>>,
+struct DirectProviders<'metadata> {
+    by_gleam_package: BTreeMap<String, Vec<DirectProvider<'metadata>>>,
 }
 
-struct ProviderCandidate<'metadata> {
+struct DirectProvider<'metadata> {
     dependency: &'metadata DirectDependency,
     metadata: ProviderMetadata,
 }
 
-impl<'metadata> ProviderCandidates<'metadata> {
+impl<'metadata> DirectProviders<'metadata> {
     fn load(package: &'metadata EmbeddingPackage) -> Result<Self, CliError> {
-        let mut by_gleam_package = BTreeMap::<String, Vec<ProviderCandidate<'_>>>::new();
+        let mut by_gleam_package = BTreeMap::<String, Vec<DirectProvider<'_>>>::new();
         for dependency in package.direct_dependencies() {
             let metadata =
                 ProviderMetadata::from_optional_package(&dependency.package).map_err(|reason| {
@@ -312,7 +291,7 @@ impl<'metadata> ProviderCandidates<'metadata> {
             by_gleam_package
                 .entry(metadata.gleam_package().to_owned())
                 .or_default()
-                .push(ProviderCandidate {
+                .push(DirectProvider {
                     dependency,
                     metadata,
                 });
@@ -326,23 +305,23 @@ impl<'metadata> ProviderCandidates<'metadata> {
         required_package: &str,
         resolved_project: &ResolvedProject,
     ) -> Result<Option<ExternalComponent>, CliError> {
-        let candidates = self
+        let providers = self
             .by_gleam_package
             .get(required_package)
             .map(Vec::as_slice)
             .unwrap_or_default();
-        let candidate = match candidates {
-            [candidate] => candidate,
+        let provider = match providers {
+            [provider] => provider,
             [] => return Ok(None),
-            candidates => {
+            providers => {
                 return Err(provider_error(
                     package,
                     required_package,
                     format!(
                         "multiple enabled direct providers target the package through aliases: {}",
-                        candidates
+                        providers
                             .iter()
-                            .map(|candidate| candidate.dependency.alias.as_str())
+                            .map(|provider| provider.dependency.alias.as_str())
                             .collect::<Vec<_>>()
                             .join(", ")
                     ),
@@ -350,23 +329,23 @@ impl<'metadata> ProviderCandidates<'metadata> {
             }
         };
         let version = required_package_version(package, required_package, resolved_project)?;
-        if !candidate.metadata.supports(version) {
+        if !provider.metadata.supports(version) {
             return Err(provider_error(
                 package,
                 required_package,
                 format!(
                     "provider crate {} does not support resolved Gleam version {} (declared range {})",
-                    candidate.metadata.crate_name(),
+                    provider.metadata.crate_name(),
                     version,
-                    candidate.metadata.gleam_range(),
+                    provider.metadata.gleam_range(),
                 ),
             ));
         }
-        verify_provider_geam_identity(package, candidate)?;
+        verify_provider_geam_identity(package, provider)?;
 
         let input_field = RustIdentifier::from_compiled_package(required_package);
         let state_field = input_field.with_prefix("provider_");
-        let alias = candidate.dependency.alias.as_str();
+        let alias = provider.dependency.alias.as_str();
         let crate_alias = RustIdentifier::crate_alias(alias).map_err(|reason| {
             provider_error(
                 package,
@@ -401,27 +380,27 @@ fn required_package_version<'project>(
 
 fn verify_provider_geam_identity(
     package: &EmbeddingPackage,
-    candidate: &ProviderCandidate<'_>,
+    provider: &DirectProvider<'_>,
 ) -> Result<(), CliError> {
-    let provider_geam = match candidate.dependency.geam_dependencies.as_slice() {
+    let provider_geam = match provider.dependency.geam_dependencies.as_slice() {
         [dependency] => &dependency.package_id,
         [] => {
             return Err(provider_error(
                 package,
-                candidate.metadata.gleam_package(),
+                provider.metadata.gleam_package(),
                 format!(
                     "provider crate {} has no enabled direct normal dependency on package `geam`",
-                    candidate.metadata.crate_name(),
+                    provider.metadata.crate_name(),
                 ),
             ));
         }
         dependencies => {
             return Err(provider_error(
                 package,
-                candidate.metadata.gleam_package(),
+                provider.metadata.gleam_package(),
                 format!(
                     "provider crate {} resolves multiple Geam dependencies through aliases: {}",
-                    candidate.metadata.crate_name(),
+                    provider.metadata.crate_name(),
                     dependencies
                         .iter()
                         .map(|dependency| dependency.alias.as_str())
@@ -434,10 +413,10 @@ fn verify_provider_geam_identity(
     if provider_geam != package.geam_package_id() {
         return Err(provider_error(
             package,
-            candidate.metadata.gleam_package(),
+            provider.metadata.gleam_package(),
             format!(
                 "provider crate {} resolves Geam as {}, but the embedding package resolves {}",
-                candidate.metadata.crate_name(),
+                provider.metadata.crate_name(),
                 provider_geam,
                 package.geam_package_id(),
             ),
@@ -462,7 +441,6 @@ fn provider_error(
 mod tests {
     use super::{
         ComponentBinding, ExternalComponent, HostedBindings, HostedCapabilities, HostedComponents,
-        missing_providers,
     };
     use crate::builtin::BuiltInProvider;
     use crate::embedding::boundary::{DataType, FunctionBinding, PlainBindings};
@@ -471,8 +449,7 @@ mod tests {
     use crate::error::CliError;
     use crate::project::read_existing_resolved_project;
     use camino::{Utf8Path, Utf8PathBuf};
-    use hexpm::version::Version as GleamVersion;
-    use std::collections::{BTreeMap, BTreeSet};
+    use std::collections::BTreeSet;
     use std::fs;
     use std::process::{Command, Output};
     use tempfile::{TempDir, tempdir};
@@ -642,94 +619,37 @@ mod tests {
             error,
             CliError::InvalidEmbeddingProvider { package, reason, .. }
                 if package == "missing_package"
-                    && reason.contains("no enabled direct provider dependency")
+                    && reason.contains("resolved Gleam project does not contain")
         ));
     }
 
     #[test]
-    fn distinguishes_missing_requirements_from_incompatible_existing_selections() {
-        let required = BTreeSet::from(["gleam_stdlib".to_owned(), "images".to_owned()]);
-        let missing = ProviderGraphFixture::new(vec![], Some("1.2.0"));
-        let package = EmbeddingPackage::load(&missing.application).expect("application graph");
-        let project =
-            read_existing_resolved_project(package.project_root()).expect("Gleam versions");
-        assert_eq!(
-            missing_providers(&package, &required, &project).expect("missing provider"),
-            BTreeMap::from([("images".to_owned(), GleamVersion::new(1, 2, 0))])
-        );
+    fn reports_missing_direct_provider_for_a_resolved_package() {
+        let fixtures = [
+            ProviderGraphFixture::new(vec![], Some("1.2.0")),
+            ProviderGraphFixture::new(
+                vec![
+                    ProviderSpec::valid("patterns", "pattern-provider", "images", ">= 1.0.0")
+                        .transitive(),
+                ],
+                Some("1.2.0"),
+            ),
+        ];
 
-        let absent = ProviderGraphFixture::new(vec![], None);
-        let package = EmbeddingPackage::load(&absent.application).expect("application graph");
-        let project =
-            read_existing_resolved_project(package.project_root()).expect("Gleam versions");
-        assert_eq!(
-            missing_providers(&package, &required, &project)
-                .expect_err("required source version is missing")
-                .to_string(),
-            format!(
-                "invalid Rust embedding provider graph for package images at {}: the resolved Gleam project does not contain the required package",
-                package.manifest()
-            )
-        );
-
-        let existing = ProviderGraphFixture::new(
-            vec![ProviderSpec::valid(
-                "custom_alias",
-                "images-provider",
-                "images",
-                "< 1.0.0",
-            )],
-            Some("1.2.0"),
-        );
-        let package = EmbeddingPackage::load(&existing.application).expect("application graph");
-        let project =
-            read_existing_resolved_project(package.project_root()).expect("Gleam versions");
-        assert_eq!(
-            missing_providers(&package, &required, &project)
-                .expect_err("incompatible declaration must not become a new selection")
-                .to_string(),
-            format!(
-                "invalid Rust embedding provider graph for package images at {}: provider crate images-provider does not support resolved Gleam version 1.2.0 (declared range < 1.0.0)",
-                package.manifest()
-            )
-        );
-
-        let malformed = ProviderGraphFixture::new(
-            vec![ProviderSpec::malformed(
-                "broken",
-                "images-provider",
-                "images",
-            )],
-            Some("1.2.0"),
-        );
-        let package = EmbeddingPackage::load(&malformed.application).expect("application graph");
-        let project =
-            read_existing_resolved_project(package.project_root()).expect("Gleam versions");
-        assert!(
-            missing_providers(&package, &required, &project)
-                .expect_err("malformed metadata cannot trigger replacement")
-                .to_string()
-                .contains("provider metadata")
-        );
+        for fixture in fixtures {
+            assert!(matches!(
+                fixture.resolve("images"),
+                Err(CliError::MissingEmbeddingProvider { package, version, manifest })
+                    if package == "images"
+                        && version == "1.2.0"
+                        && manifest == fixture.application.join("Cargo.toml")
+            ));
+        }
     }
 
     #[test]
     fn rejects_invalid_external_provider_graphs_before_rendering() {
         let cases = [
-            (
-                ProviderGraphFixture::new(vec![], Some("1.2.0")),
-                "no enabled direct provider dependency",
-            ),
-            (
-                ProviderGraphFixture::new(
-                    vec![
-                        ProviderSpec::valid("patterns", "pattern-provider", "images", ">= 1.0.0")
-                            .transitive(),
-                    ],
-                    Some("1.2.0"),
-                ),
-                "no enabled direct provider dependency",
-            ),
             (
                 ProviderGraphFixture::new(
                     vec![

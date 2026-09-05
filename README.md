@@ -141,17 +141,15 @@ pub fn main() {
 }
 ```
 
-Geam links that call to the Rust implementation.
-
-For automatic crates.io discovery, a provider for `example_text_tools` is named
-`geam-example-text-tools` or `geam-example-text-tools-<suffix>`. The name makes
-the crate discoverable; its metadata declares the Gleam package and versions it
-implements.
+Geam links that call to the selected Rust implementation. A standalone project
+selects the crate with `geam provider add`; a Rust embedding application adds
+it as a direct Cargo dependency. The provider's Cargo metadata declares the
+Gleam package and versions it implements, so Geam can validate the selection
+before running application code.
 
 The [Add Rust to a Gleam package](docs/host-providers.md) guide follows one
-function from its Gleam declaration to Rust and then through `geam run`. Its
-[provider names for automatic discovery](docs/host-providers.md#provider-names-for-automatic-discovery)
-section defines the crates.io naming rule.
+function from its Gleam declaration to Rust and then through `geam run`. It
+also shows how standalone and embedding applications select a provider.
 
 ## Where Geam fits
 

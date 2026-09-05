@@ -39,7 +39,7 @@ bodies are planned for the Rust runtime. A bodyless Erlang external must bind to
 a built-in or selected Rust provider.
 
 A bodyless JavaScript-only external is unavailable on this path. If selected
-Gleam code calls it, Gleam analysis fails before automatic provider discovery.
+Gleam code calls it, Gleam analysis fails before provider validation.
 If it is unreachable, Geam omits it from the planned module. A JavaScript native
 implementation does not become a Rust provider merely because it is present in
 the package.

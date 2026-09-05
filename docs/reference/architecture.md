@@ -90,8 +90,8 @@ initialization.
 
 The final runner combines components into one concrete profile at compile time.
 There is no runtime provider registry, dynamic library lookup, or type-erased
-state map. Provider discovery and approval select Cargo dependencies; Cargo
-then builds the static graph.
+state map. Applications select provider dependencies explicitly; Cargo then
+builds the static graph.
 
 An exact provider implementation wins for a matching source external. An
 external declaration with a Gleam fallback can keep that source body when no
@@ -105,8 +105,8 @@ Standalone and embedding are two owners around the same architecture.
 ### Standalone
 
 The Gleam project owns source and dependencies. Geam manages a project-local
-Cargo manifest, lockfile, and generated runner. The user approves native
-provider dependencies and executes the selected module through `geam run`.
+Cargo manifest, lockfile, and generated runner. The user selects native provider
+dependencies explicitly and executes the selected module through `geam run`.
 
 ### Rust Embedding
 

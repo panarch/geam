@@ -1,24 +1,20 @@
 use crate::error::CliError;
 use crate::progress::Progress;
 use crate::project::{compile_resolved_project, read_resolved_project_with_progress};
-use crate::provider::{ManagedProject, ProviderSelectionReconciler, SystemProviderReconciler};
+use crate::provider::{ManagedProject, ProviderSelectionValidator, SystemProviderValidator};
 use camino::{Utf8Path, Utf8PathBuf};
 use std::collections::BTreeMap;
-use std::io::IsTerminal;
 
 #[cfg(test)]
 mod integration;
 
 pub(super) fn prepare(project_root: &Utf8Path, module: String) -> Result<(), CliError> {
-    let stdin = std::io::stdin();
-    let mut input = stdin.lock();
-    let mut output = std::io::stderr();
     let mut progress_output = std::io::stderr();
-    let mut providers = SystemProviderReconciler::new(stdin.is_terminal(), &mut input, &mut output);
+    let providers = SystemProviderValidator::new();
     Preparation {
         project_root,
         lock: &crate::runner::SystemCargo,
-        providers: &mut providers,
+        providers: &providers,
         progress: Progress::Visible(&mut progress_output),
     }
     .prepare(module, &crate::runner::SystemCargo)
@@ -30,15 +26,12 @@ pub(super) fn run(
     module: String,
     configuration_specs: Vec<String>,
 ) -> Result<(), CliError> {
-    let stdin = std::io::stdin();
-    let mut input = stdin.lock();
-    let mut output = std::io::stderr();
     let mut progress_output = std::io::stderr();
-    let mut providers = SystemProviderReconciler::new(stdin.is_terminal(), &mut input, &mut output);
+    let providers = SystemProviderValidator::new();
     Preparation {
         project_root,
         lock: &crate::runner::SystemCargo,
-        providers: &mut providers,
+        providers: &providers,
         progress: Progress::Visible(&mut progress_output),
     }
     .run(
@@ -52,7 +45,7 @@ pub(super) fn run(
 struct Preparation<'a> {
     project_root: &'a Utf8Path,
     lock: &'a dyn crate::runner::CargoLock,
-    providers: &'a mut dyn ProviderSelectionReconciler,
+    providers: &'a dyn ProviderSelectionValidator,
     progress: Progress<'a>,
 }
 
@@ -101,13 +94,8 @@ impl Preparation<'_> {
                 &mut self.progress,
             )?;
         }
-        self.providers.reconcile(
-            project_root,
-            &project,
-            &typed,
-            &mut managed,
-            &mut self.progress,
-        )?;
+        self.providers
+            .validate(project_root, &project, &typed, &managed, &mut self.progress)?;
         crate::runner::reconcile_source(project_root, &managed.provider_aliases())?;
         let manifest_changed = managed.write()?;
         crate::runner::reconcile_lock(
@@ -160,7 +148,7 @@ mod tests {
     use crate::error::CliError;
     use crate::progress::Progress;
     use crate::project::ResolvedProject;
-    use crate::provider::{ManagedProject, ProviderSelectionReconciler};
+    use crate::provider::{ManagedProject, ProviderSelectionValidator};
     use crate::runner::{CargoLock, RunnerChecker, RunnerExecutor};
     use camino::{Utf8Path, Utf8PathBuf};
     use std::cell::{Cell, RefCell};
@@ -283,13 +271,13 @@ mod tests {
 
     struct UnchangedProviders;
 
-    impl ProviderSelectionReconciler for UnchangedProviders {
-        fn reconcile(
-            &mut self,
+    impl ProviderSelectionValidator for UnchangedProviders {
+        fn validate(
+            &self,
             _project_root: &Utf8Path,
             _project: &ResolvedProject,
             _program: &geam_core::TypedProgram,
-            _managed: &mut ManagedProject,
+            _managed: &ManagedProject,
             _progress: &mut Progress<'_>,
         ) -> Result<(), CliError> {
             Ok(())
@@ -300,13 +288,13 @@ mod tests {
         observed: &'test Cell<bool>,
     }
 
-    impl ProviderSelectionReconciler for LockedProviders<'_> {
-        fn reconcile(
-            &mut self,
+    impl ProviderSelectionValidator for LockedProviders<'_> {
+        fn validate(
+            &self,
             project_root: &Utf8Path,
             _project: &ResolvedProject,
             _program: &geam_core::TypedProgram,
-            managed: &mut ManagedProject,
+            managed: &ManagedProject,
             _progress: &mut Progress<'_>,
         ) -> Result<(), CliError> {
             assert_eq!(
@@ -335,7 +323,7 @@ mod tests {
         super::Preparation {
             project_root,
             lock,
-            providers: &mut UnchangedProviders,
+            providers: &UnchangedProviders,
             progress: Progress::Hidden,
         }
         .prepare(module, checker)
@@ -352,7 +340,7 @@ mod tests {
         super::Preparation {
             project_root,
             lock,
-            providers: &mut UnchangedProviders,
+            providers: &UnchangedProviders,
             progress: Progress::Hidden,
         }
         .run(current_directory, module, configuration_specs, executor)
@@ -368,7 +356,7 @@ mod tests {
         super::Preparation {
             project_root: &root,
             lock: &cargo,
-            providers: &mut UnchangedProviders,
+            providers: &UnchangedProviders,
             progress: Progress::Visible(&mut output),
         }
         .prepare("application".to_owned(), &cargo)
@@ -402,7 +390,7 @@ mod tests {
         super::Preparation {
             project_root: &root,
             lock: &cargo,
-            providers: &mut UnchangedProviders,
+            providers: &UnchangedProviders,
             progress: Progress::Visible(&mut output),
         }
         .prepare("application".to_owned(), &cargo)
@@ -446,7 +434,7 @@ mod tests {
         super::Preparation {
             project_root: &root,
             lock: &cargo,
-            providers: &mut UnchangedProviders,
+            providers: &UnchangedProviders,
             progress: Progress::Visible(&mut output),
         }
         .run(&root, "application".to_owned(), Vec::new(), &cargo)
@@ -479,7 +467,7 @@ mod tests {
         let error = super::Preparation {
             project_root: &root,
             lock: &cargo,
-            providers: &mut UnchangedProviders,
+            providers: &UnchangedProviders,
             progress: Progress::Visible(&mut output),
         }
         .prepare("application".to_owned(), &FailingCheck)
@@ -512,7 +500,7 @@ mod tests {
         let error = super::Preparation {
             project_root: &root,
             lock: &cargo,
-            providers: &mut UnchangedProviders,
+            providers: &UnchangedProviders,
             progress: Progress::Visible(&mut output),
         }
         .prepare("application".to_owned(), &cargo)
@@ -553,11 +541,11 @@ mod tests {
                 remaining_lines: 3,
                 bytes: Vec::new(),
             };
-            let mut providers = UnchangedProviders;
+            let providers = UnchangedProviders;
             let mut preparation = super::Preparation {
                 project_root: &root,
                 lock: &cargo,
-                providers: &mut providers,
+                providers: &providers,
                 progress: Progress::Visible(&mut output),
             };
             let result = if run {
@@ -584,7 +572,7 @@ mod tests {
     }
 
     #[test]
-    fn restores_the_root_lock_after_pruning_before_resolving_approved_providers() {
+    fn restores_the_root_lock_after_pruning_before_resolving_selected_providers() {
         let project = project(
             "application",
             r#"
@@ -601,14 +589,14 @@ pub fn main() { required() }
         );
         let cargo = RecordingCargo::default();
         let observed = Cell::new(false);
-        let mut providers = LockedProviders {
+        let providers = LockedProviders {
             observed: &observed,
         };
 
         super::Preparation {
             project_root: &root,
             lock: &cargo,
-            providers: &mut providers,
+            providers: &providers,
             progress: Progress::Hidden,
         }
         .prepare("application".to_owned(), &cargo)
@@ -643,14 +631,14 @@ pub fn main() { required() }
             .kind();
         let cargo = RecordingCargo::default();
         let observed = Cell::new(false);
-        let mut providers = LockedProviders {
+        let providers = LockedProviders {
             observed: &observed,
         };
 
         let error = super::Preparation {
             project_root: &root,
             lock: &cargo,
-            providers: &mut providers,
+            providers: &providers,
             progress: Progress::Hidden,
         }
         .prepare("application".to_owned(), &cargo)
@@ -675,14 +663,14 @@ pub fn main() { required() }
             "geam_provider_application = { package = \"geam-application\", path = \"/application\" }\n",
         );
         let observed = Cell::new(false);
-        let mut providers = LockedProviders {
+        let providers = LockedProviders {
             observed: &observed,
         };
 
         let error = super::Preparation {
             project_root: &root,
             lock: &FailingLock,
-            providers: &mut providers,
+            providers: &providers,
             progress: Progress::Hidden,
         }
         .prepare("application".to_owned(), &RecordingCargo::default())
@@ -840,7 +828,7 @@ pub fn main() { 1 }
     }
 
     #[test]
-    fn preserves_provider_reconciliation_failures_before_writing_runner_inputs() {
+    fn preserves_provider_validation_failures_before_writing_runner_inputs() {
         let project = project(
             "application",
             r#"
@@ -854,18 +842,18 @@ pub fn main() { 1 }
 
         struct FailingProviders;
 
-        impl ProviderSelectionReconciler for FailingProviders {
-            fn reconcile(
-                &mut self,
+        impl ProviderSelectionValidator for FailingProviders {
+            fn validate(
+                &self,
                 _project_root: &Utf8Path,
                 _project: &ResolvedProject,
                 _program: &geam_core::TypedProgram,
-                _managed: &mut ManagedProject,
+                _managed: &ManagedProject,
                 _progress: &mut Progress<'_>,
             ) -> Result<(), CliError> {
-                Err(CliError::ProviderApprovalRequired {
+                Err(CliError::MissingStandaloneProvider {
                     package: "application".to_owned(),
-                    command: "geam provider add geam-application@1.0.0".to_owned(),
+                    version: "1.0.0".to_owned(),
                 })
             }
         }
@@ -874,14 +862,14 @@ pub fn main() { 1 }
             super::Preparation {
                 project_root: &root,
                 lock: &RecordingCargo::default(),
-                providers: &mut FailingProviders,
+                providers: &FailingProviders,
                 progress: Progress::Hidden,
             }
             .prepare("application".to_owned(), &RecordingCargo::default())
-            .expect_err("provider reconciliation should fail"),
-            CliError::ProviderApprovalRequired { package, command }
+            .expect_err("provider validation should fail"),
+            CliError::MissingStandaloneProvider { package, version }
                 if package == "application"
-                    && command == "geam provider add geam-application@1.0.0"
+                    && version == "1.0.0"
         ));
         assert!(!root.join("Cargo.toml").exists());
     }

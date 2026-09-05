@@ -232,8 +232,8 @@ jobs:
             assert pattern.find_all(words, "Geam + Gleam 2026") == ["Geam", "Gleam"]
           }
           GLEAM
-            printf 'y\n' | script --quiet --return --command "$RUNNER_TEMP/published-geam/bin/geam prepare" "$RUNNER_TEMP/provider-approval.log"
-            test "$(grep -Fc "Approve $REFERENCE_PROVIDER $RELEASE_VERSION? [y/N]" "$RUNNER_TEMP/provider-approval.log")" -eq 1
+            "$RUNNER_TEMP/published-geam/bin/geam" provider add "$REFERENCE_PROVIDER@$RELEASE_VERSION"
+            "$RUNNER_TEMP/published-geam/bin/geam" prepare
             cargo metadata --format-version 1 --locked --manifest-path Cargo.toml > "$RUNNER_TEMP/provider-metadata.json"
             jq -e --arg version "$RELEASE_VERSION" --arg provider "$REFERENCE_PROVIDER" '
               ([.packages[] | select(.name == "geam" and .version == $version and (.source | startswith("registry+")))] | length == 1)

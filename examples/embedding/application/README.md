@@ -23,8 +23,9 @@ interface, edit that module, run sync, and update the Rust calls;
 
 In this repository, checked-in path dependencies and a Cargo patch connect the
 application to the local Geam and text-pattern provider sources. In a new
-application, init adds Geam, and sync discovers and asks for approval of missing
-native providers. Existing compatible declarations are reused.
+application, init adds Geam; add any provider as a direct Cargo dependency
+before running sync. Sync verifies existing compatible declarations and reports
+missing native providers without changing the application's dependencies.
 
 ## Read The Example
 
@@ -58,8 +59,8 @@ cargo run --quiet --locked
 ```
 
 Check restores missing locked Gleam package sources without changing the
-application's declarations, lockfiles, or generated Rust. The existing provider
-declaration needs no new approval. After editing Gleam, use
+application's declarations, lockfiles, or generated Rust. It validates the
+existing provider declaration. After editing Gleam, use
 `geam embedding sync` before the next Cargo build.
 
 The application prints:

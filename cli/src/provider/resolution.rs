@@ -766,7 +766,7 @@ mod tests {
             parse_registry_specification("geam-images").expect("unversioned crate should parse");
         assert_eq!(unversioned, ("geam-images".to_owned(), None),);
         let explicitly_named = parse_registry_specification("geam-company_image")
-            .expect("explicit selection should not require the discovery naming convention");
+            .expect("explicit selection should accept an arbitrary crate name");
         assert_eq!(explicitly_named, ("geam-company_image".to_owned(), None));
         let versioned = parse_registry_specification("geam-images@1.2.3")
             .expect("versioned crate should parse");
@@ -1041,7 +1041,7 @@ mod tests {
     }
 
     #[test]
-    fn applies_project_cargo_configuration_to_candidate_and_approved_resolution() {
+    fn applies_project_cargo_configuration_to_candidate_and_selected_resolution() {
         let project = utf8_tempdir();
         let provider = provider_package("geam-images", "images", ">= 2.0.0 and < 3.0.0");
         let provider_path = utf8_path(&provider);
@@ -1108,7 +1108,7 @@ mod tests {
             &SystemCargoMetadata,
             &mut Progress::Hidden,
         )
-        .expect("approved provider should resolve from the managed graph");
+        .expect("selected provider should resolve from the managed graph");
 
         assert_eq!(metadata.crate_name(), "geam-images");
         assert_eq!(metadata.gleam_package(), "images");
@@ -1123,7 +1123,7 @@ mod tests {
             &SystemCargoMetadata,
             &mut Progress::Hidden,
         )
-        .expect_err("approved provider resolution must not recreate a missing root lock");
+        .expect_err("selected provider resolution must not recreate a missing root lock");
         assert!(matches!(
             error,
             CliError::ProcessFailure {
@@ -1140,7 +1140,7 @@ mod tests {
     }
 
     #[test]
-    fn preserves_missing_approved_dependency_aliases_from_the_root_graph() {
+    fn preserves_missing_selected_dependency_aliases_from_the_root_graph() {
         let project = utf8_tempdir();
         let provider = provider_package("geam-images", "images", "1.0.0");
         let request = ProviderRequest::Path {
@@ -1171,7 +1171,7 @@ mod tests {
             &FixedLoader(metadata),
             &mut Progress::Hidden,
         )
-        .expect_err("missing approved dependency alias should be preserved");
+        .expect_err("missing selected dependency alias should be preserved");
 
         assert!(matches!(
             error,
@@ -1460,7 +1460,7 @@ mod tests {
             },
             &SystemCargoMetadata,
         )
-        .expect("Git package should be discovered");
+        .expect("Git package should be found");
         assert_eq!(completed.crate_name(), Some("geam-images"));
         assert_git_inspection_removed(&project);
     }

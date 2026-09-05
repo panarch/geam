@@ -75,36 +75,18 @@ pub(super) enum CliError {
     #[error("provider targets Gleam package {package}, which is absent from the resolved project")]
     MissingGleamPackage { package: String },
 
-    #[error("provider registry access for Gleam package {package} failed: {reason}")]
-    ProviderRegistryAccess { package: String, reason: String },
-
-    #[error("provider registry response for Gleam package {package} is unusable: {reason}")]
-    ProviderRegistryProtocol { package: String, reason: String },
+    #[error(
+        "Gleam package {package} {version} requires native provider code; select one with `geam provider add CRATE[@VERSION]`, `geam provider add --path PATH`, or `geam provider add --git URL`"
+    )]
+    MissingStandaloneProvider { package: String, version: String },
 
     #[error(
-        "no metadata-verified provider is available for Gleam package {package} {version}: {details}"
+        "Gleam package {package} {version} requires native provider code; add a compatible provider crate as a direct dependency in {manifest}, then run `geam embedding sync`"
     )]
-    ProviderCandidatesUnavailable {
+    MissingEmbeddingProvider {
         package: String,
         version: String,
-        details: String,
-    },
-
-    #[error(
-        "Gleam package {package} requires native provider approval; run Geam interactively or select it explicitly with `{command}`"
-    )]
-    ProviderApprovalRequired { package: String, command: String },
-
-    #[error(
-        "provider selection for Gleam package {package} was cancelled; no provider selections were changed"
-    )]
-    ProviderApprovalCancelled { package: String },
-
-    #[error("failed to {operation} provider approval prompt")]
-    ProviderApprovalIo {
-        operation: &'static str,
-        #[source]
-        error: io::Error,
+        manifest: Utf8PathBuf,
     },
 
     #[error("failed to write provider list")]

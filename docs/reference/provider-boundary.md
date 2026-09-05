@@ -18,10 +18,10 @@ macro support without adding `geam-cli` or built-in provider bundles. A runner
 that depends on the provider receives this feature through ordinary Cargo
 feature unification on the same Geam package identity.
 
-This boundary is intentionally static. The standalone CLI can discover and
-approve provider dependencies, parse explicit configuration, and generate a
-concrete runner, but the resulting Rust program still composes every component
-at compile time. It does not choose or type-erase implementations at runtime.
+This boundary is intentionally static. The standalone CLI records explicitly
+selected provider dependencies, parses configuration, and generates a concrete
+runner, but the resulting Rust program still composes every component at
+compile time. It does not choose or type-erase implementations at runtime.
 
 Start with the
 [provider authoring examples](../../examples/provider).
@@ -485,10 +485,9 @@ Geam metadata. The component demonstrates:
 
 Its
 [Cargo manifest](../../examples/provider/text_pattern/provider/Cargo.toml)
-uses the exact `geam-example-text-pattern` discovery-name form and schema-1
-metadata. This
-release-coupled provider pins the actual `example_text_pattern` Hex package
-version exactly.
+uses schema-1 metadata to identify the target Gleam package and supported
+version. This release-coupled provider pins the actual `example_text_pattern`
+Hex package version exactly.
 
 The
 [complete example](../../examples/provider/text_pattern)
@@ -497,10 +496,10 @@ through explicit path selection and packages it with ordinary Cargo tooling.
 The matching Gleam package and provider are also published on Hex and crates.io;
 the package's
 [public usage guide](https://github.com/panarch/geam/blob/main/examples/provider/text_pattern/project/packages/example_text_pattern/README.md)
-shows discovery and approval without an explicit provider selection. CI keeps
-that released path separate from checkout tests and verifies a known published
-combination. The reference-example publication workflow verifies each new
-same-version combination before the GitHub Release is created. The
+shows how to select the published provider explicitly. CI keeps that released
+path separate from checkout tests and verifies a known published combination.
+The reference-example publication workflow verifies each new same-version
+combination before the GitHub Release is created. The
 [provider README](https://github.com/panarch/geam/blob/main/examples/provider/text_pattern/provider/README.md)
 explains the
 complete macro-authored Rust mapping and why `Pattern` owns manual source
@@ -546,9 +545,9 @@ impl HostComponentProfile<Component> for Profile {
 
 For multiple components, the aggregate structs add one concrete field and one
 projection implementation per component. No trait object, type-erased map, or
-runtime registry is involved. Geam built-ins and approved Cargo dependencies
-use this same field, projection, and registration path; discovery and state
-construction are the parts that differ.
+runtime registry is involved. Geam built-ins and selected Cargo dependencies
+use this same field, projection, and registration path; dependency selection
+and state construction are the parts that differ.
 
 The runner then performs the complete hosted pipeline explicitly:
 
@@ -617,7 +616,7 @@ type parameters already bound by the function signature.
 ## Standalone CLI Boundary
 
 The standalone CLI emits one aggregate `Stores`, `RunState`, `Profile`,
-projection, and registration graph for Geam built-ins and approved Cargo
+projection, and registration graph for Geam built-ins and selected Cargo
 dependencies. A provider crate advertises one component through
 `[package.metadata.geam.provider]`; the CLI verifies that metadata before
 recording the crate as an ordinary exact Cargo dependency. Generated code uses
@@ -625,18 +624,10 @@ only the crate-root `Component` and the public component contracts. Configured
 dependency initialization and runner-owned capability construction remain
 separate strategies within that graph.
 
-To make a published provider discoverable, derive its Cargo package name from
-the target Gleam package: add the `geam-` prefix and replace underscores with
-hyphens. A provider whose metadata targets `company_image` can therefore use
-the exact name `geam-company-image` or a suffixed name such as
-`geam-company-image-aws`. The exact form is sorted first but has no authority
-over the suffixed form. Either name only places the crate in the discovery
-namespace. Packaged metadata supplies the target identity and version range Geam
-validates, but does not establish publisher authority or endorsement. Explicitly
-selected registry, path, or Git crates may use other names.
-
-Discovery, native-code approval, managed Cargo files, and runtime configuration
-belong to the CLI rather than this SDK. Provider callbacks, stores, and state
-remain governed by the same static ABI whether a runner is generated or written
-by an embedding application. See [standalone execution](../standalone.md) for the
-CLI workflow and trust boundary.
+After the user selects a registry, path, or Git crate, packaged metadata supplies
+the target identity and version range Geam validates. Provider selection,
+managed Cargo files, and runtime configuration belong to the CLI rather than
+this SDK. Provider callbacks, stores, and state remain governed by the same
+static ABI whether a runner is generated or written by an embedding
+application. See [standalone execution](../standalone.md) for the CLI workflow
+and trust boundary.
