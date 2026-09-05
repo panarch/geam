@@ -29,9 +29,9 @@ pub struct HostProviderSet<Profile: HostProfile = StatelessHostProfile> {
     providers: Vec<HostProviderModule<Profile>>,
 }
 
-struct HostModuleIdentity {
-    package: EcoString,
-    module: EcoString,
+pub(super) struct HostModuleIdentity {
+    pub(super) package: EcoString,
+    pub(super) module: EcoString,
 }
 
 pub(crate) struct RegisteredHostModule {
@@ -56,6 +56,16 @@ pub(crate) struct RegisteredHostFunction {
 #[derive(Clone, Copy)]
 pub(crate) struct RegisteredHostImplementationId(usize);
 
+impl RegisteredHostImplementationId {
+    pub(super) fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    pub(super) fn index(self) -> usize {
+        self.0
+    }
+}
+
 pub(crate) struct RegisteredHostImplementations<Profile: HostProfile> {
     functions: Vec<Arc<HostFunctionImplementation<Profile>>>,
 }
@@ -64,7 +74,7 @@ struct RegisteredFunctions<Profile: HostProfile> {
     functions: Vec<HostFunctionDefinition<Profile>>,
 }
 
-struct RegisteredExternalTypes {
+pub(super) struct RegisteredExternalTypes {
     types: Vec<HostExternalTypeSchema>,
 }
 
@@ -372,7 +382,10 @@ impl<Profile: HostProfile> HostProviderSet<Profile> {
 }
 
 impl HostModuleIdentity {
-    fn new(package: EcoString, module: EcoString) -> Result<Self, HostRegistrationError> {
+    pub(super) fn new(
+        package: EcoString,
+        module: EcoString,
+    ) -> Result<Self, HostRegistrationError> {
         validate_module_name(&module)?;
         Ok(Self { package, module })
     }
@@ -400,7 +413,7 @@ fn validate_module_name(module: &EcoString) -> Result<(), HostRegistrationError>
     }
 }
 
-fn validate_module_identities(
+pub(super) fn validate_module_identities(
     identities: &[(&EcoString, &EcoString)],
 ) -> Result<(), HostRegistrationError> {
     let mut modules = BTreeMap::new();
@@ -432,14 +445,7 @@ impl<Profile: HostProfile> RegisteredFunctions<Profile> {
         )
             -> Result<HostFunctionDefinition<Profile>, HostRegistrationError>,
     ) -> Result<(), HostRegistrationError> {
-        if string_to_keyword(&name).is_some()
-            || check_name_case(SrcSpan::new(0, 0), &name, Named::Function).is_err()
-        {
-            return Err(HostRegistrationError::InvalidFunctionName {
-                module: module.clone(),
-                function: name,
-            });
-        }
+        validate_function_name(module, &name)?;
         if self
             .functions
             .iter()
@@ -471,12 +477,28 @@ impl<Profile: HostProfile> RegisteredFunctions<Profile> {
     }
 }
 
+pub(super) fn validate_function_name(
+    module: &EcoString,
+    name: &EcoString,
+) -> Result<(), HostRegistrationError> {
+    if string_to_keyword(name).is_some()
+        || check_name_case(SrcSpan::new(0, 0), name, Named::Function).is_err()
+    {
+        Err(HostRegistrationError::InvalidFunctionName {
+            module: module.clone(),
+            function: name.clone(),
+        })
+    } else {
+        Ok(())
+    }
+}
+
 impl RegisteredExternalTypes {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self { types: Vec::new() }
     }
 
-    fn register(
+    pub(super) fn register(
         &mut self,
         module: &EcoString,
         schema: HostExternalTypeSchema,
@@ -502,11 +524,16 @@ impl RegisteredExternalTypes {
         Ok(())
     }
 
+    #[cfg(test)]
+    pub(super) fn push_valid_for_test(&mut self, schema: HostExternalTypeSchema) {
+        self.types.push(schema);
+    }
+
     fn schemas(&self) -> impl ExactSizeIterator<Item = &HostExternalTypeSchema> {
         self.types.iter()
     }
 
-    fn into_vec(self) -> Vec<HostExternalTypeSchema> {
+    pub(super) fn into_vec(self) -> Vec<HostExternalTypeSchema> {
         self.types
     }
 }
@@ -548,6 +575,18 @@ impl RegisteredHostProviderModule {
 }
 
 impl RegisteredHostFunction {
+    pub(super) fn new(
+        schema: HostFunctionSchema,
+        constructions: super::RegisteredHostConstructions,
+        implementation: RegisteredHostImplementationId,
+    ) -> Self {
+        Self {
+            schema,
+            constructions,
+            implementation,
+        }
+    }
+
     pub(crate) fn schema(&self) -> &HostFunctionSchema {
         &self.schema
     }

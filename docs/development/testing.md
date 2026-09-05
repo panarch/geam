@@ -76,6 +76,14 @@ The integration runner reads those fixtures through the public Geam API:
 `compile_typed_module -> plan_module_with_source ->
 ExecutionPlan::from_module_plan -> run_main`.
 
+The same mandatory fixture target also runs each successful and failing source
+through the public async embedding boundary. A synthetic Nil-returning entry
+captures the original result through Echo, so arbitrary fixture return families
+remain covered without adding a universal embedding return type. It compares
+the exact result type and inspection, execution error, and Echo sequence with
+the immediate pipeline using the same source. Manual-Waker owner tests cover
+actual suspension, wake, cancellation, and host effects separately.
+
 Multi-module execution cases live under
 `tests/fixtures/execution/modules/<case>/`. The runner derives canonical module
 names from paths relative to the case directory (`main.gleam` becomes `main`,
@@ -155,11 +163,11 @@ locked acquisition path. CI runs it as a separate provider SDK boundary.
 
 The independently locked managed embedding examples fix the user-facing
 progression from the first generated function call through recursive ordinary
-data, a Gleam package, caller-owned IO, and an external provider. Each example
-owns a nested Gleam project, generated Rust bindings, a handwritten entry point,
-and an integration test that executes the binary and fixes complete stdout and
-stderr. Their READMEs explain one new boundary at a time; none depends on an
-earlier example at build or run time.
+data, a Gleam package, caller-owned IO, an external provider, and a caller-owned
+async executor. Each example owns a nested Gleam project, generated Rust
+bindings, a handwritten entry point, and an integration test that executes the
+binary and fixes complete stdout and stderr. Their READMEs explain one new
+boundary at a time; none depends on an earlier example at build or run time.
 
 Run the guided examples locally from the repository root:
 
@@ -170,7 +178,8 @@ for example in \
   data \
   package \
   io \
-  provider
+  provider \
+  async_host
 do
   (
     cd "examples/embedding/$example"
@@ -183,6 +192,13 @@ do
   )
 done
 ```
+
+The `async_host` example is the acceptance owner for the generated resumable
+binding path. Its binary reaches a real Pending host Future, reads and updates
+caller-owned state through bounded operations, re-enters a typed Gleam
+callback, suspends again inside that callback, and fixes the final value, state,
+Echo order, stdout, and stderr. The `futures` executor is an example dependency
+owned by the application; Geam core does not select or run it.
 
 The independently locked
 [`examples/embedding/application`](../../examples/embedding/application)

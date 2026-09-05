@@ -1,29 +1,8 @@
-use super::{HostCallback, HostFunctionImplementation, HostReturn, HostValueFunction};
-use crate::host::{HostAbiType, HostCallArguments, HostCallError, HostCallRuntime, HostProfile};
+use super::{HostReturn, OwnedHostCallback, OwnedHostFunctionImplementation};
+use crate::host::{HostAbiType, HostCallArguments, HostFailure, HostProfile};
 use ecow::EcoString;
-use std::sync::Arc;
 
-pub(super) struct HostStringFunction<Profile: HostProfile> {
-    implementation: Arc<HostCallback<Profile, EcoString>>,
-}
-
-impl<Profile: HostProfile> Clone for HostStringFunction<Profile> {
-    fn clone(&self) -> Self {
-        Self {
-            implementation: Arc::clone(&self.implementation),
-        }
-    }
-}
-
-impl<Profile: HostProfile> HostStringFunction<Profile> {
-    pub(super) fn call(
-        &self,
-        runtime: &mut dyn HostCallRuntime<Profile>,
-    ) -> Result<EcoString, HostCallError> {
-        let (state, arguments) = runtime.scalar_context();
-        (self.implementation)(state, arguments)
-    }
-}
+pub(super) type HostStringFunction<Profile> = OwnedHostCallback<Profile, EcoString>;
 
 impl HostReturn for EcoString {
     fn descriptor() -> crate::host::HostTypeDescriptor {
@@ -31,14 +10,12 @@ impl HostReturn for EcoString {
     }
 
     fn implementation<Profile: HostProfile>(
-        function: impl Fn(&mut Profile::RunState, &dyn HostCallArguments) -> Result<Self, HostCallError>
+        function: impl Fn(&mut Profile::RunState, &dyn HostCallArguments) -> Result<Self, HostFailure>
         + Send
         + Sync
         + 'static,
-    ) -> HostFunctionImplementation<Profile> {
-        HostFunctionImplementation::Value(HostValueFunction::string(HostStringFunction {
-            implementation: Arc::new(function),
-        }))
+    ) -> OwnedHostFunctionImplementation<Profile> {
+        OwnedHostFunctionImplementation::String(OwnedHostCallback::new(function))
     }
 }
 
@@ -60,6 +37,7 @@ mod tests {
             <EcoString as HostReturn>::implementation::<TestHostProfile>(move |_, arguments| {
                 Ok(format!("{}!", arguments.string(slot)).into())
             });
+        let implementation = implementation.into_immediate();
         let arguments = CallArguments::new(Vec::new(), Vec::new()).with_scalar_values(
             Vec::new(),
             vec!["hello".into()],

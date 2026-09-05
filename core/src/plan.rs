@@ -5,12 +5,13 @@ mod source;
 mod value_shape;
 mod value_type;
 
+pub(crate) use host::{
+    AsyncHostImplementationBinding, AsyncHostedLibraryModulePlan,
+    AsyncHostedLibraryModulePlanParts, HostImplementationBinding, HostedLibraryModulePlan,
+    HostedLibraryModulePlanParts, HostedModulePlanParts, HostedPlannedModuleParts,
+};
 pub use host::{
     HostFunctionTemplate, HostedFunctionTemplate, HostedModulePlan, HostedPlannedModule,
-};
-pub(crate) use host::{
-    HostImplementationBinding, HostedLibraryModulePlan, HostedLibraryModulePlanParts,
-    HostedModulePlanParts, HostedPlannedModuleParts,
 };
 pub(crate) use module::ExternalValueShape;
 pub(crate) use module::{

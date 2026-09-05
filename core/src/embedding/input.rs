@@ -3,7 +3,7 @@ use crate::plan::execution::type_::CustomConstructorId;
 use crate::plan::execution::{LibraryInputConstructions, LibraryListConstructions};
 use crate::runtime::{
     EmbeddingCustomInput, EmbeddingInputStorage, EmbeddingInputValue, EmbeddingTupleInput,
-    RetainedValues,
+    RetainedValues, TransferInputs, TransferValues,
 };
 use std::sync::Arc;
 
@@ -24,12 +24,37 @@ use std::sync::Arc;
 #[doc(hidden)]
 pub trait InputShape<Input> {}
 
-impl<Arguments, Input> InputShape<Input> for Arguments where Arguments: ArgumentsInput<Input> {}
+impl<ArgumentTypes, Input> InputShape<Input> for ArgumentTypes where ArgumentTypes: Arguments {}
 
 pub(super) trait ArgumentsInput<Input>: Arguments {
     fn owners_match(input: &Input, owner: &Arc<()>) -> bool;
 
     fn into_inputs(input: Input, constructions: &LibraryInputConstructions) -> RetainedValues;
+}
+
+pub(super) trait AsyncArgumentsInput<Input>: Arguments {
+    fn owners_match(input: &Input, owner: &Arc<()>) -> bool;
+
+    fn into_inputs(input: Input, constructions: &LibraryInputConstructions) -> TransferInputs;
+}
+
+pub(super) trait AsyncInputValue<Input>: EmbeddingValue {
+    type TransferRuntime: EmbeddingInputValue<TransferValues>;
+
+    fn owners_match(input: &Input, owner: &Arc<()>) -> bool;
+
+    fn into_runtime(
+        input: Input,
+        constructions: &mut InputConstructions<'_>,
+        storage: &EmbeddingInputStorage<TransferValues>,
+    ) -> Self::TransferRuntime;
+}
+
+pub(super) trait AsyncFreshInput<Input>: AsyncInputValue<Input> {
+    fn list_id(
+        lists: &LibraryListConstructions,
+        index: usize,
+    ) -> <Self::TransferRuntime as EmbeddingInputValue<TransferValues>>::ListType;
 }
 
 pub(super) trait InputValue<Input>: EmbeddingValue {
@@ -42,7 +67,12 @@ pub(super) trait InputValue<Input>: EmbeddingValue {
     ) -> Self::Runtime;
 }
 
-pub(super) trait FreshInput<Input>: InputValue<Input> {}
+pub(super) trait FreshInput<Input>: InputValue<Input> {
+    fn list_id(
+        lists: &LibraryListConstructions,
+        index: usize,
+    ) -> <Self::Runtime as EmbeddingInputValue>::ListType;
+}
 
 #[derive(Clone, Copy)]
 pub(super) struct InputConstructions<'a> {
@@ -81,11 +111,26 @@ impl InputConstructions<'_> {
         constructors
     }
 
-    pub(super) fn take_list<Value: EmbeddingValue>(
+    pub(super) fn take_list<Value, Input>(
         &mut self,
-    ) -> <Value::Runtime as EmbeddingInputValue>::ListType {
+    ) -> <Value::Runtime as EmbeddingInputValue>::ListType
+    where
+        Value: FreshInput<Input>,
+    {
         let next = &mut self.next_lists[Value::LIST_FAMILY as usize];
         let type_ = Value::list_id(self.lists, *next);
+        *next += 1;
+        type_
+    }
+
+    pub(super) fn take_async_list<Value, Input>(
+        &mut self,
+    ) -> <<Value as AsyncInputValue<Input>>::TransferRuntime as EmbeddingInputValue<TransferValues>>::ListType
+    where
+        Value: AsyncFreshInput<Input>,
+    {
+        let next = &mut self.next_lists[Value::LIST_FAMILY as usize];
+        let type_ = <Value as AsyncFreshInput<Input>>::list_id(self.lists, *next);
         *next += 1;
         type_
     }
@@ -107,7 +152,7 @@ pub(super) const fn add_list_counts(left: [usize; 10], right: [usize; 10]) -> [u
 }
 
 macro_rules! scalar_input {
-    ($type:ty) => {
+    ($type:ty, $lists:ident) => {
         impl InputValue<$type> for $type {
             fn owners_match(_input: &Self, _owner: &Arc<()>) -> bool {
                 true
@@ -122,17 +167,84 @@ macro_rules! scalar_input {
             }
         }
 
-        impl FreshInput<$type> for $type {}
+        impl FreshInput<$type> for $type {
+            fn list_id(
+                lists: &LibraryListConstructions,
+                index: usize,
+            ) -> <Self::Runtime as EmbeddingInputValue>::ListType {
+                lists.$lists[index]
+            }
+        }
     };
 }
 
-scalar_input!(super::BigInt);
-scalar_input!(f64);
-scalar_input!(super::EcoString);
-scalar_input!(super::BitArrayValue);
-scalar_input!(char);
-scalar_input!(bool);
-scalar_input!(());
+scalar_input!(super::BigInt, ints);
+scalar_input!(f64, floats);
+scalar_input!(super::EcoString, strings);
+scalar_input!(super::BitArrayValue, bit_arrays);
+scalar_input!(char, utf_codepoints);
+scalar_input!(bool, bools);
+scalar_input!((), nils);
+
+macro_rules! async_scalar_input {
+    ($type:ty, $lists:ident) => {
+        impl AsyncInputValue<$type> for $type {
+            type TransferRuntime = Self;
+
+            fn owners_match(_input: &$type, _owner: &Arc<()>) -> bool {
+                true
+            }
+
+            fn into_runtime(
+                input: $type,
+                _constructions: &mut InputConstructions<'_>,
+                _storage: &EmbeddingInputStorage<TransferValues>,
+            ) -> Self::TransferRuntime {
+                input
+            }
+        }
+
+        impl AsyncFreshInput<$type> for $type {
+            fn list_id(
+                lists: &LibraryListConstructions,
+                index: usize,
+            ) -> <Self::TransferRuntime as EmbeddingInputValue<TransferValues>>::ListType {
+                lists.$lists[index]
+            }
+        }
+    };
+}
+
+async_scalar_input!(super::BigInt, ints);
+async_scalar_input!(f64, floats);
+async_scalar_input!(super::EcoString, strings);
+async_scalar_input!(super::BitArrayValue, bit_arrays);
+async_scalar_input!(char, utf_codepoints);
+async_scalar_input!(bool, bools);
+
+impl AsyncInputValue<()> for () {
+    type TransferRuntime = Self;
+
+    fn owners_match(_input: &(), _owner: &Arc<()>) -> bool {
+        true
+    }
+
+    fn into_runtime(
+        _input: (),
+        _constructions: &mut InputConstructions<'_>,
+        _storage: &EmbeddingInputStorage<TransferValues>,
+    ) -> Self::TransferRuntime {
+    }
+}
+
+impl AsyncFreshInput<()> for () {
+    fn list_id(
+        lists: &LibraryListConstructions,
+        index: usize,
+    ) -> <Self::TransferRuntime as EmbeddingInputValue<TransferValues>>::ListType {
+        lists.nils[index]
+    }
+}
 
 macro_rules! tuple_input {
     ($($type:ident => $input:ident => $value:ident),+) => {
@@ -160,7 +272,50 @@ macro_rules! tuple_input {
         impl<$($type, $input),+> FreshInput<($($input,)+)> for ($($type,)+)
         where
             $($type: FreshInput<$input>,)+
-        {}
+        {
+            fn list_id(
+                lists: &LibraryListConstructions,
+                index: usize,
+            ) -> <Self::Runtime as EmbeddingInputValue>::ListType {
+                lists.tuples[index]
+            }
+        }
+
+        impl<$($type, $input),+> AsyncInputValue<($($input,)+)> for ($($type,)+)
+        where
+            $($type: AsyncInputValue<$input>,)+
+        {
+            type TransferRuntime = EmbeddingTupleInput<TransferValues>;
+
+            fn owners_match(input: &($($input,)+), owner: &Arc<()>) -> bool {
+                let ($($value,)+) = input;
+                true $(&& $type::owners_match($value, owner))+
+            }
+
+            fn into_runtime(
+                input: ($($input,)+),
+                constructions: &mut InputConstructions<'_>,
+                storage: &EmbeddingInputStorage<TransferValues>,
+            ) -> Self::TransferRuntime {
+                let ($($value,)+) = input;
+                EmbeddingTupleInput::new([
+                    $($type::into_runtime($value, constructions, storage).into_input()),+
+                ])
+            }
+        }
+
+
+        impl<$($type, $input),+> AsyncFreshInput<($($input,)+)> for ($($type,)+)
+        where
+            $($type: AsyncFreshInput<$input>,)+
+        {
+            fn list_id(
+                lists: &LibraryListConstructions,
+                index: usize,
+            ) -> <Self::TransferRuntime as EmbeddingInputValue<TransferValues>>::ListType {
+                lists.tuples[index]
+            }
+        }
 
         impl<$($type, $input),+> ArgumentsInput<($($input,)+)> for ($($type,)+)
         where
@@ -191,6 +346,42 @@ tuple_input!(A => IA => a, B => IB => b, C => IC => c, D => ID => d, E => IE => 
 tuple_input!(A => IA => a, B => IB => b, C => IC => c, D => ID => d, E => IE => e, F => IF => f);
 tuple_input!(A => IA => a, B => IB => b, C => IC => c, D => ID => d, E => IE => e, F => IF => f, G => IG => g);
 
+macro_rules! async_arguments {
+    ($($type:ident => $input:ident => $value:ident),+) => {
+        impl<$($type, $input),+> AsyncArgumentsInput<($($input,)+)> for ($($type,)+)
+        where
+            $($type: AsyncInputValue<$input>,)+
+        {
+            fn owners_match(input: &($($input,)+), owner: &Arc<()>) -> bool {
+                let ($($value,)+) = input;
+                true $(&& $type::owners_match($value, owner))+
+            }
+
+            fn into_inputs(
+                input: ($($input,)+),
+                constructions: &LibraryInputConstructions,
+            ) -> TransferInputs {
+                let ($($value,)+) = input;
+                let mut constructions = InputConstructions::new(constructions);
+                let storage = EmbeddingInputStorage::<TransferValues>::default();
+                let mut inputs = TransferInputs::empty();
+                $(inputs.push_input(
+                    $type::into_runtime($value, &mut constructions, &storage).into_input()
+                );)+
+                inputs
+            }
+        }
+    };
+}
+
+async_arguments!(A => IA => a);
+async_arguments!(A => IA => a, B => IB => b);
+async_arguments!(A => IA => a, B => IB => b, C => IC => c);
+async_arguments!(A => IA => a, B => IB => b, C => IC => c, D => ID => d);
+async_arguments!(A => IA => a, B => IB => b, C => IC => c, D => ID => d, E => IE => e);
+async_arguments!(A => IA => a, B => IB => b, C => IC => c, D => ID => d, E => IE => e, F => IF => f);
+async_arguments!(A => IA => a, B => IB => b, C => IC => c, D => ID => d, E => IE => e, F => IF => f, G => IG => g);
+
 impl ArgumentsInput<()> for () {
     fn owners_match(_input: &(), _owner: &Arc<()>) -> bool {
         true
@@ -198,6 +389,16 @@ impl ArgumentsInput<()> for () {
 
     fn into_inputs(_input: (), _constructions: &LibraryInputConstructions) -> RetainedValues {
         RetainedValues::empty()
+    }
+}
+
+impl AsyncArgumentsInput<()> for () {
+    fn owners_match(_input: &(), _owner: &Arc<()>) -> bool {
+        true
+    }
+
+    fn into_inputs(_input: (), _constructions: &LibraryInputConstructions) -> TransferInputs {
+        TransferInputs::empty()
     }
 }
 
@@ -241,6 +442,62 @@ where
     Success: FreshInput<SuccessInput>,
     Failure: FreshInput<FailureInput>,
 {
+    fn list_id(
+        lists: &LibraryListConstructions,
+        index: usize,
+    ) -> <Self::Runtime as EmbeddingInputValue>::ListType {
+        lists.customs[index]
+    }
+}
+
+impl<Success, Failure, SuccessInput, FailureInput>
+    AsyncInputValue<Result<SuccessInput, FailureInput>> for Result<Success, Failure>
+where
+    Success: AsyncInputValue<SuccessInput>,
+    Failure: AsyncInputValue<FailureInput>,
+{
+    type TransferRuntime = EmbeddingCustomInput<TransferValues>;
+
+    fn owners_match(input: &Result<SuccessInput, FailureInput>, owner: &Arc<()>) -> bool {
+        match input {
+            Ok(value) => Success::owners_match(value, owner),
+            Err(value) => Failure::owners_match(value, owner),
+        }
+    }
+
+    fn into_runtime(
+        input: Result<SuccessInput, FailureInput>,
+        constructions: &mut InputConstructions<'_>,
+        storage: &EmbeddingInputStorage<TransferValues>,
+    ) -> Self::TransferRuntime {
+        let constructors = constructions.take_variant();
+        match input {
+            Ok(value) => {
+                let value = Success::into_runtime(value, constructions, storage).into_input();
+                constructions.skip::<Failure>();
+                EmbeddingCustomInput::new(constructors[0], [value])
+            }
+            Err(value) => {
+                constructions.skip::<Success>();
+                let value = Failure::into_runtime(value, constructions, storage).into_input();
+                EmbeddingCustomInput::new(constructors[1], [value])
+            }
+        }
+    }
+}
+
+impl<Success, Failure, SuccessInput, FailureInput>
+    AsyncFreshInput<Result<SuccessInput, FailureInput>> for Result<Success, Failure>
+where
+    Success: AsyncFreshInput<SuccessInput>,
+    Failure: AsyncFreshInput<FailureInput>,
+{
+    fn list_id(
+        lists: &LibraryListConstructions,
+        index: usize,
+    ) -> <Self::TransferRuntime as EmbeddingInputValue<TransferValues>>::ListType {
+        lists.customs[index]
+    }
 }
 
 impl<Value, Input> InputValue<Option<Input>> for Option<Value>
@@ -273,7 +530,61 @@ where
     }
 }
 
-impl<Value, Input> FreshInput<Option<Input>> for Option<Value> where Value: FreshInput<Input> {}
+impl<Value, Input> FreshInput<Option<Input>> for Option<Value>
+where
+    Value: FreshInput<Input>,
+{
+    fn list_id(
+        lists: &LibraryListConstructions,
+        index: usize,
+    ) -> <Self::Runtime as EmbeddingInputValue>::ListType {
+        lists.customs[index]
+    }
+}
+
+impl<Value, Input> AsyncInputValue<Option<Input>> for Option<Value>
+where
+    Value: AsyncInputValue<Input>,
+{
+    type TransferRuntime = EmbeddingCustomInput<TransferValues>;
+
+    fn owners_match(input: &Option<Input>, owner: &Arc<()>) -> bool {
+        match input {
+            Some(value) => Value::owners_match(value, owner),
+            None => true,
+        }
+    }
+
+    fn into_runtime(
+        input: Option<Input>,
+        constructions: &mut InputConstructions<'_>,
+        storage: &EmbeddingInputStorage<TransferValues>,
+    ) -> Self::TransferRuntime {
+        let constructors = constructions.take_variant();
+        match input {
+            Some(value) => EmbeddingCustomInput::new(
+                constructors[0],
+                [Value::into_runtime(value, constructions, storage).into_input()],
+            ),
+            None => {
+                constructions.skip::<Value>();
+                EmbeddingCustomInput::new(constructors[1], [])
+            }
+        }
+    }
+}
+
+impl<Value, Input> AsyncFreshInput<Option<Input>> for Option<Value>
+where
+    Value: AsyncFreshInput<Input>,
+{
+    fn list_id(
+        lists: &LibraryListConstructions,
+        index: usize,
+    ) -> <Self::TransferRuntime as EmbeddingInputValue<TransferValues>>::ListType {
+        lists.customs[index]
+    }
+}
 
 #[cfg(test)]
 mod tests {

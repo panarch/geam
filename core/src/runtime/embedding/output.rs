@@ -2,31 +2,32 @@ use super::list::EmbeddingList;
 use crate::runtime::EvaluatedCustomValue;
 use crate::runtime::evaluated::{EvaluatedExternalValue, EvaluatedFunctionValue, EvaluatedValue};
 use crate::runtime::state::list::{ParameterListValueId, StoredListValueId};
+use crate::runtime::{LocalValues, RuntimeValueProfile};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
-pub(crate) struct EmbeddingOutput {
+pub(crate) struct EmbeddingOutput<Profile: RuntimeValueProfile = LocalValues> {
     ints: Vec<BigInt>,
     floats: Vec<f64>,
     strings: Vec<EcoString>,
     bit_arrays: Vec<crate::BitArrayValue>,
     utf_codepoints: Vec<char>,
     variants: Vec<usize>,
-    _externals: Vec<EvaluatedExternalValue>,
+    _externals: Vec<EvaluatedExternalValue<Profile>>,
     bools: Vec<bool>,
-    _parameter_lists: Vec<ParameterListValueId>,
-    lists: Vec<StoredListValueId>,
-    _functions: Vec<EvaluatedFunctionValue>,
+    _parameter_lists: Vec<ParameterListValueId<Profile>>,
+    lists: Vec<StoredListValueId<Profile>>,
+    _functions: Vec<EvaluatedFunctionValue<Profile>>,
 }
 
-impl EmbeddingOutput {
-    pub(super) fn from_value(value: EvaluatedValue) -> Self {
+impl<Profile: RuntimeValueProfile> EmbeddingOutput<Profile> {
+    pub(in crate::runtime) fn from_value(value: EvaluatedValue<Profile>) -> Self {
         let mut output = Self::empty();
         output.push_reversed(value);
         output
     }
 
-    pub(super) fn from_tuple(values: Vec<EvaluatedValue>) -> Self {
+    pub(in crate::runtime) fn from_tuple(values: Vec<EvaluatedValue<Profile>>) -> Self {
         let mut output = Self::empty();
         for value in values.into_iter().rev() {
             output.push_reversed(value);
@@ -34,7 +35,7 @@ impl EmbeddingOutput {
         output
     }
 
-    pub(super) fn from_custom(value: EvaluatedCustomValue) -> Self {
+    pub(in crate::runtime) fn from_custom(value: EvaluatedCustomValue<Profile>) -> Self {
         let mut output = Self::empty();
         output.push_reversed(EvaluatedValue::Custom(value));
         output
@@ -70,7 +71,7 @@ impl EmbeddingOutput {
 
     pub(crate) fn take_nil(&mut self) {}
 
-    pub(crate) fn take_list(&mut self) -> EmbeddingList {
+    pub(crate) fn take_list(&mut self) -> EmbeddingList<Profile> {
         EmbeddingList::new(take_last(&mut self.lists))
     }
 
@@ -90,7 +91,7 @@ impl EmbeddingOutput {
         }
     }
 
-    fn push_reversed(&mut self, value: EvaluatedValue) {
+    fn push_reversed(&mut self, value: EvaluatedValue<Profile>) {
         match value {
             EvaluatedValue::Int(value) => self.ints.push(value),
             EvaluatedValue::Float(value) => self.floats.push(value),
@@ -164,7 +165,8 @@ pub fn main() {
             |context, value| context.stored_value_hash(value),
             |context, value| context.inspect_stored_value(value),
         );
-        let external = EvaluatedExternalValue::new(ExternalTypeId::new(0), external);
+        let external: EvaluatedExternalValue<crate::runtime::LocalValues> =
+            EvaluatedExternalValue::new(ExternalTypeId::new(0), external);
         let stored_equal =
             |left: &crate::runtime::StoredRuntimeValue,
              right: &crate::runtime::StoredRuntimeValue| left.value() == right.value();

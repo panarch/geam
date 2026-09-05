@@ -10,6 +10,7 @@ use std::fmt;
 
 #[cfg(test)]
 pub(crate) use argument::CallArguments;
+pub(crate) use argument::{HostArgument, HostParameterLayout};
 pub(crate) use argument::{
     HostBitArrayArgumentSlot, HostBoolArgumentSlot, HostCallArguments, HostCustomArgumentSlot,
     HostExternalArgumentSlot, HostFloatArgumentSlot, HostFunctionArgumentSlot, HostIntArgumentSlot,
@@ -17,7 +18,10 @@ pub(crate) use argument::{
     HostTupleArgumentSlot, HostUtfCodepointArgumentSlot, HostValueArgumentSlot,
 };
 pub(crate) use return_::HostNeverFunction;
-pub(crate) use return_::{HostFunctionImplementation, HostValueFunction};
+pub(crate) use return_::{
+    HostFunctionImplementation, HostValueFunction, OwnedHostCallback,
+    OwnedHostFunctionImplementation,
+};
 #[cfg(test)]
 pub(crate) use return_::{expect_never_implementation, expect_value_implementation};
 
@@ -173,17 +177,22 @@ pub struct HostFunctionSchema {
     type_: FunctionType,
 }
 
-struct HostFunctionSchemaRegistration {
-    layout: Box<[HostParameter]>,
-    parameters: Box<[crate::host::HostTypeDescriptor]>,
-    return_: crate::host::HostTypeDescriptor,
-    custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
+pub(super) struct HostFunctionSchemaRegistration {
+    pub(super) layout: Box<[HostParameter]>,
+    pub(super) parameters: Box<[crate::host::HostTypeDescriptor]>,
+    pub(super) return_: crate::host::HostTypeDescriptor,
+    pub(super) custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
 }
 
 pub(crate) struct HostFunctionDefinition<Profile: HostProfile> {
     schema: HostFunctionSchema,
     constructions: RegisteredHostConstructions,
     implementation: HostFunctionImplementation<Profile>,
+}
+
+pub(crate) struct OwnedHostFunctionDefinition<Profile: HostProfile> {
+    schema: HostFunctionSchema,
+    implementation: OwnedHostFunctionImplementation<Profile>,
 }
 
 pub(crate) struct RegisteredHostConstructions {
@@ -225,7 +234,7 @@ impl HostFunctionSchema {
         &self.external_schemas
     }
 
-    fn from_registration(
+    pub(super) fn from_registration(
         name: EcoString,
         registration: HostFunctionSchemaRegistration,
     ) -> Result<Self, crate::HostRegistrationError> {
@@ -314,6 +323,23 @@ impl RegisteredHostConstructions {
             .collect::<Vec<_>>()
             .into_boxed_slice()
     }
+
+    fn validate_for(
+        &self,
+        schema: &HostFunctionSchema,
+    ) -> Result<(), crate::HostRegistrationError> {
+        let parameters = self.unbound_type_parameters(schema.scheme().parameters().len());
+        if parameters.is_empty() {
+            Ok(())
+        } else {
+            Err(
+                crate::HostRegistrationError::UnboundConstructionTypeParameters {
+                    function: schema.name().clone(),
+                    parameters,
+                },
+            )
+        }
+    }
 }
 
 impl fmt::Debug for HostFunctionSchema {
@@ -344,7 +370,7 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
         let registration = <Function as adapter::HostFunctionAdapter<Arguments, Return>>::register::<
             Profile,
         >(function);
-        Self::from_registration(name, registration)
+        Self::from_registration(name, registration.into_immediate())
     }
 
     pub(crate) fn new_fallible<Arguments, Return, Function>(
@@ -358,7 +384,7 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
             <Function as adapter::FallibleHostFunctionAdapter<Arguments, Return>>::register::<
                 Profile,
             >(function);
-        Self::from_registration(name, registration)
+        Self::from_registration(name, registration.into_immediate())
     }
 
     pub(crate) fn new_scoped<Provider, Arguments, Return, Function>(
@@ -433,7 +459,7 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
 
     fn from_registration(
         name: EcoString,
-        registration: adapter::HostFunctionRegistration<Profile>,
+        registration: adapter::ScopedHostFunctionRegistration<Profile>,
     ) -> Result<Self, crate::HostRegistrationError> {
         Self::from_registration_with_constructions(
             name,
@@ -444,7 +470,7 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
 
     fn from_registration_with_constructions(
         name: EcoString,
-        registration: adapter::HostFunctionRegistration<Profile>,
+        registration: adapter::ScopedHostFunctionRegistration<Profile>,
         constructions: RegisteredHostConstructions,
     ) -> Result<Self, crate::HostRegistrationError> {
         let schema = HostFunctionSchemaRegistration {
@@ -453,20 +479,12 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
             return_: registration.return_type,
             custom_schemas: registration.custom_schemas,
         };
-        let schema = HostFunctionSchema::from_registration(name, schema)?;
-        let unbound = constructions.unbound_type_parameters(schema.scheme().parameters().len());
-        if !unbound.is_empty() {
-            return Err(
-                crate::HostRegistrationError::UnboundConstructionTypeParameters {
-                    function: schema.name().clone(),
-                    parameters: unbound,
-                },
-            );
-        }
-        Ok(Self {
-            schema,
-            constructions,
-            implementation: registration.implementation,
+        HostFunctionSchema::from_registration(name, schema).and_then(|schema| {
+            constructions.validate_for(&schema).map(|()| Self {
+                schema,
+                constructions,
+                implementation: registration.implementation,
+            })
         })
     }
 
@@ -485,9 +503,78 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
     }
 }
 
+impl<Profile: HostProfile> OwnedHostFunctionDefinition<Profile> {
+    pub(crate) fn new<Arguments, Return, Function>(
+        name: EcoString,
+        function: Function,
+    ) -> Result<Self, crate::HostRegistrationError>
+    where
+        Function: HostFunction<Arguments, Return>,
+    {
+        let registration = <Function as adapter::HostFunctionAdapter<Arguments, Return>>::register::<
+            Profile,
+        >(function);
+        Self::from_registration(name, registration)
+    }
+
+    pub(crate) fn new_fallible<Arguments, Return, Function>(
+        name: EcoString,
+        function: Function,
+    ) -> Result<Self, crate::HostRegistrationError>
+    where
+        Function: FallibleHostFunction<Arguments, Return>,
+    {
+        let registration =
+            <Function as adapter::FallibleHostFunctionAdapter<Arguments, Return>>::register::<
+                Profile,
+            >(function);
+        Self::from_registration(name, registration)
+    }
+
+    fn from_registration(
+        name: EcoString,
+        registration: adapter::HostFunctionRegistration<Profile>,
+    ) -> Result<Self, crate::HostRegistrationError> {
+        HostFunctionSchema::from_registration(
+            name,
+            HostFunctionSchemaRegistration {
+                layout: registration.parameters,
+                parameters: registration.parameter_types,
+                return_: registration.return_type,
+                custom_schemas: registration.custom_schemas,
+            },
+        )
+        .map(|schema| Self {
+            schema,
+            implementation: registration.implementation,
+        })
+    }
+
+    pub(crate) fn schema(&self) -> &HostFunctionSchema {
+        &self.schema
+    }
+
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        HostFunctionSchema,
+        RegisteredHostConstructions,
+        OwnedHostFunctionImplementation<Profile>,
+    ) {
+        (
+            self.schema,
+            RegisteredHostConstructions::empty(),
+            self.implementation,
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{HostFunctionDefinition, HostFunctionSchema, RegisteredHostConstructions};
+    use super::{
+        HostFunctionDefinition, HostFunctionSchema, OwnedHostFunctionDefinition,
+        RegisteredHostConstructions,
+    };
     use crate::BitArrayValue;
     use crate::host::function::argument::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
@@ -793,9 +880,12 @@ mod tests {
             TestHostProfile,
         >(|| true);
         registration.return_type = HostTypeDescriptor::Parameter(2);
-        let error = HostFunctionDefinition::from_registration("identity".into(), registration)
-            .err()
-            .expect("sparse type parameters should be rejected");
+        let error = HostFunctionDefinition::from_registration(
+            "identity".into(),
+            registration.into_immediate(),
+        )
+        .err()
+        .expect("sparse type parameters should be rejected");
 
         assert_eq!(
             error,
@@ -807,6 +897,25 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "host function identity uses type parameter indices [2]; indices must be contiguous from zero",
+        );
+    }
+
+    #[test]
+    fn owned_definition_rejects_non_contiguous_type_parameter_indices() {
+        let mut registration = <_ as super::adapter::HostFunctionAdapter<(), bool>>::register::<
+            TestHostProfile,
+        >(|| true);
+        registration.return_type = HostTypeDescriptor::Parameter(2);
+        let error = OwnedHostFunctionDefinition::from_registration("identity".into(), registration)
+            .err()
+            .expect("sparse type parameters should be rejected");
+
+        assert_eq!(
+            error,
+            HostRegistrationError::NonContiguousTypeParameters {
+                function: "identity".into(),
+                parameters: vec![2].into_boxed_slice(),
+            },
         );
     }
 }

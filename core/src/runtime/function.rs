@@ -5,9 +5,10 @@ mod value;
 
 pub(in crate::runtime) use callable::{InvocableFunctionValue, invoke_callable};
 pub(in crate::runtime) use list::{
-    run_bit_array_list, run_bool_list, run_custom_list, run_external_list, run_float_list,
-    run_function_list, run_int_list, run_list, run_list_list, run_nil_list, run_parameter_list,
-    run_parameter_list_list, run_string_list, run_tuple_list, run_utf_codepoint_list,
+    run_bit_array_list, run_bool_list, run_core_list, run_custom_list, run_external_list,
+    run_float_list, run_function_list, run_int_list, run_list, run_list_list, run_nil_list,
+    run_parameter_list, run_parameter_list_list, run_string_list, run_tuple_list,
+    run_utf_codepoint_list,
 };
 pub(in crate::runtime) use returning_function::{
     run_core_function, run_external_function_function,

@@ -116,7 +116,8 @@ jobs:
             data \
             package \
             io \
-            provider
+            provider \
+            async_host
           do
             echo "::group::$example"
             (

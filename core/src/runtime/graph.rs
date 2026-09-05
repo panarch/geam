@@ -2,16 +2,20 @@ mod bit_array;
 mod environment;
 mod instruction;
 mod pattern;
+mod resumable;
 mod terminator;
 mod value;
 
+pub(crate) use environment::ProfiledRetainedValues;
 pub(crate) use environment::RetainedValues;
 pub(super) use value::GraphValue;
 
 pub(in crate::runtime) use self::environment::BlockEnvironment;
+pub(in crate::runtime) use self::resumable::execute as execute_resumable;
+pub(in crate::runtime) use self::terminator::RuntimeGraphState;
 use self::terminator::{GraphAction, NeverCall, terminator_action};
 use crate::plan::execution::graph::{BlockGraphExitId, ParamLocal, ProfiledBlockGraph};
-use crate::runtime::{ExecutableRuntimePlan, RuntimeGraph};
+use crate::runtime::{ExecutableRuntimePlan, RuntimeGraph, RuntimeListStorage};
 
 pub(super) fn execute<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
@@ -59,25 +63,35 @@ pub(super) fn execute<Plan: ExecutableRuntimePlan>(
     }
 }
 use crate::runtime::error::ExecutionResult;
-use crate::runtime::state::{RuntimeState, RuntimeStateFor};
+use crate::runtime::state::RuntimeStateFor;
 
-pub(super) struct CompletedGraph {
+pub(in crate::runtime) struct CompletedGraph<
+    Profile: crate::runtime::RuntimeValueProfile = crate::runtime::LocalValues,
+> {
     exit: BlockGraphExitId,
-    environment: BlockEnvironment,
+    environment: BlockEnvironment<Profile>,
 }
 
-impl CompletedGraph {
-    pub(super) fn exit(&self) -> BlockGraphExitId {
+impl<Profile: crate::runtime::RuntimeValueProfile> CompletedGraph<Profile> {
+    pub(in crate::runtime) fn new(
+        exit: BlockGraphExitId,
+        environment: BlockEnvironment<Profile>,
+    ) -> Self {
+        Self { exit, environment }
+    }
+
+    pub(in crate::runtime) fn exit(&self) -> BlockGraphExitId {
         self.exit
     }
 
-    pub(super) fn into_value<Value, State>(
+    pub(in crate::runtime) fn into_value<Value, State>(
         self,
-        state: &mut RuntimeState<'_, State>,
+        state: &mut State,
         value: &Value,
     ) -> Value::Evaluated
     where
-        Value: GraphValue,
+        Value: GraphValue<Profile>,
+        State: RuntimeGraphState<Profile>,
     {
         let value = value.read(&self.environment);
         drop(self.environment);
@@ -85,11 +99,14 @@ impl CompletedGraph {
         value
     }
 
-    pub(super) fn into_retained<State>(
+    pub(in crate::runtime) fn into_retained<State>(
         self,
-        state: &mut RuntimeState<'_, State>,
+        state: &mut State,
         values: &[ParamLocal],
-    ) -> RetainedValues {
+    ) -> ProfiledRetainedValues<Profile>
+    where
+        State: RuntimeGraphState<Profile>,
+    {
         let retained = self.environment.retain(values);
         drop(self.environment);
         state.lists_mut().drain_releases();

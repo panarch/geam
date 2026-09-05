@@ -1,11 +1,28 @@
 use crate::embedding::boundary::{DataType, FunctionBinding, PlainBindings};
 
 pub(super) fn push_function_field(output: &mut String, index: usize, function: &FunctionBinding) {
+    push_function_field_with(output, index, function, DataType::rust_type);
+}
+
+pub(super) fn push_async_function_field(
+    output: &mut String,
+    index: usize,
+    function: &FunctionBinding,
+) {
+    push_function_field_with(output, index, function, DataType::async_rust_type);
+}
+
+fn push_function_field_with(
+    output: &mut String,
+    index: usize,
+    function: &FunctionBinding,
+    rust_type: fn(&DataType) -> TypeExpression,
+) {
     let type_ = TypeExpression::Apply(
         "Function",
         vec![
-            TypeExpression::Tuple(function.arguments.iter().map(DataType::rust_type).collect()),
-            function.return_type.rust_type(),
+            TypeExpression::Tuple(function.arguments.iter().map(rust_type).collect()),
+            rust_type(&function.return_type),
             TypeExpression::Name(format!("Function{index}Input")),
         ],
     );
@@ -72,6 +89,14 @@ pub(super) fn push_input_shapes(output: &mut String, bindings: &PlainBindings) {
 
 impl DataType {
     fn rust_type(&self) -> TypeExpression {
+        self.rust_type_with_list("List")
+    }
+
+    fn async_rust_type(&self) -> TypeExpression {
+        self.rust_type_with_list("AsyncList")
+    }
+
+    fn rust_type_with_list(&self, list: &'static str) -> TypeExpression {
         match self {
             Self::Int => TypeExpression::Name("BigInt".to_owned()),
             Self::Float => TypeExpression::Name("f64".to_owned()),
@@ -80,14 +105,23 @@ impl DataType {
             Self::UtfCodepoint => TypeExpression::Name("char".to_owned()),
             Self::Bool => TypeExpression::Name("bool".to_owned()),
             Self::Nil => TypeExpression::Name("()".to_owned()),
-            Self::Tuple(elements) => {
-                TypeExpression::Tuple(elements.iter().map(Self::rust_type).collect())
+            Self::Tuple(elements) => TypeExpression::Tuple(
+                elements
+                    .iter()
+                    .map(|element| element.rust_type_with_list(list))
+                    .collect(),
+            ),
+            Self::Result(ok, error) => TypeExpression::Apply(
+                "Result",
+                vec![
+                    ok.rust_type_with_list(list),
+                    error.rust_type_with_list(list),
+                ],
+            ),
+            Self::Option(item) => {
+                TypeExpression::Apply("Option", vec![item.rust_type_with_list(list)])
             }
-            Self::Result(ok, error) => {
-                TypeExpression::Apply("Result", vec![ok.rust_type(), error.rust_type()])
-            }
-            Self::Option(item) => TypeExpression::Apply("Option", vec![item.rust_type()]),
-            Self::List(item) => TypeExpression::Apply("List", vec![item.rust_type()]),
+            Self::List(item) => TypeExpression::Apply(list, vec![item.rust_type_with_list(list)]),
         }
     }
 
@@ -186,6 +220,7 @@ impl TypeExpression {
     fn can_inline(&self) -> bool {
         match self {
             Self::Name(_) => true,
+            Self::Tuple(elements) if elements.len() == 1 => elements[0].can_inline(),
             Self::Tuple(_) => {
                 // Rustfmt limits tuple contents to its default 60-column call width.
                 self.inline().len() <= 62
@@ -197,7 +232,9 @@ impl TypeExpression {
 
 #[cfg(test)]
 mod tests {
-    use super::{TypeExpression, push_function_field, push_input_shapes};
+    use super::{
+        TypeExpression, push_async_function_field, push_function_field, push_input_shapes,
+    };
     use crate::embedding::boundary::{DataType, FunctionBinding, PlainBindings};
     use crate::embedding::identifier::RustIdentifier;
     use std::fs;
@@ -217,6 +254,10 @@ mod tests {
         assert_eq!(
             data.rust_type().inline(),
             "(Result<List<List<BigInt>>, EcoString>, Option<List<bool>>, (BitArrayValue,))"
+        );
+        assert_eq!(
+            data.async_rust_type().inline(),
+            "(Result<AsyncList<AsyncList<BigInt>>, EcoString>, Option<AsyncList<bool>>, (BitArrayValue,))"
         );
         let mut parameters = Vec::new();
         assert_eq!(
@@ -318,6 +359,36 @@ mod tests {
         assert_eq!(
             source,
             "pub struct Functions {\n    pub normalize_inventory_code_before_exporting:\n        Function<(EcoString,), EcoString, Function0Input>,\n}\n"
+        );
+        assert_rustfmt_stable(&source);
+    }
+
+    #[test]
+    fn keeps_a_single_nested_async_tuple_argument_inline() {
+        let data = DataType::Tuple(vec![
+            DataType::List(Box::new(DataType::Int)),
+            DataType::Option(Box::new(DataType::List(Box::new(DataType::String)))),
+            DataType::String,
+        ]);
+        let function = FunctionBinding {
+            gleam_name: "mixed_data".to_owned(),
+            rust_name: RustIdentifier::parse("mixed_data").expect("fixture function"),
+            arguments: vec![data.clone()],
+            return_type: data,
+        };
+        let mut source = "pub struct AsyncFunctions {\n".to_owned();
+        push_async_function_field(&mut source, 0, &function);
+        source.push_str("}\n");
+        assert_eq!(
+            source,
+            r#"pub struct AsyncFunctions {
+    pub mixed_data: Function<
+        ((AsyncList<BigInt>, Option<AsyncList<EcoString>>, EcoString),),
+        (AsyncList<BigInt>, Option<AsyncList<EcoString>>, EcoString),
+        Function0Input,
+    >,
+}
+"#
         );
         assert_rustfmt_stable(&source);
     }

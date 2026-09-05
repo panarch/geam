@@ -1,8 +1,8 @@
 use crate::frontend::{
-    HostedTypedProgram, ProjectError, TypedProgram, compile_typed_host_project,
-    compile_typed_project,
+    AsyncHostedTypedProgram, HostedTypedProgram, ProjectError, TypedProgram,
+    compile_typed_async_host_project, compile_typed_host_project, compile_typed_project,
 };
-use crate::host::{HostProfile, HostProviderSet, HostRegistrationError};
+use crate::host::{AsyncHostProviderSet, HostProfile, HostProviderSet, HostRegistrationError};
 use camino::Utf8PathBuf;
 use ecow::EcoString;
 
@@ -13,6 +13,13 @@ pub use error::HostedProjectError;
 pub struct Project {
     root: Utf8PathBuf,
     module: EcoString,
+}
+
+/// One resolved Gleam project selection and embedding-owned resumable hosts.
+pub struct AsyncHostedProject<Profile: HostProfile> {
+    root: Utf8PathBuf,
+    module: EcoString,
+    hosts: AsyncHostProviderSet<Profile>,
 }
 
 /// One resolved Gleam project selection and static provider registration for
@@ -35,6 +42,31 @@ impl Project {
     /// Compiles the selected project and consumes its loading inputs.
     pub fn compile(self) -> Result<TypedProgram, ProjectError> {
         compile_typed_project(self.root, self.module)
+    }
+
+    /// Adds embedding-owned async hosts and selects resumable compilation.
+    ///
+    /// This consumes the plain selection so immediate and resumable project
+    /// owners cannot be mixed after host registration.
+    pub fn with_async_hosts<Profile: HostProfile>(
+        self,
+        hosts: AsyncHostProviderSet<Profile>,
+    ) -> AsyncHostedProject<Profile> {
+        AsyncHostedProject {
+            root: self.root,
+            module: self.module,
+            hosts,
+        }
+    }
+}
+
+impl<Profile: HostProfile> AsyncHostedProject<Profile> {
+    /// Compiles the selected project with its resumable host registrations.
+    ///
+    /// Compilation is synchronous and read-only; it does not poll host Futures
+    /// or choose an executor.
+    pub fn compile(self) -> Result<AsyncHostedTypedProgram<Profile>, ProjectError> {
+        compile_typed_async_host_project(self.root, self.module, self.hosts)
     }
 }
 
@@ -65,15 +97,30 @@ impl<Profile: HostProfile> HostedProject<Profile> {
 #[cfg(test)]
 mod tests {
     use super::{HostedProject, HostedProjectError, Project};
-    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder};
+    use crate::embedding::{AsyncHostedModuleBuilder, FunctionDeclaration, HostedModuleBuilder};
     use crate::{
+        AsyncHostModule, AsyncHostProviderModule, AsyncHostProviderSet, EchoOutput, EchoSink,
         HostModule, HostProviderModule, HostProviderSet, HostRegistrationError, ProjectError,
         StatelessHostProfile,
     };
     use camino::{Utf8Path, Utf8PathBuf};
     use num_bigint::BigInt;
     use std::fs;
+    use std::future::Future;
+    use std::pin::pin;
+    use std::task::{Context, Poll, Waker};
     use tempfile::{TempDir, tempdir};
+
+    #[derive(Default)]
+    struct SendEcho {
+        outputs: usize,
+    }
+
+    impl EchoSink for SendEcho {
+        fn emit(&mut self, _output: EchoOutput) {
+            self.outputs += 1;
+        }
+    }
 
     #[test]
     fn compiles_plain_project_import_closure() {
@@ -137,6 +184,53 @@ pub fn quantity() -> Int
             module.call(&quantity, (), &mut (), &mut Vec::new()),
             Ok(BigInt::from(42)),
         );
+    }
+
+    #[test]
+    fn adds_async_hosts_to_a_plain_project_selection() {
+        let project = project();
+        write_file(
+            &project,
+            "src/inventory_rules.gleam",
+            r#"
+@external(erlang, "host", "adjust")
+fn adjust(value: Int) -> Int {
+  value
+}
+
+pub fn quantity(value: Int) -> Int {
+  echo value as "input"
+  adjust(value)
+}
+"#,
+        );
+        let provider = AsyncHostProviderModule::new("application", "inventory_rules")
+            .expect("async provider module should be valid")
+            .with_async_function("adjust", |value: BigInt| std::future::ready(value + 1))
+            .expect("async provider function should be valid");
+        let hosts = AsyncHostProviderSet::with_providers(Vec::<AsyncHostModule>::new(), [provider])
+            .expect("async provider set should be valid");
+        let program = Project::new(project_root(&project), "inventory_rules")
+            .with_async_hosts(hosts)
+            .compile()
+            .expect("async hosted project selection should compile");
+        assert_eq!(program.root_package(), "application");
+        assert_eq!(program.root_module(), "inventory_rules");
+        let (bindings, quantity) = AsyncHostedModuleBuilder::new(program)
+            .expect("async hosted project should plan")
+            .function(FunctionDeclaration::<(BigInt,), BigInt>::new("quantity"))
+            .expect("quantity should bind");
+        let mut module = bindings.seal();
+        let mut state = ();
+        let mut echo = SendEcho::default();
+        {
+            let mut call =
+                pin!(module.call_async(&quantity, (BigInt::from(41),), &mut state, &mut echo,));
+            let mut context = Context::from_waker(Waker::noop());
+
+            assert_eq!(call.as_mut().poll(&mut context), Poll::Ready(Ok(42.into())));
+        }
+        assert_eq!(echo.outputs, 1);
     }
 
     #[test]

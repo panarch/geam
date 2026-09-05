@@ -106,9 +106,12 @@ application that can be run and tested on its own:
 | Gleam IO | Route Gleam IO through Rust and capture Echo separately | [`io`](../examples/embedding/io) |
 | External provider | Call Gleam code backed by a configured Rust provider | [`provider`](../examples/embedding/provider) |
 | Application | Combine packages, IO, a provider, structured data, and repeated calls | [`application`](../examples/embedding/application) |
+| Async Rust host | Await Rust work on the application's executor, with state and a Gleam callback | [`async_host`](../examples/embedding/async_host) |
 
 Follow the stages in order when learning the API, or open the smallest example
-that contains the feature your application needs.
+that contains the feature your application needs. The application example
+completes the immediate call path; the async-host example then shows the
+resumable path on its own.
 
 ## Keep Gleam and Rust in sync
 
@@ -246,6 +249,47 @@ provider](../examples/embedding/provider)
 separately. The [application example](../examples/embedding/application) then
 combines stdlib IO, an external provider, structured data, and repeated calls.
 
+## Await Rust work without blocking
+
+When a Rust capability returns a Future, use the resumable embedding path. Geam
+returns an ordinary Rust Future and leaves executor choice to the application:
+
+```rust
+let program = geam_bindings::project()
+    .with_async_hosts(host::async_hosts()?)
+    .compile()?;
+let builder = AsyncHostedModuleBuilder::new(program)?;
+let (bindings, functions) = geam_bindings::bind_async(builder)?;
+let mut module = bindings.seal();
+
+let value = module
+    .call_async(&functions.calculate, (20.into(),), &mut state, &mut echo)
+    .await?;
+```
+
+An async host function can be an ordinary Rust `async fn`. A scoped async host
+also receives `AsyncHostCall`: `with_state` runs one short operation against
+caller-owned provider state, while `invoke` calls a typed Gleam callback in the
+same execution. Neither operation keeps a mutable state or runtime borrow
+across `.await`.
+
+External payload operations use the same driver: await `with_external` to read
+an owned result, or `return_external` to insert a newly built payload. The host
+Future does not borrow the module's stores. Run state, stores, and payloads need
+`Send`, not `Sync`.
+
+`call_async` borrows the module mutably, so one module has one active root call.
+Dropping the returned Future cancels that call and leaves the module ready for a
+later call. Geam does not start an executor or block a thread for pending work.
+
+This API currently belongs to application-owned Rust embedding. Use it with a
+generated plain project and register the async Rust implementations in the
+application. Packaged provider macros and `geam run` continue to use the
+immediate path. The complete [async-host
+example](../examples/embedding/async_host) includes registration, a real
+Pending transition, bounded state access, callback re-entry, and exact output
+tests.
+
 ## Verify a prepared checkout
 
 Use `check` after cloning, in review, or in CI:
@@ -289,6 +333,10 @@ shows both operations without adding providers. See the [embedding
 boundary](reference/embedding-boundary.md) for the complete type map, ownership
 rules, list transfer behavior, provider state, and lower-level manual binding
 API.
+
+Generated resumable bindings use `AsyncList<T>` for Gleam Lists. It has the same
+lazy `len`, `get`, `iter`, and `to_vec` operations as `List<T>`, while retaining
+storage that can move with the call Future between executor workers.
 
 ## Ship the Gleam sources with your application
 

@@ -1,13 +1,15 @@
 use super::Module;
-use super::input::{FreshInput, InputConstructions, InputValue, ListFamily};
-use super::value::{EmbeddingValue, ReturnValue};
+use super::input::{
+    AsyncFreshInput, AsyncInputValue, FreshInput, InputConstructions, InputValue, ListFamily,
+};
+use super::value::{EmbeddingValue, OutputValue, ReturnValue};
 use crate::plan::execution::{
     LibraryFunctionEntries, LibraryInputConstructions, LibraryListConstructions,
 };
 use crate::plan::{LibraryValueType, StandardVariant};
 use crate::runtime::{
     EmbeddingInputStorage, EmbeddingInputValue, EmbeddingList, EmbeddingListInput, EmbeddingOutput,
-    RetainedValues,
+    RetainedValues, TransferValues,
 };
 use crate::{EchoSink, ExecutionError, HostProfile, HostedExecution};
 use std::marker::PhantomData;
@@ -62,14 +64,34 @@ pub struct List<T> {
     marker: PhantomData<T>,
 }
 
+/// A read-only, worker-transferable Gleam List returned by async embedding.
+///
+/// Reading stays lazy and [`Self::len`] remains O(1). Passing a retained value
+/// back into `call_async` requires the same live async module owner; a consumed
+/// `Vec` creates a fresh transferable List instead.
+pub struct AsyncList<T> {
+    value: EmbeddingList<TransferValues>,
+    owner: Arc<()>,
+    marker: PhantomData<T>,
+}
+
 /// An iterator that decodes retained List items only as they are requested.
 pub struct Iter<'a, T> {
     list: &'a List<T>,
     indices: std::ops::Range<usize>,
 }
 
+/// An iterator that lazily decodes items from an [`AsyncList`].
+pub struct AsyncIter<'a, T> {
+    list: &'a AsyncList<T>,
+    indices: std::ops::Range<usize>,
+}
+
 #[allow(private_bounds)]
-impl<T: EmbeddingValue> List<T> {
+impl<T> List<T>
+where
+    T: OutputValue<crate::runtime::LocalValues>,
+{
     /// Returns the number of items without decoding them.
     pub fn len(&self) -> usize {
         self.value.len()
@@ -101,7 +123,62 @@ impl<T: EmbeddingValue> List<T> {
     }
 }
 
-impl<T: EmbeddingValue> Iterator for Iter<'_, T> {
+impl<T> Iterator for Iter<'_, T>
+where
+    T: OutputValue<crate::runtime::LocalValues>,
+{
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        self.indices.next().and_then(|index| self.list.get(index))
+    }
+}
+
+#[allow(private_bounds)]
+impl<T> AsyncList<T>
+where
+    T: OutputValue<TransferValues>,
+{
+    /// Returns the number of items without decoding them.
+    pub fn len(&self) -> usize {
+        self.value.len()
+    }
+
+    /// Checks whether the list is empty without decoding items.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Decodes one item, returning None for an out-of-range index.
+    pub fn get(&self, index: usize) -> Option<T> {
+        self.value
+            .item(index)
+            .map(|mut output| T::take(&mut output, &self.owner))
+    }
+
+    /// Iterates over owned Rust items without materializing the whole list.
+    pub fn iter(&self) -> AsyncIter<'_, T> {
+        AsyncIter {
+            list: self,
+            indices: 0..self.len(),
+        }
+    }
+
+    /// Explicitly decodes every item into a new Rust Vec.
+    pub fn to_vec(&self) -> Vec<T> {
+        self.iter().collect()
+    }
+
+    #[cfg(test)]
+    pub(super) fn item_reads(&self) -> usize {
+        self.value.item_reads()
+    }
+}
+
+impl<T> Iterator for AsyncIter<'_, T>
+where
+    T: OutputValue<TransferValues>,
+{
     type Item = T;
 
     fn next(&mut self) -> Option<T> {
@@ -132,15 +209,51 @@ impl<T: EmbeddingValue> EmbeddingValue for List<T> {
         lists.push(T::library_type());
         T::collect_lists(lists);
     }
+}
 
-    fn list_id(
-        lists: &LibraryListConstructions,
-        index: usize,
-    ) -> <Self::Runtime as EmbeddingInputValue>::ListType {
-        lists.lists[index]
+impl<T> OutputValue<crate::runtime::LocalValues> for List<T>
+where
+    T: OutputValue<crate::runtime::LocalValues>,
+{
+    fn take(output: &mut EmbeddingOutput, owner: &Arc<()>) -> Self {
+        Self {
+            value: output.take_list(),
+            owner: Arc::clone(owner),
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<T: EmbeddingValue> EmbeddingValue for AsyncList<T> {
+    type Runtime = EmbeddingListInput;
+
+    const VARIANT_COUNT: usize = T::VARIANT_COUNT;
+    const LIST_COUNTS: [usize; 10] = {
+        let mut counts = T::LIST_COUNTS;
+        counts[T::LIST_FAMILY as usize] += 1;
+        counts
+    };
+    const LIST_FAMILY: ListFamily = ListFamily::List;
+
+    fn library_type() -> LibraryValueType {
+        LibraryValueType::List(Box::new(T::library_type()))
     }
 
-    fn take(output: &mut EmbeddingOutput, owner: &Arc<()>) -> Self {
+    fn collect_variants(variants: &mut Vec<StandardVariant>) {
+        T::collect_variants(variants);
+    }
+
+    fn collect_lists(lists: &mut Vec<LibraryValueType>) {
+        lists.push(T::library_type());
+        T::collect_lists(lists);
+    }
+}
+
+impl<T> OutputValue<TransferValues> for AsyncList<T>
+where
+    T: OutputValue<TransferValues>,
+{
+    fn take(output: &mut EmbeddingOutput<TransferValues>, owner: &Arc<()>) -> Self {
         Self {
             value: output.take_list(),
             owner: Arc::clone(owner),
@@ -162,7 +275,7 @@ where
         constructions: &mut InputConstructions<'_>,
         storage: &EmbeddingInputStorage,
     ) -> Self::Runtime {
-        let type_ = constructions.take_list::<T>();
+        let type_ = constructions.take_list::<T, Input>();
         let item_constructions = *constructions;
         constructions.skip::<T>();
         let values = input.into_iter().map(|value| {
@@ -173,7 +286,17 @@ where
     }
 }
 
-impl<T, Input> FreshInput<Vec<Input>> for List<T> where T: FreshInput<Input> {}
+impl<T, Input> FreshInput<Vec<Input>> for List<T>
+where
+    T: FreshInput<Input>,
+{
+    fn list_id(
+        lists: &LibraryListConstructions,
+        index: usize,
+    ) -> <Self::Runtime as EmbeddingInputValue>::ListType {
+        lists.lists[index]
+    }
+}
 
 impl<T: EmbeddingValue> InputValue<&List<T>> for List<T> {
     fn owners_match(input: &&List<T>, owner: &Arc<()>) -> bool {
@@ -190,7 +313,68 @@ impl<T: EmbeddingValue> InputValue<&List<T>> for List<T> {
     }
 }
 
-impl<T: EmbeddingValue> ReturnValue for List<T> {
+impl<T, Input> AsyncInputValue<Vec<Input>> for AsyncList<T>
+where
+    T: AsyncFreshInput<Input>,
+{
+    type TransferRuntime = EmbeddingListInput<TransferValues>;
+
+    fn owners_match(_input: &Vec<Input>, _owner: &Arc<()>) -> bool {
+        true
+    }
+
+    fn into_runtime(
+        input: Vec<Input>,
+        constructions: &mut InputConstructions<'_>,
+        storage: &EmbeddingInputStorage<TransferValues>,
+    ) -> Self::TransferRuntime {
+        let type_ = constructions.take_async_list::<T, Input>();
+        let item_constructions = *constructions;
+        constructions.skip::<T>();
+        let values = input.into_iter().map(|value| {
+            let mut constructions = item_constructions;
+            T::into_runtime(value, &mut constructions, storage)
+        });
+        <T as AsyncInputValue<Input>>::TransferRuntime::into_list(type_, values, storage)
+    }
+}
+
+impl<T, Input> AsyncFreshInput<Vec<Input>> for AsyncList<T>
+where
+    T: AsyncFreshInput<Input>,
+{
+    fn list_id(
+        lists: &LibraryListConstructions,
+        index: usize,
+    ) -> <Self::TransferRuntime as EmbeddingInputValue<TransferValues>>::ListType {
+        lists.lists[index]
+    }
+}
+
+impl<T> AsyncInputValue<&AsyncList<T>> for AsyncList<T>
+where
+    T: EmbeddingValue,
+{
+    type TransferRuntime = EmbeddingListInput<TransferValues>;
+
+    fn owners_match(input: &&AsyncList<T>, owner: &Arc<()>) -> bool {
+        Arc::ptr_eq(&input.owner, owner)
+    }
+
+    fn into_runtime(
+        input: &AsyncList<T>,
+        constructions: &mut InputConstructions<'_>,
+        _storage: &EmbeddingInputStorage<TransferValues>,
+    ) -> Self::TransferRuntime {
+        constructions.skip::<Self>();
+        input.value.input()
+    }
+}
+
+impl<T> ReturnValue for List<T>
+where
+    T: OutputValue<crate::runtime::LocalValues>,
+{
     fn input_constructions(
         entries: &LibraryFunctionEntries,
         slot: usize,

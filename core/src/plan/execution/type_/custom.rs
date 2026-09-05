@@ -12,21 +12,25 @@ pub(crate) struct CustomConstructorId {
     index: usize,
 }
 
+#[derive(Clone)]
 pub(crate) struct CustomTypeTable {
     types: Vec<CustomTypeDescriptor>,
 }
 
+#[derive(Clone)]
 pub(crate) struct CustomTypeDescriptor {
     type_: plan::CustomType,
     constructors: BTreeMap<usize, CustomConstructorDescriptor>,
 }
 
+#[derive(Clone)]
 pub(crate) struct CustomConstructorDescriptor {
     id: CustomConstructorId,
     name: EcoString,
     fields: Vec<CustomFieldDescriptor>,
 }
 
+#[derive(Clone)]
 pub(crate) struct CustomFieldDescriptor {
     label: Option<EcoString>,
     type_: ValueType,

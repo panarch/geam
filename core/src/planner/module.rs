@@ -19,8 +19,8 @@ use constant::{ConstantBodies, plan_constant_bodies, reserve_constants};
 use registry::{ModuleRegistry, ProgramRegistry};
 mod external_type;
 
-pub(crate) use host::plan_host_library_program;
 pub use host::plan_host_program;
+pub(crate) use host::{plan_async_host_library_program, plan_host_library_program};
 
 pub fn plan_module(module: TypedModule) -> Result<ModulePlan, PlanError> {
     plan_modules(

@@ -25,13 +25,13 @@ use self::function::{
     ExecutionNilFunctionBody, ExecutionNilFunctionFunctionBody,
     ExecutionStringFunctionFunctionBody, ExecutionTupleFunctionBody,
     ExecutionTupleFunctionFunctionBody, ExecutionUtfCodepointFunctionFunctionBody,
-    FloatFunctionFunctionId, FloatListFunctionId, FunctionFunctionFunctionId,
-    FunctionListFunctionId, GenericFunctionFunctionId, IntFunctionFunctionId, IntFunctionId,
-    IntListFunctionId, ListListFunctionId, NeverFunctionFunctionId, NilFunctionFunctionId,
-    NilFunctionId, NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId,
-    ProfiledListFunctionFunctionId, StringFunctionFunctionId, StringListFunctionId,
-    TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionId,
-    UtfCodepointListFunctionId,
+    ExternalListFunctionId, FloatFunctionFunctionId, FloatListFunctionId,
+    FunctionFunctionFunctionId, FunctionListFunctionId, GenericFunctionFunctionId,
+    IntFunctionFunctionId, IntFunctionId, IntListFunctionId, ListListFunctionId,
+    NeverFunctionFunctionId, NilFunctionFunctionId, NilFunctionId, NilListFunctionId,
+    ParameterListFunctionId, ParameterListListFunctionId, ProfiledListFunctionFunctionId,
+    StringFunctionFunctionId, StringListFunctionId, TupleFunctionFunctionId, TupleFunctionId,
+    TupleListFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointListFunctionId,
 };
 use self::function::{
     ExecutionGraphProfile, ExecutionProfile, FunctionLabelSource, FunctionTables,
@@ -89,7 +89,7 @@ pub(crate) struct LibraryFunctionEntries {
     pub(crate) bools: Box<[LibraryFunctionEntry<function::BoolFunctionId>]>,
     pub(crate) nils: Box<[LibraryFunctionEntry<function::NilFunctionId>]>,
     pub(crate) tuples: Box<[LibraryFunctionEntry<function::TupleFunctionId>]>,
-    pub(crate) lists: Box<[LibraryFunctionEntry<function::ProfiledListFunctionId<Infallible>>]>,
+    pub(crate) lists: Box<[LibraryFunctionEntry<function::LibraryListFunctionId>]>,
 }
 
 impl<Function> LibraryFunctionEntry<Function> {
@@ -133,6 +133,11 @@ pub struct HostedExecution<Profile: HostProfile> {
     program: ExecutionProgram<host::HostedExecutionProfile>,
     host_functions: host::HostFunctionTables<Profile>,
     external_stores: Profile::ExternalStores,
+}
+
+pub(crate) struct AsyncHostedExecution<Profile: HostProfile> {
+    program: ExecutionProgram<host::AsyncHostedExecutionProfile>,
+    host_functions: host::AsyncHostFunctionTables<Profile>,
 }
 
 pub(crate) struct ExecutionProgram<Profile: ExecutionProfile> {
@@ -294,6 +299,115 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
 
     pub(crate) fn external_stores(&self) -> &Profile::ExternalStores {
         &self.external_stores
+    }
+
+    #[cfg(test)]
+    pub(crate) fn external_list_function_id(&self, index: usize) -> ExternalListFunctionId {
+        self.program.functions.external_list_function_id(index)
+    }
+}
+
+impl<Profile: HostProfile> AsyncHostedExecution<Profile> {
+    pub(crate) fn host_external_function(
+        &self,
+        id: &host::HostFunctionId<
+            function::ExecutionExternalFunctionBody<host::AsyncHostedExecutionProfile>,
+        >,
+    ) -> &host::HostedFunction<
+        std::sync::Arc<
+            crate::host::ScopedAsyncHostCallback<
+                Profile,
+                crate::runtime::TransferExternalPayloadLease,
+            >,
+        >,
+    > {
+        self.host_functions.external(id)
+    }
+    pub(crate) fn from_library_plan(
+        module_plan: crate::plan::AsyncHostedLibraryModulePlan<Profile>,
+        first: crate::plan::LibraryEntry,
+        remaining: Vec<crate::plan::LibraryEntry>,
+    ) -> (Self, LibraryFunctionEntries) {
+        let (program, host_functions, entries) =
+            lowering::lower_async_hosted_library(module_plan, first, remaining);
+        (
+            Self {
+                program,
+                host_functions,
+            },
+            entries,
+        )
+    }
+
+    pub(crate) fn host_int_function(
+        &self,
+        id: &host::HostFunctionId<
+            function::ExecutionIntFunctionBody<host::AsyncHostedExecutionProfile>,
+        >,
+    ) -> &host::HostedFunction<host::ResumableHostCallback<Profile, num_bigint::BigInt>> {
+        self.host_functions.int(id)
+    }
+
+    pub(crate) fn host_float_function(
+        &self,
+        id: &host::HostFunctionId<
+            function::ExecutionFloatFunctionBody<host::AsyncHostedExecutionProfile>,
+        >,
+    ) -> &host::HostedFunction<host::ResumableHostCallback<Profile, f64>> {
+        self.host_functions.float(id)
+    }
+
+    pub(crate) fn host_string_function(
+        &self,
+        id: &host::HostFunctionId<
+            function::ExecutionStringFunctionBody<host::AsyncHostedExecutionProfile>,
+        >,
+    ) -> &host::HostedFunction<host::ResumableHostCallback<Profile, EcoString>> {
+        self.host_functions.string(id)
+    }
+
+    pub(crate) fn host_bit_array_function(
+        &self,
+        id: &host::HostFunctionId<
+            function::ExecutionBitArrayFunctionBody<host::AsyncHostedExecutionProfile>,
+        >,
+    ) -> &host::HostedFunction<host::ResumableHostCallback<Profile, crate::BitArrayValue>> {
+        self.host_functions.bit_array(id)
+    }
+
+    pub(crate) fn host_utf_codepoint_function(
+        &self,
+        id: &host::HostFunctionId<
+            function::ExecutionUtfCodepointFunctionBody<host::AsyncHostedExecutionProfile>,
+        >,
+    ) -> &host::HostedFunction<host::ResumableHostCallback<Profile, char>> {
+        self.host_functions.utf_codepoint(id)
+    }
+
+    pub(crate) fn host_bool_function(
+        &self,
+        id: &host::HostFunctionId<
+            function::ExecutionBoolFunctionBody<host::AsyncHostedExecutionProfile>,
+        >,
+    ) -> &host::HostedFunction<host::ResumableHostCallback<Profile, bool>> {
+        self.host_functions.bool_(id)
+    }
+
+    pub(crate) fn host_nil_function(
+        &self,
+        id: &host::HostFunctionId<
+            function::ExecutionNilFunctionBody<host::AsyncHostedExecutionProfile>,
+        >,
+    ) -> &host::HostedFunction<host::ResumableHostCallback<Profile, ()>> {
+        self.host_functions.nil(id)
+    }
+
+    pub(crate) fn host_never_function(
+        &self,
+        id: host::HostNeverFunctionId,
+    ) -> &host::HostedFunction<crate::host::OwnedHostCallback<Profile, std::convert::Infallible>>
+    {
+        self.host_functions.never(id)
     }
 }
 

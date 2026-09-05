@@ -1,7 +1,8 @@
 use super::{FrontendError, ModuleSource, PackageSource};
 use crate::host::{
-    HostFunctionSchema, HostProfile, HostProviderSet, HostTypeDescriptor,
-    RegisteredHostImplementations, RegisteredHostModule, RegisteredHostProviderModule,
+    AsyncHostProviderSet, HostFunctionSchema, HostProfile, HostProviderSet, HostTypeDescriptor,
+    RegisteredAsyncHostImplementations, RegisteredHostImplementations, RegisteredHostModule,
+    RegisteredHostProviderModule,
 };
 use camino::Utf8PathBuf;
 use ecow::EcoString;
@@ -35,6 +36,12 @@ pub struct TypedProgram {
 pub struct HostedTypedProgram<Profile: HostProfile> {
     program: HostedProgram,
     implementations: RegisteredHostImplementations<Profile>,
+}
+
+/// A checked Gleam program with statically registered resumable Rust hosts.
+pub struct AsyncHostedTypedProgram<Profile: HostProfile> {
+    program: HostedProgram,
+    implementations: RegisteredAsyncHostImplementations<Profile>,
 }
 
 struct HostedProgram {
@@ -111,6 +118,38 @@ impl<Profile: HostProfile> HostedTypedProgram<Profile> {
     }
 }
 
+impl<Profile: HostProfile> AsyncHostedTypedProgram<Profile> {
+    /// Returns the package that owns the selected root module.
+    pub fn root_package(&self) -> &EcoString {
+        &self.program.root_package
+    }
+
+    /// Returns the selected root module.
+    pub fn root_module(&self) -> &EcoString {
+        &self.program.root_module
+    }
+
+    pub(crate) fn root_public_functions(&self) -> impl Iterator<Item = &EcoString> {
+        self.program.root_public_functions.iter()
+    }
+
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        usize,
+        Vec<HostedTypedProgramModule>,
+        Vec<RegisteredHostProviderModule>,
+        RegisteredAsyncHostImplementations<Profile>,
+    ) {
+        (
+            self.program.root_index,
+            self.program.modules,
+            self.program.providers,
+            self.implementations,
+        )
+    }
+}
+
 pub fn compile_typed_module(
     module_name: impl Into<EcoString>,
     path: impl Into<Utf8PathBuf>,
@@ -166,6 +205,52 @@ pub fn compile_typed_host_program<Profile: HostProfile>(
         packages.into_iter().collect(),
         hosts,
     )
+}
+
+/// Checks package sources with explicit immediate and async Rust host modules.
+///
+/// This lower-level loader accepts source values directly. It does not poll
+/// host Futures or choose an executor.
+pub fn compile_typed_async_host_program<Profile: HostProfile>(
+    root_package: impl Into<EcoString>,
+    root_module: impl Into<EcoString>,
+    packages: impl IntoIterator<Item = PackageSource>,
+    hosts: AsyncHostProviderSet<Profile>,
+) -> Result<AsyncHostedTypedProgram<Profile>, FrontendError> {
+    let root_package = root_package.into();
+    let root_module = root_module.into();
+    let warnings = WarningEmitter::null();
+    let parsed_modules =
+        parse_package_sources(&root_package, packages.into_iter().collect(), &warnings)?;
+    compile_parsed_async_host_package_program(
+        root_package,
+        root_module,
+        parsed_modules,
+        hosts,
+        warnings,
+    )
+}
+
+pub(super) fn compile_parsed_async_host_package_program<Profile: HostProfile>(
+    root_package: EcoString,
+    root_module: EcoString,
+    parsed_modules: Vec<ParsedModule>,
+    hosts: AsyncHostProviderSet<Profile>,
+    warnings: WarningEmitter,
+) -> Result<AsyncHostedTypedProgram<Profile>, FrontendError> {
+    let (host_modules, providers, implementations) = hosts.into_registered();
+    compile_parsed_host_program(
+        root_package,
+        root_module,
+        parsed_modules,
+        host_modules,
+        providers,
+        warnings,
+    )
+    .map(|program| AsyncHostedTypedProgram {
+        program,
+        implementations,
+    })
 }
 
 fn compile_package_sources(
@@ -749,12 +834,12 @@ fn host_function_type(
 mod tests {
     use super::{
         FrontendError, HostedTypedProgramModule, ModuleSource, PackageSource,
-        compile_typed_host_program, compile_typed_module, compile_typed_package_program,
-        compile_typed_program, host_module_interface, host_type,
+        compile_typed_async_host_program, compile_typed_host_program, compile_typed_module,
+        compile_typed_package_program, compile_typed_program, host_module_interface, host_type,
     };
     use crate::host::{
-        HostCustomTypeSchema, HostExternalTypeSchema, HostModule, HostProviderSet,
-        HostTypeDescriptor,
+        AsyncHostModule, AsyncHostProviderSet, HostCustomTypeSchema, HostExternalTypeSchema,
+        HostModule, HostProviderSet, HostTypeDescriptor,
     };
     use crate::plan_host_program;
     use crate::planner::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
@@ -1762,9 +1847,26 @@ pub fn main() {
             .expect_err("invalid syntax should fail");
         let analyse = compile_typed_module("main", "main.gleam", "pub fn main() { 1 + \"bad\" }")
             .expect_err("invalid types should fail");
+        let async_parse = compile_typed_async_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new("main", "main.gleam", "pub fn main(")],
+            )],
+            AsyncHostProviderSet::new(Vec::<AsyncHostModule>::new())
+                .expect("empty async hosts should be valid"),
+        )
+        .err()
+        .expect("invalid async-hosted syntax should fail while parsing");
 
         assert_eq!(parse.to_string(), "failed to parse Gleam module main.gleam");
         assert_eq!(analyse.to_string(), "failed to analyse Gleam module");
+        assert_eq!(
+            async_parse.to_string(),
+            "failed to parse Gleam module main.gleam"
+        );
     }
 
     #[test]

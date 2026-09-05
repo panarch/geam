@@ -2,13 +2,14 @@ use super::input::EmbeddingListInput;
 use super::output::EmbeddingOutput;
 use crate::runtime::retained_list::RetainedList;
 use crate::runtime::state::list::StoredListValueId;
+use crate::runtime::{LocalValues, RuntimeValueProfile};
 
-pub(crate) struct EmbeddingList {
-    retained: RetainedList<StoredListValueId>,
+pub(crate) struct EmbeddingList<Profile: RuntimeValueProfile = LocalValues> {
+    retained: RetainedList<StoredListValueId<Profile>, Profile>,
 }
 
-impl EmbeddingList {
-    pub(super) fn new(value: StoredListValueId) -> Self {
+impl<Profile: RuntimeValueProfile> EmbeddingList<Profile> {
+    pub(super) fn new(value: StoredListValueId<Profile>) -> Self {
         Self {
             retained: RetainedList::new(value),
         }
@@ -18,11 +19,11 @@ impl EmbeddingList {
         self.retained.len()
     }
 
-    pub(crate) fn item(&self, index: usize) -> Option<EmbeddingOutput> {
+    pub(crate) fn item(&self, index: usize) -> Option<EmbeddingOutput<Profile>> {
         self.retained.item(index).map(EmbeddingOutput::from_value)
     }
 
-    pub(crate) fn input(&self) -> EmbeddingListInput {
+    pub(crate) fn input(&self) -> EmbeddingListInput<Profile> {
         EmbeddingListInput(self.retained.handle().clone())
     }
 

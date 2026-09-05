@@ -1,6 +1,6 @@
 pub(in crate::runtime) mod list;
 
-use self::list::RuntimeListStorage;
+use crate::runtime::{LocalValues, RuntimeValueProfile};
 
 pub(in crate::runtime) trait RuntimeHostState {
     type State;
@@ -24,31 +24,40 @@ impl<State> RuntimeHostState for &mut State {
     }
 }
 
-pub(in crate::runtime) struct RuntimeState<'run, Host = ()> {
+pub(in crate::runtime) struct RuntimeState<'run, Host = (), Values = LocalValues>
+where
+    Values: RuntimeValueProfile,
+{
     echo: &'run mut dyn crate::runtime::EchoSink,
     host: Host,
-    lists: RuntimeListStorage,
+    lists: Values::ListStorage,
 }
 
-pub(in crate::runtime) type RuntimeStateFor<'run, Plan> =
-    RuntimeState<'run, <Plan as crate::runtime::ExecutableRuntimePlan>::RuntimeHost<'run>>;
+pub(in crate::runtime) type RuntimeStateFor<'run, Plan> = RuntimeState<
+    'run,
+    <Plan as crate::runtime::ExecutableRuntimePlan>::RuntimeHost<'run>,
+    <Plan as crate::plan::execution::runtime::RuntimeExecutionPlan>::Values,
+>;
 
-impl<'run> RuntimeState<'run, ()> {
+impl<'run> RuntimeState<'run, (), LocalValues> {
     pub(super) fn new(echo: &'run mut dyn crate::runtime::EchoSink) -> Self {
         Self {
             echo,
             host: (),
-            lists: RuntimeListStorage::default(),
+            lists: Default::default(),
         }
     }
 }
 
-impl<'run, Host> RuntimeState<'run, Host> {
+impl<'run, Host, Values> RuntimeState<'run, Host, Values>
+where
+    Values: RuntimeValueProfile,
+{
     pub(super) fn with_host(echo: &'run mut dyn crate::runtime::EchoSink, host: Host) -> Self {
         Self {
             echo,
             host,
-            lists: RuntimeListStorage::default(),
+            lists: Default::default(),
         }
     }
 
@@ -56,16 +65,20 @@ impl<'run, Host> RuntimeState<'run, Host> {
         self.echo.emit(output);
     }
 
-    pub(super) fn lists(&self) -> &RuntimeListStorage {
+    pub(super) fn lists(&self) -> &Values::ListStorage {
         &self.lists
     }
 
-    pub(super) fn lists_mut(&mut self) -> &mut RuntimeListStorage {
+    pub(super) fn lists_mut(&mut self) -> &mut Values::ListStorage {
         &mut self.lists
     }
 }
 
-impl<Host: RuntimeHostState> RuntimeState<'_, Host> {
+impl<Host, Values> RuntimeState<'_, Host, Values>
+where
+    Host: RuntimeHostState,
+    Values: RuntimeValueProfile,
+{
     pub(super) fn host_state(&mut self) -> &mut Host::State {
         self.host.state()
     }
@@ -84,7 +97,8 @@ mod tests {
 
         let mut host = (num_bigint::BigInt::from(41), true);
         let mut echo = Vec::new();
-        let mut hosted = RuntimeState::with_host(&mut echo, &mut host);
+        let mut hosted: RuntimeState<'_, _, crate::runtime::LocalValues> =
+            RuntimeState::with_host(&mut echo, &mut host);
         hosted.host_state().0 += 1;
 
         assert!(hosted.host_state().1);

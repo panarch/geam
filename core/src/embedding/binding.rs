@@ -2,11 +2,11 @@ mod error;
 
 pub use error::BindingError;
 
-use super::{Arguments, Function, Module, ReturnValue};
+use super::{Arguments, EmbeddingValue, Function, Module, ReturnValue};
 use crate::HostProfile;
 use crate::plan::{
-    FunctionTemplateId, FunctionTemplateSignature, FunctionType, HostedLibraryModulePlan,
-    LibraryEntry, LibraryModulePlan, LibraryValueType,
+    AsyncHostedLibraryModulePlan, FunctionTemplateId, FunctionTemplateSignature, FunctionType,
+    HostedLibraryModulePlan, LibraryEntry, LibraryModulePlan, LibraryValueType,
 };
 use crate::{ExecutionPlan, PlanError, TypedProgram};
 use ecow::EcoString;
@@ -63,9 +63,10 @@ pub(super) struct BindingParts<Plan> {
 /// Arguments are represented by Rust tuples with arity `0..=7`. Supported
 /// values are [`super::BigInt`], `f64`, [`super::EcoString`],
 /// [`super::BitArrayValue`], `char`, `bool`, `()`, Rust tuples with arity
-/// `1..=7`, `Result`, `Option`, and [`super::List`]. Compound values may contain
-/// one another. A List declaration accepts a consumed Vec or a borrowed List
-/// from the same Module, and returns a retained List.
+/// `1..=7`, `Result`, `Option`, and lists. Compound values may contain one
+/// another. Use [`super::List`] for immediate calls and [`super::AsyncList`]
+/// for resumable calls. Both accept a consumed Vec or a borrowed list from the
+/// same module, and return a retained list.
 ///
 /// Unsupported Rust values and argument arities are rejected by Rust type
 /// checking:
@@ -189,7 +190,7 @@ impl ModuleBindings {
 impl<ArgumentsType, Return> FunctionDeclaration<ArgumentsType, Return>
 where
     ArgumentsType: Arguments,
-    Return: ReturnValue,
+    Return: EmbeddingValue,
 {
     /// Declares the exact Rust signature expected for a named Gleam function.
     pub fn new(name: impl Into<EcoString>) -> Self {
@@ -256,7 +257,7 @@ impl<Plan: BindingPlan> BindingBuilder<Plan> {
     ) -> Result<(Bindings<Plan>, Function<ArgumentsType, Return>), BindingError>
     where
         ArgumentsType: Arguments,
-        Return: ReturnValue,
+        Return: EmbeddingValue,
     {
         let expected = FunctionType::new(ArgumentsType::value_types(), Return::value_type());
         let input_variants = ArgumentsType::input_variants();
@@ -298,7 +299,7 @@ impl<Plan: BindingPlan> Bindings<Plan> {
     ) -> Result<Function<ArgumentsType, Return>, BindingError>
     where
         ArgumentsType: Arguments,
-        Return: ReturnValue,
+        Return: EmbeddingValue,
     {
         let name = declaration.name;
         if self.selected_names.contains(&name) {
@@ -349,6 +350,22 @@ impl BindingPlan for LibraryModulePlan {
 }
 
 impl<Profile: HostProfile> BindingPlan for HostedLibraryModulePlan<Profile> {
+    fn function_signature(&self, name: &EcoString) -> Option<&FunctionTemplateSignature> {
+        self.functions()
+            .iter()
+            .find(|function| function.name() == name)
+            .map(|function| function.signature())
+    }
+
+    fn custom_type(
+        &self,
+        name: &crate::plan::CustomTypeName,
+    ) -> Option<&crate::plan::CustomTypeDefinition> {
+        self.custom_type(name)
+    }
+}
+
+impl<Profile: HostProfile> BindingPlan for AsyncHostedLibraryModulePlan<Profile> {
     fn function_signature(&self, name: &EcoString) -> Option<&FunctionTemplateSignature> {
         self.functions()
             .iter()

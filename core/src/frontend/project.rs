@@ -1,8 +1,11 @@
 use super::program::{
-    ParsedModule, compile_parsed_host_package_program, compile_parsed_package_program, parse_module,
+    ParsedModule, compile_parsed_async_host_package_program, compile_parsed_host_package_program,
+    compile_parsed_package_program, parse_module,
 };
-use super::{FrontendError, HostedTypedProgram, ModuleSource, TypedProgram};
-use crate::host::{HostProfile, HostProviderSet};
+use super::{
+    AsyncHostedTypedProgram, FrontendError, HostedTypedProgram, ModuleSource, TypedProgram,
+};
+use crate::host::{AsyncHostProviderSet, HostProfile, HostProviderSet};
 use camino::{Utf8Path, Utf8PathBuf};
 use ecow::EcoString;
 use gleam_compiler_core::build::Target;
@@ -119,6 +122,34 @@ pub fn compile_typed_host_project<Profile: HostProfile>(
         WarningEmitter::null(),
     )
     .map_err(ProjectError::from)
+}
+
+/// Compiles the selected import closure of an already resolved Gleam project
+/// with explicit resumable Rust host modules and source providers.
+///
+/// This loader is read-only. It does not invoke Gleam CLI, download packages,
+/// modify project files, or run an async executor.
+pub fn compile_typed_async_host_project<Profile: HostProfile>(
+    project_root: impl Into<Utf8PathBuf>,
+    root_module: impl Into<EcoString>,
+    hosts: AsyncHostProviderSet<Profile>,
+) -> Result<AsyncHostedTypedProgram<Profile>, ProjectError> {
+    load_project(project_root.into(), root_module.into()).and_then(|project| {
+        let selected_source_modules = project
+            .modules
+            .iter()
+            .map(|module| (module.package.clone(), module.module.name.clone()))
+            .collect::<BTreeSet<_>>();
+        let hosts = hosts.select_source_providers(&selected_source_modules);
+        compile_parsed_async_host_package_program(
+            project.root_package,
+            project.root_module,
+            project.modules,
+            hosts,
+            WarningEmitter::null(),
+        )
+        .map_err(ProjectError::from)
+    })
 }
 
 struct ParsedProject {
@@ -450,10 +481,13 @@ fn select_import_closure(
 #[cfg(test)]
 mod tests {
     use super::{
-        ProjectError, SourceDirectory, compile_typed_host_project, compile_typed_project,
-        source_paths_from,
+        ProjectError, SourceDirectory, compile_typed_async_host_project,
+        compile_typed_host_project, compile_typed_project, source_paths_from,
     };
-    use crate::host::{HostModule, HostProviderModule, HostProviderSet, StatelessHostProfile};
+    use crate::host::{
+        AsyncHostModule, AsyncHostProviderSet, HostModule, HostProviderModule, HostProviderSet,
+        StatelessHostProfile,
+    };
     use crate::planner::UnsupportedFunctionReason;
     use crate::{HostedExecution, PlanError, Value, plan_host_program, plan_program};
     use camino::{Utf8Path, Utf8PathBuf};
@@ -1242,7 +1276,7 @@ packages = [
     }
 
     #[test]
-    fn rejects_missing_package_config_for_plain_and_hosted_projects() {
+    fn rejects_missing_package_config_for_every_project_loader() {
         let project = tempdir().expect("temporary project should be created");
         let root = project_root(&project);
 
@@ -1256,6 +1290,14 @@ packages = [
         )
         .err()
         .expect("missing package config should fail before hosted compilation");
+        let async_hosted_error = compile_typed_async_host_project(
+            root.clone(),
+            "main",
+            AsyncHostProviderSet::new(Vec::<AsyncHostModule>::new())
+                .expect("empty async hosts should be valid"),
+        )
+        .err()
+        .expect("missing package config should fail before async hosted compilation");
         let expected = format!(
             "failed to read Gleam package config {}",
             root.join("gleam.toml"),
@@ -1263,6 +1305,7 @@ packages = [
 
         assert_eq!(plain_error.to_string(), expected);
         assert_eq!(hosted_error.to_string(), expected);
+        assert_eq!(async_hosted_error.to_string(), expected);
     }
 
     #[test]

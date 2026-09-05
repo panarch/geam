@@ -19,6 +19,11 @@ pub(crate) enum HostedFunctionTarget<Body: FunctionBodyOwner> {
     Never(HostNeverFunctionId),
 }
 
+pub(crate) enum ResumableHostedFunctionTarget<Body: ExecutionFunctionBody> {
+    Value(Body::AsyncHostTarget),
+    Never(HostNeverFunctionId),
+}
+
 pub(crate) struct HostedFunctionMetadata {
     package: EcoString,
     site: crate::plan::HostCallSite,
@@ -187,6 +192,16 @@ impl<Body: ExecutionFunctionBody> HostedFunctionTarget<Body> {
     }
 }
 
+impl<Body: ExecutionFunctionBody> ResumableHostedFunctionTarget<Body> {
+    pub(in crate::plan::execution) fn value(target: Body::AsyncHostTarget) -> Self {
+        Self::Value(target)
+    }
+
+    pub(in crate::plan::execution) fn never(target: HostNeverFunctionId) -> Self {
+        Self::Never(target)
+    }
+}
+
 impl<Implementation> HostedFunction<Implementation> {
     pub(in crate::plan::execution) fn new(
         metadata: HostedFunctionMetadata,
@@ -292,7 +307,7 @@ impl HostedFunctionMetadata {
         self.parameters.call()
     }
 
-    fn constructions(&self) -> &HostConstructionTypes {
+    pub(super) fn constructions(&self) -> &HostConstructionTypes {
         &self.constructions
     }
 

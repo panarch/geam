@@ -6,25 +6,44 @@ mod evaluated;
 mod function;
 mod graph;
 mod host;
+mod list_storage;
 mod materialize;
 mod profile;
+mod resumable;
 mod retained_list;
 mod state;
+mod transfer;
 mod value;
+mod value_profile;
 
 pub(crate) use embedding::{
-    EmbeddingCustomInput, EmbeddingInputStorage, EmbeddingInputValue, EmbeddingList,
-    EmbeddingListInput, EmbeddingOutput, EmbeddingTupleInput, run_embedded_bit_array,
-    run_embedded_bool, run_embedded_custom, run_embedded_float, run_embedded_int,
-    run_embedded_list, run_embedded_nil, run_embedded_string, run_embedded_tuple,
+    EmbeddingCustomInput, EmbeddingInput, EmbeddingInputStorage, EmbeddingInputValue,
+    EmbeddingList, EmbeddingListInput, EmbeddingOutput, EmbeddingTupleInput,
+    run_embedded_bit_array, run_embedded_bool, run_embedded_custom, run_embedded_float,
+    run_embedded_int, run_embedded_list, run_embedded_nil, run_embedded_string, run_embedded_tuple,
     run_embedded_utf_codepoint, run_hosted_embedded_bit_array, run_hosted_embedded_bool,
     run_hosted_embedded_custom, run_hosted_embedded_float, run_hosted_embedded_int,
     run_hosted_embedded_list, run_hosted_embedded_nil, run_hosted_embedded_string,
     run_hosted_embedded_tuple, run_hosted_embedded_utf_codepoint,
 };
+pub(crate) use error::HostCallOrigin;
+pub(crate) use graph::ProfiledRetainedValues;
 pub(crate) use host::{
     StoredRuntimeList, StoredRuntimeListCustomFields, StoredRuntimeListItem,
     StoredRuntimeListTupleItems, StoredRuntimeValue,
+};
+pub(crate) use resumable::{
+    AsyncHostCallbackRequest, CallbackRequest, ResumableCallback, TransferExecutionError,
+    run_embedded_bit_array as run_resumable_embedded_bit_array,
+    run_embedded_bool as run_resumable_embedded_bool,
+    run_embedded_custom as run_resumable_embedded_custom,
+    run_embedded_float as run_resumable_embedded_float,
+    run_embedded_int as run_resumable_embedded_int,
+    run_embedded_list as run_resumable_embedded_list,
+    run_embedded_nil as run_resumable_embedded_nil,
+    run_embedded_string as run_resumable_embedded_string,
+    run_embedded_tuple as run_resumable_embedded_tuple,
+    run_embedded_utf_codepoint as run_resumable_embedded_utf_codepoint,
 };
 
 pub use echo::{EchoLocation, EchoOutput, EchoSink};
@@ -32,13 +51,14 @@ pub use error::{
     BitArraySegmentPanicReason, ExecutionError, HostError, HostLocation, HostOrigin,
     InvariantError, Panic, PanicDetails, PanicKind, PanicMessage,
 };
+pub(crate) use evaluated::EvaluatedExternalValue;
 pub(in crate::runtime) use evaluated::{
     EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
     EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedExternalFunction,
-    EvaluatedExternalValue, EvaluatedFloatFunction, EvaluatedFunctionFunction,
-    EvaluatedFunctionValueKind, EvaluatedGenericFunction, EvaluatedIntFunction,
-    EvaluatedListFunction, EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction,
-    EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
+    EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedFunctionValueKind,
+    EvaluatedGenericFunction, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNeverFunction,
+    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 #[cfg(test)]
 pub(in crate::runtime) use evaluated::{EvaluatedFunctionValue, EvaluatedListCapture};
@@ -56,7 +76,15 @@ pub use value::{
     ValueInspection,
 };
 
+pub(in crate::runtime) use list_storage::RuntimeListStorage;
 pub(in crate::runtime) use profile::{ExecutableRuntimePlan, RuntimeGraph};
+pub(crate) use resumable::TransferInputs;
+pub(crate) use transfer::{
+    TransferExternalPayloadLease, TransferExternalStore, TransferListStorage,
+    TransferStoredRuntimeValue,
+};
+pub(crate) use value_profile::{LocalValues, TransferValues};
+pub(crate) use value_profile::{RuntimeExternalLease, RuntimeValueProfile};
 
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::function::{

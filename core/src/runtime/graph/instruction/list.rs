@@ -1,11 +1,14 @@
-use super::super::environment::{BlockEnvironment, RetainedValues};
-use super::value::{constant, custom_projection, ensure_list_index, tuple_projection};
+use super::super::environment::BlockEnvironment;
+use super::super::{GraphValue, RuntimeGraphState};
+use super::value::{
+    InstructionValue, constant, custom_projection, ensure_list_index, tuple_projection,
+};
 use crate::plan::ValueType;
 use crate::plan::execution::function::{
     BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, ExternalListFunctionId,
     FloatListFunctionId, FunctionListFunctionId, IntListFunctionId, ListFunctionId,
-    ListListFunctionId, NilListFunctionId, ParameterListListFunctionId, RuntimeListFunctionId,
-    StringListFunctionId, TupleListFunctionId, UtfCodepointListFunctionId,
+    ListListFunctionId, NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId,
+    RuntimeListFunctionId, StringListFunctionId, TupleListFunctionId, UtfCodepointListFunctionId,
 };
 use crate::plan::execution::graph::{
     BitArrayListLocalId, BoolListLocalId, CustomListLocalId, ExternalListFunctionLocalId,
@@ -26,17 +29,218 @@ use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalListFunction, EvaluatedExternalValue,
     EvaluatedFunctionValue, EvaluatedListFunction, EvaluatedValue,
 };
+use crate::runtime::state::RuntimeStateFor;
 use crate::runtime::state::list::{
     BitArrayListValueId, BoolListValueId, CustomListAllocation, CustomListValueId,
     ExternalListAllocation, ExternalListValueId, FloatListValueId, FunctionListValueId,
-    IntListValueId, ListHandleCore, ListListValueId, NilListValueId, ParameterListListValueId,
+    IntListValueId, ListListValueId, NilListValueId, ParameterListListValueId,
     ParameterListValueId, StoredListValueId, StringListValueId, TupleListValueId,
     UtfCodepointListValueId,
 };
-use crate::runtime::state::{RuntimeState, RuntimeStateFor};
-use crate::runtime::{ExecutionError, InvariantError};
+use crate::runtime::{InvariantError, RuntimeListStorage, RuntimeValueProfile};
 use ecow::EcoString;
 use num_bigint::BigInt;
+
+pub(in crate::runtime) enum ListInstructionValue<Profile: RuntimeValueProfile> {
+    Parameter(
+        InstructionValue<
+            Profile,
+            ParameterListValueId<Profile>,
+            ParameterListFunctionId,
+            ParameterListLocalId,
+        >,
+    ),
+    ParameterList(
+        InstructionValue<
+            Profile,
+            ParameterListListValueId<Profile>,
+            ParameterListListFunctionId,
+            ParameterListListLocalId,
+        >,
+    ),
+    Int(InstructionValue<Profile, IntListValueId<Profile>, IntListFunctionId, IntListLocalId>),
+    String(
+        InstructionValue<
+            Profile,
+            StringListValueId<Profile>,
+            StringListFunctionId,
+            StringListLocalId,
+        >,
+    ),
+    BitArray(
+        InstructionValue<
+            Profile,
+            BitArrayListValueId<Profile>,
+            BitArrayListFunctionId,
+            BitArrayListLocalId,
+        >,
+    ),
+    UtfCodepoint(
+        InstructionValue<
+            Profile,
+            UtfCodepointListValueId<Profile>,
+            UtfCodepointListFunctionId,
+            UtfCodepointListLocalId,
+        >,
+    ),
+    Custom(
+        InstructionValue<
+            Profile,
+            CustomListValueId<Profile>,
+            CustomListFunctionId,
+            CustomListLocalId,
+        >,
+    ),
+    Float(
+        InstructionValue<Profile, FloatListValueId<Profile>, FloatListFunctionId, FloatListLocalId>,
+    ),
+    Bool(InstructionValue<Profile, BoolListValueId<Profile>, BoolListFunctionId, BoolListLocalId>),
+    Nil(InstructionValue<Profile, NilListValueId<Profile>, NilListFunctionId, NilListLocalId>),
+    Tuple(
+        InstructionValue<Profile, TupleListValueId<Profile>, TupleListFunctionId, TupleListLocalId>,
+    ),
+    List(InstructionValue<Profile, ListListValueId<Profile>, ListListFunctionId, ListListLocalId>),
+    Function(
+        InstructionValue<
+            Profile,
+            FunctionListValueId<Profile>,
+            FunctionListFunctionId,
+            FunctionListLocalId,
+        >,
+    ),
+}
+
+pub(in crate::runtime) type ExternalListInstructionValue<Profile> = InstructionValue<
+    Profile,
+    ExternalListValueId<Profile>,
+    ExternalListFunctionId,
+    ExternalListLocalId,
+>;
+
+pub(in crate::runtime) fn evaluate<Plan, Profile, State>(
+    plan: &Plan,
+    state: &mut State,
+    environment: &BlockEnvironment<Profile>,
+    instruction: &ListInstruction,
+    expected: &ValueType,
+) -> Result<ListInstructionValue<Profile>, State::Error>
+where
+    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    Profile: RuntimeValueProfile,
+    State: RuntimeGraphState<Profile>,
+{
+    use ListInstructionValue as V;
+
+    match instruction {
+        ListInstruction::Parameter(type_id, instruction) => {
+            parameter(plan, state, environment, *type_id, instruction, expected).map(V::Parameter)
+        }
+        ListInstruction::ParameterList(type_id, instruction) => {
+            typed::<ParameterListFamily, _, _, _>(
+                plan,
+                state,
+                environment,
+                *type_id,
+                instruction,
+                expected,
+            )
+            .map(V::ParameterList)
+        }
+        ListInstruction::Int(type_id, instruction) => {
+            typed::<IntFamily, _, _, _>(plan, state, environment, *type_id, instruction, expected)
+                .map(V::Int)
+        }
+        ListInstruction::String(type_id, instruction) => typed::<StringFamily, _, _, _>(
+            plan,
+            state,
+            environment,
+            *type_id,
+            instruction,
+            expected,
+        )
+        .map(V::String),
+        ListInstruction::BitArray(type_id, instruction) => typed::<BitArrayFamily, _, _, _>(
+            plan,
+            state,
+            environment,
+            *type_id,
+            instruction,
+            expected,
+        )
+        .map(V::BitArray),
+        ListInstruction::UtfCodepoint(type_id, instruction) => {
+            typed::<UtfCodepointFamily, _, _, _>(
+                plan,
+                state,
+                environment,
+                *type_id,
+                instruction,
+                expected,
+            )
+            .map(V::UtfCodepoint)
+        }
+        ListInstruction::Custom(type_id, instruction) => typed::<CustomFamily, _, _, _>(
+            plan,
+            state,
+            environment,
+            *type_id,
+            instruction,
+            expected,
+        )
+        .map(V::Custom),
+        ListInstruction::Float(type_id, instruction) => {
+            typed::<FloatFamily, _, _, _>(plan, state, environment, *type_id, instruction, expected)
+                .map(V::Float)
+        }
+        ListInstruction::Bool(type_id, instruction) => {
+            typed::<BoolFamily, _, _, _>(plan, state, environment, *type_id, instruction, expected)
+                .map(V::Bool)
+        }
+        ListInstruction::Nil(type_id, instruction) => {
+            typed::<NilFamily, _, _, _>(plan, state, environment, *type_id, instruction, expected)
+                .map(V::Nil)
+        }
+        ListInstruction::Tuple(type_id, instruction) => {
+            typed::<TupleFamily, _, _, _>(plan, state, environment, *type_id, instruction, expected)
+                .map(V::Tuple)
+        }
+        ListInstruction::List(type_id, instruction) => {
+            typed::<ListFamily, _, _, _>(plan, state, environment, *type_id, instruction, expected)
+                .map(V::List)
+        }
+        ListInstruction::Function(type_id, instruction) => typed::<FunctionFamily, _, _, _>(
+            plan,
+            state,
+            environment,
+            *type_id,
+            instruction,
+            expected,
+        )
+        .map(V::Function),
+    }
+}
+
+pub(in crate::runtime) fn evaluate_external<Plan, Profile, State>(
+    plan: &Plan,
+    state: &mut State,
+    environment: &BlockEnvironment<Profile>,
+    instruction: &ExternalListInstruction,
+    expected: &ValueType,
+) -> Result<ExternalListInstructionValue<Profile>, State::Error>
+where
+    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    Profile: RuntimeValueProfile,
+    State: RuntimeGraphState<Profile>,
+{
+    typed::<ExternalFamily, _, _, _>(
+        plan,
+        state,
+        environment,
+        instruction.type_id(),
+        instruction.instruction(),
+        expected,
+    )
+}
 
 pub(super) fn execute<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
@@ -45,70 +249,8 @@ pub(super) fn execute<Plan: ExecutableRuntimePlan>(
     instruction: &ListInstruction,
     expected: &ValueType,
 ) -> ExecutionResult<()> {
-    match instruction {
-        ListInstruction::Parameter(type_id, instruction) => {
-            parameter(plan, state, environment, *type_id, instruction, expected)
-                .map(|value| environment.push_parameter_list(value))
-        }
-        ListInstruction::ParameterList(type_id, instruction) => typed::<ParameterListFamily, _>(
-            plan,
-            state,
-            environment,
-            *type_id,
-            instruction,
-            expected,
-        )
-        .map(|value| environment.push_parameter_list_list(value)),
-        ListInstruction::Int(type_id, instruction) => {
-            typed::<IntFamily, _>(plan, state, environment, *type_id, instruction, expected)
-                .map(|value| environment.push_int_list(value))
-        }
-        ListInstruction::String(type_id, instruction) => {
-            typed::<StringFamily, _>(plan, state, environment, *type_id, instruction, expected)
-                .map(|value| environment.push_string_list(value))
-        }
-        ListInstruction::BitArray(type_id, instruction) => {
-            typed::<BitArrayFamily, _>(plan, state, environment, *type_id, instruction, expected)
-                .map(|value| environment.push_bit_array_list(value))
-        }
-        ListInstruction::UtfCodepoint(type_id, instruction) => typed::<UtfCodepointFamily, _>(
-            plan,
-            state,
-            environment,
-            *type_id,
-            instruction,
-            expected,
-        )
-        .map(|value| environment.push_utf_codepoint_list(value)),
-        ListInstruction::Custom(type_id, instruction) => {
-            typed::<CustomFamily, _>(plan, state, environment, *type_id, instruction, expected)
-                .map(|value| environment.push_custom_list(value))
-        }
-        ListInstruction::Float(type_id, instruction) => {
-            typed::<FloatFamily, _>(plan, state, environment, *type_id, instruction, expected)
-                .map(|value| environment.push_float_list(value))
-        }
-        ListInstruction::Bool(type_id, instruction) => {
-            typed::<BoolFamily, _>(plan, state, environment, *type_id, instruction, expected)
-                .map(|value| environment.push_bool_list(value))
-        }
-        ListInstruction::Nil(type_id, instruction) => {
-            typed::<NilFamily, _>(plan, state, environment, *type_id, instruction, expected)
-                .map(|value| environment.push_nil_list(value))
-        }
-        ListInstruction::Tuple(type_id, instruction) => {
-            typed::<TupleFamily, _>(plan, state, environment, *type_id, instruction, expected)
-                .map(|value| environment.push_tuple_list(value))
-        }
-        ListInstruction::List(type_id, instruction) => {
-            typed::<ListFamily, _>(plan, state, environment, *type_id, instruction, expected)
-                .map(|value| environment.push_list_list(value))
-        }
-        ListInstruction::Function(type_id, instruction) => {
-            typed::<FunctionFamily, _>(plan, state, environment, *type_id, instruction, expected)
-                .map(|value| environment.push_function_list(value))
-        }
-    }
+    evaluate(plan, state, environment, instruction, expected)
+        .and_then(|value| resolve(plan, state, environment, value))
 }
 
 pub(super) fn execute_external<Plan: ExecutableRuntimePlan>(
@@ -118,41 +260,119 @@ pub(super) fn execute_external<Plan: ExecutableRuntimePlan>(
     instruction: &ExternalListInstruction,
     expected: &ValueType,
 ) -> ExecutionResult<()> {
-    typed::<ExternalFamily, _>(
-        plan,
-        state,
-        environment,
-        instruction.type_id(),
-        instruction.instruction(),
-        expected,
-    )
-    .map(|value| environment.push_external_list(value))
+    evaluate_external(plan, state, environment, instruction, expected)
+        .and_then(|value| match value {
+            InstructionValue::Ready(value) => Ok(value),
+            InstructionValue::Constant(id) => constant(plan, state, id),
+            InstructionValue::Call {
+                function,
+                origin,
+                inputs,
+            } => crate::runtime::function::run_external_list(plan, state, function, origin, inputs),
+        })
+        .map(|value| environment.push_external_list(value))
 }
 
-fn parameter<Plan: ExecutableRuntimePlan>(
+fn resolve<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &BlockEnvironment,
+    environment: &mut BlockEnvironment,
+    value: ListInstructionValue<crate::runtime::LocalValues>,
+) -> ExecutionResult<()> {
+    macro_rules! resolve_value {
+        ($value:expr, $run:ident, $push:ident) => {{
+            match $value {
+                InstructionValue::Ready(value) => {
+                    environment.$push(value);
+                    Ok(())
+                }
+                InstructionValue::Constant(id) => constant(plan, state, id).map(|value| {
+                    environment.$push(value);
+                }),
+                InstructionValue::Call {
+                    function,
+                    origin,
+                    inputs,
+                } => crate::runtime::function::$run(plan, state, function, origin, inputs).map(
+                    |value| {
+                        environment.$push(value);
+                    },
+                ),
+            }
+        }};
+    }
+
+    match value {
+        ListInstructionValue::Parameter(value) => {
+            resolve_value!(value, run_parameter_list, push_parameter_list)
+        }
+        ListInstructionValue::ParameterList(value) => {
+            resolve_value!(value, run_parameter_list_list, push_parameter_list_list)
+        }
+        ListInstructionValue::Int(value) => resolve_value!(value, run_int_list, push_int_list),
+        ListInstructionValue::String(value) => {
+            resolve_value!(value, run_string_list, push_string_list)
+        }
+        ListInstructionValue::BitArray(value) => {
+            resolve_value!(value, run_bit_array_list, push_bit_array_list)
+        }
+        ListInstructionValue::UtfCodepoint(value) => {
+            resolve_value!(value, run_utf_codepoint_list, push_utf_codepoint_list)
+        }
+        ListInstructionValue::Custom(value) => {
+            resolve_value!(value, run_custom_list, push_custom_list)
+        }
+        ListInstructionValue::Float(value) => {
+            resolve_value!(value, run_float_list, push_float_list)
+        }
+        ListInstructionValue::Bool(value) => resolve_value!(value, run_bool_list, push_bool_list),
+        ListInstructionValue::Nil(value) => resolve_value!(value, run_nil_list, push_nil_list),
+        ListInstructionValue::Tuple(value) => {
+            resolve_value!(value, run_tuple_list, push_tuple_list)
+        }
+        ListInstructionValue::List(value) => resolve_value!(value, run_list_list, push_list_list),
+        ListInstructionValue::Function(value) => {
+            resolve_value!(value, run_function_list, push_function_list)
+        }
+    }
+}
+
+fn parameter<Plan, Profile, State>(
+    plan: &Plan,
+    state: &State,
+    environment: &BlockEnvironment<Profile>,
     type_id: ParameterListTypeId,
     instruction: &ParameterListInstruction,
     expected: &ValueType,
-) -> ExecutionResult<ParameterListValueId> {
+) -> Result<
+    InstructionValue<
+        Profile,
+        ParameterListValueId<Profile>,
+        ParameterListFunctionId,
+        ParameterListLocalId,
+    >,
+    State::Error,
+>
+where
+    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    Profile: RuntimeValueProfile,
+    State: RuntimeGraphState<Profile>,
+{
+    use InstructionValue as V;
     use ParameterListInstruction as I;
 
     match instruction {
-        I::Empty => Ok(ParameterListValueId::new(type_id)),
-        I::Constant(id) => constant(plan, state, *id),
+        I::Empty => Ok(V::Ready(ParameterListValueId::new(type_id))),
+        I::Constant(id) => Ok(V::Constant(*id)),
         I::Call {
             function,
             args,
             site,
-        } => crate::runtime::function::run_parameter_list(
-            plan,
-            state,
-            *function,
-            HostCallOrigin::source(site.clone()),
-            environment.retain(args),
-        ),
+        } => Ok(V::Call {
+            function: *function,
+            origin: HostCallOrigin::source(site.clone()),
+            inputs: environment.retain(args),
+        }),
         I::FunctionCall {
             function,
             args,
@@ -162,16 +382,12 @@ fn parameter<Plan: ExecutableRuntimePlan>(
             let mut inputs = environment.retain(args);
             inputs.append_captures(function.captures());
             match function.runtime_id() {
-                RuntimeListFunctionId::Core(ListFunctionId::Parameter(function)) => {
-                    crate::runtime::function::run_parameter_list(
-                        plan,
-                        state,
-                        function,
-                        HostCallOrigin::source(site.clone()),
-                        inputs,
-                    )
-                }
-                _ => Err(list_function_mismatch()),
+                RuntimeListFunctionId::Core(ListFunctionId::Parameter(function)) => Ok(V::Call {
+                    function,
+                    origin: HostCallOrigin::source(site.clone()),
+                    inputs,
+                }),
+                _ => Err(list_function_mismatch().into()),
             }
         }
         I::TupleIndex { tuple, index } => tuple_projection(
@@ -184,7 +400,8 @@ fn parameter<Plan: ExecutableRuntimePlan>(
                 EvaluatedValue::ParameterList(value) => Some(*value),
                 _ => None,
             },
-        ),
+        )
+        .map(V::Ready),
         I::CustomField { source, index } => custom_projection(
             plan,
             environment,
@@ -195,61 +412,65 @@ fn parameter<Plan: ExecutableRuntimePlan>(
                 EvaluatedValue::ParameterList(value) => Some(*value),
                 _ => None,
             },
-        ),
+        )
+        .map(V::Ready),
         I::ListIndex { list, index } => {
             let length = state
                 .lists()
                 .parameter_list_list_len(&environment.parameter_list_list(*list));
-            ensure_list_index(expected, *index, length).map(|()| ParameterListValueId::new(type_id))
+            ensure_list_index(expected, *index, length)
+                .map(|()| V::Ready(ParameterListValueId::new(type_id)))
         }
     }
 }
 
-trait RuntimeTypedList {
+trait RuntimeTypedList<Profile: RuntimeValueProfile> {
     type TypeId: Copy;
     type ElementLocal;
     type Element: Clone;
     type Local: Copy
         + crate::plan::execution::constant::ConstantValue
-        + super::super::GraphValue<Evaluated = Self::Handle>;
+        + GraphValue<Profile, Evaluated = Self::Handle>;
     type Function: Clone;
     type FunctionLocal;
     type FunctionValue: Clone;
     type Handle: Clone;
 
-    fn element(environment: &BlockEnvironment, local: &Self::ElementLocal) -> Self::Element;
-    fn local(environment: &BlockEnvironment, local: Self::Local) -> Self::Handle;
-    fn function(environment: &BlockEnvironment, local: &Self::FunctionLocal)
-    -> Self::FunctionValue;
-    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture];
-    fn values<State>(state: &RuntimeState<'_, State>, value: &Self::Handle) -> Vec<Self::Element>;
-    fn allocate<State>(
-        state: &mut RuntimeState<'_, State>,
+    fn element(
+        environment: &BlockEnvironment<Profile>,
+        local: &Self::ElementLocal,
+    ) -> Self::Element;
+    fn local(environment: &BlockEnvironment<Profile>, local: Self::Local) -> Self::Handle;
+    fn function(
+        environment: &BlockEnvironment<Profile>,
+        local: &Self::FunctionLocal,
+    ) -> Self::FunctionValue;
+    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture<Profile>];
+    fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError>;
+    fn values<State: RuntimeGraphState<Profile>>(
+        state: &State,
+        value: &Self::Handle,
+    ) -> Vec<Self::Element>;
+    fn allocate<State: RuntimeGraphState<Profile>>(
+        state: &mut State,
         type_id: Self::TypeId,
         values: Vec<Self::Element>,
     ) -> Self::Handle;
-    fn run_direct<Plan: ExecutableRuntimePlan>(
-        plan: &Plan,
-        state: &mut RuntimeStateFor<'_, Plan>,
-        function: Self::Function,
-        origin: HostCallOrigin,
-        inputs: RetainedValues,
-    ) -> ExecutionResult<Self::Handle>;
-    fn run_value<Plan: ExecutableRuntimePlan>(
-        plan: &Plan,
-        state: &mut RuntimeStateFor<'_, Plan>,
-        function: Self::FunctionValue,
-        origin: HostCallOrigin,
-        inputs: RetainedValues,
-    ) -> ExecutionResult<Self::Handle>;
-    fn projected(value: &StoredListValueId) -> Option<Self::Handle>;
-    fn from_core(type_id: Self::TypeId, core: ListHandleCore) -> Self::Handle;
+    fn projected(value: &StoredListValueId<Profile>) -> Option<Self::Handle>;
+    fn from_core(type_id: Self::TypeId, core: Profile::ListHandle) -> Self::Handle;
 }
 
-fn typed<Family: RuntimeTypedList, Plan: ExecutableRuntimePlan>(
+type TypedListInstructionValue<Family, Profile> = InstructionValue<
+    Profile,
+    <Family as RuntimeTypedList<Profile>>::Handle,
+    <Family as RuntimeTypedList<Profile>>::Function,
+    <Family as RuntimeTypedList<Profile>>::Local,
+>;
+
+fn typed<Family, Plan, Profile, State>(
     plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &BlockEnvironment,
+    state: &mut State,
+    environment: &BlockEnvironment<Profile>,
     type_id: Family::TypeId,
     instruction: &TypedListInstruction<
         Family::ElementLocal,
@@ -258,38 +479,43 @@ fn typed<Family: RuntimeTypedList, Plan: ExecutableRuntimePlan>(
         Family::FunctionLocal,
     >,
     expected: &ValueType,
-) -> ExecutionResult<Family::Handle> {
+) -> Result<TypedListInstructionValue<Family, Profile>, State::Error>
+where
+    Family: RuntimeTypedList<Profile>,
+    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    Profile: RuntimeValueProfile,
+    State: RuntimeGraphState<Profile>,
+{
+    use InstructionValue as V;
     use TypedListInstruction as I;
 
     match instruction {
-        I::Value(elements) => Ok(Family::allocate(
+        I::Value(elements) => Ok(V::Ready(Family::allocate(
             state,
             type_id,
             elements
                 .iter()
                 .map(|element| Family::element(environment, element))
                 .collect(),
-        )),
-        I::Constant(id) => constant(plan, state, *id),
+        ))),
+        I::Constant(id) => Ok(V::Constant(*id)),
         I::Spread { elements, tail } => {
             let mut values = elements
                 .iter()
                 .map(|element| Family::element(environment, element))
                 .collect::<Vec<_>>();
             values.extend(Family::values(state, &Family::local(environment, *tail)));
-            Ok(Family::allocate(state, type_id, values))
+            Ok(V::Ready(Family::allocate(state, type_id, values)))
         }
         I::Call {
             function,
             args,
             site,
-        } => Family::run_direct(
-            plan,
-            state,
-            function.clone(),
-            HostCallOrigin::source(site.clone()),
-            environment.retain(args),
-        ),
+        } => Ok(V::Call {
+            function: function.clone(),
+            origin: HostCallOrigin::source(site.clone()),
+            inputs: environment.retain(args),
+        }),
         I::FunctionCall {
             function,
             args,
@@ -298,13 +524,13 @@ fn typed<Family: RuntimeTypedList, Plan: ExecutableRuntimePlan>(
             let function = Family::function(environment, function);
             let mut inputs = environment.retain(args);
             inputs.append_captures(Family::captures(&function));
-            Family::run_value(
-                plan,
-                state,
-                function,
-                HostCallOrigin::source(site.clone()),
-                inputs,
-            )
+            Family::function_id(&function)
+                .map(|function| V::Call {
+                    function,
+                    origin: HostCallOrigin::source(site.clone()),
+                    inputs,
+                })
+                .map_err(Into::into)
         }
         I::TupleIndex { tuple, index } => tuple_projection(
             plan.value_metadata(),
@@ -316,7 +542,8 @@ fn typed<Family: RuntimeTypedList, Plan: ExecutableRuntimePlan>(
                 EvaluatedValue::List(value) => Family::projected(value),
                 _ => None,
             },
-        ),
+        )
+        .map(V::Ready),
         I::CustomField { source, index } => custom_projection(
             plan,
             environment,
@@ -327,34 +554,37 @@ fn typed<Family: RuntimeTypedList, Plan: ExecutableRuntimePlan>(
                 EvaluatedValue::List(value) => Family::projected(value),
                 _ => None,
             },
-        ),
+        )
+        .map(V::Ready),
         I::ListIndex { list, index } => {
             let list = environment.list_list(*list);
             let values = state.lists().list_values(&list);
             match values.get(*index) {
-                Some(value) => Ok(Family::from_core(type_id, value.clone().into_core())),
-                None => Err(ExecutionError::Invariant(
-                    InvariantError::ListIndexOutOfBounds {
-                        item_type: expected.clone(),
-                        index: *index,
-                        length: values.len(),
-                    },
-                )),
+                Some(value) => Ok(V::Ready(Family::from_core(
+                    type_id,
+                    value.clone().into_core(),
+                ))),
+                None => Err(InvariantError::ListIndexOutOfBounds {
+                    item_type: expected.clone(),
+                    index: *index,
+                    length: values.len(),
+                }
+                .into()),
             }
         }
         I::DropFirst { list, count } => {
             let values = Family::values(state, &Family::local(environment, *list));
             let values = values[(*count).min(values.len())..].to_vec();
-            Ok(Family::allocate(state, type_id, values))
+            Ok(V::Ready(Family::allocate(state, type_id, values)))
         }
     }
 }
 
-fn list_function_mismatch() -> ExecutionError {
-    ExecutionError::Invariant(InvariantError::FunctionReturnFamilyMismatch {
+fn list_function_mismatch() -> InvariantError {
+    InvariantError::FunctionReturnFamilyMismatch {
         expected: crate::plan::execution::function::FunctionReturnFamily::List,
         actual: crate::plan::execution::function::FunctionReturnFamily::List,
-    })
+    }
 }
 
 macro_rules! vector_family {
@@ -365,94 +595,81 @@ macro_rules! vector_family {
         $element:ty,
         $local:ty,
         $function:ty,
-        $handle:ty,
+        $handle:ident,
         $function_variant:ident,
         $element_method:ident,
         $local_method:ident,
         $values_method:ident,
-        $allocate_method:ident,
-        $run_method:ident
+        $allocate_method:ident
     ) => {
         struct $family;
 
-        impl RuntimeTypedList for $family {
+        impl<Profile: RuntimeValueProfile> RuntimeTypedList<Profile> for $family {
             type TypeId = $type_id;
             type ElementLocal = $element_local;
             type Element = $element;
             type Local = $local;
             type Function = $function;
             type FunctionLocal = ListFunctionLocal;
-            type FunctionValue = EvaluatedListFunction;
-            type Handle = $handle;
+            type FunctionValue = EvaluatedListFunction<Profile>;
+            type Handle = $handle<Profile>;
 
             fn element(
-                environment: &BlockEnvironment,
+                environment: &BlockEnvironment<Profile>,
                 local: &Self::ElementLocal,
             ) -> Self::Element {
                 environment.$element_method(*local)
             }
 
-            fn local(environment: &BlockEnvironment, local: Self::Local) -> Self::Handle {
+            fn local(environment: &BlockEnvironment<Profile>, local: Self::Local) -> Self::Handle {
                 environment.$local_method(local)
             }
 
             fn function(
-                environment: &BlockEnvironment,
+                environment: &BlockEnvironment<Profile>,
                 local: &Self::FunctionLocal,
             ) -> Self::FunctionValue {
                 environment.list_function(local)
             }
 
-            fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture] {
+            fn captures(
+                function: &Self::FunctionValue,
+            ) -> &[crate::runtime::EvaluatedCapture<Profile>] {
                 function.captures()
             }
 
-            fn values<State>(
-                state: &RuntimeState<'_, State>,
+            fn function_id(
+                function: &Self::FunctionValue,
+            ) -> Result<Self::Function, InvariantError> {
+                match function.runtime_id() {
+                    RuntimeListFunctionId::Core(ListFunctionId::$function_variant(function)) => {
+                        Ok(function)
+                    }
+                    _ => Err(list_function_mismatch()),
+                }
+            }
+
+            fn values<State: RuntimeGraphState<Profile>>(
+                state: &State,
                 value: &Self::Handle,
             ) -> Vec<Self::Element> {
                 state.lists().$values_method(value).to_vec()
             }
 
-            fn allocate<State>(
-                state: &mut RuntimeState<'_, State>,
+            fn allocate<State: RuntimeGraphState<Profile>>(
+                state: &mut State,
                 type_id: Self::TypeId,
                 values: Vec<Self::Element>,
             ) -> Self::Handle {
                 state.lists_mut().$allocate_method(type_id, values)
             }
 
-            fn run_direct<Plan: ExecutableRuntimePlan>(
-                plan: &Plan,
-                state: &mut RuntimeStateFor<'_, Plan>,
-                function: Self::Function,
-                origin: HostCallOrigin,
-                inputs: RetainedValues,
-            ) -> ExecutionResult<Self::Handle> {
-                crate::runtime::function::$run_method(plan, state, function, origin, inputs)
+            fn projected(value: &StoredListValueId<Profile>) -> Option<Self::Handle> {
+                <$handle<Profile>>::from_stored(value)
             }
 
-            fn run_value<Plan: ExecutableRuntimePlan>(
-                plan: &Plan,
-                state: &mut RuntimeStateFor<'_, Plan>,
-                function: Self::FunctionValue,
-                origin: HostCallOrigin,
-                inputs: RetainedValues,
-            ) -> ExecutionResult<Self::Handle> {
-                match function.runtime_id() {
-                    RuntimeListFunctionId::Core(ListFunctionId::$function_variant(function)) => {
-                        crate::runtime::function::$run_method(plan, state, function, origin, inputs)
-                    }
-                    _ => Err(list_function_mismatch()),
-                }
-            }
-
-            fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
-                <$handle>::from_stored(value)
-            }
-
-            fn from_core(type_id: Self::TypeId, core: ListHandleCore) -> Self::Handle {
-                <$handle>::new(type_id, core)
+            fn from_core(type_id: Self::TypeId, core: Profile::ListHandle) -> Self::Handle {
+                <$handle<Profile>>::new(type_id, core)
             }
         }
     };
@@ -470,8 +687,7 @@ vector_family!(
     int,
     int_list,
     int_values,
-    int,
-    run_int_list
+    int
 );
 vector_family!(
     StringFamily,
@@ -485,8 +701,7 @@ vector_family!(
     string,
     string_list,
     string_values,
-    string,
-    run_string_list
+    string
 );
 vector_family!(
     BitArrayFamily,
@@ -500,8 +715,7 @@ vector_family!(
     bit_array,
     bit_array_list,
     bit_array_values,
-    bit_array,
-    run_bit_array_list
+    bit_array
 );
 vector_family!(
     UtfCodepointFamily,
@@ -515,8 +729,7 @@ vector_family!(
     utf_codepoint,
     utf_codepoint_list,
     utf_codepoint_values,
-    utf_codepoint,
-    run_utf_codepoint_list
+    utf_codepoint
 );
 vector_family!(
     FloatFamily,
@@ -530,8 +743,7 @@ vector_family!(
     float,
     float_list,
     float_values,
-    float,
-    run_float_list
+    float
 );
 vector_family!(
     BoolFamily,
@@ -545,62 +757,124 @@ vector_family!(
     bool,
     bool_list,
     bool_values,
-    bool,
-    run_bool_list
-);
-vector_family!(
-    TupleFamily,
-    TupleListTypeId,
-    crate::plan::execution::graph::TupleLocalId,
-    Vec<EvaluatedValue>,
-    TupleListLocalId,
-    TupleListFunctionId,
-    TupleListValueId,
-    Tuple,
-    tuple,
-    tuple_list,
-    tuple_values,
-    tuple,
-    run_tuple_list
+    bool
 );
 
-struct CustomFamily;
+struct TupleFamily;
 
-impl RuntimeTypedList for CustomFamily {
-    type TypeId = CustomListTypeId;
-    type ElementLocal = crate::plan::execution::graph::CustomLocal;
-    type Element = EvaluatedCustomValue;
-    type Local = CustomListLocalId;
-    type Function = CustomListFunctionId;
+impl<Profile: RuntimeValueProfile> RuntimeTypedList<Profile> for TupleFamily {
+    type TypeId = TupleListTypeId;
+    type ElementLocal = crate::plan::execution::graph::TupleLocalId;
+    type Element = Vec<EvaluatedValue<Profile>>;
+    type Local = TupleListLocalId;
+    type Function = TupleListFunctionId;
     type FunctionLocal = ListFunctionLocal;
-    type FunctionValue = EvaluatedListFunction;
-    type Handle = CustomListValueId;
+    type FunctionValue = EvaluatedListFunction<Profile>;
+    type Handle = TupleListValueId<Profile>;
 
-    fn element(environment: &BlockEnvironment, local: &Self::ElementLocal) -> Self::Element {
-        environment.custom(*local)
+    fn element(
+        environment: &BlockEnvironment<Profile>,
+        local: &Self::ElementLocal,
+    ) -> Self::Element {
+        environment.tuple(*local)
     }
 
-    fn local(environment: &BlockEnvironment, local: Self::Local) -> Self::Handle {
-        environment.custom_list(local)
+    fn local(environment: &BlockEnvironment<Profile>, local: Self::Local) -> Self::Handle {
+        environment.tuple_list(local)
     }
 
     fn function(
-        environment: &BlockEnvironment,
+        environment: &BlockEnvironment<Profile>,
         local: &Self::FunctionLocal,
     ) -> Self::FunctionValue {
         environment.list_function(local)
     }
 
-    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture] {
+    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture<Profile>] {
         function.captures()
     }
 
-    fn values<State>(state: &RuntimeState<'_, State>, value: &Self::Handle) -> Vec<Self::Element> {
+    fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
+        match function.runtime_id() {
+            RuntimeListFunctionId::Core(ListFunctionId::Tuple(function)) => Ok(function),
+            _ => Err(list_function_mismatch()),
+        }
+    }
+
+    fn values<State: RuntimeGraphState<Profile>>(
+        state: &State,
+        value: &Self::Handle,
+    ) -> Vec<Self::Element> {
+        state.lists().tuple_values(value).to_vec()
+    }
+
+    fn allocate<State: RuntimeGraphState<Profile>>(
+        state: &mut State,
+        type_id: Self::TypeId,
+        values: Vec<Self::Element>,
+    ) -> Self::Handle {
+        state.lists_mut().tuple(type_id, values)
+    }
+
+    fn projected(value: &StoredListValueId<Profile>) -> Option<Self::Handle> {
+        TupleListValueId::<Profile>::from_stored(value)
+    }
+
+    fn from_core(type_id: Self::TypeId, core: Profile::ListHandle) -> Self::Handle {
+        TupleListValueId::new(type_id, core)
+    }
+}
+
+struct CustomFamily;
+
+impl<Profile: RuntimeValueProfile> RuntimeTypedList<Profile> for CustomFamily {
+    type TypeId = CustomListTypeId;
+    type ElementLocal = crate::plan::execution::graph::CustomLocal;
+    type Element = EvaluatedCustomValue<Profile>;
+    type Local = CustomListLocalId;
+    type Function = CustomListFunctionId;
+    type FunctionLocal = ListFunctionLocal;
+    type FunctionValue = EvaluatedListFunction<Profile>;
+    type Handle = CustomListValueId<Profile>;
+
+    fn element(
+        environment: &BlockEnvironment<Profile>,
+        local: &Self::ElementLocal,
+    ) -> Self::Element {
+        environment.custom(*local)
+    }
+
+    fn local(environment: &BlockEnvironment<Profile>, local: Self::Local) -> Self::Handle {
+        environment.custom_list(local)
+    }
+
+    fn function(
+        environment: &BlockEnvironment<Profile>,
+        local: &Self::FunctionLocal,
+    ) -> Self::FunctionValue {
+        environment.list_function(local)
+    }
+
+    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture<Profile>] {
+        function.captures()
+    }
+
+    fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
+        match function.runtime_id() {
+            RuntimeListFunctionId::Core(ListFunctionId::Custom(function)) => Ok(function),
+            _ => Err(list_function_mismatch()),
+        }
+    }
+
+    fn values<State: RuntimeGraphState<Profile>>(
+        state: &State,
+        value: &Self::Handle,
+    ) -> Vec<Self::Element> {
         state.lists().custom_values(value).to_vec()
     }
 
-    fn allocate<State>(
-        state: &mut RuntimeState<'_, State>,
+    fn allocate<State: RuntimeGraphState<Profile>>(
+        state: &mut State,
         type_id: Self::TypeId,
         values: Vec<Self::Element>,
     ) -> Self::Handle {
@@ -609,77 +883,62 @@ impl RuntimeTypedList for CustomFamily {
             .custom(CustomListAllocation::new(type_id, values))
     }
 
-    fn run_direct<Plan: ExecutableRuntimePlan>(
-        plan: &Plan,
-        state: &mut RuntimeStateFor<'_, Plan>,
-        function: Self::Function,
-        origin: HostCallOrigin,
-        inputs: RetainedValues,
-    ) -> ExecutionResult<Self::Handle> {
-        crate::runtime::function::run_custom_list(plan, state, function, origin, inputs)
+    fn projected(value: &StoredListValueId<Profile>) -> Option<Self::Handle> {
+        CustomListValueId::<Profile>::from_stored(value)
     }
 
-    fn run_value<Plan: ExecutableRuntimePlan>(
-        plan: &Plan,
-        state: &mut RuntimeStateFor<'_, Plan>,
-        function: Self::FunctionValue,
-        origin: HostCallOrigin,
-        inputs: RetainedValues,
-    ) -> ExecutionResult<Self::Handle> {
-        match function.runtime_id() {
-            RuntimeListFunctionId::Core(ListFunctionId::Custom(function)) => {
-                crate::runtime::function::run_custom_list(plan, state, function, origin, inputs)
-            }
-            _ => Err(list_function_mismatch()),
-        }
-    }
-
-    fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
-        CustomListValueId::from_stored(value)
-    }
-
-    fn from_core(type_id: Self::TypeId, core: ListHandleCore) -> Self::Handle {
+    fn from_core(type_id: Self::TypeId, core: Profile::ListHandle) -> Self::Handle {
         CustomListValueId::new(type_id, core)
     }
 }
 
 struct ExternalFamily;
 
-impl RuntimeTypedList for ExternalFamily {
+impl<Profile: RuntimeValueProfile> RuntimeTypedList<Profile> for ExternalFamily {
     type TypeId = ExternalListTypeId;
     type ElementLocal = crate::plan::execution::graph::ExternalLocal;
-    type Element = EvaluatedExternalValue;
+    type Element = EvaluatedExternalValue<Profile>;
     type Local = ExternalListLocalId;
     type Function = ExternalListFunctionId;
     type FunctionLocal = ExternalListFunctionLocalId;
-    type FunctionValue = EvaluatedExternalListFunction;
-    type Handle = ExternalListValueId;
+    type FunctionValue = EvaluatedExternalListFunction<Profile>;
+    type Handle = ExternalListValueId<Profile>;
 
-    fn element(environment: &BlockEnvironment, local: &Self::ElementLocal) -> Self::Element {
+    fn element(
+        environment: &BlockEnvironment<Profile>,
+        local: &Self::ElementLocal,
+    ) -> Self::Element {
         environment.external(*local)
     }
 
-    fn local(environment: &BlockEnvironment, local: Self::Local) -> Self::Handle {
+    fn local(environment: &BlockEnvironment<Profile>, local: Self::Local) -> Self::Handle {
         environment.external_list(local)
     }
 
     fn function(
-        environment: &BlockEnvironment,
+        environment: &BlockEnvironment<Profile>,
         local: &Self::FunctionLocal,
     ) -> Self::FunctionValue {
         environment.external_list_function(*local)
     }
 
-    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture] {
+    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture<Profile>] {
         function.captures()
     }
 
-    fn values<State>(state: &RuntimeState<'_, State>, value: &Self::Handle) -> Vec<Self::Element> {
+    fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
+        Ok(function.runtime_id())
+    }
+
+    fn values<State: RuntimeGraphState<Profile>>(
+        state: &State,
+        value: &Self::Handle,
+    ) -> Vec<Self::Element> {
         state.lists().external_values(value).to_vec()
     }
 
-    fn allocate<State>(
-        state: &mut RuntimeState<'_, State>,
+    fn allocate<State: RuntimeGraphState<Profile>>(
+        state: &mut State,
         type_id: Self::TypeId,
         values: Vec<Self::Element>,
     ) -> Self::Handle {
@@ -688,379 +947,317 @@ impl RuntimeTypedList for ExternalFamily {
             .external(ExternalListAllocation::new(type_id, values))
     }
 
-    fn run_direct<Plan: ExecutableRuntimePlan>(
-        plan: &Plan,
-        state: &mut RuntimeStateFor<'_, Plan>,
-        function: Self::Function,
-        origin: HostCallOrigin,
-        inputs: RetainedValues,
-    ) -> ExecutionResult<Self::Handle> {
-        crate::runtime::function::run_external_list(plan, state, function, origin, inputs)
+    fn projected(value: &StoredListValueId<Profile>) -> Option<Self::Handle> {
+        ExternalListValueId::<Profile>::from_stored(value)
     }
 
-    fn run_value<Plan: ExecutableRuntimePlan>(
-        plan: &Plan,
-        state: &mut RuntimeStateFor<'_, Plan>,
-        function: Self::FunctionValue,
-        origin: HostCallOrigin,
-        inputs: RetainedValues,
-    ) -> ExecutionResult<Self::Handle> {
-        crate::runtime::function::run_external_list(
-            plan,
-            state,
-            function.runtime_id(),
-            origin,
-            inputs,
-        )
-    }
-
-    fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
-        ExternalListValueId::from_stored(value)
-    }
-
-    fn from_core(type_id: Self::TypeId, core: ListHandleCore) -> Self::Handle {
+    fn from_core(type_id: Self::TypeId, core: Profile::ListHandle) -> Self::Handle {
         ExternalListValueId::new(type_id, core)
     }
 }
 
 struct NilFamily;
 
-impl RuntimeTypedList for NilFamily {
+impl<Profile: RuntimeValueProfile> RuntimeTypedList<Profile> for NilFamily {
     type TypeId = NilListTypeId;
     type ElementLocal = crate::plan::execution::graph::NilLocalId;
     type Element = ();
     type Local = NilListLocalId;
     type Function = NilListFunctionId;
     type FunctionLocal = ListFunctionLocal;
-    type FunctionValue = EvaluatedListFunction;
-    type Handle = NilListValueId;
+    type FunctionValue = EvaluatedListFunction<Profile>;
+    type Handle = NilListValueId<Profile>;
 
-    fn element(environment: &BlockEnvironment, local: &Self::ElementLocal) -> Self::Element {
+    fn element(
+        environment: &BlockEnvironment<Profile>,
+        local: &Self::ElementLocal,
+    ) -> Self::Element {
         environment.nil(*local)
     }
 
-    fn local(environment: &BlockEnvironment, local: Self::Local) -> Self::Handle {
+    fn local(environment: &BlockEnvironment<Profile>, local: Self::Local) -> Self::Handle {
         environment.nil_list(local)
     }
 
     fn function(
-        environment: &BlockEnvironment,
+        environment: &BlockEnvironment<Profile>,
         local: &Self::FunctionLocal,
     ) -> Self::FunctionValue {
         environment.list_function(local)
     }
 
-    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture] {
+    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture<Profile>] {
         function.captures()
     }
 
-    fn values<State>(state: &RuntimeState<'_, State>, value: &Self::Handle) -> Vec<Self::Element> {
+    fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
+        match function.runtime_id() {
+            RuntimeListFunctionId::Core(ListFunctionId::Nil(function)) => Ok(function),
+            _ => Err(list_function_mismatch()),
+        }
+    }
+
+    fn values<State: RuntimeGraphState<Profile>>(
+        state: &State,
+        value: &Self::Handle,
+    ) -> Vec<Self::Element> {
         vec![(); state.lists().nil_len(value)]
     }
 
-    fn allocate<State>(
-        state: &mut RuntimeState<'_, State>,
+    fn allocate<State: RuntimeGraphState<Profile>>(
+        state: &mut State,
         type_id: Self::TypeId,
         values: Vec<Self::Element>,
     ) -> Self::Handle {
         state.lists_mut().nil(type_id, values.len())
     }
 
-    fn run_direct<Plan: ExecutableRuntimePlan>(
-        plan: &Plan,
-        state: &mut RuntimeStateFor<'_, Plan>,
-        function: Self::Function,
-        origin: HostCallOrigin,
-        inputs: RetainedValues,
-    ) -> ExecutionResult<Self::Handle> {
-        crate::runtime::function::run_nil_list(plan, state, function, origin, inputs)
+    fn projected(value: &StoredListValueId<Profile>) -> Option<Self::Handle> {
+        NilListValueId::<Profile>::from_stored(value)
     }
 
-    fn run_value<Plan: ExecutableRuntimePlan>(
-        plan: &Plan,
-        state: &mut RuntimeStateFor<'_, Plan>,
-        function: Self::FunctionValue,
-        origin: HostCallOrigin,
-        inputs: RetainedValues,
-    ) -> ExecutionResult<Self::Handle> {
-        match function.runtime_id() {
-            RuntimeListFunctionId::Core(ListFunctionId::Nil(function)) => {
-                crate::runtime::function::run_nil_list(plan, state, function, origin, inputs)
-            }
-            _ => Err(list_function_mismatch()),
-        }
-    }
-
-    fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
-        NilListValueId::from_stored(value)
-    }
-
-    fn from_core(type_id: Self::TypeId, core: ListHandleCore) -> Self::Handle {
+    fn from_core(type_id: Self::TypeId, core: Profile::ListHandle) -> Self::Handle {
         NilListValueId::new(type_id, core)
     }
 }
 
 struct ParameterListFamily;
 
-impl RuntimeTypedList for ParameterListFamily {
+impl<Profile: RuntimeValueProfile> RuntimeTypedList<Profile> for ParameterListFamily {
     type TypeId = ParameterListListTypeId;
     type ElementLocal = ParameterListLocalId;
-    type Element = ParameterListValueId;
+    type Element = ParameterListValueId<Profile>;
     type Local = ParameterListListLocalId;
     type Function = ParameterListListFunctionId;
     type FunctionLocal = ListFunctionLocal;
-    type FunctionValue = EvaluatedListFunction;
-    type Handle = ParameterListListValueId;
+    type FunctionValue = EvaluatedListFunction<Profile>;
+    type Handle = ParameterListListValueId<Profile>;
 
-    fn element(environment: &BlockEnvironment, local: &Self::ElementLocal) -> Self::Element {
+    fn element(
+        environment: &BlockEnvironment<Profile>,
+        local: &Self::ElementLocal,
+    ) -> Self::Element {
         environment.parameter_list(*local)
     }
 
-    fn local(environment: &BlockEnvironment, local: Self::Local) -> Self::Handle {
+    fn local(environment: &BlockEnvironment<Profile>, local: Self::Local) -> Self::Handle {
         environment.parameter_list_list(local)
     }
 
     fn function(
-        environment: &BlockEnvironment,
+        environment: &BlockEnvironment<Profile>,
         local: &Self::FunctionLocal,
     ) -> Self::FunctionValue {
         environment.list_function(local)
     }
 
-    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture] {
+    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture<Profile>] {
         function.captures()
     }
 
-    fn values<State>(state: &RuntimeState<'_, State>, value: &Self::Handle) -> Vec<Self::Element> {
+    fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
+        match function.runtime_id() {
+            RuntimeListFunctionId::Core(ListFunctionId::ParameterList(function)) => Ok(function),
+            _ => Err(list_function_mismatch()),
+        }
+    }
+
+    fn values<State: RuntimeGraphState<Profile>>(
+        state: &State,
+        value: &Self::Handle,
+    ) -> Vec<Self::Element> {
         vec![
             ParameterListValueId::new(value.type_id().item_type());
             state.lists().parameter_list_list_len(value)
         ]
     }
 
-    fn allocate<State>(
-        state: &mut RuntimeState<'_, State>,
+    fn allocate<State: RuntimeGraphState<Profile>>(
+        state: &mut State,
         type_id: Self::TypeId,
         values: Vec<Self::Element>,
     ) -> Self::Handle {
         state.lists_mut().parameter_list_list(type_id, values.len())
     }
 
-    fn run_direct<Plan: ExecutableRuntimePlan>(
-        plan: &Plan,
-        state: &mut RuntimeStateFor<'_, Plan>,
-        function: Self::Function,
-        origin: HostCallOrigin,
-        inputs: RetainedValues,
-    ) -> ExecutionResult<Self::Handle> {
-        crate::runtime::function::run_parameter_list_list(plan, state, function, origin, inputs)
+    fn projected(value: &StoredListValueId<Profile>) -> Option<Self::Handle> {
+        ParameterListListValueId::<Profile>::from_stored(value)
     }
 
-    fn run_value<Plan: ExecutableRuntimePlan>(
-        plan: &Plan,
-        state: &mut RuntimeStateFor<'_, Plan>,
-        function: Self::FunctionValue,
-        origin: HostCallOrigin,
-        inputs: RetainedValues,
-    ) -> ExecutionResult<Self::Handle> {
-        match function.runtime_id() {
-            RuntimeListFunctionId::Core(ListFunctionId::ParameterList(function)) => {
-                crate::runtime::function::run_parameter_list_list(
-                    plan, state, function, origin, inputs,
-                )
-            }
-            _ => Err(list_function_mismatch()),
-        }
-    }
-
-    fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
-        ParameterListListValueId::from_stored(value)
-    }
-
-    fn from_core(type_id: Self::TypeId, core: ListHandleCore) -> Self::Handle {
+    fn from_core(type_id: Self::TypeId, core: Profile::ListHandle) -> Self::Handle {
         ParameterListListValueId::new(type_id, core)
     }
 }
 
 struct ListFamily;
 
-impl RuntimeTypedList for ListFamily {
+impl<Profile: RuntimeValueProfile> RuntimeTypedList<Profile> for ListFamily {
     type TypeId = ListListTypeId;
     type ElementLocal = StoredListLocal;
-    type Element = StoredListValueId;
+    type Element = StoredListValueId<Profile>;
     type Local = ListListLocalId;
     type Function = ListListFunctionId;
     type FunctionLocal = ListFunctionLocal;
-    type FunctionValue = EvaluatedListFunction;
-    type Handle = ListListValueId;
+    type FunctionValue = EvaluatedListFunction<Profile>;
+    type Handle = ListListValueId<Profile>;
 
-    fn element(environment: &BlockEnvironment, local: &Self::ElementLocal) -> Self::Element {
+    fn element(
+        environment: &BlockEnvironment<Profile>,
+        local: &Self::ElementLocal,
+    ) -> Self::Element {
         environment.stored_list(local)
     }
 
-    fn local(environment: &BlockEnvironment, local: Self::Local) -> Self::Handle {
+    fn local(environment: &BlockEnvironment<Profile>, local: Self::Local) -> Self::Handle {
         environment.list_list(local)
     }
 
     fn function(
-        environment: &BlockEnvironment,
+        environment: &BlockEnvironment<Profile>,
         local: &Self::FunctionLocal,
     ) -> Self::FunctionValue {
         environment.list_function(local)
     }
 
-    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture] {
+    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture<Profile>] {
         function.captures()
     }
 
-    fn values<State>(state: &RuntimeState<'_, State>, value: &Self::Handle) -> Vec<Self::Element> {
+    fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
+        match function.runtime_id() {
+            RuntimeListFunctionId::Core(ListFunctionId::List(function)) => Ok(function),
+            _ => Err(list_function_mismatch()),
+        }
+    }
+
+    fn values<State: RuntimeGraphState<Profile>>(
+        state: &State,
+        value: &Self::Handle,
+    ) -> Vec<Self::Element> {
         state.lists().list_values(value).to_vec()
     }
 
-    fn allocate<State>(
-        state: &mut RuntimeState<'_, State>,
+    fn allocate<State: RuntimeGraphState<Profile>>(
+        state: &mut State,
         type_id: Self::TypeId,
         values: Vec<Self::Element>,
     ) -> Self::Handle {
         state.lists_mut().list(type_id, values)
     }
 
-    fn run_direct<Plan: ExecutableRuntimePlan>(
-        plan: &Plan,
-        state: &mut RuntimeStateFor<'_, Plan>,
-        function: Self::Function,
-        origin: HostCallOrigin,
-        inputs: RetainedValues,
-    ) -> ExecutionResult<Self::Handle> {
-        crate::runtime::function::run_list_list(plan, state, function, origin, inputs)
+    fn projected(value: &StoredListValueId<Profile>) -> Option<Self::Handle> {
+        ListListValueId::<Profile>::from_stored(value)
     }
 
-    fn run_value<Plan: ExecutableRuntimePlan>(
-        plan: &Plan,
-        state: &mut RuntimeStateFor<'_, Plan>,
-        function: Self::FunctionValue,
-        origin: HostCallOrigin,
-        inputs: RetainedValues,
-    ) -> ExecutionResult<Self::Handle> {
-        match function.runtime_id() {
-            RuntimeListFunctionId::Core(ListFunctionId::List(function)) => {
-                crate::runtime::function::run_list_list(plan, state, function, origin, inputs)
-            }
-            _ => Err(list_function_mismatch()),
-        }
-    }
-
-    fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
-        ListListValueId::from_stored(value)
-    }
-
-    fn from_core(type_id: Self::TypeId, core: ListHandleCore) -> Self::Handle {
+    fn from_core(type_id: Self::TypeId, core: Profile::ListHandle) -> Self::Handle {
         ListListValueId::new(type_id, core)
     }
 }
 
 struct FunctionFamily;
 
-impl RuntimeTypedList for FunctionFamily {
+impl<Profile: RuntimeValueProfile> RuntimeTypedList<Profile> for FunctionFamily {
     type TypeId = FunctionListTypeId;
     type ElementLocal = crate::plan::execution::graph::FunctionLocal;
-    type Element = EvaluatedFunctionValue;
+    type Element = EvaluatedFunctionValue<Profile>;
     type Local = FunctionListLocalId;
     type Function = FunctionListFunctionId;
     type FunctionLocal = ListFunctionLocal;
-    type FunctionValue = EvaluatedListFunction;
-    type Handle = FunctionListValueId;
+    type FunctionValue = EvaluatedListFunction<Profile>;
+    type Handle = FunctionListValueId<Profile>;
 
-    fn element(environment: &BlockEnvironment, local: &Self::ElementLocal) -> Self::Element {
+    fn element(
+        environment: &BlockEnvironment<Profile>,
+        local: &Self::ElementLocal,
+    ) -> Self::Element {
         environment.function_value(local)
     }
 
-    fn local(environment: &BlockEnvironment, local: Self::Local) -> Self::Handle {
+    fn local(environment: &BlockEnvironment<Profile>, local: Self::Local) -> Self::Handle {
         environment.function_list(local)
     }
 
     fn function(
-        environment: &BlockEnvironment,
+        environment: &BlockEnvironment<Profile>,
         local: &Self::FunctionLocal,
     ) -> Self::FunctionValue {
         environment.list_function(local)
     }
 
-    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture] {
+    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture<Profile>] {
         function.captures()
     }
 
-    fn values<State>(state: &RuntimeState<'_, State>, value: &Self::Handle) -> Vec<Self::Element> {
+    fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
+        match function.runtime_id() {
+            RuntimeListFunctionId::Core(ListFunctionId::Function(function)) => Ok(function),
+            _ => Err(list_function_mismatch()),
+        }
+    }
+
+    fn values<State: RuntimeGraphState<Profile>>(
+        state: &State,
+        value: &Self::Handle,
+    ) -> Vec<Self::Element> {
         state.lists().function_values(value).to_vec()
     }
 
-    fn allocate<State>(
-        state: &mut RuntimeState<'_, State>,
+    fn allocate<State: RuntimeGraphState<Profile>>(
+        state: &mut State,
         type_id: Self::TypeId,
         values: Vec<Self::Element>,
     ) -> Self::Handle {
         state.lists_mut().function(type_id, values)
     }
 
-    fn run_direct<Plan: ExecutableRuntimePlan>(
-        plan: &Plan,
-        state: &mut RuntimeStateFor<'_, Plan>,
-        function: Self::Function,
-        origin: HostCallOrigin,
-        inputs: RetainedValues,
-    ) -> ExecutionResult<Self::Handle> {
-        crate::runtime::function::run_function_list(plan, state, function, origin, inputs)
+    fn projected(value: &StoredListValueId<Profile>) -> Option<Self::Handle> {
+        FunctionListValueId::<Profile>::from_stored(value)
     }
 
-    fn run_value<Plan: ExecutableRuntimePlan>(
-        plan: &Plan,
-        state: &mut RuntimeStateFor<'_, Plan>,
-        function: Self::FunctionValue,
-        origin: HostCallOrigin,
-        inputs: RetainedValues,
-    ) -> ExecutionResult<Self::Handle> {
-        match function.runtime_id() {
-            RuntimeListFunctionId::Core(ListFunctionId::Function(function)) => {
-                crate::runtime::function::run_function_list(plan, state, function, origin, inputs)
-            }
-            _ => Err(list_function_mismatch()),
-        }
-    }
-
-    fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
-        FunctionListValueId::from_stored(value)
-    }
-
-    fn from_core(type_id: Self::TypeId, core: ListHandleCore) -> Self::Handle {
+    fn from_core(type_id: Self::TypeId, core: Profile::ListHandle) -> Self::Handle {
         FunctionListValueId::new(type_id, core)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::super::environment::{BlockEnvironment, RetainedValues};
+    use super::super::super::environment::{
+        BlockEnvironment, ProfiledRetainedValues, RetainedValues,
+    };
     use super::{
-        BitArrayFamily, BoolFamily, CustomFamily, FloatFamily, FunctionFamily, IntFamily,
-        ListFamily, NilFamily, ParameterListFamily, RuntimeTypedList, StringFamily, TupleFamily,
-        UtfCodepointFamily, execute, list_function_mismatch, parameter, typed,
+        BitArrayFamily, BoolFamily, CustomFamily, ExternalFamily, FloatFamily, FunctionFamily,
+        IntFamily, ListFamily, NilFamily, ParameterListFamily, RuntimeTypedList, StringFamily,
+        TupleFamily, UtfCodepointFamily, execute, list_function_mismatch, parameter, typed,
+    };
+    use crate::host::{
+        AsyncHostModule, AsyncHostProviderModule, AsyncHostProviderSet, HostExternalSchema,
     };
     use crate::plan::execution::function::{
-        CustomFunctionId, ListFunctionId, RuntimeListFunctionId,
+        ExecutionFunctionEntry, ExecutionFunctionRef, ExternalListFunctionId, FunctionBodyOwner,
+        ListFunctionId, RuntimeListFunctionId,
     };
     use crate::plan::execution::graph::{
-        CustomLocal, IntListFunctionLocalId, ListFunctionLocal, ListInstruction, ListListLocalId,
+        CustomLocal, ExternalListFunctionLocalId, ExternalListLocalId, ExternalLocal,
+        IntListFunctionLocalId, ListFunctionLocal, ListInstruction, ListListLocalId,
         ParameterListInstruction, ParameterListListLocalId, Terminator, TupleLocalId,
         TypedListInstruction,
     };
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::plan::execution::type_::{IntListTypeId, ListListTypeId, StringListTypeId};
-    use crate::plan::{CustomType, CustomTypeName, FunctionType, TypeParameterId, ValueType};
+    use crate::plan::{
+        CustomType, CustomTypeName, FunctionType, LibraryEntry, LibraryValueType, TypeParameterId,
+        ValueType,
+    };
+    use crate::runtime::resumable::{RecordedEcho, ResumableFuture, ResumableState, run_custom};
     use crate::runtime::state::RuntimeState;
     use crate::runtime::state::list::ListValueId;
     use crate::runtime::{
         EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedListFunction, EvaluatedValue,
-        ExecutionError, InvariantError,
+        ExecutionError, InvariantError, RuntimeValueProfile, TransferExecutionError,
+        TransferValues,
     };
+    use crate::{ModuleSource, PackageSource, compile_typed_async_host_program};
+    use std::task::{Context, Poll, Waker};
 
     const LIST_FUNCTION_FAMILY_SOURCE: &str = r#"
 pub type Boxed { Boxed(Int) }
@@ -1079,7 +1276,13 @@ pub fn main() {
 }
 "#;
 
-    fn evaluated_int_list_function(plan: &crate::ExecutionPlan) -> EvaluatedListFunction {
+    fn execution_error<T, Error>(result: Result<T, Error>, message: &str) -> Error {
+        result.err().expect(message)
+    }
+
+    fn evaluated_int_list_function<Profile: RuntimeValueProfile>(
+        plan: &crate::ExecutionPlan,
+    ) -> EvaluatedListFunction<Profile> {
         let function = plan.int_list_function_id(0);
         EvaluatedListFunction::reference(
             RuntimeListFunctionId::Core(ListFunctionId::Int(function)),
@@ -1092,7 +1295,9 @@ pub fn main() {
         )
     }
 
-    fn evaluated_nil_list_function(plan: &crate::ExecutionPlan) -> EvaluatedListFunction {
+    fn evaluated_nil_list_function<Profile: RuntimeValueProfile>(
+        plan: &crate::ExecutionPlan,
+    ) -> EvaluatedListFunction<Profile> {
         let function = plan.nil_list_function_id(0);
         EvaluatedListFunction::reference(
             RuntimeListFunctionId::Core(ListFunctionId::Nil(function)),
@@ -1105,42 +1310,54 @@ pub fn main() {
         )
     }
 
-    fn assert_list_function_mismatch<Family>(
-        plan: &crate::ExecutionPlan,
-        function: EvaluatedListFunction,
-    ) where
-        Family: RuntimeTypedList<FunctionValue = EvaluatedListFunction>,
+    fn assert_list_function_mismatch<Profile, Family>(function: EvaluatedListFunction<Profile>)
+    where
+        Profile: RuntimeValueProfile,
+        Family: RuntimeTypedList<Profile, FunctionValue = EvaluatedListFunction<Profile>>,
         Family::Handle: std::fmt::Debug + PartialEq,
     {
         assert_eq!(
-            Family::run_value(
-                plan,
-                &mut RuntimeState::new(&mut Vec::new()),
-                function,
-                crate::runtime::error::HostCallOrigin::Entry,
-                RetainedValues::empty()
+            execution_error(
+                Family::function_id(&function),
+                "a list function must reject a different item family",
             ),
-            Err(list_function_mismatch()),
+            list_function_mismatch(),
         );
+    }
+
+    fn assert_every_list_function_mismatch<Profile: RuntimeValueProfile>(
+        plan: &crate::ExecutionPlan,
+    ) {
+        let wrong_int = evaluated_int_list_function::<Profile>(plan);
+
+        assert_list_function_mismatch::<Profile, IntFamily>(
+            evaluated_nil_list_function::<Profile>(plan),
+        );
+        assert_list_function_mismatch::<Profile, StringFamily>(wrong_int.clone());
+        assert_list_function_mismatch::<Profile, BitArrayFamily>(wrong_int.clone());
+        assert_list_function_mismatch::<Profile, UtfCodepointFamily>(wrong_int.clone());
+        assert_list_function_mismatch::<Profile, CustomFamily>(wrong_int.clone());
+        assert_list_function_mismatch::<Profile, FloatFamily>(wrong_int.clone());
+        assert_list_function_mismatch::<Profile, BoolFamily>(wrong_int.clone());
+        assert_list_function_mismatch::<Profile, NilFamily>(wrong_int.clone());
+        assert_list_function_mismatch::<Profile, TupleFamily>(wrong_int.clone());
+        assert_list_function_mismatch::<Profile, ParameterListFamily>(wrong_int.clone());
+        assert_list_function_mismatch::<Profile, ListFamily>(wrong_int.clone());
+        assert_list_function_mismatch::<Profile, FunctionFamily>(wrong_int);
     }
 
     #[test]
     fn list_function_value_dispatch_rejects_every_wrong_item_family() {
         let plan = crate::runtime::plan_src(LIST_FUNCTION_FAMILY_SOURCE);
-        let wrong_int = evaluated_int_list_function(&plan);
 
-        assert_list_function_mismatch::<IntFamily>(&plan, evaluated_nil_list_function(&plan));
-        assert_list_function_mismatch::<CustomFamily>(&plan, wrong_int.clone());
-        assert_list_function_mismatch::<NilFamily>(&plan, wrong_int.clone());
-        assert_list_function_mismatch::<ParameterListFamily>(&plan, wrong_int.clone());
-        assert_list_function_mismatch::<ListFamily>(&plan, wrong_int.clone());
-        assert_list_function_mismatch::<FunctionFamily>(&plan, wrong_int);
+        assert_every_list_function_mismatch::<crate::runtime::LocalValues>(&plan);
+        assert_every_list_function_mismatch::<TransferValues>(&plan);
     }
 
     #[test]
     fn parameter_list_function_call_rejects_a_wrong_list_family() {
         let plan = crate::runtime::plan_src(LIST_FUNCTION_FAMILY_SOURCE);
-        let int_function = evaluated_int_list_function(&plan);
+        let int_function = evaluated_int_list_function::<crate::runtime::LocalValues>(&plan);
         let int_function_id = plan.int_list_function_id(0);
         let mut retained = RetainedValues::empty();
         retained.push_evaluated(EvaluatedValue::Function(EvaluatedFunctionValue::from(
@@ -1163,15 +1380,18 @@ pub fn main() {
         };
 
         assert_eq!(
-            parameter(
-                &plan,
-                &mut RuntimeState::new(&mut Vec::new()),
-                &environment,
-                plan.parameter_list_function_id(0).type_id(),
-                &instruction,
-                &ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(0)))),
+            execution_error(
+                parameter(
+                    &plan,
+                    &RuntimeState::new(&mut Vec::new()),
+                    &environment,
+                    plan.parameter_list_function_id(0).type_id(),
+                    &instruction,
+                    &ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(0)))),
+                ),
+                "a parameter list call must reject a different list family",
             ),
-            Err(list_function_mismatch()),
+            ExecutionError::from(list_function_mismatch()),
         );
     }
 
@@ -1430,7 +1650,9 @@ pub fn main() {
         let context = ProjectionContext {
             int_type: plan.int_list_function_id(0).type_id(),
             string_type: plan.string_list_function_id(0).type_id(),
-            custom_local: direct_custom_return_local(&plan, plan.custom_function_id(0)),
+            custom_local: direct_custom_return_local::<_, ()>(ExecutionFunctionRef::Graph(
+                plan.custom_function(plan.custom_function_id(0)),
+            )),
             constructor: plan.custom_constructor_id(0, 0),
             custom_type: boxed.clone(),
             plan: &plan,
@@ -1516,6 +1738,184 @@ pub fn main() {
         assert_parameter_list_projection_mismatches(&context);
     }
 
+    struct ProjectionCounterSchema;
+
+    impl HostExternalSchema for ProjectionCounterSchema {
+        const PACKAGE: &'static str = "application";
+        const MODULE: &'static str = "library";
+        const NAME: &'static str = "Counter";
+        const PARAMETER_COUNT: usize = 0;
+    }
+
+    #[test]
+    fn resumable_external_list_projections_reject_corrupted_field_families() {
+        let provider = AsyncHostProviderModule::new("application", "library")
+            .expect("async provider module")
+            .with_external_type_for_test::<ProjectionCounterSchema>();
+        let hosts = AsyncHostProviderSet::with_providers(Vec::<AsyncHostModule>::new(), [provider])
+            .expect("async host set");
+        let program = compile_typed_async_host_program(
+            "application",
+            "library",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "library",
+                    "src/library.gleam",
+                    r#"
+@external(erlang, "native", "Counter")
+pub type Counter
+
+pub type CounterListBox {
+  CounterListBox(values: List(Counter))
+}
+
+pub fn boxed() -> CounterListBox {
+  CounterListBox([])
+}
+"#,
+                )],
+            )],
+            hosts,
+        )
+        .expect("external List projection source");
+        let plan = crate::planner::plan_async_host_library_program(program)
+            .expect("external List projection plan");
+        let template = plan
+            .functions()
+            .iter()
+            .find(|function| function.name() == "boxed")
+            .expect("public boxed function")
+            .signature()
+            .id();
+        let custom_type = CustomType::new(
+            CustomTypeName::new(
+                "application".into(),
+                "library".into(),
+                "CounterListBox".into(),
+            ),
+            Vec::new(),
+        );
+        let entry = LibraryEntry::new(
+            template,
+            LibraryValueType::Custom(custom_type.clone()),
+            Vec::new(),
+            Vec::new(),
+        );
+        let (execution, entries) = crate::plan::execution::AsyncHostedExecution::from_library_plan(
+            plan,
+            entry,
+            Vec::new(),
+        );
+        let function = *entries.customs[0].function();
+        let custom_local = direct_custom_return_local(execution.custom_function(function).as_ref());
+        let mut host = ();
+        let mut echo = RecordedEcho::default();
+        let mut stores = ();
+        let mut state =
+            ResumableState::<crate::StatelessHostProfile>::new(&mut host, &mut stores, &mut echo);
+        let custom = poll_ready_custom_fixture(run_custom(
+            &execution,
+            &mut state,
+            function,
+            crate::runtime::error::HostCallOrigin::Entry,
+            ProfiledRetainedValues::empty(),
+        ))
+        .expect("boxed external List should evaluate");
+        let constructor = custom.constructor();
+        assert_eq!(custom.fields().len(), 1);
+        let mut fields = ProfiledRetainedValues::empty();
+        fields.push_evaluated(custom.fields()[0].clone());
+        let fields = BlockEnvironment::from_retained(fields);
+        let list_type = fields.external_list(ExternalListLocalId(0)).type_id();
+        let expected = execution
+            .value_metadata()
+            .list_value_type(list_type.list_type());
+
+        type Instruction = TypedListInstruction<
+            ExternalLocal,
+            ExternalListLocalId,
+            ExternalListFunctionId,
+            ExternalListFunctionLocalId,
+        >;
+
+        let mut tuple_values = ProfiledRetainedValues::empty();
+        tuple_values.push_evaluated(EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]));
+        let tuple_environment = BlockEnvironment::from_retained(tuple_values);
+        let tuple_instruction = Instruction::TupleIndex {
+            tuple: TupleLocalId(0),
+            index: 0,
+        };
+        assert_eq!(
+            execution_error(
+                typed::<ExternalFamily, _, _, _>(
+                    &execution,
+                    &mut state,
+                    &tuple_environment,
+                    list_type,
+                    &tuple_instruction,
+                    &expected,
+                ),
+                "corrupted external List tuple projection should fail"
+            )
+            .into_execution(),
+            ExecutionError::Invariant(InvariantError::TupleIndexFamilyMismatch {
+                expected: expected.clone(),
+                actual: ValueType::Int,
+            }),
+        );
+
+        let malformed = EvaluatedCustomValue::from_fields(
+            constructor,
+            vec![EvaluatedValue::Int(1.into())].into_boxed_slice(),
+        );
+        let mut custom_values = ProfiledRetainedValues::empty();
+        custom_values.push_evaluated(EvaluatedValue::Custom(malformed));
+        let custom_environment = BlockEnvironment::from_retained(custom_values);
+        let custom_instruction = Instruction::CustomField {
+            source: custom_local,
+            index: 0,
+        };
+        assert_eq!(
+            execution_error(
+                typed::<ExternalFamily, _, _, _>(
+                    &execution,
+                    &mut state,
+                    &custom_environment,
+                    list_type,
+                    &custom_instruction,
+                    &expected,
+                ),
+                "corrupted external List custom projection should fail"
+            )
+            .into_execution(),
+            ExecutionError::Invariant(InvariantError::CustomFieldFamilyMismatch {
+                custom_type,
+                constructor: "CounterListBox".into(),
+                field_index: 0,
+                expected,
+                actual: ValueType::Int,
+            }),
+        );
+    }
+
+    fn poll_ready_custom_fixture(
+        mut future: ResumableFuture<'_, EvaluatedCustomValue<TransferValues>>,
+    ) -> Result<EvaluatedCustomValue<TransferValues>, TransferExecutionError> {
+        let mut context = Context::from_waker(Waker::noop());
+        match future.as_mut().poll(&mut context) {
+            Poll::Ready(output) => output,
+            Poll::Pending => panic!("fixture without async calls should complete immediately"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture without async calls should complete immediately")]
+    fn ready_fixture_guard_rejects_a_pending_future() {
+        let _ = poll_ready_custom_fixture(Box::pin(std::future::pending()));
+    }
+
     struct ProjectionContext<'a> {
         plan: &'a crate::ExecutionPlan,
         int_type: IntListTypeId,
@@ -1525,7 +1925,9 @@ pub fn main() {
         custom_type: CustomType,
     }
 
-    fn assert_projection_mismatches<Family: RuntimeTypedList<FunctionLocal = ListFunctionLocal>>(
+    fn assert_projection_mismatches<
+        Family: RuntimeTypedList<crate::runtime::LocalValues, FunctionLocal = ListFunctionLocal>,
+    >(
         context: &ProjectionContext<'_>,
         type_id: Family::TypeId,
         expected: ValueType,
@@ -1596,23 +1998,24 @@ pub fn main() {
         let tuple_environment = BlockEnvironment::from_retained(tuple_values);
 
         assert_eq!(
-            parameter(
-                context.plan,
-                &mut state,
-                &tuple_environment,
-                context.plan.parameter_list_function_id(0).type_id(),
-                &ParameterListInstruction::TupleIndex {
-                    tuple: TupleLocalId(0),
-                    index: 0,
-                },
-                &expected,
+            execution_error(
+                parameter(
+                    context.plan,
+                    &state,
+                    &tuple_environment,
+                    context.plan.parameter_list_function_id(0).type_id(),
+                    &ParameterListInstruction::TupleIndex {
+                        tuple: TupleLocalId(0),
+                        index: 0,
+                    },
+                    &expected,
+                ),
+                "a tuple projection must preserve its list family",
             ),
-            Err(ExecutionError::Invariant(
-                InvariantError::TupleIndexFamilyMismatch {
-                    expected: expected.clone(),
-                    actual: actual.clone(),
-                },
-            )),
+            ExecutionError::Invariant(InvariantError::TupleIndexFamilyMismatch {
+                expected: expected.clone(),
+                actual: actual.clone(),
+            },),
         );
 
         let custom = EvaluatedCustomValue::from_fields(
@@ -1623,26 +2026,27 @@ pub fn main() {
         custom_values.push_evaluated(EvaluatedValue::Custom(custom));
         let custom_environment = BlockEnvironment::from_retained(custom_values);
         assert_eq!(
-            parameter(
-                context.plan,
-                &mut state,
-                &custom_environment,
-                context.plan.parameter_list_function_id(0).type_id(),
-                &ParameterListInstruction::CustomField {
-                    source: context.custom_local,
-                    index: 0,
-                },
-                &expected,
+            execution_error(
+                parameter(
+                    context.plan,
+                    &state,
+                    &custom_environment,
+                    context.plan.parameter_list_function_id(0).type_id(),
+                    &ParameterListInstruction::CustomField {
+                        source: context.custom_local,
+                        index: 0,
+                    },
+                    &expected,
+                ),
+                "a custom projection must preserve its list family",
             ),
-            Err(ExecutionError::Invariant(
-                InvariantError::CustomFieldFamilyMismatch {
-                    custom_type: context.custom_type.clone(),
-                    constructor: "Boxed".into(),
-                    field_index: 0,
-                    expected: expected.clone(),
-                    actual,
-                },
-            )),
+            ExecutionError::Invariant(InvariantError::CustomFieldFamilyMismatch {
+                custom_type: context.custom_type.clone(),
+                constructor: "Boxed".into(),
+                field_index: 0,
+                expected: expected.clone(),
+                actual,
+            },),
         );
 
         let empty = state
@@ -1652,28 +2056,31 @@ pub fn main() {
         list_values.push_evaluated(EvaluatedValue::from(ListValueId::ParameterList(empty)));
         let list_environment = BlockEnvironment::from_retained(list_values);
         assert_eq!(
-            parameter(
-                context.plan,
-                &mut state,
-                &list_environment,
-                context.plan.parameter_list_function_id(0).type_id(),
-                &ParameterListInstruction::ListIndex {
-                    list: ParameterListListLocalId(0),
-                    index: 0,
-                },
-                &expected,
+            execution_error(
+                parameter(
+                    context.plan,
+                    &state,
+                    &list_environment,
+                    context.plan.parameter_list_function_id(0).type_id(),
+                    &ParameterListInstruction::ListIndex {
+                        list: ParameterListListLocalId(0),
+                        index: 0,
+                    },
+                    &expected,
+                ),
+                "a list projection must remain in bounds",
             ),
-            Err(ExecutionError::Invariant(
-                InvariantError::ListIndexOutOfBounds {
-                    item_type: expected,
-                    index: 0,
-                    length: 0,
-                },
-            )),
+            ExecutionError::Invariant(InvariantError::ListIndexOutOfBounds {
+                item_type: expected,
+                index: 0,
+                length: 0,
+            },),
         );
     }
 
-    fn assert_tuple_projection_error<Family: RuntimeTypedList<FunctionLocal = ListFunctionLocal>>(
+    fn assert_tuple_projection_error<
+        Family: RuntimeTypedList<crate::runtime::LocalValues, FunctionLocal = ListFunctionLocal>,
+    >(
         context: &ProjectionContext<'_>,
         state: &mut RuntimeState,
         type_id: Family::TypeId,
@@ -1709,7 +2116,9 @@ pub fn main() {
         );
     }
 
-    fn assert_custom_projection_error<Family: RuntimeTypedList<FunctionLocal = ListFunctionLocal>>(
+    fn assert_custom_projection_error<
+        Family: RuntimeTypedList<crate::runtime::LocalValues, FunctionLocal = ListFunctionLocal>,
+    >(
         context: &ProjectionContext<'_>,
         state: &mut RuntimeState,
         type_id: Family::TypeId,
@@ -1750,7 +2159,9 @@ pub fn main() {
         );
     }
 
-    fn assert_projection_error<Family: RuntimeTypedList<FunctionLocal = ListFunctionLocal>>(
+    fn assert_projection_error<
+        Family: RuntimeTypedList<crate::runtime::LocalValues, FunctionLocal = ListFunctionLocal>,
+    >(
         plan: &crate::ExecutionPlan,
         state: &mut RuntimeState,
         environment: &BlockEnvironment,
@@ -1762,25 +2173,21 @@ pub fn main() {
         Family::Handle: std::fmt::Debug,
     {
         assert_eq!(
-            typed::<Family, crate::ExecutionPlan>(
-                plan,
-                state,
-                environment,
-                type_id,
-                instruction,
-                expected,
-            )
-            .expect_err("malformed projected list should fail at its owning boundary"),
+            execution_error(
+                typed::<Family, _, _, _>(plan, state, environment, type_id, instruction, expected,),
+                "malformed projected list should fail at its owning boundary",
+            ),
             expected_error,
         );
     }
 
-    fn direct_custom_return_local(
-        plan: &crate::ExecutionPlan,
-        function: CustomFunctionId,
+    fn direct_custom_return_local<Body: FunctionBodyOwner<Return = CustomLocal>, Host>(
+        function: ExecutionFunctionRef<'_, Body, Host>,
     ) -> CustomLocal {
-        let return_ = plan.custom_function(function).body();
-        let body = return_.function_body();
+        let ExecutionFunctionRef::Graph(function) = function else {
+            panic!("custom fixture should lower to a graph function");
+        };
+        let body = function.body().function_body();
         let block_graph = body.block_graph();
         let Terminator::Exit(exit) = block_graph.block(block_graph.entry()).terminator() else {
             panic!("custom main should return its constructed value directly");
@@ -1791,7 +2198,9 @@ pub fn main() {
         *local
     }
 
-    fn assert_nested_list_missing<Family: RuntimeTypedList<FunctionLocal = ListFunctionLocal>>(
+    fn assert_nested_list_missing<
+        Family: RuntimeTypedList<crate::runtime::LocalValues, FunctionLocal = ListFunctionLocal>,
+    >(
         plan: &crate::ExecutionPlan,
         child_type: Family::TypeId,
         parent_type: ListListTypeId,
@@ -1815,15 +2224,17 @@ pub fn main() {
         };
 
         assert_eq!(
-            typed::<Family, crate::ExecutionPlan>(
-                plan,
-                &mut state,
-                &environment,
-                child_type,
-                &instruction,
-                &expected,
-            )
-            .expect_err("missing nested list index should fail"),
+            execution_error(
+                typed::<Family, _, _, _>(
+                    plan,
+                    &mut state,
+                    &environment,
+                    child_type,
+                    &instruction,
+                    &expected,
+                ),
+                "missing nested list index should fail",
+            ),
             ExecutionError::Invariant(InvariantError::ListIndexOutOfBounds {
                 item_type: expected,
                 index: 2,
@@ -1849,7 +2260,9 @@ fn choose(flag: Bool) {
 pub fn main() { choose(True) }
 "#,
         );
-        direct_custom_return_local(&plan, plan.custom_function_id(1));
+        direct_custom_return_local::<_, ()>(ExecutionFunctionRef::Graph(
+            plan.custom_function(plan.custom_function_id(1)),
+        ));
     }
 
     #[test]
@@ -1864,6 +2277,17 @@ fn loop(value: Boxed) -> Boxed { loop(value) }
 pub fn main() { loop(Boxed(1)) }
 "#,
         );
-        direct_custom_return_local(&plan, plan.custom_function_id(0));
+        direct_custom_return_local::<_, ()>(ExecutionFunctionRef::Graph(
+            plan.custom_function(plan.custom_function_id(0)),
+        ));
+    }
+
+    #[test]
+    #[should_panic(expected = "custom fixture should lower to a graph function")]
+    fn direct_custom_return_local_guard_rejects_host_entries() {
+        direct_custom_return_local::<
+            crate::plan::execution::function::ExecutionCustomFunctionBody<std::convert::Infallible>,
+            _,
+        >(ExecutionFunctionRef::Host(&()));
     }
 }

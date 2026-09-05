@@ -6,11 +6,21 @@ use crate::plan::execution::function::{
     RuntimeFunctionFunctionTarget, RuntimeListFunctionId, TailCallLabelIndex,
 };
 use crate::plan::execution::graph::{
-    ExternalFunctionInstruction, ExternalFunctionInstructionView, ExternalInstruction,
-    ExternalInstructionView, ExternalListInstruction, ExternalListInstructionView,
+    BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
+    BoolListLocalId, BoolLocalId, CustomFunctionLocal, CustomListLocalId, CustomLocal,
+    ExternalFunctionInstruction, ExternalFunctionInstructionView, ExternalFunctionLocal,
+    ExternalInstruction, ExternalInstructionView, ExternalListInstruction,
+    ExternalListInstructionView, ExternalListLocalId, ExternalLocal, FloatFunctionLocalId,
+    FloatListLocalId, FloatLocalId, FunctionFunctionLocal, FunctionListLocalId,
+    GenericFunctionLocal, IntFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
+    ListListLocalId, NeverFunctionLocal, NilFunctionLocalId, NilListLocalId, NilLocalId,
+    ParameterListListLocalId, ParameterListLocalId, StringFunctionLocalId, StringListLocalId,
+    StringLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+    UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
 };
 use crate::plan::execution::host::{
-    HostNeverFunctionId, HostedExecutionProfile, HostedFunctionTarget,
+    AsyncHostedExecutionProfile, HostFunctionId, HostNeverFunctionId, HostedExecutionProfile,
+    HostedFunctionTarget, ResumableHostedFunctionTarget,
 };
 use std::convert::Infallible;
 use std::fmt::Debug;
@@ -61,7 +71,82 @@ pub(crate) trait ExecutionGraphProfile: Sized + Debug + Clone + PartialEq + Eq {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct HostedExecutionGraph;
 
-pub(crate) trait ExecutionFunctionBody: FunctionBodyOwner {}
+pub(crate) trait ExecutionFunctionBody: FunctionBodyOwner {
+    type AsyncHostTarget;
+}
+
+pub(crate) trait AsyncHostReturnTarget<Body: FunctionBodyOwner> {
+    type Target;
+}
+
+macro_rules! async_host_return_target {
+    ($($return_:ty),* $(,)?) => {
+        $(
+            impl<Body: FunctionBodyOwner<Return = $return_>> AsyncHostReturnTarget<Body>
+                for $return_
+            {
+                type Target = HostFunctionId<Body>;
+            }
+        )*
+    };
+}
+
+macro_rules! graph_only_return_target {
+    ($($return_:ty),* $(,)?) => {
+        $(
+            impl<Body: FunctionBodyOwner<Return = $return_>> AsyncHostReturnTarget<Body>
+                for $return_
+            {
+                type Target = Infallible;
+            }
+        )*
+    };
+}
+
+async_host_return_target!(
+    IntLocalId,
+    FloatLocalId,
+    StringLocalId,
+    BitArrayLocalId,
+    UtfCodepointLocalId,
+    BoolLocalId,
+    NilLocalId,
+    ExternalLocal,
+);
+
+graph_only_return_target!(
+    Infallible,
+    CustomLocal,
+    TupleLocalId,
+    ParameterListLocalId,
+    IntListLocalId,
+    FloatListLocalId,
+    StringListLocalId,
+    BitArrayListLocalId,
+    UtfCodepointListLocalId,
+    CustomListLocalId,
+    ExternalListLocalId,
+    BoolListLocalId,
+    NilListLocalId,
+    TupleListLocalId,
+    ParameterListListLocalId,
+    ListListLocalId,
+    FunctionListLocalId,
+    IntFunctionLocalId,
+    FloatFunctionLocalId,
+    StringFunctionLocalId,
+    BitArrayFunctionLocalId,
+    UtfCodepointFunctionLocalId,
+    GenericFunctionLocal,
+    NeverFunctionLocal,
+    CustomFunctionLocal,
+    ExternalFunctionLocal,
+    BoolFunctionLocalId,
+    NilFunctionLocalId,
+    TupleFunctionLocalId,
+    ListFunctionLocal,
+    FunctionFunctionLocal,
+);
 
 pub(crate) trait ExecutionFunctionEntry<Body> {
     type HostTarget;
@@ -81,7 +166,13 @@ pub(crate) type ExecutionHostTarget<Profile, Body> =
 pub(crate) type ExecutionNeverFunction<Profile> = <Profile as ExecutionProfile>::NeverFunction;
 pub(crate) type ExecutionNeverHostTarget<Profile> = <Profile as ExecutionProfile>::NeverHostTarget;
 
-impl<Body> ExecutionFunctionBody for Body where Body: FunctionBodyOwner {}
+impl<Body> ExecutionFunctionBody for Body
+where
+    Body: FunctionBodyOwner,
+    Body::Return: AsyncHostReturnTarget<Body>,
+{
+    type AsyncHostTarget = <Body::Return as AsyncHostReturnTarget<Body>>::Target;
+}
 
 impl ExecutionProfile for Infallible {
     type Graph = Infallible;
@@ -124,6 +215,36 @@ impl ExecutionProfile for HostedExecutionProfile {
         ValueFunctionEntry::graph(function)
     }
 }
+
+impl ExecutionProfile for AsyncHostedExecutionProfile {
+    type Graph = HostedExecutionGraph;
+    type HostTarget<Body: ExecutionFunctionBody> = ResumableHostedFunctionTarget<Body>;
+    type Function<Body: ExecutionFunctionBody> =
+        ValueFunctionEntry<Body, ResumableHostedFunctionTarget<Body>>;
+    type NeverHostTarget = HostNeverFunctionId;
+    type NeverFunction =
+        ValueFunctionEntry<super::ExecutionNeverFunctionBody<Self>, HostNeverFunctionId>;
+
+    fn graph<Body: ExecutionFunctionBody>(
+        function: ExecutableFunction<Body>,
+    ) -> Self::Function<Body> {
+        ValueFunctionEntry::graph(function)
+    }
+
+    fn never_graph(
+        function: ExecutableFunction<super::ExecutionNeverFunctionBody<Self>>,
+    ) -> Self::NeverFunction {
+        ValueFunctionEntry::graph(function)
+    }
+}
+
+pub(crate) trait DirectHostedExecutionProfile:
+    ExecutionProfile<Graph = HostedExecutionGraph>
+{
+}
+
+impl DirectHostedExecutionProfile for HostedExecutionProfile {}
+impl DirectHostedExecutionProfile for AsyncHostedExecutionProfile {}
 
 impl ExecutionGraphProfile for Infallible {
     type ExternalFunctionId = Infallible;
@@ -394,7 +515,7 @@ mod tests {
         ExternalFunctionFunctionBody, ExternalFunctionFunctionId, ExternalFunctionId,
         ExternalListFunctionBody, ExternalListFunctionFunctionBody, ExternalListFunctionFunctionId,
         ExternalListFunctionId, FloatFunctionBody, FloatFunctionFunctionBody,
-        FloatListFunctionBody, FunctionBodyOwner, FunctionFunctionFunctionBody, FunctionFunctionId,
+        FloatListFunctionBody, FunctionFunctionFunctionBody, FunctionFunctionId,
         FunctionListFunctionBody, GenericFunctionFunctionBody, IntFunctionBody,
         IntFunctionFunctionBody, IntListFunctionBody, ListFunctionFunctionId, ListListFunctionBody,
         NeverFunctionBody, NeverFunctionFunctionBody, NilFunctionBody, NilFunctionFunctionBody,
@@ -534,7 +655,7 @@ mod tests {
 
     fn assert_hosted<Body>()
     where
-        Body: FunctionBodyOwner + 'static,
+        Body: super::ExecutionFunctionBody + 'static,
         HostedFunctionTarget<Body>: 'static,
     {
         assert_same::<ExecutionHostTarget<Hosted, Body>, HostedFunctionTarget<Body>>();

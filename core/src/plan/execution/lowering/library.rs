@@ -1,5 +1,4 @@
 use super::function as function_lowering;
-use super::graph;
 use super::specialization::{
     self, SpecializationKey, SpecializedCustomConstructor, SpecializedCustomConstructorField,
     SpecializedCustomValueShape, SpecializedTypeSubstitution, SpecializedValueShape,
@@ -7,17 +6,18 @@ use super::specialization::{
 };
 use super::{LoweringContext, SpecializationOutcome};
 use crate::plan::execution::function::{
-    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, ExecutionGraphProfile, FloatFunctionId,
-    IntFunctionId, NilFunctionId, ProfiledCoreRuntimeFunctionId, ProfiledListFunctionId,
-    ProfiledRuntimeFunctionId, RuntimeListFunctionId, StringFunctionId, TupleFunctionId,
-    UtfCodepointFunctionId,
+    BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionId, BoolListFunctionId,
+    CustomFunctionId, CustomListFunctionId, ExecutionGraphProfile, FloatFunctionId,
+    FloatListFunctionId, IntFunctionId, IntListFunctionId, LibraryListFunctionId,
+    ListListFunctionId, NilFunctionId, NilListFunctionId, ProfiledCoreRuntimeFunctionId,
+    ProfiledListFunctionId, ProfiledRuntimeFunctionId, StringFunctionId, StringListFunctionId,
+    TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionId, UtfCodepointListFunctionId,
 };
 use crate::plan::execution::{
     LibraryFunctionEntries, LibraryFunctionEntry, LibraryInputConstructions,
     LibraryListConstructions,
 };
 use crate::plan::{CustomValueShape, LibraryEntry, LibraryValueType, StandardVariant, ValueShape};
-use std::convert::Infallible;
 
 #[derive(Clone)]
 pub(super) struct Entry {
@@ -47,7 +47,7 @@ pub(super) enum ReservedEntry {
     Custom(Reserved<CustomFunctionId>),
     Bool(Reserved<BoolFunctionId>),
     Nil(Reserved<NilFunctionId>),
-    List(Reserved<RuntimeListFunctionId>),
+    List(Reserved<LibraryListFunctionId>),
     Tuple {
         reserved: Reserved<TupleFunctionId>,
         return_type: Vec<crate::plan::execution::type_::ValueType>,
@@ -63,7 +63,7 @@ pub(super) enum SealedEntry {
     Custom(Sealed<CustomFunctionId>),
     Bool(Sealed<BoolFunctionId>),
     Nil(Sealed<NilFunctionId>),
-    List(Sealed<ProfiledListFunctionId<Infallible>>),
+    List(Sealed<LibraryListFunctionId>),
     Tuple {
         sealed: Sealed<TupleFunctionId>,
         return_type: Vec<crate::plan::execution::type_::ValueType>,
@@ -96,7 +96,7 @@ pub(super) struct EntryIds {
     bools: Vec<LibraryFunctionEntry<BoolFunctionId>>,
     nils: Vec<LibraryFunctionEntry<NilFunctionId>>,
     tuples: Vec<LibraryFunctionEntry<TupleFunctionId>>,
-    lists: Vec<LibraryFunctionEntry<ProfiledListFunctionId<Infallible>>>,
+    lists: Vec<LibraryFunctionEntry<LibraryListFunctionId>>,
 }
 
 impl Entries {
@@ -231,17 +231,15 @@ impl Entry {
                 inputs,
             }),
             LibraryValueType::List(item) => {
-                let item = SpecializedValueShape::instantiate(
-                    &ValueShape::from_value_type(item.value_type()),
-                    key.substitution(),
-                );
-                let family = function_lowering::list_function_table_family(&item);
+                let specialized_item = item.stored_shape(key.substitution()).to_specialized();
+                let family = function_lowering::list_function_table_family(&specialized_item);
                 let function =
                     context
                         .provisional_specialization(key.clone(), family)
                         .map(|specialization| {
-                            function_lowering::list_function_id(
-                                &item,
+                            library_list_function_id(
+                                item,
+                                key.substitution(),
                                 specialization.index,
                                 &mut context.types,
                             )
@@ -292,16 +290,7 @@ impl ReservedEntry {
             Self::Custom(reserved) => map_sealed(reserved, SealedEntry::Custom),
             Self::Bool(reserved) => map_sealed(reserved, SealedEntry::Bool),
             Self::Nil(reserved) => map_sealed(reserved, SealedEntry::Nil),
-            Self::List(reserved) => map_sealed(
-                Reserved {
-                    key: reserved.key,
-                    function: reserved
-                        .function
-                        .and_then(graph::seal_plain_list_function_id),
-                    inputs: reserved.inputs,
-                },
-                SealedEntry::List,
-            ),
+            Self::List(reserved) => map_sealed(reserved, SealedEntry::List),
             Self::Tuple {
                 reserved,
                 return_type,
@@ -346,12 +335,9 @@ impl SealedEntry {
             Self::Custom(sealed) => ProfiledCoreRuntimeFunctionId::Custom(sealed.function),
             Self::Bool(sealed) => ProfiledCoreRuntimeFunctionId::Bool(sealed.function),
             Self::Nil(sealed) => ProfiledCoreRuntimeFunctionId::Nil(sealed.function),
-            Self::List(sealed) => ProfiledCoreRuntimeFunctionId::List(match &sealed.function {
-                ProfiledListFunctionId::Core(function) => {
-                    ProfiledListFunctionId::Core(function.clone())
-                }
-                ProfiledListFunctionId::External(never) => match *never {},
-            }),
+            Self::List(sealed) => ProfiledCoreRuntimeFunctionId::List(
+                ProfiledListFunctionId::Core(sealed.function.core()),
+            ),
             Self::Tuple {
                 sealed,
                 return_type,
@@ -360,6 +346,71 @@ impl SealedEntry {
                 return_type: return_type.clone(),
             },
         })
+    }
+}
+
+fn library_list_function_id(
+    item: &LibraryValueType,
+    substitution: &SpecializedTypeSubstitution,
+    index: usize,
+    types: &mut crate::plan::execution::lowering::value_type::TypeInterner,
+) -> LibraryListFunctionId {
+    match item {
+        LibraryValueType::Int => {
+            LibraryListFunctionId::Int(IntListFunctionId::new(index, types.int_list_type()))
+        }
+        LibraryValueType::Float => {
+            LibraryListFunctionId::Float(FloatListFunctionId::new(index, types.float_list_type()))
+        }
+        LibraryValueType::String => LibraryListFunctionId::String(StringListFunctionId::new(
+            index,
+            types.string_list_type(),
+        )),
+        LibraryValueType::BitArray => LibraryListFunctionId::BitArray(BitArrayListFunctionId::new(
+            index,
+            types.bit_array_list_type(),
+        )),
+        LibraryValueType::UtfCodepoint => LibraryListFunctionId::UtfCodepoint(
+            UtfCodepointListFunctionId::new(index, types.utf_codepoint_list_type()),
+        ),
+        LibraryValueType::Custom(item) => {
+            let item = SpecializedCustomValueShape::instantiate(
+                &CustomValueShape::any(item.clone()),
+                substitution,
+            );
+            LibraryListFunctionId::Custom(CustomListFunctionId::new(
+                index,
+                types.custom_list_type(&item),
+            ))
+        }
+        LibraryValueType::Bool => {
+            LibraryListFunctionId::Bool(BoolListFunctionId::new(index, types.bool_list_type()))
+        }
+        LibraryValueType::Nil => {
+            LibraryListFunctionId::Nil(NilListFunctionId::new(index, types.nil_list_type()))
+        }
+        LibraryValueType::Tuple(items) => {
+            let items = items
+                .iter()
+                .map(|item| {
+                    SpecializedValueShape::instantiate(
+                        &ValueShape::from_value_type(item.clone()),
+                        substitution,
+                    )
+                })
+                .collect::<Vec<_>>();
+            LibraryListFunctionId::Tuple(TupleListFunctionId::new(
+                index,
+                types.tuple_list_type(&items),
+            ))
+        }
+        LibraryValueType::List(item) => {
+            let item = item.stored_shape(substitution);
+            LibraryListFunctionId::List(ListListFunctionId::new(
+                index,
+                types.stored_list_list_type(&item),
+            ))
+        }
     }
 }
 

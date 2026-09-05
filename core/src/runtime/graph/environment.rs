@@ -30,88 +30,91 @@ use crate::runtime::state::list::{
     ParameterListListValueId, ParameterListValueId, StoredListValueId, StringListValueId,
     TupleListValueId, UtfCodepointListValueId,
 };
+use crate::runtime::{LocalValues, RuntimeValueProfile};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
 #[derive(Default)]
-struct BlockValues {
+struct BlockValues<Profile: RuntimeValueProfile = LocalValues> {
     ints: Vec<BigInt>,
     floats: Vec<f64>,
     strings: Vec<EcoString>,
     bit_arrays: Vec<EvaluatedBitArray>,
     utf_codepoints: Vec<char>,
-    customs: Vec<EvaluatedCustomValue>,
-    externals: Vec<EvaluatedExternalValue>,
+    customs: Vec<EvaluatedCustomValue<Profile>>,
+    externals: Vec<EvaluatedExternalValue<Profile>>,
     bools: Vec<bool>,
-    tuples: Vec<Vec<EvaluatedValue>>,
-    parameter_lists: Vec<ParameterListValueId>,
-    int_lists: Vec<IntListValueId>,
-    string_lists: Vec<StringListValueId>,
-    bit_array_lists: Vec<BitArrayListValueId>,
-    utf_codepoint_lists: Vec<UtfCodepointListValueId>,
-    custom_lists: Vec<CustomListValueId>,
-    external_lists: Vec<ExternalListValueId>,
-    float_lists: Vec<FloatListValueId>,
-    bool_lists: Vec<BoolListValueId>,
-    nil_lists: Vec<NilListValueId>,
-    tuple_lists: Vec<TupleListValueId>,
-    parameter_list_lists: Vec<ParameterListListValueId>,
-    list_lists: Vec<ListListValueId>,
-    function_lists: Vec<FunctionListValueId>,
-    int_functions: Vec<EvaluatedIntFunction>,
-    float_functions: Vec<EvaluatedFloatFunction>,
-    string_functions: Vec<EvaluatedStringFunction>,
-    bit_array_functions: Vec<EvaluatedBitArrayFunction>,
-    utf_codepoint_functions: Vec<EvaluatedUtfCodepointFunction>,
-    custom_functions: Vec<EvaluatedCustomFunction>,
-    external_functions: Vec<EvaluatedExternalFunction>,
-    bool_functions: Vec<EvaluatedBoolFunction>,
-    nil_functions: Vec<EvaluatedNilFunction>,
-    tuple_functions: Vec<EvaluatedTupleFunction>,
-    parameter_list_functions: Vec<EvaluatedListFunction>,
-    parameter_list_list_functions: Vec<EvaluatedListFunction>,
-    int_list_functions: Vec<EvaluatedListFunction>,
-    string_list_functions: Vec<EvaluatedListFunction>,
-    bit_array_list_functions: Vec<EvaluatedListFunction>,
-    utf_codepoint_list_functions: Vec<EvaluatedListFunction>,
-    custom_list_functions: Vec<EvaluatedListFunction>,
-    external_list_functions: Vec<EvaluatedExternalListFunction>,
-    float_list_functions: Vec<EvaluatedListFunction>,
-    bool_list_functions: Vec<EvaluatedListFunction>,
-    nil_list_functions: Vec<EvaluatedListFunction>,
-    tuple_list_functions: Vec<EvaluatedListFunction>,
-    list_list_functions: Vec<EvaluatedListFunction>,
-    function_list_functions: Vec<EvaluatedListFunction>,
-    core_function_functions: Vec<EvaluatedCoreFunctionFunction>,
-    external_function_functions: Vec<EvaluatedExternalFunctionFunction>,
-    generic_functions: Vec<EvaluatedGenericFunction>,
-    never_functions: Vec<EvaluatedNeverFunction>,
+    tuples: Vec<Vec<EvaluatedValue<Profile>>>,
+    parameter_lists: Vec<ParameterListValueId<Profile>>,
+    int_lists: Vec<IntListValueId<Profile>>,
+    string_lists: Vec<StringListValueId<Profile>>,
+    bit_array_lists: Vec<BitArrayListValueId<Profile>>,
+    utf_codepoint_lists: Vec<UtfCodepointListValueId<Profile>>,
+    custom_lists: Vec<CustomListValueId<Profile>>,
+    external_lists: Vec<ExternalListValueId<Profile>>,
+    float_lists: Vec<FloatListValueId<Profile>>,
+    bool_lists: Vec<BoolListValueId<Profile>>,
+    nil_lists: Vec<NilListValueId<Profile>>,
+    tuple_lists: Vec<TupleListValueId<Profile>>,
+    parameter_list_lists: Vec<ParameterListListValueId<Profile>>,
+    list_lists: Vec<ListListValueId<Profile>>,
+    function_lists: Vec<FunctionListValueId<Profile>>,
+    int_functions: Vec<EvaluatedIntFunction<Profile>>,
+    float_functions: Vec<EvaluatedFloatFunction<Profile>>,
+    string_functions: Vec<EvaluatedStringFunction<Profile>>,
+    bit_array_functions: Vec<EvaluatedBitArrayFunction<Profile>>,
+    utf_codepoint_functions: Vec<EvaluatedUtfCodepointFunction<Profile>>,
+    custom_functions: Vec<EvaluatedCustomFunction<Profile>>,
+    external_functions: Vec<EvaluatedExternalFunction<Profile>>,
+    bool_functions: Vec<EvaluatedBoolFunction<Profile>>,
+    nil_functions: Vec<EvaluatedNilFunction<Profile>>,
+    tuple_functions: Vec<EvaluatedTupleFunction<Profile>>,
+    parameter_list_functions: Vec<EvaluatedListFunction<Profile>>,
+    parameter_list_list_functions: Vec<EvaluatedListFunction<Profile>>,
+    int_list_functions: Vec<EvaluatedListFunction<Profile>>,
+    string_list_functions: Vec<EvaluatedListFunction<Profile>>,
+    bit_array_list_functions: Vec<EvaluatedListFunction<Profile>>,
+    utf_codepoint_list_functions: Vec<EvaluatedListFunction<Profile>>,
+    custom_list_functions: Vec<EvaluatedListFunction<Profile>>,
+    external_list_functions: Vec<EvaluatedExternalListFunction<Profile>>,
+    float_list_functions: Vec<EvaluatedListFunction<Profile>>,
+    bool_list_functions: Vec<EvaluatedListFunction<Profile>>,
+    nil_list_functions: Vec<EvaluatedListFunction<Profile>>,
+    tuple_list_functions: Vec<EvaluatedListFunction<Profile>>,
+    list_list_functions: Vec<EvaluatedListFunction<Profile>>,
+    function_list_functions: Vec<EvaluatedListFunction<Profile>>,
+    core_function_functions: Vec<EvaluatedCoreFunctionFunction<Profile>>,
+    external_function_functions: Vec<EvaluatedExternalFunctionFunction<Profile>>,
+    generic_functions: Vec<EvaluatedGenericFunction<Profile>>,
+    never_functions: Vec<EvaluatedNeverFunction<Profile>>,
 }
 
-pub(in crate::runtime) struct BlockEnvironment {
-    values: Box<BlockValues>,
+pub(in crate::runtime) struct BlockEnvironment<Profile: RuntimeValueProfile = LocalValues> {
+    values: Box<BlockValues<Profile>>,
 }
 
-pub(crate) struct RetainedValues {
-    values: Box<BlockValues>,
+pub(crate) struct ProfiledRetainedValues<Profile: RuntimeValueProfile = LocalValues> {
+    values: Box<BlockValues<Profile>>,
 }
 
-impl BlockEnvironment {
-    pub(in crate::runtime) fn from_retained(values: RetainedValues) -> Self {
+pub(crate) type RetainedValues = ProfiledRetainedValues<LocalValues>;
+
+impl<Profile: RuntimeValueProfile> BlockEnvironment<Profile> {
+    pub(in crate::runtime) fn from_retained(values: ProfiledRetainedValues<Profile>) -> Self {
         Self {
             values: values.values,
         }
     }
 
-    pub(super) fn retain(&self, locals: &[ParamLocal]) -> RetainedValues {
-        let mut retained = RetainedValues::empty();
+    pub(super) fn retain(&self, locals: &[ParamLocal]) -> ProfiledRetainedValues<Profile> {
+        let mut retained = ProfiledRetainedValues::empty();
         for local in locals {
             retained.push_local(self, local);
         }
         retained
     }
 
-    pub(in crate::runtime) fn value(&self, local: &ParamLocal) -> EvaluatedValue {
+    pub(in crate::runtime) fn value(&self, local: &ParamLocal) -> EvaluatedValue<Profile> {
         match local {
             ParamLocal::Int(local) => EvaluatedValue::Int(self.int(*local)),
             ParamLocal::Float(local) => EvaluatedValue::Float(self.float(*local)),
@@ -174,7 +177,7 @@ impl BlockEnvironment {
         }
     }
 
-    pub(super) fn values(&self, locals: &[ParamLocal]) -> Box<[EvaluatedValue]> {
+    pub(super) fn values(&self, locals: &[ParamLocal]) -> Box<[EvaluatedValue<Profile>]> {
         locals
             .iter()
             .map(|local| self.value(local))
@@ -222,19 +225,19 @@ impl BlockEnvironment {
         self.values.utf_codepoints[local.0]
     }
 
-    pub(super) fn push_custom(&mut self, value: EvaluatedCustomValue) {
+    pub(super) fn push_custom(&mut self, value: EvaluatedCustomValue<Profile>) {
         self.values.customs.push(value);
     }
 
-    pub(super) fn custom(&self, local: CustomLocal) -> EvaluatedCustomValue {
+    pub(super) fn custom(&self, local: CustomLocal) -> EvaluatedCustomValue<Profile> {
         self.values.customs[local.id().0].clone()
     }
 
-    pub(super) fn push_external(&mut self, value: EvaluatedExternalValue) {
+    pub(super) fn push_external(&mut self, value: EvaluatedExternalValue<Profile>) {
         self.values.externals.push(value);
     }
 
-    pub(super) fn external(&self, local: ExternalLocal) -> EvaluatedExternalValue {
+    pub(super) fn external(&self, local: ExternalLocal) -> EvaluatedExternalValue<Profile> {
         self.values.externals[local.id().0].clone()
     }
 
@@ -250,133 +253,139 @@ impl BlockEnvironment {
 
     pub(super) fn nil(&self, _local: NilLocalId) {}
 
-    pub(super) fn push_tuple(&mut self, value: Vec<EvaluatedValue>) {
+    pub(super) fn push_tuple(&mut self, value: Vec<EvaluatedValue<Profile>>) {
         self.values.tuples.push(value);
     }
 
-    pub(super) fn tuple(&self, local: TupleLocalId) -> Vec<EvaluatedValue> {
+    pub(super) fn tuple(&self, local: TupleLocalId) -> Vec<EvaluatedValue<Profile>> {
         self.values.tuples[local.0].clone()
     }
 
-    pub(super) fn push_parameter_list(&mut self, value: ParameterListValueId) {
+    pub(super) fn push_parameter_list(&mut self, value: ParameterListValueId<Profile>) {
         self.values.parameter_lists.push(value);
     }
 
-    pub(super) fn parameter_list(&self, local: ParameterListLocalId) -> ParameterListValueId {
+    pub(super) fn parameter_list(
+        &self,
+        local: ParameterListLocalId,
+    ) -> ParameterListValueId<Profile> {
         self.values.parameter_lists[local.0]
     }
 
-    pub(super) fn push_int_list(&mut self, value: IntListValueId) {
+    pub(super) fn push_int_list(&mut self, value: IntListValueId<Profile>) {
         self.values.int_lists.push(value);
     }
 
-    pub(super) fn int_list(&self, local: IntListLocalId) -> IntListValueId {
+    pub(super) fn int_list(&self, local: IntListLocalId) -> IntListValueId<Profile> {
         self.values.int_lists[local.0].clone()
     }
 
-    pub(super) fn push_string_list(&mut self, value: StringListValueId) {
+    pub(super) fn push_string_list(&mut self, value: StringListValueId<Profile>) {
         self.values.string_lists.push(value);
     }
 
-    pub(super) fn string_list(&self, local: StringListLocalId) -> StringListValueId {
+    pub(super) fn string_list(&self, local: StringListLocalId) -> StringListValueId<Profile> {
         self.values.string_lists[local.0].clone()
     }
 
-    pub(super) fn push_bit_array_list(&mut self, value: BitArrayListValueId) {
+    pub(super) fn push_bit_array_list(&mut self, value: BitArrayListValueId<Profile>) {
         self.values.bit_array_lists.push(value);
     }
 
-    pub(super) fn bit_array_list(&self, local: BitArrayListLocalId) -> BitArrayListValueId {
+    pub(super) fn bit_array_list(
+        &self,
+        local: BitArrayListLocalId,
+    ) -> BitArrayListValueId<Profile> {
         self.values.bit_array_lists[local.0].clone()
     }
 
-    pub(super) fn push_utf_codepoint_list(&mut self, value: UtfCodepointListValueId) {
+    pub(super) fn push_utf_codepoint_list(&mut self, value: UtfCodepointListValueId<Profile>) {
         self.values.utf_codepoint_lists.push(value);
     }
 
     pub(super) fn utf_codepoint_list(
         &self,
         local: UtfCodepointListLocalId,
-    ) -> UtfCodepointListValueId {
+    ) -> UtfCodepointListValueId<Profile> {
         self.values.utf_codepoint_lists[local.0].clone()
     }
 
-    pub(super) fn push_custom_list(&mut self, value: CustomListValueId) {
+    pub(super) fn push_custom_list(&mut self, value: CustomListValueId<Profile>) {
         self.values.custom_lists.push(value);
     }
 
-    pub(super) fn custom_list(&self, local: CustomListLocalId) -> CustomListValueId {
+    pub(super) fn custom_list(&self, local: CustomListLocalId) -> CustomListValueId<Profile> {
         self.values.custom_lists[local.0].clone()
     }
 
-    pub(super) fn push_external_list(&mut self, value: ExternalListValueId) {
+    pub(super) fn push_external_list(&mut self, value: ExternalListValueId<Profile>) {
         self.values.external_lists.push(value);
     }
 
-    pub(super) fn external_list(&self, local: ExternalListLocalId) -> ExternalListValueId {
+    pub(super) fn external_list(&self, local: ExternalListLocalId) -> ExternalListValueId<Profile> {
         self.values.external_lists[local.0].clone()
     }
 
-    pub(super) fn push_float_list(&mut self, value: FloatListValueId) {
+    pub(super) fn push_float_list(&mut self, value: FloatListValueId<Profile>) {
         self.values.float_lists.push(value);
     }
 
-    pub(super) fn float_list(&self, local: FloatListLocalId) -> FloatListValueId {
+    pub(super) fn float_list(&self, local: FloatListLocalId) -> FloatListValueId<Profile> {
         self.values.float_lists[local.0].clone()
     }
 
-    pub(super) fn push_bool_list(&mut self, value: BoolListValueId) {
+    pub(super) fn push_bool_list(&mut self, value: BoolListValueId<Profile>) {
         self.values.bool_lists.push(value);
     }
 
-    pub(super) fn bool_list(&self, local: BoolListLocalId) -> BoolListValueId {
+    pub(super) fn bool_list(&self, local: BoolListLocalId) -> BoolListValueId<Profile> {
         self.values.bool_lists[local.0].clone()
     }
 
-    pub(super) fn push_nil_list(&mut self, value: NilListValueId) {
+    pub(super) fn push_nil_list(&mut self, value: NilListValueId<Profile>) {
         self.values.nil_lists.push(value);
     }
 
-    pub(super) fn nil_list(&self, local: NilListLocalId) -> NilListValueId {
+    pub(super) fn nil_list(&self, local: NilListLocalId) -> NilListValueId<Profile> {
         self.values.nil_lists[local.0].clone()
     }
 
-    pub(super) fn push_tuple_list(&mut self, value: TupleListValueId) {
+    pub(super) fn push_tuple_list(&mut self, value: TupleListValueId<Profile>) {
         self.values.tuple_lists.push(value);
     }
 
-    pub(super) fn tuple_list(&self, local: TupleListLocalId) -> TupleListValueId {
+    pub(super) fn tuple_list(&self, local: TupleListLocalId) -> TupleListValueId<Profile> {
         self.values.tuple_lists[local.0].clone()
     }
 
-    pub(super) fn push_parameter_list_list(&mut self, value: ParameterListListValueId) {
+    pub(super) fn push_parameter_list_list(&mut self, value: ParameterListListValueId<Profile>) {
         self.values.parameter_list_lists.push(value);
     }
 
     pub(super) fn parameter_list_list(
         &self,
         local: ParameterListListLocalId,
-    ) -> ParameterListListValueId {
+    ) -> ParameterListListValueId<Profile> {
         self.values.parameter_list_lists[local.0].clone()
     }
 
-    pub(super) fn push_list_list(&mut self, value: ListListValueId) {
+    pub(super) fn push_list_list(&mut self, value: ListListValueId<Profile>) {
         self.values.list_lists.push(value);
     }
 
-    pub(super) fn list_list(&self, local: ListListLocalId) -> ListListValueId {
+    pub(super) fn list_list(&self, local: ListListLocalId) -> ListListValueId<Profile> {
         self.values.list_lists[local.0].clone()
     }
 
-    pub(super) fn push_function_list(&mut self, value: FunctionListValueId) {
+    pub(super) fn push_function_list(&mut self, value: FunctionListValueId<Profile>) {
         self.values.function_lists.push(value);
     }
 
-    pub(super) fn function_list(&self, local: FunctionListLocalId) -> FunctionListValueId {
+    pub(super) fn function_list(&self, local: FunctionListLocalId) -> FunctionListValueId<Profile> {
         self.values.function_lists[local.0].clone()
     }
 
-    pub(in crate::runtime) fn list(&self, local: &ListLocal) -> ListValueId {
+    pub(in crate::runtime) fn list(&self, local: &ListLocal) -> ListValueId<Profile> {
         match local {
             ListLocal::Parameter { local, .. } => self.parameter_list(*local).into(),
             ListLocal::ParameterList { local, .. } => self.parameter_list_list(*local).into(),
@@ -398,7 +407,7 @@ impl BlockEnvironment {
     pub(super) fn stored_list(
         &self,
         local: &crate::plan::execution::graph::StoredListLocal,
-    ) -> StoredListValueId {
+    ) -> StoredListValueId<Profile> {
         use crate::plan::execution::graph::StoredListLocal as L;
 
         match local {
@@ -418,96 +427,117 @@ impl BlockEnvironment {
         }
     }
 
-    pub(super) fn push_int_function(&mut self, value: EvaluatedIntFunction) {
+    pub(super) fn push_int_function(&mut self, value: EvaluatedIntFunction<Profile>) {
         self.values.int_functions.push(value);
     }
 
-    pub(super) fn int_function(&self, local: IntFunctionLocalId) -> EvaluatedIntFunction {
+    pub(super) fn int_function(&self, local: IntFunctionLocalId) -> EvaluatedIntFunction<Profile> {
         self.values.int_functions[local.0].clone()
     }
 
-    pub(super) fn push_float_function(&mut self, value: EvaluatedFloatFunction) {
+    pub(super) fn push_float_function(&mut self, value: EvaluatedFloatFunction<Profile>) {
         self.values.float_functions.push(value);
     }
 
-    pub(super) fn float_function(&self, local: FloatFunctionLocalId) -> EvaluatedFloatFunction {
+    pub(super) fn float_function(
+        &self,
+        local: FloatFunctionLocalId,
+    ) -> EvaluatedFloatFunction<Profile> {
         self.values.float_functions[local.0].clone()
     }
 
-    pub(super) fn push_string_function(&mut self, value: EvaluatedStringFunction) {
+    pub(super) fn push_string_function(&mut self, value: EvaluatedStringFunction<Profile>) {
         self.values.string_functions.push(value);
     }
 
-    pub(super) fn string_function(&self, local: StringFunctionLocalId) -> EvaluatedStringFunction {
+    pub(super) fn string_function(
+        &self,
+        local: StringFunctionLocalId,
+    ) -> EvaluatedStringFunction<Profile> {
         self.values.string_functions[local.0].clone()
     }
 
-    pub(super) fn push_bit_array_function(&mut self, value: EvaluatedBitArrayFunction) {
+    pub(super) fn push_bit_array_function(&mut self, value: EvaluatedBitArrayFunction<Profile>) {
         self.values.bit_array_functions.push(value);
     }
 
     pub(super) fn bit_array_function(
         &self,
         local: BitArrayFunctionLocalId,
-    ) -> EvaluatedBitArrayFunction {
+    ) -> EvaluatedBitArrayFunction<Profile> {
         self.values.bit_array_functions[local.0].clone()
     }
 
-    pub(super) fn push_utf_codepoint_function(&mut self, value: EvaluatedUtfCodepointFunction) {
+    pub(super) fn push_utf_codepoint_function(
+        &mut self,
+        value: EvaluatedUtfCodepointFunction<Profile>,
+    ) {
         self.values.utf_codepoint_functions.push(value);
     }
 
     pub(super) fn utf_codepoint_function(
         &self,
         local: UtfCodepointFunctionLocalId,
-    ) -> EvaluatedUtfCodepointFunction {
+    ) -> EvaluatedUtfCodepointFunction<Profile> {
         self.values.utf_codepoint_functions[local.0].clone()
     }
 
-    pub(super) fn push_custom_function(&mut self, value: EvaluatedCustomFunction) {
+    pub(super) fn push_custom_function(&mut self, value: EvaluatedCustomFunction<Profile>) {
         self.values.custom_functions.push(value);
     }
 
-    pub(super) fn custom_function(&self, local: &CustomFunctionLocal) -> EvaluatedCustomFunction {
+    pub(super) fn custom_function(
+        &self,
+        local: &CustomFunctionLocal,
+    ) -> EvaluatedCustomFunction<Profile> {
         self.values.custom_functions[local.id().0].clone()
     }
 
-    pub(super) fn push_external_function(&mut self, value: EvaluatedExternalFunction) {
+    pub(super) fn push_external_function(&mut self, value: EvaluatedExternalFunction<Profile>) {
         self.values.external_functions.push(value);
     }
 
     pub(super) fn external_function(
         &self,
         local: &ExternalFunctionLocal,
-    ) -> EvaluatedExternalFunction {
+    ) -> EvaluatedExternalFunction<Profile> {
         self.values.external_functions[local.id().0].clone()
     }
 
-    pub(super) fn push_bool_function(&mut self, value: EvaluatedBoolFunction) {
+    pub(super) fn push_bool_function(&mut self, value: EvaluatedBoolFunction<Profile>) {
         self.values.bool_functions.push(value);
     }
 
-    pub(super) fn bool_function(&self, local: BoolFunctionLocalId) -> EvaluatedBoolFunction {
+    pub(super) fn bool_function(
+        &self,
+        local: BoolFunctionLocalId,
+    ) -> EvaluatedBoolFunction<Profile> {
         self.values.bool_functions[local.0].clone()
     }
 
-    pub(super) fn push_nil_function(&mut self, value: EvaluatedNilFunction) {
+    pub(super) fn push_nil_function(&mut self, value: EvaluatedNilFunction<Profile>) {
         self.values.nil_functions.push(value);
     }
 
-    pub(super) fn nil_function(&self, local: NilFunctionLocalId) -> EvaluatedNilFunction {
+    pub(super) fn nil_function(&self, local: NilFunctionLocalId) -> EvaluatedNilFunction<Profile> {
         self.values.nil_functions[local.0].clone()
     }
 
-    pub(super) fn push_tuple_function(&mut self, value: EvaluatedTupleFunction) {
+    pub(super) fn push_tuple_function(&mut self, value: EvaluatedTupleFunction<Profile>) {
         self.values.tuple_functions.push(value);
     }
 
-    pub(super) fn tuple_function(&self, local: TupleFunctionLocalId) -> EvaluatedTupleFunction {
+    pub(super) fn tuple_function(
+        &self,
+        local: TupleFunctionLocalId,
+    ) -> EvaluatedTupleFunction<Profile> {
         self.values.tuple_functions[local.0].clone()
     }
 
-    pub(super) fn list_function(&self, local: &ListFunctionLocal) -> EvaluatedListFunction {
+    pub(super) fn list_function(
+        &self,
+        local: &ListFunctionLocal,
+    ) -> EvaluatedListFunction<Profile> {
         match local {
             ListFunctionLocal::Parameter { local, .. } => {
                 self.values.parameter_list_functions[local.0].clone()
@@ -553,11 +583,11 @@ impl BlockEnvironment {
     pub(super) fn external_list_function(
         &self,
         local: ExternalListFunctionLocalId,
-    ) -> EvaluatedExternalListFunction {
+    ) -> EvaluatedExternalListFunction<Profile> {
         self.values.external_list_functions[local.0].clone()
     }
 
-    pub(super) fn push_function_function(&mut self, value: EvaluatedFunctionFunction) {
+    pub(super) fn push_function_function(&mut self, value: EvaluatedFunctionFunction<Profile>) {
         match value {
             EvaluatedFunctionFunction::Core(value) => {
                 self.values.core_function_functions.push(value)
@@ -571,7 +601,7 @@ impl BlockEnvironment {
     pub(super) fn function_function(
         &self,
         local: &FunctionFunctionLocal,
-    ) -> EvaluatedFunctionFunction {
+    ) -> EvaluatedFunctionFunction<Profile> {
         match local {
             FunctionFunctionLocal::Core(local) => {
                 EvaluatedFunctionFunction::Core(self.core_function_function(local))
@@ -585,37 +615,40 @@ impl BlockEnvironment {
     pub(super) fn core_function_function(
         &self,
         local: &CoreFunctionFunctionLocal,
-    ) -> EvaluatedCoreFunctionFunction {
+    ) -> EvaluatedCoreFunctionFunction<Profile> {
         self.values.core_function_functions[local.id().0].clone()
     }
 
     pub(super) fn external_function_function(
         &self,
         local: &ExternalFunctionFunctionLocal,
-    ) -> EvaluatedExternalFunctionFunction {
+    ) -> EvaluatedExternalFunctionFunction<Profile> {
         self.values.external_function_functions[local.id().0].clone()
     }
 
-    pub(super) fn push_generic_function(&mut self, value: EvaluatedGenericFunction) {
+    pub(super) fn push_generic_function(&mut self, value: EvaluatedGenericFunction<Profile>) {
         self.values.generic_functions.push(value);
     }
 
     pub(super) fn generic_function(
         &self,
         local: &GenericFunctionLocal,
-    ) -> EvaluatedGenericFunction {
+    ) -> EvaluatedGenericFunction<Profile> {
         self.values.generic_functions[local.id().0].clone()
     }
 
-    pub(super) fn push_never_function(&mut self, value: EvaluatedNeverFunction) {
+    pub(super) fn push_never_function(&mut self, value: EvaluatedNeverFunction<Profile>) {
         self.values.never_functions.push(value);
     }
 
-    pub(super) fn never_function(&self, local: &NeverFunctionLocal) -> EvaluatedNeverFunction {
+    pub(super) fn never_function(
+        &self,
+        local: &NeverFunctionLocal,
+    ) -> EvaluatedNeverFunction<Profile> {
         self.values.never_functions[local.id().0].clone()
     }
 
-    pub(super) fn push_function_value(&mut self, value: EvaluatedFunctionValue) {
+    pub(super) fn push_function_value(&mut self, value: EvaluatedFunctionValue<Profile>) {
         use crate::runtime::EvaluatedFunctionValueKind as F;
 
         match value.kind() {
@@ -639,7 +672,7 @@ impl BlockEnvironment {
     pub(super) fn function_value(
         &self,
         local: &crate::plan::execution::graph::FunctionLocal,
-    ) -> EvaluatedFunctionValue {
+    ) -> EvaluatedFunctionValue<Profile> {
         use crate::plan::execution::graph::FunctionLocal as L;
 
         match local {
@@ -661,14 +694,17 @@ impl BlockEnvironment {
     }
 }
 
-impl RetainedValues {
+impl<Profile: RuntimeValueProfile> ProfiledRetainedValues<Profile> {
+    pub(crate) fn async_external(&self, index: usize) -> EvaluatedExternalValue<Profile> {
+        self.values.externals[index].clone()
+    }
     pub(crate) fn empty() -> Self {
         Self {
             values: Box::default(),
         }
     }
 
-    pub(in crate::runtime) fn push_evaluated(&mut self, value: EvaluatedValue) {
+    pub(in crate::runtime) fn push_evaluated(&mut self, value: EvaluatedValue<Profile>) {
         match value {
             EvaluatedValue::Int(value) => self.values.ints.push(value),
             EvaluatedValue::Float(value) => self.values.floats.push(value),
@@ -686,15 +722,49 @@ impl RetainedValues {
         }
     }
 
-    pub(crate) fn push_int(&mut self, value: BigInt) {
+    pub(crate) fn async_int_function(&self, index: usize) -> EvaluatedIntFunction<Profile> {
+        self.values.int_functions[index].clone()
+    }
+
+    pub(crate) fn async_float_function(&self, index: usize) -> EvaluatedFloatFunction<Profile> {
+        self.values.float_functions[index].clone()
+    }
+
+    pub(crate) fn async_string_function(&self, index: usize) -> EvaluatedStringFunction<Profile> {
+        self.values.string_functions[index].clone()
+    }
+
+    pub(crate) fn async_bit_array_function(
+        &self,
+        index: usize,
+    ) -> EvaluatedBitArrayFunction<Profile> {
+        self.values.bit_array_functions[index].clone()
+    }
+
+    pub(crate) fn async_utf_codepoint_function(
+        &self,
+        index: usize,
+    ) -> EvaluatedUtfCodepointFunction<Profile> {
+        self.values.utf_codepoint_functions[index].clone()
+    }
+
+    pub(crate) fn async_bool_function(&self, index: usize) -> EvaluatedBoolFunction<Profile> {
+        self.values.bool_functions[index].clone()
+    }
+
+    pub(crate) fn async_nil_function(&self, index: usize) -> EvaluatedNilFunction<Profile> {
+        self.values.nil_functions[index].clone()
+    }
+
+    pub(in crate::runtime) fn push_int(&mut self, value: BigInt) {
         self.values.ints.push(value);
     }
 
-    pub(crate) fn push_float(&mut self, value: f64) {
+    pub(in crate::runtime) fn push_float(&mut self, value: f64) {
         self.values.floats.push(value);
     }
 
-    pub(crate) fn push_string(&mut self, value: EcoString) {
+    pub(in crate::runtime) fn push_string(&mut self, value: EcoString) {
         self.values.strings.push(value);
     }
 
@@ -702,29 +772,29 @@ impl RetainedValues {
         self.values.bit_arrays.push(value);
     }
 
-    pub(crate) fn push_utf_codepoint(&mut self, value: char) {
+    pub(in crate::runtime) fn push_utf_codepoint(&mut self, value: char) {
         self.values.utf_codepoints.push(value);
     }
 
-    pub(in crate::runtime) fn push_custom(&mut self, value: EvaluatedCustomValue) {
+    pub(in crate::runtime) fn push_custom(&mut self, value: EvaluatedCustomValue<Profile>) {
         self.values.customs.push(value);
     }
 
-    pub(in crate::runtime) fn push_external(&mut self, value: EvaluatedExternalValue) {
+    pub(in crate::runtime) fn push_external(&mut self, value: EvaluatedExternalValue<Profile>) {
         self.values.externals.push(value);
     }
 
-    pub(crate) fn push_bool(&mut self, value: bool) {
+    pub(in crate::runtime) fn push_bool(&mut self, value: bool) {
         self.values.bools.push(value);
     }
 
-    pub(crate) fn push_nil(&mut self) {}
+    pub(in crate::runtime) fn push_nil(&mut self) {}
 
-    pub(in crate::runtime) fn push_tuple(&mut self, value: Vec<EvaluatedValue>) {
+    pub(in crate::runtime) fn push_tuple(&mut self, value: Vec<EvaluatedValue<Profile>>) {
         self.values.tuples.push(value);
     }
 
-    pub(in crate::runtime) fn append_captures(&mut self, captures: &[EvaluatedCapture]) {
+    pub(in crate::runtime) fn append_captures(&mut self, captures: &[EvaluatedCapture<Profile>]) {
         for capture in captures {
             match capture.kind() {
                 EvaluatedCaptureKind::Int { value, .. } => self.values.ints.push(value.clone()),
@@ -799,11 +869,11 @@ impl RetainedValues {
         }
     }
 
-    fn push_local(&mut self, environment: &BlockEnvironment, local: &ParamLocal) {
+    fn push_local(&mut self, environment: &BlockEnvironment<Profile>, local: &ParamLocal) {
         self.push_evaluated(environment.value(local));
     }
 
-    pub(in crate::runtime) fn push_list(&mut self, value: ListValueId) {
+    pub(in crate::runtime) fn push_list(&mut self, value: ListValueId<Profile>) {
         match value {
             ListValueId::Parameter(value) => self.values.parameter_lists.push(value),
             ListValueId::Int(value) => self.values.int_lists.push(value),
@@ -822,7 +892,7 @@ impl RetainedValues {
         }
     }
 
-    pub(in crate::runtime) fn push_function(&mut self, value: EvaluatedFunctionValue) {
+    pub(in crate::runtime) fn push_function(&mut self, value: EvaluatedFunctionValue<Profile>) {
         use crate::runtime::EvaluatedFunctionValueKind as F;
 
         match value.kind() {
@@ -848,7 +918,7 @@ impl RetainedValues {
         }
     }
 
-    fn push_list_capture(&mut self, value: &EvaluatedListCapture) {
+    fn push_list_capture(&mut self, value: &EvaluatedListCapture<Profile>) {
         match value {
             EvaluatedListCapture::Parameter { value, .. } => {
                 self.values.parameter_lists.push(*value)
@@ -888,7 +958,7 @@ impl RetainedValues {
     }
 }
 
-impl HostCallArguments for RetainedValues {
+impl<Profile: RuntimeValueProfile> HostCallArguments for ProfiledRetainedValues<Profile> {
     fn int(&self, slot: HostIntArgumentSlot) -> BigInt {
         self.values.ints[slot.index()].clone()
     }
@@ -916,8 +986,8 @@ impl HostCallArguments for RetainedValues {
     fn nil(&self, _slot: HostNilArgumentSlot) {}
 }
 
-impl BlockValues {
-    fn push_list_function(&mut self, value: EvaluatedListFunction) {
+impl<Profile: RuntimeValueProfile> BlockValues<Profile> {
+    fn push_list_function(&mut self, value: EvaluatedListFunction<Profile>) {
         use crate::plan::execution::function::ListFunctionId as F;
         use crate::plan::execution::function::RuntimeListFunctionId as R;
 

@@ -1,28 +1,7 @@
-use super::{HostCallback, HostFunctionImplementation, HostReturn, HostValueFunction};
-use crate::host::{HostAbiType, HostCallArguments, HostCallError, HostCallRuntime, HostProfile};
-use std::sync::Arc;
+use super::{HostReturn, OwnedHostCallback, OwnedHostFunctionImplementation};
+use crate::host::{HostAbiType, HostCallArguments, HostFailure, HostProfile};
 
-pub(super) struct HostFloatFunction<Profile: HostProfile> {
-    implementation: Arc<HostCallback<Profile, f64>>,
-}
-
-impl<Profile: HostProfile> Clone for HostFloatFunction<Profile> {
-    fn clone(&self) -> Self {
-        Self {
-            implementation: Arc::clone(&self.implementation),
-        }
-    }
-}
-
-impl<Profile: HostProfile> HostFloatFunction<Profile> {
-    pub(super) fn call(
-        &self,
-        runtime: &mut dyn HostCallRuntime<Profile>,
-    ) -> Result<f64, HostCallError> {
-        let (state, arguments) = runtime.scalar_context();
-        (self.implementation)(state, arguments)
-    }
-}
+pub(super) type HostFloatFunction<Profile> = OwnedHostCallback<Profile, f64>;
 
 impl HostReturn for f64 {
     fn descriptor() -> crate::host::HostTypeDescriptor {
@@ -30,14 +9,12 @@ impl HostReturn for f64 {
     }
 
     fn implementation<Profile: HostProfile>(
-        function: impl Fn(&mut Profile::RunState, &dyn HostCallArguments) -> Result<Self, HostCallError>
+        function: impl Fn(&mut Profile::RunState, &dyn HostCallArguments) -> Result<Self, HostFailure>
         + Send
         + Sync
         + 'static,
-    ) -> HostFunctionImplementation<Profile> {
-        HostFunctionImplementation::Value(HostValueFunction::float(HostFloatFunction {
-            implementation: Arc::new(function),
-        }))
+    ) -> OwnedHostFunctionImplementation<Profile> {
+        OwnedHostFunctionImplementation::Float(OwnedHostCallback::new(function))
     }
 }
 
@@ -58,6 +35,7 @@ mod tests {
             <f64 as HostReturn>::implementation::<TestHostProfile>(move |_, arguments| {
                 Ok(arguments.float(slot) + 0.5)
             });
+        let implementation = implementation.into_immediate();
         let arguments = CallArguments::new(Vec::new(), Vec::new()).with_scalar_values(
             vec![1.0],
             Vec::new(),

@@ -54,6 +54,9 @@ impl CustomLocal {
 }
 
 impl ExternalLocal {
+    pub(crate) fn type_id(self) -> crate::plan::execution::type_::ExternalTypeId {
+        self.type_id
+    }
     pub(in crate::plan::execution) fn new(
         id: ExternalLocalId,
         type_id: crate::plan::execution::type_::ExternalTypeId,

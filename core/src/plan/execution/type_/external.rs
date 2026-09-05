@@ -1,5 +1,6 @@
 use crate::plan;
 
+#[derive(Clone)]
 pub(crate) struct ExternalTypeTable {
     types: Vec<plan::ExternalType>,
 }

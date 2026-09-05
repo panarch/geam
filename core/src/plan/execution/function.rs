@@ -57,16 +57,16 @@ pub(crate) use list_return::{
     ExecutionTupleListFunctionBody, ExecutionUtfCodepointListFunctionBody,
     ExternalListFunctionBody, ExternalListFunctionId, FloatListFunctionBody, FloatListFunctionId,
     FunctionListFunctionBody, FunctionListFunctionId, IntListFunctionBody, IntListFunctionId,
-    ListFunctionId, ListListFunctionBody, ListListFunctionId, NilListFunctionBody,
-    NilListFunctionId, ParameterListFunctionBody, ParameterListFunctionId,
+    LibraryListFunctionId, ListFunctionId, ListListFunctionBody, ListListFunctionId,
+    NilListFunctionBody, NilListFunctionId, ParameterListFunctionBody, ParameterListFunctionId,
     ParameterListListFunctionBody, ParameterListListFunctionId, ProfiledListFunctionId,
     RuntimeListFunctionId, StringListFunctionBody, StringListFunctionId, TupleListFunctionBody,
     TupleListFunctionId, UtfCodepointListFunctionBody, UtfCodepointListFunctionId,
 };
 pub(crate) use profile::{
-    ExecutionFunction, ExecutionFunctionBody, ExecutionFunctionEntry, ExecutionFunctionRef,
-    ExecutionGraphProfile, ExecutionHostTarget, ExecutionNeverFunction, ExecutionNeverHostTarget,
-    ExecutionProfile, HostedExecutionGraph,
+    AsyncHostReturnTarget, DirectHostedExecutionProfile, ExecutionFunction, ExecutionFunctionBody,
+    ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionGraphProfile, ExecutionHostTarget,
+    ExecutionNeverFunction, ExecutionNeverHostTarget, ExecutionProfile, HostedExecutionGraph,
 };
 pub(crate) use runtime::{
     CoreRuntimeFunctionId, FunctionReturnFamily, GenericCallableId, ProfiledCoreRuntimeFunctionId,

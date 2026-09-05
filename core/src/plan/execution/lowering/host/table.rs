@@ -6,19 +6,28 @@ use super::super::{LoweredExecution, LoweringCompletion, LoweringContext, Specia
 use super::{parameter, return_, sealing};
 use crate::host::{
     HostFunctionImplementation as RegisteredHostFunctionImplementation, HostProfile,
+    ResumableHostFunctionImplementation,
 };
 use crate::plan::execution::host::{
+    AsyncHostFunctionTableBuilder, AsyncHostFunctionTables, AsyncHostedExecutionProfile,
     HostFunctionTables, HostSpecializationError, HostedExecutionProfile, HostedFunction,
     HostedFunctionMetadata, HostedNeverFunction, HostedValueFunction,
 };
-use crate::plan::{HostFunctionTemplate, HostImplementationBinding};
+use crate::plan::{
+    AsyncHostImplementationBinding, HostFunctionTemplate, HostImplementationBinding,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 type HostedLoweredExecution = LoweredExecution<HostedExecutionProfile>;
+type AsyncHostedLoweredExecution = LoweredExecution<AsyncHostedExecutionProfile>;
 
 pub(super) struct HostFunctionRegistry<Profile: HostProfile> {
     functions: HashMap<crate::plan::FunctionTemplateId, RegisteredHostFunction<Profile>>,
+}
+
+pub(super) struct AsyncHostFunctionRegistry<Profile: HostProfile> {
+    functions: HashMap<crate::plan::FunctionTemplateId, RegisteredAsyncHostFunction<Profile>>,
 }
 
 struct RegisteredHostFunction<Profile: HostProfile> {
@@ -26,11 +35,22 @@ struct RegisteredHostFunction<Profile: HostProfile> {
     implementation: Arc<RegisteredHostFunctionImplementation<Profile>>,
 }
 
+struct RegisteredAsyncHostFunction<Profile: HostProfile> {
+    constructions: crate::host::RegisteredHostConstructions,
+    implementation: Arc<ResumableHostFunctionImplementation<Profile>>,
+}
+
 pub(super) struct HostFunctionLowering<'registry, Profile: HostProfile> {
     registered: &'registry HostFunctionRegistry<Profile>,
     value_functions: Vec<HostedValueFunction<Profile>>,
     never_functions: Vec<HostedNeverFunction<Profile>>,
     additional: function::ProfiledFunctionEntries<HostedExecutionProfile>,
+}
+
+pub(super) struct AsyncHostFunctionLowering<'registry, Profile: HostProfile> {
+    registered: &'registry AsyncHostFunctionRegistry<Profile>,
+    functions: AsyncHostFunctionTableBuilder<Profile>,
+    additional: function::ProfiledFunctionEntries<AsyncHostedExecutionProfile>,
 }
 
 impl<Profile: HostProfile> HostFunctionRegistry<Profile> {
@@ -111,6 +131,36 @@ impl<Profile: HostProfile> HostFunctionRegistry<Profile> {
                 function_list_function_functions: Vec::new(),
                 function_function_functions: Vec::new(),
             },
+        }
+    }
+}
+
+impl<Profile: HostProfile> AsyncHostFunctionRegistry<Profile> {
+    pub(super) fn new(
+        implementation_bindings: Vec<AsyncHostImplementationBinding<Profile>>,
+    ) -> Self {
+        Self {
+            functions: implementation_bindings
+                .into_iter()
+                .map(|binding| {
+                    let (template, constructions, implementation) = binding.into_parts();
+                    (
+                        template,
+                        RegisteredAsyncHostFunction {
+                            constructions,
+                            implementation,
+                        },
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    pub(super) fn lowering(&self) -> AsyncHostFunctionLowering<'_, Profile> {
+        AsyncHostFunctionLowering {
+            registered: self,
+            functions: AsyncHostFunctionTableBuilder::new(),
+            additional: empty_function_entries(),
         }
     }
 }
@@ -208,7 +258,7 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
                         return_::lower_uninhabited_never_return(
                             index,
                             key,
-                            host_index,
+                            return_::HostNeverTargetIndex(host_index),
                             &mut self.additional,
                         );
                     }
@@ -240,11 +290,148 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
     }
 }
 
-impl LoweringContext {
-    fn finish_hosted(
+impl<Profile: HostProfile> AsyncHostFunctionLowering<'_, Profile> {
+    pub(super) fn lower_specialized(
+        &mut self,
+        template: &HostFunctionTemplate,
+        key: &SpecializationKey,
+        context: &mut LoweringContext,
+    ) -> Result<(), std::convert::Infallible> {
+        let index = context.specialization_index(key);
+        let shape =
+            SpecializedFunctionShape::instantiate(template.signature().shape(), key.substitution());
+        let parameters = context.specialization_parameters(key).to_vec();
+        let type_arguments = key
+            .substitution()
+            .arguments()
+            .iter()
+            .map(|argument| argument.to_module_shape().value_type())
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        let registered = &self.registered.functions[&template.id()];
+        let return_ = context.representations.inhabitation(shape.return_());
+        let constructions =
+            sealing::seal_host_types(template, &registered.constructions, key, context);
+        let parameters = parameter::lower_host_parameters(&parameters, template.layout(), context);
+        let type_ = context.lower_concrete_function_type(&shape);
+        let metadata = HostedFunctionMetadata::new(
+            template.package().clone(),
+            template.site().clone(),
+            shape.to_module_shape().type_(),
+            type_arguments,
+            parameters,
+            constructions,
+            type_,
+        );
+        match registered.implementation.as_ref() {
+            ResumableHostFunctionImplementation::Async(implementation) => {
+                let host_index = self.functions.push_async(metadata, implementation.kind());
+                return_::lower_async_host_return(index, key, host_index, &mut self.additional);
+            }
+            ResumableHostFunctionImplementation::Immediate(implementation) => {
+                match self.functions.push_immediate(metadata, implementation) {
+                    crate::plan::execution::host::ImmediateHostFunctionIndex::Value(host_index) => {
+                        return_::lower_async_host_return(
+                            index,
+                            key,
+                            host_index,
+                            &mut self.additional,
+                        )
+                    }
+                    crate::plan::execution::host::ImmediateHostFunctionIndex::Never(host_index) => {
+                        return_::lower_resumable_never_return(
+                            index,
+                            key,
+                            return_,
+                            host_index,
+                            &mut self.additional,
+                            context,
+                        )
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn finish(
         self,
-        additional: function::ProfiledFunctionEntries<HostedExecutionProfile>,
-    ) -> LoweringCompletion<HostedLoweredExecution> {
+        context: LoweringContext,
+    ) -> (
+        LoweringCompletion<AsyncHostedLoweredExecution>,
+        AsyncHostFunctionTables<Profile>,
+    ) {
+        let completion = context.finish_hosted(self.additional);
+        (completion, self.functions.finish())
+    }
+}
+
+fn empty_function_entries<Execution: crate::plan::execution::function::ExecutionProfile>()
+-> function::ProfiledFunctionEntries<Execution> {
+    function::ProfiledFunctionEntries {
+        never: Vec::new(),
+        custom: Vec::new(),
+        external: Vec::new(),
+        int: Vec::new(),
+        float: Vec::new(),
+        string: Vec::new(),
+        bit_array: Vec::new(),
+        utf_codepoint: Vec::new(),
+        bool: Vec::new(),
+        nil: Vec::new(),
+        tuple: Vec::new(),
+        parameter_list: Vec::new(),
+        int_list: Vec::new(),
+        string_list: Vec::new(),
+        bit_array_list: Vec::new(),
+        utf_codepoint_list: Vec::new(),
+        custom_list: Vec::new(),
+        external_list: Vec::new(),
+        float_list: Vec::new(),
+        bool_list: Vec::new(),
+        nil_list: Vec::new(),
+        tuple_list: Vec::new(),
+        parameter_list_list: Vec::new(),
+        list_list: Vec::new(),
+        function_list: Vec::new(),
+        int_function_functions: Vec::new(),
+        float_function_functions: Vec::new(),
+        string_function_functions: Vec::new(),
+        bit_array_function_functions: Vec::new(),
+        utf_codepoint_function_functions: Vec::new(),
+        custom_function_functions: Vec::new(),
+        external_function_functions: Vec::new(),
+        bool_function_functions: Vec::new(),
+        nil_function_functions: Vec::new(),
+        tuple_function_functions: Vec::new(),
+        generic_function_functions: Vec::new(),
+        never_function_functions: Vec::new(),
+        parameter_list_function_functions: Vec::new(),
+        parameter_list_list_function_functions: Vec::new(),
+        int_list_function_functions: Vec::new(),
+        string_list_function_functions: Vec::new(),
+        bit_array_list_function_functions: Vec::new(),
+        utf_codepoint_list_function_functions: Vec::new(),
+        custom_list_function_functions: Vec::new(),
+        external_list_function_functions: Vec::new(),
+        float_list_function_functions: Vec::new(),
+        bool_list_function_functions: Vec::new(),
+        nil_list_function_functions: Vec::new(),
+        tuple_list_function_functions: Vec::new(),
+        list_list_function_functions: Vec::new(),
+        function_list_function_functions: Vec::new(),
+        function_function_functions: Vec::new(),
+    }
+}
+
+impl LoweringContext {
+    fn finish_hosted<Execution>(
+        self,
+        additional: function::ProfiledFunctionEntries<Execution>,
+    ) -> LoweringCompletion<LoweredExecution<Execution>>
+    where
+        Execution: crate::plan::execution::function::DirectHostedExecutionProfile,
+    {
         let Self {
             constant_templates,
             constants,

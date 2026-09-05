@@ -54,8 +54,8 @@ where
     }
 }
 
-fn host_call_error<Profile: crate::HostProfile>(
-    plan: &crate::plan::execution::HostedExecution<Profile>,
+pub(in crate::runtime) fn host_call_error(
+    plan: &impl RuntimeExecutionPlan,
     origin: HostCallOrigin,
     function: &crate::plan::execution::host::HostedFunctionMetadata,
     error: crate::host::HostCallError,

@@ -4,12 +4,14 @@ use camino::Utf8Path;
 use std::collections::BTreeSet;
 
 mod value;
-use value::{push_function_field, push_input_shapes};
+use value::{push_async_function_field, push_function_field, push_input_shapes};
 
 pub(super) fn plain(bindings: &PlainBindings, project_path: &Utf8Path) -> String {
     let mut output = format!("{}\n", super::GENERATED_HEADER);
     let alias = bindings.geam_alias.as_str();
     let mut imports = BTreeSet::from([
+        "AsyncHostedModuleBindings",
+        "AsyncHostedModuleBuilder",
         "BindingError",
         "Function",
         "FunctionDeclaration",
@@ -25,6 +27,7 @@ pub(super) fn plain(bindings: &PlainBindings, project_path: &Utf8Path) -> String
             .chain(std::iter::once(&function.return_type))
         {
             type_.collect_imports(&mut imports);
+            type_.collect_async_imports(&mut imports);
         }
     }
     for import in imports {
@@ -35,36 +38,28 @@ pub(super) fn plain(bindings: &PlainBindings, project_path: &Utf8Path) -> String
         bindings.root_module
     ));
     push_plain_project(&mut output, project_path);
-    output.push_str("#[allow(clippy::type_complexity)]\npub struct Functions {\n");
+    output.push_str("#[allow(dead_code, clippy::type_complexity)]\npub struct Functions {\n");
     for (index, function) in bindings.functions().enumerate() {
         push_function_field(&mut output, index, function);
     }
     output.push_str("}\n\n");
+    output.push_str(
+        "/// Generated function handles for resumable embedding.\n#[allow(dead_code, clippy::type_complexity)]\npub struct AsyncFunctions {\n",
+    );
+    for (index, function) in bindings.functions().enumerate() {
+        push_async_function_field(&mut output, index, function);
+    }
+    output.push_str("}\n\n");
     push_input_shapes(&mut output, bindings);
     output.push_str(
-        "pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), BindingError> {\n",
+        "#[allow(dead_code)]\npub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), BindingError> {\n",
     );
-    let first = &bindings.first;
-    let mutability = if bindings.remaining.is_empty() {
-        ""
-    } else {
-        "mut "
-    };
-    push_binding(
-        &mut output,
-        &format!("({mutability}bindings, function_0)"),
-        "builder",
-        first,
-    );
-    for (index, function) in bindings.remaining.iter().enumerate() {
-        push_binding(
-            &mut output,
-            &format!("function_{}", index + 1),
-            "bindings",
-            function,
-        );
-    }
-    push_binding_result(&mut output, bindings);
+    push_bind_body(&mut output, bindings, "Functions");
+    output.push_str("}\n");
+    output.push_str(&format!(
+        "\n/// Binds the generated handles into a resumable hosted module.\n#[allow(dead_code)]\npub fn bind_async<Profile: {alias}::HostProfile>(\n    builder: AsyncHostedModuleBuilder<Profile>,\n) -> Result<(AsyncHostedModuleBindings<Profile>, AsyncFunctions), BindingError> {{\n"
+    ));
+    push_bind_body(&mut output, bindings, "AsyncFunctions");
     output.push_str("}\n");
     output
 }
@@ -487,7 +482,12 @@ fn push_hosted_bind(
         generics(components),
     ));
     push_bounds_open(output, alias, components);
-    let mutability = if boundary.remaining.is_empty() {
+    push_bind_body(output, boundary, "Functions");
+    output.push_str("}\n");
+}
+
+fn push_bind_body(output: &mut String, bindings: &PlainBindings, functions: &str) {
+    let mutability = if bindings.remaining.is_empty() {
         ""
     } else {
         "mut "
@@ -496,9 +496,9 @@ fn push_hosted_bind(
         output,
         &format!("({mutability}bindings, function_0)"),
         "builder",
-        &boundary.first,
+        &bindings.first,
     );
-    for (index, function) in boundary.remaining.iter().enumerate() {
+    for (index, function) in bindings.remaining.iter().enumerate() {
         push_binding(
             output,
             &format!("function_{}", index + 1),
@@ -506,12 +506,13 @@ fn push_hosted_bind(
             function,
         );
     }
-    push_binding_result(output, boundary);
-    output.push_str("}\n");
+    push_binding_result(output, bindings, functions);
 }
 
-fn push_binding_result(output: &mut String, bindings: &PlainBindings) {
-    output.push_str("    Ok((\n        bindings,\n        Functions {\n");
+fn push_binding_result(output: &mut String, bindings: &PlainBindings, functions: &str) {
+    output.push_str(&format!(
+        "    Ok((\n        bindings,\n        {functions} {{\n"
+    ));
     for (index, function) in bindings.functions().enumerate() {
         let name = function.rust_name.as_str();
         let value = format!("function_{index}.with_input_shape()");
@@ -670,6 +671,32 @@ impl DataType {
             Self::Float | Self::UtfCodepoint | Self::Bool | Self::Nil => {}
         }
     }
+
+    fn collect_async_imports(&self, imports: &mut BTreeSet<&'static str>) {
+        match self {
+            Self::List(item) => {
+                imports.insert("AsyncList");
+                item.collect_async_imports(imports);
+            }
+            Self::Option(item) => item.collect_async_imports(imports),
+            Self::Tuple(elements) => {
+                for element in elements {
+                    element.collect_async_imports(imports);
+                }
+            }
+            Self::Result(ok, error) => {
+                ok.collect_async_imports(imports);
+                error.collect_async_imports(imports);
+            }
+            Self::Int
+            | Self::Float
+            | Self::String
+            | Self::BitArray
+            | Self::UtfCodepoint
+            | Self::Bool
+            | Self::Nil => {}
+        }
+    }
 }
 
 #[cfg(test)]
@@ -759,6 +786,8 @@ mod tests {
             source,
             r#"// Generated by `geam embedding sync`. Do not edit.
 
+use runtime::embedding::AsyncHostedModuleBindings;
+use runtime::embedding::AsyncHostedModuleBuilder;
 use runtime::embedding::BigInt;
 use runtime::embedding::BindingError;
 use runtime::embedding::BitArrayValue;
@@ -776,8 +805,19 @@ pub fn project() -> Project {
     Project::new(concat!(env!("CARGO_MANIFEST_DIR"), "/gleam"), ROOT_MODULE)
 }
 
-#[allow(clippy::type_complexity)]
+#[allow(dead_code, clippy::type_complexity)]
 pub struct Functions {
+    pub r#async: Function<(), (), Function0Input>,
+    pub all_values: Function<
+        (BigInt, f64, EcoString, BitArrayValue, char, bool, ()),
+        EcoString,
+        Function1Input,
+    >,
+}
+
+/// Generated function handles for resumable embedding.
+#[allow(dead_code, clippy::type_complexity)]
+pub struct AsyncFunctions {
     pub r#async: Function<(), (), Function0Input>,
     pub all_values: Function<
         (BigInt, f64, EcoString, BitArrayValue, char, bool, ()),
@@ -794,12 +834,29 @@ pub struct Function1Input;
 
 impl InputShape<(BigInt, f64, EcoString, BitArrayValue, char, bool, ())> for Function1Input {}
 
+#[allow(dead_code)]
 pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), BindingError> {
     let (mut bindings, function_0) = builder.function(FunctionDeclaration::new("async"))?;
     let function_1 = bindings.function(FunctionDeclaration::new("all_values"))?;
     Ok((
         bindings,
         Functions {
+            r#async: function_0.with_input_shape(),
+            all_values: function_1.with_input_shape(),
+        },
+    ))
+}
+
+/// Binds the generated handles into a resumable hosted module.
+#[allow(dead_code)]
+pub fn bind_async<Profile: runtime::HostProfile>(
+    builder: AsyncHostedModuleBuilder<Profile>,
+) -> Result<(AsyncHostedModuleBindings<Profile>, AsyncFunctions), BindingError> {
+    let (mut bindings, function_0) = builder.function(FunctionDeclaration::new("async"))?;
+    let function_1 = bindings.function(FunctionDeclaration::new("all_values"))?;
+    Ok((
+        bindings,
+        AsyncFunctions {
             r#async: function_0.with_input_shape(),
             all_values: function_1.with_input_shape(),
         },

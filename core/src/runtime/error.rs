@@ -24,6 +24,12 @@ pub enum ExecutionError {
 
 pub(crate) type ExecutionResult<T> = Result<T, ExecutionError>;
 
+impl From<InvariantError> for ExecutionError {
+    fn from(error: InvariantError) -> Self {
+        Self::Invariant(error)
+    }
+}
+
 impl ExecutionError {
     pub(crate) fn from_host_call(
         function: &crate::plan::execution::host::HostedFunctionMetadata,

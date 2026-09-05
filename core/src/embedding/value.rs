@@ -1,12 +1,11 @@
 use super::Module;
 use super::input::{ListFamily, add_list_counts};
-use crate::plan::execution::{
-    LibraryFunctionEntries, LibraryInputConstructions, LibraryListConstructions,
-};
+use crate::plan::execution::{LibraryFunctionEntries, LibraryInputConstructions};
 use crate::plan::{LibraryValueType, StandardVariant, ValueType};
 use crate::runtime::{
     EmbeddingCustomInput, EmbeddingInputValue, EmbeddingOutput, EmbeddingTupleInput, RetainedValues,
 };
+use crate::runtime::{LocalValues, RuntimeValueProfile};
 use crate::{EchoSink, ExecutionError, HostProfile, HostedExecution};
 use std::sync::Arc;
 
@@ -27,12 +26,15 @@ pub(super) trait EmbeddingValue: Sized {
 
     fn collect_lists(lists: &mut Vec<LibraryValueType>);
 
-    fn list_id(
-        lists: &LibraryListConstructions,
-        index: usize,
-    ) -> <Self::Runtime as EmbeddingInputValue>::ListType;
+    fn standard_variants() -> Vec<StandardVariant> {
+        let mut variants = Vec::with_capacity(Self::VARIANT_COUNT);
+        Self::collect_variants(&mut variants);
+        variants
+    }
+}
 
-    fn take(output: &mut EmbeddingOutput, owner: &Arc<()>) -> Self;
+pub(super) trait OutputValue<Profile: RuntimeValueProfile>: EmbeddingValue {
+    fn take(output: &mut EmbeddingOutput<Profile>, owner: &Arc<()>) -> Self;
 }
 
 pub(super) trait Arguments {
@@ -43,13 +45,7 @@ pub(super) trait Arguments {
     fn input_lists() -> Vec<LibraryValueType>;
 }
 
-pub(super) trait ReturnValue: EmbeddingValue {
-    fn standard_variants() -> Vec<StandardVariant> {
-        let mut variants = Vec::with_capacity(Self::VARIANT_COUNT);
-        Self::collect_variants(&mut variants);
-        variants
-    }
-
+pub(super) trait ReturnValue: OutputValue<LocalValues> {
     fn input_constructions(
         entries: &LibraryFunctionEntries,
         slot: usize,
@@ -74,7 +70,7 @@ pub(super) trait ReturnValue: EmbeddingValue {
 }
 
 macro_rules! scalar_value {
-    ($type:ty, $value_type:ident, $lists:ident, $take:ident) => {
+    ($type:ty, $value_type:ident, $take:ident) => {
         impl EmbeddingValue for $type {
             type Runtime = Self;
 
@@ -89,28 +85,23 @@ macro_rules! scalar_value {
             fn collect_variants(_variants: &mut Vec<StandardVariant>) {}
 
             fn collect_lists(_lists: &mut Vec<LibraryValueType>) {}
+        }
 
-            fn list_id(
-                lists: &LibraryListConstructions,
-                index: usize,
-            ) -> <Self::Runtime as EmbeddingInputValue>::ListType {
-                lists.$lists[index]
-            }
-
-            fn take(output: &mut EmbeddingOutput, _owner: &Arc<()>) -> Self {
+        impl<Profile: RuntimeValueProfile> OutputValue<Profile> for $type {
+            fn take(output: &mut EmbeddingOutput<Profile>, _owner: &Arc<()>) -> Self {
                 output.$take()
             }
         }
     };
 }
 
-scalar_value!(super::BigInt, Int, ints, take_int);
-scalar_value!(f64, Float, floats, take_float);
-scalar_value!(super::EcoString, String, strings, take_string);
-scalar_value!(super::BitArrayValue, BitArray, bit_arrays, take_bit_array);
-scalar_value!(char, UtfCodepoint, utf_codepoints, take_utf_codepoint);
-scalar_value!(bool, Bool, bools, take_bool);
-scalar_value!((), Nil, nils, take_nil);
+scalar_value!(super::BigInt, Int, take_int);
+scalar_value!(f64, Float, take_float);
+scalar_value!(super::EcoString, String, take_string);
+scalar_value!(super::BitArrayValue, BitArray, take_bit_array);
+scalar_value!(char, UtfCodepoint, take_utf_codepoint);
+scalar_value!(bool, Bool, take_bool);
+scalar_value!((), Nil, take_nil);
 
 macro_rules! tuple_value {
     ($($type:ident),+) => {
@@ -140,14 +131,14 @@ macro_rules! tuple_value {
                 $($type::collect_lists(lists);)+
             }
 
-            fn list_id(
-                lists: &LibraryListConstructions,
-                index: usize,
-            ) -> <Self::Runtime as EmbeddingInputValue>::ListType {
-                lists.tuples[index]
-            }
+        }
 
-            fn take(output: &mut EmbeddingOutput, owner: &Arc<()>) -> Self {
+        impl<Profile, $($type),+> OutputValue<Profile> for ($($type,)+)
+        where
+            Profile: RuntimeValueProfile,
+            $($type: OutputValue<Profile>,)+
+        {
+            fn take(output: &mut EmbeddingOutput<Profile>, owner: &Arc<()>) -> Self {
                 ($($type::take(output, owner),)+)
             }
         }
@@ -185,15 +176,15 @@ impl<Success: EmbeddingValue, Failure: EmbeddingValue> EmbeddingValue for Result
         Success::collect_lists(lists);
         Failure::collect_lists(lists);
     }
+}
 
-    fn list_id(
-        lists: &LibraryListConstructions,
-        index: usize,
-    ) -> <Self::Runtime as EmbeddingInputValue>::ListType {
-        lists.customs[index]
-    }
-
-    fn take(output: &mut EmbeddingOutput, owner: &Arc<()>) -> Self {
+impl<Profile, Success, Failure> OutputValue<Profile> for Result<Success, Failure>
+where
+    Profile: RuntimeValueProfile,
+    Success: OutputValue<Profile>,
+    Failure: OutputValue<Profile>,
+{
+    fn take(output: &mut EmbeddingOutput<Profile>, owner: &Arc<()>) -> Self {
         if output.take_variant() == 0 {
             Ok(Success::take(output, owner))
         } else {
@@ -221,15 +212,14 @@ impl<Value: EmbeddingValue> EmbeddingValue for Option<Value> {
     fn collect_lists(lists: &mut Vec<LibraryValueType>) {
         Value::collect_lists(lists);
     }
+}
 
-    fn list_id(
-        lists: &LibraryListConstructions,
-        index: usize,
-    ) -> <Self::Runtime as EmbeddingInputValue>::ListType {
-        lists.customs[index]
-    }
-
-    fn take(output: &mut EmbeddingOutput, owner: &Arc<()>) -> Self {
+impl<Profile, Value> OutputValue<Profile> for Option<Value>
+where
+    Profile: RuntimeValueProfile,
+    Value: OutputValue<Profile>,
+{
+    fn take(output: &mut EmbeddingOutput<Profile>, owner: &Arc<()>) -> Self {
         if output.take_variant() == 0 {
             Some(Value::take(output, owner))
         } else {
@@ -353,7 +343,7 @@ macro_rules! tuple_return {
     ($($type:ident),+) => {
         impl<$($type),+> ReturnValue for ($($type,)+)
         where
-            $($type: EmbeddingValue,)+
+            $($type: OutputValue<LocalValues>,)+
         {
             fn input_constructions(
                 entries: &LibraryFunctionEntries,
@@ -375,7 +365,9 @@ macro_rules! tuple_return {
                     inputs,
                     echo,
                 )
-                .map(|mut output| Self::take(&mut output, &module.owner))
+                .map(|mut output| {
+                    <Self as OutputValue<LocalValues>>::take(&mut output, &module.owner)
+                })
             }
 
             fn call_hosted<Profile: HostProfile>(
@@ -395,7 +387,7 @@ macro_rules! tuple_return {
                     state,
                     echo,
                 )
-                .map(|mut output| Self::take(&mut output, owner))
+                .map(|mut output| <Self as OutputValue<LocalValues>>::take(&mut output, owner))
             }
         }
     };
@@ -413,8 +405,8 @@ macro_rules! custom_return {
     ($container:ty) => {
         impl<Success, Failure> ReturnValue for $container
         where
-            Success: EmbeddingValue,
-            Failure: EmbeddingValue,
+            Success: OutputValue<LocalValues>,
+            Failure: OutputValue<LocalValues>,
         {
             fn input_constructions(
                 entries: &LibraryFunctionEntries,
@@ -436,7 +428,9 @@ macro_rules! custom_return {
                     inputs,
                     echo,
                 )
-                .map(|mut output| Self::take(&mut output, &module.owner))
+                .map(|mut output| {
+                    <Self as OutputValue<LocalValues>>::take(&mut output, &module.owner)
+                })
             }
 
             fn call_hosted<Profile: HostProfile>(
@@ -456,7 +450,7 @@ macro_rules! custom_return {
                     state,
                     echo,
                 )
-                .map(|mut output| Self::take(&mut output, owner))
+                .map(|mut output| <Self as OutputValue<LocalValues>>::take(&mut output, owner))
             }
         }
     };
@@ -466,7 +460,7 @@ custom_return!(Result<Success, Failure>);
 
 impl<Value> ReturnValue for Option<Value>
 where
-    Value: EmbeddingValue,
+    Value: OutputValue<LocalValues>,
 {
     fn input_constructions(
         entries: &LibraryFunctionEntries,
@@ -483,7 +477,7 @@ where
     ) -> Result<Self, ExecutionError> {
         let entry = &module.entries.customs[slot];
         crate::runtime::run_embedded_custom(&module.execution, *entry.function(), inputs, echo)
-            .map(|mut output| <Self as EmbeddingValue>::take(&mut output, &module.owner))
+            .map(|mut output| <Self as OutputValue<LocalValues>>::take(&mut output, &module.owner))
     }
 
     fn call_hosted<Profile: HostProfile>(
@@ -503,6 +497,6 @@ where
             state,
             echo,
         )
-        .map(|mut output| <Self as EmbeddingValue>::take(&mut output, owner))
+        .map(|mut output| <Self as OutputValue<LocalValues>>::take(&mut output, owner))
     }
 }

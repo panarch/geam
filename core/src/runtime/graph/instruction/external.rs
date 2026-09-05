@@ -1,12 +1,16 @@
 use super::super::environment::BlockEnvironment;
+use super::InstructionValueWithoutConstant;
 use super::value::{custom_projection, inputs_with_captures, list_element, tuple_projection};
 use crate::plan::ValueType;
 use crate::plan::execution::function::ExecutionGraphProfile;
 use crate::plan::execution::graph::{ExternalInstructionRef, ExternalInstructionView};
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::{EvaluatedExternalValue, EvaluatedValue};
+use crate::runtime::graph::RuntimeGraphState;
 use crate::runtime::state::RuntimeStateFor;
-use crate::runtime::{ExecutableRuntimePlan, RuntimeGraph};
+use crate::runtime::{
+    ExecutableRuntimePlan, RuntimeGraph, RuntimeListStorage, RuntimeValueProfile,
+};
 
 pub(super) fn evaluate<Plan>(
     plan: &Plan,
@@ -18,31 +22,59 @@ pub(super) fn evaluate<Plan>(
 where
     Plan: ExecutableRuntimePlan,
 {
+    evaluate_action(plan, state, environment, instruction, expected).and_then(|action| match action
+    {
+        InstructionValueWithoutConstant::Ready(value) => Ok(value),
+        InstructionValueWithoutConstant::Call {
+            function,
+            origin,
+            inputs,
+        } => crate::runtime::function::run_external(plan, state, function, origin, inputs),
+    })
+}
+
+pub(in crate::runtime) fn evaluate_action<Plan, Profile, State>(
+    plan: &Plan,
+    state: &State,
+    environment: &BlockEnvironment<Profile>,
+    instruction: &<RuntimeGraph<Plan> as ExecutionGraphProfile>::ExternalInstruction,
+    expected: &ValueType,
+) -> Result<
+    InstructionValueWithoutConstant<
+        Profile,
+        EvaluatedExternalValue<Profile>,
+        crate::plan::execution::function::ExternalFunctionId,
+    >,
+    State::Error,
+>
+where
+    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    Profile: RuntimeValueProfile,
+    State: RuntimeGraphState<Profile>,
+{
+    use InstructionValueWithoutConstant as V;
+
     match instruction.instruction_ref() {
         ExternalInstructionRef::Call {
             function,
             args,
             site,
-        } => crate::runtime::function::run_external(
-            plan,
-            state,
-            RuntimeGraph::<Plan>::external_function(function),
-            crate::runtime::error::HostCallOrigin::source(site.to_owned()),
-            environment.retain(args),
-        ),
+        } => Ok(V::Call {
+            function: RuntimeGraph::<Plan>::external_function(function),
+            origin: crate::runtime::error::HostCallOrigin::source(site.to_owned()),
+            inputs: environment.retain(args),
+        }),
         ExternalInstructionRef::FunctionCall {
             function,
             args,
             site,
         } => {
             let function = environment.external_function(function);
-            crate::runtime::function::run_external(
-                plan,
-                state,
-                function.runtime_id(),
-                crate::runtime::error::HostCallOrigin::source(site.to_owned()),
-                inputs_with_captures(environment, args, function.captures()),
-            )
+            Ok(V::Call {
+                function: function.runtime_id(),
+                origin: crate::runtime::error::HostCallOrigin::source(site.to_owned()),
+                inputs: inputs_with_captures(environment, args, function.captures()),
+            })
         }
         ExternalInstructionRef::TupleIndex { tuple, index } => tuple_projection(
             plan.value_metadata(),
@@ -51,19 +83,23 @@ where
             index,
             expected,
             external_value,
-        ),
+        )
+        .map(V::Ready),
         ExternalInstructionRef::CustomField { source, index } => {
             custom_projection(plan, environment, source, index, expected, external_value)
+                .map(V::Ready)
         }
         ExternalInstructionRef::ListIndex { list, index } => {
             let list = environment.external_list(list);
             let values = state.lists().external_values(&list);
-            list_element(expected, index, &values)
+            list_element(expected, index, &values).map(V::Ready)
         }
     }
 }
 
-fn external_value(value: &EvaluatedValue) -> Option<EvaluatedExternalValue> {
+fn external_value<Profile: RuntimeValueProfile>(
+    value: &EvaluatedValue<Profile>,
+) -> Option<EvaluatedExternalValue<Profile>> {
     let EvaluatedValue::External(value) = value else {
         return None;
     };
@@ -121,7 +157,8 @@ mod tests {
              right: &crate::runtime::StoredRuntimeValue| left.value() == right.value();
         let equality = crate::host::HostExternalEquality::new(&stored_equal);
         assert!(lease.source_equal(&equality, &equal));
-        let expected = EvaluatedExternalValue::new(ExternalTypeId::new(0), lease);
+        let expected: EvaluatedExternalValue<crate::runtime::LocalValues> =
+            EvaluatedExternalValue::new(ExternalTypeId::new(0), lease);
         let stored_inspect = |_: &crate::runtime::StoredRuntimeValue| "7".into();
         let inspection = crate::host::HostExternalInspection::new(&stored_inspect);
 
@@ -137,6 +174,9 @@ mod tests {
 
     #[test]
     fn rejects_non_external_instruction_values() {
-        assert_eq!(external_value(&EvaluatedValue::Bool(true)), None,);
+        assert_eq!(
+            external_value(&EvaluatedValue::<crate::runtime::LocalValues>::Bool(true)),
+            None,
+        );
     }
 }

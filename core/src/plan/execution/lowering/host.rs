@@ -15,15 +15,17 @@ use crate::host::HostProfile;
 use crate::plan::execution::LibraryFunctionEntries;
 use crate::plan::execution::function::{HostedExecutionGraph, RuntimeFunctionId};
 use crate::plan::execution::host::{
-    HostFunctionTables, HostSpecializationError, HostedExecutionProfile,
+    AsyncHostFunctionTables, AsyncHostedExecutionProfile, HostFunctionTables,
+    HostSpecializationError, HostedExecutionProfile,
 };
 use crate::plan::execution::{ExecutionModuleContext, ExecutionProgram, ExecutionProgramCommon};
 use crate::plan::{
-    HostImplementationBinding, HostedLibraryModulePlan, HostedLibraryModulePlanParts,
-    HostedModulePlan, HostedModulePlanParts, HostedPlannedModule, LibraryEntry, ModuleId,
+    AsyncHostedLibraryModulePlan, AsyncHostedLibraryModulePlanParts, HostedLibraryModulePlan,
+    HostedLibraryModulePlanParts, HostedModulePlan, HostedModulePlanParts, HostedPlannedModule,
+    LibraryEntry, ModuleId,
 };
 use std::collections::HashSet;
-use table::HostFunctionRegistry;
+use table::{AsyncHostFunctionRegistry, HostFunctionRegistry};
 use template::{HostLoweringTemplate, HostTemplateCatalog};
 
 pub(in crate::plan::execution) fn lower_hosted<Profile: HostProfile>(
@@ -41,13 +43,11 @@ pub(in crate::plan::execution) fn lower_hosted<Profile: HostProfile>(
         modules,
         implementation_bindings,
     } = module_plan.into_parts();
+    let implementations = HostFunctionRegistry::new(implementation_bindings);
     lower_hosted_entries(
-        HostedLoweringInput {
-            root,
-            modules,
-            implementation_bindings,
-        },
+        HostedLoweringInput { root, modules },
         MainEntry { template: entry },
+        implementations,
     )
     .map(|(program, host_functions, ())| (program, host_functions))
 }
@@ -69,34 +69,83 @@ pub(in crate::plan::execution) fn lower_hosted_library<Profile: HostProfile>(
         modules,
         implementation_bindings,
     } = module_plan.into_parts();
+    let implementations = HostFunctionRegistry::new(implementation_bindings);
     lower_hosted_entries(
-        HostedLoweringInput {
-            root,
-            modules,
-            implementation_bindings,
-        },
+        HostedLoweringInput { root, modules },
         library::Entries::new(first, remaining),
+        implementations,
     )
 }
 
-struct HostedLoweringInput<Profile: HostProfile> {
+pub(in crate::plan::execution) fn lower_async_hosted_library<Profile: HostProfile>(
+    module_plan: AsyncHostedLibraryModulePlan<Profile>,
+    first: LibraryEntry,
+    remaining: Vec<LibraryEntry>,
+) -> (
+    ExecutionProgram<AsyncHostedExecutionProfile>,
+    AsyncHostFunctionTables<Profile>,
+    LibraryFunctionEntries,
+) {
+    let AsyncHostedLibraryModulePlanParts {
+        root,
+        modules,
+        implementation_bindings,
+    } = module_plan.into_parts();
+    let implementations = AsyncHostFunctionRegistry::new(implementation_bindings);
+    match lower_hosted_entries(
+        HostedLoweringInput { root, modules },
+        library::Entries::new(first, remaining),
+        implementations,
+    ) {
+        Ok(output) => output,
+        Err(error) => match error {},
+    }
+}
+
+struct HostedLoweringInput {
     root: ModuleId,
     modules: Vec<HostedPlannedModule>,
-    implementation_bindings: Vec<HostImplementationBinding<Profile>>,
 }
 
 struct MainEntry {
     template: crate::plan::FunctionTemplateId,
 }
 
-type HostedLoweringResult<Profile, Output> = Result<
-    (
-        ExecutionProgram<HostedExecutionProfile>,
-        HostFunctionTables<Profile>,
-        Output,
-    ),
-    HostSpecializationError,
->;
+trait SealedHostFunctionRegistry {
+    type Execution: crate::plan::execution::function::DirectHostedExecutionProfile;
+    type Tables;
+    type Error;
+    type Lowering<'registry>: SealedHostFunctionLowering<
+            Execution = Self::Execution,
+            Tables = Self::Tables,
+            Error = Self::Error,
+        >
+    where
+        Self: 'registry;
+
+    fn lowering(&self) -> Self::Lowering<'_>;
+}
+
+trait SealedHostFunctionLowering {
+    type Execution: crate::plan::execution::function::DirectHostedExecutionProfile;
+    type Tables;
+    type Error;
+
+    fn lower_specialized(
+        &mut self,
+        template: &crate::plan::HostFunctionTemplate,
+        key: &SpecializationKey,
+        context: &mut LoweringContext,
+    ) -> Result<(), Self::Error>;
+
+    fn finish(
+        self,
+        context: LoweringContext,
+    ) -> (
+        super::LoweringCompletion<super::LoweredExecution<Self::Execution>>,
+        Self::Tables,
+    );
+}
 
 trait HostedEntries {
     type Reserved;
@@ -113,20 +162,22 @@ trait HostedEntries {
     fn seal(reserved: Self::Reserved) -> SpecializationOutcome<(RuntimeFunctionId, Self::Output)>;
 }
 
-fn lower_hosted_entries<Profile, Entries>(
-    input: HostedLoweringInput<Profile>,
+type LoweredHostedEntries<Entries, Registry> = (
+    ExecutionProgram<<Registry as SealedHostFunctionRegistry>::Execution>,
+    <Registry as SealedHostFunctionRegistry>::Tables,
+    <Entries as HostedEntries>::Output,
+);
+
+fn lower_hosted_entries<Entries, Registry>(
+    input: HostedLoweringInput,
     entries: Entries,
-) -> HostedLoweringResult<Profile, Entries::Output>
+    implementations: Registry,
+) -> Result<LoweredHostedEntries<Entries, Registry>, Registry::Error>
 where
-    Profile: HostProfile,
     Entries: HostedEntries,
+    Registry: SealedHostFunctionRegistry,
 {
-    let HostedLoweringInput {
-        root,
-        modules,
-        implementation_bindings,
-    } = input;
-    let implementations = HostFunctionRegistry::new(implementation_bindings);
+    let HostedLoweringInput { root, modules } = input;
     let mut module_contexts = Vec::with_capacity(modules.len());
     let mut templates = HostTemplateCatalog::new();
     let mut constant_templates = Vec::with_capacity(modules.len());
@@ -211,6 +262,86 @@ where
         host_functions,
         entry_output,
     ))
+}
+
+impl<Profile: HostProfile> SealedHostFunctionRegistry for HostFunctionRegistry<Profile> {
+    type Execution = HostedExecutionProfile;
+    type Tables = HostFunctionTables<Profile>;
+    type Error = HostSpecializationError;
+    type Lowering<'registry>
+        = table::HostFunctionLowering<'registry, Profile>
+    where
+        Self: 'registry;
+
+    fn lowering(&self) -> Self::Lowering<'_> {
+        HostFunctionRegistry::lowering(self)
+    }
+}
+
+impl<Profile: HostProfile> SealedHostFunctionRegistry for AsyncHostFunctionRegistry<Profile> {
+    type Execution = AsyncHostedExecutionProfile;
+    type Tables = AsyncHostFunctionTables<Profile>;
+    type Error = std::convert::Infallible;
+    type Lowering<'registry>
+        = table::AsyncHostFunctionLowering<'registry, Profile>
+    where
+        Self: 'registry;
+
+    fn lowering(&self) -> Self::Lowering<'_> {
+        AsyncHostFunctionRegistry::lowering(self)
+    }
+}
+
+impl<Profile: HostProfile> SealedHostFunctionLowering for table::HostFunctionLowering<'_, Profile> {
+    type Execution = HostedExecutionProfile;
+    type Tables = HostFunctionTables<Profile>;
+    type Error = HostSpecializationError;
+
+    fn lower_specialized(
+        &mut self,
+        template: &crate::plan::HostFunctionTemplate,
+        key: &SpecializationKey,
+        context: &mut LoweringContext,
+    ) -> Result<(), Self::Error> {
+        table::HostFunctionLowering::lower_specialized(self, template, key, context)
+    }
+
+    fn finish(
+        self,
+        context: LoweringContext,
+    ) -> (
+        super::LoweringCompletion<super::LoweredExecution<HostedExecutionProfile>>,
+        Self::Tables,
+    ) {
+        table::HostFunctionLowering::finish(self, context)
+    }
+}
+
+impl<Profile: HostProfile> SealedHostFunctionLowering
+    for table::AsyncHostFunctionLowering<'_, Profile>
+{
+    type Execution = AsyncHostedExecutionProfile;
+    type Tables = AsyncHostFunctionTables<Profile>;
+    type Error = std::convert::Infallible;
+
+    fn lower_specialized(
+        &mut self,
+        template: &crate::plan::HostFunctionTemplate,
+        key: &SpecializationKey,
+        context: &mut LoweringContext,
+    ) -> Result<(), Self::Error> {
+        table::AsyncHostFunctionLowering::lower_specialized(self, template, key, context)
+    }
+
+    fn finish(
+        self,
+        context: LoweringContext,
+    ) -> (
+        super::LoweringCompletion<super::LoweredExecution<AsyncHostedExecutionProfile>>,
+        Self::Tables,
+    ) {
+        table::AsyncHostFunctionLowering::finish(self, context)
+    }
 }
 
 impl HostedEntries for MainEntry {

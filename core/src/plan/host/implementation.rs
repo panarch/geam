@@ -1,20 +1,23 @@
-use crate::host::{
-    HostFunctionImplementation as RegisteredHostFunctionImplementation, HostProfile,
-};
 use crate::plan::FunctionTemplateId;
 use std::sync::Arc;
 
-pub(crate) struct HostImplementationBinding<Profile: HostProfile> {
+pub(crate) struct ProfiledHostImplementationBinding<Implementation> {
     template: FunctionTemplateId,
     constructions: crate::host::RegisteredHostConstructions,
-    implementation: Arc<RegisteredHostFunctionImplementation<Profile>>,
+    implementation: Arc<Implementation>,
 }
 
-impl<Profile: HostProfile> HostImplementationBinding<Profile> {
+pub(crate) type HostImplementationBinding<Profile> =
+    ProfiledHostImplementationBinding<crate::host::HostFunctionImplementation<Profile>>;
+
+pub(crate) type AsyncHostImplementationBinding<Profile> =
+    ProfiledHostImplementationBinding<crate::host::ResumableHostFunctionImplementation<Profile>>;
+
+impl<Implementation> ProfiledHostImplementationBinding<Implementation> {
     pub(crate) fn new(
         template: FunctionTemplateId,
         constructions: crate::host::RegisteredHostConstructions,
-        implementation: Arc<RegisteredHostFunctionImplementation<Profile>>,
+        implementation: Arc<Implementation>,
     ) -> Self {
         Self {
             template,
@@ -28,7 +31,7 @@ impl<Profile: HostProfile> HostImplementationBinding<Profile> {
     ) -> (
         FunctionTemplateId,
         crate::host::RegisteredHostConstructions,
-        Arc<RegisteredHostFunctionImplementation<Profile>>,
+        Arc<Implementation>,
     ) {
         (self.template, self.constructions, self.implementation)
     }

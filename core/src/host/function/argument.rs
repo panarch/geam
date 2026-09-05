@@ -59,7 +59,7 @@ pub(crate) struct HostExternalArgumentSlot(usize);
 pub(crate) struct HostFunctionArgumentSlot(usize);
 
 #[derive(Default)]
-pub(super) struct HostParameterLayout {
+pub(crate) struct HostParameterLayout {
     parameters: Vec<HostParameter>,
     next_int: usize,
     next_float: usize,
@@ -86,7 +86,7 @@ pub(crate) trait HostCallArguments {
     fn nil(&self, slot: HostNilArgumentSlot);
 }
 
-pub(super) trait HostArgument: super::super::HostAbiType + Sized {
+pub(crate) trait HostArgument: super::super::HostAbiType + Sized {
     type Slot: Copy + Send + Sync + 'static;
 
     fn register(layout: &mut HostParameterLayout) -> Self::Slot;
@@ -145,12 +145,24 @@ impl HostFunctionArgumentSlot {
 }
 
 impl HostParameterLayout {
-    pub(super) fn register<Argument: HostArgument>(&mut self) -> Argument::Slot {
+    pub(crate) fn register<Argument: HostArgument>(&mut self) -> Argument::Slot {
         Argument::register(self)
     }
 
-    pub(super) fn finish(self) -> Box<[HostParameter]> {
+    pub(crate) fn finish(self) -> Box<[HostParameter]> {
         self.parameters.into_boxed_slice()
+    }
+
+    pub(crate) fn register_function_parameter(&mut self) {
+        let slot = HostFunctionArgumentSlot(self.next_function);
+        self.next_function += 1;
+        self.parameters.push(HostParameter::Function(slot));
+    }
+
+    pub(crate) fn register_external_parameter(&mut self) {
+        let slot = HostExternalArgumentSlot(self.next_external);
+        self.next_external += 1;
+        self.parameters.push(HostParameter::External(slot));
     }
 }
 
@@ -310,8 +322,7 @@ where
 
     fn register(layout: &mut HostParameterLayout) -> Self::Slot {
         let slot = HostFunctionArgumentSlot(layout.next_function);
-        layout.next_function += 1;
-        layout.parameters.push(HostParameter::Function(slot));
+        layout.register_function_parameter();
         slot
     }
 

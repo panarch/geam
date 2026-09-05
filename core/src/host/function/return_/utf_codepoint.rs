@@ -1,28 +1,7 @@
-use super::{HostCallback, HostFunctionImplementation, HostReturn, HostValueFunction};
-use crate::host::{HostAbiType, HostCallArguments, HostCallError, HostCallRuntime, HostProfile};
-use std::sync::Arc;
+use super::{HostReturn, OwnedHostCallback, OwnedHostFunctionImplementation};
+use crate::host::{HostAbiType, HostCallArguments, HostFailure, HostProfile};
 
-pub(super) struct HostUtfCodepointFunction<Profile: HostProfile> {
-    implementation: Arc<HostCallback<Profile, char>>,
-}
-
-impl<Profile: HostProfile> Clone for HostUtfCodepointFunction<Profile> {
-    fn clone(&self) -> Self {
-        Self {
-            implementation: Arc::clone(&self.implementation),
-        }
-    }
-}
-
-impl<Profile: HostProfile> HostUtfCodepointFunction<Profile> {
-    pub(super) fn call(
-        &self,
-        runtime: &mut dyn HostCallRuntime<Profile>,
-    ) -> Result<char, HostCallError> {
-        let (state, arguments) = runtime.scalar_context();
-        (self.implementation)(state, arguments)
-    }
-}
+pub(super) type HostUtfCodepointFunction<Profile> = OwnedHostCallback<Profile, char>;
 
 impl HostReturn for char {
     fn descriptor() -> crate::host::HostTypeDescriptor {
@@ -30,16 +9,12 @@ impl HostReturn for char {
     }
 
     fn implementation<Profile: HostProfile>(
-        function: impl Fn(&mut Profile::RunState, &dyn HostCallArguments) -> Result<Self, HostCallError>
+        function: impl Fn(&mut Profile::RunState, &dyn HostCallArguments) -> Result<Self, HostFailure>
         + Send
         + Sync
         + 'static,
-    ) -> HostFunctionImplementation<Profile> {
-        HostFunctionImplementation::Value(HostValueFunction::utf_codepoint(
-            HostUtfCodepointFunction {
-                implementation: Arc::new(function),
-            },
-        ))
+    ) -> OwnedHostFunctionImplementation<Profile> {
+        OwnedHostFunctionImplementation::UtfCodepoint(OwnedHostCallback::new(function))
     }
 }
 
@@ -60,6 +35,7 @@ mod tests {
             <char as HostReturn>::implementation::<TestHostProfile>(move |_, arguments| {
                 Ok(arguments.utf_codepoint(slot))
             });
+        let implementation = implementation.into_immediate();
         let arguments = CallArguments::new(Vec::new(), Vec::new()).with_scalar_values(
             Vec::new(),
             Vec::new(),

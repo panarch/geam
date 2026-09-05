@@ -1,6 +1,7 @@
 use super::{FunctionTableBuilder, LoweredSpecialization, ProfiledFunctionEntries};
-use crate::plan::execution::function::{FunctionTables, ValueFunctionEntry};
-use crate::plan::execution::host::HostedExecutionProfile;
+use crate::plan::execution::function::{
+    DirectHostedExecutionProfile, FunctionTables, ValueFunctionEntry,
+};
 use crate::plan::execution::lowering::SpecializationOutcome;
 use crate::plan::execution::lowering::specialization::{Representability, SpecializationKey};
 
@@ -15,10 +16,13 @@ pub(in crate::plan::execution::lowering) fn lowered_host_function<Body, Host>(
 }
 
 impl FunctionTableBuilder {
-    pub(in crate::plan::execution::lowering) fn finish_hosted(
+    pub(in crate::plan::execution::lowering) fn finish_hosted<Profile>(
         self,
-        functions: ProfiledFunctionEntries<HostedExecutionProfile>,
-    ) -> SpecializationOutcome<Box<FunctionTables<HostedExecutionProfile>>> {
-        FunctionTableBuilder::finish_profile(self.profile_hosted(), functions)
+        functions: ProfiledFunctionEntries<Profile>,
+    ) -> SpecializationOutcome<Box<FunctionTables<Profile>>>
+    where
+        Profile: DirectHostedExecutionProfile,
+    {
+        FunctionTableBuilder::finish_profile(self.profile_hosted::<Profile>(), functions)
     }
 }

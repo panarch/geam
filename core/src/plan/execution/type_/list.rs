@@ -107,7 +107,7 @@ pub(crate) enum ListStorageTypeId {
     External(ExternalListTypeId),
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct ListTypeTable {
     types: Vec<ListStorageTypeId>,
     tuple_items: Vec<Vec<ValueType>>,
@@ -121,6 +121,11 @@ impl ListTypeId {
 
     pub(crate) fn index(self) -> usize {
         self.0
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(index: usize) -> Self {
+        Self(index)
     }
 }
 
@@ -309,6 +314,14 @@ impl ExternalListTypeId {
 
     pub(crate) fn item_type(self) -> ExternalTypeId {
         self.item_type
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(list_type: ListTypeId, item_type: ExternalTypeId) -> Self {
+        Self {
+            list_type,
+            item_type,
+        }
     }
 }
 

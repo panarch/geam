@@ -201,6 +201,14 @@ impl<Profile: ExecutionProfile> FunctionTables<Profile> {
     }
 
     #[cfg(test)]
+    pub(in crate::plan::execution) fn external_list_function_id(
+        &self,
+        index: usize,
+    ) -> ExternalListFunctionId {
+        self.list_returns.external_list_functions[index].0
+    }
+
+    #[cfg(test)]
     pub(in crate::plan::execution) fn float_list_function_id(
         &self,
         index: usize,

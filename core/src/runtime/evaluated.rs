@@ -11,7 +11,7 @@ mod source;
 pub(in crate::runtime) use capture::{
     EvaluatedCapture, EvaluatedCaptureKind, EvaluatedListCapture,
 };
-pub(in crate::runtime) use external::EvaluatedExternalValue;
+pub(crate) use external::EvaluatedExternalValue;
 pub(in crate::runtime) use function::{
     EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCoreFunctionFunction,
     EvaluatedCustomFunction, EvaluatedExternalFunction, EvaluatedExternalFunctionFunction,
@@ -27,6 +27,7 @@ use super::state::list::{ListValueId, ParameterListValueId, StoredListValueId};
 use crate::plan::ValueType;
 use crate::plan::execution::runtime::RuntimeValueMetadata;
 use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId};
+use crate::runtime::{LocalValues, RuntimeValueProfile};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::runtime) struct EvaluatedBitArray {
@@ -34,9 +35,9 @@ pub(in crate::runtime) struct EvaluatedBitArray {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::runtime) struct EvaluatedCustomValue {
+pub(in crate::runtime) struct EvaluatedCustomValue<Profile: RuntimeValueProfile = LocalValues> {
     constructor: CustomConstructorId,
-    fields: Box<[EvaluatedValue]>,
+    fields: Box<[EvaluatedValue<Profile>]>,
 }
 
 impl EvaluatedBitArray {
@@ -63,10 +64,10 @@ impl EvaluatedBitArray {
     }
 }
 
-impl EvaluatedCustomValue {
+impl<Profile: RuntimeValueProfile> EvaluatedCustomValue<Profile> {
     pub(in crate::runtime) fn from_fields(
         constructor: CustomConstructorId,
-        fields: Box<[EvaluatedValue]>,
+        fields: Box<[EvaluatedValue<Profile>]>,
     ) -> Self {
         Self {
             constructor,
@@ -82,38 +83,40 @@ impl EvaluatedCustomValue {
         self.constructor
     }
 
-    pub(in crate::runtime) fn fields(&self) -> &[EvaluatedValue] {
+    pub(in crate::runtime) fn fields(&self) -> &[EvaluatedValue<Profile>] {
         &self.fields
     }
 
-    pub(in crate::runtime) fn take_fields(&mut self) -> Box<[EvaluatedValue]> {
+    pub(in crate::runtime) fn take_fields(&mut self) -> Box<[EvaluatedValue<Profile>]> {
         std::mem::take(&mut self.fields)
     }
 
-    pub(in crate::runtime) fn into_fields(self) -> (CustomConstructorId, Box<[EvaluatedValue]>) {
+    pub(in crate::runtime) fn into_fields(
+        self,
+    ) -> (CustomConstructorId, Box<[EvaluatedValue<Profile>]>) {
         (self.constructor, self.fields)
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::runtime) enum EvaluatedValue {
+pub(in crate::runtime) enum EvaluatedValue<Profile: RuntimeValueProfile = LocalValues> {
     Int(BigInt),
     Float(f64),
     String(EcoString),
     BitArray(EvaluatedBitArray),
     UtfCodepoint(char),
-    Custom(EvaluatedCustomValue),
-    External(EvaluatedExternalValue),
+    Custom(EvaluatedCustomValue<Profile>),
+    External(EvaluatedExternalValue<Profile>),
     Bool(bool),
     Nil,
-    Tuple(Vec<EvaluatedValue>),
-    ParameterList(ParameterListValueId),
-    List(StoredListValueId),
-    Function(EvaluatedFunctionValue),
+    Tuple(Vec<EvaluatedValue<Profile>>),
+    ParameterList(ParameterListValueId<Profile>),
+    List(StoredListValueId<Profile>),
+    Function(EvaluatedFunctionValue<Profile>),
 }
 
-impl From<ListValueId> for EvaluatedValue {
-    fn from(value: ListValueId) -> Self {
+impl<Profile: RuntimeValueProfile> From<ListValueId<Profile>> for EvaluatedValue<Profile> {
+    fn from(value: ListValueId<Profile>) -> Self {
         match value {
             ListValueId::Parameter(value) => Self::ParameterList(value),
             ListValueId::Int(value) => Self::List(StoredListValueId::Int(value)),
@@ -135,13 +138,13 @@ impl From<ListValueId> for EvaluatedValue {
     }
 }
 
-impl From<StoredListValueId> for EvaluatedValue {
-    fn from(value: StoredListValueId) -> Self {
+impl<Profile: RuntimeValueProfile> From<StoredListValueId<Profile>> for EvaluatedValue<Profile> {
+    fn from(value: StoredListValueId<Profile>) -> Self {
         Self::List(value)
     }
 }
 
-impl EvaluatedValue {
+impl<Profile: RuntimeValueProfile> EvaluatedValue<Profile> {
     pub(in crate::runtime) fn value_type(&self, metadata: RuntimeValueMetadata<'_>) -> ValueType {
         match self {
             Self::Int(_) => ValueType::Int,

@@ -9,18 +9,15 @@ use crate::plan::execution::graph::{
     BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, MatchIntBindingId,
     MatchPattern, MatchPatternBinding, MatchPatternListTail,
 };
-use crate::runtime::ExecutableRuntimePlan;
-use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedValue};
-use crate::runtime::state::RuntimeStateFor;
-use crate::runtime::{ExecutionError, InvariantError};
+use crate::runtime::{InvariantError, RuntimeListStorage, RuntimeValueProfile};
 
-pub(super) struct MatchBindings {
-    values: Vec<EvaluatedValue>,
+pub(super) struct MatchBindings<Profile: RuntimeValueProfile> {
+    values: Vec<EvaluatedValue<Profile>>,
     ints: HashMap<MatchIntBindingId, BigInt>,
 }
 
-impl MatchBindings {
+impl<Profile: RuntimeValueProfile> MatchBindings<Profile> {
     fn new() -> Self {
         Self {
             values: Vec::new(),
@@ -28,7 +25,7 @@ impl MatchBindings {
         }
     }
 
-    fn bind(&mut self, _binding: &MatchPatternBinding, value: EvaluatedValue) {
+    fn bind(&mut self, _binding: &MatchPatternBinding, value: EvaluatedValue<Profile>) {
         self.values.push(value);
     }
 
@@ -41,34 +38,42 @@ impl MatchBindings {
         self.ints[&binding].clone()
     }
 
-    pub(super) fn value(&self, index: usize) -> EvaluatedValue {
+    pub(super) fn value(&self, index: usize) -> EvaluatedValue<Profile> {
         self.values[index].clone()
     }
 }
 
-pub(super) fn match_pattern<Plan: ExecutableRuntimePlan>(
+pub(super) fn match_pattern<Plan, Profile>(
     plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &BlockEnvironment,
+    lists: &mut Profile::ListStorage,
+    environment: &BlockEnvironment<Profile>,
     pattern: &MatchPattern,
-    subject: &EvaluatedValue,
-) -> ExecutionResult<Option<MatchBindings>> {
+    subject: &EvaluatedValue<Profile>,
+) -> Result<Option<MatchBindings<Profile>>, InvariantError>
+where
+    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    Profile: RuntimeValueProfile,
+{
     let mut bindings = MatchBindings::new();
-    if matches(plan, state, environment, pattern, subject, &mut bindings)? {
+    if matches(plan, lists, environment, pattern, subject, &mut bindings)? {
         Ok(Some(bindings))
     } else {
         Ok(None)
     }
 }
 
-fn matches<Plan: ExecutableRuntimePlan>(
+fn matches<Plan, Profile>(
     plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &BlockEnvironment,
+    lists: &mut Profile::ListStorage,
+    environment: &BlockEnvironment<Profile>,
     pattern: &MatchPattern,
-    value: &EvaluatedValue,
-    bindings: &mut MatchBindings,
-) -> ExecutionResult<bool> {
+    value: &EvaluatedValue<Profile>,
+    bindings: &mut MatchBindings<Profile>,
+) -> Result<bool, InvariantError>
+where
+    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    Profile: RuntimeValueProfile,
+{
     match pattern {
         MatchPattern::Bind(binding) => {
             bindings.bind(binding, value.clone());
@@ -97,7 +102,7 @@ fn matches<Plan: ExecutableRuntimePlan>(
             }
             for (index, pattern) in patterns.iter().enumerate() {
                 let value = &values[index];
-                if !matches(plan, state, environment, pattern, value, bindings)? {
+                if !matches(plan, lists, environment, pattern, value, bindings)? {
                     return Ok(false);
                 }
             }
@@ -117,7 +122,7 @@ fn matches<Plan: ExecutableRuntimePlan>(
                 EvaluatedValue::List(value) => value,
                 _ => return Ok(false),
             };
-            let values = state.lists().evaluated_values(value);
+            let values = lists.evaluated_values(value);
             let element_count = pattern.elements().len();
             if pattern.tail().is_some() {
                 if values.len() < element_count {
@@ -128,12 +133,12 @@ fn matches<Plan: ExecutableRuntimePlan>(
             }
             for (index, pattern) in pattern.elements().iter().enumerate() {
                 let value = &values[index];
-                if !matches(plan, state, environment, pattern, value, bindings)? {
+                if !matches(plan, lists, environment, pattern, value, bindings)? {
                     return Ok(false);
                 }
             }
             if let Some(MatchPatternListTail::Bind(binding)) = pattern.tail() {
-                let tail = state.lists_mut().drop_first(value, element_count);
+                let tail = lists.drop_first(value, element_count);
                 bindings.bind(binding, EvaluatedValue::List(tail));
             }
             Ok(true)
@@ -159,17 +164,15 @@ fn matches<Plan: ExecutableRuntimePlan>(
                 let value = &value.fields()[index];
                 let expected = descriptor.fields()[index].type_();
                 if plan.value_type(expected) != value.value_type(plan.value_metadata()) {
-                    return Err(ExecutionError::Invariant(
-                        InvariantError::CustomFieldFamilyMismatch {
-                            custom_type: plan.custom_value_type(constructor.type_id()),
-                            constructor: descriptor.name().clone(),
-                            field_index: index,
-                            expected: plan.value_type(expected),
-                            actual: value.value_type(plan.value_metadata()),
-                        },
-                    ));
+                    return Err(InvariantError::CustomFieldFamilyMismatch {
+                        custom_type: plan.custom_value_type(constructor.type_id()),
+                        constructor: descriptor.name().clone(),
+                        field_index: index,
+                        expected: plan.value_type(expected),
+                        actual: value.value_type(plan.value_metadata()),
+                    });
                 }
-                if !matches(plan, state, environment, pattern, value, bindings)? {
+                if !matches(plan, lists, environment, pattern, value, bindings)? {
                     return Ok(false);
                 }
             }
@@ -195,7 +198,7 @@ fn matches<Plan: ExecutableRuntimePlan>(
             Ok(true)
         }
         MatchPattern::Alias { pattern, binding } => {
-            if !matches(plan, state, environment, pattern, value, bindings)? {
+            if !matches(plan, lists, environment, pattern, value, bindings)? {
                 return Ok(false);
             }
             bindings.bind(binding, value.clone());
@@ -204,11 +207,11 @@ fn matches<Plan: ExecutableRuntimePlan>(
     }
 }
 
-fn match_bit_array(
-    environment: &BlockEnvironment,
+fn match_bit_array<Profile: RuntimeValueProfile>(
+    environment: &BlockEnvironment<Profile>,
     subject: &EvaluatedBitArray,
     pattern: &BitArrayPattern,
-    bindings: &mut MatchBindings,
+    bindings: &mut MatchBindings<Profile>,
 ) -> bool {
     let mut cursor = 0;
     for segment in pattern.segments() {
@@ -313,9 +316,9 @@ fn match_bit_array(
     cursor == subject.bits().len()
 }
 
-fn evaluate_size(
-    environment: &BlockEnvironment,
-    bindings: &MatchBindings,
+fn evaluate_size<Profile: RuntimeValueProfile>(
+    environment: &BlockEnvironment<Profile>,
+    bindings: &MatchBindings<Profile>,
     size: &BitArrayPatternSize,
 ) -> Option<usize> {
     let value = evaluate_size_expression(environment, bindings, size.value());
@@ -328,9 +331,9 @@ fn evaluate_size(
     value.checked_mul(usize::from(size.unit()))
 }
 
-fn evaluate_size_expression(
-    environment: &BlockEnvironment,
-    bindings: &MatchBindings,
+fn evaluate_size_expression<Profile: RuntimeValueProfile>(
+    environment: &BlockEnvironment<Profile>,
+    bindings: &MatchBindings<Profile>,
     expression: &BitArrayPatternSizeExpr,
 ) -> BigInt {
     match expression {
@@ -368,10 +371,10 @@ fn evaluate_size_expression(
     }
 }
 
-fn match_int(
+fn match_int<Profile: RuntimeValueProfile>(
     pattern: &BitArrayPatternValue<BigInt>,
     value: &BigInt,
-    bindings: &mut MatchBindings,
+    bindings: &mut MatchBindings<Profile>,
 ) -> bool {
     match pattern {
         BitArrayPatternValue::Literal(expected) => expected == value,
@@ -390,10 +393,10 @@ fn match_int(
     }
 }
 
-fn match_float(
+fn match_float<Profile: RuntimeValueProfile>(
     pattern: &BitArrayPatternValue<f64>,
     value: f64,
-    bindings: &mut MatchBindings,
+    bindings: &mut MatchBindings<Profile>,
 ) -> bool {
     match pattern {
         BitArrayPatternValue::Literal(expected) => *expected == value,
@@ -412,10 +415,10 @@ fn match_float(
     }
 }
 
-fn bind_bit_array(
+fn bind_bit_array<Profile: RuntimeValueProfile>(
     pattern: &BitArrayBindingPattern,
     value: &EvaluatedBitArray,
-    bindings: &mut MatchBindings,
+    bindings: &mut MatchBindings<Profile>,
 ) {
     match pattern {
         BitArrayBindingPattern::Bind(binding) => {
@@ -429,7 +432,11 @@ fn bind_bit_array(
     }
 }
 
-fn bind_utf_codepoint(pattern: &BitArrayBindingPattern, value: char, bindings: &mut MatchBindings) {
+fn bind_utf_codepoint<Profile: RuntimeValueProfile>(
+    pattern: &BitArrayBindingPattern,
+    value: char,
+    bindings: &mut MatchBindings<Profile>,
+) {
     match pattern {
         BitArrayBindingPattern::Bind(binding) => {
             bindings.bind(binding, EvaluatedValue::UtfCodepoint(value));
@@ -453,7 +460,7 @@ mod tests {
     use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedValue};
     use crate::runtime::state::RuntimeState;
     use crate::runtime::state::list::{CustomListAllocation, ListValueId, ParameterListValueId};
-    use crate::runtime::{ExecutionError, InvariantError, Value};
+    use crate::runtime::{InvariantError, Value};
 
     #[test]
     fn recursive_matcher_executes_every_supported_pattern_family() {
@@ -785,7 +792,7 @@ pub fn main() {
 
         let bindings = match_pattern(
             &plan,
-            &mut state,
+            state.lists_mut(),
             &environment,
             pattern,
             &EvaluatedValue::String("prefix".into()),
@@ -808,7 +815,7 @@ pub fn main() {
 
         let bindings = match_pattern(
             &plan,
-            &mut state,
+            state.lists_mut(),
             &environment,
             pattern,
             &EvaluatedValue::Bool(true),
@@ -837,7 +844,7 @@ pub fn main() {
 
         let error = exact_match_error(match_pattern(
             &plan,
-            &mut state,
+            state.lists_mut(),
             &environment,
             pattern,
             &subject,
@@ -845,13 +852,13 @@ pub fn main() {
 
         assert_eq!(
             error,
-            ExecutionError::Invariant(InvariantError::CustomFieldFamilyMismatch {
+            InvariantError::CustomFieldFamilyMismatch {
                 custom_type: plan.custom_value_type(constructor.type_id()),
                 constructor: descriptor.name().clone(),
                 field_index: 0,
                 expected: ValueType::Int,
                 actual: ValueType::String,
-            },),
+            },
         );
     }
 
@@ -928,7 +935,7 @@ pub fn main() {
         let mut state = RuntimeState::new(&mut echo);
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
 
-        let matched = match_pattern(plan, &mut state, &environment, pattern, &subject)
+        let matched = match_pattern(plan, state.lists_mut(), &environment, pattern, &subject)
             .expect("refutable mismatch should not be an execution error");
         assert!(matched.is_none());
     }
@@ -944,7 +951,7 @@ pub fn main() {
 
         let matched = match_pattern(
             &plan,
-            &mut state,
+            state.lists_mut(),
             &environment,
             main_pattern(&plan),
             &EvaluatedValue::List(list.into()),
@@ -955,8 +962,8 @@ pub fn main() {
     }
 
     fn exact_match_error(
-        result: Result<Option<super::MatchBindings>, ExecutionError>,
-    ) -> ExecutionError {
+        result: Result<Option<super::MatchBindings<crate::runtime::LocalValues>>, InvariantError>,
+    ) -> InvariantError {
         match result {
             Err(error) => error,
             Ok(_) => panic!("expected pattern matching to report an execution error"),
@@ -1015,14 +1022,20 @@ pub fn main() {
         let descriptor = plan.custom_constructor(constructor);
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
         assert_eq!(
-            exact_match_error(match_pattern(plan, state, &environment, pattern, &subject,)),
-            ExecutionError::Invariant(InvariantError::CustomFieldFamilyMismatch {
+            exact_match_error(match_pattern(
+                plan,
+                state.lists_mut(),
+                &environment,
+                pattern,
+                &subject,
+            )),
+            InvariantError::CustomFieldFamilyMismatch {
                 custom_type: plan.custom_value_type(constructor.type_id()),
                 constructor: descriptor.name().clone(),
                 field_index: 0,
                 expected: ValueType::Int,
                 actual: ValueType::String,
-            }),
+            },
         );
     }
 

@@ -1,29 +1,60 @@
-use crate::host::ExternalPayloadLease;
 use crate::plan::ExternalType;
 use ecow::EcoString;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static NEXT_EXTERNAL_VALUE_ID: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone)]
 pub struct ExternalValue {
     type_: ExternalType,
     identity: ExternalValueIdentity,
     inspection: EcoString,
-    _lease: ExternalPayloadLease,
+    _lease: ExternalValueLease,
+}
+
+#[derive(Clone)]
+enum ExternalValueLease {
+    Local {
+        _lease: crate::host::ExternalPayloadLease,
+    },
+    Transfer {
+        _lease: crate::runtime::transfer::TransferExternalPayloadLease,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ExternalValueIdentity(u64);
 
+impl ExternalValueIdentity {
+    pub(crate) fn allocate_id() -> u64 {
+        NEXT_EXTERNAL_VALUE_ID.fetch_add(1, Ordering::Relaxed)
+    }
+}
+
 impl ExternalValue {
     pub(crate) fn from_evaluated(
         type_: ExternalType,
-        lease: ExternalPayloadLease,
+        lease: crate::host::ExternalPayloadLease,
         inspection: EcoString,
     ) -> Self {
         Self {
             type_,
             identity: ExternalValueIdentity(lease.id()),
             inspection,
-            _lease: lease,
+            _lease: ExternalValueLease::Local { _lease: lease },
+        }
+    }
+
+    pub(in crate::runtime) fn from_transfer_evaluated(
+        type_: ExternalType,
+        lease: crate::runtime::transfer::TransferExternalPayloadLease,
+        inspection: EcoString,
+    ) -> Self {
+        Self {
+            type_,
+            identity: ExternalValueIdentity(crate::runtime::RuntimeExternalLease::identity(&lease)),
+            inspection,
+            _lease: ExternalValueLease::Transfer { _lease: lease },
         }
     }
 
@@ -59,9 +90,14 @@ impl std::fmt::Debug for ExternalValue {
 
 #[cfg(test)]
 mod tests {
-    use super::ExternalValue;
+    use super::{ExternalValue, ExternalValueIdentity};
     use crate::host::HostExternalStore;
     use crate::plan::{ExternalType, ExternalTypeName};
+    use crate::runtime::EvaluatedValue;
+    use crate::runtime::transfer::{
+        TransferExternalEquality, TransferExternalHashing, TransferExternalInspection,
+        TransferExternalStore, TransferStoredRuntimeValue,
+    };
 
     #[test]
     fn opaque_external_value_exposes_identity_and_inspection_without_payload_access() {
@@ -73,8 +109,13 @@ mod tests {
             );
             format!("Resource({})", context.inspect_stored_value(&stored)).into()
         };
+        let before = ExternalValueIdentity::allocate_id();
         let first = store.insert(7usize, |_, left, right| left == right, source_hash, inspect);
         let second = store.insert(7usize, |_, left, right| left == right, source_hash, inspect);
+        let after = ExternalValueIdentity::allocate_id();
+        assert!(before < first.id());
+        assert!(first.id() < second.id());
+        assert!(second.id() < after);
         let type_ = ExternalType::new(
             ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
             Vec::new(),
@@ -104,5 +145,56 @@ mod tests {
         assert!(debug.contains("ExternalValue"));
         assert!(debug.contains("Resource(7)"));
         assert!(!debug.contains("7usize"));
+    }
+
+    #[test]
+    fn transferred_external_value_keeps_its_payload_lease_opaque_and_alive() {
+        fn equal(_: &TransferExternalEquality<'_>, left: &usize, right: &usize) -> bool {
+            left == right
+        }
+
+        fn hash(_: &TransferExternalHashing<'_>, value: &usize) -> u64 {
+            *value as u64
+        }
+
+        fn inspect(context: &TransferExternalInspection<'_>, value: &usize) -> ecow::EcoString {
+            format!(
+                "Resource({})",
+                context.inspect_stored_value(&TransferStoredRuntimeValue::new(
+                    EvaluatedValue::Int((*value).into())
+                ))
+            )
+            .into()
+        }
+
+        let store = TransferExternalStore::default();
+        let before = ExternalValueIdentity::allocate_id();
+        let lease = store.insert(7usize, equal, hash, inspect);
+        let identity = crate::runtime::RuntimeExternalLease::identity(&lease);
+        let after = ExternalValueIdentity::allocate_id();
+        assert!(before < identity);
+        assert!(identity < after);
+        let stored_equal = |_: &TransferStoredRuntimeValue, _: &TransferStoredRuntimeValue| true;
+        let equality = TransferExternalEquality::new(&stored_equal);
+        let stored_hash = |_: &TransferStoredRuntimeValue| 0;
+        let hashing = TransferExternalHashing::new(&stored_hash);
+        let stored_inspect = |_: &TransferStoredRuntimeValue| "7".into();
+        let inspection = TransferExternalInspection::new(&stored_inspect);
+        assert!(lease.source_equal(&equality, &lease));
+        assert_eq!(lease.source_hash(&hashing), 7);
+        assert_eq!(lease.inspection(&inspection), "Resource(7)");
+        let type_ = ExternalType::new(
+            ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
+            Vec::new(),
+        );
+        let value =
+            ExternalValue::from_transfer_evaluated(type_.clone(), lease, "Resource(7)".into());
+        let clone = value.clone();
+        drop(store);
+
+        assert_eq!(value.type_(), &type_);
+        assert_eq!(value.identity().0, identity);
+        assert_eq!(value.inspection(), "Resource(7)");
+        assert_eq!(value, clone);
     }
 }

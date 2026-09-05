@@ -15,6 +15,7 @@ use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedFunctionValue,
     EvaluatedValue,
 };
+use crate::runtime::{LocalValues, RuntimeValueProfile};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ListStorageKey {
@@ -74,7 +75,7 @@ impl ListStorageKey {
 }
 
 #[derive(Debug, Clone)]
-pub(in crate::runtime) struct ListHandleCore {
+pub(crate) struct ListHandleCore {
     lease: Rc<ListLease>,
 }
 
@@ -97,13 +98,13 @@ impl ListHandleCore {
 macro_rules! typed_list_value_id {
     ($name:ident, $type_id:ty, $variant:ident) => {
         #[derive(Debug, Clone, PartialEq)]
-        pub(in crate::runtime) struct $name {
+        pub(in crate::runtime) struct $name<Profile: RuntimeValueProfile = LocalValues> {
             type_id: $type_id,
-            core: ListHandleCore,
+            core: Profile::ListHandle,
         }
 
-        impl $name {
-            pub(in crate::runtime) fn new(type_id: $type_id, core: ListHandleCore) -> Self {
+        impl<Profile: RuntimeValueProfile> $name<Profile> {
+            pub(in crate::runtime) fn new(type_id: $type_id, core: Profile::ListHandle) -> Self {
                 Self { type_id, core }
             }
 
@@ -111,11 +112,17 @@ macro_rules! typed_list_value_id {
                 self.type_id
             }
 
-            pub(in crate::runtime) fn into_core(self) -> ListHandleCore {
+            pub(in crate::runtime) fn core(&self) -> &Profile::ListHandle {
+                &self.core
+            }
+
+            pub(in crate::runtime) fn into_core(self) -> Profile::ListHandle {
                 self.core
             }
 
-            pub(in crate::runtime) fn from_stored(value: &StoredListValueId) -> Option<Self> {
+            pub(in crate::runtime) fn from_stored(
+                value: &StoredListValueId<Profile>,
+            ) -> Option<Self> {
                 match value {
                     StoredListValueId::$variant(value) => Some(value.clone()),
                     _ => None,
@@ -123,8 +130,8 @@ macro_rules! typed_list_value_id {
             }
         }
 
-        impl From<$name> for ListValueId {
-            fn from(value: $name) -> Self {
+        impl<Profile: RuntimeValueProfile> From<$name<Profile>> for ListValueId<Profile> {
+            fn from(value: $name<Profile>) -> Self {
                 Self::$variant(value)
             }
         }
@@ -154,13 +161,17 @@ typed_list_value_id!(ListListValueId, ListListTypeId, List);
 typed_list_value_id!(FunctionListValueId, FunctionListTypeId, Function);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::runtime) struct ParameterListValueId {
+pub(in crate::runtime) struct ParameterListValueId<Profile: RuntimeValueProfile = LocalValues> {
     type_id: ParameterListTypeId,
+    profile: std::marker::PhantomData<Profile>,
 }
 
-impl ParameterListValueId {
+impl<Profile: RuntimeValueProfile> ParameterListValueId<Profile> {
     pub(in crate::runtime) fn new(type_id: ParameterListTypeId) -> Self {
-        Self { type_id }
+        Self {
+            type_id,
+            profile: std::marker::PhantomData,
+        }
     }
 
     pub(in crate::runtime) fn type_id(self) -> ParameterListTypeId {
@@ -168,33 +179,33 @@ impl ParameterListValueId {
     }
 }
 
-impl From<ParameterListValueId> for ListValueId {
-    fn from(value: ParameterListValueId) -> Self {
+impl<Profile: RuntimeValueProfile> From<ParameterListValueId<Profile>> for ListValueId<Profile> {
+    fn from(value: ParameterListValueId<Profile>) -> Self {
         Self::Parameter(value)
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::runtime) enum StoredListValueId {
-    Int(IntListValueId),
-    String(StringListValueId),
-    BitArray(BitArrayListValueId),
-    UtfCodepoint(UtfCodepointListValueId),
-    Custom(CustomListValueId),
-    External(ExternalListValueId),
-    Float(FloatListValueId),
-    Bool(BoolListValueId),
-    Nil(NilListValueId),
-    Tuple(TupleListValueId),
-    ParameterList(ParameterListListValueId),
-    List(ListListValueId),
-    Function(FunctionListValueId),
+pub(in crate::runtime) enum StoredListValueId<Profile: RuntimeValueProfile = LocalValues> {
+    Int(IntListValueId<Profile>),
+    String(StringListValueId<Profile>),
+    BitArray(BitArrayListValueId<Profile>),
+    UtfCodepoint(UtfCodepointListValueId<Profile>),
+    Custom(CustomListValueId<Profile>),
+    External(ExternalListValueId<Profile>),
+    Float(FloatListValueId<Profile>),
+    Bool(BoolListValueId<Profile>),
+    Nil(NilListValueId<Profile>),
+    Tuple(TupleListValueId<Profile>),
+    ParameterList(ParameterListListValueId<Profile>),
+    List(ListListValueId<Profile>),
+    Function(FunctionListValueId<Profile>),
 }
 
 macro_rules! stored_list_value_id_from {
-    ($value:ty, $variant:ident) => {
-        impl From<$value> for StoredListValueId {
-            fn from(value: $value) -> Self {
+    ($value:ident, $variant:ident) => {
+        impl<Profile: RuntimeValueProfile> From<$value<Profile>> for StoredListValueId<Profile> {
+            fn from(value: $value<Profile>) -> Self {
                 Self::$variant(value)
             }
         }
@@ -215,20 +226,23 @@ stored_list_value_id_from!(ParameterListListValueId, ParameterList);
 stored_list_value_id_from!(ListListValueId, List);
 stored_list_value_id_from!(FunctionListValueId, Function);
 
-pub(in crate::runtime) struct CustomListAllocation {
-    type_id: CustomListTypeId,
-    values: Vec<EvaluatedCustomValue>,
+pub(in crate::runtime) struct CustomListAllocation<Profile: RuntimeValueProfile = LocalValues> {
+    pub(in crate::runtime) type_id: CustomListTypeId,
+    pub(in crate::runtime) values: Vec<EvaluatedCustomValue<Profile>>,
 }
 
-impl CustomListAllocation {
+impl<Profile: RuntimeValueProfile> CustomListAllocation<Profile> {
     pub(in crate::runtime) fn new(
         type_id: CustomListTypeId,
-        values: Vec<EvaluatedCustomValue>,
+        values: Vec<EvaluatedCustomValue<Profile>>,
     ) -> Self {
         Self { type_id, values }
     }
 
-    fn from_value(value: &CustomListValueId, values: Vec<EvaluatedCustomValue>) -> Self {
+    fn from_value(
+        value: &CustomListValueId<Profile>,
+        values: Vec<EvaluatedCustomValue<Profile>>,
+    ) -> Self {
         Self {
             type_id: value.type_id(),
             values,
@@ -236,20 +250,23 @@ impl CustomListAllocation {
     }
 }
 
-pub(in crate::runtime) struct ExternalListAllocation {
-    type_id: ExternalListTypeId,
-    values: Vec<EvaluatedExternalValue>,
+pub(in crate::runtime) struct ExternalListAllocation<Profile: RuntimeValueProfile = LocalValues> {
+    pub(in crate::runtime) type_id: ExternalListTypeId,
+    pub(in crate::runtime) values: Vec<EvaluatedExternalValue<Profile>>,
 }
 
-impl ExternalListAllocation {
+impl<Profile: RuntimeValueProfile> ExternalListAllocation<Profile> {
     pub(in crate::runtime) fn new(
         type_id: ExternalListTypeId,
-        values: Vec<EvaluatedExternalValue>,
+        values: Vec<EvaluatedExternalValue<Profile>>,
     ) -> Self {
         Self { type_id, values }
     }
 
-    fn from_value(value: &ExternalListValueId, values: Vec<EvaluatedExternalValue>) -> Self {
+    fn from_value(
+        value: &ExternalListValueId<Profile>,
+        values: Vec<EvaluatedExternalValue<Profile>>,
+    ) -> Self {
         Self {
             type_id: value.type_id(),
             values,
@@ -258,24 +275,24 @@ impl ExternalListAllocation {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::runtime) enum ListValueId {
-    Parameter(ParameterListValueId),
-    Int(IntListValueId),
-    String(StringListValueId),
-    BitArray(BitArrayListValueId),
-    UtfCodepoint(UtfCodepointListValueId),
-    Custom(CustomListValueId),
-    External(ExternalListValueId),
-    Float(FloatListValueId),
-    Bool(BoolListValueId),
-    Nil(NilListValueId),
-    Tuple(TupleListValueId),
-    ParameterList(ParameterListListValueId),
-    List(ListListValueId),
-    Function(FunctionListValueId),
+pub(in crate::runtime) enum ListValueId<Profile: RuntimeValueProfile = LocalValues> {
+    Parameter(ParameterListValueId<Profile>),
+    Int(IntListValueId<Profile>),
+    String(StringListValueId<Profile>),
+    BitArray(BitArrayListValueId<Profile>),
+    UtfCodepoint(UtfCodepointListValueId<Profile>),
+    Custom(CustomListValueId<Profile>),
+    External(ExternalListValueId<Profile>),
+    Float(FloatListValueId<Profile>),
+    Bool(BoolListValueId<Profile>),
+    Nil(NilListValueId<Profile>),
+    Tuple(TupleListValueId<Profile>),
+    ParameterList(ParameterListListValueId<Profile>),
+    List(ListListValueId<Profile>),
+    Function(FunctionListValueId<Profile>),
 }
 
-impl StoredListValueId {
+impl<Profile: RuntimeValueProfile> StoredListValueId<Profile> {
     pub(in crate::runtime) fn list_type(&self) -> ListTypeId {
         match self {
             Self::Int(value) => value.type_id().list_type(),
@@ -294,7 +311,7 @@ impl StoredListValueId {
         }
     }
 
-    pub(in crate::runtime) fn into_value(self) -> ListValueId {
+    pub(in crate::runtime) fn into_value(self) -> ListValueId<Profile> {
         match self {
             Self::Int(value) => ListValueId::Int(value),
             Self::String(value) => ListValueId::String(value),
@@ -312,7 +329,7 @@ impl StoredListValueId {
         }
     }
 
-    pub(in crate::runtime) fn into_core(self) -> ListHandleCore {
+    pub(in crate::runtime) fn into_core(self) -> Profile::ListHandle {
         match self {
             Self::Int(value) => value.into_core(),
             Self::String(value) => value.into_core(),
@@ -331,8 +348,8 @@ impl StoredListValueId {
     }
 }
 
-impl From<StoredListValueId> for ListValueId {
-    fn from(value: StoredListValueId) -> Self {
+impl<Profile: RuntimeValueProfile> From<StoredListValueId<Profile>> for ListValueId<Profile> {
+    fn from(value: StoredListValueId<Profile>) -> Self {
         value.into_value()
     }
 }
@@ -808,7 +825,7 @@ impl RuntimeListReader {
     }
 }
 
-pub(in crate::runtime) struct RuntimeListStorage {
+pub(crate) struct RuntimeListStorage {
     storage: Rc<SharedListStorage>,
 }
 

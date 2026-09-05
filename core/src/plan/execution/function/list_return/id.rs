@@ -109,6 +109,20 @@ pub(crate) enum ListFunctionId {
     Function(FunctionListFunctionId),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LibraryListFunctionId {
+    Int(IntListFunctionId),
+    String(StringListFunctionId),
+    BitArray(BitArrayListFunctionId),
+    UtfCodepoint(UtfCodepointListFunctionId),
+    Custom(CustomListFunctionId),
+    Float(FloatListFunctionId),
+    Bool(BoolListFunctionId),
+    Nil(NilListFunctionId),
+    Tuple(TupleListFunctionId),
+    List(ListListFunctionId),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ProfiledListFunctionId<Graph: ExecutionGraphProfile> {
     Core(ListFunctionId),
@@ -116,6 +130,23 @@ pub(crate) enum ProfiledListFunctionId<Graph: ExecutionGraphProfile> {
 }
 
 pub(crate) type RuntimeListFunctionId = ProfiledListFunctionId<HostedExecutionGraph>;
+
+impl LibraryListFunctionId {
+    pub(crate) fn core(self) -> ListFunctionId {
+        match self {
+            Self::Int(id) => ListFunctionId::Int(id),
+            Self::String(id) => ListFunctionId::String(id),
+            Self::BitArray(id) => ListFunctionId::BitArray(id),
+            Self::UtfCodepoint(id) => ListFunctionId::UtfCodepoint(id),
+            Self::Custom(id) => ListFunctionId::Custom(id),
+            Self::Float(id) => ListFunctionId::Float(id),
+            Self::Bool(id) => ListFunctionId::Bool(id),
+            Self::Nil(id) => ListFunctionId::Nil(id),
+            Self::Tuple(id) => ListFunctionId::Tuple(id),
+            Self::List(id) => ListFunctionId::List(id),
+        }
+    }
+}
 
 impl IntListFunctionId {
     pub(in crate::plan::execution) fn new(index: usize, type_id: IntListTypeId) -> Self {

@@ -4,8 +4,8 @@ mod list;
 mod output;
 
 pub(crate) use input::{
-    EmbeddingCustomInput, EmbeddingInputStorage, EmbeddingInputValue, EmbeddingListInput,
-    EmbeddingTupleInput,
+    EmbeddingCustomInput, EmbeddingInput, EmbeddingInputStorage, EmbeddingInputValue,
+    EmbeddingListInput, EmbeddingTupleInput,
 };
 pub(crate) use list::EmbeddingList;
 pub(crate) use output::EmbeddingOutput;
@@ -24,8 +24,8 @@ use super::state::RuntimeState;
 use super::{EchoSink, EvaluatedBitArray, ExecutionError};
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::function::{
-    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, ExecutionGraphProfile, FloatFunctionId,
-    IntFunctionId, NilFunctionId, ProfiledListFunctionId, StringFunctionId, TupleFunctionId,
+    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, IntFunctionId,
+    LibraryListFunctionId, NilFunctionId, StringFunctionId, TupleFunctionId,
     UtfCodepointFunctionId,
 };
 
@@ -124,12 +124,17 @@ pub(crate) fn run_embedded_tuple(
 
 pub(crate) fn run_embedded_list(
     plan: &ExecutionPlan,
-    function: &ProfiledListFunctionId<std::convert::Infallible>,
+    function: &LibraryListFunctionId,
     inputs: RetainedValues,
     echo: &mut dyn EchoSink,
 ) -> Result<EmbeddingOutput, ExecutionError> {
     let mut state = RuntimeState::new(echo);
-    let function = std::convert::Infallible::list_function(function);
-    function::run_list(plan, &mut state, function, HostCallOrigin::Entry, inputs)
-        .map(|value| EmbeddingOutput::from_value(value.into()))
+    function::run_core_list(
+        plan,
+        &mut state,
+        function.core(),
+        HostCallOrigin::Entry,
+        inputs,
+    )
+    .map(|value| EmbeddingOutput::from_value(value.into()))
 }

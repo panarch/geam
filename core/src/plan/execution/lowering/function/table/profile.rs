@@ -1,18 +1,8 @@
 use super::{FunctionTableBuilder, LoweredFunction, LoweredSpecialization};
 use crate::plan::execution::function::FunctionTables;
 use crate::plan::execution::function::{
-    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
-    BoolFunctionId, BoolListFunctionId, CustomListFunctionId, ExternalListFunctionId,
-    FloatFunctionFunctionId, FloatFunctionId, FloatListFunctionId, FunctionListFunctionId,
-    GenericFunctionFunctionId, IntFunctionFunctionId, IntFunctionId, IntListFunctionId,
-    ListListFunctionId, NeverFunctionBody, NeverFunctionFunctionId, NeverFunctionId,
-    NilFunctionFunctionId, NilFunctionId, NilListFunctionId, ParameterListFunctionId,
-    ParameterListListFunctionId, StringFunctionFunctionId, StringFunctionId, StringListFunctionId,
-    TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionId,
-    UtfCodepointFunctionId, UtfCodepointListFunctionId,
-};
-use crate::plan::execution::function::{
-    ExecutableFunction, ExecutionBitArrayFunctionBody, ExecutionBitArrayFunctionFunctionBody,
+    AsyncHostReturnTarget, DirectHostedExecutionProfile, ExecutableFunction,
+    ExecutionBitArrayFunctionBody, ExecutionBitArrayFunctionFunctionBody,
     ExecutionBitArrayListFunctionBody, ExecutionBoolFunctionBody,
     ExecutionBoolFunctionFunctionBody, ExecutionBoolListFunctionBody,
     ExecutionCoreListFunctionFunctionBody, ExecutionCustomFunctionBody,
@@ -35,7 +25,17 @@ use crate::plan::execution::function::{
     ProfiledFunctionBody, ProfiledFunctionFunctionFunctionBody, ProfiledListFunctionFunctionId,
     TypedFunctionBody, ValueFunctionTables,
 };
-use crate::plan::execution::host::HostedExecutionProfile;
+use crate::plan::execution::function::{
+    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
+    BoolFunctionId, BoolListFunctionId, CustomListFunctionId, ExternalListFunctionId,
+    FloatFunctionFunctionId, FloatFunctionId, FloatListFunctionId, FunctionListFunctionId,
+    GenericFunctionFunctionId, IntFunctionFunctionId, IntFunctionId, IntListFunctionId,
+    ListListFunctionId, NeverFunctionBody, NeverFunctionFunctionId, NeverFunctionId,
+    NilFunctionFunctionId, NilFunctionId, NilListFunctionId, ParameterListFunctionId,
+    ParameterListListFunctionId, StringFunctionFunctionId, StringFunctionId, StringListFunctionId,
+    TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionId,
+    UtfCodepointFunctionId, UtfCodepointListFunctionId,
+};
 use crate::plan::execution::lowering::SpecializationOutcome;
 use crate::plan::execution::lowering::specialization::{Representability, SpecializationKey};
 use std::collections::HashSet;
@@ -451,134 +451,115 @@ impl FunctionTableBuilder {
         }
     }
 
-    pub(super) fn profile_hosted(self) -> ProfiledFunctionEntries<HostedExecutionProfile> {
+    pub(super) fn profile_hosted<Profile>(self) -> ProfiledFunctionEntries<Profile>
+    where
+        Profile: DirectHostedExecutionProfile,
+    {
         ProfiledFunctionEntries {
-            never: profile_never_functions::<HostedExecutionProfile>(self.never_functions),
-            custom: profile_functions::<HostedExecutionProfile, _, _>(self.custom_functions),
-            external: profile_functions::<HostedExecutionProfile, _, _>(self.external_functions),
-            int: profile_functions::<HostedExecutionProfile, _, _>(self.int_functions),
-            float: profile_functions::<HostedExecutionProfile, _, _>(self.float_functions),
-            string: profile_functions::<HostedExecutionProfile, _, _>(self.string_functions),
-            bit_array: profile_functions::<HostedExecutionProfile, _, _>(self.bit_array_functions),
-            utf_codepoint: profile_functions::<HostedExecutionProfile, _, _>(
-                self.utf_codepoint_functions,
-            ),
-            bool: profile_functions::<HostedExecutionProfile, _, _>(self.bool_functions),
-            nil: profile_functions::<HostedExecutionProfile, _, _>(self.nil_functions),
-            tuple: profile_functions::<HostedExecutionProfile, _, _>(self.tuple_functions),
-            parameter_list: profile_functions::<HostedExecutionProfile, _, _>(
-                self.parameter_list_functions,
-            ),
-            int_list: profile_functions::<HostedExecutionProfile, _, _>(self.int_list_functions),
-            string_list: profile_functions::<HostedExecutionProfile, _, _>(
-                self.string_list_functions,
-            ),
-            bit_array_list: profile_functions::<HostedExecutionProfile, _, _>(
-                self.bit_array_list_functions,
-            ),
-            utf_codepoint_list: profile_functions::<HostedExecutionProfile, _, _>(
+            never: profile_never_functions::<Profile>(self.never_functions),
+            custom: profile_functions::<Profile, _, _>(self.custom_functions),
+            external: profile_functions::<Profile, _, _>(self.external_functions),
+            int: profile_functions::<Profile, _, _>(self.int_functions),
+            float: profile_functions::<Profile, _, _>(self.float_functions),
+            string: profile_functions::<Profile, _, _>(self.string_functions),
+            bit_array: profile_functions::<Profile, _, _>(self.bit_array_functions),
+            utf_codepoint: profile_functions::<Profile, _, _>(self.utf_codepoint_functions),
+            bool: profile_functions::<Profile, _, _>(self.bool_functions),
+            nil: profile_functions::<Profile, _, _>(self.nil_functions),
+            tuple: profile_functions::<Profile, _, _>(self.tuple_functions),
+            parameter_list: profile_functions::<Profile, _, _>(self.parameter_list_functions),
+            int_list: profile_functions::<Profile, _, _>(self.int_list_functions),
+            string_list: profile_functions::<Profile, _, _>(self.string_list_functions),
+            bit_array_list: profile_functions::<Profile, _, _>(self.bit_array_list_functions),
+            utf_codepoint_list: profile_functions::<Profile, _, _>(
                 self.utf_codepoint_list_functions,
             ),
-            custom_list: profile_functions::<HostedExecutionProfile, _, _>(
-                self.custom_list_functions,
-            ),
-            external_list: profile_functions::<HostedExecutionProfile, _, _>(
-                self.external_list_functions,
-            ),
-            float_list: profile_functions::<HostedExecutionProfile, _, _>(
-                self.float_list_functions,
-            ),
-            bool_list: profile_functions::<HostedExecutionProfile, _, _>(self.bool_list_functions),
-            nil_list: profile_functions::<HostedExecutionProfile, _, _>(self.nil_list_functions),
-            tuple_list: profile_functions::<HostedExecutionProfile, _, _>(
-                self.tuple_list_functions,
-            ),
-            parameter_list_list: profile_functions::<HostedExecutionProfile, _, _>(
+            custom_list: profile_functions::<Profile, _, _>(self.custom_list_functions),
+            external_list: profile_functions::<Profile, _, _>(self.external_list_functions),
+            float_list: profile_functions::<Profile, _, _>(self.float_list_functions),
+            bool_list: profile_functions::<Profile, _, _>(self.bool_list_functions),
+            nil_list: profile_functions::<Profile, _, _>(self.nil_list_functions),
+            tuple_list: profile_functions::<Profile, _, _>(self.tuple_list_functions),
+            parameter_list_list: profile_functions::<Profile, _, _>(
                 self.parameter_list_list_functions,
             ),
-            list_list: profile_functions::<HostedExecutionProfile, _, _>(self.list_list_functions),
-            function_list: profile_functions::<HostedExecutionProfile, _, _>(
-                self.function_list_functions,
-            ),
-            int_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
-                self.int_function_functions,
-            ),
-            float_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            list_list: profile_functions::<Profile, _, _>(self.list_list_functions),
+            function_list: profile_functions::<Profile, _, _>(self.function_list_functions),
+            int_function_functions: profile_functions::<Profile, _, _>(self.int_function_functions),
+            float_function_functions: profile_functions::<Profile, _, _>(
                 self.float_function_functions,
             ),
-            string_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            string_function_functions: profile_functions::<Profile, _, _>(
                 self.string_function_functions,
             ),
-            bit_array_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            bit_array_function_functions: profile_functions::<Profile, _, _>(
                 self.bit_array_function_functions,
             ),
-            utf_codepoint_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            utf_codepoint_function_functions: profile_functions::<Profile, _, _>(
                 self.utf_codepoint_function_functions,
             ),
-            custom_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            custom_function_functions: profile_functions::<Profile, _, _>(
                 self.custom_function_functions,
             ),
-            external_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            external_function_functions: profile_functions::<Profile, _, _>(
                 self.external_function_functions,
             ),
-            bool_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            bool_function_functions: profile_functions::<Profile, _, _>(
                 self.bool_function_functions,
             ),
-            nil_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
-                self.nil_function_functions,
-            ),
-            tuple_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            nil_function_functions: profile_functions::<Profile, _, _>(self.nil_function_functions),
+            tuple_function_functions: profile_functions::<Profile, _, _>(
                 self.tuple_function_functions,
             ),
-            generic_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            generic_function_functions: profile_functions::<Profile, _, _>(
                 self.generic_function_functions,
             ),
-            never_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            never_function_functions: profile_functions::<Profile, _, _>(
                 self.never_function_functions,
             ),
-            parameter_list_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            parameter_list_function_functions: profile_functions::<Profile, _, _>(
                 self.parameter_list_function_functions,
             ),
-            parameter_list_list_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            parameter_list_list_function_functions: profile_functions::<Profile, _, _>(
                 self.parameter_list_list_function_functions,
             ),
-            int_list_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            int_list_function_functions: profile_functions::<Profile, _, _>(
                 self.int_list_function_functions,
             ),
-            string_list_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            string_list_function_functions: profile_functions::<Profile, _, _>(
                 self.string_list_function_functions,
             ),
-            bit_array_list_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            bit_array_list_function_functions: profile_functions::<Profile, _, _>(
                 self.bit_array_list_function_functions,
             ),
-            utf_codepoint_list_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            utf_codepoint_list_function_functions: profile_functions::<Profile, _, _>(
                 self.utf_codepoint_list_function_functions,
             ),
-            custom_list_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            custom_list_function_functions: profile_functions::<Profile, _, _>(
                 self.custom_list_function_functions,
             ),
-            external_list_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            external_list_function_functions: profile_functions::<Profile, _, _>(
                 self.external_list_function_functions,
             ),
-            float_list_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            float_list_function_functions: profile_functions::<Profile, _, _>(
                 self.float_list_function_functions,
             ),
-            bool_list_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            bool_list_function_functions: profile_functions::<Profile, _, _>(
                 self.bool_list_function_functions,
             ),
-            nil_list_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            nil_list_function_functions: profile_functions::<Profile, _, _>(
                 self.nil_list_function_functions,
             ),
-            tuple_list_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            tuple_list_function_functions: profile_functions::<Profile, _, _>(
                 self.tuple_list_function_functions,
             ),
-            list_list_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            list_list_function_functions: profile_functions::<Profile, _, _>(
                 self.list_list_function_functions,
             ),
-            function_list_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            function_list_function_functions: profile_functions::<Profile, _, _>(
                 self.function_list_function_functions,
             ),
-            function_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+            function_function_functions: profile_functions::<Profile, _, _>(
                 self.function_function_functions,
             ),
         }
@@ -1058,9 +1039,10 @@ impl<Id: ProfileIndependentTailCallId> ProfileIndependentTailCall
 {
 }
 
-impl<Body> SealFunctionBody<HostedExecutionProfile> for Body
+impl<Body, Profile> SealFunctionBody<Profile> for Body
 where
     Body: ExecutionFunctionBody,
+    Profile: DirectHostedExecutionProfile,
 {
     type Sealed = Body;
 
@@ -1073,6 +1055,7 @@ impl<Return, TailCall> SealFunctionBody<Infallible>
     for ProfiledFunctionBody<Return, TailCall, HostedExecutionGraph>
 where
     TailCall: ProfileIndependentTailCall,
+    Return: AsyncHostReturnTarget<ProfiledFunctionBody<Return, TailCall, Infallible>>,
 {
     type Sealed = ProfiledFunctionBody<Return, TailCall, Infallible>;
 
@@ -1094,6 +1077,8 @@ impl SealFunctionBody<Infallible> for ProfiledCustomFunctionBody<HostedExecution
 impl<Body> SealFunctionBody<Infallible> for TypedFunctionBody<Body>
 where
     Body: SealFunctionBody<Infallible>,
+    <Body::Sealed as crate::plan::execution::function::FunctionBodyOwner>::Return:
+        AsyncHostReturnTarget<TypedFunctionBody<Body::Sealed>>,
 {
     type Sealed = TypedFunctionBody<Body::Sealed>;
 

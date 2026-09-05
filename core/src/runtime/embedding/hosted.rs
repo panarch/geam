@@ -7,8 +7,8 @@ use super::EmbeddingOutput;
 use crate::host::HostProfile;
 use crate::plan::execution::HostedExecution;
 use crate::plan::execution::function::{
-    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, ExecutionGraphProfile, FloatFunctionId,
-    IntFunctionId, NilFunctionId, ProfiledListFunctionId, StringFunctionId, TupleFunctionId,
+    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, IntFunctionId,
+    LibraryListFunctionId, NilFunctionId, StringFunctionId, TupleFunctionId,
     UtfCodepointFunctionId,
 };
 
@@ -116,13 +116,18 @@ pub(crate) fn run_hosted_embedded_tuple<Profile: HostProfile>(
 
 pub(crate) fn run_hosted_embedded_list<Profile: HostProfile>(
     plan: &HostedExecution<Profile>,
-    function: &ProfiledListFunctionId<std::convert::Infallible>,
+    function: &LibraryListFunctionId,
     inputs: RetainedValues,
     host: &mut Profile::RunState,
     echo: &mut dyn EchoSink,
 ) -> Result<EmbeddingOutput, ExecutionError> {
     let mut state = RuntimeState::with_host(echo, host);
-    let function = std::convert::Infallible::list_function(function);
-    function::run_list(plan, &mut state, function, HostCallOrigin::Entry, inputs)
-        .map(|value| EmbeddingOutput::from_value(value.into()))
+    function::run_core_list(
+        plan,
+        &mut state,
+        function.core(),
+        HostCallOrigin::Entry,
+        inputs,
+    )
+    .map(|value| EmbeddingOutput::from_value(value.into()))
 }

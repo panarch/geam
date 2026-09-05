@@ -38,7 +38,7 @@ use super::type_::{
     CustomConstructorId, CustomTypeId, FunctionListTypeId, FunctionType, ListListTypeId,
     ListTypeId, TupleListTypeId, ValueShapeId, ValueType,
 };
-use super::{ExecutionPlan, ExecutionProgram, HostedExecution};
+use super::{AsyncHostedExecution, ExecutionPlan, ExecutionProgram, HostedExecution};
 use crate::host::HostProfile;
 use crate::plan::SourceContext;
 use ecow::EcoString;
@@ -47,6 +47,7 @@ use std::convert::Infallible;
 pub(crate) trait RuntimeExecutionPlan: Sized {
     type Profile: ExecutionProfile;
     type RunState;
+    type Values;
 
     fn program(&self) -> &ExecutionProgram<Self::Profile>;
 
@@ -403,6 +404,13 @@ pub(crate) struct RuntimeValueMetadata<'plan> {
     external_types: &'plan super::type_::ExternalTypeTable,
 }
 
+#[derive(Clone)]
+pub(crate) struct OwnedRuntimeValueMetadata {
+    list_types: super::type_::ListTypeTable,
+    custom_types: super::type_::CustomTypeTable,
+    external_types: super::type_::ExternalTypeTable,
+}
+
 impl<'plan> RuntimeValueMetadata<'plan> {
     fn new<Graph: super::function::ExecutionGraphProfile>(
         common: &'plan super::ExecutionProgramCommon<Graph>,
@@ -459,11 +467,30 @@ impl<'plan> RuntimeValueMetadata<'plan> {
     ) -> &'plan super::type_::CustomConstructorDescriptor {
         self.custom_types.constructor(id)
     }
+
+    pub(crate) fn to_owned(self) -> OwnedRuntimeValueMetadata {
+        OwnedRuntimeValueMetadata {
+            list_types: self.list_types.clone(),
+            custom_types: self.custom_types.clone(),
+            external_types: self.external_types.clone(),
+        }
+    }
+}
+
+impl OwnedRuntimeValueMetadata {
+    pub(crate) fn as_borrowed(&self) -> RuntimeValueMetadata<'_> {
+        RuntimeValueMetadata {
+            list_types: &self.list_types,
+            custom_types: &self.custom_types,
+            external_types: &self.external_types,
+        }
+    }
 }
 
 impl RuntimeExecutionPlan for ExecutionPlan {
     type Profile = Infallible;
     type RunState = ();
+    type Values = crate::runtime::LocalValues;
 
     fn program(&self) -> &ExecutionProgram<Self::Profile> {
         &self.program
@@ -487,6 +514,31 @@ impl RuntimeExecutionPlan for ExecutionPlan {
 impl<Profile: HostProfile> RuntimeExecutionPlan for HostedExecution<Profile> {
     type Profile = super::host::HostedExecutionProfile;
     type RunState = Profile::RunState;
+    type Values = crate::runtime::LocalValues;
+
+    fn program(&self) -> &ExecutionProgram<Self::Profile> {
+        &self.program
+    }
+
+    fn int_function(
+        &self,
+        id: IntFunctionId,
+    ) -> &ExecutionFunction<Self::Profile, ExecutionIntFunctionBody<Self::Profile>> {
+        self.program.functions.int_function(id)
+    }
+
+    fn bool_function(
+        &self,
+        id: BoolFunctionId,
+    ) -> &ExecutionFunction<Self::Profile, ExecutionBoolFunctionBody<Self::Profile>> {
+        self.program.functions.bool_function(id)
+    }
+}
+
+impl<Profile: HostProfile> RuntimeExecutionPlan for AsyncHostedExecution<Profile> {
+    type Profile = super::host::AsyncHostedExecutionProfile;
+    type RunState = Profile::RunState;
+    type Values = crate::runtime::TransferValues;
 
     fn program(&self) -> &ExecutionProgram<Self::Profile> {
         &self.program

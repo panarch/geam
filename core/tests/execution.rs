@@ -1,4 +1,6 @@
+use geam_core::embedding::{AsyncHostedModuleBuilder, FunctionDeclaration};
 use geam_core::planner::InvalidTypedAstReason;
+use geam_core::{AsyncHostModule, AsyncHostProviderSet, EchoOutput, EchoSink, PackageSource};
 use geam_core::{
     ExecutionError, FunctionType, ListValue, ModuleSource, PlanError, SourceContext, Value,
     ValueType, compile_typed_module, compile_typed_program, plan_module, plan_module_with_source,
@@ -6,6 +8,9 @@ use geam_core::{
 };
 use gleam_compiler_core::ast::Constant;
 use miette::{GraphicalReportHandler, GraphicalTheme};
+use std::future::Future;
+use std::pin::pin;
+use std::task::{Context, Poll, Waker};
 
 macro_rules! fixture_cases {
     ($runner:path, $dir:literal; $($name:ident),+ $(,)?) => {
@@ -1106,7 +1111,7 @@ fn run_fixture(file_name: &str) {
     let src = std::fs::read_to_string(&path).expect("fixture should be readable");
     let expected = expected_text_with_prefix(&src, "// @geam:expect ");
     let module = compile_typed_module("main", path.clone(), &src).expect("fixture should compile");
-    let source_context = SourceContext::new(path, src.clone());
+    let source_context = SourceContext::new(path.clone(), src.clone());
     let module_plan = plan_module_with_source(module, source_context).expect("fixture should plan");
     let plan = geam_core::ExecutionPlan::from_module_plan(module_plan);
     let mut echo = Vec::new();
@@ -1117,6 +1122,7 @@ fn run_fixture(file_name: &str) {
         echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
         expected_echoes(&src),
     );
+    assert_resumable_fixture(vec![ModuleSource::new("main", path, src)]);
 }
 
 fn run_module_fixture(case: &str) {
@@ -1136,13 +1142,14 @@ fn run_module_fixture(case: &str) {
         echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
         expected_echoes(&main),
     );
+    assert_resumable_fixture(module_sources(&directory));
 }
 
 fn run_error_fixture(file_name: &str) {
     let path = format!("tests/fixtures/execution_errors/{file_name}");
     let src = std::fs::read_to_string(&path).expect("fixture should be readable");
     let expected = expected_error_text(&src);
-    let module = compile_typed_module("main", path, &src).expect("fixture should compile");
+    let module = compile_typed_module("main", path.clone(), &src).expect("fixture should compile");
     let source_context = SourceContext::new(
         format!("tests/fixtures/execution_errors/{file_name}"),
         src.clone(),
@@ -1161,6 +1168,7 @@ fn run_error_fixture(file_name: &str) {
         echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
         expected_echoes(&src),
     );
+    assert_resumable_fixture(vec![ModuleSource::new("main", path, src)]);
 }
 
 fn run_module_error_fixture(case: &str) {
@@ -1181,6 +1189,92 @@ fn run_module_error_fixture(case: &str) {
         echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
         expected_echoes(&main),
     );
+    assert_resumable_fixture(module_sources(&directory));
+}
+
+#[derive(Default)]
+struct ResumableFixtureEcho {
+    effects: Vec<String>,
+    result: Option<(ValueType, String)>,
+}
+
+impl EchoSink for ResumableFixtureEcho {
+    fn emit(&mut self, output: EchoOutput) {
+        if output.location().echo_site().function() == "geam_resumable_fixture_entry" {
+            self.result = Some((output.value().value_type(), render_value(output.value())));
+        } else {
+            self.effects.push(output.to_string());
+        }
+    }
+}
+
+fn assert_resumable_fixture(modules: Vec<ModuleSource>) {
+    // Echo observes every return family through the public typed Nil entry.
+    let modules = modules
+        .into_iter()
+        .map(|module| {
+            let source = if module.module() == "main" {
+                format!(
+                    "{}\n\npub fn geam_resumable_fixture_entry() {{\n  echo main()\n  Nil\n}}\n",
+                    module.source()
+                )
+            } else {
+                module.source().to_owned()
+            };
+            ModuleSource::new(module.module().clone(), module.path().clone(), source)
+        })
+        .collect::<Vec<_>>();
+    let immediate = compile_typed_program("main", modules.clone())
+        .expect("fixture with observation entry should compile");
+    let plan = geam_core::ExecutionPlan::from_module_plan(
+        plan_program(immediate).expect("fixture with observation entry should plan"),
+    );
+    let mut expected_echo = Vec::new();
+    let expected = run_main(&plan, &mut expected_echo);
+    let hosts =
+        AsyncHostProviderSet::new(Vec::<AsyncHostModule>::new()).expect("empty async host set");
+    let program = geam_core::compile_typed_async_host_program(
+        "geam",
+        "main",
+        [PackageSource::new("geam", Vec::<String>::new(), modules)],
+        hosts,
+    )
+    .expect("fixture should compile for async embedding");
+    let (bindings, entry) = AsyncHostedModuleBuilder::new(program)
+        .expect("fixture should plan for async embedding")
+        .function(FunctionDeclaration::<(), ()>::new(
+            "geam_resumable_fixture_entry",
+        ))
+        .expect("fixture observation entry should bind");
+    let mut module = bindings.seal();
+    let mut state = ();
+    let mut echo = ResumableFixtureEcho::default();
+    let result = {
+        let mut future = pin!(module.call_async(&entry, (), &mut state, &mut echo));
+        future
+            .as_mut()
+            .poll(&mut Context::from_waker(Waker::noop()))
+    };
+    assert_eq!(
+        echo.effects,
+        expected_echo
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+    );
+    match expected {
+        Ok(value) => {
+            assert_eq!(result, Poll::Ready(Ok(())));
+            assert_eq!(
+                echo.result,
+                Some((value.value_type(), render_value(&value)))
+            );
+        }
+        Err(error) => {
+            assert_eq!(result, Poll::Ready(Err(error.into())));
+            assert_eq!(echo.result, None);
+        }
+    }
 }
 
 fn expected_echoes(source: &str) -> Vec<String> {

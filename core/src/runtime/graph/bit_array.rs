@@ -9,28 +9,38 @@ use crate::plan::execution::graph::{
     BitArrayBitsSize, BitArrayEvaluatedSize, BitArraySegment, Endianness, FloatBitSize, Signedness,
     StringEncoding,
 };
-use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::evaluated::EvaluatedBitArray;
-use crate::runtime::{BitArraySegmentPanicReason, ExecutionError};
+use crate::runtime::graph::RuntimeGraphState;
+use crate::runtime::{BitArraySegmentPanicReason, RuntimeValueProfile};
 
-pub(super) fn evaluate(
-    plan: &impl ExecutableRuntimePlan,
-    environment: &BlockEnvironment,
+pub(super) fn evaluate<Profile, State>(
+    plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
+    state: &State,
+    environment: &BlockEnvironment<Profile>,
     segments: &[BitArraySegment],
-) -> Result<EvaluatedBitArray, ExecutionError> {
+) -> Result<EvaluatedBitArray, State::Error>
+where
+    Profile: RuntimeValueProfile,
+    State: RuntimeGraphState<Profile>,
+{
     let mut bits = BitVec::<u8, Msb0>::new();
     for segment in segments {
-        append_segment(plan, environment, &mut bits, segment)?;
+        append_segment(plan, state, environment, &mut bits, segment)?;
     }
     Ok(EvaluatedBitArray::new(bits))
 }
 
-fn append_segment(
-    plan: &impl ExecutableRuntimePlan,
-    environment: &BlockEnvironment,
+fn append_segment<Profile, State>(
+    plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
+    state: &State,
+    environment: &BlockEnvironment<Profile>,
     output: &mut BitVec<u8, Msb0>,
     segment: &BitArraySegment,
-) -> Result<(), ExecutionError> {
+) -> Result<(), State::Error>
+where
+    Profile: RuntimeValueProfile,
+    State: RuntimeGraphState<Profile>,
+{
     match segment {
         BitArraySegment::Int {
             value,
@@ -43,7 +53,7 @@ fn append_segment(
             endianness,
             site,
         } => {
-            let bit_size = evaluate_size(plan, environment, size, site)?;
+            let bit_size = evaluate_size(plan, state, environment, size, site)?;
             append_integer(output, &environment.int(*value), bit_size, *endianness);
         }
         BitArraySegment::Float {
@@ -57,13 +67,13 @@ fn append_segment(
             endianness,
             site,
         } => {
-            let bit_size = evaluate_size(plan, environment, size, site)?;
+            let bit_size = evaluate_size(plan, state, environment, size, site)?;
             let bit_size = match bit_size {
                 16 => FloatBitSize::Sixteen,
                 32 => FloatBitSize::ThirtyTwo,
                 64 => FloatBitSize::SixtyFour,
                 bit_size => {
-                    return Err(ExecutionError::bit_array_segment_panic(
+                    return Err(state.bit_array_segment_panic(
                         plan.source_context_for(site.module()),
                         BitArraySegmentPanicReason::InvalidFloatSize {
                             bit_size: BigInt::from(bit_size),
@@ -88,10 +98,12 @@ fn append_segment(
             let value = environment.bit_array(*value);
             let bit_size = match size {
                 BitArrayBitsSize::Fixed(bit_size) => *bit_size,
-                BitArrayBitsSize::Evaluated(size) => evaluate_size(plan, environment, size, site)?,
+                BitArrayBitsSize::Evaluated(size) => {
+                    evaluate_size(plan, state, environment, size, site)?
+                }
             };
             let Some(bits) = value.bits().get(..bit_size) else {
-                return Err(ExecutionError::bit_array_segment_panic(
+                return Err(state.bit_array_segment_panic(
                     plan.source_context_for(site.module()),
                     BitArraySegmentPanicReason::InsufficientBits {
                         requested: bit_size,
@@ -106,12 +118,17 @@ fn append_segment(
     Ok(())
 }
 
-fn evaluate_size(
-    plan: &impl ExecutableRuntimePlan,
-    environment: &BlockEnvironment,
+fn evaluate_size<Profile, State>(
+    plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
+    state: &State,
+    environment: &BlockEnvironment<Profile>,
     size: &BitArrayEvaluatedSize,
     site: &crate::plan::PanicSite,
-) -> Result<usize, ExecutionError> {
+) -> Result<usize, State::Error>
+where
+    Profile: RuntimeValueProfile,
+    State: RuntimeGraphState<Profile>,
+{
     let value = environment.int(size.value());
     let bit_size = if value < BigInt::from(0) {
         BigInt::from(0)
@@ -119,7 +136,7 @@ fn evaluate_size(
         value * BigInt::from(size.unit())
     };
     usize::try_from(bit_size.clone()).map_err(|_| {
-        ExecutionError::bit_array_segment_panic(
+        state.bit_array_segment_panic(
             plan.source_context_for(site.module()),
             BitArraySegmentPanicReason::SizeOutOfRange { bit_size },
             site.clone(),

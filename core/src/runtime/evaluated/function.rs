@@ -1,4 +1,3 @@
-use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::EvaluatedCapture;
@@ -11,15 +10,16 @@ use crate::plan::execution::function::{
 };
 use crate::plan::execution::graph::ParamLocal;
 use crate::plan::execution::type_::{CustomConstructorId, FunctionType};
+use crate::runtime::{LocalValues, RuntimeValueProfile};
 
 static NEXT_FUNCTION_INSTANCE_ID: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::runtime) struct EvaluatedFunction<Id> {
+pub(crate) struct EvaluatedFunction<Id, Profile: RuntimeValueProfile = LocalValues> {
     pub(super) identity: EvaluatedFunctionIdentity,
     runtime_id: Id,
     params: Vec<ParamLocal>,
-    captures: Vec<EvaluatedCapture>,
+    captures: Vec<EvaluatedCapture<Profile>>,
     type_: FunctionType,
 }
 
@@ -58,60 +58,59 @@ pub(in crate::runtime) enum ListFunctionReturnFamily {
     Function,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum EvaluatedFunctionIdentity {
     Reference(FunctionReferenceIdentity),
-    Instance(Rc<FunctionInstance>),
+    Instance(FunctionInstance),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct FunctionInstance(pub(super) u64);
-
-impl PartialEq for EvaluatedFunctionIdentity {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Reference(left), Self::Reference(right)) => left == right,
-            (Self::Instance(left), Self::Instance(right)) => Rc::ptr_eq(left, right),
-            _ => false,
-        }
-    }
-}
-
-impl Eq for EvaluatedFunctionIdentity {}
 
 pub(in crate::runtime) trait FunctionReferenceId {
     fn reference_identity(&self) -> FunctionReferenceIdentity;
 }
 
-pub(in crate::runtime) type EvaluatedIntFunction = EvaluatedFunction<IntFunctionId>;
-pub(in crate::runtime) type EvaluatedFloatFunction = EvaluatedFunction<FloatFunctionId>;
-pub(in crate::runtime) type EvaluatedStringFunction = EvaluatedFunction<StringFunctionId>;
-pub(in crate::runtime) type EvaluatedBitArrayFunction = EvaluatedFunction<BitArrayFunctionId>;
-pub(in crate::runtime) type EvaluatedUtfCodepointFunction =
-    EvaluatedFunction<UtfCodepointFunctionId>;
-pub(in crate::runtime) type EvaluatedGenericFunction = EvaluatedFunction<GenericCallableId>;
-pub(in crate::runtime) type EvaluatedNeverFunction = EvaluatedFunction<NeverFunctionId>;
+pub(in crate::runtime) type EvaluatedIntFunction<Profile = LocalValues> =
+    EvaluatedFunction<IntFunctionId, Profile>;
+pub(in crate::runtime) type EvaluatedFloatFunction<Profile = LocalValues> =
+    EvaluatedFunction<FloatFunctionId, Profile>;
+pub(in crate::runtime) type EvaluatedStringFunction<Profile = LocalValues> =
+    EvaluatedFunction<StringFunctionId, Profile>;
+pub(in crate::runtime) type EvaluatedBitArrayFunction<Profile = LocalValues> =
+    EvaluatedFunction<BitArrayFunctionId, Profile>;
+pub(in crate::runtime) type EvaluatedUtfCodepointFunction<Profile = LocalValues> =
+    EvaluatedFunction<UtfCodepointFunctionId, Profile>;
+pub(in crate::runtime) type EvaluatedGenericFunction<Profile = LocalValues> =
+    EvaluatedFunction<GenericCallableId, Profile>;
+pub(in crate::runtime) type EvaluatedNeverFunction<Profile = LocalValues> =
+    EvaluatedFunction<NeverFunctionId, Profile>;
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::runtime) enum EvaluatedCustomFunction {
-    Function(EvaluatedFunction<CustomFunctionId>),
-    Constructor(EvaluatedFunction<CustomConstructorId>),
+pub(in crate::runtime) enum EvaluatedCustomFunction<Profile: RuntimeValueProfile = LocalValues> {
+    Function(EvaluatedFunction<CustomFunctionId, Profile>),
+    Constructor(EvaluatedFunction<CustomConstructorId, Profile>),
 }
-pub(in crate::runtime) type EvaluatedExternalFunction = EvaluatedFunction<ExternalFunctionId>;
-pub(in crate::runtime) type EvaluatedBoolFunction = EvaluatedFunction<BoolFunctionId>;
-pub(in crate::runtime) type EvaluatedNilFunction = EvaluatedFunction<NilFunctionId>;
-pub(in crate::runtime) type EvaluatedTupleFunction = EvaluatedFunction<TupleFunctionId>;
-pub(in crate::runtime) type EvaluatedListFunction = EvaluatedFunction<RuntimeListFunctionId>;
-pub(in crate::runtime) type EvaluatedExternalListFunction =
-    EvaluatedFunction<ExternalListFunctionId>;
-pub(in crate::runtime) type EvaluatedCoreFunctionFunction =
-    EvaluatedFunction<ProfiledFunctionFunctionId<std::convert::Infallible>>;
-pub(in crate::runtime) type EvaluatedExternalFunctionFunction =
-    EvaluatedFunction<crate::plan::execution::graph::ExternalFunctionCallTarget>;
+pub(in crate::runtime) type EvaluatedExternalFunction<Profile = LocalValues> =
+    EvaluatedFunction<ExternalFunctionId, Profile>;
+pub(in crate::runtime) type EvaluatedBoolFunction<Profile = LocalValues> =
+    EvaluatedFunction<BoolFunctionId, Profile>;
+pub(in crate::runtime) type EvaluatedNilFunction<Profile = LocalValues> =
+    EvaluatedFunction<NilFunctionId, Profile>;
+pub(in crate::runtime) type EvaluatedTupleFunction<Profile = LocalValues> =
+    EvaluatedFunction<TupleFunctionId, Profile>;
+pub(in crate::runtime) type EvaluatedListFunction<Profile = LocalValues> =
+    EvaluatedFunction<RuntimeListFunctionId, Profile>;
+pub(in crate::runtime) type EvaluatedExternalListFunction<Profile = LocalValues> =
+    EvaluatedFunction<ExternalListFunctionId, Profile>;
+pub(in crate::runtime) type EvaluatedCoreFunctionFunction<Profile = LocalValues> =
+    EvaluatedFunction<ProfiledFunctionFunctionId<std::convert::Infallible>, Profile>;
+pub(in crate::runtime) type EvaluatedExternalFunctionFunction<Profile = LocalValues> =
+    EvaluatedFunction<crate::plan::execution::graph::ExternalFunctionCallTarget, Profile>;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::runtime) enum EvaluatedFunctionFunction {
-    Core(EvaluatedCoreFunctionFunction),
-    External(EvaluatedExternalFunctionFunction),
+pub(in crate::runtime) enum EvaluatedFunctionFunction<Profile: RuntimeValueProfile = LocalValues> {
+    Core(EvaluatedCoreFunctionFunction<Profile>),
+    External(EvaluatedExternalFunctionFunction<Profile>),
 }
 
 impl FunctionReferenceIdentity {
@@ -417,33 +416,34 @@ impl FunctionReferenceId for crate::plan::execution::graph::ExternalFunctionCall
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::runtime) struct EvaluatedFunctionValue {
-    kind: EvaluatedFunctionValueKind,
+pub(in crate::runtime) struct EvaluatedFunctionValue<Profile: RuntimeValueProfile = LocalValues> {
+    kind: EvaluatedFunctionValueKind<Profile>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::runtime) enum EvaluatedFunctionValueKind {
-    Generic(EvaluatedGenericFunction),
-    Never(EvaluatedNeverFunction),
-    Int(EvaluatedIntFunction),
-    Float(EvaluatedFloatFunction),
-    String(EvaluatedStringFunction),
-    BitArray(EvaluatedBitArrayFunction),
-    UtfCodepoint(EvaluatedUtfCodepointFunction),
-    Custom(EvaluatedCustomFunction),
-    External(EvaluatedExternalFunction),
-    Bool(EvaluatedBoolFunction),
-    Nil(EvaluatedNilFunction),
-    Tuple(EvaluatedTupleFunction),
-    List(EvaluatedListFunction),
-    Function(EvaluatedFunctionFunction),
+pub(in crate::runtime) enum EvaluatedFunctionValueKind<Profile: RuntimeValueProfile = LocalValues> {
+    Generic(EvaluatedGenericFunction<Profile>),
+    Never(EvaluatedNeverFunction<Profile>),
+    Int(EvaluatedIntFunction<Profile>),
+    Float(EvaluatedFloatFunction<Profile>),
+    String(EvaluatedStringFunction<Profile>),
+    BitArray(EvaluatedBitArrayFunction<Profile>),
+    UtfCodepoint(EvaluatedUtfCodepointFunction<Profile>),
+    Custom(EvaluatedCustomFunction<Profile>),
+    External(EvaluatedExternalFunction<Profile>),
+    Bool(EvaluatedBoolFunction<Profile>),
+    Nil(EvaluatedNilFunction<Profile>),
+    Tuple(EvaluatedTupleFunction<Profile>),
+    List(EvaluatedListFunction<Profile>),
+    Function(EvaluatedFunctionFunction<Profile>),
 }
 
-impl<Id: Clone + FunctionReferenceId> EvaluatedFunction<Id> {
+#[allow(private_bounds)]
+impl<Id: Clone + FunctionReferenceId, Profile: RuntimeValueProfile> EvaluatedFunction<Id, Profile> {
     pub(in crate::runtime) fn reference(
         runtime_id: Id,
         params: Vec<ParamLocal>,
-        captures: Vec<EvaluatedCapture>,
+        captures: Vec<EvaluatedCapture<Profile>>,
         type_: FunctionType,
     ) -> Self {
         let identity = EvaluatedFunctionIdentity::Reference(runtime_id.reference_identity());
@@ -457,17 +457,17 @@ impl<Id: Clone + FunctionReferenceId> EvaluatedFunction<Id> {
     }
 }
 
-impl<Id: Clone> EvaluatedFunction<Id> {
+impl<Id: Clone, Profile: RuntimeValueProfile> EvaluatedFunction<Id, Profile> {
     pub(in crate::runtime) fn closure(
         runtime_id: Id,
         params: Vec<ParamLocal>,
-        captures: Vec<EvaluatedCapture>,
+        captures: Vec<EvaluatedCapture<Profile>>,
         type_: FunctionType,
     ) -> Self {
         Self {
-            identity: EvaluatedFunctionIdentity::Instance(Rc::new(FunctionInstance(
+            identity: EvaluatedFunctionIdentity::Instance(FunctionInstance(
                 NEXT_FUNCTION_INSTANCE_ID.fetch_add(1, Ordering::Relaxed),
-            ))),
+            )),
             runtime_id,
             params,
             captures,
@@ -483,7 +483,7 @@ impl<Id: Clone> EvaluatedFunction<Id> {
         &self.params
     }
 
-    pub(in crate::runtime) fn captures(&self) -> &[EvaluatedCapture] {
+    pub(in crate::runtime) fn captures(&self) -> &[EvaluatedCapture<Profile>] {
         &self.captures
     }
 
@@ -499,7 +499,7 @@ impl<Id: Clone> EvaluatedFunction<Id> {
     pub(in crate::runtime) fn map_runtime_id<NewId>(
         self,
         map: impl FnOnce(Id) -> NewId,
-    ) -> EvaluatedFunction<NewId> {
+    ) -> EvaluatedFunction<NewId, Profile> {
         EvaluatedFunction {
             identity: self.identity,
             runtime_id: map(self.runtime_id),
@@ -510,12 +510,12 @@ impl<Id: Clone> EvaluatedFunction<Id> {
     }
 }
 
-impl EvaluatedCustomFunction {
+impl<Profile: RuntimeValueProfile> EvaluatedCustomFunction<Profile> {
     #[cfg(test)]
     pub(in crate::runtime) fn reference(
         runtime_id: CustomFunctionId,
         params: Vec<ParamLocal>,
-        captures: Vec<EvaluatedCapture>,
+        captures: Vec<EvaluatedCapture<Profile>>,
         type_: FunctionType,
     ) -> Self {
         Self::Function(EvaluatedFunction::reference(
@@ -542,7 +542,7 @@ impl EvaluatedCustomFunction {
         }
     }
 
-    pub(in crate::runtime) fn captures(&self) -> &[EvaluatedCapture] {
+    pub(in crate::runtime) fn captures(&self) -> &[EvaluatedCapture<Profile>] {
         match self {
             Self::Function(value) => value.captures(),
             Self::Constructor(value) => value.captures(),
@@ -564,7 +564,7 @@ impl EvaluatedCustomFunction {
     }
 }
 
-impl EvaluatedFunctionFunction {
+impl<Profile: RuntimeValueProfile> EvaluatedFunctionFunction<Profile> {
     pub(in crate::runtime) fn type_(&self) -> &FunctionType {
         match self {
             Self::Core(value) => value.type_(),
@@ -579,7 +579,7 @@ impl EvaluatedFunctionFunction {
         }
     }
 
-    pub(in crate::runtime) fn captures(&self) -> &[EvaluatedCapture] {
+    pub(in crate::runtime) fn captures(&self) -> &[EvaluatedCapture<Profile>] {
         match self {
             Self::Core(value) => value.captures(),
             Self::External(value) => value.captures(),
@@ -602,9 +602,11 @@ impl EvaluatedFunctionFunction {
 }
 
 macro_rules! evaluated_function_value_from {
-    ($function:ty, $variant:ident) => {
-        impl From<$function> for EvaluatedFunctionValue {
-            fn from(value: $function) -> Self {
+    ($function:ident, $variant:ident) => {
+        impl<Profile: RuntimeValueProfile> From<$function<Profile>>
+            for EvaluatedFunctionValue<Profile>
+        {
+            fn from(value: $function<Profile>) -> Self {
                 Self::from_kind(EvaluatedFunctionValueKind::$variant(value))
             }
         }
@@ -626,12 +628,12 @@ evaluated_function_value_from!(EvaluatedTupleFunction, Tuple);
 evaluated_function_value_from!(EvaluatedListFunction, List);
 evaluated_function_value_from!(EvaluatedFunctionFunction, Function);
 
-impl EvaluatedFunctionValue {
-    pub(in crate::runtime) fn from_kind(kind: EvaluatedFunctionValueKind) -> Self {
+impl<Profile: RuntimeValueProfile> EvaluatedFunctionValue<Profile> {
+    pub(in crate::runtime) fn from_kind(kind: EvaluatedFunctionValueKind<Profile>) -> Self {
         Self { kind }
     }
 
-    pub(in crate::runtime) fn kind(&self) -> &EvaluatedFunctionValueKind {
+    pub(in crate::runtime) fn kind(&self) -> &EvaluatedFunctionValueKind<Profile> {
         &self.kind
     }
 
@@ -703,7 +705,7 @@ impl EvaluatedFunctionValue {
     }
 }
 
-impl EvaluatedFunctionValueKind {
+impl<Profile: RuntimeValueProfile> EvaluatedFunctionValueKind<Profile> {
     pub(in crate::runtime) fn family(&self) -> FunctionReturnFamily {
         match self {
             Self::Generic(_) => FunctionReturnFamily::Generic,
@@ -789,12 +791,13 @@ pub fn main() {
             Vec::new(),
             crate::plan::execution::type_::ValueType::Int,
         );
-        let reference = EvaluatedIntFunction::reference(
-            IntFunctionId(0),
-            Vec::new(),
-            Vec::new(),
-            int_type.clone(),
-        );
+        let reference: EvaluatedIntFunction<crate::runtime::LocalValues> =
+            EvaluatedIntFunction::reference(
+                IntFunctionId(0),
+                Vec::new(),
+                Vec::new(),
+                int_type.clone(),
+            );
         let same_target_with_different_metadata = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             vec![ParamLocal::Int(IntLocalId(0))],
@@ -1044,7 +1047,8 @@ pub fn main() {
                 .collect(),
             crate::plan::execution::type_::ValueType::Custom(constructor_id.type_id()),
         );
-        let first = EvaluatedCustomFunction::constructor(constructor_id, type_.clone());
+        let first: EvaluatedCustomFunction<crate::runtime::LocalValues> =
+            EvaluatedCustomFunction::constructor(constructor_id, type_.clone());
         let same = first.clone();
         let separate = EvaluatedCustomFunction::constructor(constructor_id, type_);
 

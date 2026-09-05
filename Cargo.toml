@@ -75,6 +75,7 @@ jiter = { version = "0.16", default-features = false }
 miette = "7"
 num-bigint = "0.4.6"
 num-traits = "0.2"
+parking_lot = "0.12.5"
 proc-macro-crate = "3"
 proc-macro2 = "1"
 quote = "1"

@@ -1,40 +1,133 @@
-use super::environment::{BlockEnvironment, RetainedValues};
+use super::environment::{BlockEnvironment, ProfiledRetainedValues};
 use super::pattern;
 use crate::plan::execution::function::NeverFunctionId;
 use crate::plan::execution::graph::{
     BlockGraphExitId, BlockId, Edge, MatchEdge, MatchEdgeArgument, NeverCallTarget, SourceStopKind,
     Terminator,
 };
-use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::ExecutionError;
-use crate::runtime::error::{ExecutionResult, PanicKind};
+use crate::runtime::error::PanicKind;
 use crate::runtime::evaluated::EvaluatedNeverFunction;
-use crate::runtime::state::RuntimeStateFor;
+use crate::runtime::materialize::MaterializeProfile;
+use crate::runtime::state::RuntimeState;
+use crate::runtime::{LocalValues, RuntimeValueProfile};
 
-pub(super) enum GraphAction {
+pub(in crate::runtime) enum GraphAction<Profile: RuntimeValueProfile> {
     Continue {
         block: BlockId,
-        inputs: RetainedValues,
+        inputs: ProfiledRetainedValues<Profile>,
     },
     Exit(BlockGraphExitId),
     NeverCall {
-        function: NeverCall,
-        inputs: RetainedValues,
+        function: NeverCall<Profile>,
+        inputs: ProfiledRetainedValues<Profile>,
         site: crate::plan::HostCallSite,
     },
 }
 
-pub(super) enum NeverCall {
+pub(in crate::runtime) enum NeverCall<Profile: RuntimeValueProfile> {
     Direct(NeverFunctionId),
-    Value(EvaluatedNeverFunction),
+    Value(EvaluatedNeverFunction<Profile>),
 }
 
-pub(super) fn terminator_action<Plan: ExecutableRuntimePlan>(
+pub(in crate::runtime) trait RuntimeGraphState<Profile: RuntimeValueProfile> {
+    type Error: From<crate::runtime::InvariantError>;
+
+    fn lists(&self) -> &Profile::ListStorage;
+    fn lists_mut(&mut self) -> &mut Profile::ListStorage;
+    fn emit_echo(&mut self, output: crate::runtime::EchoOutput);
+
+    fn source_panic(
+        &self,
+        source: Option<&crate::plan::SourceContext>,
+        kind: PanicKind,
+        message: Option<ecow::EcoString>,
+        site: crate::plan::PanicSite,
+    ) -> Self::Error;
+
+    fn let_assert_panic<Plan>(
+        &self,
+        plan: &Plan,
+        source: Option<&crate::plan::SourceContext>,
+        message: Option<ecow::EcoString>,
+        site: crate::plan::PanicSite,
+        subject: crate::runtime::EvaluatedValue<Profile>,
+        pattern_span: crate::plan::SourceSpan,
+    ) -> Self::Error
+    where
+        Plan: crate::plan::execution::runtime::RuntimeExecutionPlan;
+
+    fn bit_array_segment_panic(
+        &self,
+        source: Option<&crate::plan::SourceContext>,
+        reason: crate::runtime::BitArraySegmentPanicReason,
+        site: crate::plan::PanicSite,
+    ) -> Self::Error;
+}
+
+impl<Host> RuntimeGraphState<LocalValues> for RuntimeState<'_, Host, LocalValues> {
+    type Error = ExecutionError;
+
+    fn lists(&self) -> &<LocalValues as RuntimeValueProfile>::ListStorage {
+        self.lists()
+    }
+
+    fn lists_mut(&mut self) -> &mut <LocalValues as RuntimeValueProfile>::ListStorage {
+        self.lists_mut()
+    }
+
+    fn emit_echo(&mut self, output: crate::runtime::EchoOutput) {
+        self.emit_echo(output);
+    }
+
+    fn source_panic(
+        &self,
+        source: Option<&crate::plan::SourceContext>,
+        kind: PanicKind,
+        message: Option<ecow::EcoString>,
+        site: crate::plan::PanicSite,
+    ) -> Self::Error {
+        ExecutionError::source_panic(source, kind, message, site)
+    }
+
+    fn let_assert_panic<Plan>(
+        &self,
+        plan: &Plan,
+        source: Option<&crate::plan::SourceContext>,
+        message: Option<ecow::EcoString>,
+        site: crate::plan::PanicSite,
+        subject: crate::runtime::EvaluatedValue<LocalValues>,
+        pattern_span: crate::plan::SourceSpan,
+    ) -> Self::Error
+    where
+        Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    {
+        let subject =
+            crate::runtime::materialize::value(plan.value_metadata(), self.lists(), subject);
+        ExecutionError::let_assert_panic(source, message, site, subject, pattern_span)
+    }
+
+    fn bit_array_segment_panic(
+        &self,
+        source: Option<&crate::plan::SourceContext>,
+        reason: crate::runtime::BitArraySegmentPanicReason,
+        site: crate::plan::PanicSite,
+    ) -> Self::Error {
+        ExecutionError::bit_array_segment_panic(source, reason, site)
+    }
+}
+
+pub(in crate::runtime) fn terminator_action<Plan, State, Profile>(
     plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &BlockEnvironment,
+    state: &mut State,
+    environment: &BlockEnvironment<Profile>,
     terminator: &Terminator,
-) -> ExecutionResult<GraphAction> {
+) -> Result<GraphAction<Profile>, State::Error>
+where
+    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    State: RuntimeGraphState<Profile>,
+    Profile: MaterializeProfile,
+{
     match terminator {
         Terminator::Jump(jump) => Ok(transition(environment, jump.edge())),
         Terminator::BoolBranch(branch) => {
@@ -83,13 +176,20 @@ pub(super) fn terminator_action<Plan: ExecutableRuntimePlan>(
         }
         Terminator::Match(matcher) => {
             let subject = environment.value(matcher.subject());
-            let matched =
-                pattern::match_pattern(plan, state, environment, matcher.pattern(), &subject);
+            let matched = pattern::match_pattern(
+                plan,
+                state.lists_mut(),
+                environment,
+                matcher.pattern(),
+                &subject,
+            );
             drop(subject);
-            matched.map(|matched| match matched {
-                Some(bindings) => transition_match(environment, matcher.success(), bindings),
-                None => transition(environment, matcher.failure()),
-            })
+            matched
+                .map_err(State::Error::from)
+                .map(|matched| match matched {
+                    Some(bindings) => transition_match(environment, matcher.success(), bindings),
+                    None => transition(environment, matcher.failure()),
+                })
         }
         Terminator::Echo(echo) => {
             let subject = environment.value(echo.subject());
@@ -106,7 +206,7 @@ pub(super) fn terminator_action<Plan: ExecutableRuntimePlan>(
         Terminator::Exit(exit) => Ok(GraphAction::Exit(*exit)),
         Terminator::SourceStop(stop) => {
             let message = stop.message().map(|message| environment.string(message));
-            Err(ExecutionError::source_panic(
+            Err(state.source_panic(
                 plan.source_context_for(stop.site().module()),
                 panic_kind(stop.kind()),
                 message,
@@ -116,9 +216,8 @@ pub(super) fn terminator_action<Plan: ExecutableRuntimePlan>(
         Terminator::LetAssertPanic(panic) => {
             let subject = environment.value(panic.subject());
             let message = panic.message().map(|message| environment.string(message));
-            let subject =
-                crate::runtime::materialize::value(plan.value_metadata(), state.lists(), subject);
-            Err(ExecutionError::let_assert_panic(
+            Err(state.let_assert_panic(
+                plan,
                 plan.source_context_for(panic.site().module()),
                 message,
                 panic.site().clone(),
@@ -143,19 +242,22 @@ pub(super) fn terminator_action<Plan: ExecutableRuntimePlan>(
     }
 }
 
-fn transition(environment: &BlockEnvironment, edge: &Edge) -> GraphAction {
+fn transition<Profile: RuntimeValueProfile>(
+    environment: &BlockEnvironment<Profile>,
+    edge: &Edge,
+) -> GraphAction<Profile> {
     GraphAction::Continue {
         block: edge.target(),
         inputs: environment.retain(edge.args()),
     }
 }
 
-fn transition_match(
-    environment: &BlockEnvironment,
+fn transition_match<Profile: RuntimeValueProfile>(
+    environment: &BlockEnvironment<Profile>,
     edge: &MatchEdge,
-    bindings: pattern::MatchBindings,
-) -> GraphAction {
-    let mut inputs = RetainedValues::empty();
+    bindings: pattern::MatchBindings<Profile>,
+) -> GraphAction<Profile> {
+    let mut inputs = ProfiledRetainedValues::empty();
     for argument in edge.args() {
         match argument {
             MatchEdgeArgument::Binding(index) => {

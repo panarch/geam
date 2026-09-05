@@ -133,7 +133,7 @@ impl fmt::Display for Panic {
 impl std::error::Error for Panic {}
 
 impl PanicKind {
-    pub(in crate::runtime::error) fn code(&self) -> &'static str {
+    pub(in crate::runtime) fn code(&self) -> &'static str {
         match self {
             Self::Panic => "panic",
             Self::Todo => "todo",
@@ -181,7 +181,7 @@ impl PanicMessage {
         }
     }
 
-    fn text(&self, kind: PanicKind) -> std::borrow::Cow<'_, str> {
+    pub(in crate::runtime) fn text(&self, kind: PanicKind) -> std::borrow::Cow<'_, str> {
         match self {
             Self::Explicit(message) => std::borrow::Cow::Borrowed(message.as_str()),
             Self::Default => std::borrow::Cow::Borrowed(kind.default_message()),

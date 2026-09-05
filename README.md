@@ -89,7 +89,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 explains each part of this lifecycle. The executable [embedding
 examples](examples/embedding)
 then add structured data, Gleam packages, IO routed through Rust, an external
-provider, and repeated calls one step at a time.
+provider, repeated calls, and async Rust work one step at a time.
 
 ### Add Rust to a Gleam package
 

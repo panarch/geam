@@ -4,48 +4,61 @@ use crate::plan::execution::type_::{
     UtfCodepointListTypeId,
 };
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedCustomValue, EvaluatedValue};
-use crate::runtime::graph::RetainedValues;
-use crate::runtime::state::list::{CustomListAllocation, RuntimeListStorage, StoredListValueId};
+use crate::runtime::graph::ProfiledRetainedValues;
+use crate::runtime::state::list::{CustomListAllocation, StoredListValueId};
+use crate::runtime::{LocalValues, RuntimeListStorage, RuntimeValueProfile};
 
-pub(crate) struct EmbeddingInput(EvaluatedValue);
+pub(crate) struct EmbeddingInput<Profile: RuntimeValueProfile = LocalValues>(
+    EvaluatedValue<Profile>,
+);
 
-pub(crate) trait EmbeddingInputValue: Sized {
+pub(crate) trait EmbeddingInputValue<Profile: RuntimeValueProfile = LocalValues>:
+    Sized
+{
     type ListType: Copy;
 
-    fn into_input(self) -> EmbeddingInput;
+    fn into_input(self) -> EmbeddingInput<Profile>;
 
     fn into_list(
         type_: Self::ListType,
         values: impl ExactSizeIterator<Item = Self>,
-        storage: &EmbeddingInputStorage,
-    ) -> EmbeddingListInput;
+        storage: &EmbeddingInputStorage<Profile>,
+    ) -> EmbeddingListInput<Profile>;
 }
 
 #[derive(Default)]
-pub(crate) struct EmbeddingInputStorage(std::cell::RefCell<Option<RuntimeListStorage>>);
+pub(crate) struct EmbeddingInputStorage<Profile: RuntimeValueProfile = LocalValues>(
+    std::cell::RefCell<Option<Profile::ListStorage>>,
+);
 
-pub(crate) struct EmbeddingTupleInput(Vec<EvaluatedValue>);
-pub(crate) struct EmbeddingCustomInput(EvaluatedCustomValue);
-pub(crate) struct EmbeddingListInput(pub(in crate::runtime::embedding) StoredListValueId);
+pub(crate) struct EmbeddingTupleInput<Profile: RuntimeValueProfile = LocalValues>(
+    Vec<EvaluatedValue<Profile>>,
+);
+pub(crate) struct EmbeddingCustomInput<Profile: RuntimeValueProfile = LocalValues>(
+    EvaluatedCustomValue<Profile>,
+);
+pub(crate) struct EmbeddingListInput<Profile: RuntimeValueProfile = LocalValues>(
+    pub(in crate::runtime::embedding) StoredListValueId<Profile>,
+);
 
-impl EmbeddingInputStorage {
-    fn lists(&self) -> std::cell::RefMut<'_, RuntimeListStorage> {
+impl<Profile: RuntimeValueProfile> EmbeddingInputStorage<Profile> {
+    fn lists(&self) -> std::cell::RefMut<'_, Profile::ListStorage> {
         std::cell::RefMut::map(self.0.borrow_mut(), |storage| {
-            storage.get_or_insert_with(RuntimeListStorage::default)
+            storage.get_or_insert_with(Profile::ListStorage::default)
         })
     }
 }
 
-impl EmbeddingTupleInput {
-    pub(crate) fn new(fields: impl IntoIterator<Item = EmbeddingInput>) -> Self {
+impl<Profile: RuntimeValueProfile> EmbeddingTupleInput<Profile> {
+    pub(crate) fn new(fields: impl IntoIterator<Item = EmbeddingInput<Profile>>) -> Self {
         Self(fields.into_iter().map(|field| field.0).collect())
     }
 }
 
-impl EmbeddingCustomInput {
+impl<Profile: RuntimeValueProfile> EmbeddingCustomInput<Profile> {
     pub(crate) fn new(
         constructor: CustomConstructorId,
-        fields: impl IntoIterator<Item = EmbeddingInput>,
+        fields: impl IntoIterator<Item = EmbeddingInput<Profile>>,
     ) -> Self {
         Self(EvaluatedCustomValue::from_fields(
             constructor,
@@ -60,18 +73,18 @@ impl EmbeddingCustomInput {
 
 macro_rules! scalar_input {
     ($type:ty, $list_type:ty, $variant:ident, $list:ident) => {
-        impl EmbeddingInputValue for $type {
+        impl<Profile: RuntimeValueProfile> EmbeddingInputValue<Profile> for $type {
             type ListType = $list_type;
 
-            fn into_input(self) -> EmbeddingInput {
+            fn into_input(self) -> EmbeddingInput<Profile> {
                 EmbeddingInput(EvaluatedValue::$variant(self))
             }
 
             fn into_list(
                 type_: Self::ListType,
                 values: impl ExactSizeIterator<Item = Self>,
-                storage: &EmbeddingInputStorage,
-            ) -> EmbeddingListInput {
+                storage: &EmbeddingInputStorage<Profile>,
+            ) -> EmbeddingListInput<Profile> {
                 let values = values.collect();
                 EmbeddingListInput(storage.lists().$list(type_, values).into())
             }
@@ -85,10 +98,10 @@ scalar_input!(ecow::EcoString, StringListTypeId, String, string);
 scalar_input!(char, UtfCodepointListTypeId, UtfCodepoint, utf_codepoint);
 scalar_input!(bool, BoolListTypeId, Bool, bool);
 
-impl EmbeddingInputValue for crate::BitArrayValue {
+impl<Profile: RuntimeValueProfile> EmbeddingInputValue<Profile> for crate::BitArrayValue {
     type ListType = BitArrayListTypeId;
 
-    fn into_input(self) -> EmbeddingInput {
+    fn into_input(self) -> EmbeddingInput<Profile> {
         EmbeddingInput(EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
             self,
         )))
@@ -97,82 +110,83 @@ impl EmbeddingInputValue for crate::BitArrayValue {
     fn into_list(
         type_: Self::ListType,
         values: impl ExactSizeIterator<Item = Self>,
-        storage: &EmbeddingInputStorage,
-    ) -> EmbeddingListInput {
+        storage: &EmbeddingInputStorage<Profile>,
+    ) -> EmbeddingListInput<Profile> {
         let values = values.map(EvaluatedBitArray::from_value).collect();
         EmbeddingListInput(storage.lists().bit_array(type_, values).into())
     }
 }
 
-impl EmbeddingInputValue for () {
+impl<Profile: RuntimeValueProfile> EmbeddingInputValue<Profile> for () {
     type ListType = NilListTypeId;
 
-    fn into_input(self) -> EmbeddingInput {
+    fn into_input(self) -> EmbeddingInput<Profile> {
         EmbeddingInput(EvaluatedValue::Nil)
     }
 
     fn into_list(
         type_: Self::ListType,
         values: impl ExactSizeIterator<Item = Self>,
-        storage: &EmbeddingInputStorage,
-    ) -> EmbeddingListInput {
+        storage: &EmbeddingInputStorage<Profile>,
+    ) -> EmbeddingListInput<Profile> {
         EmbeddingListInput(storage.lists().nil(type_, values.len()).into())
     }
 }
 
-impl EmbeddingInputValue for EmbeddingTupleInput {
+impl<Profile: RuntimeValueProfile> EmbeddingInputValue<Profile> for EmbeddingTupleInput<Profile> {
     type ListType = TupleListTypeId;
 
-    fn into_input(self) -> EmbeddingInput {
+    fn into_input(self) -> EmbeddingInput<Profile> {
         EmbeddingInput(EvaluatedValue::Tuple(self.0))
     }
 
     fn into_list(
         type_: Self::ListType,
         values: impl ExactSizeIterator<Item = Self>,
-        storage: &EmbeddingInputStorage,
-    ) -> EmbeddingListInput {
+        storage: &EmbeddingInputStorage<Profile>,
+    ) -> EmbeddingListInput<Profile> {
         let values = values.map(|value| value.0).collect();
         EmbeddingListInput(storage.lists().tuple(type_, values).into())
     }
 }
 
-impl EmbeddingInputValue for EmbeddingCustomInput {
+impl<Profile: RuntimeValueProfile> EmbeddingInputValue<Profile> for EmbeddingCustomInput<Profile> {
     type ListType = CustomListTypeId;
 
-    fn into_input(self) -> EmbeddingInput {
+    fn into_input(self) -> EmbeddingInput<Profile> {
         EmbeddingInput(EvaluatedValue::Custom(self.0))
     }
 
     fn into_list(
         type_: Self::ListType,
         values: impl ExactSizeIterator<Item = Self>,
-        storage: &EmbeddingInputStorage,
-    ) -> EmbeddingListInput {
-        let allocation = CustomListAllocation::new(type_, values.map(|value| value.0).collect());
+        storage: &EmbeddingInputStorage<Profile>,
+    ) -> EmbeddingListInput<Profile> {
+        let allocation =
+            CustomListAllocation::<Profile>::new(type_, values.map(|value| value.0).collect());
         EmbeddingListInput(storage.lists().custom(allocation).into())
     }
 }
 
-impl EmbeddingInputValue for EmbeddingListInput {
+impl<Profile: RuntimeValueProfile> EmbeddingInputValue<Profile> for EmbeddingListInput<Profile> {
     type ListType = ListListTypeId;
 
-    fn into_input(self) -> EmbeddingInput {
+    fn into_input(self) -> EmbeddingInput<Profile> {
         EmbeddingInput(EvaluatedValue::List(self.0))
     }
 
     fn into_list(
         type_: Self::ListType,
         values: impl ExactSizeIterator<Item = Self>,
-        storage: &EmbeddingInputStorage,
-    ) -> EmbeddingListInput {
+        storage: &EmbeddingInputStorage<Profile>,
+    ) -> EmbeddingListInput<Profile> {
         let values = values.map(|value| value.0).collect();
         EmbeddingListInput(storage.lists().list(type_, values).into())
     }
 }
 
-impl EmbeddingInput {
-    pub(crate) fn retain(self, values: &mut RetainedValues) {
+impl<Profile: RuntimeValueProfile> EmbeddingInput<Profile> {
+    pub(crate) fn retain(self, values: &mut ProfiledRetainedValues<Profile>) {
         values.push_evaluated(self.0);
     }
 }

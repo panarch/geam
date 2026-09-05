@@ -4,9 +4,6 @@ use std::cell::{OnceCell, RefCell};
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::rc::{Rc, Weak};
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static NEXT_EXTERNAL_VALUE_ID: AtomicU64 = AtomicU64::new(0);
 
 pub struct HostExternalStore<Payload> {
     values: Rc<RefCell<HashMap<u64, Rc<StoredExternalPayload<Payload>>>>>,
@@ -78,7 +75,7 @@ where
         source_hash: for<'context> fn(&HostExternalHashing<'context>, &Payload) -> u64,
         inspect: for<'context> fn(&HostExternalInspection<'context>, &Payload) -> EcoString,
     ) -> ExternalPayloadLease {
-        let id = NEXT_EXTERNAL_VALUE_ID.fetch_add(1, Ordering::Relaxed);
+        let id = crate::runtime::ExternalValueIdentity::allocate_id();
         let value = Rc::new(StoredExternalPayload {
             id,
             value,

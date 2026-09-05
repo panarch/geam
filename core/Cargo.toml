@@ -17,6 +17,7 @@ half.workspace = true
 im.workspace = true
 miette.workspace = true
 num-bigint.workspace = true
+parking_lot.workspace = true
 thiserror.workspace = true
 toml.workspace = true
 vec1.workspace = true

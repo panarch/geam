@@ -1,11 +1,12 @@
 //! Statically typed Rust calls into plain or hosted Gleam code.
 //!
-//! Loading and binding happen once. [`ModuleBuilder`] and
-//! [`HostedModuleBuilder`] select the first function into non-empty binding
-//! owners, which validate any remaining names and signatures from the selected
-//! root before sealing one immutable execution shared by every returned
+//! Loading and binding happen once. [`ModuleBuilder`], [`HostedModuleBuilder`],
+//! and [`AsyncHostedModuleBuilder`] select the first function into non-empty
+//! binding owners, which validate any remaining names and signatures from the
+//! selected root before sealing one execution shared by every returned
 //! [`Function`] handle. Plain calls supply an echo sink; hosted calls also
-//! borrow the caller's provider state explicitly. Both accept only the Rust
+//! borrow the caller's provider state explicitly. Resumable hosted calls return
+//! a Future driven by the caller's executor. All paths accept only the Rust
 //! argument and return shapes that were bound up front.
 //!
 //! Values include scalars and recursive Rust tuples, standard `Result` and
@@ -13,12 +14,15 @@
 //! argument tuples have arity zero through seven, and `()` remains Gleam Nil.
 //! Result and Option map only to the exact prelude and stdlib types.
 //! A consumed `Vec` constructs a List; a borrowed same-owner List reuses its
-//! retained storage. See [`List`] for lazy reads and ownership restrictions.
+//! retained storage. Resumable bindings use [`AsyncList`] for transferable
+//! retained Lists. See [`List`] and [`AsyncList`] for lazy reads and ownership
+//! restrictions.
 //!
-//! [`Project`] and [`HostedProject`] retain one source selection until it is
-//! compiled into the corresponding existing typed program owner. Hosted
-//! compilation also performs the generated static provider registration.
+//! [`Project`], [`HostedProject`], and [`AsyncHostedProject`] retain one source
+//! selection until it is compiled into the corresponding typed program owner.
+//! Hosted compilation also performs the selected provider registration.
 
+mod async_hosted;
 mod binding;
 mod error;
 mod hosted;
@@ -28,18 +32,19 @@ mod project;
 mod value;
 
 pub use crate::BitArrayValue;
+pub use async_hosted::{AsyncHostedModule, AsyncHostedModuleBindings, AsyncHostedModuleBuilder};
 pub use binding::{BindingError, FunctionDeclaration, ModuleBindings, ModuleBuilder};
 pub use ecow::EcoString;
 pub use error::CallError;
 pub use hosted::{HostedModule, HostedModuleBindings, HostedModuleBuilder};
 #[doc(hidden)]
 pub use input::InputShape;
-pub use list::{Iter, List};
+pub use list::{AsyncIter, AsyncList, Iter, List};
 pub use num_bigint::BigInt;
-pub use project::{HostedProject, HostedProjectError, Project};
+pub use project::{AsyncHostedProject, HostedProject, HostedProjectError, Project};
 
 use self::input::ArgumentsInput;
-use self::value::{Arguments, ReturnValue};
+use self::value::{Arguments, EmbeddingValue, ReturnValue};
 use crate::plan::execution::LibraryFunctionEntries;
 use crate::{EchoSink, ExecutionPlan};
 use std::marker::PhantomData;
@@ -48,7 +53,8 @@ use std::sync::Arc;
 /// A typed function handle created by a plain or hosted module builder.
 ///
 /// The handle becomes callable only after its binding owner is sealed, and
-/// only the resulting [`Module`] or [`HostedModule`] may call it.
+/// only the resulting [`Module`], [`HostedModule`], or [`AsyncHostedModule`]
+/// may call it.
 pub struct Function<Arguments, Return, Shape = Arguments> {
     name: EcoString,
     slot: usize,

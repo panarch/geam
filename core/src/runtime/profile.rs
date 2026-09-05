@@ -16,7 +16,7 @@ pub(in crate::runtime) type RuntimeGraph<Plan> =
     <<Plan as RuntimeExecutionPlan>::Profile as ExecutionProfile>::Graph;
 
 pub(in crate::runtime) trait ExecutableRuntimePlan:
-    RuntimeExecutionPlan
+    RuntimeExecutionPlan<Values = crate::runtime::LocalValues>
 {
     type RuntimeHost<'run>: state::RuntimeHostState<State = Self::RunState>
     where
