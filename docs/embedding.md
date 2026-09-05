@@ -273,7 +273,9 @@ An async host function can be an ordinary Rust `async fn`. A scoped async host
 also receives `AsyncHostCall`: `with_state` runs one short operation against
 caller-owned provider state, while `invoke` calls a typed Gleam callback in the
 same execution. Neither operation keeps a mutable state or runtime borrow
-across `.await`.
+across `.await`. Use `call.invoke(&callback, arguments).await?` again to call the
+same callback with new arguments; each invocation starts a fresh execution and
+retains the callback's captured values for as long as it needs them.
 
 External payload operations use the same driver: await `with_external` to read
 an owned result, or `return_external` to insert a newly built payload. The host
@@ -283,6 +285,13 @@ Future does not borrow the module's stores. Run state, stores, and payloads need
 `call_async` borrows the module mutably, so one module has one active root call.
 Dropping the returned Future cancels that call and leaves the module ready for a
 later call. Geam does not start an executor or block a thread for pending work.
+
+The outer result uses `AsyncCallError`, with the same ownership checks and
+execution failure kinds as `CallError`. Both successful values and failures can
+move between executor workers. A failed `let assert` retains its subject as
+`AsyncPanicValue`; `to_value()` produces a local diagnostic view when requested.
+`AsyncCallError::into_local()` converts the complete error to `CallError` for
+code that uses the synchronous diagnostic representation.
 
 This API currently belongs to application-owned Rust embedding. Use it with a
 generated plain project and register the async Rust implementations in the

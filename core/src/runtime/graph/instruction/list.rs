@@ -1859,7 +1859,7 @@ pub fn boxed() -> CounterListBox {
                 ),
                 "corrupted external List tuple projection should fail"
             )
-            .into_execution(),
+            .into_local(),
             ExecutionError::Invariant(InvariantError::TupleIndexFamilyMismatch {
                 expected: expected.clone(),
                 actual: ValueType::Int,
@@ -1889,7 +1889,7 @@ pub fn boxed() -> CounterListBox {
                 ),
                 "corrupted external List custom projection should fail"
             )
-            .into_execution(),
+            .into_local(),
             ExecutionError::Invariant(InvariantError::CustomFieldFamilyMismatch {
                 custom_type,
                 constructor: "CounterListBox".into(),

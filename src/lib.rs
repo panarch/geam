@@ -115,9 +115,9 @@ pub use geam_core::planner::{
     plan_host_program, plan_module, plan_module_with_source, plan_program, required_host_functions,
 };
 pub use geam_core::runtime::{
-    BitArraySegmentPanicReason, BitArrayValue, BitArrayValueLengthError, CustomFieldValue,
-    CustomValue, EchoLocation, EchoOutput, EchoSink, ExecutionError, ExternalValue,
-    ExternalValueIdentity, FunctionValue, HostError, HostLocation, HostOrigin, InvariantError,
-    ListValue, ListValueItemTypeMismatch, Panic, PanicDetails, PanicKind, PanicMessage, Value,
-    ValueInspection, run_main,
+    AsyncExecutionError, AsyncPanicValue, BitArraySegmentPanicReason, BitArrayValue,
+    BitArrayValueLengthError, CustomFieldValue, CustomValue, EchoLocation, EchoOutput, EchoSink,
+    ExecutionError, ExternalValue, ExternalValueIdentity, FunctionValue, HostError, HostLocation,
+    HostOrigin, InvariantError, ListValue, ListValueItemTypeMismatch, Panic, PanicDetails,
+    PanicKind, PanicMessage, Value, ValueInspection, run_main,
 };

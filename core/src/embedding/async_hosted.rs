@@ -1,7 +1,7 @@
 use super::binding::{BindingBuilder, BindingParts, Bindings};
 use super::input::{AsyncArgumentsInput, InputShape};
 use super::value::{EmbeddingValue, OutputValue};
-use super::{Arguments, BindingError, CallError, Function, FunctionDeclaration};
+use super::{Arguments, AsyncCallError, BindingError, Function, FunctionDeclaration};
 use crate::frontend::AsyncHostedTypedProgram;
 use crate::host::HostProfile;
 use crate::plan::AsyncHostedLibraryModulePlan;
@@ -51,20 +51,6 @@ pub struct AsyncHostedModule<Profile: HostProfile> {
     stores: Profile::ExternalStores,
     entries: LibraryFunctionEntries,
     owner: Arc<()>,
-}
-
-enum AsyncCallPreflightError {
-    ForeignFunction,
-    ForeignValue,
-}
-
-impl AsyncCallPreflightError {
-    fn into_call_error(self) -> CallError {
-        match self {
-            Self::ForeignFunction => CallError::ForeignFunction,
-            Self::ForeignValue => CallError::ForeignValue,
-        }
-    }
 }
 
 impl<Profile: HostProfile> AsyncHostedModuleBuilder<Profile> {
@@ -144,7 +130,7 @@ impl<Profile: HostProfile> AsyncHostedModule<Profile> {
         arguments: Input,
         state: &'call mut Profile::RunState,
         echo: &'call mut (dyn EchoSink + Send),
-    ) -> impl Future<Output = Result<Return, CallError>> + Send + 'call
+    ) -> impl Future<Output = Result<Return, AsyncCallError>> + Send + 'call
     where
         ArgumentsType: AsyncArgumentsInput<Input>,
         Return: AsyncReturnValue + 'call,
@@ -154,9 +140,9 @@ impl<Profile: HostProfile> AsyncHostedModule<Profile> {
     {
         let slot = function.slot;
         let inputs = if !Arc::ptr_eq(&self.owner, &function.owner) {
-            Err(AsyncCallPreflightError::ForeignFunction)
+            Err(AsyncCallError::ForeignFunction)
         } else if !ArgumentsType::owners_match(&arguments, &self.owner) {
-            Err(AsyncCallPreflightError::ForeignValue)
+            Err(AsyncCallError::ForeignValue)
         } else {
             let constructions = Return::input_constructions(&self.entries, slot);
             Ok(ArgumentsType::into_inputs(arguments, constructions))
@@ -167,8 +153,8 @@ impl<Profile: HostProfile> AsyncHostedModule<Profile> {
             match inputs {
                 Ok(inputs) => Return::call_async(module, slot, inputs, state, echo)
                     .await
-                    .map_err(CallError::Execution),
-                Err(error) => Err(error.into_call_error()),
+                    .map_err(AsyncCallError::Execution),
+                Err(error) => Err(error),
             }
         }
     }
@@ -186,7 +172,7 @@ trait AsyncReturnValue: OutputValue<TransferValues> {
         inputs: crate::runtime::TransferInputs,
         state: &mut Profile::RunState,
         echo: &mut (dyn EchoSink + Send),
-    ) -> impl Future<Output = Result<Self, crate::ExecutionError>> + Send
+    ) -> impl Future<Output = Result<Self, crate::AsyncExecutionError>> + Send
     where
         Profile::RunState: Send,
         Profile::ExternalStores: Send;
@@ -208,7 +194,7 @@ macro_rules! async_scalar_return {
                 inputs: crate::runtime::TransferInputs,
                 state: &mut Profile::RunState,
                 echo: &mut (dyn EchoSink + Send),
-            ) -> Result<Self, crate::ExecutionError>
+            ) -> Result<Self, crate::AsyncExecutionError>
             where
                 Profile::RunState: Send,
                 Profile::ExternalStores: Send,
@@ -259,7 +245,7 @@ macro_rules! async_tuple_return {
                 inputs: crate::runtime::TransferInputs,
                 state: &mut Profile::RunState,
                 echo: &mut (dyn EchoSink + Send),
-            ) -> Result<Self, crate::ExecutionError>
+            ) -> Result<Self, crate::AsyncExecutionError>
             where
                 Profile::RunState: Send,
                 Profile::ExternalStores: Send,
@@ -309,7 +295,7 @@ macro_rules! async_custom_return {
                 inputs: crate::runtime::TransferInputs,
                 state: &mut Profile::RunState,
                 echo: &mut (dyn EchoSink + Send),
-            ) -> Result<Self, crate::ExecutionError>
+            ) -> Result<Self, crate::AsyncExecutionError>
             where
                 Profile::RunState: Send,
                 Profile::ExternalStores: Send,
@@ -352,7 +338,7 @@ where
         inputs: crate::runtime::TransferInputs,
         state: &mut Profile::RunState,
         echo: &mut (dyn EchoSink + Send),
-    ) -> Result<Self, crate::ExecutionError>
+    ) -> Result<Self, crate::AsyncExecutionError>
     where
         Profile::RunState: Send,
         Profile::ExternalStores: Send,
@@ -373,9 +359,12 @@ where
 
 #[cfg(test)]
 mod tests {
+    mod repeated;
+
     use super::AsyncHostedModuleBuilder;
     use crate::embedding::{
-        AsyncList, BigInt, BitArrayValue, CallError, EcoString, FunctionDeclaration,
+        AsyncCallError as CallError, AsyncList, BigInt, BitArrayValue, EcoString,
+        FunctionDeclaration,
     };
     use crate::host::{
         AsyncHostCall, AsyncHostCallError, AsyncHostCallable, AsyncHostFuture, AsyncHostModule,
@@ -616,7 +605,7 @@ mod tests {
     ) -> AsyncHostFuture<'call, Result<BigInt, AsyncHostCallError>> {
         AsyncHostFuture::new(async move {
             let value = {
-                let mut callback_call = Box::pin(call.invoke(callback, (value, ())));
+                let mut callback_call = Box::pin(call.invoke(&callback, (value, ())));
                 std::future::poll_fn(|context| {
                     let first = callback_call.as_mut().poll(context);
                     if first.is_pending() {
@@ -645,7 +634,7 @@ mod tests {
     ) -> AsyncHostFuture<'call, BigInt> {
         AsyncHostFuture::new(async move {
             {
-                let mut callback_call = Box::pin(call.invoke(callback, (value.clone(), ())));
+                let mut callback_call = Box::pin(call.invoke(&callback, (value.clone(), ())));
                 std::future::poll_fn(|context| {
                     let _ = callback_call.as_mut().poll(context);
                     Poll::Ready(())
@@ -687,30 +676,30 @@ mod tests {
                 ),
             );
             let int = call
-                .invoke(int, arguments.clone())
+                .invoke(&int, arguments.clone())
                 .await
                 .expect("Int callback");
             let float = call
-                .invoke(float, arguments.clone())
+                .invoke(&float, arguments.clone())
                 .await
                 .expect("Float callback");
             let string = call
-                .invoke(string, arguments.clone())
+                .invoke(&string, arguments.clone())
                 .await
                 .expect("String callback");
             let returned_bits = call
-                .invoke(bit_array, arguments.clone())
+                .invoke(&bit_array, arguments.clone())
                 .await
                 .expect("BitArray callback");
             let codepoint = call
-                .invoke(codepoint, arguments.clone())
+                .invoke(&codepoint, arguments.clone())
                 .await
                 .expect("UtfCodepoint callback");
             let bool_ = call
-                .invoke(bool_, arguments.clone())
+                .invoke(&bool_, arguments.clone())
                 .await
                 .expect("Bool callback");
-            call.invoke(nil, arguments).await.expect("Nil callback");
+            call.invoke(&nil, arguments).await.expect("Nil callback");
 
             assert_eq!(int, BigInt::from(1));
             assert_eq!(float, 2.5);
@@ -2152,7 +2141,7 @@ pub fn run(value: Int) -> Int {
         ) -> AsyncHostFuture<'call, Result<BigInt, AsyncHostCallError>> {
             AsyncHostFuture::new(async move {
                 let value = call
-                    .invoke(callback, (value, ()))
+                    .invoke(&callback, (value, ()))
                     .await
                     .expect("the callback completes before cancellation");
                 let gate = call

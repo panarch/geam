@@ -169,7 +169,7 @@ mod tests {
         fn classify(error: AsyncHostCallError) -> Result<HostFailure, ExecutionError> {
             match error.into_kind() {
                 AsyncHostCallErrorKind::Failure(failure) => Ok(failure),
-                AsyncHostCallErrorKind::Nested(error) => Err(error.into_execution()),
+                AsyncHostCallErrorKind::Nested(error) => Err(error.into_local()),
             }
         }
 

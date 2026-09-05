@@ -65,9 +65,9 @@ pub use planner::{
 };
 pub use provider::List;
 pub use runtime::{
-    BitArraySegmentPanicReason, BitArrayValue, BitArrayValueLengthError, CustomFieldValue,
-    CustomValue, EchoLocation, EchoOutput, EchoSink, ExecutionError, ExternalValue,
-    ExternalValueIdentity, FunctionValue, HostError, HostLocation, HostOrigin, InvariantError,
-    ListValue, ListValueItemTypeMismatch, Panic, PanicDetails, PanicKind, PanicMessage, Value,
-    ValueInspection, run_main,
+    AsyncExecutionError, AsyncPanicValue, BitArraySegmentPanicReason, BitArrayValue,
+    BitArrayValueLengthError, CustomFieldValue, CustomValue, EchoLocation, EchoOutput, EchoSink,
+    ExecutionError, ExternalValue, ExternalValueIdentity, FunctionValue, HostError, HostLocation,
+    HostOrigin, InvariantError, ListValue, ListValueItemTypeMismatch, Panic, PanicDetails,
+    PanicKind, PanicMessage, Value, ValueInspection, run_main,
 };

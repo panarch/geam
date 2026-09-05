@@ -69,7 +69,7 @@ fn around<'call>(
 ) -> AsyncHostFuture<'call, Result<BigInt, AsyncHostCallError>> {
     AsyncHostFuture::new(async move {
         let offset = call.with_state(|state| state.offset.clone()).await;
-        let value = call.invoke(callback, (value + offset, ())).await?;
+        let value = call.invoke(&callback, (value + offset, ())).await?;
         let value = call
             .with_state(move |state| {
                 state.completed += 1;

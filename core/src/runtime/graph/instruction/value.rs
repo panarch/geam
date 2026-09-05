@@ -1035,7 +1035,7 @@ mod tests {
                 &ValueType::String,
                 string_value,
             ),
-            Err(ExecutionError::Invariant(
+            Err(ExecutionError::<crate::Value>::Invariant(
                 InvariantError::TupleIndexFamilyMismatch {
                     expected: ValueType::String,
                     actual: ValueType::Tuple(vec![ValueType::Int]),
@@ -1078,7 +1078,7 @@ mod tests {
                 &expected,
                 string_value,
             ),
-            Err(ExecutionError::Invariant(
+            Err(ExecutionError::<crate::Value>::Invariant(
                 InvariantError::TupleIndexFamilyMismatch {
                     expected,
                     actual: ValueType::Int,
@@ -1103,7 +1103,7 @@ mod tests {
 
         assert_eq!(
             ensure_list_index(&ValueType::Nil, 2, 0),
-            Err(ExecutionError::Invariant(
+            Err(ExecutionError::<crate::Value>::Invariant(
                 InvariantError::ListIndexOutOfBounds {
                     item_type: ValueType::Nil,
                     index: 2,
@@ -1117,7 +1117,7 @@ mod tests {
         let values: &[Value] = &[];
         assert_eq!(
             list_element(&type_, 2, values).map(|_| ()),
-            Err(ExecutionError::Invariant(
+            Err(ExecutionError::<crate::Value>::Invariant(
                 InvariantError::ListIndexOutOfBounds {
                     item_type: type_,
                     index: 2,
@@ -1603,7 +1603,7 @@ pub fn main() -> {return_type} {{ {expression} }}
                     ),
                     functions,
                 ),
-                Err(ExecutionError::Invariant(
+                Err(ExecutionError::<crate::Value>::Invariant(
                     InvariantError::CustomFieldFamilyMismatch {
                         custom_type: boxed_type(),
                         constructor: "Boxed".into(),
@@ -1626,7 +1626,7 @@ pub fn main() -> {return_type} {{ {expression} }}
                     ),
                     tuple_functions,
                 ),
-                Err(ExecutionError::Invariant(
+                Err(ExecutionError::<crate::Value>::Invariant(
                     InvariantError::TupleIndexFamilyMismatch {
                         expected: expected.clone(),
                         actual: actual.clone(),
@@ -1654,7 +1654,7 @@ pub fn main() -> {return_type} {{ {expression} }}
                     ),
                     Vec::new(),
                 ),
-                Err(ExecutionError::Invariant(
+                Err(ExecutionError::<crate::Value>::Invariant(
                     InvariantError::TupleIndexFamilyMismatch {
                         expected: ValueType::Custom(boxed_type()),
                         actual: ValueType::Int,

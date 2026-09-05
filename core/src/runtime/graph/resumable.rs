@@ -687,7 +687,7 @@ pub fn resume_compound_projections() -> Int {
         drop(state);
         let error = result
             .expect_err("corrupted function family should fail")
-            .into_execution();
+            .into_local();
 
         assert_eq!(pending, 1);
         assert_eq!(observed.lock().expect("echo observation lock").len(), 1);

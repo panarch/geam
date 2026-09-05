@@ -1254,6 +1254,7 @@ fn assert_resumable_fixture(modules: Vec<ModuleSource>) {
         future
             .as_mut()
             .poll(&mut Context::from_waker(Waker::noop()))
+            .map(|result| result.map_err(geam_core::embedding::AsyncCallError::into_local))
     };
     assert_eq!(
         echo.effects,

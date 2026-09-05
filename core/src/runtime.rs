@@ -33,7 +33,7 @@ pub(crate) use host::{
     StoredRuntimeListTupleItems, StoredRuntimeValue,
 };
 pub(crate) use resumable::{
-    AsyncHostCallbackRequest, CallbackRequest, ResumableCallback, TransferExecutionError,
+    AsyncHostCallbackRequest, ResumableCallback, TransferExecutionError,
     run_embedded_bit_array as run_resumable_embedded_bit_array,
     run_embedded_bool as run_resumable_embedded_bool,
     run_embedded_custom as run_resumable_embedded_custom,
@@ -48,8 +48,8 @@ pub(crate) use resumable::{
 
 pub use echo::{EchoLocation, EchoOutput, EchoSink};
 pub use error::{
-    BitArraySegmentPanicReason, ExecutionError, HostError, HostLocation, HostOrigin,
-    InvariantError, Panic, PanicDetails, PanicKind, PanicMessage,
+    AsyncExecutionError, AsyncPanicValue, BitArraySegmentPanicReason, ExecutionError, HostError,
+    HostLocation, HostOrigin, InvariantError, Panic, PanicDetails, PanicKind, PanicMessage,
 };
 pub(crate) use evaluated::EvaluatedExternalValue;
 pub(in crate::runtime) use evaluated::{

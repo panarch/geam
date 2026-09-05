@@ -20,30 +20,41 @@ pub(crate) trait AsyncHostCallbackRequest<Profile: HostProfile>: Send {
 pub(crate) trait ResumableCallback<Profile: HostProfile>: Send + 'static {
     type Output: Send + 'static;
 
+    fn request(
+        &self,
+        origin: HostCallOrigin,
+        inputs: TransferInputs,
+        completion: Weak<Mutex<AsyncHostCallbackCompletion<Self::Output>>>,
+    ) -> Box<dyn AsyncHostCallbackRequest<Profile> + Send>;
+}
+
+trait ResumableCallbackTarget<Profile: HostProfile>: Send + 'static {
+    type Output: Send + 'static;
+
     fn invoke<'call>(
         self,
         plan: &'call AsyncHostedExecution<Profile>,
         state: &'call mut ResumableState<'_, Profile>,
         origin: HostCallOrigin,
-        inputs: TransferInputs,
+        inputs: crate::runtime::ProfiledRetainedValues<TransferValues>,
     ) -> ResumableFuture<'call, Self::Output>
     where
         Profile::RunState: Send,
         Profile::ExternalStores: Send;
 }
 
-pub(crate) struct CallbackRequest<Function, Return> {
+struct CallbackRequest<Function, Return> {
     function: Function,
     origin: HostCallOrigin,
-    inputs: TransferInputs,
+    inputs: crate::runtime::ProfiledRetainedValues<TransferValues>,
     completion: Weak<Mutex<AsyncHostCallbackCompletion<Return>>>,
 }
 
 impl<Function, Return> CallbackRequest<Function, Return> {
-    pub(crate) fn new(
+    fn new(
         function: Function,
         origin: HostCallOrigin,
-        inputs: TransferInputs,
+        inputs: crate::runtime::ProfiledRetainedValues<TransferValues>,
         completion: Weak<Mutex<AsyncHostCallbackCompletion<Return>>>,
     ) -> Self {
         Self {
@@ -59,7 +70,7 @@ impl<Profile, Function, Return> AsyncHostCallbackRequest<Profile>
     for CallbackRequest<Function, Return>
 where
     Profile: HostProfile,
-    Function: ResumableCallback<Profile, Output = Return>,
+    Function: ResumableCallbackTarget<Profile, Output = Return>,
     Return: Send + 'static,
 {
     fn service<'call>(
@@ -91,8 +102,28 @@ where
 }
 
 macro_rules! resumable_callback {
-    ($function:ty, $output:ty, $run:ident, $map:expr) => {
+    ($function:ty, $target:ty, $output:ty, $run:ident, $map:expr) => {
         impl<Profile: HostProfile> ResumableCallback<Profile> for $function {
+            type Output = $output;
+
+            fn request(
+                &self,
+                origin: HostCallOrigin,
+                inputs: TransferInputs,
+                completion: Weak<Mutex<AsyncHostCallbackCompletion<Self::Output>>>,
+            ) -> Box<dyn AsyncHostCallbackRequest<Profile> + Send> {
+                let mut inputs = inputs.into_retained();
+                inputs.append_captures(self.captures());
+                Box::new(CallbackRequest::new(
+                    self.runtime_id(),
+                    origin,
+                    inputs,
+                    completion,
+                ))
+            }
+        }
+
+        impl<Profile: HostProfile> ResumableCallbackTarget<Profile> for $target {
             type Output = $output;
 
             fn invoke<'call>(
@@ -100,17 +131,14 @@ macro_rules! resumable_callback {
                 plan: &'call AsyncHostedExecution<Profile>,
                 state: &'call mut ResumableState<'_, Profile>,
                 origin: HostCallOrigin,
-                inputs: TransferInputs,
+                inputs: crate::runtime::ProfiledRetainedValues<TransferValues>,
             ) -> ResumableFuture<'call, Self::Output>
             where
                 Profile::RunState: Send,
                 Profile::ExternalStores: Send,
             {
-                let mut inputs = inputs.into_retained();
-                inputs.append_captures(self.captures());
-                let function = self.runtime_id();
                 Box::pin(async move {
-                    super::$run(plan, state, function, origin, inputs)
+                    super::$run(plan, state, self, origin, inputs)
                         .await
                         .map($map)
                 })
@@ -121,42 +149,49 @@ macro_rules! resumable_callback {
 
 resumable_callback!(
     crate::runtime::EvaluatedIntFunction<TransferValues>,
+    crate::plan::execution::function::IntFunctionId,
     num_bigint::BigInt,
     run_int,
     std::convert::identity
 );
 resumable_callback!(
     crate::runtime::EvaluatedFloatFunction<TransferValues>,
+    crate::plan::execution::function::FloatFunctionId,
     f64,
     run_float,
     std::convert::identity
 );
 resumable_callback!(
     crate::runtime::EvaluatedStringFunction<TransferValues>,
+    crate::plan::execution::function::StringFunctionId,
     ecow::EcoString,
     run_string,
     std::convert::identity
 );
 resumable_callback!(
     crate::runtime::EvaluatedBitArrayFunction<TransferValues>,
+    crate::plan::execution::function::BitArrayFunctionId,
     crate::BitArrayValue,
     run_bit_array,
     crate::runtime::EvaluatedBitArray::into_value
 );
 resumable_callback!(
     crate::runtime::EvaluatedUtfCodepointFunction<TransferValues>,
+    crate::plan::execution::function::UtfCodepointFunctionId,
     char,
     run_utf_codepoint,
     std::convert::identity
 );
 resumable_callback!(
     crate::runtime::EvaluatedBoolFunction<TransferValues>,
+    crate::plan::execution::function::BoolFunctionId,
     bool,
     run_bool,
     std::convert::identity
 );
 resumable_callback!(
     crate::runtime::EvaluatedNilFunction<TransferValues>,
+    crate::plan::execution::function::NilFunctionId,
     (),
     run_nil,
     std::convert::identity

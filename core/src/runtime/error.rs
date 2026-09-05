@@ -2,6 +2,7 @@ mod diagnostic;
 mod host;
 mod invariant;
 mod panic;
+mod subject;
 
 use crate::plan::{PanicSite, SourceContext, SourceSpan};
 use crate::runtime::Value;
@@ -11,11 +12,15 @@ pub(crate) use self::host::HostCallOrigin;
 pub use self::host::{HostError, HostLocation, HostOrigin};
 pub use self::invariant::InvariantError;
 pub use self::panic::{BitArraySegmentPanicReason, Panic, PanicDetails, PanicKind, PanicMessage};
+pub use subject::AsyncPanicValue;
+
+/// An execution failure whose retained assertion value can move between workers.
+pub type AsyncExecutionError = ExecutionError<AsyncPanicValue>;
 
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
-pub enum ExecutionError {
+pub enum ExecutionError<Subject = Value> {
     #[error("{0}")]
-    Panic(Panic),
+    Panic(Panic<Subject>),
     #[error("{0}")]
     Invariant(InvariantError),
     #[error("{0}")]
@@ -24,13 +29,13 @@ pub enum ExecutionError {
 
 pub(crate) type ExecutionResult<T> = Result<T, ExecutionError>;
 
-impl From<InvariantError> for ExecutionError {
+impl<Subject> From<InvariantError> for ExecutionError<Subject> {
     fn from(error: InvariantError) -> Self {
         Self::Invariant(error)
     }
 }
 
-impl ExecutionError {
+impl<Subject> ExecutionError<Subject> {
     pub(crate) fn from_host_call(
         function: &crate::plan::execution::host::HostedFunctionMetadata,
         site: crate::plan::HostCallSite,
@@ -82,7 +87,7 @@ impl ExecutionError {
         source_context: Option<&SourceContext>,
         message: Option<EcoString>,
         site: PanicSite,
-        value: Value,
+        value: Subject,
         pattern_span: SourceSpan,
     ) -> Self {
         Self::Panic(Panic::new(
@@ -112,6 +117,20 @@ impl ExecutionError {
     }
 }
 
+impl AsyncExecutionError {
+    /// Materializes a local diagnostic value when the caller needs the synchronous form.
+    ///
+    /// The returned error preserves the source, provider and panic details, but
+    /// its general-purpose assertion value may no longer be `Send`.
+    pub fn into_local(self) -> ExecutionError {
+        match self {
+            Self::Panic(panic) => ExecutionError::Panic(panic.into_local()),
+            Self::Host(error) => ExecutionError::Host(error),
+            Self::Invariant(error) => ExecutionError::Invariant(error),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{ExecutionError, InvariantError};
@@ -123,7 +142,7 @@ mod tests {
             expected: FunctionReturnFamily::Int,
             actual: FunctionReturnFamily::String,
         };
-        let error = ExecutionError::Invariant(invariant);
+        let error: ExecutionError = ExecutionError::Invariant(invariant);
 
         assert_eq!(
             error.to_string(),

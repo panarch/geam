@@ -35,7 +35,7 @@ pub use crate::BitArrayValue;
 pub use async_hosted::{AsyncHostedModule, AsyncHostedModuleBindings, AsyncHostedModuleBuilder};
 pub use binding::{BindingError, FunctionDeclaration, ModuleBindings, ModuleBuilder};
 pub use ecow::EcoString;
-pub use error::CallError;
+pub use error::{AsyncCallError, CallError};
 pub use hosted::{HostedModule, HostedModuleBindings, HostedModuleBuilder};
 #[doc(hidden)]
 pub use input::InputShape;

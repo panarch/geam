@@ -1,7 +1,5 @@
 use super::{HostProfile, HostProvider, HostType, HostTypeList, HostTypeListEnd, HostTypeSequence};
-use crate::runtime::{
-    AsyncHostCallbackRequest, CallbackRequest, HostCallOrigin, ResumableCallback, TransferInputs,
-};
+use crate::runtime::{AsyncHostCallbackRequest, HostCallOrigin, ResumableCallback, TransferInputs};
 use ecow::EcoString;
 use num_bigint::BigInt;
 use std::collections::VecDeque;
@@ -104,7 +102,7 @@ pub(crate) trait AsyncHostOperationRequest<Profile: HostProfile> {
 }
 
 type AsyncHostCallbackTarget<Profile, Return> = Box<
-    dyn FnOnce(
+    dyn Fn(
             TransferInputs,
             HostCallOrigin,
             Weak<Mutex<AsyncHostCallbackCompletion<Return>>>,
@@ -152,19 +150,15 @@ where
     Profile: HostProfile,
 {
     port: Arc<AsyncHostRequestPort<Profile>>,
-    state: CallbackRequestFutureState<Profile, Return>,
+    state: CallbackRequestFutureState<Profile>,
     completion: Arc<Mutex<AsyncHostCallbackCompletion<Return>>>,
 }
 
-enum CallbackRequestFutureState<Profile, Return>
+enum CallbackRequestFutureState<Profile>
 where
     Profile: HostProfile,
 {
-    Unqueued {
-        target: AsyncHostCallbackTarget<Profile, Return>,
-        inputs: TransferInputs,
-        origin: HostCallOrigin,
-    },
+    Unqueued(Box<dyn AsyncHostCallbackRequest<Profile> + Send>),
     Queued,
 }
 
@@ -332,11 +326,26 @@ where
     ///
     /// Arguments are owned before the request can become pending. The callback
     /// executes in the same Geam session and may itself reach an async host
-    /// function.
+    /// function. The same callable may be invoked repeatedly; each request owns
+    /// its inputs and retained captures without borrowing the callable across await.
+    /// A pending request retains the call capability's exclusive borrow:
+    ///
+    /// ```compile_fail
+    /// use geam_core::{AsyncHostCall, AsyncHostCallable, HostProfile, HostProvider, HostTypeListEnd};
+    /// async fn overlap<'call, P: HostProfile, H: HostProvider<P>>(
+    ///     mut call: AsyncHostCall<'call, P, H>,
+    ///     callback: AsyncHostCallable<'call, P, HostTypeListEnd, ()>,
+    /// ) {
+    ///     let first = call.invoke(&callback, ());
+    ///     let second = call.invoke(&callback, ());
+    ///     first.await;
+    ///     second.await;
+    /// }
+    /// ```
     #[allow(private_bounds)]
     pub fn invoke<'request, Arguments, CallbackReturn>(
         &'request mut self,
-        function: AsyncHostCallable<'call, Profile, Arguments, CallbackReturn>,
+        function: &AsyncHostCallable<'call, Profile, Arguments, CallbackReturn>,
         arguments: Arguments::Values<'static>,
     ) -> impl Future<Output = Result<CallbackReturn, super::AsyncHostCallError>> + Send + 'request
     where
@@ -345,7 +354,7 @@ where
     {
         CallbackRequestFuture::new(
             Arc::clone(&self.port),
-            function.target,
+            &function.target,
             Arguments::into_inputs(arguments),
             self.origin.clone(),
         )
@@ -408,7 +417,7 @@ where
     {
         Self {
             target: Box::new(move |inputs, origin, completion| {
-                Box::new(CallbackRequest::new(function, origin, inputs, completion))
+                function.request(origin, inputs, completion)
             }),
             lifetime: PhantomData,
             arguments: PhantomData,
@@ -529,21 +538,19 @@ where
 {
     fn new(
         port: Arc<AsyncHostRequestPort<Profile>>,
-        target: AsyncHostCallbackTarget<Profile, Return>,
+        target: &AsyncHostCallbackTarget<Profile, Return>,
         inputs: TransferInputs,
         origin: HostCallOrigin,
     ) -> Self {
+        let completion = Arc::new(Mutex::new(AsyncHostCallbackCompletion {
+            output: None,
+            waker: Waker::noop().clone(),
+        }));
+        let request = target(inputs, origin, Arc::downgrade(&completion));
         Self {
             port,
-            state: CallbackRequestFutureState::Unqueued {
-                target,
-                inputs,
-                origin,
-            },
-            completion: Arc::new(Mutex::new(AsyncHostCallbackCompletion {
-                output: None,
-                waker: Waker::noop().clone(),
-            })),
+            state: CallbackRequestFutureState::Unqueued(request),
+            completion,
         }
     }
 }
@@ -566,13 +573,7 @@ where
         }
 
         let state = std::mem::replace(&mut this.state, CallbackRequestFutureState::Queued);
-        if let CallbackRequestFutureState::Unqueued {
-            target,
-            inputs,
-            origin,
-        } = state
-        {
-            let request = target(inputs, origin, Arc::downgrade(&this.completion));
+        if let CallbackRequestFutureState::Unqueued(request) = state {
             this.port.push_callback(request);
         }
         Poll::Pending
