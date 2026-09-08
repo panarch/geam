@@ -171,8 +171,7 @@ release does not require a new Hex release. The Rust `geam-builtin` crate
 continues to follow the workspace version and publication workflow.
 
 For a Hex release, update `builtins/geam/gleam/gleam.toml` and review the package
-changes. When adding APIs, document the Geam release that provides their Rust
-implementation. Refresh the tracked local consumers from the repository root:
+changes. Refresh the tracked local consumers from the repository root:
 
 ```sh
 for project in \
@@ -188,14 +187,20 @@ Review the lock changes and run the package and consumer checks described in
 the [testing guide](testing.md). CI verifies the source, Rust implementation,
 editor support, and Hex tarball without publishing the package.
 
-Once a compatible Rust release is available, publish manually from the reviewed
-package checkout:
+Publish manually from the reviewed package checkout:
 
 ```sh
 cd builtins/geam/gleam
 gleam export hex-tarball
 gleam publish
 ```
+
+HexDocs source links use the package's `repository.path` of
+`builtins/geam/gleam` and `tag_prefix` of `hex-geam-`. For each published Hex
+version, push `hex-geam-v<version>` at a commit containing the exact published
+package source. These tags are independent of the Rust workspace's
+`v<version>` tags. Uploading the package neither requires nor creates a Git
+tag; the source links become available after the matching tag is pushed.
 
 Local tests and tarball generation do not verify Hex ownership or credentials.
 

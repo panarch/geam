@@ -31,7 +31,7 @@ for the complete source and host workflow.
 
 ## Runtime Support
 
-These APIs are implemented by Geam. Use a Geam runtime release matching this
-package's version.
+These APIs are implemented by Geam. This package is versioned independently of
+the Geam runtime.
 
 Implementations for the Erlang and JavaScript runtimes are not yet available.
