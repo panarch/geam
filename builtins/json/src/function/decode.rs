@@ -1,20 +1,16 @@
 mod context;
 mod error;
 
-use self::context::{DynamicBuilder, LocalDecoder, TransferDecoder};
+use self::context::DynamicBuilder;
 use self::error::DecodeFailure;
-use crate::GleamJsonHostProfile;
 use crate::schema::{
     DecodeErrorIndex, DecodeRequirements, JsonDynamicError, JsonDynamicOk, JsonDynamicResult,
     UnexpectedByte, UnexpectedEndOfInput, UnexpectedSequence,
 };
-use crate::{
-    BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostExternal, HostProvider,
-};
+use crate::{BitArrayValue, HostCall, HostCallCompletion, HostExternal, HostProvider};
 use ecow::EcoString;
-use geam_core::host::TransferHostCall;
-use geam_core::provider::{ProviderConstructions, ProviderRootOutputValue, ProviderValue};
-use geam_core::provider::{ProviderTransferRootOutputValue, ProviderTransferValue};
+use geam_core::provider::{ProviderConstructions, ProviderValue};
+use geam_core::provider::{ProviderRootOutputValue, ProviderValueForms};
 use geam_stdlib::provider_support::Dynamic;
 use jiter::{Jiter, Peek};
 use num_bigint::BigInt;
@@ -29,95 +25,32 @@ pub(super) fn decode_to_dynamic(json: BitArrayValue) -> DecodeOutput {
 
 impl ProviderValue for DecodeOutput {
     type Host = JsonDynamicResult;
-    type Input = Self;
-    type ListInput = Self;
     type OutputRequirements = DecodeRequirements;
     type RootRequirements = DecodeRequirements;
 }
 
-impl ProviderTransferValue for DecodeOutput {
+impl ProviderValueForms for DecodeOutput {
     type Output = Self;
     type ImmediateInput = Self;
     type ImmediateListInput = Self;
-    type TransferInput = Self;
-    type TransferListInput = Self;
+    type OwnedInput = Self;
+    type OwnedListInput = Self;
 }
 
 impl<Profile, Provider> ProviderRootOutputValue<Profile, Provider> for DecodeOutput
 where
-    Profile: GleamJsonHostProfile,
-    Provider: HostProvider<Profile>,
-{
-    fn complete<'call>(
-        self,
-        call: HostCall<'call, Profile, Provider, JsonDynamicResult>,
-        constructions: &ProviderConstructions<'call, DecodeRequirements>,
-    ) -> Result<HostCallCompletion<'call, JsonDynamicResult>, HostCallError> {
-        complete_decode(call, constructions, self.json)
-    }
-}
-
-fn complete_decode<'call, Profile, Provider>(
-    mut call: HostCall<'call, Profile, Provider, JsonDynamicResult>,
-    constructions: &ProviderConstructions<'call, DecodeRequirements>,
-    json: BitArrayValue,
-) -> Result<HostCallCompletion<'call, JsonDynamicResult>, HostCallError>
-where
-    Profile: GleamJsonHostProfile,
-    Provider: HostProvider<Profile>,
-{
-    let decoded = if json.bit_len().is_multiple_of(8) {
-        parse_dynamic(
-            &mut LocalDecoder {
-                call: &mut call,
-                constructions,
-            },
-            json.bytes(),
-        )
-    } else {
-        Err(DecodeFailure::Byte(EcoString::new()))
-    };
-
-    match decoded {
-        Ok(value) => Ok(call.return_custom::<JsonDynamicOk>((value, ()))),
-        Err(DecodeFailure::EndOfInput) => {
-            let error = call.construct_custom::<UnexpectedEndOfInput>(
-                constructions.select::<DecodeErrorIndex>().token(),
-                (),
-            );
-            Ok(call.return_custom::<JsonDynamicError>((error, ())))
-        }
-        Err(DecodeFailure::Byte(byte)) => {
-            let error = call.construct_custom::<UnexpectedByte>(
-                constructions.select::<DecodeErrorIndex>().token(),
-                (byte, ()),
-            );
-            Ok(call.return_custom::<JsonDynamicError>((error, ())))
-        }
-        Err(DecodeFailure::Sequence(sequence)) => {
-            let error = call.construct_custom::<UnexpectedSequence>(
-                constructions.select::<DecodeErrorIndex>().token(),
-                (sequence, ()),
-            );
-            Ok(call.return_custom::<JsonDynamicError>((error, ())))
-        }
-    }
-}
-
-impl<Profile, Provider> ProviderTransferRootOutputValue<Profile, Provider> for DecodeOutput
-where
-    Profile: crate::GleamJsonTransferProfile,
+    Profile: crate::GleamJsonHostProfile,
     Profile::RunState: Send,
     Provider: HostProvider<Profile>,
 {
     fn complete<'call>(
         self,
-        mut call: TransferHostCall<'call, Profile, Provider, JsonDynamicResult>,
+        mut call: HostCall<'call, Profile, Provider, JsonDynamicResult>,
         constructions: &ProviderConstructions<'call, DecodeRequirements>,
-    ) -> Result<HostCallCompletion<'call, JsonDynamicResult>, geam_core::AsyncHostCallError> {
+    ) -> Result<HostCallCompletion<'call, JsonDynamicResult>, geam_core::HostCallError> {
         let decoded = if self.json.bit_len().is_multiple_of(8) {
             parse_dynamic(
-                &mut TransferDecoder {
+                &mut DynamicBuilder {
                     call: &mut call,
                     constructions,
                 },
@@ -161,10 +94,14 @@ enum ParseFrame<'call> {
     },
 }
 
-fn parse_dynamic<'call>(
-    builder: &mut impl DynamicBuilder<'call>,
+fn parse_dynamic<'call, Profile, Provider>(
+    builder: &mut DynamicBuilder<'_, 'call, Profile, Provider>,
     input: &[u8],
-) -> Result<HostExternal<'call, Dynamic>, DecodeFailure> {
+) -> Result<HostExternal<'call, Dynamic>, DecodeFailure>
+where
+    Profile: crate::GleamJsonHostProfile,
+    Provider: HostProvider<Profile>,
+{
     let mut parser = Jiter::new(input);
     let mut frames = Vec::new();
     let mut next = parser

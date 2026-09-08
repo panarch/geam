@@ -1,24 +1,20 @@
 use ecow::EcoString;
+use geam_builtin::FutureComponent;
+use geam_builtin::embedding::FutureType;
 use geam_core::embedding::{
-    BigInt as EmbeddingInt, FunctionDeclaration, WorkModuleBuilder, with_execution_scope,
+    BigInt as EmbeddingInt, FunctionDeclaration, HostedModuleBuilder, with_execution_scope,
 };
-use geam_core::frontend::compile_typed_transfer_host_program;
-use geam_core::host::{
-    HostFutureStore, TransferHostProviderComponentRegistration, TransferHostProviderSet,
-};
+use geam_core::host::HostFutureStore;
 use geam_core::provider::advanced::{
-    DynamicKind, Equality, Hashing, Index0, Inspection, LocalRetainedContext, Retained,
-    RetainedContext, RetainedExternalPayload, StoredDynamic,
+    DynamicKind, Equality, Hashing, Index0, Inspection, Retained, RetainedExternalPayload,
+    StoredDynamic,
 };
 use geam_core::provider::{Call, List, Stored, Value};
 use geam_core::{
-    AsyncHostComponentProfile, AsyncHostProviderComponent, EchoOutput, EchoSink,
-    HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
+    EchoOutput, EchoSink, HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
     HostProviderComponentRegistration, HostProviderSet, HostedExecution, ModuleSource,
     PackageSource, compile_typed_host_program, plan_host_program,
 };
-use geam_runtime_api::FutureComponent;
-use geam_runtime_api::embedding::FutureType;
 use num_bigint::BigInt;
 use std::future::Future;
 use std::pin::pin;
@@ -88,18 +84,17 @@ mod dynamic_provider {
     use super::declarations::Token;
     use super::{
         BigInt, Call, DynamicKind, EcoString, Equality, Hashing, Index0, Inspection, List,
-        LocalRetainedContext, Retained, RetainedContext, RetainedExternalPayload, Stored,
-        StoredDynamic, Value,
+        Retained, RetainedExternalPayload, Stored, StoredDynamic, Value,
     };
 
-    #[geam_macros::external(name = "Dynamic", retained, context = Context)]
-    struct Dynamic<Context: RetainedContext = LocalRetainedContext> {
-        value: StoredDynamic<Dynamic<Context>, Context>,
+    #[geam_macros::external(name = "Dynamic", retained)]
+    struct Dynamic {
+        value: StoredDynamic<Dynamic>,
     }
 
-    #[geam_macros::external(name = "Snapshot", retained, context = Context)]
-    struct Snapshot<Context: RetainedContext = LocalRetainedContext> {
-        value: Retained<Snapshot<Context>, Index0, Context>,
+    #[geam_macros::external(name = "Snapshot", retained)]
+    struct Snapshot {
+        value: Retained<Snapshot, Index0>,
     }
 
     #[geam_macros::external(name = "Box", parameters = [Item], input = BoxInput)]
@@ -108,36 +103,30 @@ mod dynamic_provider {
         value: Stored<Item>,
     }
 
-    impl<Context> RetainedExternalPayload<Context> for Dynamic<Context>
-    where
-        Context: RetainedContext,
-    {
-        fn source_equal(&self, context: &Equality<'_, Context>, other: &Self) -> bool {
+    impl RetainedExternalPayload for Dynamic {
+        fn source_equal(&self, context: &Equality<'_>, other: &Self) -> bool {
             self.value.source_equal(context, &other.value)
         }
 
-        fn source_hash(&self, context: &Hashing<'_, Context>) -> u64 {
+        fn source_hash(&self, context: &Hashing<'_>) -> u64 {
             self.value.source_hash(context)
         }
 
-        fn inspect(&self, context: &Inspection<'_, Context>) -> EcoString {
+        fn inspect(&self, context: &Inspection<'_>) -> EcoString {
             self.value.inspect(context)
         }
     }
 
-    impl<Context> RetainedExternalPayload<Context> for Snapshot<Context>
-    where
-        Context: RetainedContext,
-    {
-        fn source_equal(&self, context: &Equality<'_, Context>, other: &Self) -> bool {
+    impl RetainedExternalPayload for Snapshot {
+        fn source_equal(&self, context: &Equality<'_>, other: &Self) -> bool {
             self.value.source_equal(context, &other.value)
         }
 
-        fn source_hash(&self, context: &Hashing<'_, Context>) -> u64 {
+        fn source_hash(&self, context: &Hashing<'_>) -> u64 {
             self.value.source_hash(context)
         }
 
-        fn inspect(&self, context: &Inspection<'_, Context>) -> EcoString {
+        fn inspect(&self, context: &Inspection<'_>) -> EcoString {
             format!("Snapshot({})", self.value.inspect(context)).into()
         }
     }
@@ -353,15 +342,31 @@ struct Profile;
 #[derive(Default)]
 struct ProfileStores {
     component: <Component as HostProviderComponent>::Stores,
+    future: HostFutureStore,
 }
 
 struct ProfileState {
     component: <Component as HostProviderComponent>::RunState,
+    future: (),
 }
 
 impl HostProfile for Profile {
     type RunState = ProfileState;
     type ExternalStores = ProfileStores;
+}
+
+impl geam_core::host::HostWorkProfile for Profile {
+    type Work = FutureComponent;
+}
+
+impl HostComponentProfile<FutureComponent> for Profile {
+    fn component_stores(stores: &ProfileStores) -> &HostFutureStore {
+        &stores.future
+    }
+
+    fn component_state(state: &mut ProfileState) -> &mut () {
+        &mut state.future
+    }
 }
 
 impl HostComponentProfile<Component> for Profile {
@@ -382,7 +387,7 @@ struct AsyncProfile;
 
 #[derive(Default)]
 struct FutureStores {
-    provider: <Component as AsyncHostProviderComponent>::AsyncStores,
+    provider: <Component as HostProviderComponent>::Stores,
     future: HostFutureStore,
 }
 
@@ -400,10 +405,10 @@ impl HostProfile for AsyncProfile {
     type ExternalStores = FutureStores;
 }
 
-impl AsyncHostComponentProfile<Component> for AsyncProfile {
-    fn component_async_stores(
+impl HostComponentProfile<Component> for AsyncProfile {
+    fn component_stores(
         stores: &Self::ExternalStores,
-    ) -> &<Component as AsyncHostProviderComponent>::AsyncStores {
+    ) -> &<Component as HostProviderComponent>::Stores {
         &stores.provider
     }
 
@@ -417,17 +422,14 @@ impl AsyncHostComponentProfile<Component> for AsyncProfile {
 impl geam_core::host::HostWorkProfile for AsyncProfile {
     type Work = FutureComponent;
 }
-impl AsyncHostComponentProfile<FutureComponent> for AsyncProfile {
-    fn component_async_stores(stores: &FutureStores) -> &HostFutureStore {
+impl HostComponentProfile<FutureComponent> for AsyncProfile {
+    fn component_stores(stores: &FutureStores) -> &HostFutureStore {
         &stores.future
     }
     fn component_state(state: &mut ()) -> &mut () {
         state
     }
 }
-
-const SOURCE: &str = include_str!("fixtures/future_dynamic/values.gleam");
-const DECLARATIONS_SOURCE: &str = include_str!("fixtures/future_dynamic/declarations.gleam");
 
 const FUTURE_SOURCE: &str = concat!(
     "import geam/future\n",
@@ -467,25 +469,43 @@ pub fn first_token_async(values: List(Token)) -> future.Future(Token)
 
 #[test]
 fn existential_values_restore_exact_types_and_preserve_source_semantics() {
-    let providers = <Component as HostProviderComponentRegistration<Profile>>::providers()
-        .expect("dynamic provider should register");
+    let mut providers = FutureComponent::providers().expect("Future component");
+    providers.extend(
+        <Component as HostProviderComponentRegistration<Profile>>::providers()
+            .expect("dynamic provider should register"),
+    );
     let hosts = HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), providers)
         .expect("dynamic provider module should be unique");
     let typed = compile_typed_host_program(
         "dynamic_provider",
         "dynamic_provider",
-        [PackageSource::new(
-            "dynamic_provider",
-            Vec::<&str>::new(),
-            [
-                ModuleSource::new(
-                    "dynamic_provider/declarations",
-                    "src/dynamic_provider/declarations.gleam",
-                    DECLARATIONS_SOURCE,
-                ),
-                ModuleSource::new("dynamic_provider", "src/dynamic_provider.gleam", SOURCE),
-            ],
-        )],
+        [
+            PackageSource::new(
+                "geam",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "geam/future",
+                    "src/geam/future.gleam",
+                    include_str!("../../builtins/geam/gleam/src/geam/future.gleam"),
+                )],
+            ),
+            PackageSource::new(
+                "dynamic_provider",
+                ["geam"],
+                [
+                    ModuleSource::new(
+                        "dynamic_provider/declarations",
+                        "src/dynamic_provider/declarations.gleam",
+                        FUTURE_DECLARATIONS,
+                    ),
+                    ModuleSource::new(
+                        "dynamic_provider",
+                        "src/dynamic_provider.gleam",
+                        FUTURE_SOURCE,
+                    ),
+                ],
+            ),
+        ],
         hosts,
     )
     .expect("complete dynamic source should compile");
@@ -493,7 +513,13 @@ fn existential_values_restore_exact_types_and_preserve_source_semantics() {
     let execution = HostedExecution::try_from_module_plan(plan)
         .expect("dynamic provider execution should seal");
     let returned = execution
-        .run_main(&mut ProfileState { component: () }, &mut Vec::new())
+        .run_main(
+            &mut ProfileState {
+                component: (),
+                future: (),
+            },
+            &mut Vec::new(),
+        )
         .expect("dynamic provider should execute");
 
     assert_eq!(
@@ -525,12 +551,12 @@ pub fn direct() { dynamic_provider.transfer_flow() }
 
     let mut providers = FutureComponent::providers().expect("Future component");
     providers.extend(
-        <Component as TransferHostProviderComponentRegistration<AsyncProfile>>::providers()
+        <Component as HostProviderComponentRegistration<AsyncProfile>>::providers()
             .expect("dynamic provider should register for transferable execution"),
     );
-    let hosts =
-        TransferHostProviderSet::new(providers).expect("dynamic provider module should be unique");
-    let typed = compile_typed_transfer_host_program(
+    let hosts = HostProviderSet::from_providers(providers)
+        .expect("dynamic provider module should be unique");
+    let typed = compile_typed_host_program(
         "application",
         "main",
         [
@@ -568,7 +594,7 @@ pub fn direct() { dynamic_provider.transfer_flow() }
         hosts,
     )
     .expect("dynamic async source should compile");
-    let (mut bindings, direct) = WorkModuleBuilder::new(typed)
+    let (mut bindings, direct) = HostedModuleBuilder::new(typed)
         .expect("dynamic async source should plan")
         .function(FunctionDeclaration::<
             (),

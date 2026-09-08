@@ -1,46 +1,35 @@
 use super::provider::StringTreePayload;
 use super::storage::StringTree as StoredStringTree;
-use crate::storage::StorageContext;
 use ecow::EcoString;
 use num_bigint::BigInt;
 use std::ops::Deref;
 use unicode_segmentation::UnicodeSegmentation;
 
-pub(super) fn append_tree<Context: StorageContext>(
-    tree: impl Deref<Target = StringTreePayload<Context>>,
-    suffix: impl Deref<Target = StringTreePayload<Context>>,
-) -> StringTreePayload<Context> {
+pub(super) fn append_tree(
+    tree: impl Deref<Target = StringTreePayload>,
+    suffix: impl Deref<Target = StringTreePayload>,
+) -> StringTreePayload {
     StringTreePayload::from_stored(tree.stored().append(suffix.stored()))
 }
 
-pub(super) fn from_string<Context: StorageContext>(
-    string: EcoString,
-) -> StringTreePayload<Context> {
+pub(super) fn from_string(string: EcoString) -> StringTreePayload {
     StringTreePayload::from_stored(StoredStringTree::text(string))
 }
 
-pub(super) fn to_string<Context: StorageContext>(
-    tree: impl Deref<Target = StringTreePayload<Context>>,
-) -> EcoString {
+pub(super) fn to_string(tree: impl Deref<Target = StringTreePayload>) -> EcoString {
     tree.stored().flatten()
 }
 
-pub(super) fn byte_size<Context: StorageContext>(
-    tree: impl Deref<Target = StringTreePayload<Context>>,
-) -> BigInt {
+pub(super) fn byte_size(tree: impl Deref<Target = StringTreePayload>) -> BigInt {
     BigInt::from(tree.stored().byte_len())
 }
 
-pub(super) fn lowercase<Context: StorageContext>(
-    tree: impl Deref<Target = StringTreePayload<Context>>,
-) -> StringTreePayload<Context> {
+pub(super) fn lowercase(tree: impl Deref<Target = StringTreePayload>) -> StringTreePayload {
     let value = tree.stored().flatten().to_lowercase();
     StringTreePayload::from_stored(StoredStringTree::text(value))
 }
 
-pub(super) fn uppercase<Context: StorageContext>(
-    tree: impl Deref<Target = StringTreePayload<Context>>,
-) -> StringTreePayload<Context> {
+pub(super) fn uppercase(tree: impl Deref<Target = StringTreePayload>) -> StringTreePayload {
     let value = tree.stored().flatten().to_uppercase();
     StringTreePayload::from_stored(StoredStringTree::text(value))
 }
@@ -49,10 +38,10 @@ pub(super) fn do_to_graphemes(string: EcoString) -> Vec<EcoString> {
     string.graphemes(true).map(EcoString::from).collect()
 }
 
-pub(super) fn erl_split<Context: StorageContext>(
-    tree: impl Deref<Target = StringTreePayload<Context>>,
+pub(super) fn erl_split(
+    tree: impl Deref<Target = StringTreePayload>,
     pattern: EcoString,
-) -> Vec<StringTreePayload<Context>> {
+) -> Vec<StringTreePayload> {
     let text = tree.stored().flatten();
     let parts = if pattern.is_empty() {
         vec![text]
@@ -65,11 +54,11 @@ pub(super) fn erl_split<Context: StorageContext>(
         .collect()
 }
 
-pub(super) fn replace<Context: StorageContext>(
-    tree: impl Deref<Target = StringTreePayload<Context>>,
+pub(super) fn replace(
+    tree: impl Deref<Target = StringTreePayload>,
     pattern: EcoString,
     substitute: EcoString,
-) -> StringTreePayload<Context> {
+) -> StringTreePayload {
     let text = tree.stored().flatten();
     let replaced = if pattern.is_empty() {
         text
@@ -79,16 +68,14 @@ pub(super) fn replace<Context: StorageContext>(
     StringTreePayload::from_stored(StoredStringTree::text(replaced))
 }
 
-pub(super) fn is_equal<Context: StorageContext>(
-    left: impl Deref<Target = StringTreePayload<Context>>,
-    right: impl Deref<Target = StringTreePayload<Context>>,
+pub(super) fn is_equal(
+    left: impl Deref<Target = StringTreePayload>,
+    right: impl Deref<Target = StringTreePayload>,
 ) -> bool {
     left.stored().flatten() == right.stored().flatten()
 }
 
-pub(super) fn is_empty<Context: StorageContext>(
-    tree: impl Deref<Target = StringTreePayload<Context>>,
-) -> bool {
+pub(super) fn is_empty(tree: impl Deref<Target = StringTreePayload>) -> bool {
     tree.stored().byte_len() == 0
 }
 

@@ -18,9 +18,7 @@ use crate::runtime::evaluated::{
     EvaluatedFunctionValue, EvaluatedListCapture, EvaluatedValue, FunctionReferenceId,
 };
 use crate::runtime::state::RuntimeStateFor;
-use crate::runtime::{
-    ExecutableRuntimePlan, InvariantError, RuntimeListStorage, RuntimeValueProfile,
-};
+use crate::runtime::{ExecutableRuntimePlan, InvariantError};
 use std::convert::Infallible;
 
 #[derive(Clone, Copy)]
@@ -29,19 +27,11 @@ enum FunctionIdentity {
     Instance,
 }
 
-pub(in crate::runtime) type CoreFunctionInstructionValue<Profile> = InstructionValue<
-    Profile,
-    EvaluatedFunctionValue<Profile>,
-    ProfiledFunctionFunctionId<Infallible>,
-    FunctionLocal,
->;
+pub(in crate::runtime) type CoreFunctionInstructionValue =
+    InstructionValue<EvaluatedFunctionValue, ProfiledFunctionFunctionId<Infallible>, FunctionLocal>;
 
-pub(in crate::runtime) type ExternalFunctionInstructionValue<Profile> =
-    InstructionValueWithoutConstant<
-        Profile,
-        EvaluatedFunctionValue<Profile>,
-        ExternalFunctionCallTarget,
-    >;
+pub(in crate::runtime) type ExternalFunctionInstructionValue =
+    InstructionValueWithoutConstant<EvaluatedFunctionValue, ExternalFunctionCallTarget>;
 
 pub(in crate::runtime) trait FunctionParameterPlan:
     RuntimeExecutionPlan
@@ -51,17 +41,16 @@ pub(in crate::runtime) trait FunctionParameterPlan:
     fn external_function_target_params(&self, target: &ExternalFunctionTarget) -> Vec<ParamLocal>;
 }
 
-pub(in crate::runtime) fn evaluate_action<Plan, Profile, State>(
+pub(in crate::runtime) fn evaluate_action<Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment<Profile>,
+    environment: &BlockEnvironment,
     instruction: &FunctionInstruction,
     expected: &ValueType,
-) -> Result<CoreFunctionInstructionValue<Profile>, State::Error>
+) -> Result<CoreFunctionInstructionValue, State::Error>
 where
     Plan: FunctionParameterPlan,
-    Profile: RuntimeValueProfile,
-    State: RuntimeGraphState<Profile>,
+    State: RuntimeGraphState,
 {
     use FunctionInstructionKind as I;
     use InstructionValue as V;
@@ -146,10 +135,10 @@ where
 pub(super) fn evaluate<Plan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &BlockEnvironment<Plan::Values>,
+    environment: &BlockEnvironment,
     instruction: &FunctionInstruction,
     expected: &ValueType,
-) -> ExecutionResult<EvaluatedFunctionValue<Plan::Values>, Plan::Values>
+) -> ExecutionResult<EvaluatedFunctionValue>
 where
     Plan: ExecutableRuntimePlan,
 {
@@ -161,8 +150,8 @@ where
 fn resolve<Plan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    value: CoreFunctionInstructionValue<Plan::Values>,
-) -> ExecutionResult<EvaluatedFunctionValue<Plan::Values>, Plan::Values>
+    value: CoreFunctionInstructionValue,
+) -> ExecutionResult<EvaluatedFunctionValue>
 where
     Plan: ExecutableRuntimePlan,
 {
@@ -177,14 +166,13 @@ where
     }
 }
 
-pub(in crate::runtime) fn evaluate_external_action<Plan, Profile>(
+pub(in crate::runtime) fn evaluate_external_action<Plan>(
     plan: &Plan,
-    environment: &BlockEnvironment<Profile>,
+    environment: &BlockEnvironment,
     instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
-) -> ExternalFunctionInstructionValue<Profile>
+) -> ExternalFunctionInstructionValue
 where
     Plan: FunctionParameterPlan,
-    Profile: RuntimeValueProfile,
 {
     use ExternalFunctionInstructionKind as I;
     use InstructionValueWithoutConstant as V;
@@ -234,12 +222,11 @@ where
 pub(super) fn evaluate_external<Plan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &BlockEnvironment<Plan::Values>,
+    environment: &BlockEnvironment,
     instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
-) -> ExecutionResult<EvaluatedFunctionValue<Plan::Values>, Plan::Values>
+) -> ExecutionResult<EvaluatedFunctionValue>
 where
-    Plan: ExecutableRuntimePlan,
-    Plan::Profile: crate::plan::execution::function::DirectHostedExecutionProfile,
+    Plan: ExecutableRuntimePlan<Profile = crate::plan::execution::host::HostedExecutionProfile>,
 {
     let metadata = instruction.instruction();
     let value = match evaluate_external_action(plan, environment, instruction) {
@@ -255,34 +242,30 @@ where
     validate_return_family(value, metadata.family(), metadata.type_().clone())
 }
 
-fn validate_execution_return_family<Values: RuntimeValueProfile>(
-    value: ExecutionResult<EvaluatedFunctionValue<Values>, Values>,
+fn validate_execution_return_family(
+    value: ExecutionResult<EvaluatedFunctionValue>,
     expected: crate::plan::execution::function::FunctionReturnFamily,
     type_: crate::plan::execution::type_::FunctionType,
-) -> ExecutionResult<EvaluatedFunctionValue<Values>, Values> {
+) -> ExecutionResult<EvaluatedFunctionValue> {
     match value {
         Ok(value) => validate_return_family(value, expected, type_),
         Err(error) => Err(error),
     }
 }
 
-pub(super) fn push<Values: RuntimeValueProfile>(
-    environment: &mut BlockEnvironment<Values>,
-    value: EvaluatedFunctionValue<Values>,
-) {
+pub(super) fn push(environment: &mut BlockEnvironment, value: EvaluatedFunctionValue) {
     environment.push_function_value(value);
 }
 
-fn target_value<Plan, Profile>(
+fn target_value<Plan>(
     plan: &Plan,
     target: &FunctionTarget,
-    captures: Vec<EvaluatedCapture<Profile>>,
+    captures: Vec<EvaluatedCapture>,
     type_: crate::plan::execution::type_::FunctionType,
     identity: FunctionIdentity,
-) -> EvaluatedFunctionValue<Profile>
+) -> EvaluatedFunctionValue
 where
     Plan: FunctionParameterPlan,
-    Profile: RuntimeValueProfile,
 {
     let params = plan.function_target_params(target);
     match target {
@@ -339,16 +322,15 @@ where
     }
 }
 
-fn external_target_value<Plan, Profile>(
+fn external_target_value<Plan>(
     plan: &Plan,
     target: &ExternalFunctionTarget,
-    captures: Vec<EvaluatedCapture<Profile>>,
+    captures: Vec<EvaluatedCapture>,
     type_: crate::plan::execution::type_::FunctionType,
     identity: FunctionIdentity,
-) -> EvaluatedFunctionValue<Profile>
+) -> EvaluatedFunctionValue
 where
     Plan: FunctionParameterPlan,
-    Profile: RuntimeValueProfile,
 {
     let params = plan.external_function_target_params(target);
     match target {
@@ -392,16 +374,15 @@ where
     }
 }
 
-fn evaluated_function<Id, Profile>(
+fn evaluated_function<Id>(
     function: Id,
     params: Vec<ParamLocal>,
-    captures: Vec<EvaluatedCapture<Profile>>,
+    captures: Vec<EvaluatedCapture>,
     type_: crate::plan::execution::type_::FunctionType,
     identity: FunctionIdentity,
-) -> EvaluatedFunction<Id, Profile>
+) -> EvaluatedFunction<Id>
 where
     Id: Clone + FunctionReferenceId,
-    Profile: RuntimeValueProfile,
 {
     match identity {
         FunctionIdentity::Reference => {
@@ -411,13 +392,12 @@ where
     }
 }
 
-pub(in crate::runtime) fn validate_return_family<Profile, Error>(
-    value: EvaluatedFunctionValue<Profile>,
+pub(in crate::runtime) fn validate_return_family<Error>(
+    value: EvaluatedFunctionValue,
     expected: crate::plan::execution::function::FunctionReturnFamily,
     type_: crate::plan::execution::type_::FunctionType,
-) -> Result<EvaluatedFunctionValue<Profile>, Error>
+) -> Result<EvaluatedFunctionValue, Error>
 where
-    Profile: RuntimeValueProfile,
     Error: From<InvariantError>,
 {
     let actual = value.kind().family();
@@ -440,10 +420,10 @@ impl<Plan: RuntimeExecutionPlan> FunctionParameterPlan for Plan {
     }
 }
 
-fn capture_values<Profile: RuntimeValueProfile>(
-    environment: &BlockEnvironment<Profile>,
+fn capture_values(
+    environment: &BlockEnvironment,
     captures: &[FunctionCapture],
-) -> Vec<EvaluatedCapture<Profile>> {
+) -> Vec<EvaluatedCapture> {
     captures
         .iter()
         .map(|capture| match capture {
@@ -1190,9 +1170,149 @@ pub fn main() {
         ];
 
         assert_eq!(
-            crate::runtime::run_src(include_str!(
-                "../../../../tests/fixtures/execution/values/bit_array_function_value_paths.gleam"
-            )),
+            crate::runtime::run_src(
+                r#"fn identity(value: BitArray) -> BitArray {
+  value
+}
+
+fn other(_: BitArray) -> BitArray {
+  <<99>>
+}
+
+fn getter(_: Nil) -> fn(BitArray) -> BitArray {
+  identity
+}
+
+fn selector() -> fn(Nil) -> fn(BitArray) -> BitArray {
+  getter
+}
+
+fn apply(function: fn(BitArray) -> BitArray, value: BitArray) -> BitArray {
+  function(value)
+}
+
+fn first(values: List(BitArray)) -> BitArray {
+  let assert [value, ..] = values
+  value
+}
+
+fn choose_bool(value: Bool) {
+  case value {
+    True -> identity
+    False -> other
+  }
+}
+
+fn choose_int(value: Int) {
+  case value {
+    1 -> identity
+    _ -> other
+  }
+}
+
+fn choose_string(value: String) {
+  case value {
+    "hit" -> identity
+    _ -> other
+  }
+}
+
+fn choose_float(value: Float) {
+  case value {
+    1.0 -> identity
+    _ -> other
+  }
+}
+
+pub fn main() {
+  let local = identity
+  let closure = fn(value) { value }
+  let pair = #(identity)
+  let assert [from_list] = [identity]
+  let from_list_case = case [identity] {
+    [function] -> function
+    _ -> other
+  }
+  let from_direct_call = getter(Nil)
+  let selected = selector()
+  let from_function_call = selected(Nil)
+  let from_function_subject = case identity {
+    function -> function
+  }
+  let from_bool_case = case True {
+    True -> identity
+    False -> other
+  }
+  let from_bool_case_fallback = case False {
+    True -> identity
+    False -> other
+  }
+  let from_int_case = case 1 {
+    1 -> identity
+    _ -> other
+  }
+  let from_int_case_fallback = case 0 {
+    1 -> identity
+    _ -> other
+  }
+  let from_string_case = case "hit" {
+    "hit" -> identity
+    _ -> other
+  }
+  let from_string_case_fallback = case "miss" {
+    "hit" -> identity
+    _ -> other
+  }
+  let from_float_case = case 1.0 {
+    1.0 -> identity
+    _ -> other
+  }
+  let from_float_case_fallback = case 0.0 {
+    1.0 -> identity
+    _ -> other
+  }
+  let from_block = {
+    let ignored = 1
+    identity
+  }
+  let captured_function = identity
+  let capturing_closure = fn(value) { captured_function(value) }
+
+  #(
+    local(<<1>>),
+    closure(<<2>>),
+    pair.0(<<3>>),
+    from_list(<<4>>),
+    from_list_case(<<24>>),
+    from_direct_call(<<5>>),
+    from_function_call(<<6>>),
+    from_function_subject(<<23>>),
+    choose_bool(True)(<<7>>),
+    choose_bool(False)(<<8>>),
+    choose_int(1)(<<9>>),
+    choose_int(0)(<<10>>),
+    choose_string("hit")(<<11>>),
+    choose_string("miss")(<<12>>),
+    choose_float(1.0)(<<13>>),
+    choose_float(0.0)(<<14>>),
+    from_bool_case(<<16>>),
+    from_bool_case_fallback(<<16>>),
+    from_int_case(<<17>>),
+    from_int_case_fallback(<<17>>),
+    from_string_case(<<18>>),
+    from_string_case_fallback(<<18>>),
+    from_float_case(<<19>>),
+    from_float_case_fallback(<<19>>),
+    from_block(<<15>>),
+    apply(identity, <<20>>),
+    first([<<21>>]),
+    capturing_closure(<<22>>),
+  )
+}
+
+// @geam:expect Tuple([BitArray(bytes=[1], bit_len=8), BitArray(bytes=[2], bit_len=8), BitArray(bytes=[3], bit_len=8), BitArray(bytes=[4], bit_len=8), BitArray(bytes=[24], bit_len=8), BitArray(bytes=[5], bit_len=8), BitArray(bytes=[6], bit_len=8), BitArray(bytes=[23], bit_len=8), BitArray(bytes=[7], bit_len=8), BitArray(bytes=[99], bit_len=8), BitArray(bytes=[9], bit_len=8), BitArray(bytes=[99], bit_len=8), BitArray(bytes=[11], bit_len=8), BitArray(bytes=[99], bit_len=8), BitArray(bytes=[13], bit_len=8), BitArray(bytes=[99], bit_len=8), BitArray(bytes=[16], bit_len=8), BitArray(bytes=[99], bit_len=8), BitArray(bytes=[17], bit_len=8), BitArray(bytes=[99], bit_len=8), BitArray(bytes=[18], bit_len=8), BitArray(bytes=[99], bit_len=8), BitArray(bytes=[19], bit_len=8), BitArray(bytes=[99], bit_len=8), BitArray(bytes=[15], bit_len=8), BitArray(bytes=[20], bit_len=8), BitArray(bytes=[21], bit_len=8), BitArray(bytes=[22], bit_len=8)])
+"#
+            ),
             Value::Tuple(
                 bit_array_bytes
                     .into_iter()
@@ -1201,9 +1321,165 @@ pub fn main() {
             ),
         );
         assert_eq!(
-            crate::runtime::run_src(include_str!(
-                "../../../../tests/fixtures/execution/values/utf_codepoint_function_value_paths.gleam"
-            )),
+            crate::runtime::run_src(
+                r#"fn codepoint(value: Int) -> UtfCodepoint {
+  case <<value>> {
+    <<value:utf8_codepoint>> -> value
+    _ -> panic
+  }
+}
+
+fn bits(value: UtfCodepoint) -> BitArray {
+  <<value:utf8_codepoint>>
+}
+
+fn identity(value: UtfCodepoint) -> UtfCodepoint {
+  value
+}
+
+fn other(_: UtfCodepoint) -> UtfCodepoint {
+  codepoint(99)
+}
+
+fn getter(_: Nil) -> fn(UtfCodepoint) -> UtfCodepoint {
+  identity
+}
+
+fn selector() -> fn(Nil) -> fn(UtfCodepoint) -> UtfCodepoint {
+  getter
+}
+
+fn apply(function: fn(UtfCodepoint) -> UtfCodepoint, value: UtfCodepoint) {
+  function(value)
+}
+
+fn first(values: List(UtfCodepoint)) -> UtfCodepoint {
+  let assert [value, ..] = values
+  value
+}
+
+fn choose_bool(value: Bool) {
+  case value {
+    True -> identity
+    False -> other
+  }
+}
+
+fn choose_int(value: Int) {
+  case value {
+    1 -> identity
+    _ -> other
+  }
+}
+
+fn choose_string(value: String) {
+  case value {
+    "hit" -> identity
+    _ -> other
+  }
+}
+
+fn choose_float(value: Float) {
+  case value {
+    1.0 -> identity
+    _ -> other
+  }
+}
+
+pub fn main() {
+  let local = identity
+  let closure = fn(value) { value }
+  let pair = #(identity)
+  let assert [from_list] = [identity]
+  let from_list_case = case [identity] {
+    [function] -> function
+    _ -> other
+  }
+  let from_direct_call = getter(Nil)
+  let selected = selector()
+  let from_function_call = selected(Nil)
+  let from_function_subject = case identity {
+    function -> function
+  }
+  let from_guarded_function_subject = case identity {
+    function if True -> function
+    _ -> other
+  }
+  let from_bool_case = case True {
+    True -> identity
+    False -> other
+  }
+  let from_bool_case_fallback = case False {
+    True -> identity
+    False -> other
+  }
+  let from_int_case = case 1 {
+    1 -> identity
+    _ -> other
+  }
+  let from_int_case_fallback = case 0 {
+    1 -> identity
+    _ -> other
+  }
+  let from_string_case = case "hit" {
+    "hit" -> identity
+    _ -> other
+  }
+  let from_string_case_fallback = case "miss" {
+    "hit" -> identity
+    _ -> other
+  }
+  let from_float_case = case 1.0 {
+    1.0 -> identity
+    _ -> other
+  }
+  let from_float_case_fallback = case 0.0 {
+    1.0 -> identity
+    _ -> other
+  }
+  let from_block = {
+    let ignored = 1
+    identity
+  }
+  let captured_function = identity
+  let capturing_closure = fn(value) { captured_function(value) }
+
+  #(
+    bits(local(codepoint(1))),
+    bits(closure(codepoint(2))),
+    bits(pair.0(codepoint(3))),
+    bits(from_list(codepoint(4))),
+    bits(from_list_case(codepoint(24))),
+    bits(from_direct_call(codepoint(5))),
+    bits(from_function_call(codepoint(6))),
+    bits(from_function_subject(codepoint(23))),
+    bits(from_guarded_function_subject(codepoint(25))),
+    bits(choose_bool(True)(codepoint(7))),
+    bits(choose_bool(False)(codepoint(8))),
+    bits(choose_int(1)(codepoint(9))),
+    bits(choose_int(0)(codepoint(10))),
+    bits(choose_string("hit")(codepoint(11))),
+    bits(choose_string("miss")(codepoint(12))),
+    bits(choose_float(1.0)(codepoint(13))),
+    bits(choose_float(0.0)(codepoint(14))),
+    bits(from_bool_case(codepoint(16))),
+    bits(from_bool_case_fallback(codepoint(16))),
+    bits(from_int_case(codepoint(17))),
+    bits(from_int_case_fallback(codepoint(17))),
+    bits(from_string_case(codepoint(18))),
+    bits(from_string_case_fallback(codepoint(18))),
+    bits(from_float_case(codepoint(19))),
+    bits(from_float_case_fallback(codepoint(19))),
+    bits(from_block(codepoint(15))),
+    bits(apply(identity, codepoint(20))),
+    bits(first([codepoint(21)])),
+    bits(capturing_closure(codepoint(22))),
+  )
+}
+
+// @geam:expect Tuple([BitArray(bytes=[1], bit_len=8), BitArray(bytes=[2], bit_len=8), BitArray(bytes=[3], bit_len=8), BitArray(bytes=[4], bit_len=8), BitArray(bytes=[24], bit_len=8), BitArray(bytes=[5], bit_len=8), BitArray(bytes=[6], bit_len=8), BitArray(bytes=[23], bit_len=8), BitArray(bytes=[25], bit_len=8), BitArray(bytes=[7], bit_len=8), BitArray(bytes=[99], bit_len=8), BitArray(bytes=[9], bit_len=8), BitArray(bytes=[99], bit_len=8), BitArray(bytes=[11], bit_len=8), BitArray(bytes=[99], bit_len=8), BitArray(bytes=[13], bit_len=8), BitArray(bytes=[99], bit_len=8), BitArray(bytes=[16], bit_len=8), BitArray(bytes=[99], bit_len=8), BitArray(bytes=[17], bit_len=8), BitArray(bytes=[99], bit_len=8), BitArray(bytes=[18], bit_len=8), BitArray(bytes=[99], bit_len=8), BitArray(bytes=[19], bit_len=8), BitArray(bytes=[99], bit_len=8), BitArray(bytes=[15], bit_len=8), BitArray(bytes=[20], bit_len=8), BitArray(bytes=[21], bit_len=8), BitArray(bytes=[22], bit_len=8)])
+"#
+            ),
             Value::Tuple(
                 codepoint_bytes
                     .into_iter()

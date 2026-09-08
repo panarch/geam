@@ -37,12 +37,6 @@ pub struct HostedTypedProgram<Profile: HostProfile> {
     implementations: RegisteredHostImplementations<Profile>,
 }
 
-/// A checked Gleam program with immediate Rust hosts and transferable runtime values.
-pub struct TransferHostedTypedProgram<Profile: HostProfile> {
-    program: HostedProgram,
-    implementations: crate::host::RegisteredTransferHostImplementations<Profile>,
-}
-
 struct HostedProgram {
     root_package: EcoString,
     root_module: EcoString,
@@ -117,36 +111,6 @@ impl<Profile: HostProfile> HostedTypedProgram<Profile> {
     }
 }
 
-impl<Profile: HostProfile> TransferHostedTypedProgram<Profile> {
-    pub fn root_package(&self) -> &EcoString {
-        &self.program.root_package
-    }
-
-    pub fn root_module(&self) -> &EcoString {
-        &self.program.root_module
-    }
-
-    pub(crate) fn root_public_functions(&self) -> impl Iterator<Item = &EcoString> {
-        self.program.root_public_functions.iter()
-    }
-
-    pub(crate) fn into_parts(
-        self,
-    ) -> (
-        usize,
-        Vec<HostedTypedProgramModule>,
-        Vec<RegisteredHostProviderModule>,
-        crate::host::RegisteredTransferHostImplementations<Profile>,
-    ) {
-        (
-            self.program.root_index,
-            self.program.modules,
-            self.program.providers,
-            self.implementations,
-        )
-    }
-}
-
 pub fn compile_typed_module(
     module_name: impl Into<EcoString>,
     path: impl Into<Utf8PathBuf>,
@@ -202,47 +166,6 @@ pub fn compile_typed_host_program<Profile: HostProfile>(
         packages.into_iter().collect(),
         hosts,
     )
-}
-
-/// Checks ordinary package sources with immediate, transferable Rust providers.
-pub fn compile_typed_transfer_host_program<Profile: HostProfile>(
-    root_package: impl Into<EcoString>,
-    root_module: impl Into<EcoString>,
-    packages: impl IntoIterator<Item = PackageSource>,
-    hosts: crate::host::TransferHostProviderSet<Profile>,
-) -> Result<TransferHostedTypedProgram<Profile>, FrontendError> {
-    let root_package = root_package.into();
-    let warnings = WarningEmitter::null();
-    let parsed = parse_package_sources(&root_package, packages.into_iter().collect(), &warnings)?;
-    compile_parsed_transfer_host_package_program(
-        root_package,
-        root_module.into(),
-        parsed,
-        hosts,
-        warnings,
-    )
-}
-
-pub(super) fn compile_parsed_transfer_host_package_program<Profile: HostProfile>(
-    root_package: EcoString,
-    root_module: EcoString,
-    parsed: Vec<ParsedModule>,
-    hosts: crate::host::TransferHostProviderSet<Profile>,
-    warnings: WarningEmitter,
-) -> Result<TransferHostedTypedProgram<Profile>, FrontendError> {
-    let (providers, implementations) = hosts.into_registered();
-    compile_parsed_host_program(
-        root_package,
-        root_module,
-        parsed,
-        Vec::new(),
-        providers,
-        warnings,
-    )
-    .map(|program| TransferHostedTypedProgram {
-        program,
-        implementations,
-    })
 }
 
 fn compile_package_sources(
@@ -827,12 +750,11 @@ mod tests {
     use super::{
         FrontendError, HostedTypedProgramModule, ModuleSource, PackageSource,
         compile_typed_host_program, compile_typed_module, compile_typed_package_program,
-        compile_typed_program, compile_typed_transfer_host_program, host_module_interface,
-        host_type,
+        compile_typed_program, host_module_interface, host_type,
     };
     use crate::host::{
         HostCustomTypeSchema, HostExternalTypeSchema, HostModule, HostProviderSet,
-        HostTypeDescriptor, StatelessHostProfile, TransferHostProviderSet,
+        HostTypeDescriptor, StatelessHostProfile,
     };
     use crate::plan_host_program;
     use crate::planner::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
@@ -1840,7 +1762,7 @@ pub fn main() {
             .expect_err("invalid syntax should fail");
         let analyse = compile_typed_module("main", "main.gleam", "pub fn main() { 1 + \"bad\" }")
             .expect_err("invalid types should fail");
-        let transfer_parse = compile_typed_transfer_host_program(
+        let transfer_parse = compile_typed_host_program(
             "application",
             "main",
             [PackageSource::new(
@@ -1848,7 +1770,7 @@ pub fn main() {
                 Vec::<EcoString>::new(),
                 [ModuleSource::new("main", "main.gleam", "pub fn main(")],
             )],
-            TransferHostProviderSet::<StatelessHostProfile>::new([])
+            HostProviderSet::<StatelessHostProfile>::from_providers([])
                 .expect("empty transferable providers should be valid"),
         )
         .err()

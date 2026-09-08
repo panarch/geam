@@ -6,10 +6,10 @@ pub mod gleam_json;
 pub mod gleam_stdlib;
 #[cfg(feature = "gleam-time")]
 pub mod gleam_time;
-#[cfg(feature = "geam-runtime-api")]
-pub use geam_runtime_api as runtime_api;
-#[cfg(feature = "geam-runtime-api")]
-pub use geam_runtime_api::FutureComponent;
+#[cfg(feature = "geam-builtin")]
+pub use geam_builtin as builtin;
+#[cfg(feature = "geam-builtin")]
+pub use geam_builtin::FutureComponent;
 #[cfg(feature = "provider")]
 pub mod provider {
     pub mod advanced {
@@ -29,12 +29,9 @@ pub mod provider {
 #[cfg(feature = "provider")]
 pub mod __macro_support {
     pub use geam_core::__macro_support::{
-        AsyncHostCallError, AsyncHostComponentProfile, AsyncHostExternalBinding,
-        AsyncHostExternalEquality, AsyncHostExternalHashing, AsyncHostExternalInspection,
-        AsyncHostExternalStorage, AsyncHostExternalStore, AsyncHostProviderComponent, Call,
-        Callback, EcoString, Equality, ExternalPayload, Hashing, HostCall, HostCallCompletion,
-        HostCallError, HostCallable, HostComponentProfile, HostConstruction, HostConstructions,
-        HostCustom, HostCustomConstructorAt, HostCustomConstructorDefinition,
+        Call, Callback, EcoString, Equality, ExternalPayload, Hashing, HostCall,
+        HostCallCompletion, HostCallError, HostCallable, HostComponentProfile, HostConstruction,
+        HostConstructions, HostCustom, HostCustomConstructorAt, HostCustomConstructorDefinition,
         HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomField,
         HostCustomFieldList, HostCustomFieldListEnd, HostCustomIndex0, HostCustomIndexNext,
         HostCustomSchema, HostCustomType, HostExternal, HostExternalBinding, HostExternalEquality,
@@ -47,43 +44,27 @@ pub mod __macro_support {
         HostStoredType, HostStoredValue, HostTuple, HostTupleType, HostType, HostTypeAt,
         HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter,
         HostTypeSequence, HostWorkProfile, HostWorkSchema, Index0, Inspection, List,
-        LocalRetainedContext, MissingCallbackContext, MissingExternalInputContext,
-        MissingExternalOutputContext, MissingStoredContext, MissingValueContext, Next,
-        NoCustomInput, ProviderActiveCall, ProviderAsyncExternalInputContext,
-        ProviderAsyncStoredInput, ProviderCallPlaceholder, ProviderCallbackCodec,
-        ProviderCallbackContext, ProviderConstruction, ProviderConstructionIndex0,
-        ProviderConstructionIndexNext, ProviderConstructionList, ProviderConstructionRequirementAt,
+        MissingCallbackContext, MissingExternalInputContext, MissingExternalOutputContext,
+        MissingStoredContext, MissingValueContext, Next, NoCustomInput, ProviderActiveCall,
+        ProviderCallPlaceholder, ProviderCallbackCodec, ProviderCallbackContext,
+        ProviderConstruction, ProviderConstructionIndex0, ProviderConstructionIndexNext,
+        ProviderConstructionList, ProviderConstructionRequirementAt,
         ProviderConstructionRequirements, ProviderConstructions, ProviderCustomDeclaration,
         ProviderCustomInputDeclaration, ProviderDynamicInput, ProviderDynamicValue, ProviderError,
         ProviderExternalCodec, ProviderExternalDeclaration, ProviderExternalInputContext,
-        ProviderExternalItem, ProviderExternalListDecoder, ProviderExternalOutput,
-        ProviderExternalOutputContext, ProviderExternalPayloadAccess, ProviderFuture,
-        ProviderFutureCall, ProviderFutureCallbackContext, ProviderFutureValueContext,
-        ProviderInputListContext, ProviderInputValue, ProviderListContext,
-        ProviderListCustomFields, ProviderListInputCodec, ProviderListInputValue,
-        ProviderListItemDecoder, ProviderListItemValue, ProviderModuleRegistration,
-        ProviderNoConstructions, ProviderNone, ProviderOk, ProviderOption, ProviderOutputValue,
-        ProviderPackage, ProviderResult, ProviderRootOutputValue, ProviderScalarListDecoder,
-        ProviderSharedCall, ProviderSome, ProviderStoredInput, ProviderStoredOutput,
-        ProviderStoredOwner, ProviderTransferActiveCall, ProviderTransferCallbackCodec,
-        ProviderTransferCallbackContext, ProviderTransferDynamicInput,
-        ProviderTransferDynamicValue, ProviderTransferEquality, ProviderTransferExternalCodec,
-        ProviderTransferExternalInputContext, ProviderTransferExternalItem,
-        ProviderTransferExternalListDecoder, ProviderTransferExternalOutput,
-        ProviderTransferExternalPayloadAccess, ProviderTransferExternalView,
-        ProviderTransferExternalViewListDecoder, ProviderTransferHashing,
-        ProviderTransferInputListContext, ProviderTransferInputValue, ProviderTransferInspection,
-        ProviderTransferListContext, ProviderTransferListCustomFields,
-        ProviderTransferListInputCodec, ProviderTransferListInputValue,
-        ProviderTransferListItemDecoder, ProviderTransferListItemValue,
-        ProviderTransferListTupleItems, ProviderTransferOutputValue, ProviderTransferPayload,
-        ProviderTransferRetained, ProviderTransferRetainedContext, ProviderTransferRootOutputValue,
-        ProviderTransferStoredDynamic, ProviderTransferStoredInput, ProviderTransferStoredOutput,
-        ProviderTransferValue, ProviderTransferValueContext, ProviderValue, ProviderValueContext,
-        Retained, RetainedContext, RetainedExternalPayload, Stored, TransferHostCall,
-        TransferHostProviderComponentRegistration, TransferHostProviderModule,
-        TransferProviderModuleRegistration, Value, component_initialization_error,
-        external_payload_hash,
+        ProviderExternalListDecoder, ProviderExternalOutput, ProviderExternalPayloadAccess,
+        ProviderExternalReturn, ProviderExternalView, ProviderFuture, ProviderFutureCall,
+        ProviderFutureCallbackContext, ProviderFutureValueContext, ProviderInputListContext,
+        ProviderInputValue, ProviderListContext, ProviderListCustomFields, ProviderListInputCodec,
+        ProviderListInputValue, ProviderListItemDecoder, ProviderListItemValue,
+        ProviderListTupleItems, ProviderModuleRegistration, ProviderNoConstructions, ProviderNone,
+        ProviderOk, ProviderOption, ProviderOutputValue, ProviderOwnedExternal,
+        ProviderOwnedExternalInputContext, ProviderOwnedExternalListDecoder,
+        ProviderOwnedStoredInput, ProviderPackage, ProviderResult, ProviderRootOutputValue,
+        ProviderScalarListDecoder, ProviderSharedCall, ProviderSome, ProviderStoredInput,
+        ProviderStoredOutput, ProviderStoredOwner, ProviderValue, ProviderValueContext,
+        ProviderValueForms, Retained, RetainedExternalPayload, Stored, StoredDynamic, Value,
+        component_initialization_error, external_payload_hash,
     };
 }
 
@@ -95,16 +76,11 @@ pub use geam_core::{frontend, host, plan, planner, runtime};
 pub use geam_macros::{custom, external, function, module, provider};
 
 pub use geam_core::frontend::{
-    FrontendError, HostedTypedProgram, ModuleSource, PackageSource, ProjectError,
-    TransferHostedTypedProgram, TypedProgram, compile_typed_host_program,
-    compile_typed_host_project, compile_typed_module, compile_typed_package_program,
-    compile_typed_program, compile_typed_project, compile_typed_transfer_host_program,
-    compile_typed_transfer_host_project,
+    FrontendError, HostedTypedProgram, ModuleSource, PackageSource, ProjectError, TypedProgram,
+    compile_typed_host_program, compile_typed_host_project, compile_typed_module,
+    compile_typed_package_program, compile_typed_program, compile_typed_project,
 };
 pub use geam_core::host::{
-    AsyncHostCallError, AsyncHostComponentProfile, AsyncHostExternalBinding,
-    AsyncHostExternalEquality, AsyncHostExternalHashing, AsyncHostExternalInspection,
-    AsyncHostExternalStorage, AsyncHostExternalStore, AsyncHostProviderComponent,
     FallibleHostFunction, HostCall, HostCallCompletion, HostCallError, HostCallable,
     HostComponentProfile, HostConstruction, HostConstructions, HostCustom, HostCustomConstructor,
     HostCustomConstructorAt, HostCustomConstructorDefinition, HostCustomConstructorList,
@@ -123,12 +99,11 @@ pub use geam_core::host::{
     HostType, HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
     HostTypeParameter, HostTypeSequence, HostValue, HostWorkProfile, HostWorkRepresentation,
     HostWorkSchema, HostWorkStorage, ScopedConstructingHostFunction, ScopedDivergingHostFunction,
-    ScopedHostFunction, StatelessHostProfile, TransferHostProviderComponentRegistration,
-    TransferHostProviderModule, TransferHostProviderSet,
+    ScopedHostFunction, StatelessHostProfile,
 };
 pub use geam_core::plan::execution::{
     ExecutionPlan, ExecutionPlanExplanation, HostSpecializationError,
-    HostSpecializationErrorReason, HostedExecution,
+    HostSpecializationErrorReason, HostedEntry, HostedExecution,
 };
 pub use geam_core::plan::{
     BitArrayExpr, BitArrayLocalId, BoolExpr, BoolLocalId, CustomType, CustomTypeName, EchoSite,
@@ -143,9 +118,9 @@ pub use geam_core::planner::{
     plan_host_program, plan_module, plan_module_with_source, plan_program, required_host_functions,
 };
 pub use geam_core::runtime::{
-    AsyncExecutionError, AsyncPanicValue, BitArraySegmentPanicReason, BitArrayValue,
-    BitArrayValueLengthError, CustomFieldValue, CustomValue, EchoLocation, EchoOutput, EchoSink,
-    ExecutionError, ExternalValue, ExternalValueIdentity, FunctionValue, HostError, HostLocation,
-    HostOrigin, InvariantError, ListValue, ListValueItemTypeMismatch, Panic, PanicDetails,
-    PanicKind, PanicMessage, Value, ValueInspection, run_main,
+    BitArraySegmentPanicReason, BitArrayValue, BitArrayValueLengthError, CustomFieldValue,
+    CustomValue, EchoLocation, EchoOutput, EchoSink, ExecutionError, ExternalValue,
+    ExternalValueIdentity, FunctionValue, HostError, HostLocation, HostOrigin, InvariantError,
+    ListValue, ListValueItemTypeMismatch, Panic, PanicDetails, PanicKind, PanicMessage, PanicValue,
+    Value, ValueInspection, run_main,
 };

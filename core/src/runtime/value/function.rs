@@ -765,8 +765,9 @@ mod tests {
 
     #[test]
     fn resource_fixture_source_hash_is_exact() {
-        let retained_hash = |_: &crate::runtime::StoredRuntimeValue| 7;
-        let hashing = crate::host::HostExternalHashing::new(&retained_hash);
+        let retained_hash = |_: &crate::runtime::RetainedValueRef| 7;
+        let raw_hashing = crate::host::RetainedValueHashing::new(&retained_hash);
+        let hashing = crate::host::HostExternalHashing(&raw_hashing);
 
         assert_eq!(
             <ResourceStorage as HostExternalStorage<ExternalTestProfile, ResourceSchema>>::source_hash(
@@ -995,7 +996,7 @@ pub fn main() -> Resource {
         let function_type =
             FunctionType::new(Vec::new(), ValueType::External(external_type.clone()));
         let value = FunctionValue::new(
-            RuntimeExecutionPlan::main_runtime(&execution),
+            RuntimeExecutionPlan::main_runtime(execution.execution()),
             Vec::new(),
             function_type.clone(),
         );

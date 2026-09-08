@@ -2,7 +2,7 @@ use super::super::{EvaluatedFunctionExit, evaluate_entry};
 use crate::plan::execution::function::UtfCodepointFunctionId;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
-use crate::runtime::graph::ProfiledRetainedValues;
+use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::RuntimeStateFor;
 
 pub(in crate::runtime) fn run_utf_codepoint<Plan: ExecutableRuntimePlan>(
@@ -10,8 +10,8 @@ pub(in crate::runtime) fn run_utf_codepoint<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     mut function: UtfCodepointFunctionId,
     mut origin: HostCallOrigin,
-    mut inputs: ProfiledRetainedValues<Plan::Values>,
-) -> ExecutionResult<char, Plan::Values> {
+    mut inputs: RetainedValues,
+) -> ExecutionResult<char> {
     loop {
         let exit = evaluate_entry(
             plan,
@@ -108,12 +108,14 @@ pub fn main() {
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         assert_eq!(
             execution
+                .execution()
                 .function_parameters()
                 .function(&FunctionTarget::UtfCodepoint(UtfCodepointFunctionId(2))),
             [ParamLocal::UtfCodepoint(UtfCodepointLocalId(0))],
         );
         assert_eq!(
             execution
+                .execution()
                 .function_parameters()
                 .function(&FunctionTarget::UtfCodepoint(UtfCodepointFunctionId(1))),
             [ParamLocal::UtfCodepoint(UtfCodepointLocalId(0))],

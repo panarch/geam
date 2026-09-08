@@ -5,10 +5,7 @@ mod input;
 mod return_;
 mod value;
 
-pub use execution::{
-    ExecutionScope, ObservationError, SharedExecutionError, WorkModule, WorkModuleBindings,
-    WorkModuleBuilder,
-};
+pub use execution::{ExecutionScope, ObservationError, SharedExecutionError};
 pub use value::{Completed, Future, FutureType, ReadValue, SharedList, SourceType};
 pub(crate) use value::{ScopedOutput, SharedValue};
 
@@ -19,9 +16,9 @@ use std::marker::PhantomData;
 /// Reusing a guard to attach a second owner is a moved-value error:
 ///
 /// ```compile_fail
-/// use geam_core::embedding::{ExecutionGuard, WorkModule};
+/// use geam_core::embedding::{ExecutionGuard, HostedModule};
 /// use geam_core::host::HostWorkProfile;
-/// fn twice<P>(first: &mut WorkModule<P>, second: &mut WorkModule<P>,
+/// fn twice<P>(first: &mut HostedModule<P>, second: &mut HostedModule<P>,
 ///     guard: ExecutionGuard<'_>, state: &mut P::RunState,
 ///     echo: &mut (dyn geam_core::EchoSink + Send))
 /// where P: HostWorkProfile,

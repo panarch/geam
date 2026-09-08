@@ -1,10 +1,9 @@
+use geam_builtin::FutureComponent;
+use geam_core::frontend::{HostedTypedProgram, compile_typed_host_program};
+use geam_core::host::{HostFutureStore, HostProviderComponentRegistration, HostProviderSet};
 use geam_core::{
-    AsyncHostComponentProfile, AsyncHostProviderComponent,
-    HostProfile, ModuleSource, PackageSource,
+    HostComponentProfile, HostProfile, HostProviderComponent, ModuleSource, PackageSource,
 };
-use geam_core::host::{HostFutureStore, TransferHostProviderComponentRegistration, TransferHostProviderSet};
-use geam_runtime_api::FutureComponent;
-use geam_core::frontend::{TransferHostedTypedProgram, compile_typed_transfer_host_program};
 use geam_macro_cross_crate_consumer::Component as ConsumerComponent;
 use geam_macro_cross_crate_declarations::Component as DeclarationsComponent;
 
@@ -12,8 +11,8 @@ pub struct Profile;
 
 #[derive(Default)]
 pub struct Stores {
-    declarations: <DeclarationsComponent as AsyncHostProviderComponent>::AsyncStores,
-    consumer: <ConsumerComponent as AsyncHostProviderComponent>::AsyncStores,
+    declarations: <DeclarationsComponent as HostProviderComponent>::Stores,
+    consumer: <ConsumerComponent as HostProviderComponent>::Stores,
     future: HostFutureStore,
 }
 
@@ -22,10 +21,10 @@ impl HostProfile for Profile {
     type ExternalStores = Stores;
 }
 
-impl AsyncHostComponentProfile<DeclarationsComponent> for Profile {
-    fn component_async_stores(
+impl HostComponentProfile<DeclarationsComponent> for Profile {
+    fn component_stores(
         stores: &Self::ExternalStores,
-    ) -> &<DeclarationsComponent as AsyncHostProviderComponent>::AsyncStores {
+    ) -> &<DeclarationsComponent as HostProviderComponent>::Stores {
         &stores.declarations
     }
 
@@ -34,10 +33,10 @@ impl AsyncHostComponentProfile<DeclarationsComponent> for Profile {
     }
 }
 
-impl AsyncHostComponentProfile<ConsumerComponent> for Profile {
-    fn component_async_stores(
+impl HostComponentProfile<ConsumerComponent> for Profile {
+    fn component_stores(
         stores: &Self::ExternalStores,
-    ) -> &<ConsumerComponent as AsyncHostProviderComponent>::AsyncStores {
+    ) -> &<ConsumerComponent as HostProviderComponent>::Stores {
         &stores.consumer
     }
 
@@ -49,9 +48,13 @@ impl AsyncHostComponentProfile<ConsumerComponent> for Profile {
 impl geam_core::host::HostWorkProfile for Profile {
     type Work = FutureComponent;
 }
-impl AsyncHostComponentProfile<FutureComponent> for Profile {
-    fn component_async_stores(stores: &Stores) -> &HostFutureStore { &stores.future }
-    fn component_state(state: &mut ()) -> &mut () { state }
+impl HostComponentProfile<FutureComponent> for Profile {
+    fn component_stores(stores: &Stores) -> &HostFutureStore {
+        &stores.future
+    }
+    fn component_state(state: &mut ()) -> &mut () {
+        state
+    }
 }
 
 const DECLARATIONS: &str = r#"
@@ -185,26 +188,31 @@ pub fn run(value: Int) {
 
 const OPTION: &str = "pub type Option(value) { Some(value) None }";
 
-pub fn program() -> TransferHostedTypedProgram<Profile> {
+pub fn program() -> HostedTypedProgram<Profile> {
     let mut providers = FutureComponent::providers().expect("Future component");
     providers.extend(
-        <DeclarationsComponent as TransferHostProviderComponentRegistration<Profile>>::providers()
-            .expect("cross-crate declaration provider should register"));
+        <DeclarationsComponent as HostProviderComponentRegistration<Profile>>::providers()
+            .expect("cross-crate declaration provider should register"),
+    );
     providers.extend(
-        <ConsumerComponent as TransferHostProviderComponentRegistration<Profile>>::providers()
+        <ConsumerComponent as HostProviderComponentRegistration<Profile>>::providers()
             .expect("cross-crate async provider should register"),
     );
-    let providers =
-        TransferHostProviderSet::new(providers)
-            .expect("cross-crate async provider modules should be unique");
-    compile_typed_transfer_host_program(
+    let providers = HostProviderSet::from_providers(providers)
+        .expect("cross-crate async provider modules should be unique");
+    compile_typed_host_program(
         "application",
         "application",
         [
-            PackageSource::new("geam", Vec::<String>::new(), [
-                ModuleSource::new("geam/future", "src/geam/future.gleam",
-                    include_str!("../../../../../../builtins/geam/gleam/src/geam/future.gleam")),
-            ]),
+            PackageSource::new(
+                "geam",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "geam/future",
+                    "src/geam/future.gleam",
+                    include_str!("../../../../../../builtins/geam/gleam/src/geam/future.gleam"),
+                )],
+            ),
             PackageSource::new(
                 "macro_declarations",
                 Vec::<&str>::new(),
@@ -225,7 +233,12 @@ pub fn program() -> TransferHostedTypedProgram<Profile> {
             ),
             PackageSource::new(
                 "application",
-                ["gleam_stdlib", "macro_consumer", "macro_declarations", "geam"],
+                [
+                    "gleam_stdlib",
+                    "macro_consumer",
+                    "macro_declarations",
+                    "geam",
+                ],
                 [ModuleSource::new(
                     "application",
                     "src/application.gleam",
@@ -251,8 +264,10 @@ pub fn program() -> TransferHostedTypedProgram<Profile> {
 mod tests {
     use super::program;
     use ecow::EcoString;
-    use geam_core::embedding::{WorkModuleBuilder, List, FunctionDeclaration, with_execution_scope};
-use geam_runtime_api::embedding::FutureType;
+    use geam_builtin::embedding::FutureType;
+    use geam_core::embedding::{
+        FunctionDeclaration, HostedModuleBuilder, List, with_execution_scope,
+    };
     use geam_core::{EchoOutput, EchoSink};
     use num_bigint::BigInt;
     use std::future::Future;
@@ -270,7 +285,7 @@ use geam_runtime_api::embedding::FutureType;
 
     #[test]
     fn public_typed_embedding_runs_a_separately_compiled_async_provider() {
-        let (mut bindings, direct) = WorkModuleBuilder::new(program())
+        let (mut bindings, direct) = HostedModuleBuilder::new(program())
             .expect("cross-crate provider plan")
             .function(FunctionDeclaration::<(BigInt,), EcoString>::new("direct"))
             .expect("direct cross-crate binding");
@@ -294,9 +309,15 @@ use geam_runtime_api::embedding::FutureType;
         let result = {
             let mut future = pin!(with_execution_scope(async |guard| {
                 let mut scope = module.attach(guard, &mut state, &mut echo);
-                assert_eq!(scope.call(&direct, (BigInt::from(5),)).expect("direct entry"),
-                    EcoString::from("one:count:5"));
-                let work = scope.call(&run, (BigInt::from(7),)).expect("construct source work");
+                assert_eq!(
+                    scope
+                        .call(&direct, (BigInt::from(5),))
+                        .expect("direct entry"),
+                    EcoString::from("one:count:5")
+                );
+                let work = scope
+                    .call(&run, (BigInt::from(7),))
+                    .expect("construct source work");
                 scope.observe(&work).await
             }));
             let waker = Waker::noop();
@@ -321,10 +342,11 @@ use geam_runtime_api::embedding::FutureType;
 
     #[test]
     fn foreign_custom_fields_select_transferable_payloads_before_construction() {
-        let (bindings, saved) = WorkModuleBuilder::new(program())
+        let (bindings, saved) = HostedModuleBuilder::new(program())
             .expect("cross-crate provider plan")
             .function(FunctionDeclaration::<
-                (EcoString,), FutureType<(EcoString, EcoString, EcoString)>,
+                (EcoString,),
+                FutureType<(EcoString, EcoString, EcoString)>,
             >::new("saved"))
             .expect("custom field binding");
         let mut module = bindings.seal().expect("custom field module");
@@ -333,7 +355,8 @@ use geam_runtime_api::embedding::FutureType;
         let result = {
             let mut future = pin!(with_execution_scope(async |guard| {
                 let mut scope = module.attach(guard, &mut state, &mut echo);
-                let work = scope.call(&saved, (EcoString::from("shared"),))
+                let work = scope
+                    .call(&saved, (EcoString::from("shared"),))
                     .expect("construct custom work");
                 scope.observe(&work).await
             }));
@@ -341,11 +364,15 @@ use geam_runtime_api::embedding::FutureType;
             assert!(matches!(future.as_mut().poll(&mut context), Poll::Pending));
             poll_ready_pinned(future.as_mut(), &mut context).expect("custom completion")
         };
-        std::thread::spawn(move || result.read(|(direct, first, second)| {
-            assert_eq!(direct, "shared");
-            assert_eq!(first, "shared");
-            assert_eq!(second, "shared");
-        })).join().expect("transfer completed result");
+        std::thread::spawn(move || {
+            result.read(|(direct, first, second)| {
+                assert_eq!(direct, "shared");
+                assert_eq!(first, "shared");
+                assert_eq!(second, "shared");
+            })
+        })
+        .join()
+        .expect("transfer completed result");
         assert_eq!(echo.0, 0);
     }
 

@@ -1,13 +1,13 @@
 use futures_util::FutureExt;
-use geam_core::embedding::{FunctionDeclaration, List, WorkModuleBuilder, with_execution_scope};
-use geam_core::frontend::compile_typed_transfer_host_program;
+use geam_builtin::embedding::FutureType;
+use geam_builtin::{FutureComponent, HostFutureSchema};
+use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder, List, with_execution_scope};
+use geam_core::frontend::compile_typed_host_program;
 use geam_core::host::{
-    AsyncHostComponentProfile, HostExternalSchema, HostFutureStore, HostProfile, HostProvider,
-    HostProviderComponent, HostWorkProfile, TransferHostProviderSet,
+    HostComponentProfile, HostExternalSchema, HostFutureStore, HostProfile, HostProvider,
+    HostProviderComponent, HostProviderSet, HostWorkProfile,
 };
 use geam_core::{EchoOutput, ModuleSource, PackageSource};
-use geam_runtime_api::embedding::FutureType;
-use geam_runtime_api::{FutureComponent, HostFutureSchema};
 use num_bigint::BigInt;
 
 struct Profile;
@@ -18,8 +18,8 @@ impl HostProfile for Profile {
 impl HostWorkProfile for Profile {
     type Work = FutureComponent;
 }
-impl AsyncHostComponentProfile<FutureComponent> for Profile {
-    fn component_async_stores(stores: &HostFutureStore) -> &HostFutureStore {
+impl HostComponentProfile<FutureComponent> for Profile {
+    fn component_stores(stores: &HostFutureStore) -> &HostFutureStore {
         stores
     }
     fn component_state(state: &mut ()) -> &mut () {
@@ -113,7 +113,7 @@ pub fn batch() {
 }
 pub fn empty() -> future.Future(List(Int)) { future.all([]) }
 "#;
-    let program = compile_typed_transfer_host_program(
+    let program = compile_typed_host_program(
         "application",
         "library",
         [
@@ -132,10 +132,10 @@ pub fn empty() -> future.Future(List(Int)) { future.all([]) }
                 [ModuleSource::new("library", "src/library.gleam", source)],
             ),
         ],
-        TransferHostProviderSet::new(providers).expect("static providers"),
+        HostProviderSet::from_providers(providers).expect("static providers"),
     )
     .expect("unchanged ordinary package source");
-    let (mut bindings, composed) = WorkModuleBuilder::new(program)
+    let (mut bindings, composed) = HostedModuleBuilder::new(program)
         .expect("plan")
         .function(FunctionDeclaration::<(BigInt,), FutureType<BigInt>>::new(
             "composed",

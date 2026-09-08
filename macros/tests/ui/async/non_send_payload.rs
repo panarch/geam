@@ -1,9 +1,9 @@
 use ecow::EcoString;
 use geam_core::provider::{BigInt, ExternalPayload};
 use geam_core::{
-    AsyncHostComponentProfile, AsyncHostProviderComponent, HostProfile, HostProviderComponent,
+    HostComponentProfile, HostProviderComponent, HostProfile,
 };
-use geam_core::host::TransferHostProviderComponentRegistration;
+use geam_core::host::HostProviderComponentRegistration;
 use std::rc::Rc;
 
 #[geam_macros::provider(
@@ -44,13 +44,13 @@ struct Profile;
 
 impl HostProfile for Profile {
     type RunState = ();
-    type ExternalStores = <Component as AsyncHostProviderComponent>::AsyncStores;
+    type ExternalStores = <Component as HostProviderComponent>::Stores;
 }
 
-impl AsyncHostComponentProfile<Component> for Profile {
-    fn component_async_stores(
+impl HostComponentProfile<Component> for Profile {
+    fn component_stores(
         stores: &Self::ExternalStores,
-    ) -> &<Component as AsyncHostProviderComponent>::AsyncStores {
+    ) -> &<Component as HostProviderComponent>::Stores {
         stores
     }
 
@@ -62,5 +62,5 @@ impl AsyncHostComponentProfile<Component> for Profile {
 }
 
 fn main() {
-    let _ = <Component as TransferHostProviderComponentRegistration<Profile>>::providers();
+    let _ = <Component as HostProviderComponentRegistration<Profile>>::providers();
 }

@@ -1,7 +1,6 @@
 mod function;
 mod storage;
 
-pub(super) use provider::__GeamAsyncStores as TransferStores;
 pub(super) use provider::__GeamStores as Stores;
 pub use provider::{
     __GeamExternalSchema0 as StringTreeSchema, __GeamExternalStorage0 as StringTreeExternalStorage,
@@ -9,7 +8,7 @@ pub use provider::{
 };
 pub use storage::StringTree as StoredStringTree;
 
-use super::{Component, GleamStdlibLocalProfile};
+use super::{Component, GleamStdlibProviderProfile};
 use crate::{HostExternalType, HostProviderModule, HostRegistrationError};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -25,26 +24,24 @@ pub type StringTree = HostExternalType<StringTreeSchema>;
 )]
 mod provider {
     use super::{BigInt, EcoString, StoredStringTree, function};
-    use crate::storage::StorageContext;
     use geam_core::provider::ExternalPayload;
-    use geam_core::provider::advanced::LocalRetainedContext;
 
-    #[geam_macros::external(name = "StringTree", manual, context = Context)]
-    pub struct StringTreePayload<Context: StorageContext = LocalRetainedContext> {
-        tree: StoredStringTree<Context>,
+    #[geam_macros::external(name = "StringTree", manual)]
+    pub struct StringTreePayload {
+        tree: StoredStringTree,
     }
 
-    impl<Context: StorageContext> StringTreePayload<Context> {
-        pub fn from_stored(tree: StoredStringTree<Context>) -> Self {
+    impl StringTreePayload {
+        pub fn from_stored(tree: StoredStringTree) -> Self {
             Self { tree }
         }
 
-        pub(super) fn stored(&self) -> &StoredStringTree<Context> {
+        pub(super) fn stored(&self) -> &StoredStringTree {
             &self.tree
         }
     }
 
-    impl<Context: StorageContext> ExternalPayload for StringTreePayload<Context> {
+    impl ExternalPayload for StringTreePayload {
         fn source_equal(&self, other: &Self) -> bool {
             self.tree.structurally_equal(&other.tree)
         }
@@ -152,18 +149,9 @@ mod provider {
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
-    Profile: GleamStdlibLocalProfile,
+    Profile: GleamStdlibProviderProfile,
 {
     provider::__geam_module::<Profile>()
-}
-
-pub(super) fn transfer_host_provider<Profile>()
--> Result<geam_core::TransferHostProviderModule<Profile>, HostRegistrationError>
-where
-    Profile: crate::GleamStdlibTransferProfile,
-    Profile::RunState: Send,
-{
-    provider::__geam_transfer_module::<Profile>()
 }
 
 #[cfg(test)]

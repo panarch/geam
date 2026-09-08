@@ -7,18 +7,15 @@ use crate::plan::execution::function::{
 };
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
-use crate::runtime::graph::{ProfiledRetainedValues, RetainedValues};
+use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::{self, RuntimeStateFor};
-use crate::runtime::{RuntimeListStorage, evaluated, function, graph, host};
+use crate::runtime::{evaluated, function, graph, host};
 
 pub(in crate::runtime) type RuntimeGraph<Plan> =
     <<Plan as RuntimeExecutionPlan>::Profile as ExecutionProfile>::Graph;
 
 pub(in crate::runtime) trait ExecutableRuntimePlan:
-    RuntimeExecutionPlan<
-    Values: crate::runtime::materialize::MaterializeProfile
-                + crate::runtime::error::PanicSubjectProfile,
->
+    RuntimeExecutionPlan
 {
     type RuntimeHost<'run>: state::RuntimeHostState<State = Self::RunState>
     where
@@ -29,37 +26,34 @@ pub(in crate::runtime) trait ExecutableRuntimePlan:
         state: &mut RuntimeStateFor<'_, Self>,
         origin: HostCallOrigin,
         target: &ExecutionHostTarget<Self::Profile, Body>,
-        inputs: ProfiledRetainedValues<Self::Values>,
-    ) -> ExecutionResult<
-        <<Body as FunctionBodyOwner>::Return as graph::GraphValue<Self::Values>>::Evaluated,
-        Self::Values,
-    >
+        inputs: RetainedValues,
+    ) -> ExecutionResult<<<Body as FunctionBodyOwner>::Return as graph::GraphValue>::Evaluated>
     where
         Body: ExecutionFunctionBody,
-        Body::Return: graph::GraphValue<Self::Values>;
+        Body::Return: graph::GraphValue;
 
     fn call_host_never(
         &self,
         state: &mut RuntimeStateFor<'_, Self>,
         origin: HostCallOrigin,
         target: &ExecutionNeverHostTarget<Self::Profile>,
-        inputs: ProfiledRetainedValues<Self::Values>,
-    ) -> ExecutionResult<Infallible, Self::Values>;
+        inputs: RetainedValues,
+    ) -> ExecutionResult<Infallible>;
 
     fn execute_external_list_instruction(
         &self,
         state: &mut RuntimeStateFor<'_, Self>,
-        environment: &mut graph::BlockEnvironment<Self::Values>,
+        environment: &mut graph::BlockEnvironment,
         instruction: &<RuntimeGraph<Self> as ExecutionGraphProfile>::ExternalListInstruction,
         expected: &crate::plan::ValueType,
-    ) -> ExecutionResult<(), Self::Values>;
+    ) -> ExecutionResult<()>;
 
     fn execute_external_function_instruction(
         &self,
         state: &mut RuntimeStateFor<'_, Self>,
-        environment: &mut graph::BlockEnvironment<Self::Values>,
+        environment: &mut graph::BlockEnvironment,
         instruction: &<RuntimeGraph<Self> as ExecutionGraphProfile>::ExternalFunctionInstruction,
-    ) -> ExecutionResult<(), Self::Values>;
+    ) -> ExecutionResult<()>;
 }
 
 pub(in crate::runtime) trait ExecutableProgramPlan:
@@ -70,8 +64,8 @@ pub(in crate::runtime) trait ExecutableProgramPlan:
         state: &mut RuntimeStateFor<'_, Self>,
         function: <RuntimeGraph<Self> as ExecutionGraphProfile>::RuntimeFunctionFunctionId,
         origin: HostCallOrigin,
-        inputs: ProfiledRetainedValues<Self::Values>,
-    ) -> ExecutionResult<evaluated::EvaluatedFunctionValue<Self::Values>, Self::Values>;
+        inputs: RetainedValues,
+    ) -> ExecutionResult<evaluated::EvaluatedFunctionValue>;
 }
 
 impl ExecutableRuntimePlan for ExecutionPlan {
@@ -134,10 +128,10 @@ impl ExecutableProgramPlan for ExecutionPlan {
 }
 
 impl<Profile: crate::HostProfile> ExecutableRuntimePlan
-    for crate::plan::execution::HostedExecution<Profile>
+    for crate::plan::execution::HostedProgram<Profile>
 {
     type RuntimeHost<'run>
-        = &'run mut Profile::RunState
+        = crate::runtime::state::RuntimeHost<'run, Profile>
     where
         Self: 'run;
 
@@ -193,7 +187,7 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
 }
 
 impl<Profile: crate::HostProfile> ExecutableProgramPlan
-    for crate::plan::execution::HostedExecution<Profile>
+    for crate::plan::execution::HostedProgram<Profile>
 {
     fn run_function_return(
         &self,
@@ -210,111 +204,6 @@ impl<Profile: crate::HostProfile> ExecutableProgramPlan
                 function::run_external_function_function(self, state, function, origin, inputs)
             }
         }
-    }
-}
-
-impl<Profile: crate::HostProfile> ExecutableRuntimePlan
-    for crate::plan::execution::TransferHostedExecution<Profile>
-{
-    type RuntimeHost<'run>
-        = crate::runtime::state::TransferRuntimeHost<'run, Profile>
-    where
-        Self: 'run;
-
-    fn call_host<Body>(
-        &self,
-        state: &mut RuntimeStateFor<'_, Self>,
-        origin: HostCallOrigin,
-        target: &ExecutionHostTarget<Self::Profile, Body>,
-        inputs: ProfiledRetainedValues<crate::runtime::TransferValues>,
-    ) -> ExecutionResult<
-        <<Body as FunctionBodyOwner>::Return as graph::GraphValue<
-            crate::runtime::TransferValues,
-        >>::Evaluated,
-        crate::runtime::TransferValues,
-    >
-    where
-        Body: ExecutionFunctionBody,
-        Body::Return: graph::GraphValue<crate::runtime::TransferValues>,
-    {
-        match target {
-            crate::plan::execution::host::HostedFunctionTarget::Value(target) => {
-                let function = self.host_value_function(target);
-                let mut call = host::RuntimeTransferHostCall::new(
-                    self,
-                    state,
-                    function,
-                    inputs,
-                    origin.clone(),
-                );
-                let result = match crate::plan::execution::host::call_transfer_value::<Profile>(
-                    function, &mut call,
-                ) {
-                    Ok(value) => Ok(call.finish(value, target.return_())),
-                    Err(error) => match crate::plan::execution::host::async_host_failure(error) {
-                        Ok(failure) => Err(crate::runtime::TransferExecutionError::host_failure(
-                            self,
-                            origin,
-                            function.metadata(),
-                            failure,
-                        )),
-                        Err(error) => Err(error),
-                    },
-                };
-                drop(call);
-                state.lists_mut().drain_releases();
-                result
-            }
-            crate::plan::execution::host::HostedFunctionTarget::Never(target) => self
-                .call_host_never(state, origin, target, inputs)
-                .map(|never| match never {}),
-        }
-    }
-
-    fn call_host_never(
-        &self,
-        state: &mut RuntimeStateFor<'_, Self>,
-        origin: HostCallOrigin,
-        target: &ExecutionNeverHostTarget<Self::Profile>,
-        inputs: ProfiledRetainedValues<crate::runtime::TransferValues>,
-    ) -> ExecutionResult<Infallible, crate::runtime::TransferValues> {
-        let function = self.host_never_function(*target);
-        let mut call =
-            host::RuntimeTransferHostCall::new(self, state, function, inputs, origin.clone());
-        let result = crate::plan::execution::host::call_transfer_never(function, &mut call)
-            .map_err(
-                |error| match crate::plan::execution::host::async_host_failure(error) {
-                    Ok(failure) => crate::runtime::TransferExecutionError::host_failure(
-                        self,
-                        origin,
-                        function.metadata(),
-                        failure,
-                    ),
-                    Err(error) => error,
-                },
-            );
-        drop(call);
-        state.lists_mut().drain_releases();
-        result
-    }
-
-    fn execute_external_list_instruction(
-        &self,
-        state: &mut RuntimeStateFor<'_, Self>,
-        environment: &mut graph::BlockEnvironment<crate::runtime::TransferValues>,
-        instruction: &crate::plan::execution::graph::ExternalListInstruction,
-        expected: &crate::plan::ValueType,
-    ) -> ExecutionResult<(), crate::runtime::TransferValues> {
-        graph::execute_external_list_instruction(self, state, environment, instruction, expected)
-    }
-
-    fn execute_external_function_instruction(
-        &self,
-        state: &mut RuntimeStateFor<'_, Self>,
-        environment: &mut graph::BlockEnvironment<crate::runtime::TransferValues>,
-        instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
-    ) -> ExecutionResult<(), crate::runtime::TransferValues> {
-        graph::execute_external_function_instruction(self, state, environment, instruction)
     }
 }
 
@@ -392,8 +281,9 @@ pub(in crate::runtime) mod external_test {
 
     #[test]
     fn runtime_counter_fixture_source_hash_is_exact() {
-        let retained_hash = |_: &crate::runtime::StoredRuntimeValue| 0;
-        let hashing = crate::host::HostExternalHashing::new(&retained_hash);
+        let retained_hash = |_: &crate::runtime::RetainedValueRef| 0;
+        let raw_hashing = crate::host::RetainedValueHashing::new(&retained_hash);
+        let hashing = crate::host::HostExternalHashing(&raw_hashing);
         let value = BigInt::from(7);
         let mut expected = std::collections::hash_map::DefaultHasher::new();
         std::hash::Hash::hash(&value, &mut expected);
@@ -684,10 +574,10 @@ pub fn main() {
     }
     #[test]
     fn transfer_never_calls_preserve_nested_provider_identity_and_host_caller() {
-        use crate::frontend::compile_typed_transfer_host_program;
+        use crate::frontend::compile_typed_host_program;
         use crate::host::{
-            HostFunctionType, HostProfile, HostProvider, TransferHostCall,
-            TransferHostProviderModule, TransferHostProviderSet,
+            HostCall, HostFunctionType, HostProfile, HostProvider, HostProviderModule,
+            HostProviderSet,
         };
         use std::cell::Cell;
         use std::convert::Infallible;
@@ -705,21 +595,21 @@ pub fn main() {
             }
         }
         fn stop<'call>(
-            mut call: TransferHostCall<'call, Profile, Provider, BigInt>,
+            mut call: HostCall<'call, Profile, Provider, BigInt>,
             callback: HostCallable<'call, HostTypeListEnd, BigInt>,
-        ) -> Result<Infallible, crate::AsyncHostCallError> {
+        ) -> Result<Infallible, crate::HostCallError> {
             call.state().set(1);
             let value = call.invoke(callback, ())?;
             assert_eq!(value, BigInt::from(42));
             Err(crate::HostFailure::new("stopped after callback").into())
         }
         fn reject<'call>(
-            mut call: TransferHostCall<'call, Profile, Provider, BigInt>,
-        ) -> Result<HostCallCompletion<'call, BigInt>, crate::AsyncHostCallError> {
+            mut call: HostCall<'call, Profile, Provider, BigInt>,
+        ) -> Result<HostCallCompletion<'call, BigInt>, crate::HostCallError> {
             call.state().set(2);
             Err(crate::HostFailure::new("native rejected").into())
         }
-        let provider = TransferHostProviderModule::new_for_profile("application", "library")
+        let provider = HostProviderModule::new("application", "library")
             .expect("native module")
             .with_scoped_function::<Provider, (), BigInt, _>("reject", reject).expect("reject")
             .with_scoped_diverging_function::<Provider, (HostFunctionType<HostTypeListEnd, BigInt>,), BigInt, _>("stop", stop).expect("stop");
@@ -734,7 +624,7 @@ pub fn run(fails: Bool) {
   }
 }
 "#;
-        let program = compile_typed_transfer_host_program(
+        let program = compile_typed_host_program(
             "application",
             "library",
             [PackageSource::new(
@@ -742,10 +632,10 @@ pub fn run(fails: Bool) {
                 Vec::<String>::new(),
                 [ModuleSource::new("library", "src/library.gleam", source)],
             )],
-            TransferHostProviderSet::<Profile>::new([provider]).expect("providers"),
+            HostProviderSet::<Profile>::from_providers([provider]).expect("providers"),
         )
         .expect("source");
-        let library = crate::planner::plan_transfer_host_library_program(program).expect("plan");
+        let library = crate::planner::plan_host_library_program(program).expect("plan");
         let template = library
             .functions()
             .iter()
@@ -759,12 +649,9 @@ pub fn run(fails: Bool) {
             Vec::new(),
             Vec::new(),
         );
-        let (plan, entries) = crate::plan::execution::TransferHostedExecution::from_library_plan(
-            library,
-            entry,
-            Vec::new(),
-        )
-        .expect("diverging callbacks seal");
+        let (plan, entries) =
+            crate::plan::execution::HostedProgram::from_library_plan(library, entry, Vec::new())
+                .expect("diverging callbacks seal");
         for fails in [false, true] {
             let mut state = Cell::new(0);
             let mut output = Vec::new();
@@ -776,7 +663,7 @@ pub fn run(fails: Bool) {
                 &mut stores,
                 &mut echo,
             );
-            let mut input = crate::runtime::TransferInputs::empty();
+            let mut input = crate::runtime::RetainedInputs::empty();
             input.push_value(crate::runtime::EvaluatedValue::Bool(fails));
             let error = driver
                 .run_int(*entries.ints[0].function(), input)
@@ -816,9 +703,9 @@ pub fn run(fails: Bool) {
         }
     }
 
-    fn transfer_host_error(error: &crate::AsyncExecutionError) -> &crate::HostError {
+    fn transfer_host_error(error: &crate::ExecutionError) -> &crate::HostError {
         match error {
-            crate::AsyncExecutionError::Host(error) => error,
+            crate::ExecutionError::Host(error) => error,
             _ => panic!("fixture requires a native host failure"),
         }
     }
@@ -826,7 +713,7 @@ pub fn run(fails: Bool) {
     #[test]
     #[should_panic(expected = "fixture requires a native host failure")]
     fn transfer_host_error_rejects_an_invariant_fixture() {
-        transfer_host_error(&crate::AsyncExecutionError::Invariant(
+        transfer_host_error(&crate::ExecutionError::Invariant(
             crate::InvariantError::ListIndexOutOfBounds {
                 item_type: crate::ValueType::Int,
                 index: 0,

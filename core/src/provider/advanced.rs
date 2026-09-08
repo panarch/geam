@@ -1,114 +1,35 @@
 use crate::host::{
-    AsyncHostExternalEquality, AsyncHostExternalHashing, AsyncHostExternalInspection, HostCall,
-    HostExternalEquality, HostExternalHashing, HostExternalInspection, HostListType, HostProfile,
-    HostProvider, HostStoredDynamic, HostStoredType, HostStoredValue, HostType, HostTypeIndex0,
-    HostTypeIndexNext, TransferHostCall,
+    HostCall, HostExternalEquality, HostExternalHashing, HostExternalInspection, HostListType,
+    HostProfile, HostProvider, HostStoredDynamic, HostStoredType, HostStoredValue, HostType,
+    HostTypeIndex0, HostTypeIndexNext,
 };
 use crate::provider::{
     List, ProviderConstructions, ProviderExternalDeclaration, ProviderInputValue,
     ProviderListContext, ProviderListInputCodec, ProviderListInputValue, ProviderNoConstructions,
-    ProviderOutputValue, ProviderStoredOwner, ProviderTransferInputValue,
-    ProviderTransferListContext, ProviderTransferListInputCodec, ProviderTransferListInputValue,
-    ProviderTransferOutputValue, ProviderTransferValue, ProviderTransferValueContext,
-    ProviderValue, ProviderValueContext, Value,
+    ProviderOutputValue, ProviderStoredOwner, ProviderValue, ProviderValueContext,
+    ProviderValueForms, Value,
 };
-use crate::runtime::{StoredRuntimeValue, TransferValues};
+use crate::runtime::StoredRuntimeValue;
 use ecow::EcoString;
 use std::marker::PhantomData;
 
-/// The ordinary call-local representation for retained provider values.
-pub struct LocalRetainedContext;
-
-/// The representation used by provider values that may cross an await point.
-#[doc(hidden)]
-pub struct ProviderTransferRetainedContext;
-
-mod retained_context_sealed {
-    pub trait Sealed {}
-
-    impl Sealed for super::LocalRetainedContext {}
-    impl Sealed for super::ProviderTransferRetainedContext {}
-}
-
-/// Representation-specific storage and source semantics for retained values.
-///
-/// The trait is sealed. It exists so an advanced payload can explicitly share
-/// one Rust shape between local and transferable provider composition.
-#[doc(hidden)]
-pub trait RetainedContext: retained_context_sealed::Sealed + 'static {
-    type Retained<Index>;
-    type Dynamic;
-    type Equality<'value>;
-    type Hashing<'value>;
-    type Inspection<'value>;
-
-    fn retained_equal<Index>(
-        context: &Self::Equality<'_>,
-        left: &Self::Retained<Index>,
-        right: &Self::Retained<Index>,
-    ) -> bool;
-
-    fn retained_hash<Index>(context: &Self::Hashing<'_>, value: &Self::Retained<Index>) -> u64;
-
-    fn retained_inspect<Index>(
-        context: &Self::Inspection<'_>,
-        value: &Self::Retained<Index>,
-    ) -> EcoString;
-
-    fn dynamic_kind(value: &Self::Dynamic) -> DynamicKind;
-
-    fn dynamic_is_external<Declaration>(value: &Self::Dynamic) -> bool
-    where
-        Declaration: ProviderExternalDeclaration;
-
-    fn dynamic_tuple_items(value: Self::Dynamic) -> Result<Box<[Self::Dynamic]>, Self::Dynamic>;
-
-    fn dynamic_equal(
-        context: &Self::Equality<'_>,
-        left: &Self::Dynamic,
-        right: &Self::Dynamic,
-    ) -> bool;
-
-    fn dynamic_hash(context: &Self::Hashing<'_>, value: &Self::Dynamic) -> u64;
-
-    fn dynamic_inspect(context: &Self::Inspection<'_>, value: &Self::Dynamic) -> EcoString;
-}
-
 /// Source-equality access for retained values in one immutable payload.
-pub type Equality<'value, Context = LocalRetainedContext> =
-    <Context as RetainedContext>::Equality<'value>;
+pub type Equality<'value> = HostExternalEquality<'value>;
 
 /// Source-hash access for retained values in one immutable payload.
-pub type Hashing<'value, Context = LocalRetainedContext> =
-    <Context as RetainedContext>::Hashing<'value>;
+pub type Hashing<'value> = HostExternalHashing<'value>;
 
 /// Source-inspection access for retained values in one immutable payload.
-pub type Inspection<'value, Context = LocalRetainedContext> =
-    <Context as RetainedContext>::Inspection<'value>;
-
-/// Source-equality access for values retained by a transferable payload.
-#[doc(hidden)]
-pub type ProviderTransferEquality<'value> = Equality<'value, ProviderTransferRetainedContext>;
-
-/// Source-hash access for values retained by a transferable payload.
-#[doc(hidden)]
-pub type ProviderTransferHashing<'value> = Hashing<'value, ProviderTransferRetainedContext>;
-
-/// Source-inspection access for values retained by a transferable payload.
-#[doc(hidden)]
-pub type ProviderTransferInspection<'value> = Inspection<'value, ProviderTransferRetainedContext>;
+pub type Inspection<'value> = HostExternalInspection<'value>;
 
 /// One retained source value owned by an advanced external payload.
 ///
 /// The payload type is the owner brand. The argument index identifies the
 /// corresponding source type parameter. Values are created only by
 /// [`super::Call::store`] followed by the generated external boundary.
-pub struct Retained<Owner, Index, Context = LocalRetainedContext>
-where
-    Context: RetainedContext,
-{
-    value: Context::Retained<Index>,
-    owner: PhantomData<fn() -> (Owner, Context)>,
+pub struct Retained<Owner, Index> {
+    value: HostStoredValue<HostStoredType<Index>>,
+    owner: PhantomData<fn() -> Owner>,
 }
 
 /// One existential source value owned by an advanced external payload.
@@ -116,115 +37,17 @@ where
 /// The exact specialized source type stays sealed inside Geam. Providers can
 /// inspect its broad family, confirm a generated external declaration, or
 /// request an exact typed restore through an active [`crate::provider::Call`].
-pub struct StoredDynamic<Owner, Context = LocalRetainedContext>
-where
-    Context: RetainedContext,
-{
-    value: Context::Dynamic,
-    owner: PhantomData<fn() -> (Owner, Context)>,
+pub struct StoredDynamic<Owner> {
+    value: HostStoredDynamic,
+    owner: PhantomData<fn() -> Owner>,
 }
-
-#[doc(hidden)]
-pub struct ProviderTransferRetainedValue<Index> {
-    value: StoredRuntimeValue<TransferValues>,
-    index: PhantomData<fn() -> Index>,
-}
-
-#[doc(hidden)]
-pub struct ProviderTransferDynamicStorage {
-    value: StoredRuntimeValue<TransferValues>,
-}
-
-/// One typed source value retained by a transferable external payload.
-#[doc(hidden)]
-pub type ProviderTransferRetained<Owner, Index> =
-    Retained<Owner, Index, ProviderTransferRetainedContext>;
-
-/// One existential source value retained by a transferable external payload.
-#[doc(hidden)]
-pub type ProviderTransferStoredDynamic<Owner> =
-    StoredDynamic<Owner, ProviderTransferRetainedContext>;
 
 /// An existing external source value with its original runtime identity.
 ///
 /// This advanced input is useful when a provider must pass an external value
 /// to a callback or return it unchanged. Dereferencing it borrows the ordinary
 /// Rust payload; consuming it preserves the original source handle.
-pub type External<Payload> = crate::provider::ProviderExternalItem<Payload>;
-
-/// Static pass-through into existential retention without materialization.
-#[doc(hidden)]
-pub trait ProviderDynamicValue<'call, Profile, Provider, Return>
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-{
-    type Host: HostType;
-
-    fn into_host(
-        self,
-        call: &mut HostCall<'call, Profile, Provider, Return>,
-    ) -> <Self::Host as HostType>::Value<'call>;
-}
-
-impl<'call, Profile, Provider, Return, Type, Host>
-    ProviderDynamicValue<'call, Profile, Provider, Return>
-    for Value<Type, ProviderValueContext<'call, Host>>
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-    Host: HostType,
-{
-    type Host = Host;
-
-    fn into_host(
-        self,
-        _call: &mut HostCall<'call, Profile, Provider, Return>,
-    ) -> <Self::Host as HostType>::Value<'call> {
-        self.into_host()
-    }
-}
-
-impl<'call, Profile, Provider, Return, Type> ProviderDynamicValue<'call, Profile, Provider, Return>
-    for Type
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-    Type: ProviderValue<OutputRequirements = ProviderNoConstructions>
-        + ProviderOutputValue<Profile, Provider, Return>,
-{
-    type Host = Type::Host;
-
-    fn into_host(
-        self,
-        call: &mut HostCall<'call, Profile, Provider, Return>,
-    ) -> <Self::Host as HostType>::Value<'call> {
-        self.into_host(call, &ProviderConstructions::none())
-    }
-}
-
-impl<'call, Profile, Provider, Return, Item, HostItem, Decoder>
-    ProviderDynamicValue<'call, Profile, Provider, Return>
-    for List<Item, ProviderListContext<'call, HostItem, Decoder>>
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-    HostItem: HostType,
-    Decoder: crate::provider::ProviderListItemDecoder<Item>,
-{
-    type Host = HostListType<HostItem>;
-
-    fn into_host(
-        self,
-        _call: &mut HostCall<'call, Profile, Provider, Return>,
-    ) -> <Self::Host as HostType>::Value<'call> {
-        self.__geam_into_context().into_host()
-    }
-}
+pub type External<Payload> = crate::provider::ProviderExternalView<Payload>;
 
 /// Broad runtime family of one existentially retained source value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -262,26 +85,9 @@ impl DynamicKind {
     }
 }
 
-/// Static input conversion used by exact existential restores.
-#[doc(hidden)]
-pub trait ProviderDynamicInput<Profile, Provider, Return>
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-{
-    type Host: HostType;
-    type View<'call>;
-
-    fn from_host<'call>(
-        call: &mut HostCall<'call, Profile, Provider, Return>,
-        value: <Self::Host as HostType>::Value<'call>,
-    ) -> Self::View<'call>;
-}
-
 /// Static pass-through into transferable existential retention.
 #[doc(hidden)]
-pub trait ProviderTransferDynamicValue<'call, Profile, Provider, Return>
+pub trait ProviderDynamicValue<'call, Profile, Provider, Return>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
@@ -291,15 +97,15 @@ where
 
     fn into_stored<Owner>(
         self,
-        call: &mut TransferHostCall<'call, Profile, Provider, Return>,
-    ) -> ProviderTransferStoredDynamic<Owner>
+        call: &mut HostCall<'call, Profile, Provider, Return>,
+    ) -> StoredDynamic<Owner>
     where
         Owner: ProviderStoredOwner;
 }
 
 impl<'call, Profile, Provider, Return, Type, Host>
-    ProviderTransferDynamicValue<'call, Profile, Provider, Return>
-    for Value<Type, ProviderTransferValueContext<Host>>
+    ProviderDynamicValue<'call, Profile, Provider, Return>
+    for Value<Type, ProviderValueContext<Host>>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
@@ -310,65 +116,65 @@ where
 
     fn into_stored<Owner>(
         self,
-        _call: &mut TransferHostCall<'call, Profile, Provider, Return>,
-    ) -> ProviderTransferStoredDynamic<Owner>
+        _call: &mut HostCall<'call, Profile, Provider, Return>,
+    ) -> StoredDynamic<Owner>
     where
         Owner: ProviderStoredOwner,
     {
-        ProviderTransferStoredDynamic::new_transfer(self.into_stored())
+        StoredDynamic::from_runtime_value(self.into_stored())
     }
 }
 
-impl<'call, Profile, Provider, Return, Type>
-    ProviderTransferDynamicValue<'call, Profile, Provider, Return> for Type
+impl<'call, Profile, Provider, Return, Type> ProviderDynamicValue<'call, Profile, Provider, Return>
+    for Type
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
     Type: ProviderValue<OutputRequirements = ProviderNoConstructions>
-        + ProviderTransferOutputValue<Profile, Provider, Return>,
+        + ProviderOutputValue<Profile, Provider, Return>,
 {
     type Host = Type::Host;
 
     fn into_stored<Owner>(
         self,
-        call: &mut TransferHostCall<'call, Profile, Provider, Return>,
-    ) -> ProviderTransferStoredDynamic<Owner>
+        call: &mut HostCall<'call, Profile, Provider, Return>,
+    ) -> StoredDynamic<Owner>
     where
         Owner: ProviderStoredOwner,
     {
         let value = self.into_host(call, &ProviderConstructions::none());
-        ProviderTransferStoredDynamic::new_transfer(call.retain_value::<Self::Host>(value))
+        StoredDynamic::from_runtime_value(call.retain_value::<Self::Host>(value))
     }
 }
 
 impl<'call, Profile, Provider, Return, Item, HostItem, Decoder>
-    ProviderTransferDynamicValue<'call, Profile, Provider, Return>
-    for List<Item, ProviderTransferListContext<HostItem, Decoder>>
+    ProviderDynamicValue<'call, Profile, Provider, Return>
+    for List<Item, ProviderListContext<HostItem, Decoder>>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
     HostItem: HostType,
-    Decoder: crate::provider::ProviderTransferListItemDecoder<Item>,
+    Decoder: crate::provider::ProviderListItemDecoder<Item>,
 {
     type Host = HostListType<HostItem>;
 
     fn into_stored<Owner>(
         self,
-        call: &mut TransferHostCall<'call, Profile, Provider, Return>,
-    ) -> ProviderTransferStoredDynamic<Owner>
+        call: &mut HostCall<'call, Profile, Provider, Return>,
+    ) -> StoredDynamic<Owner>
     where
         Owner: ProviderStoredOwner,
     {
         let value = call.provider_list_from_input(self);
-        ProviderTransferStoredDynamic::new_transfer(call.retain_value::<Self::Host>(value))
+        StoredDynamic::from_runtime_value(call.retain_value::<Self::Host>(value))
     }
 }
 
 /// Static input conversion used by transferable existential restores.
 #[doc(hidden)]
-pub trait ProviderTransferDynamicInput<Profile, Provider, Return>
+pub trait ProviderDynamicInput<Profile, Provider, Return>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
@@ -378,60 +184,9 @@ where
     type View;
 
     fn from_host<'call>(
-        call: &mut TransferHostCall<'call, Profile, Provider, Return>,
+        call: &mut HostCall<'call, Profile, Provider, Return>,
         value: <Self::Host as HostType>::Value<'call>,
     ) -> Self::View;
-}
-
-impl<Profile, Provider, Return, Type> ProviderTransferDynamicInput<Profile, Provider, Return>
-    for Type
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-    Type: ProviderTransferValue,
-    Type::ImmediateInput: ProviderTransferInputValue<Profile, Provider, Return, Host = Type::Host>,
-{
-    type Host = Type::Host;
-    type View = Type::ImmediateInput;
-
-    fn from_host<'call>(
-        call: &mut TransferHostCall<'call, Profile, Provider, Return>,
-        value: <Self::Host as HostType>::Value<'call>,
-    ) -> Self::View {
-        Type::ImmediateInput::from_host(call, value)
-    }
-}
-
-impl<Profile, Provider, Return, Item> ProviderTransferDynamicInput<Profile, Provider, Return>
-    for List<Item>
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-    Item: ProviderTransferValue,
-    Item::ImmediateListInput: ProviderTransferListInputCodec<Profile, Provider>
-        + ProviderTransferListInputValue<Host = Item::Host>,
-{
-    type Host = HostListType<Item::Host>;
-    type View = List<
-        Item::ImmediateListInput,
-        ProviderTransferListContext<
-            Item::Host,
-            <Item::ImmediateListInput as ProviderTransferListInputValue>::Decoder,
-        >,
-    >;
-
-    fn from_host<'call>(
-        call: &mut TransferHostCall<'call, Profile, Provider, Return>,
-        value: <Self::Host as HostType>::Value<'call>,
-    ) -> Self::View {
-        let decoder = <Item::ImmediateListInput as ProviderTransferListInputCodec<
-            Profile,
-            Provider,
-        >>::decoder(call);
-        call.provider_list(value, decoder)
-    }
 }
 
 impl<Profile, Provider, Return, Type> ProviderDynamicInput<Profile, Provider, Return> for Type
@@ -439,17 +194,17 @@ where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
-    Type: ProviderValue,
-    Type::Input: ProviderInputValue<Profile, Provider, Return> + ProviderValue<Host = Type::Host>,
+    Type: ProviderValueForms,
+    Type::ImmediateInput: ProviderInputValue<Profile, Provider, Return, Host = Type::Host>,
 {
     type Host = Type::Host;
-    type View<'call> = Type::Input;
+    type View = Type::ImmediateInput;
 
     fn from_host<'call>(
         call: &mut HostCall<'call, Profile, Provider, Return>,
         value: <Self::Host as HostType>::Value<'call>,
-    ) -> Self::View<'call> {
-        Type::Input::from_host(call, value)
+    ) -> Self::View {
+        Type::ImmediateInput::from_host(call, value)
     }
 }
 
@@ -458,25 +213,26 @@ where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
-    Item: ProviderValue<ListInput = Item>,
-    Item::ListInput: ProviderListInputCodec<Profile>,
+    Item: ProviderValueForms,
+    Item::ImmediateListInput:
+        ProviderListInputCodec<Profile, Provider> + ProviderListInputValue<Host = Item::Host>,
 {
     type Host = HostListType<Item::Host>;
-    type View<'call> = List<
-        Item,
+    type View = List<
+        Item::ImmediateListInput,
         ProviderListContext<
-            'call,
             Item::Host,
-            <Item::ListInput as ProviderListInputValue>::Decoder,
+            <Item::ImmediateListInput as ProviderListInputValue>::Decoder,
         >,
     >;
 
     fn from_host<'call>(
         call: &mut HostCall<'call, Profile, Provider, Return>,
         value: <Self::Host as HostType>::Value<'call>,
-    ) -> Self::View<'call> {
-        let decoder = <Item::ListInput as ProviderListInputCodec<Profile>>::decoder(call);
-        call.provider_list(value, decoder)
+    ) -> Self::View {
+        let decoder =
+            <Item::ImmediateListInput as ProviderListInputCodec<Profile, Provider>>::decoder(call);
+        call.provider_retained_list(value, decoder)
     }
 }
 
@@ -488,165 +244,63 @@ pub type Next<Index> = HostTypeIndexNext<Index>;
 
 /// Context-aware source semantics for an advanced retained payload declared
 /// with `#[geam::external(name = "...", retained)]`.
-pub trait RetainedExternalPayload<Context = LocalRetainedContext>: 'static
-where
-    Context: RetainedContext,
-{
-    fn source_equal(&self, context: &Equality<'_, Context>, other: &Self) -> bool;
+pub trait RetainedExternalPayload: 'static {
+    fn source_equal(&self, context: &Equality<'_>, other: &Self) -> bool;
 
-    fn source_hash(&self, context: &Hashing<'_, Context>) -> u64;
+    fn source_hash(&self, context: &Hashing<'_>) -> u64;
 
-    fn inspect(&self, context: &Inspection<'_, Context>) -> EcoString;
+    fn inspect(&self, context: &Inspection<'_>) -> EcoString;
 }
 
-impl RetainedContext for LocalRetainedContext {
-    type Retained<Index> = HostStoredValue<HostStoredType<Index>>;
-    type Dynamic = HostStoredDynamic;
-    type Equality<'value> = HostExternalEquality<'value>;
-    type Hashing<'value> = HostExternalHashing<'value>;
-    type Inspection<'value> = HostExternalInspection<'value>;
-
-    fn retained_equal<Index>(
-        context: &Self::Equality<'_>,
-        left: &Self::Retained<Index>,
-        right: &Self::Retained<Index>,
-    ) -> bool {
-        context.stored_values_equal(left, right)
-    }
-
-    fn retained_hash<Index>(context: &Self::Hashing<'_>, value: &Self::Retained<Index>) -> u64 {
-        context.stored_value_hash(value)
-    }
-
-    fn retained_inspect<Index>(
-        context: &Self::Inspection<'_>,
-        value: &Self::Retained<Index>,
-    ) -> EcoString {
-        context.inspect_stored_value(value)
-    }
-
-    fn dynamic_kind(value: &Self::Dynamic) -> DynamicKind {
-        DynamicKind::from_family(value.value_family())
-    }
-
-    fn dynamic_is_external<Declaration>(value: &Self::Dynamic) -> bool
-    where
-        Declaration: ProviderExternalDeclaration,
-    {
-        value.has_external_schema::<Declaration::Schema>()
-    }
-
-    fn dynamic_tuple_items(value: Self::Dynamic) -> Result<Box<[Self::Dynamic]>, Self::Dynamic> {
-        value.map_tuple_items(|value| value)
-    }
-
-    fn dynamic_equal(
-        context: &Self::Equality<'_>,
-        left: &Self::Dynamic,
-        right: &Self::Dynamic,
-    ) -> bool {
-        context.dynamic_values_equal(left, right)
-    }
-
-    fn dynamic_hash(context: &Self::Hashing<'_>, value: &Self::Dynamic) -> u64 {
-        context.dynamic_value_hash(value)
-    }
-
-    fn dynamic_inspect(context: &Self::Inspection<'_>, value: &Self::Dynamic) -> EcoString {
-        context.inspect_dynamic_value(value)
-    }
-}
-
-impl RetainedContext for ProviderTransferRetainedContext {
-    type Retained<Index> = ProviderTransferRetainedValue<Index>;
-    type Dynamic = ProviderTransferDynamicStorage;
-    type Equality<'value> = AsyncHostExternalEquality<'value>;
-    type Hashing<'value> = AsyncHostExternalHashing<'value>;
-    type Inspection<'value> = AsyncHostExternalInspection<'value>;
-
-    fn retained_equal<Index>(
-        context: &Self::Equality<'_>,
-        left: &Self::Retained<Index>,
-        right: &Self::Retained<Index>,
-    ) -> bool {
-        context.provider_stored_values_equal(&left.value, &right.value)
-    }
-
-    fn retained_hash<Index>(context: &Self::Hashing<'_>, value: &Self::Retained<Index>) -> u64 {
-        context.provider_stored_value_hash(&value.value)
-    }
-
-    fn retained_inspect<Index>(
-        context: &Self::Inspection<'_>,
-        value: &Self::Retained<Index>,
-    ) -> EcoString {
-        context.provider_inspect_stored_value(&value.value)
-    }
-
-    fn dynamic_kind(value: &Self::Dynamic) -> DynamicKind {
-        DynamicKind::from_family(value.value.family())
-    }
-
-    fn dynamic_is_external<Declaration>(value: &Self::Dynamic) -> bool
-    where
-        Declaration: ProviderExternalDeclaration,
-    {
-        value.value.has_external_schema::<Declaration::Schema>()
-    }
-
-    fn dynamic_tuple_items(value: Self::Dynamic) -> Result<Box<[Self::Dynamic]>, Self::Dynamic> {
-        value
-            .value
-            .map_tuple_items(|value| ProviderTransferDynamicStorage { value })
-            .map_err(|value| ProviderTransferDynamicStorage { value })
-    }
-
-    fn dynamic_equal(
-        context: &Self::Equality<'_>,
-        left: &Self::Dynamic,
-        right: &Self::Dynamic,
-    ) -> bool {
-        context.provider_stored_values_equal(&left.value, &right.value)
-    }
-
-    fn dynamic_hash(context: &Self::Hashing<'_>, value: &Self::Dynamic) -> u64 {
-        context.provider_stored_value_hash(&value.value)
-    }
-
-    fn dynamic_inspect(context: &Self::Inspection<'_>, value: &Self::Dynamic) -> EcoString {
-        context.provider_inspect_stored_value(&value.value)
-    }
-}
-
-impl<Owner, Index, Context> Retained<Owner, Index, Context>
+impl<Owner, Index> Retained<Owner, Index>
 where
     Owner: ProviderStoredOwner,
-    Context: RetainedContext,
 {
     /// Compares two retained values with Gleam source equality.
-    pub fn source_equal(&self, context: &Equality<'_, Context>, other: &Self) -> bool {
-        Context::retained_equal(context, &self.value, &other.value)
+    pub fn source_equal(&self, context: &Equality<'_>, other: &Self) -> bool {
+        context.stored_values_equal(&self.value, &other.value)
     }
 
     /// Hashes this retained value consistently with Gleam source equality.
-    pub fn source_hash(&self, context: &Hashing<'_, Context>) -> u64 {
-        Context::retained_hash(context, &self.value)
+    pub fn source_hash(&self, context: &Hashing<'_>) -> u64 {
+        context.stored_value_hash(&self.value)
     }
 
     /// Inspects this retained value with Gleam source formatting.
-    pub fn inspect(&self, context: &Inspection<'_, Context>) -> EcoString {
-        Context::retained_inspect(context, &self.value)
+    pub fn inspect(&self, context: &Inspection<'_>) -> EcoString {
+        context.inspect_stored_value(&self.value)
+    }
+
+    pub(crate) fn from_host_value(value: HostStoredValue<HostStoredType<Index>>) -> Self {
+        Self {
+            value,
+            owner: PhantomData,
+        }
+    }
+
+    pub(crate) fn from_runtime_value(value: StoredRuntimeValue) -> Self {
+        Self {
+            value: HostStoredValue::new(value),
+            owner: PhantomData,
+        }
+    }
+
+    pub(crate) fn stored(&self) -> &StoredRuntimeValue {
+        &self.value.value
+    }
+
+    pub(crate) fn clone_retained(&self) -> Self {
+        Self::from_runtime_value(self.value.value.clone_retained())
     }
 }
 
-impl<Owner, Context> StoredDynamic<Owner, Context>
+impl<Owner> StoredDynamic<Owner>
 where
     Owner: ProviderStoredOwner,
-    Context: RetainedContext,
 {
     /// Returns the broad source family without exposing its runtime type.
     pub fn kind(&self) -> DynamicKind {
-        Context::dynamic_kind(&self.value)
+        DynamicKind::from_family(self.value.value_family())
     }
 
     /// Confirms one generated external declaration without exposing names.
@@ -654,14 +308,19 @@ where
     where
         Declaration: ProviderExternalDeclaration,
     {
-        Context::dynamic_is_external::<Declaration>(&self.value)
+        self.value.has_external_schema::<Declaration::Schema>()
     }
 
     /// Consumes a retained tuple and retains each element under the same owner.
     ///
     /// Non-tuples are returned unchanged.
+    #[expect(
+        clippy::result_large_err,
+        reason = "non-tuples retain the original value without another heap allocation"
+    )]
     pub fn into_tuple_items(self) -> Result<Box<[Self]>, Self> {
-        Context::dynamic_tuple_items(self.value)
+        self.value
+            .map_tuple_items(|value| value)
             .map(|items| {
                 items
                     .into_vec()
@@ -679,99 +338,43 @@ where
     }
 
     /// Compares two existential values with Gleam source equality.
-    pub fn source_equal(&self, context: &Equality<'_, Context>, other: &Self) -> bool {
-        Context::dynamic_equal(context, &self.value, &other.value)
+    pub fn source_equal(&self, context: &Equality<'_>, other: &Self) -> bool {
+        context.dynamic_values_equal(&self.value, &other.value)
     }
 
     /// Hashes this existential value consistently with Gleam source equality.
-    pub fn source_hash(&self, context: &Hashing<'_, Context>) -> u64 {
-        Context::dynamic_hash(context, &self.value)
+    pub fn source_hash(&self, context: &Hashing<'_>) -> u64 {
+        context.dynamic_value_hash(&self.value)
     }
 
     /// Inspects this existential value with Gleam source formatting.
-    pub fn inspect(&self, context: &Inspection<'_, Context>) -> EcoString {
-        Context::dynamic_inspect(context, &self.value)
+    pub fn inspect(&self, context: &Inspection<'_>) -> EcoString {
+        context.inspect_dynamic_value(&self.value)
     }
-}
 
-impl<Owner, Index> Retained<Owner, Index, LocalRetainedContext>
-where
-    Owner: ProviderStoredOwner,
-{
-    pub(crate) fn new_local(value: HostStoredValue<HostStoredType<Index>>) -> Self {
+    pub(crate) fn from_host_value(value: HostStoredDynamic) -> Self {
         Self {
             value,
             owner: PhantomData,
         }
     }
 
-    pub(crate) fn host(&self) -> &HostStoredValue<HostStoredType<Index>> {
-        &self.value
-    }
-}
-
-impl<Owner> StoredDynamic<Owner, LocalRetainedContext>
-where
-    Owner: ProviderStoredOwner,
-{
-    pub(crate) fn new_local(value: HostStoredDynamic) -> Self {
+    pub(crate) fn from_runtime_value(value: StoredRuntimeValue) -> Self {
         Self {
-            value,
+            value: HostStoredDynamic::new(value),
             owner: PhantomData,
         }
     }
 
-    pub(crate) fn host(&self) -> &HostStoredDynamic {
-        &self.value
-    }
-}
-
-impl<Owner, Index> Retained<Owner, Index, ProviderTransferRetainedContext>
-where
-    Owner: ProviderStoredOwner,
-{
-    pub(crate) fn new_transfer(value: StoredRuntimeValue<TransferValues>) -> Self {
-        Self {
-            value: ProviderTransferRetainedValue {
-                value,
-                index: PhantomData,
-            },
-            owner: PhantomData,
-        }
-    }
-
-    pub(crate) fn stored(&self) -> &StoredRuntimeValue<TransferValues> {
-        &self.value.value
-    }
-
-    pub(crate) fn clone_transfer(&self) -> Self {
-        Self::new_transfer(self.value.value.clone_transfer())
-    }
-}
-
-impl<Owner> StoredDynamic<Owner, ProviderTransferRetainedContext>
-where
-    Owner: ProviderStoredOwner,
-{
-    pub(crate) fn new_transfer(value: StoredRuntimeValue<TransferValues>) -> Self {
-        Self {
-            value: ProviderTransferDynamicStorage { value },
-            owner: PhantomData,
-        }
-    }
-
-    pub(crate) fn stored(&self) -> &StoredRuntimeValue<TransferValues> {
-        &self.value.value
+    pub(crate) fn stored(&self) -> &StoredRuntimeValue {
+        self.value.runtime_value()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{DynamicKind, Index0, Retained};
-    use crate::host::{
-        HostExternalEquality, HostExternalHashing, HostExternalInspection, HostStoredType,
-        HostStoredValue,
-    };
+    use crate::host::{HostStoredType, HostStoredValue};
     use crate::runtime::StoredRuntimeValue;
 
     struct Payload;
@@ -779,7 +382,7 @@ mod tests {
     impl crate::provider::ProviderStoredOwner for Payload {}
 
     fn retained(value: i64) -> Retained<Payload, Index0> {
-        Retained::new_local(HostStoredValue::<HostStoredType<Index0>>::new(
+        Retained::from_host_value(HostStoredValue::<HostStoredType<Index0>>::new(
             StoredRuntimeValue::test_int(value.into()),
         ))
     }
@@ -842,16 +445,25 @@ mod tests {
     fn retained_values_delegate_each_source_operation_to_its_narrow_context() {
         let first = retained(7);
         let different = retained(8);
-        let stored_equal =
-            |left: &StoredRuntimeValue, right: &StoredRuntimeValue| std::ptr::eq(left, right);
-        let stored_hash = |_: &StoredRuntimeValue| 17;
-        let stored_inspect = |_: &StoredRuntimeValue| "Int(7)".into();
-        let equality = HostExternalEquality::new(&stored_equal);
-        let hashing = HostExternalHashing::new(&stored_hash);
-        let inspection = HostExternalInspection::new(&stored_inspect);
+        let comparisons = std::cell::Cell::new(0);
+        let stored_equal = |_: &crate::runtime::RetainedValueRef,
+                            _: &crate::runtime::RetainedValueRef| {
+            let comparison = comparisons.get();
+            comparisons.set(comparison + 1);
+            comparison == 0
+        };
+        let stored_hash = |_: &crate::runtime::RetainedValueRef| 17;
+        let stored_inspect = |_: &crate::runtime::RetainedValueRef| "Int(7)".into();
+        let raw_equality = crate::host::RetainedValueEquality::new(&stored_equal);
+        let equality = crate::host::HostExternalEquality(&raw_equality);
+        let raw_hashing = crate::host::RetainedValueHashing::new(&stored_hash);
+        let hashing = crate::host::HostExternalHashing(&raw_hashing);
+        let raw_inspection = crate::host::RetainedValueInspection::new(&stored_inspect);
+        let inspection = crate::host::HostExternalInspection(&raw_inspection);
 
         assert!(first.source_equal(&equality, &first));
         assert!(!first.source_equal(&equality, &different));
+        assert_eq!(comparisons.get(), 2);
         assert_eq!(first.source_hash(&hashing), 17);
         assert_eq!(first.inspect(&inspection), "Int(7)");
     }

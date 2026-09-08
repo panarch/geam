@@ -1,15 +1,15 @@
 pub(crate) use geam_core::{
-    BitArrayValue, HostCall, HostComponentProfile, HostConstruction, HostExternal,
-    HostExternalType, HostFailure, HostProfile, HostProvider, HostProviderComponent,
+    BitArrayValue, HostComponentProfile, HostConstruction, HostExternal, HostExternalType,
+    HostFailure, HostProfile, HostProvider, HostProviderComponent,
     HostProviderComponentRegistration, HostProviderModule, HostRegistrationError, HostType,
     HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
 };
 #[cfg(test)]
 pub(crate) use geam_core::{
-    ExecutionError, HostCallCompletion, HostCallError, HostExternalBinding, HostExternalEquality,
-    HostExternalHashing, HostExternalInspection, HostExternalSchema, HostExternalStorage,
-    HostExternalStore, HostExternalTypeSchema, HostModule, HostProviderSet, HostedExecution,
-    ModuleSource, PackageSource, PanicKind, PanicMessage, Value, ValueType,
+    ExecutionError, HostCall, HostCallCompletion, HostCallError, HostExternalBinding,
+    HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalSchema,
+    HostExternalStorage, HostExternalStore, HostExternalTypeSchema, HostModule, HostProviderSet,
+    HostedExecution, ModuleSource, PackageSource, PanicKind, PanicMessage, Value, ValueType,
     compile_typed_host_program, plan_host_program,
 };
 use std::marker::PhantomData;
@@ -23,7 +23,6 @@ mod int;
 mod io;
 mod result;
 mod run_state;
-mod storage;
 mod string;
 mod string_tree;
 mod uri;
@@ -34,17 +33,12 @@ pub use run_state::{GleamStdlibRunState, GleamStdlibRunStateError};
 /// Narrow implementation contract used by sibling official provider packages.
 #[doc(hidden)]
 pub mod provider_support {
-    pub use crate::dict::{
-        DictExternalStorage, DictOf, DictSchema, create_dynamic_dict, create_transfer_dynamic_dict,
-    };
+    pub use crate::dict::{DictExternalStorage, DictOf, DictSchema, create_dynamic_dict};
     pub use crate::dynamic::{
-        Dynamic, DynamicExternalStorage, DynamicSchema,
-        create_transfer_value as create_transfer_dynamic_value,
-        create_value as create_dynamic_value,
+        Dynamic, DynamicExternalStorage, DynamicSchema, create_value as create_dynamic_value,
     };
     pub use crate::dynamic_decode::DynamicDecodeErrorValue;
     pub use crate::result::{GleamError, GleamOk, GleamResult};
-    pub use crate::storage::StorageContext;
     pub use crate::string_tree::{
         StoredStringTree, StringTree, StringTreeExternalStorage, StringTreePayload,
         StringTreeSchema,
@@ -59,25 +53,13 @@ pub trait GleamStdlibHostProfile: HostProfile {
 
 /// The standard-library capability and local-store projections used together.
 #[doc(hidden)]
-pub trait GleamStdlibLocalProfile:
+pub trait GleamStdlibProviderProfile:
     GleamStdlibHostProfile + HostComponentProfile<Component<Self::Io>>
 {
 }
 
-impl<Profile> GleamStdlibLocalProfile for Profile where
+impl<Profile> GleamStdlibProviderProfile for Profile where
     Profile: GleamStdlibHostProfile + HostComponentProfile<Component<Profile::Io>>
-{
-}
-
-/// The standard-library capability and transferable-store projections used together.
-#[doc(hidden)]
-pub trait GleamStdlibTransferProfile:
-    GleamStdlibHostProfile + geam_core::AsyncHostComponentProfile<Component<Self::Io>>
-{
-}
-
-impl<Profile> GleamStdlibTransferProfile for Profile where
-    Profile: GleamStdlibHostProfile + geam_core::AsyncHostComponentProfile<Component<Profile::Io>>
 {
 }
 
@@ -87,14 +69,6 @@ pub struct GleamStdlibStores {
     dict: dict::Stores,
     dynamic: dynamic::Stores,
     string_tree: string_tree::Stores,
-}
-
-/// Standard-library stores for explicitly transferable embedding composition.
-#[derive(Default)]
-pub struct GleamStdlibTransferStores {
-    dict: dict::TransferStores,
-    dynamic: dynamic::TransferStores,
-    string_tree: string_tree::TransferStores,
 }
 
 /// The statically composed provider component for the official Gleam standard library.
@@ -115,13 +89,6 @@ where
     Io: IoSink + 'static,
 {
     const PACKAGE: &'static str = "gleam_stdlib";
-}
-
-impl<Io> geam_core::AsyncHostProviderComponent for Component<Io>
-where
-    Io: IoSink + 'static,
-{
-    type AsyncStores = GleamStdlibTransferStores;
 }
 
 /// The default profile for using only the official Gleam standard library providers.
@@ -150,54 +117,14 @@ impl GleamStdlibHostProfile for GleamStdlibProfile {
 /// Registers the Rust providers for the official Gleam standard library.
 pub fn host_providers<Profile>() -> Result<Vec<HostProviderModule<Profile>>, HostRegistrationError>
 where
-    Profile: GleamStdlibLocalProfile,
+    Profile: GleamStdlibProviderProfile,
 {
     <Component<Profile::Io> as HostProviderComponentRegistration<Profile>>::providers()
 }
 
-/// Registers the official standard library for explicit transferable execution.
-pub fn transfer_host_providers<Profile>()
--> Result<Vec<geam_core::TransferHostProviderModule<Profile>>, HostRegistrationError>
-where
-    Profile: GleamStdlibTransferProfile,
-    Profile::RunState: Send,
-{
-    <Component<Profile::Io> as geam_core::TransferHostProviderComponentRegistration<Profile>>::providers()
-}
-
-impl<Profile, Io> geam_core::TransferHostProviderComponentRegistration<Profile> for Component<Io>
-where
-    Profile: GleamStdlibTransferProfile<Io = Io>,
-    Profile::RunState: Send,
-    Io: IoSink + 'static,
-{
-    fn providers()
-    -> Result<Vec<geam_core::TransferHostProviderModule<Profile>>, HostRegistrationError> {
-        let registrations: [TransferProviderRegistration<Profile>; 10] = [
-            dict::transfer_host_provider::<Profile>,
-            dynamic::transfer_host_provider::<Profile>,
-            float::transfer_host_provider::<Profile>,
-            int::transfer_host_provider::<Profile>,
-            string_tree::transfer_host_provider::<Profile>,
-            string::transfer_host_provider::<Profile>,
-            bit_array::transfer_host_provider::<Profile>,
-            dynamic_decode::transfer_host_provider::<Profile>,
-            io::transfer_host_provider::<Profile>,
-            uri::transfer_host_provider::<Profile>,
-        ];
-        registrations
-            .into_iter()
-            .map(|register| register())
-            .collect()
-    }
-}
-
-type TransferProviderRegistration<Profile> =
-    fn() -> Result<geam_core::TransferHostProviderModule<Profile>, HostRegistrationError>;
-
 impl<Profile, Io> HostProviderComponentRegistration<Profile> for Component<Io>
 where
-    Profile: GleamStdlibLocalProfile<Io = Io>,
+    Profile: GleamStdlibProviderProfile<Io = Io>,
     Io: IoSink + 'static,
 {
     fn providers() -> Result<Vec<HostProviderModule<Profile>>, HostRegistrationError> {
@@ -208,7 +135,7 @@ where
 fn register_host_providers<Profile>()
 -> Result<Vec<HostProviderModule<Profile>>, HostRegistrationError>
 where
-    Profile: GleamStdlibLocalProfile,
+    Profile: GleamStdlibProviderProfile,
 {
     let registrations: [ProviderRegistration<Profile>; 10] = [
         dict::host_provider::<Profile>,

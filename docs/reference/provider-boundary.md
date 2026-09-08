@@ -345,9 +345,10 @@ Inputs, exact callback targets and their captures belong to the returned work,
 not the temporary source invocation. Async provider values support the same
 declared scalar, tuple, Result, Option, List, custom, generic and retained
 external families as their synchronous counterparts, subject to the existing
-family-specific restrictions in this reference. Transferable stores, payloads
-and state require `Send`, without adding `Sync` to borrowed mutable host
-state. Local-only synchronous compositions keep their original contract.
+family-specific restrictions in this reference. All provider stores, retained
+payloads, state, and native Futures require `Send`, without adding `Sync` to
+exclusively accessed data. Synchronous and async functions use one registration
+and storage contract.
 
 The injected `Call` supplies bounded access to the original execution:
 
@@ -376,16 +377,17 @@ callback uses `Callback<fn(...) -> Future<T>>`. Receive that work, then use
 `call.observe(&work).await` when the provider intends to drive it.
 
 Functions accepting `Future<T>`, including a Future returned by a callback,
-use the transferable provider composition even when the Rust function itself
-is synchronous. They receive work without polling it. Other synchronous
-functions in the module retain their local and transferable adapters.
+receive work without polling it even when the Rust function itself is
+synchronous. Ordinary functions remain direct and do not acquire hidden
+Future allocation or polling.
 
 Work follows the [shared completion and cancellation
 semantics](runtime-semantics.md#explicit-work). Ending the execution scope closes
 the provider's state and callback endpoint; pending work cannot use it again.
 Provider failures and source panics retain their original execution error,
 separate from ordinary source Result errors. The embedding application drives
-progress with its own executor.
+progress with its own executor; the standalone runner supplies Tokio and drives
+only an outer Future returned by `main`.
 
 ## Generic Values And Retention
 

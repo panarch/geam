@@ -1,9 +1,9 @@
 use super::transfer_fixture::{ENTRY, ObservedEcho, TransferFixture, observed_project};
-use geam_core::host::{AsyncHostComponentProfile, HostFutureStore};
-use geam_core::{EchoOutput, HostProfile, TransferHostProviderSet, Value};
-use geam_runtime_api::FutureComponent;
+use geam_builtin::FutureComponent;
+use geam_core::host::{HostComponentProfile, HostFutureStore};
+use geam_core::{EchoOutput, HostProfile, HostProviderSet, Value};
 use geam_stdlib::{
-    Component, GleamStdlibHostProfile, GleamStdlibRunState, GleamStdlibTransferStores, IoOutput,
+    Component, GleamStdlibHostProfile, GleamStdlibRunState, GleamStdlibStores, IoOutput,
 };
 
 pub(super) struct Profile;
@@ -15,7 +15,7 @@ pub(super) struct RunState {
 
 #[derive(Default)]
 pub(super) struct Stores {
-    stdlib: GleamStdlibTransferStores,
+    stdlib: GleamStdlibStores,
     work: HostFutureStore,
 }
 
@@ -28,8 +28,8 @@ impl GleamStdlibHostProfile for Profile {
     type Io = Vec<IoOutput>;
 }
 
-impl AsyncHostComponentProfile<Component> for Profile {
-    fn component_async_stores(stores: &Stores) -> &GleamStdlibTransferStores {
+impl HostComponentProfile<Component> for Profile {
+    fn component_stores(stores: &Stores) -> &GleamStdlibStores {
         &stores.stdlib
     }
 
@@ -41,8 +41,8 @@ impl AsyncHostComponentProfile<Component> for Profile {
 impl geam_core::host::HostWorkProfile for Profile {
     type Work = FutureComponent;
 }
-impl AsyncHostComponentProfile<FutureComponent> for Profile {
-    fn component_async_stores(stores: &Stores) -> &HostFutureStore {
+impl HostComponentProfile<FutureComponent> for Profile {
+    fn component_stores(stores: &Stores) -> &HostFutureStore {
         &stores.work
     }
 
@@ -56,9 +56,8 @@ pub(super) fn fixture(root_module: &str) -> TransferFixture<Profile> {
         observed_project(
             &super::project_root(),
             root_module,
-            TransferHostProviderSet::new(
-                geam_stdlib::transfer_host_providers::<Profile>()
-                    .expect("stdlib transfer registration"),
+            HostProviderSet::from_providers(
+                geam_stdlib::host_providers::<Profile>().expect("stdlib transfer registration"),
             )
             .expect("stdlib provider set"),
         ),

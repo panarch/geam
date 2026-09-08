@@ -300,7 +300,6 @@ fn build_custom_model(
         let list_decoder = register_list_decoder(
             &CollectionType {
                 source: item.clone(),
-                item,
                 value: StaticValueType::Custom {
                     index: custom_index,
                 },
@@ -367,7 +366,7 @@ fn classify_custom_output_value(
         let value = classify_custom_value(&item, headers, externals)?;
         let collection = CollectionType {
             source: type_.clone(),
-            item,
+
             value,
         };
         let decoder = register_list_decoder(&collection, list_decoders);
@@ -422,8 +421,8 @@ fn classify_custom_value(
     }
     if let Some(external) = external_type(type_, externals) {
         return Ok(StaticValueType::External {
-            payload: external.ident.clone(),
-            transfer_payload: external.transfer_payload.clone(),
+            declaration: external.ident.clone(),
+            payload: external.payload.clone(),
             schema: external.schema.clone(),
             store_field: external.store_field.clone(),
         });

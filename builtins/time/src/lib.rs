@@ -20,7 +20,7 @@ use std::marker::PhantomData;
 use std::time::SystemTime;
 
 /// A caller-owned source for official Gleam wall-clock operations.
-pub trait TimeSource: 'static {
+pub trait TimeSource: Send + 'static {
     /// Returns the current wall-clock time.
     fn system_time(&mut self) -> Result<SystemTime, HostFailure>;
 
@@ -36,26 +36,13 @@ pub trait GleamTimeHostProfile: GleamStdlibHostProfile {
 
 /// The Time capability and local component projection used together.
 #[doc(hidden)]
-pub trait GleamTimeLocalProfile:
+pub trait GleamTimeProviderProfile:
     GleamTimeHostProfile + HostComponentProfile<Component<Self::Source>>
 {
 }
 
-impl<Profile> GleamTimeLocalProfile for Profile where
+impl<Profile> GleamTimeProviderProfile for Profile where
     Profile: GleamTimeHostProfile + HostComponentProfile<Component<Profile::Source>>
-{
-}
-
-/// The Time capability and transferable component projection used together.
-#[doc(hidden)]
-pub trait GleamTimeTransferProfile:
-    GleamTimeHostProfile + geam_core::AsyncHostComponentProfile<Component<Self::Source>>
-{
-}
-
-impl<Profile> GleamTimeTransferProfile for Profile where
-    Profile:
-        GleamTimeHostProfile + geam_core::AsyncHostComponentProfile<Component<Profile::Source>>
 {
 }
 
@@ -77,10 +64,6 @@ where
     Source: TimeSource,
 {
     const PACKAGE: &'static str = "gleam_time";
-}
-
-impl<Source: TimeSource> geam_core::AsyncHostProviderComponent for Component<Source> {
-    type AsyncStores = ();
 }
 
 /// External stores for the default combined standard-library and Time profile.
@@ -178,49 +161,20 @@ where
 /// Registers the Rust providers for the official Gleam Time package.
 pub fn host_providers<Profile>() -> Result<Vec<HostProviderModule<Profile>>, HostRegistrationError>
 where
-    Profile: GleamTimeLocalProfile,
+    Profile: GleamTimeProviderProfile,
 {
     <Component<Profile::Source> as HostProviderComponentRegistration<Profile>>::providers()
 }
 
 impl<Profile, Source> HostProviderComponentRegistration<Profile> for Component<Source>
 where
-    Profile: GleamTimeLocalProfile<Source = Source>,
+    Profile: GleamTimeProviderProfile<Source = Source>,
     Source: TimeSource,
 {
     fn providers() -> Result<Vec<HostProviderModule<Profile>>, HostRegistrationError> {
         [
             calendar::host_provider::<Profile>,
             timestamp::host_provider::<Profile>,
-        ]
-        .into_iter()
-        .map(|register| register())
-        .collect()
-    }
-}
-
-/// Registers the official Time package for explicitly transferable execution.
-pub fn transfer_host_providers<Profile>()
--> Result<Vec<geam_core::TransferHostProviderModule<Profile>>, HostRegistrationError>
-where
-    Profile: GleamTimeTransferProfile,
-    Profile::RunState: Send,
-{
-    <Component<Profile::Source> as geam_core::TransferHostProviderComponentRegistration<Profile>>::providers()
-}
-
-impl<Profile, Source> geam_core::TransferHostProviderComponentRegistration<Profile>
-    for Component<Source>
-where
-    Profile: GleamTimeTransferProfile<Source = Source>,
-    Profile::RunState: Send,
-    Source: TimeSource,
-{
-    fn providers()
-    -> Result<Vec<geam_core::TransferHostProviderModule<Profile>>, HostRegistrationError> {
-        [
-            calendar::transfer_host_provider::<Profile>,
-            timestamp::transfer_host_provider::<Profile>,
         ]
         .into_iter()
         .map(|register| register())

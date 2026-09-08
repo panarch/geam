@@ -1,11 +1,11 @@
 use super::transfer_fixture::{ENTRY, TransferFixture, observed_project};
-use geam_core::host::{AsyncHostComponentProfile, HostFutureStore};
-use geam_core::{HostProfile, TransferHostProviderSet, compile_typed_transfer_host_project};
-use geam_json::{Component as JsonComponent, GleamJsonTransferStores};
-use geam_runtime_api::FutureComponent;
+use geam_builtin::FutureComponent;
+use geam_core::host::{HostComponentProfile, HostFutureStore};
+use geam_core::{HostProfile, HostProviderSet, compile_typed_host_project};
+use geam_json::{Component as JsonComponent, GleamJsonStores};
 use geam_stdlib::{
-    Component as StdlibComponent, GleamStdlibHostProfile, GleamStdlibRunState,
-    GleamStdlibTransferStores, IoOutput,
+    Component as StdlibComponent, GleamStdlibHostProfile, GleamStdlibRunState, GleamStdlibStores,
+    IoOutput,
 };
 
 pub(super) struct Profile;
@@ -18,8 +18,8 @@ pub(super) struct RunState {
 
 #[derive(Default)]
 pub(super) struct Stores {
-    stdlib: GleamStdlibTransferStores,
-    json: GleamJsonTransferStores,
+    stdlib: GleamStdlibStores,
+    json: GleamJsonStores,
     work: HostFutureStore,
 }
 
@@ -32,8 +32,8 @@ impl GleamStdlibHostProfile for Profile {
     type Io = Vec<IoOutput>;
 }
 
-impl AsyncHostComponentProfile<StdlibComponent> for Profile {
-    fn component_async_stores(stores: &Stores) -> &GleamStdlibTransferStores {
+impl HostComponentProfile<StdlibComponent> for Profile {
+    fn component_stores(stores: &Stores) -> &GleamStdlibStores {
         &stores.stdlib
     }
     fn component_state(state: &mut RunState) -> &mut GleamStdlibRunState {
@@ -41,8 +41,8 @@ impl AsyncHostComponentProfile<StdlibComponent> for Profile {
     }
 }
 
-impl AsyncHostComponentProfile<JsonComponent> for Profile {
-    fn component_async_stores(stores: &Stores) -> &GleamJsonTransferStores {
+impl HostComponentProfile<JsonComponent> for Profile {
+    fn component_stores(stores: &Stores) -> &GleamJsonStores {
         &stores.json
     }
     fn component_state(state: &mut RunState) -> &mut () {
@@ -53,8 +53,8 @@ impl AsyncHostComponentProfile<JsonComponent> for Profile {
 impl geam_core::host::HostWorkProfile for Profile {
     type Work = FutureComponent;
 }
-impl AsyncHostComponentProfile<FutureComponent> for Profile {
-    fn component_async_stores(stores: &Stores) -> &HostFutureStore {
+impl HostComponentProfile<FutureComponent> for Profile {
+    fn component_stores(stores: &Stores) -> &HostFutureStore {
         &stores.work
     }
     fn component_state(state: &mut RunState) -> &mut () {
@@ -64,15 +64,13 @@ impl AsyncHostComponentProfile<FutureComponent> for Profile {
 
 pub(super) fn fixture(root_module: &str) -> TransferFixture<Profile> {
     let mut providers =
-        geam_stdlib::transfer_host_providers::<Profile>().expect("stdlib transfer registration");
-    providers.extend(
-        geam_json::transfer_host_providers::<Profile>().expect("JSON transfer registration"),
-    );
+        geam_stdlib::host_providers::<Profile>().expect("stdlib transfer registration");
+    providers.extend(geam_json::host_providers::<Profile>().expect("JSON transfer registration"));
     TransferFixture::new(
         observed_project(
             &super::project_root(),
             root_module,
-            TransferHostProviderSet::new(providers).expect("JSON provider set"),
+            HostProviderSet::from_providers(providers).expect("JSON provider set"),
         ),
         ENTRY,
     )
@@ -81,26 +79,24 @@ pub(super) fn fixture(root_module: &str) -> TransferFixture<Profile> {
 #[test]
 fn non_finite_json_preserves_the_host_failure_and_allows_the_next_call() {
     use ecow::EcoString;
-    use geam_core::AsyncExecutionError;
+    use geam_core::ExecutionError;
     use geam_core::embedding::{
-        AsyncCallError, FunctionDeclaration, WorkModuleBuilder, with_execution_scope,
+        CallError, FunctionDeclaration, HostedModuleBuilder, with_execution_scope,
     };
     use std::future::Future;
     use std::pin::pin;
     use std::task::{Context, Poll, Waker};
 
     let mut providers =
-        geam_stdlib::transfer_host_providers::<Profile>().expect("stdlib transfer registration");
-    providers.extend(
-        geam_json::transfer_host_providers::<Profile>().expect("JSON transfer registration"),
-    );
-    let program = compile_typed_transfer_host_project(
+        geam_stdlib::host_providers::<Profile>().expect("stdlib transfer registration");
+    providers.extend(geam_json::host_providers::<Profile>().expect("JSON transfer registration"));
+    let program = compile_typed_host_project(
         super::project_root(),
         "gleam_json_encode",
-        TransferHostProviderSet::new(providers).expect("JSON provider set"),
+        HostProviderSet::from_providers(providers).expect("JSON provider set"),
     )
     .expect("official JSON source linkage");
-    let (bindings, entry) = WorkModuleBuilder::new(program)
+    let (bindings, entry) = HostedModuleBuilder::new(program)
         .expect("JSON plan")
         .function(FunctionDeclaration::<(f64,), EcoString>::new(
             "encode_number",
@@ -120,7 +116,7 @@ fn non_finite_json_preserves_the_host_failure_and_allows_the_next_call() {
                 .call(&entry, (value,))
                 .expect_err("non-finite JSON number");
             assert!(
-                matches!(error, AsyncCallError::Execution(AsyncExecutionError::Host(ref error))
+                matches!(error, CallError::Execution(ExecutionError::Host(ref error))
                 if error.package() == "gleam_json"
                     && error.module() == "gleam/json"
                     && error.function() == "do_float"

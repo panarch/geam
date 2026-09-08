@@ -7,7 +7,7 @@ use syn::{Ident, ItemEnum};
 pub(super) struct OutputField {
     index: usize,
     pub(super) parameter: Ident,
-    pub(super) transfer: TokenStream,
+    pub(super) value_type: TokenStream,
 }
 
 pub(super) fn fields(
@@ -26,11 +26,11 @@ pub(super) fn fields(
                 CustomFieldValueType::List(list) => (&list.collection.value, true),
             };
             changes_representation(value, customs).then(|| {
-                let value = transfer_type(value, customs, support);
+                let value = output_type(value, customs, support);
                 OutputField {
                     index,
                     parameter: format_ident!("__GeamOutputField{index}"),
-                    transfer: if list {
+                    value_type: if list {
                         quote!(::std::vec::Vec<#value>)
                     } else {
                         value
@@ -66,10 +66,10 @@ fn changes_representation(value: &StaticValueType, customs: &[CustomModel]) -> b
         StaticValueType::Scalar(_) => false,
         StaticValueType::Declared { .. } => true,
         StaticValueType::External {
+            declaration,
             payload,
-            transfer_payload,
             ..
-        } => *transfer_payload != syn::parse_quote!(#payload),
+        } => *payload != syn::parse_quote!(#declaration),
         StaticValueType::Custom { index } => customs[*index]
             .constructors
             .iter()
@@ -90,7 +90,7 @@ fn changes_representation(value: &StaticValueType, customs: &[CustomModel]) -> b
     }
 }
 
-fn transfer_type(
+fn output_type(
     value: &StaticValueType,
     customs: &[CustomModel],
     support: &TokenStream,
@@ -98,28 +98,26 @@ fn transfer_type(
     match value {
         StaticValueType::Scalar(type_) => quote!(#type_),
         StaticValueType::Declared { type_ } => {
-            quote!(<#type_ as #support::ProviderTransferValue>::Output)
+            quote!(<#type_ as #support::ProviderValueForms>::Output)
         }
-        StaticValueType::External {
-            transfer_payload, ..
-        } => quote!(#transfer_payload),
+        StaticValueType::External { payload, .. } => quote!(#payload),
         StaticValueType::Custom { index } => {
             let ident = &customs[*index].ident;
-            quote!(<#ident as #support::ProviderTransferValue>::Output)
+            quote!(<#ident as #support::ProviderValueForms>::Output)
         }
         StaticValueType::Tuple(elements) => {
             let elements = elements
                 .iter()
-                .map(|value| transfer_type(value, customs, support));
+                .map(|value| output_type(value, customs, support));
             quote!((#(#elements,)*))
         }
         StaticValueType::Result { success, failure } => {
-            let success = transfer_type(success, customs, support);
-            let failure = transfer_type(failure, customs, support);
+            let success = output_type(success, customs, support);
+            let failure = output_type(failure, customs, support);
             quote!(::core::result::Result<#success, #failure>)
         }
         StaticValueType::Option { value } => {
-            let value = transfer_type(value, customs, support);
+            let value = output_type(value, customs, support);
             quote!(::core::option::Option<#value>)
         }
     }

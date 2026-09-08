@@ -1,54 +1,52 @@
-use crate::storage::StorageContext;
 use ecow::EcoString;
 use geam_core::provider::advanced::{
-    Equality, Hashing, Index0, Inspection, LocalRetainedContext, Next, Retained,
-    RetainedExternalPayload,
+    Equality, Hashing, Index0, Inspection, Next, Retained, RetainedExternalPayload,
 };
 use im::{HashMap, Vector};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-pub struct DictPayload<Context: StorageContext = LocalRetainedContext> {
-    pub(super) storage: DictStorage<Context>,
+pub struct DictPayload {
+    pub(super) storage: DictStorage,
 }
 
-pub(super) struct DictStorage<Context: StorageContext = LocalRetainedContext> {
-    pub(super) buckets: HashMap<u64, Vector<Context::Shared<DictEntry<Context>>>>,
+pub(super) struct DictStorage {
+    pub(super) buckets: HashMap<u64, Vector<std::sync::Arc<DictEntry>>>,
     pub(super) len: usize,
 }
 
-pub(super) struct DictEntry<Context: StorageContext = LocalRetainedContext> {
+pub(super) struct DictEntry {
     pub(super) key_hash: u64,
-    pub(super) key: Context::Shared<Retained<DictPayload, Index0, Context>>,
-    pub(super) value: Context::Shared<Retained<DictPayload, Next<Index0>, Context>>,
+    pub(super) key: std::sync::Arc<Retained<DictPayload, Index0>>,
+    pub(super) value: std::sync::Arc<Retained<DictPayload, Next<Index0>>>,
 }
 
-impl<Context: StorageContext> DictEntry<Context> {
+impl DictEntry {
     pub(super) fn new(
         key_hash: u64,
-        key: Retained<DictPayload, Index0, Context>,
-        value: Retained<DictPayload, Next<Index0>, Context>,
-    ) -> Context::Shared<Self> {
-        Context::share(Self {
+        key: Retained<DictPayload, Index0>,
+        value: Retained<DictPayload, Next<Index0>>,
+    ) -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self {
             key_hash,
-            key: Context::share(key),
-            value: Context::share(value),
+            key: std::sync::Arc::new(key),
+            value: std::sync::Arc::new(value),
         })
     }
 
     pub(super) fn with_value(
         &self,
-        value: Retained<DictPayload, Next<Index0>, Context>,
-    ) -> Context::Shared<Self> {
-        Context::share(Self {
+        value: Retained<DictPayload, Next<Index0>>,
+    ) -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self {
             key_hash: self.key_hash,
             key: self.key.clone(),
-            value: Context::share(value),
+            value: std::sync::Arc::new(value),
         })
     }
 }
 
-impl<Context: StorageContext> Clone for DictStorage<Context> {
+impl Clone for DictStorage {
     fn clone(&self) -> Self {
         Self {
             buckets: self.buckets.clone(),
@@ -57,7 +55,7 @@ impl<Context: StorageContext> Clone for DictStorage<Context> {
     }
 }
 
-impl<Context: StorageContext> Default for DictStorage<Context> {
+impl Default for DictStorage {
     fn default() -> Self {
         Self {
             buckets: HashMap::new(),
@@ -66,7 +64,7 @@ impl<Context: StorageContext> Default for DictStorage<Context> {
     }
 }
 
-impl<Context: StorageContext> DictPayload<Context> {
+impl DictPayload {
     pub(crate) fn coordinates(&self) -> Vec<(u64, usize)> {
         self.storage
             .buckets
@@ -75,11 +73,7 @@ impl<Context: StorageContext> DictPayload<Context> {
             .collect()
     }
 
-    pub(crate) fn key(
-        &self,
-        key_hash: u64,
-        index: usize,
-    ) -> &Retained<DictPayload, Index0, Context> {
+    pub(crate) fn key(&self, key_hash: u64, index: usize) -> &Retained<DictPayload, Index0> {
         self.storage.buckets[&key_hash][index].key.as_ref()
     }
 
@@ -87,7 +81,7 @@ impl<Context: StorageContext> DictPayload<Context> {
         &self,
         key_hash: u64,
         index: usize,
-    ) -> &Retained<DictPayload, Next<Index0>, Context> {
+    ) -> &Retained<DictPayload, Next<Index0>> {
         self.storage.buckets[&key_hash][index].value.as_ref()
     }
 
@@ -98,25 +92,21 @@ impl<Context: StorageContext> DictPayload<Context> {
     }
 }
 
-impl<Context: StorageContext> RetainedExternalPayload<Context> for DictPayload<Context> {
-    fn source_equal(&self, context: &Equality<'_, Context>, other: &Self) -> bool {
+impl RetainedExternalPayload for DictPayload {
+    fn source_equal(&self, context: &Equality<'_>, other: &Self) -> bool {
         storage_equal(context, &self.storage, &other.storage)
     }
 
-    fn source_hash(&self, context: &Hashing<'_, Context>) -> u64 {
+    fn source_hash(&self, context: &Hashing<'_>) -> u64 {
         storage_hash(context, &self.storage)
     }
 
-    fn inspect(&self, context: &Inspection<'_, Context>) -> EcoString {
+    fn inspect(&self, context: &Inspection<'_>) -> EcoString {
         inspect_storage(context, &self.storage)
     }
 }
 
-fn storage_equal<Context: StorageContext>(
-    context: &Equality<'_, Context>,
-    left: &DictStorage<Context>,
-    right: &DictStorage<Context>,
-) -> bool {
+fn storage_equal(context: &Equality<'_>, left: &DictStorage, right: &DictStorage) -> bool {
     left.len == right.len
         && left.entries().all(|left| {
             right.buckets.get(&left.key_hash).is_some_and(|bucket| {
@@ -128,10 +118,7 @@ fn storage_equal<Context: StorageContext>(
         })
 }
 
-fn storage_hash<Context: StorageContext>(
-    context: &Hashing<'_, Context>,
-    storage: &DictStorage<Context>,
-) -> u64 {
+fn storage_hash(context: &Hashing<'_>, storage: &DictStorage) -> u64 {
     let mut sum = 0_u64;
     let mut xor = 0_u64;
     for entry in storage.entries() {
@@ -150,10 +137,7 @@ fn storage_hash<Context: StorageContext>(
     hasher.finish()
 }
 
-fn inspect_storage<Context: StorageContext>(
-    context: &Inspection<'_, Context>,
-    storage: &DictStorage<Context>,
-) -> EcoString {
+fn inspect_storage(context: &Inspection<'_>, storage: &DictStorage) -> EcoString {
     let mut entries = storage
         .entries()
         .map(|entry| {
@@ -168,12 +152,12 @@ fn inspect_storage<Context: StorageContext>(
     format!("dict.from_list([{}])", entries.join(", ")).into()
 }
 
-impl<Context: StorageContext> DictStorage<Context> {
+impl DictStorage {
     pub(super) fn with_entry(
         &self,
         key_hash: u64,
         index: Option<usize>,
-        entry: Context::Shared<DictEntry<Context>>,
+        entry: std::sync::Arc<DictEntry>,
     ) -> Self {
         let mut bucket = self.buckets.get(&key_hash).cloned().unwrap_or_default();
         let len = match index {
@@ -216,7 +200,7 @@ impl<Context: StorageContext> DictStorage<Context> {
         (0..bucket.len()).find(|index| is_equal(*index))
     }
 
-    fn entries(&self) -> impl Iterator<Item = &Context::Shared<DictEntry<Context>>> {
+    fn entries(&self) -> impl Iterator<Item = &std::sync::Arc<DictEntry>> {
         self.buckets.values().flat_map(Vector::iter)
     }
 }

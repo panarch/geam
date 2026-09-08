@@ -1,8 +1,8 @@
 use crate::frontend::{
-    HostedTypedProgram, ProjectError, TransferHostedTypedProgram, TypedProgram,
-    compile_typed_host_project, compile_typed_project, compile_typed_transfer_host_project,
+    HostedTypedProgram, ProjectError, TypedProgram, compile_typed_host_project,
+    compile_typed_project,
 };
-use crate::host::{HostProfile, HostProviderSet, HostRegistrationError, TransferHostProviderSet};
+use crate::host::{HostProfile, HostProviderSet, HostRegistrationError};
 use camino::Utf8PathBuf;
 use ecow::EcoString;
 
@@ -13,13 +13,6 @@ pub use error::HostedProjectError;
 pub struct Project {
     root: Utf8PathBuf,
     module: EcoString,
-}
-
-/// A resolved source selection with explicitly transferable provider storage.
-pub struct TransferHostedProject<Profile: HostProfile> {
-    root: Utf8PathBuf,
-    module: EcoString,
-    register_providers: fn() -> Result<TransferHostProviderSet<Profile>, HostRegistrationError>,
 }
 
 /// One resolved Gleam project selection and static provider registration for
@@ -42,31 +35,6 @@ impl Project {
     /// Compiles the selected project and consumes its loading inputs.
     pub fn compile(self) -> Result<TypedProgram, ProjectError> {
         compile_typed_project(self.root, self.module)
-    }
-}
-
-impl<Profile: HostProfile> TransferHostedProject<Profile> {
-    /// Selects source and defers static registration until compilation.
-    pub fn new(
-        root: impl Into<Utf8PathBuf>,
-        module: impl Into<EcoString>,
-        register_providers: fn() -> Result<TransferHostProviderSet<Profile>, HostRegistrationError>,
-    ) -> Self {
-        Self {
-            root: root.into(),
-            module: module.into(),
-            register_providers,
-        }
-    }
-
-    /// Registers the selected providers and compiles ordinary source types.
-    ///
-    /// Compilation is synchronous and read-only; it does not poll host Futures
-    /// or choose an executor.
-    pub fn compile(self) -> Result<TransferHostedTypedProgram<Profile>, HostedProjectError> {
-        let providers = (self.register_providers)()?;
-        compile_typed_transfer_host_project(self.root, self.module, providers)
-            .map_err(HostedProjectError::from)
     }
 }
 
@@ -96,18 +64,15 @@ impl<Profile: HostProfile> HostedProject<Profile> {
 
 #[cfg(test)]
 mod tests {
-    use super::{HostedProject, HostedProjectError, Project, TransferHostedProject};
-    use crate::embedding::{
-        FunctionDeclaration, HostedModuleBuilder, WorkModuleBuilder, with_execution_scope,
-    };
+    use super::{HostedProject, HostedProjectError, Project};
+    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
     use crate::host::{
-        AsyncHostComponentProfile, HostCallCompletion, HostFutureStore, HostProfile, HostProvider,
-        TransferHostCall, TransferHostProviderModule, TransferHostProviderSet,
+        HostCall, HostCallCompletion, HostComponentProfile, HostFutureStore, HostProfile,
+        HostProvider, HostProviderModule, HostProviderSet,
     };
     use crate::work_fixture::WorkComponent;
     use crate::{
-        EchoOutput, EchoSink, HostModule, HostProviderModule, HostProviderSet,
-        HostRegistrationError, ProjectError, StatelessHostProfile,
+        EchoOutput, EchoSink, HostModule, HostRegistrationError, ProjectError, StatelessHostProfile,
     };
     use camino::{Utf8Path, Utf8PathBuf};
     use futures_util::FutureExt;
@@ -115,45 +80,41 @@ mod tests {
     use std::fs;
     use tempfile::{TempDir, tempdir};
 
-    struct TransferProfile;
-    struct TransferProvider;
-    impl HostProfile for TransferProfile {
+    struct Profile;
+    struct Provider;
+    impl HostProfile for Profile {
         type RunState = ();
         type ExternalStores = HostFutureStore;
     }
-    impl crate::host::HostWorkProfile for TransferProfile {
+    impl crate::host::HostWorkProfile for Profile {
         type Work = crate::work_fixture::WorkComponent;
     }
-    impl AsyncHostComponentProfile<WorkComponent> for TransferProfile {
-        fn component_async_stores(stores: &HostFutureStore) -> &HostFutureStore {
+    impl HostComponentProfile<WorkComponent> for Profile {
+        fn component_stores(stores: &HostFutureStore) -> &HostFutureStore {
             stores
         }
         fn component_state(state: &mut ()) -> &mut () {
             state
         }
     }
-    impl HostProvider<TransferProfile> for TransferProvider {
+    impl HostProvider<Profile> for Provider {
         type State = ();
         fn project(state: &mut ()) -> &mut () {
             state
         }
     }
-    fn transfer_providers()
-    -> Result<TransferHostProviderSet<TransferProfile>, HostRegistrationError> {
+    fn scoped_providers() -> Result<HostProviderSet<Profile>, HostRegistrationError> {
         fn adjust<'call>(
-            mut call: TransferHostCall<'call, TransferProfile, TransferProvider, BigInt>,
+            mut call: HostCall<'call, Profile, Provider, BigInt>,
             value: BigInt,
-        ) -> Result<HostCallCompletion<'call, BigInt>, crate::AsyncHostCallError> {
+        ) -> Result<HostCallCompletion<'call, BigInt>, crate::HostCallError> {
             let () = *call.state();
             Ok(call.return_value(value + 1))
         }
-        TransferHostProviderSet::new([TransferHostProviderModule::new_for_profile(
-            "application",
-            "inventory_rules",
-        )
-        .expect("fixture module")
-        .with_scoped_function::<TransferProvider, (BigInt,), BigInt, _>("adjust", adjust)
-        .expect("fixture function")])
+        HostProviderSet::from_providers([HostProviderModule::new("application", "inventory_rules")
+            .expect("fixture module")
+            .with_scoped_function::<Provider, (BigInt,), BigInt, _>("adjust", adjust)
+            .expect("fixture function")])
     }
 
     #[derive(Default)]
@@ -232,7 +193,7 @@ pub fn quantity() -> Int
     }
 
     #[test]
-    fn registers_transfer_providers_at_compile_without_changing_source_return_types() {
+    fn registers_scoped_providers_at_compile_without_changing_source_return_types() {
         let project = project();
         write_file(
             &project,
@@ -249,23 +210,20 @@ pub fn quantity(value: Int) -> Int {
 }
 "#,
         );
-        let program = TransferHostedProject::new(
-            project_root(&project),
-            "inventory_rules",
-            transfer_providers,
-        )
-        .compile()
-        .expect("transfer project compilation");
+        let program =
+            HostedProject::new(project_root(&project), "inventory_rules", scoped_providers)
+                .compile()
+                .expect("hosted project compilation");
         assert_eq!(program.root_package(), "application");
         assert_eq!(program.root_module(), "inventory_rules");
-        let (bindings, quantity) = WorkModuleBuilder::new(program)
+        let (bindings, quantity) = HostedModuleBuilder::new(program)
             .expect("plan")
             .function(FunctionDeclaration::<(BigInt,), BigInt>::new("quantity"))
             .expect("binding");
         let mut module = bindings.seal().expect("sealing");
         let mut state = ();
         assert!(std::ptr::eq(
-            <WorkComponent as HostProvider<TransferProfile>>::project(&mut state),
+            <WorkComponent as HostProvider<Profile>>::project(&mut state),
             &state,
         ));
         let mut echo = SendEcho::default();
@@ -326,15 +284,15 @@ pub fn quantity(value: Int) -> Int {
     }
 
     #[test]
-    fn transfer_registration_is_deferred_and_preserves_error_identity() {
-        fn invalid() -> Result<TransferHostProviderSet<TransferProfile>, HostRegistrationError> {
+    fn scoped_registration_is_deferred_and_preserves_error_identity() {
+        fn invalid() -> Result<HostProviderSet<Profile>, HostRegistrationError> {
             Err(HostRegistrationError::InvalidModuleName {
                 module: "invalid module".into(),
             })
         }
         let directory = tempdir().expect("directory");
         let root = project_root(&directory).join("missing");
-        let selected = TransferHostedProject::new(root.clone(), "inventory_rules", invalid);
+        let selected = HostedProject::new(root.clone(), "inventory_rules", invalid);
         let error = selected
             .compile()
             .err()
@@ -342,7 +300,7 @@ pub fn quantity(value: Int) -> Int {
         assert!(matches!(error, HostedProjectError::HostRegistration(
             HostRegistrationError::InvalidModuleName { module }
         ) if module == "invalid module"));
-        let error = TransferHostedProject::new(root.clone(), "inventory_rules", transfer_providers)
+        let error = HostedProject::new(root.clone(), "inventory_rules", scoped_providers)
             .compile()
             .err()
             .expect("read failure after successful registration");

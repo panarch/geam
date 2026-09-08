@@ -1,7 +1,5 @@
-use geam_core::embedding::{FunctionDeclaration, WorkModuleBuilder, with_execution_scope};
-use geam_core::host::{
-    AsyncHostComponentProfile, HostFutureStore, HostProfile, TransferHostProviderSet,
-};
+use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
+use geam_core::host::{HostComponentProfile, HostFutureStore, HostProfile, HostProviderSet};
 use geam_core::planner::InvalidTypedAstReason;
 use geam_core::{EchoOutput, EchoSink, PackageSource};
 use geam_core::{
@@ -1227,8 +1225,8 @@ impl geam_core::host::HostWorkProfile for TransferFixtureProfile {
     type Work = work_fixture::WorkComponent;
 }
 
-impl AsyncHostComponentProfile<work_fixture::WorkComponent> for TransferFixtureProfile {
-    fn component_async_stores(stores: &HostFutureStore) -> &HostFutureStore {
+impl HostComponentProfile<work_fixture::WorkComponent> for TransferFixtureProfile {
+    fn component_stores(stores: &HostFutureStore) -> &HostFutureStore {
         stores
     }
 
@@ -1257,16 +1255,16 @@ fn assert_transfer_fixture(modules: Vec<ModuleSource>) {
     );
     let mut expected_echo = Vec::new();
     let expected = run_main(&plan, &mut expected_echo);
-    let hosts = TransferHostProviderSet::<TransferFixtureProfile>::new([])
+    let hosts = HostProviderSet::<TransferFixtureProfile>::from_providers([])
         .expect("empty transferable provider set");
-    let program = geam_core::frontend::compile_typed_transfer_host_program(
+    let program = geam_core::frontend::compile_typed_host_program(
         "geam",
         "main",
         [PackageSource::new("geam", Vec::<String>::new(), modules)],
         hosts,
     )
     .expect("fixture should compile for transferable embedding");
-    let (bindings, entry) = WorkModuleBuilder::new(program)
+    let (bindings, entry) = HostedModuleBuilder::new(program)
         .expect("fixture should plan for transferable embedding")
         .function(FunctionDeclaration::<(), ()>::new(
             fixture_observation::ENTRY,
@@ -1282,7 +1280,7 @@ fn assert_transfer_fixture(modules: Vec<ModuleSource>) {
         future
             .as_mut()
             .poll(&mut Context::from_waker(Waker::noop()))
-            .map(|result| result.map_err(geam_core::embedding::AsyncCallError::into_local))
+            .map(|result| result.map_err(geam_core::embedding::CallError::into_materialized))
     };
     assert_eq!(
         echo.effects,
@@ -1300,7 +1298,12 @@ fn assert_transfer_fixture(modules: Vec<ModuleSource>) {
             );
         }
         Err(error) => {
-            assert_eq!(result, Poll::Ready(Err(error.into())));
+            assert_eq!(
+                result,
+                Poll::Ready(Err(
+                    geam_core::embedding::CallError::from(error).into_materialized()
+                ))
+            );
             assert_eq!(echo.result, None);
         }
     }

@@ -292,9 +292,15 @@ pub fn main() {
             HostProviderSet::new([math]).expect("host modules should be unique"),
         );
 
-        let functions = execution.host_functions.value_functions();
+        let functions = execution.execution.host_functions.value_functions();
         assert_eq!(functions.len(), 3);
-        assert!(execution.host_functions.never_functions().is_empty());
+        assert!(
+            execution
+                .execution
+                .host_functions
+                .never_functions()
+                .is_empty()
+        );
         assert_host_metadata(
             &functions[0],
             "host_support",
@@ -330,17 +336,17 @@ pub fn main() {
         );
 
         assert!(matches!(
-            execution.program.functions.int_function(IntFunctionId(0)),
+            execution.execution.program.functions.int_function(IntFunctionId(0)),
             ValueFunctionEntry::Host(HostedFunctionTarget::Value(target))
                 if *target == HostFunctionId::new(0, IntLocalId(0))
         ));
         assert!(matches!(
-            execution.program.functions.int_function(IntFunctionId(1)),
+            execution.execution.program.functions.int_function(IntFunctionId(1)),
             ValueFunctionEntry::Host(HostedFunctionTarget::Value(target))
                 if *target == HostFunctionId::new(1, IntLocalId(0))
         ));
         assert!(matches!(
-            execution.program.functions.bool_function(BoolFunctionId(0)),
+            execution.execution.program.functions.bool_function(BoolFunctionId(0)),
             ValueFunctionEntry::Host(HostedFunctionTarget::Value(target))
                 if *target == HostFunctionId::new(2, BoolLocalId(0))
         ));
@@ -379,8 +385,14 @@ pub fn main() {
             providers,
         );
 
-        assert!(execution.host_functions.value_functions().is_empty());
-        let functions = execution.host_functions.never_functions();
+        assert!(
+            execution
+                .execution
+                .host_functions
+                .value_functions()
+                .is_empty()
+        );
+        let functions = execution.execution.host_functions.never_functions();
         assert_eq!(functions.len(), 2);
         assert_host_metadata(
             &functions[0],
@@ -402,12 +414,12 @@ pub fn main() {
         );
 
         assert!(matches!(
-            execution.program.functions.int_function(IntFunctionId(0)),
+            execution.execution.program.functions.int_function(IntFunctionId(0)),
             ValueFunctionEntry::Host(HostedFunctionTarget::Never(target))
                 if *target == HostNeverFunctionId::new(0)
         ));
         assert!(matches!(
-            execution.program.functions.bool_function(BoolFunctionId(0)),
+            execution.execution.program.functions.bool_function(BoolFunctionId(0)),
             ValueFunctionEntry::Host(HostedFunctionTarget::Never(target))
                 if *target == HostNeverFunctionId::new(1)
         ));
@@ -426,7 +438,7 @@ pub fn main() {
         assert_eq!(function.module(), module);
         assert_eq!(function.name(), name);
         assert_eq!(function.metadata().signature(), &signature);
-        assert_eq!(function.type_arguments(), type_arguments);
+        assert_eq!(function.metadata().type_arguments(), type_arguments);
         assert_eq!(function.type_(), &type_);
     }
 

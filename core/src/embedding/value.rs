@@ -5,7 +5,6 @@ use crate::plan::{LibraryValueType, StandardVariant, ValueType};
 use crate::runtime::{
     EmbeddingCustomInput, EmbeddingInputValue, EmbeddingOutput, EmbeddingTupleInput, RetainedValues,
 };
-use crate::runtime::{LocalValues, RuntimeValueProfile};
 use crate::{EchoSink, ExecutionError, HostProfile, HostedExecution};
 use std::sync::Arc;
 
@@ -39,10 +38,10 @@ pub(super) trait EmbeddingInputRuntime: EmbeddingValue {
     type Runtime: EmbeddingInputValue;
 }
 
-pub(super) trait OutputValue<Profile: RuntimeValueProfile>: EmbeddingValue {
+pub(super) trait OutputValue: EmbeddingValue {
     fn plain_library_type() -> LibraryValueType<std::convert::Infallible>;
 
-    fn take(output: &mut EmbeddingOutput<Profile>, owner: &Arc<()>) -> Self;
+    fn take(output: &mut EmbeddingOutput, owner: &Arc<()>) -> Self;
 }
 
 pub(super) trait Arguments {
@@ -55,7 +54,7 @@ pub(super) trait Arguments {
     fn input_lists() -> Vec<LibraryValueType>;
 }
 
-pub(super) trait ReturnValue: OutputValue<LocalValues> {
+pub(super) trait ReturnValue: OutputValue {
     fn input_constructions<Graph: crate::plan::execution::function::ExecutionGraphProfile>(
         entries: &LibraryFunctionEntries<Graph>,
         slot: usize,
@@ -99,12 +98,12 @@ macro_rules! scalar_value {
             type Runtime = Self;
         }
 
-        impl<Profile: RuntimeValueProfile> OutputValue<Profile> for $type {
+        impl OutputValue for $type {
             fn plain_library_type() -> LibraryValueType<std::convert::Infallible> {
                 LibraryValueType::$value_type
             }
 
-            fn take(output: &mut EmbeddingOutput<Profile>, _owner: &Arc<()>) -> Self {
+            fn take(output: &mut EmbeddingOutput, _owner: &Arc<()>) -> Self {
                 output.$take()
             }
         }
@@ -156,16 +155,16 @@ macro_rules! tuple_value {
             type Runtime = EmbeddingTupleInput;
         }
 
-        impl<Profile, $($type),+> OutputValue<Profile> for ($($type,)+)
+        impl<$($type),+> OutputValue for ($($type,)+)
         where
-            Profile: RuntimeValueProfile,
-            $($type: OutputValue<Profile>,)+
+
+            $($type: OutputValue,)+
         {
             fn plain_library_type() -> LibraryValueType<std::convert::Infallible> {
                 LibraryValueType::Tuple(vec![$($type::value_type()),+])
             }
 
-            fn take(output: &mut EmbeddingOutput<Profile>, owner: &Arc<()>) -> Self {
+            fn take(output: &mut EmbeddingOutput, owner: &Arc<()>) -> Self {
                 ($($type::take(output, owner),)+)
             }
         }
@@ -215,11 +214,10 @@ impl<Success: EmbeddingValue, Failure: EmbeddingValue> EmbeddingInputRuntime
     type Runtime = EmbeddingCustomInput;
 }
 
-impl<Profile, Success, Failure> OutputValue<Profile> for Result<Success, Failure>
+impl<Success, Failure> OutputValue for Result<Success, Failure>
 where
-    Profile: RuntimeValueProfile,
-    Success: OutputValue<Profile>,
-    Failure: OutputValue<Profile>,
+    Success: OutputValue,
+    Failure: OutputValue,
 {
     fn plain_library_type() -> LibraryValueType<std::convert::Infallible> {
         LibraryValueType::Custom(
@@ -227,7 +225,7 @@ where
         )
     }
 
-    fn take(output: &mut EmbeddingOutput<Profile>, owner: &Arc<()>) -> Self {
+    fn take(output: &mut EmbeddingOutput, owner: &Arc<()>) -> Self {
         if output.take_variant() == 0 {
             Ok(Success::take(output, owner))
         } else {
@@ -264,16 +262,15 @@ impl<Value: EmbeddingValue> EmbeddingInputRuntime for Option<Value> {
     type Runtime = EmbeddingCustomInput;
 }
 
-impl<Profile, Value> OutputValue<Profile> for Option<Value>
+impl<Value> OutputValue for Option<Value>
 where
-    Profile: RuntimeValueProfile,
-    Value: OutputValue<Profile>,
+    Value: OutputValue,
 {
     fn plain_library_type() -> LibraryValueType<std::convert::Infallible> {
         LibraryValueType::Custom(StandardVariant::Option.custom_type(vec![Value::value_type()]))
     }
 
-    fn take(output: &mut EmbeddingOutput<Profile>, owner: &Arc<()>) -> Self {
+    fn take(output: &mut EmbeddingOutput, owner: &Arc<()>) -> Self {
         if output.take_variant() == 0 {
             Some(Value::take(output, owner))
         } else {
@@ -409,7 +406,7 @@ macro_rules! tuple_return {
     ($($type:ident),+) => {
         impl<$($type),+> ReturnValue for ($($type,)+)
         where
-            $($type: OutputValue<LocalValues>,)+
+            $($type: OutputValue,)+
         {
             fn input_constructions<Graph: crate::plan::execution::function::ExecutionGraphProfile>(
                 entries: &LibraryFunctionEntries<Graph>,
@@ -432,7 +429,7 @@ macro_rules! tuple_return {
                     echo,
                 )
                 .map(|mut output| {
-                    <Self as OutputValue<LocalValues>>::take(&mut output, &module.owner)
+                    <Self as OutputValue>::take(&mut output, &module.owner)
                 })
             }
 
@@ -453,7 +450,7 @@ macro_rules! tuple_return {
                     state,
                     echo,
                 )
-                .map(|mut output| <Self as OutputValue<LocalValues>>::take(&mut output, owner))
+                .map(|mut output| <Self as OutputValue>::take(&mut output, owner))
             }
         }
     };
@@ -471,8 +468,8 @@ macro_rules! custom_return {
     ($container:ty) => {
         impl<Success, Failure> ReturnValue for $container
         where
-            Success: OutputValue<LocalValues>,
-            Failure: OutputValue<LocalValues>,
+            Success: OutputValue,
+            Failure: OutputValue,
         {
             fn input_constructions<
                 Graph: crate::plan::execution::function::ExecutionGraphProfile,
@@ -496,9 +493,7 @@ macro_rules! custom_return {
                     inputs,
                     echo,
                 )
-                .map(|mut output| {
-                    <Self as OutputValue<LocalValues>>::take(&mut output, &module.owner)
-                })
+                .map(|mut output| <Self as OutputValue>::take(&mut output, &module.owner))
             }
 
             fn call_hosted<Profile: HostProfile>(
@@ -518,7 +513,7 @@ macro_rules! custom_return {
                     state,
                     echo,
                 )
-                .map(|mut output| <Self as OutputValue<LocalValues>>::take(&mut output, owner))
+                .map(|mut output| <Self as OutputValue>::take(&mut output, owner))
             }
         }
     };
@@ -528,7 +523,7 @@ custom_return!(Result<Success, Failure>);
 
 impl<Value> ReturnValue for Option<Value>
 where
-    Value: OutputValue<LocalValues>,
+    Value: OutputValue,
 {
     fn input_constructions<Graph: crate::plan::execution::function::ExecutionGraphProfile>(
         entries: &LibraryFunctionEntries<Graph>,
@@ -545,7 +540,7 @@ where
     ) -> Result<Self, ExecutionError> {
         let entry = &module.entries.customs[slot];
         crate::runtime::run_embedded_custom(&module.execution, *entry.function(), inputs, echo)
-            .map(|mut output| <Self as OutputValue<LocalValues>>::take(&mut output, &module.owner))
+            .map(|mut output| <Self as OutputValue>::take(&mut output, &module.owner))
     }
 
     fn call_hosted<Profile: HostProfile>(
@@ -565,6 +560,6 @@ where
             state,
             echo,
         )
-        .map(|mut output| <Self as OutputValue<LocalValues>>::take(&mut output, owner))
+        .map(|mut output| <Self as OutputValue>::take(&mut output, owner))
     }
 }

@@ -2,7 +2,7 @@ use super::super::{EvaluatedFunctionExit, evaluate_entry};
 use crate::plan::execution::function::NilFunctionId;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
-use crate::runtime::graph::ProfiledRetainedValues;
+use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::RuntimeStateFor;
 
 pub(in crate::runtime) fn run_nil<Plan: ExecutableRuntimePlan>(
@@ -10,8 +10,8 @@ pub(in crate::runtime) fn run_nil<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     mut function: NilFunctionId,
     mut origin: HostCallOrigin,
-    mut inputs: ProfiledRetainedValues<Plan::Values>,
-) -> ExecutionResult<(), Plan::Values> {
+    mut inputs: RetainedValues,
+) -> ExecutionResult<()> {
     loop {
         let exit = evaluate_entry(plan, state, plan.nil_function(function), origin, inputs)?;
         match exit {
@@ -97,12 +97,14 @@ pub fn main() {
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         assert_eq!(
             execution
+                .execution()
                 .function_parameters()
                 .function(&FunctionTarget::Nil(NilFunctionId(2))),
             [ParamLocal::Nil(NilLocalId(0))],
         );
         assert_eq!(
             execution
+                .execution()
                 .function_parameters()
                 .function(&FunctionTarget::Nil(NilFunctionId(1))),
             [ParamLocal::Nil(NilLocalId(0))],

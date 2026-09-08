@@ -132,8 +132,8 @@ impl<Subject> fmt::Display for Panic<Subject> {
 
 impl<Subject: fmt::Debug> std::error::Error for Panic<Subject> {}
 
-impl Panic<super::AsyncPanicValue> {
-    pub(super) fn into_local(self) -> Panic {
+impl Panic<super::PanicValue> {
+    pub(super) fn into_materialized(self) -> Panic {
         Panic {
             kind: self.kind,
             message: self.message,

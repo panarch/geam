@@ -5,12 +5,12 @@ mod geam_bindings;
 
 #[test]
 fn file_failures_remain_source_results_and_do_not_change_the_direct_call() {
-    use geam::embedding::{WorkModuleBuilder, with_execution_scope};
+    use geam::embedding::{HostedModuleBuilder, with_execution_scope};
     let directory = tempfile::tempdir().expect("file owner");
     let path = directory.path().join("missing.txt");
     let program = geam_bindings::project().compile().expect("project");
     let (bindings, functions) =
-        geam_bindings::bind(WorkModuleBuilder::new(program).expect("plan")).expect("bindings");
+        geam_bindings::bind(HostedModuleBuilder::new(program).expect("plan")).expect("bindings");
     let mut module = bindings.seal().expect("sealed module");
     let mut state = geam_bindings::RunStateInputs {
         example_async_files: geam::HostProviderConfiguration::empty(),

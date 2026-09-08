@@ -38,7 +38,7 @@ use super::type_::{
     CustomConstructorId, CustomTypeId, FunctionListTypeId, FunctionType, ListListTypeId,
     ListTypeId, TupleListTypeId, ValueShapeId, ValueType,
 };
-use super::{ExecutionPlan, ExecutionProgram, HostedExecution, TransferHostedExecution};
+use super::{ExecutionPlan, ExecutionProgram, HostedProgram};
 use crate::host::HostProfile;
 use crate::plan::SourceContext;
 use ecow::EcoString;
@@ -47,7 +47,6 @@ use std::convert::Infallible;
 pub(crate) trait RuntimeExecutionPlan: Sized {
     type Profile: ExecutionProfile;
     type RunState;
-    type Values;
 
     fn program(&self) -> &ExecutionProgram<Self::Profile>;
 
@@ -494,7 +493,6 @@ impl OwnedRuntimeValueMetadata {
 impl RuntimeExecutionPlan for ExecutionPlan {
     type Profile = Infallible;
     type RunState = ();
-    type Values = crate::runtime::LocalValues;
 
     fn program(&self) -> &ExecutionProgram<Self::Profile> {
         &self.program
@@ -515,34 +513,9 @@ impl RuntimeExecutionPlan for ExecutionPlan {
     }
 }
 
-impl<Profile: HostProfile> RuntimeExecutionPlan for HostedExecution<Profile> {
+impl<Profile: HostProfile> RuntimeExecutionPlan for HostedProgram<Profile> {
     type Profile = super::host::HostedExecutionProfile;
     type RunState = Profile::RunState;
-    type Values = crate::runtime::LocalValues;
-
-    fn program(&self) -> &ExecutionProgram<Self::Profile> {
-        &self.program
-    }
-
-    fn int_function(
-        &self,
-        id: IntFunctionId,
-    ) -> &ExecutionFunction<Self::Profile, ExecutionIntFunctionBody<Self::Profile>> {
-        self.program.functions.int_function(id)
-    }
-
-    fn bool_function(
-        &self,
-        id: BoolFunctionId,
-    ) -> &ExecutionFunction<Self::Profile, ExecutionBoolFunctionBody<Self::Profile>> {
-        self.program.functions.bool_function(id)
-    }
-}
-
-impl<Profile: HostProfile> RuntimeExecutionPlan for TransferHostedExecution<Profile> {
-    type Profile = super::host::TransferHostedExecutionProfile;
-    type RunState = Profile::RunState;
-    type Values = crate::runtime::TransferValues;
 
     fn program(&self) -> &ExecutionProgram<Self::Profile> {
         &self.program

@@ -187,6 +187,8 @@ mod main {
 #[cfg(test)]
 mod tests {
     use super::Component;
+    use geam_builtin::FutureComponent;
+    use geam_core::host::{HostFutureStore, HostWorkProfile};
     use geam_core::{
         HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
         HostProviderComponentRegistration, HostProviderSet, HostedExecution, ModuleSource,
@@ -198,11 +200,13 @@ mod tests {
 
     #[derive(Default)]
     struct ProfileStores {
+        future: HostFutureStore,
         declarations: <DeclarationsComponent as HostProviderComponent>::Stores,
         consumer: <Component as HostProviderComponent>::Stores,
     }
 
     struct RunState {
+        future: (),
         declarations: <DeclarationsComponent as HostProviderComponent>::RunState,
         consumer: <Component as HostProviderComponent>::RunState,
     }
@@ -210,6 +214,20 @@ mod tests {
     impl HostProfile for Profile {
         type RunState = RunState;
         type ExternalStores = ProfileStores;
+    }
+
+    impl HostWorkProfile for Profile {
+        type Work = FutureComponent;
+    }
+
+    impl HostComponentProfile<FutureComponent> for Profile {
+        fn component_stores(stores: &ProfileStores) -> &HostFutureStore {
+            &stores.future
+        }
+
+        fn component_state(state: &mut RunState) -> &mut () {
+            &mut state.future
+        }
     }
 
     impl HostComponentProfile<DeclarationsComponent> for Profile {
@@ -260,6 +278,8 @@ pub type Status {
 "#;
 
     const CONSUMER: &str = r#"
+import geam/future.{type Future}
+import gleam/option.{type Option}
 import macro_declarations/values
 
 pub type SavedEnvelope {
@@ -301,6 +321,15 @@ fn envelope_text(value: Envelope) -> String
 @external(erlang, "macro_consumer", "first")
 fn first(values: List(values.Status)) -> String
 
+@external(erlang, "macro_consumer", "saved_after")
+fn saved_after(value: String) -> Future(SavedEnvelope)
+@external(erlang, "macro_consumer", "describe_async")
+fn describe_async(value: values.Status) -> Future(String)
+@external(erlang, "macro_consumer", "rich")
+fn rich(value: Int) -> Future(#(values.Status, Result(Int, String), Option(values.Token), List(Int)))
+@external(erlang, "macro_consumer", "invoke_twice")
+fn invoke_twice(callback: fn(values.Status) -> Int, value: Int) -> Future(#(Int, Int))
+
 pub fn main() {
   assert saved_text(saved("local")) == "local"
   assert saved_text(SavedOne(values.Empty)) == "empty"
@@ -328,12 +357,31 @@ pub fn main() {
             <Component as HostProviderComponentRegistration<Profile>>::providers()
                 .expect("consumer provider should register"),
         );
+        providers.extend(FutureComponent::providers().expect("work provider"));
         let hosts = HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), providers)
             .expect("cross-crate provider modules should be unique");
         let typed = compile_typed_host_program(
             "macro_consumer",
             "macro_consumer/main",
             [
+                PackageSource::new(
+                    "geam",
+                    Vec::<&str>::new(),
+                    [ModuleSource::new(
+                        "geam/future",
+                        "src/geam/future.gleam",
+                        include_str!("../../../../../../builtins/geam/gleam/src/geam/future.gleam"),
+                    )],
+                ),
+                PackageSource::new(
+                    "gleam_stdlib",
+                    Vec::<&str>::new(),
+                    [ModuleSource::new(
+                        "gleam/option",
+                        "src/gleam/option.gleam",
+                        "pub type Option(value) { Some(value) None }",
+                    )],
+                ),
                 PackageSource::new(
                     "macro_declarations",
                     Vec::<&str>::new(),
@@ -345,7 +393,7 @@ pub fn main() {
                 ),
                 PackageSource::new(
                     "macro_consumer",
-                    ["macro_declarations"],
+                    ["macro_declarations", "geam", "gleam_stdlib"],
                     [ModuleSource::new(
                         "macro_consumer/main",
                         "src/main.gleam",
@@ -362,6 +410,7 @@ pub fn main() {
         assert_eq!(
             execution.run_main(
                 &mut RunState {
+                    future: (),
                     declarations: (),
                     consumer: (),
                 },

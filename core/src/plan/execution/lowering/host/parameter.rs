@@ -104,7 +104,7 @@ pub fn main() {
         let plan = plan_host_program(typed).expect("host source should plan");
         let execution =
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
-        let function = &execution.host_functions.value_functions()[0];
+        let function = &execution.execution.host_functions.value_functions()[0];
 
         assert_eq!(
             function.call_parameters(),

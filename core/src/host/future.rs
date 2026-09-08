@@ -7,25 +7,23 @@ pub use native::HostFutureCompletion;
 pub use value::HostFutureValue;
 
 use super::{
-    AsyncHostComponentProfile, AsyncHostExternalStorage, AsyncHostExternalStore,
-    AsyncHostProviderComponent, HostCallCompletion, HostCallable, HostExternal, HostExternalSchema,
-    HostExternalType, HostList, HostListType, HostProvider, HostType, HostTypeDescriptor,
-    HostTypeList, HostTypeListEnd, TransferHostCall,
+    HostCall, HostCallCompletion, HostCallable, HostComponentProfile, HostExternal,
+    HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostList,
+    HostListType, HostProvider, HostProviderComponent, HostType, HostTypeDescriptor, HostTypeList,
+    HostTypeListEnd,
 };
 use crate::runtime::work::execution::SourceWork;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 /// Statically selects the nominal work representation and its typed storage.
-pub trait HostWorkProfile:
-    super::HostProfile + AsyncHostComponentProfile<Self::Work> + Sized
-{
+pub trait HostWorkProfile: super::HostProfile + HostComponentProfile<Self::Work> + Sized {
     type Work: HostWorkRepresentation<Self>;
 }
 
 /// The component owns the work schema, storage binding, and store projection.
-pub trait HostWorkRepresentation<Profile: super::HostProfile>: AsyncHostProviderComponent {
+pub trait HostWorkRepresentation<Profile: super::HostProfile>: HostProviderComponent {
     type Schema: HostExternalSchema;
-    type Storage: AsyncHostExternalStorage<Profile, Self::Schema, Payload = HostFuturePayload>;
+    type Storage: HostExternalStorage<Profile, Self::Schema, Payload = HostFuturePayload>;
 
     fn store(stores: &Profile::ExternalStores) -> &HostFutureStore;
 }
@@ -44,7 +42,7 @@ pub(crate) fn work_store<Profile: HostWorkProfile>(
 /// Storage for a component's typed representation of runtime-owned work.
 #[derive(Default)]
 pub struct HostFutureStore {
-    values: AsyncHostExternalStore<HostFuturePayload>,
+    values: HostExternalStore<HostFuturePayload>,
 }
 
 /// The statically typed Future return used by provider registration.
@@ -60,11 +58,11 @@ pub struct HostFuturePayload {
 
 impl HostFutureStore {
     /// Storage projected by a downstream work representation's external adapter.
-    pub fn values(&self) -> &AsyncHostExternalStore<HostFuturePayload> {
+    pub fn values(&self) -> &HostExternalStore<HostFuturePayload> {
         &self.values
     }
 
-    pub(crate) fn work(&self, lease: &crate::runtime::TransferExternalPayloadLease) -> SourceWork {
+    pub(crate) fn work(&self, lease: &crate::runtime::ExternalPayloadLease) -> SourceWork {
         self.values.with_view(lease, |value| value.work.clone())
     }
 
@@ -88,7 +86,7 @@ impl HostFuturePayload {
 }
 
 impl<'call, Profile, Provider, Output>
-    TransferHostCall<'call, Profile, Provider, ProfileFutureType<Profile, Output>>
+    HostCall<'call, Profile, Provider, ProfileFutureType<Profile, Output>>
 where
     Profile: HostWorkProfile,
     Provider: HostProvider<Profile>,
@@ -126,7 +124,7 @@ where
     ) -> HostCallCompletion<'call, ProfileFutureType<Profile, Output>> {
         let lease = crate::host::work_store::<Profile>(self.runtime.external_stores())
             .values
-            .insert::<Profile, crate::host::HostWorkSchema<Profile>, crate::host::HostWorkStorage<Profile>>(HostFuturePayload { work });
+            .insert_with_storage::<Profile, crate::host::HostWorkSchema<Profile>, crate::host::HostWorkStorage<Profile>>(HostFuturePayload { work });
         let value = HostExternal::new(self.runtime.build_external(
             &HostTypeDescriptor::of::<ProfileFutureType<Profile, Output>>(),
             lease,
@@ -149,7 +147,7 @@ where
 }
 
 impl<'call, Profile, Provider, Output>
-    TransferHostCall<'call, Profile, Provider, ProfileFutureType<Profile, HostListType<Output>>>
+    HostCall<'call, Profile, Provider, ProfileFutureType<Profile, HostListType<Output>>>
 where
     Profile: HostWorkProfile,
     Provider: HostProvider<Profile>,

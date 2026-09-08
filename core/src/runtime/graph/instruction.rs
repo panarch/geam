@@ -13,9 +13,9 @@ use crate::runtime::{ExecutableRuntimePlan, RuntimeGraph};
 pub(super) fn execute<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &mut BlockEnvironment<Plan::Values>,
+    environment: &mut BlockEnvironment,
     instruction: &ProfiledInstruction<RuntimeGraph<Plan>>,
-) -> ExecutionResult<(), Plan::Values> {
+) -> ExecutionResult<()> {
     let expected = plan.value_type(&plan.shape_value_type(instruction.output().shape()));
     macro_rules! evaluate_value {
         ($evaluate:ident, $run:ident, $push:ident, $instruction:expr) => {{
@@ -105,10 +105,10 @@ pub(super) fn execute<Plan: ExecutableRuntimePlan>(
 pub(super) fn execute_external_list<Plan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &mut BlockEnvironment<Plan::Values>,
+    environment: &mut BlockEnvironment,
     instruction: &crate::plan::execution::graph::ExternalListInstruction,
     expected: &crate::plan::ValueType,
-) -> ExecutionResult<(), Plan::Values>
+) -> ExecutionResult<()>
 where
     Plan: ExecutableRuntimePlan,
 {
@@ -118,12 +118,11 @@ where
 pub(super) fn execute_external_function<Plan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &mut BlockEnvironment<Plan::Values>,
+    environment: &mut BlockEnvironment,
     instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
-) -> ExecutionResult<(), Plan::Values>
+) -> ExecutionResult<()>
 where
-    Plan: ExecutableRuntimePlan,
-    Plan::Profile: crate::plan::execution::function::DirectHostedExecutionProfile,
+    Plan: ExecutableRuntimePlan<Profile = crate::plan::execution::host::HostedExecutionProfile>,
 {
     function::evaluate_external(plan, state, environment, instruction)
         .map(|value| function::push(environment, value))

@@ -1,11 +1,11 @@
 use crate::host::{
-    AsyncHostCallError, HostCallable, HostConstructions, HostProfile, HostProvider, HostType,
-    HostTypeSequence, TransferHostCall, TransferHostCodecScope,
+    HostCall, HostCallError, HostCallable, HostCodecScope, HostConstructions, HostProfile,
+    HostProvider, HostType, HostTypeSequence,
 };
 pub use crate::runtime::SharedExecutionError;
 use crate::runtime::work::Dependencies;
 use crate::runtime::work::execution::{Completion, WorkContext};
-use crate::runtime::{HostCallOrigin, TransferCallable};
+use crate::runtime::{HostCallOrigin, RetainedCallable};
 use std::fmt;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -16,7 +16,7 @@ pub enum HostFutureError {
     /// The operation was cancelled before completing.
     Cancelled,
     /// A native failure or an unchanged error from a Gleam callback.
-    Host(AsyncHostCallError),
+    Host(HostCallError),
     /// The unchanged shared failure of an explicitly observed source Future.
     Execution(SharedExecutionError),
 }
@@ -60,9 +60,9 @@ where
     Constructions: HostTypeSequence,
 {
     work: WorkContext<Profile>,
-    codec: TransferHostCodecScope,
+    codec: HostCodecScope,
     origin: HostCallOrigin,
-    callable: TransferCallable,
+    callable: RetainedCallable,
     signature: PhantomData<fn(Provider, Arguments, Constructions) -> Return>,
 }
 
@@ -86,7 +86,7 @@ where
     }
 }
 
-impl<'call, Profile, Provider, Return> TransferHostCall<'call, Profile, Provider, Return>
+impl<'call, Profile, Provider, Return> HostCall<'call, Profile, Provider, Return>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
@@ -206,15 +206,15 @@ where
     where
         ContextConstructions: HostTypeSequence,
         Inputs: for<'call> FnOnce(
-                TransferHostCall<'call, Profile, Provider, ()>,
+                HostCall<'call, Profile, Provider, ()>,
                 HostConstructions<'call, Constructions>,
             ) -> Arguments::Values<'call>
             + Send
             + 'static,
         Decode: for<'call> FnOnce(
-                TransferHostCall<'call, Profile, Provider, ()>,
+                HostCall<'call, Profile, Provider, ()>,
                 Return::Value<'call>,
-            ) -> Result<Output, AsyncHostCallError>
+            ) -> Result<Output, HostCallError>
             + Send
             + 'static,
     {
@@ -223,14 +223,14 @@ where
             self.codec.clone(),
             self.origin.clone(),
             move |runtime| {
-                let values = inputs(TransferHostCall::new(runtime), HostConstructions::new());
+                let values = inputs(HostCall::new(runtime), HostConstructions::new());
                 let mut scoped = Vec::new();
                 crate::host::type_::into_scoped_values::<Arguments>(values, &mut scoped);
                 runtime.callback_inputs(scoped.into_boxed_slice())
             },
             move |runtime, token| {
                 let value = crate::host::type_::from_runtime_token::<Return, _>(runtime, token);
-                decode(TransferHostCall::new(runtime), value)
+                decode(HostCall::new(runtime), value)
             },
         );
         async move {
@@ -246,8 +246,8 @@ impl From<crate::runtime::work::Cancelled> for HostFutureError {
     }
 }
 
-impl From<AsyncHostCallError> for HostFutureError {
-    fn from(error: AsyncHostCallError) -> Self {
+impl From<HostCallError> for HostFutureError {
+    fn from(error: HostCallError) -> Self {
         Self::Host(error)
     }
 }
@@ -282,7 +282,7 @@ impl std::error::Error for HostFutureError {
 mod tests {
     use super::{HostFutureError, SharedExecutionError};
     use crate::runtime::shared::Shared;
-    use crate::{AsyncExecutionError, HostFailure, InvariantError, ValueType};
+    use crate::{ExecutionError, HostFailure, InvariantError, ValueType};
     use std::error::Error;
 
     #[test]
@@ -296,14 +296,14 @@ mod tests {
         assert_eq!(host.to_string(), "disconnected");
         assert_eq!(
             format!("{host:?}"),
-            "Host(AsyncHostCallError(\"disconnected\"))"
+            "Host(HostCallError { kind: Failure(HostFailure { message: \"disconnected\" }) })"
         );
         assert_eq!(
             host.source().expect("host failure").to_string(),
             "disconnected"
         );
 
-        let shared = SharedExecutionError(Shared::new(AsyncExecutionError::Invariant(
+        let shared = SharedExecutionError(Shared::new(ExecutionError::Invariant(
             InvariantError::ListIndexOutOfBounds {
                 item_type: ValueType::Int,
                 index: 1,

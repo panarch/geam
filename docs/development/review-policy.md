@@ -391,13 +391,19 @@ detach tasks, poll from wake notifications, or run in the background without
 its Rust driver. A provider may wrap external work already started elsewhere;
 Geam does not promise that all external effects begin with its first poll.
 
-Keep local-only and transferable composition explicit. Local providers retain
-their supported non-`Send` state and local costs. When the selected work, values,
-caller state, and capabilities satisfy `Send`, pending work and shared successful
-or failed completion must not acquire thread affinity from Geam internals.
-Do not add `Sync` to exclusively accessed data or `'static` bounds to borrowed
-host resources. Ordinary calls must not acquire Future allocation or polling
-costs merely because work-valued calls coexist.
+Retained execution graphs, provider payloads and state, native work, and caller
+capabilities carried by execution satisfy one `Send` contract. Do not preserve
+local/transferable modes or introduce internal thread affinity. This does not
+require `Sync` for exclusively accessed data or `'static` for borrowed host
+resources. Call-local views may be non-`Send` when they cannot escape. Ordinary
+calls must not acquire Future allocation or polling costs merely because
+work-valued calls coexist.
+
+The generated standalone runner is an explicit Rust host and may own its
+executor. It selects ordinary or outer-work completion at typed entry sealing,
+not by inspecting public values or scanning returned containers. That entry
+policy must not turn ordinary source calls into implicit awaits. End the Geam
+execution scope before shutting down the host executor.
 
 The execution scope and work graph have distinct drop semantics:
 

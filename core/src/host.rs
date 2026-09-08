@@ -1,4 +1,3 @@
-mod async_external;
 mod component;
 mod construction;
 mod error;
@@ -8,23 +7,13 @@ mod function;
 mod future;
 mod module;
 mod profile;
-mod transfer_call;
-mod transfer_module;
 mod type_;
 mod value;
 
-pub use async_external::{
-    AsyncHostExternalBinding, AsyncHostExternalEquality, AsyncHostExternalHashing,
-    AsyncHostExternalInspection, AsyncHostExternalStorage, AsyncHostExternalStore,
-};
-pub(crate) use async_external::{
-    TransferExternalEquality, TransferExternalHashing, TransferExternalInspection,
-};
 pub use component::{
-    AsyncHostComponentProfile, AsyncHostProviderComponent, HostComponentProfile,
-    HostProviderComponent, HostProviderComponentInitialization, HostProviderComponentRegistration,
-    HostProviderConfiguration, HostProviderConfigurationValue, HostProviderInitializationError,
-    TransferHostProviderComponentRegistration,
+    HostComponentProfile, HostProviderComponent, HostProviderComponentInitialization,
+    HostProviderComponentRegistration, HostProviderConfiguration, HostProviderConfigurationValue,
+    HostProviderInitializationError,
 };
 pub use construction::{HostConstruction, HostConstructions};
 pub use error::HostRegistrationError;
@@ -35,12 +24,12 @@ pub use external::{
     HostExternalStore, HostExternalType, HostExternalTypeSchema, HostStoredDynamic, HostStoredType,
     HostStoredValue,
 };
-pub use failure::{AsyncHostCallError, HostCallError, HostFailure};
-pub(crate) use failure::{AsyncHostCallErrorKind, HostCallErrorKind};
+pub(crate) use external::{RetainedValueEquality, RetainedValueHashing, RetainedValueInspection};
+pub(crate) use failure::HostCallErrorKind;
+pub use failure::{HostCallError, HostFailure};
 pub use function::{
     FallibleHostFunction, HostFunction, HostFunctionSchema, ScopedConstructingHostFunction,
-    ScopedDivergingHostFunction, ScopedHostFunction, TransferScopedConstructingHostFunction,
-    TransferScopedDivergingHostFunction, TransferScopedHostFunction,
+    ScopedDivergingHostFunction, ScopedHostFunction,
 };
 pub(crate) use future::work_store;
 pub use future::{
@@ -50,10 +39,6 @@ pub use future::{
 };
 pub use module::{HostModule, HostProviderModule, HostProviderSet};
 pub use profile::{HostCall, HostProfile, HostProvider, StatelessHostProfile};
-#[doc(hidden)]
-pub use transfer_call::{TransferHostCall, TransferHostExternalPayloadView};
-pub(crate) use transfer_module::RegisteredTransferHostImplementations;
-pub use transfer_module::{TransferHostProviderModule, TransferHostProviderSet};
 pub use type_::{
     HostCustomConstructor, HostCustomConstructorAt, HostCustomConstructorDefinition,
     HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomConstructorSchema,
@@ -80,8 +65,6 @@ pub(crate) use function::{
     HostFunctionDefinition, HostFunctionImplementation, HostIntArgumentSlot, HostListArgumentSlot,
     HostNeverFunction, HostNilArgumentSlot, HostParameter, HostStringArgumentSlot,
     HostTupleArgumentSlot, HostUtfCodepointArgumentSlot, HostValueArgumentSlot, HostValueFunction,
-    TransferHostFunctionDefinition, TransferHostFunctionImplementation, TransferHostNeverFunction,
-    TransferHostValueFunction,
 };
 #[cfg(test)]
 pub(crate) use function::{expect_never_implementation, expect_value_implementation};
@@ -89,10 +72,10 @@ pub(crate) use module::{
     RegisteredHostFunction, RegisteredHostImplementationId, RegisteredHostImplementations,
     RegisteredHostModule, RegisteredHostProviderModule,
 };
+pub(crate) use profile::HostCodecScope;
 #[cfg(test)]
 pub(crate) use profile::test;
-pub(crate) use profile::{HostCallRuntime, HostCallTokenRuntime, HostTokenRuntime};
-pub(crate) use transfer_call::{TransferHostCallRuntime, TransferHostCodecScope};
+pub(crate) use profile::{HostCallRuntime, HostTokenRuntime};
 pub(crate) use type_::{
     HostAbiType, HostAbiTypeSequence, HostOpaqueFunctionType, HostTypeDescriptor,
 };

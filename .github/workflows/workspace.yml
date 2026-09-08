@@ -37,6 +37,10 @@ jobs:
         working-directory: cli/tests/fixtures/standalone_cli/providers
         run: cargo fmt --all --check
 
+      - name: Check standalone Future provider formatting
+        working-directory: cli/tests/fixtures/standalone_future/provider
+        run: cargo fmt --all --check
+
       - name: Check example provider formatting
         run: |
           for example in text_tools value_types tag_set request_ids feature_flags run_metrics call_tracing generic_box text_pattern; do
@@ -84,6 +88,10 @@ jobs:
       - name: Run standalone provider clippy
         working-directory: cli/tests/fixtures/standalone_cli/providers
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Run standalone Future provider clippy
+        working-directory: cli/tests/fixtures/standalone_future/provider
+        run: CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target" cargo clippy --all-targets --locked -- -D warnings
 
       - name: Run example provider clippy
         run: |
@@ -172,7 +180,7 @@ jobs:
           cargo check --package geam --no-default-features --features embedding --all-targets --locked
           cargo check --package geam --no-default-features --features provider --all-targets --locked
           cargo check --package geam --no-default-features --features embedding,gleam-stdlib --all-targets --locked
-          cargo check --package geam --no-default-features --features embedding,geam-runtime-api --all-targets --locked
+          cargo check --package geam --no-default-features --features embedding,geam-builtin --all-targets --locked
 
       - name: Test workspace packages
         run: cargo test --workspace --exclude geam --locked

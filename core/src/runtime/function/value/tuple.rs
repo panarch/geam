@@ -3,7 +3,7 @@ use crate::plan::execution::function::TupleFunctionId;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::evaluated::EvaluatedValue;
-use crate::runtime::graph::ProfiledRetainedValues;
+use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::RuntimeStateFor;
 
 pub(in crate::runtime) fn run_tuple<Plan: ExecutableRuntimePlan>(
@@ -11,8 +11,8 @@ pub(in crate::runtime) fn run_tuple<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     function: TupleFunctionId,
     origin: HostCallOrigin,
-    inputs: ProfiledRetainedValues<Plan::Values>,
-) -> ExecutionResult<Vec<EvaluatedValue<Plan::Values>>, Plan::Values> {
+    inputs: RetainedValues,
+) -> ExecutionResult<Vec<EvaluatedValue>> {
     run_tail(
         plan,
         state,

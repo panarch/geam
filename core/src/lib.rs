@@ -26,12 +26,8 @@ pub use frontend::{
     FrontendError, HostedTypedProgram, ModuleSource, PackageSource, ProjectError, TypedProgram,
     compile_typed_host_program, compile_typed_host_project, compile_typed_module,
     compile_typed_package_program, compile_typed_program, compile_typed_project,
-    compile_typed_transfer_host_project,
 };
 pub use host::{
-    AsyncHostCallError, AsyncHostComponentProfile, AsyncHostExternalBinding,
-    AsyncHostExternalEquality, AsyncHostExternalHashing, AsyncHostExternalInspection,
-    AsyncHostExternalStorage, AsyncHostExternalStore, AsyncHostProviderComponent,
     FallibleHostFunction, HostCall, HostCallCompletion, HostCallError, HostCallable,
     HostComponentProfile, HostConstruction, HostConstructions, HostCustom, HostCustomConstructor,
     HostCustomConstructorAt, HostCustomConstructorDefinition, HostCustomConstructorList,
@@ -49,12 +45,11 @@ pub use host::{
     HostStoredType, HostStoredValue, HostTuple, HostTupleType, HostType, HostTypeAt,
     HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter,
     HostTypeSequence, HostValue, ScopedConstructingHostFunction, ScopedDivergingHostFunction,
-    ScopedHostFunction, StatelessHostProfile, TransferHostProviderComponentRegistration,
-    TransferHostProviderModule, TransferHostProviderSet,
+    ScopedHostFunction, StatelessHostProfile,
 };
 pub use plan::execution::{
     ExecutionPlan, ExecutionPlanExplanation, HostSpecializationError,
-    HostSpecializationErrorReason, HostedExecution,
+    HostSpecializationErrorReason, HostedEntry, HostedExecution,
 };
 pub use plan::{
     BitArrayExpr, BitArrayLocalId, BoolExpr, BoolLocalId, CustomType, CustomTypeName, EchoSite,
@@ -70,9 +65,9 @@ pub use planner::{
 };
 pub use provider::List;
 pub use runtime::{
-    AsyncExecutionError, AsyncPanicValue, BitArraySegmentPanicReason, BitArrayValue,
-    BitArrayValueLengthError, CustomFieldValue, CustomValue, EchoLocation, EchoOutput, EchoSink,
-    ExecutionError, ExternalValue, ExternalValueIdentity, FunctionValue, HostError, HostLocation,
-    HostOrigin, InvariantError, ListValue, ListValueItemTypeMismatch, Panic, PanicDetails,
-    PanicKind, PanicMessage, Value, ValueInspection, run_main,
+    BitArraySegmentPanicReason, BitArrayValue, BitArrayValueLengthError, CustomFieldValue,
+    CustomValue, EchoLocation, EchoOutput, EchoSink, ExecutionError, ExternalValue,
+    ExternalValueIdentity, FunctionValue, HostError, HostLocation, HostOrigin, InvariantError,
+    ListValue, ListValueItemTypeMismatch, Panic, PanicDetails, PanicKind, PanicMessage, PanicValue,
+    Value, ValueInspection, run_main,
 };

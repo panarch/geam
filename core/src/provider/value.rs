@@ -1,5 +1,5 @@
-use crate::host::TransferHostCall;
-use crate::runtime::{StoredRuntimeValue, TransferValues};
+use crate::host::HostCall;
+use crate::runtime::StoredRuntimeValue;
 use crate::{HostProfile, HostProvider, HostType};
 use std::marker::PhantomData;
 
@@ -17,57 +17,23 @@ pub struct Value<Type, Context = MissingValueContext> {
 #[doc(hidden)]
 pub struct MissingValueContext;
 
-/// The exact typed host handle inserted by provider macro expansion.
-#[doc(hidden)]
-pub struct ProviderValueContext<'call, Host>
-where
-    Host: HostType,
-{
-    value: Host::Value<'call>,
-}
-
 /// Owned retained value used by a transferable provider invocation.
 #[doc(hidden)]
-pub struct ProviderTransferValueContext<Host>
+pub struct ProviderValueContext<Host>
 where
     Host: HostType,
 {
-    value: StoredRuntimeValue<TransferValues>,
+    value: StoredRuntimeValue,
     host: PhantomData<fn() -> Host>,
 }
 
-impl<'call, Type, Host> Value<Type, ProviderValueContext<'call, Host>>
+impl<Type, Host> Value<Type, ProviderValueContext<Host>>
 where
     Host: HostType,
 {
     #[doc(hidden)]
-    pub fn from_host(value: Host::Value<'call>) -> Self {
-        Self {
-            context: ProviderValueContext { value },
-            type_: PhantomData,
-        }
-    }
-
-    #[doc(hidden)]
-    pub fn into_host(self) -> Host::Value<'call> {
-        self.context.value
-    }
-
-    pub(crate) fn host(&self) -> Host::Value<'call>
-    where
-        Host::Value<'call>: Clone,
-    {
-        self.context.value.clone()
-    }
-}
-
-impl<Type, Host> Value<Type, ProviderTransferValueContext<Host>>
-where
-    Host: HostType,
-{
-    #[doc(hidden)]
-    pub fn from_transfer_host<'call, Profile, Provider, Return>(
-        call: &TransferHostCall<'call, Profile, Provider, Return>,
+    pub fn from_host<'call, Profile, Provider, Return>(
+        call: &HostCall<'call, Profile, Provider, Return>,
         value: Host::Value<'call>,
     ) -> Self
     where
@@ -76,7 +42,7 @@ where
         Return: HostType,
     {
         Self {
-            context: ProviderTransferValueContext {
+            context: ProviderValueContext {
                 value: call.retain_value::<Host>(value),
                 host: PhantomData,
             },
@@ -85,9 +51,9 @@ where
     }
 
     #[doc(hidden)]
-    pub fn into_transfer_host<'call, Profile, Provider, Return>(
+    pub fn into_host<'call, Profile, Provider, Return>(
         self,
-        call: &mut TransferHostCall<'call, Profile, Provider, Return>,
+        call: &mut HostCall<'call, Profile, Provider, Return>,
     ) -> Host::Value<'call>
     where
         Profile: HostProfile,
@@ -97,13 +63,13 @@ where
         call.restore_value::<Host>(&self.context.value)
     }
 
-    pub(crate) fn stored(&self) -> &StoredRuntimeValue<TransferValues> {
+    pub(crate) fn stored(&self) -> &StoredRuntimeValue {
         &self.context.value
     }
 
-    pub(crate) fn from_stored(value: StoredRuntimeValue<TransferValues>) -> Self {
+    pub(crate) fn from_stored(value: StoredRuntimeValue) -> Self {
         Self {
-            context: ProviderTransferValueContext {
+            context: ProviderValueContext {
                 value,
                 host: PhantomData,
             },
@@ -111,7 +77,7 @@ where
         }
     }
 
-    pub(crate) fn into_stored(self) -> StoredRuntimeValue<TransferValues> {
+    pub(crate) fn into_stored(self) -> StoredRuntimeValue {
         self.context.value
     }
 }
@@ -119,18 +85,19 @@ where
 #[cfg(test)]
 mod tests {
     use super::{ProviderValueContext, Value};
-    use crate::host::{HostTypeParameter, HostValue, HostValueFamily, HostValueToken};
+    use crate::host::HostTypeParameter;
+    use crate::runtime::{BorrowedValue, StoredRuntimeValue};
 
     #[test]
-    fn provider_value_preserves_the_exact_call_scoped_host_handle() {
+    fn provider_value_preserves_its_owned_value_through_retention() {
         type Parameter = HostTypeParameter<0>;
-        let host = HostValue::<Parameter>::new(HostValueToken {
-            family: HostValueFamily::String,
-            index: 4,
-        });
-        let value = Value::<Parameter, ProviderValueContext<'_, Parameter>>::from_host(host);
-
-        assert_eq!(value.host().token, host.token);
-        assert_eq!(value.into_host().token, host.token);
+        let value = Value::<Parameter, ProviderValueContext<Parameter>>::from_stored(
+            StoredRuntimeValue::test_int(42.into()),
+        );
+        assert_eq!(BorrowedValue::from_stored(value.stored()).int(), &42.into());
+        assert_eq!(
+            BorrowedValue::from_stored(&value.into_stored()).int(),
+            &42.into()
+        );
     }
 }

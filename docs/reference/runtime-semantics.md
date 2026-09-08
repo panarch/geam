@@ -464,6 +464,13 @@ The ordinary `geam` source package defines one nominal `geam/future.Future(a)`
 type. A function returning this type returns a work value, not an implicitly
 awaited `a`. The Rust host drives work by observing it with its own executor.
 
+For standalone execution, the generated Rust runner is that host. It executes
+`main` once and observes its result only when the declared outer return type is
+the registered Future type. Resolved aliases preserve that identity; similarly
+named user types do not. It ignores ordinary return values and does not search
+containers or recursively flatten work. A completed source `Error` remains
+data, distinct from an execution or observation failure.
+
 `ready` constructs a completed operation, `map` applies a captured source
 function to a completion, `then` continues with returned work, and `all`
 drives independent inputs while preserving their input order. This is not a

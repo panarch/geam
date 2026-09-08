@@ -1,9 +1,9 @@
 [package]
-name = "geam-runtime-api"
+name = "geam-builtin"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Geam runtime APIs for the geam Gleam package"
+description = "Built-in Rust implementation of the geam Gleam package"
 license.workspace = true
 repository.workspace = true
 readme = "README.md"

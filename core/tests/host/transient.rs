@@ -10,7 +10,6 @@ use geam_core::{
     compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
-use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -39,7 +38,7 @@ struct TransientMapStorage;
 struct TokenStorage;
 
 struct TransientPayload {
-    entries: Box<[Rc<TransientEntry>]>,
+    entries: Box<[Arc<TransientEntry>]>,
     _drop: PayloadDrop,
 }
 
@@ -206,8 +205,8 @@ fn new_entry(
     key: HostValue<'_, Key>,
     value: HostValue<'_, Item>,
     drops: Arc<AtomicUsize>,
-) -> Rc<TransientEntry> {
-    Rc::new(TransientEntry {
+) -> Arc<TransientEntry> {
+    Arc::new(TransientEntry {
         key: builder.store_argument::<HostTypeIndex0>(key),
         value: builder.store_argument::<HostTypeIndexNext<HostTypeIndex0>>(value),
         _drop: EntryDrop(drops),
@@ -267,7 +266,7 @@ fn remove<'call>(
     for index in 0..payload.entries.len() {
         let current = payload.restore_argument(&mut call, |payload| &payload.entries[index].key);
         if !call.equal::<Key>(current, key) {
-            entries.push(Rc::clone(&payload.entries[index]));
+            entries.push(Arc::clone(&payload.entries[index]));
         }
     }
     let drops = Arc::clone(&call.state().payload_drops);
@@ -298,11 +297,11 @@ fn merge<'call>(
         match replacement {
             Some(target_index) => {
                 keys[target_index] = key;
-                entries[target_index] = Rc::clone(&right.entries[right_index]);
+                entries[target_index] = Arc::clone(&right.entries[right_index]);
             }
             None => {
                 keys.push(key);
-                entries.push(Rc::clone(&right.entries[right_index]));
+                entries.push(Arc::clone(&right.entries[right_index]));
             }
         }
     }

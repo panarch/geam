@@ -7,7 +7,7 @@ use geam_core::{
 use num_bigint::BigInt;
 use std::marker::PhantomData;
 
-trait CounterSource: 'static {
+trait CounterSource: Send + 'static {
     fn next(&mut self) -> Result<i64, HostFailure>;
 }
 
@@ -24,10 +24,6 @@ where
     const ID: &'static str = "macro-builtin-profile";
     type Stores = ();
     type RunState = Source;
-}
-
-impl<Source: CounterSource> geam_core::AsyncHostProviderComponent for Component<Source> {
-    type AsyncStores = ();
 }
 
 impl<Source> geam_core::__macro_support::ProviderPackage for Component<Source>
@@ -140,11 +136,11 @@ fn builtin_profile_functions_compile_register_and_project_caller_state() {
 
 #[test]
 fn transferable_builtin_profile_keeps_the_same_caller_owned_source() {
-    use geam_core::AsyncHostComponentProfile;
-    use geam_core::embedding::{FunctionDeclaration, WorkModuleBuilder, with_execution_scope};
-    use geam_core::frontend::compile_typed_transfer_host_program;
-    use geam_core::host::{HostFutureStore, TransferHostProviderSet};
-    use geam_runtime_api::FutureComponent;
+    use geam_builtin::FutureComponent;
+    use geam_core::HostComponentProfile;
+    use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
+    use geam_core::frontend::compile_typed_host_program;
+    use geam_core::host::{HostFutureStore, HostProviderSet};
     use std::future::Future;
     use std::pin::pin;
     use std::task::{Context, Poll, Waker};
@@ -162,8 +158,8 @@ fn transferable_builtin_profile_keeps_the_same_caller_owned_source() {
     impl CounterProfile for TransferProfile {
         type Source = ScriptedSource;
     }
-    impl AsyncHostComponentProfile<Component> for TransferProfile {
-        fn component_async_stores(stores: &Stores) -> &() {
+    impl HostComponentProfile<Component> for TransferProfile {
+        fn component_stores(stores: &Stores) -> &() {
             &stores.counter
         }
         fn component_state(state: &mut (ScriptedSource, ())) -> &mut ScriptedSource {
@@ -173,8 +169,8 @@ fn transferable_builtin_profile_keeps_the_same_caller_owned_source() {
     impl geam_core::host::HostWorkProfile for TransferProfile {
         type Work = FutureComponent;
     }
-    impl AsyncHostComponentProfile<FutureComponent> for TransferProfile {
-        fn component_async_stores(stores: &Stores) -> &HostFutureStore {
+    impl HostComponentProfile<FutureComponent> for TransferProfile {
+        fn component_stores(stores: &Stores) -> &HostFutureStore {
             &stores.work
         }
         fn component_state(state: &mut (ScriptedSource, ())) -> &mut () {
@@ -189,12 +185,12 @@ fn transferable_builtin_profile_keeps_the_same_caller_owned_source() {
         }
     }
 
-    let providers = TransferHostProviderSet::new([profile_provider::__geam_transfer_module::<
+    let providers = HostProviderSet::from_providers([profile_provider::__geam_module::<
         TransferProfile,
     >()
     .expect("transfer profile")])
     .expect("unique module");
-    let typed = compile_typed_transfer_host_program(
+    let typed = compile_typed_host_program(
         "profile_provider",
         "profile_provider",
         [PackageSource::new(
@@ -209,7 +205,7 @@ fn transferable_builtin_profile_keeps_the_same_caller_owned_source() {
         providers,
     )
     .expect("transfer source");
-    let (bindings, next) = WorkModuleBuilder::new(typed)
+    let (bindings, next) = HostedModuleBuilder::new(typed)
         .expect("transfer builder")
         .function(FunctionDeclaration::<(), BigInt>::new("main"))
         .expect("main binding");

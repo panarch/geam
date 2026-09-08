@@ -1,12 +1,14 @@
-use geam_core::embedding::{BigInt, FunctionDeclaration, WorkModuleBuilder, with_execution_scope};
-use geam_core::frontend::compile_typed_transfer_host_program;
+use geam_builtin::FutureComponent;
+use geam_builtin::embedding::FutureType;
+use geam_core::embedding::{
+    BigInt, FunctionDeclaration, HostedModuleBuilder, with_execution_scope,
+};
+use geam_core::frontend::compile_typed_host_program;
 use geam_core::host::{
-    AsyncHostComponentProfile, HostFutureStore, HostProfile,
-    TransferHostProviderComponentRegistration, TransferHostProviderSet,
+    HostComponentProfile, HostFutureStore, HostProfile, HostProviderComponentRegistration,
+    HostProviderSet,
 };
 use geam_core::{ModuleSource, PackageSource};
-use geam_runtime_api::FutureComponent;
-use geam_runtime_api::embedding::FutureType;
 use std::future::Future;
 use std::task::{Context, Poll, Waker};
 
@@ -62,15 +64,15 @@ struct HostState {
 }
 #[derive(Default)]
 struct HostStores {
-    provider: AsyncStores,
+    provider: Stores,
     future: HostFutureStore,
 }
 impl HostProfile for Profile {
     type RunState = HostState;
     type ExternalStores = HostStores;
 }
-impl AsyncHostComponentProfile<Component> for Profile {
-    fn component_async_stores(stores: &HostStores) -> &AsyncStores {
+impl HostComponentProfile<Component> for Profile {
+    fn component_stores(stores: &HostStores) -> &Stores {
         &stores.provider
     }
     fn component_state(state: &mut HostState) -> &mut State {
@@ -80,8 +82,8 @@ impl AsyncHostComponentProfile<Component> for Profile {
 impl geam_core::host::HostWorkProfile for Profile {
     type Work = FutureComponent;
 }
-impl AsyncHostComponentProfile<FutureComponent> for Profile {
-    fn component_async_stores(stores: &HostStores) -> &HostFutureStore {
+impl HostComponentProfile<FutureComponent> for Profile {
+    fn component_stores(stores: &HostStores) -> &HostFutureStore {
         &stores.future
     }
     fn component_state(state: &mut HostState) -> &mut () {
@@ -114,10 +116,10 @@ pub fn work(value: Int) {
 "#;
     let mut providers = FutureComponent::providers().expect("Future component");
     providers.extend(
-        <Component as TransferHostProviderComponentRegistration<Profile>>::providers()
+        <Component as HostProviderComponentRegistration<Profile>>::providers()
             .expect("macro component"),
     );
-    let typed = compile_typed_transfer_host_program(
+    let typed = compile_typed_host_program(
         "future_provider",
         "future_provider/native",
         [
@@ -140,10 +142,10 @@ pub fn work(value: Int) {
                 )],
             ),
         ],
-        TransferHostProviderSet::new(providers).expect("provider set"),
+        HostProviderSet::from_providers(providers).expect("provider set"),
     )
     .expect("source linkage");
-    let (mut builder, double) = WorkModuleBuilder::new(typed)
+    let (mut builder, double) = HostedModuleBuilder::new(typed)
         .expect("plan")
         .function(FunctionDeclaration::<(BigInt,), BigInt>::new("double"))
         .expect("direct entry");

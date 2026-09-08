@@ -6,7 +6,7 @@ use ecow::EcoString;
 use crate::plan::{EchoSite, SourceContext};
 use crate::runtime::Value;
 
-pub trait EchoSink {
+pub trait EchoSink: Send {
     fn emit(&mut self, output: EchoOutput);
 }
 
@@ -106,7 +106,7 @@ impl EchoSink for Vec<EchoOutput> {
     }
 }
 
-impl<Emit: FnMut(EchoOutput)> EchoSink for Emit {
+impl<Emit: FnMut(EchoOutput) + Send> EchoSink for Emit {
     fn emit(&mut self, output: EchoOutput) {
         self(output);
     }

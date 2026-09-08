@@ -1,30 +1,29 @@
 use super::execution::WorkContext;
 use crate::host::{
-    AsyncHostCallError, HostFutureError, HostProfile, HostValueToken, TransferHostCallRuntime,
-    TransferHostCodecScope,
+    HostCallError, HostCallRuntime, HostCodecScope, HostFutureError, HostProfile, HostValueToken,
 };
-use crate::runtime::host::RuntimeTransferHostCall;
-use crate::runtime::{HostCallOrigin, TransferCallable, TransferCallbackInputs};
+use crate::runtime::host::RuntimeHostCall;
+use crate::runtime::{CallbackInputs, HostCallOrigin, RetainedCallable};
 use std::future::Future;
 
 impl<Profile: HostProfile> WorkContext<Profile> {
     pub(crate) fn decode_completion<Output: Send + 'static, Decode>(
         &self,
-        value: super::Shared<crate::runtime::StoredRuntimeValue<crate::runtime::TransferValues>>,
-        codec: TransferHostCodecScope,
+        value: super::Shared<crate::runtime::StoredRuntimeValue>,
+        codec: HostCodecScope,
         origin: HostCallOrigin,
         decode: Decode,
     ) -> impl Future<Output = Result<Output, HostFutureError>> + Send + use<Profile, Output, Decode>
     where
         Decode: FnOnce(
-                &mut dyn TransferHostCallRuntime<Profile>,
+                &mut dyn HostCallRuntime<Profile>,
                 HostValueToken,
-            ) -> Result<Output, AsyncHostCallError>
+            ) -> Result<Output, HostCallError>
             + Send
             + 'static,
     {
         let request = self.with_runtime(move |plan, state| {
-            let mut runtime = RuntimeTransferHostCall::new_codec(plan, state, &codec, origin);
+            let mut runtime = RuntimeHostCall::new_codec(plan, state, &codec, origin);
             let token = value.read(|value| runtime.restore_stored(value));
             decode(&mut runtime, token)
         });
@@ -33,8 +32,8 @@ impl<Profile: HostProfile> WorkContext<Profile> {
 
     pub(crate) fn invoke_owned<Output: Send + 'static, Inputs, Decode>(
         &self,
-        callable: TransferCallable,
-        codec: TransferHostCodecScope,
+        callable: RetainedCallable,
+        codec: HostCodecScope,
         origin: HostCallOrigin,
         inputs: Inputs,
         decode: Decode,
@@ -42,13 +41,11 @@ impl<Profile: HostProfile> WorkContext<Profile> {
     + Send
     + use<Profile, Output, Inputs, Decode>
     where
-        Inputs: FnOnce(&mut dyn TransferHostCallRuntime<Profile>) -> TransferCallbackInputs
-            + Send
-            + 'static,
+        Inputs: FnOnce(&mut dyn HostCallRuntime<Profile>) -> CallbackInputs + Send + 'static,
         Decode: FnOnce(
-                &mut dyn TransferHostCallRuntime<Profile>,
+                &mut dyn HostCallRuntime<Profile>,
                 HostValueToken,
-            ) -> Result<Output, AsyncHostCallError>
+            ) -> Result<Output, HostCallError>
             + Send
             + 'static,
     {
@@ -59,18 +56,17 @@ impl<Profile: HostProfile> WorkContext<Profile> {
             let inputs = context
                 .with_runtime(move |plan, state| {
                     let mut runtime =
-                        RuntimeTransferHostCall::new_codec(plan, state, &input_codec, input_origin);
+                        RuntimeHostCall::new_codec(plan, state, &input_codec, input_origin);
                     inputs(&mut runtime)
                 })
                 .await?;
             let returned = context
                 .invoke(callable, origin.clone(), inputs)
                 .await?
-                .map_err(AsyncHostCallError::nested)?;
+                .map_err(HostCallError::nested)?;
             context
                 .with_runtime(move |plan, state| {
-                    let mut runtime =
-                        RuntimeTransferHostCall::new_codec(plan, state, &codec, origin);
+                    let mut runtime = RuntimeHostCall::new_codec(plan, state, &codec, origin);
                     let token = runtime.restore_stored(&returned);
                     decode(&mut runtime, token)
                 })

@@ -146,6 +146,16 @@ impl PlainBindings {
     pub(super) fn functions(&self) -> impl Iterator<Item = &FunctionBinding> {
         std::iter::once(&self.first).chain(self.remaining.iter())
     }
+
+    pub(super) fn has_future(&self) -> bool {
+        self.functions().any(|function| {
+            function
+                .arguments
+                .iter()
+                .chain(std::iter::once(&function.return_type))
+                .any(DataType::has_future)
+        })
+    }
 }
 
 fn unique_rust_identifier(
@@ -161,6 +171,22 @@ fn unique_rust_identifier(
 }
 
 impl DataType {
+    fn has_future(&self) -> bool {
+        match self {
+            Self::Future(_) => true,
+            Self::Tuple(items) => items.iter().any(Self::has_future),
+            Self::Result(ok, error) => ok.has_future() || error.has_future(),
+            Self::Option(item) | Self::List(item) => item.has_future(),
+            Self::Int
+            | Self::Float
+            | Self::String
+            | Self::BitArray
+            | Self::UtfCodepoint
+            | Self::Bool
+            | Self::Nil => false,
+        }
+    }
+
     fn from_type(type_: &Arc<Type>, position: &str) -> Result<Self, Vec<String>> {
         if type_.is_int() {
             Ok(Self::Int)

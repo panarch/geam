@@ -2,7 +2,7 @@ use super::super::{EvaluatedFunctionExit, evaluate_entry};
 use crate::plan::execution::function::IntFunctionId;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
-use crate::runtime::graph::ProfiledRetainedValues;
+use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::RuntimeStateFor;
 use num_bigint::BigInt;
 
@@ -11,8 +11,8 @@ pub(in crate::runtime) fn run_int<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     mut function: IntFunctionId,
     mut origin: HostCallOrigin,
-    mut inputs: ProfiledRetainedValues<Plan::Values>,
-) -> ExecutionResult<BigInt, Plan::Values> {
+    mut inputs: RetainedValues,
+) -> ExecutionResult<BigInt> {
     loop {
         let exit = evaluate_entry(plan, state, plan.int_function(function), origin, inputs)?;
         match exit {
@@ -31,21 +31,21 @@ pub(in crate::runtime) fn run_int<Plan: ExecutableRuntimePlan>(
 
 #[cfg(test)]
 mod tests {
-    use crate::frontend::compile_typed_transfer_host_program;
+    use crate::frontend::compile_typed_host_program;
     use crate::host::{
-        AsyncHostCallError, HostCallCompletion, HostProvider, TransferHostCall,
-        TransferHostProviderModule, TransferHostProviderSet,
+        HostCall, HostCallCompletion, HostCallError, HostProvider, HostProviderModule,
+        HostProviderSet,
     };
-    use crate::plan::execution::TransferHostedExecution;
+    use crate::plan::execution::HostedProgram;
     use crate::plan::execution::function::IntFunctionId;
     use crate::plan::execution::graph::FunctionTarget;
     use crate::plan::execution::graph::{IntLocalId, ParamLocal};
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::plan::{LibraryEntry, LibraryValueType};
     use crate::{
-        EchoOutput, EchoSink, HostFailure, HostModule, HostProviderSet, HostedExecution,
-        ModuleSource, PackageSource, StatelessHostProfile, Value, compile_typed_host_program,
-        compile_typed_module, plan_host_program, plan_module, run_main,
+        EchoOutput, EchoSink, HostFailure, HostModule, HostedExecution, ModuleSource,
+        PackageSource, StatelessHostProfile, Value, compile_typed_module, plan_host_program,
+        plan_module, run_main,
     };
     use num_bigint::BigInt;
     use std::convert::Infallible;
@@ -71,23 +71,23 @@ mod tests {
     }
 
     fn transfer_add<'call>(
-        mut call: TransferHostCall<'call, StatelessHostProfile, TransferProvider, BigInt>,
+        mut call: HostCall<'call, StatelessHostProfile, TransferProvider, BigInt>,
         left: BigInt,
         right: BigInt,
-    ) -> Result<HostCallCompletion<'call, BigInt>, AsyncHostCallError> {
+    ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
         let () = *call.state();
         Ok(call.return_value(left + right))
     }
 
     fn transfer_stop(
-        _call: TransferHostCall<'_, StatelessHostProfile, TransferProvider, BigInt>,
+        _call: HostCall<'_, StatelessHostProfile, TransferProvider, BigInt>,
         _value: BigInt,
-    ) -> Result<Infallible, AsyncHostCallError> {
+    ) -> Result<Infallible, HostCallError> {
         Err(HostFailure::new("stopped").into())
     }
 
-    fn transfer_program() -> crate::frontend::TransferHostedTypedProgram<StatelessHostProfile> {
-        let host = TransferHostProviderModule::new("application", "library")
+    fn transfer_program() -> crate::frontend::HostedTypedProgram<StatelessHostProfile> {
+        let host = HostProviderModule::new("application", "library")
             .expect("transfer host module")
             .with_scoped_function::<TransferProvider, (BigInt, BigInt), BigInt, _>(
                 "add",
@@ -99,8 +99,8 @@ mod tests {
                 transfer_stop,
             )
             .expect("transfer diverging function");
-        let providers = TransferHostProviderSet::new([host]).expect("transfer providers");
-        compile_typed_transfer_host_program(
+        let providers = HostProviderSet::from_providers([host]).expect("transfer providers");
+        compile_typed_host_program(
             "application",
             "library",
             [PackageSource::new(
@@ -187,12 +187,14 @@ pub fn main() {
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         assert_eq!(
             execution
+                .execution()
                 .function_parameters()
                 .function(&FunctionTarget::Int(IntFunctionId(2))),
             [ParamLocal::Int(IntLocalId(0))],
         );
         assert_eq!(
             execution
+                .execution()
                 .function_parameters()
                 .function(&FunctionTarget::Int(IntFunctionId(1))),
             [
@@ -209,8 +211,8 @@ pub fn main() {
     #[test]
     fn transfer_int_function_protocol_exposes_graph_and_host_parameters() {
         let program = transfer_program();
-        let plan = crate::planner::plan_transfer_host_library_program(program)
-            .expect("transfer library plan");
+        let plan =
+            crate::planner::plan_host_library_program(program).expect("transfer library plan");
         let (sum, halt) = {
             let entry = |name: &str| {
                 let template = plan
@@ -225,8 +227,7 @@ pub fn main() {
             (entry("sum"), entry("halt"))
         };
         let (execution, entries) =
-            TransferHostedExecution::from_library_plan(plan, sum, vec![halt])
-                .expect("transfer execution");
+            HostedProgram::from_library_plan(plan, sum, vec![halt]).expect("transfer execution");
 
         let parameter_counts = (0..4)
             .map(|index| {
@@ -247,7 +248,7 @@ pub fn main() {
             &mut echo,
         );
         driver.call(|plan, runtime| {
-            let mut values = crate::runtime::graph::ProfiledRetainedValues::empty();
+            let mut values = crate::runtime::graph::RetainedValues::empty();
             values.push_evaluated(crate::runtime::EvaluatedValue::Int(20.into()));
             values.push_evaluated(crate::runtime::EvaluatedValue::Int(22.into()));
             assert_eq!(
@@ -260,7 +261,7 @@ pub fn main() {
                 ),
                 Ok(42.into())
             );
-            let mut values = crate::runtime::graph::ProfiledRetainedValues::empty();
+            let mut values = crate::runtime::graph::RetainedValues::empty();
             values.push_evaluated(crate::runtime::EvaluatedValue::Int(0.into()));
             let error = super::run_int(
                 plan,

@@ -2,10 +2,9 @@
 #[path = "work_representation.rs"]
 mod representation;
 use geam_core::host::{
-    HostCallCompletion, HostCallable, HostConstructions, HostExternal, HostFunctionType, HostList,
-    HostListType, HostRegistrationError, HostTypeList, HostTypeListEnd, HostTypeParameter,
-    HostWorkProfile, TransferHostCall, TransferHostProviderComponentRegistration,
-    TransferHostProviderModule,
+    HostCall, HostCallCompletion, HostCallable, HostConstructions, HostExternal, HostFunctionType,
+    HostList, HostListType, HostProviderComponentRegistration, HostProviderModule,
+    HostRegistrationError, HostTypeList, HostTypeListEnd, HostTypeParameter, HostWorkProfile,
 };
 pub use representation::{WorkComponent, WorkSchema};
 pub type WorkHostType<Value> = geam_core::host::HostFutureType<Value, WorkSchema>;
@@ -13,23 +12,22 @@ pub type WorkType<Value> = geam_core::embedding::FutureType<Value, WorkSchema>;
 
 impl WorkComponent {
     pub const SOURCE: &'static str = include_str!("work_fixture.gleam");
-    pub fn providers<Profile>()
-    -> Result<Vec<TransferHostProviderModule<Profile>>, HostRegistrationError>
+    pub fn providers<Profile>() -> Result<Vec<HostProviderModule<Profile>>, HostRegistrationError>
     where
         Profile: HostWorkProfile<Work = WorkComponent>,
     {
-        <Self as TransferHostProviderComponentRegistration<Profile>>::providers()
+        <Self as HostProviderComponentRegistration<Profile>>::providers()
     }
 }
 
-impl<Profile> TransferHostProviderComponentRegistration<Profile> for WorkComponent
+impl<Profile> HostProviderComponentRegistration<Profile> for WorkComponent
 where
     Profile: HostWorkProfile<Work = WorkComponent>,
 {
-    fn providers() -> Result<Vec<TransferHostProviderModule<Profile>>, HostRegistrationError> {
+    fn providers() -> Result<Vec<HostProviderModule<Profile>>, HostRegistrationError> {
         type A = HostTypeParameter<1>;
         type B = HostTypeParameter<0>;
-        TransferHostProviderModule::new_for_profile("work_fixture", "fixture/work")
+        HostProviderModule::new("work_fixture", "fixture/work")
             .and_then(|module| module.with_external_type::<Self, WorkSchema>())
             .and_then(|module| module.with_scoped_function::<Self, (B,), WorkHostType<B>, _>("ready", ready::<Profile>))
             .and_then(|module| module.with_scoped_function::<Self, (WorkHostType<A>, HostFunctionType<HostTypeList<A, HostTypeListEnd>, B>), WorkHostType<B>, _>("map", map::<Profile>))
@@ -40,12 +38,9 @@ where
 }
 
 fn ready<'call, Profile>(
-    call: TransferHostCall<'call, Profile, WorkComponent, WorkHostType<HostTypeParameter<0>>>,
+    call: HostCall<'call, Profile, WorkComponent, WorkHostType<HostTypeParameter<0>>>,
     value: <HostTypeParameter<0> as geam_core::HostType>::Value<'call>,
-) -> Result<
-    HostCallCompletion<'call, WorkHostType<HostTypeParameter<0>>>,
-    geam_core::AsyncHostCallError,
->
+) -> Result<HostCallCompletion<'call, WorkHostType<HostTypeParameter<0>>>, geam_core::HostCallError>
 where
     Profile: HostWorkProfile<Work = WorkComponent>,
 {
@@ -53,17 +48,14 @@ where
 }
 
 fn map<'call, Profile>(
-    call: TransferHostCall<'call, Profile, WorkComponent, WorkHostType<HostTypeParameter<0>>>,
+    call: HostCall<'call, Profile, WorkComponent, WorkHostType<HostTypeParameter<0>>>,
     input: HostExternal<'call, WorkHostType<HostTypeParameter<1>>>,
     callback: HostCallable<
         'call,
         HostTypeList<HostTypeParameter<1>, HostTypeListEnd>,
         HostTypeParameter<0>,
     >,
-) -> Result<
-    HostCallCompletion<'call, WorkHostType<HostTypeParameter<0>>>,
-    geam_core::AsyncHostCallError,
->
+) -> Result<HostCallCompletion<'call, WorkHostType<HostTypeParameter<0>>>, geam_core::HostCallError>
 where
     Profile: HostWorkProfile<Work = WorkComponent>,
 {
@@ -71,12 +63,9 @@ where
 }
 
 fn flatten<'call, Profile>(
-    call: TransferHostCall<'call, Profile, WorkComponent, WorkHostType<HostTypeParameter<0>>>,
+    call: HostCall<'call, Profile, WorkComponent, WorkHostType<HostTypeParameter<0>>>,
     input: HostExternal<'call, WorkHostType<WorkHostType<HostTypeParameter<0>>>>,
-) -> Result<
-    HostCallCompletion<'call, WorkHostType<HostTypeParameter<0>>>,
-    geam_core::AsyncHostCallError,
->
+) -> Result<HostCallCompletion<'call, WorkHostType<HostTypeParameter<0>>>, geam_core::HostCallError>
 where
     Profile: HostWorkProfile<Work = WorkComponent>,
 {
@@ -84,12 +73,7 @@ where
 }
 
 fn all<'call, Profile>(
-    call: TransferHostCall<
-        'call,
-        Profile,
-        WorkComponent,
-        WorkHostType<HostListType<HostTypeParameter<0>>>,
-    >,
+    call: HostCall<'call, Profile, WorkComponent, WorkHostType<HostListType<HostTypeParameter<0>>>>,
     _constructions: HostConstructions<
         'call,
         HostTypeList<HostListType<HostTypeParameter<0>>, HostTypeListEnd>,
@@ -97,7 +81,7 @@ fn all<'call, Profile>(
     values: HostList<'call, WorkHostType<HostTypeParameter<0>>>,
 ) -> Result<
     HostCallCompletion<'call, WorkHostType<HostListType<HostTypeParameter<0>>>>,
-    geam_core::AsyncHostCallError,
+    geam_core::HostCallError,
 >
 where
     Profile: HostWorkProfile<Work = WorkComponent>,

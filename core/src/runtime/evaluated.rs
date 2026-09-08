@@ -27,7 +27,6 @@ use super::state::list::{ListValueId, ParameterListValueId, StoredListValueId};
 use crate::plan::ValueType;
 use crate::plan::execution::runtime::RuntimeValueMetadata;
 use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId};
-use crate::runtime::{LocalValues, RuntimeValueProfile};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::runtime) struct EvaluatedBitArray {
@@ -35,9 +34,9 @@ pub(in crate::runtime) struct EvaluatedBitArray {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::runtime) struct EvaluatedCustomValue<Profile: RuntimeValueProfile = LocalValues> {
+pub(in crate::runtime) struct EvaluatedCustomValue {
     constructor: CustomConstructorId,
-    fields: Box<[EvaluatedValue<Profile>]>,
+    fields: Box<[EvaluatedValue]>,
 }
 
 impl EvaluatedBitArray {
@@ -68,10 +67,10 @@ impl EvaluatedBitArray {
     }
 }
 
-impl<Profile: RuntimeValueProfile> EvaluatedCustomValue<Profile> {
+impl EvaluatedCustomValue {
     pub(in crate::runtime) fn from_fields(
         constructor: CustomConstructorId,
-        fields: Box<[EvaluatedValue<Profile>]>,
+        fields: Box<[EvaluatedValue]>,
     ) -> Self {
         Self {
             constructor,
@@ -87,40 +86,38 @@ impl<Profile: RuntimeValueProfile> EvaluatedCustomValue<Profile> {
         self.constructor
     }
 
-    pub(in crate::runtime) fn fields(&self) -> &[EvaluatedValue<Profile>] {
+    pub(in crate::runtime) fn fields(&self) -> &[EvaluatedValue] {
         &self.fields
     }
 
-    pub(in crate::runtime) fn take_fields(&mut self) -> Box<[EvaluatedValue<Profile>]> {
+    pub(in crate::runtime) fn take_fields(&mut self) -> Box<[EvaluatedValue]> {
         std::mem::take(&mut self.fields)
     }
 
-    pub(in crate::runtime) fn into_fields(
-        self,
-    ) -> (CustomConstructorId, Box<[EvaluatedValue<Profile>]>) {
+    pub(in crate::runtime) fn into_fields(self) -> (CustomConstructorId, Box<[EvaluatedValue]>) {
         (self.constructor, self.fields)
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::runtime) enum EvaluatedValue<Profile: RuntimeValueProfile = LocalValues> {
+pub(in crate::runtime) enum EvaluatedValue {
     Int(BigInt),
     Float(f64),
     String(EcoString),
     BitArray(EvaluatedBitArray),
     UtfCodepoint(char),
-    Custom(EvaluatedCustomValue<Profile>),
-    External(EvaluatedExternalValue<Profile>),
+    Custom(EvaluatedCustomValue),
+    External(EvaluatedExternalValue),
     Bool(bool),
     Nil,
-    Tuple(Vec<EvaluatedValue<Profile>>),
-    ParameterList(ParameterListValueId<Profile>),
-    List(StoredListValueId<Profile>),
-    Function(EvaluatedFunctionValue<Profile>),
+    Tuple(Vec<EvaluatedValue>),
+    ParameterList(ParameterListValueId),
+    List(StoredListValueId),
+    Function(EvaluatedFunctionValue),
 }
 
-impl<Profile: RuntimeValueProfile> From<ListValueId<Profile>> for EvaluatedValue<Profile> {
-    fn from(value: ListValueId<Profile>) -> Self {
+impl From<ListValueId> for EvaluatedValue {
+    fn from(value: ListValueId) -> Self {
         match value {
             ListValueId::Parameter(value) => Self::ParameterList(value),
             ListValueId::Int(value) => Self::List(StoredListValueId::Int(value)),
@@ -142,13 +139,13 @@ impl<Profile: RuntimeValueProfile> From<ListValueId<Profile>> for EvaluatedValue
     }
 }
 
-impl<Profile: RuntimeValueProfile> From<StoredListValueId<Profile>> for EvaluatedValue<Profile> {
-    fn from(value: StoredListValueId<Profile>) -> Self {
+impl From<StoredListValueId> for EvaluatedValue {
+    fn from(value: StoredListValueId) -> Self {
         Self::List(value)
     }
 }
 
-impl<Profile: RuntimeValueProfile> EvaluatedValue<Profile> {
+impl EvaluatedValue {
     pub(in crate::runtime) fn value_type(&self, metadata: RuntimeValueMetadata<'_>) -> ValueType {
         match self {
             Self::Int(_) => ValueType::Int,

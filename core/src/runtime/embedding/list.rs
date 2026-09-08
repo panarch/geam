@@ -2,18 +2,17 @@ use super::input::EmbeddingListInput;
 use super::output::EmbeddingOutput;
 use crate::runtime::retained_list::RetainedList;
 use crate::runtime::state::list::StoredListValueId;
-use crate::runtime::{LocalValues, RuntimeValueProfile};
 
-pub(crate) struct EmbeddingList<Profile: RuntimeValueProfile = LocalValues> {
-    retained: RetainedList<StoredListValueId<Profile>, Profile>,
+pub(crate) struct EmbeddingList {
+    retained: RetainedList<StoredListValueId>,
 }
 
-impl<Profile: RuntimeValueProfile> EmbeddingList<Profile> {
-    pub(crate) fn from_borrowed(value: crate::runtime::BorrowedValue<'_, Profile>) -> Self {
+impl EmbeddingList {
+    pub(crate) fn from_borrowed(value: crate::runtime::BorrowedValue<'_>) -> Self {
         Self::new(value.stored_list().clone())
     }
 
-    pub(super) fn new(value: StoredListValueId<Profile>) -> Self {
+    pub(super) fn new(value: StoredListValueId) -> Self {
         Self {
             retained: RetainedList::new(value),
         }
@@ -23,11 +22,19 @@ impl<Profile: RuntimeValueProfile> EmbeddingList<Profile> {
         self.retained.len()
     }
 
-    pub(crate) fn item(&self, index: usize) -> Option<EmbeddingOutput<Profile>> {
+    pub(crate) fn item(&self, index: usize) -> Option<EmbeddingOutput> {
         self.retained.item(index).map(EmbeddingOutput::from_value)
     }
 
-    pub(crate) fn input(&self) -> EmbeddingListInput<Profile> {
+    pub(crate) fn read_item<Output>(
+        &self,
+        index: usize,
+        read: impl FnOnce(crate::runtime::BorrowedValue<'_>) -> Output,
+    ) -> Option<Output> {
+        crate::runtime::BorrowedValue::read_list_item(self.retained.handle(), index, read)
+    }
+
+    pub(crate) fn input(&self) -> EmbeddingListInput {
         EmbeddingListInput(self.retained.handle().clone())
     }
 
@@ -42,16 +49,6 @@ impl<Profile: RuntimeValueProfile> EmbeddingList<Profile> {
     }
 }
 
-impl EmbeddingList<crate::runtime::TransferValues> {
-    pub(crate) fn read_item<Output>(
-        &self,
-        index: usize,
-        read: impl FnOnce(crate::runtime::BorrowedValue<'_, crate::runtime::TransferValues>) -> Output,
-    ) -> Option<Output> {
-        crate::runtime::BorrowedValue::read_list_item(self.retained.handle(), index, read)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::EmbeddingList;
@@ -60,7 +57,7 @@ mod tests {
     #[test]
     fn retained_input_preserves_the_exact_allocation_without_reading_items() {
         let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [1, 2] }");
-        let mut storage = RuntimeListStorage::default();
+        let storage = RuntimeListStorage::default();
         let allocation: StoredListValueId = storage
             .int(
                 plan.int_list_function_id(0).type_id(),

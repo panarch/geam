@@ -11,7 +11,7 @@ use geam_core::{
 };
 use im::Vector;
 use num_bigint::BigInt;
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub trait RetainedHostProfile: HostProfile + HostComponentProfile<Component> {}
 
@@ -55,7 +55,7 @@ where
 )]
 mod retained_queue {
     use super::{
-        BigInt, Call, EcoString, Equality, Hashing, Index0, Inspection, Rc, Retained,
+        Arc, BigInt, Call, EcoString, Equality, Hashing, Index0, Inspection, Retained,
         RetainedExternalPayload, Value, Vector,
     };
 
@@ -65,7 +65,7 @@ mod retained_queue {
     }
 
     pub struct QueuePayload {
-        entries: Vector<Rc<Entry>>,
+        entries: Vector<Arc<Entry>>,
     }
 
     impl RetainedExternalPayload for QueuePayload {
@@ -126,7 +126,7 @@ mod retained_queue {
         value: Value<Item>,
     ) -> PriorityQueue<Item> {
         let mut entries = queue.payload().entries.clone();
-        entries.push_back(Rc::new(Entry {
+        entries.push_back(Arc::new(Entry {
             priority,
             value: call.store(value).into_retained(),
         }));

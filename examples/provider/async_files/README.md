@@ -25,10 +25,39 @@ The [Rust provider crate](provider) uses the same provider and module attributes
 as synchronous providers. Its async return becomes `Future(Result(...))`, not
 an implicitly awaited `Result`.
 
-The [async embedding example](../../embedding/async_host) supplies the Rust
-executor, combines the returned work in Gleam and observes its shared completion.
-Run that example for the complete source-to-Rust workflow.
+The application combines the work with an ordinary Gleam callback:
 
-`async-fs` owns the filesystem operation. Geam does not create an executor or
-choose the application's async runtime. Failed reads become ordinary Gleam
-`Error(String)` values.
+```gleam
+pub fn main() -> Future(Nil) {
+  use result <- future.map(example_async_files.read("message.txt"))
+  case result {
+    Ok(text) -> io.print(text)
+    Error(reason) -> io.println(reason)
+  }
+}
+```
+
+## Run the example
+
+From the repository root:
+
+```sh
+cd examples/provider/async_files/project
+geam provider add --path ../provider
+geam prepare
+geam run
+```
+
+The program prints `Read by a Rust async function.` from `message.txt`.
+When `main` returns a Future, the standalone runner drives that work to
+completion using its Tokio runtime. Work nested inside an ordinary return
+value is not started automatically.
+
+`async-fs` owns the filesystem operation. Failed reads become ordinary Gleam
+`Error(String)` values, handled by the callback above.
+
+The [async embedding example](../../embedding/async_host) uses the same provider
+from Rust. In embedding, the Rust application supplies its own executor and
+observes completion explicitly.
+
+Next: [Publish a package pair](../text_pattern/README.md).

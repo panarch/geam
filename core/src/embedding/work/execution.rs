@@ -1,34 +1,12 @@
 use super::return_::ScopedReturn;
 use super::{Completed, ExecutionGuard, Future, ScopeBrand, ScopedOutput, SharedValue};
-use crate::embedding::binding::{BindingBuilder, BindingParts, Bindings};
-use crate::embedding::input::{AsyncArgumentsInput, InputShape};
-use crate::embedding::{Arguments, AsyncCallError, BindingError, Function, FunctionDeclaration};
+use crate::embedding::input::{InputShape, ScopedArgumentsInput};
+use crate::embedding::{CallError, Function, HostedModule};
 use crate::host::{HostFutureStore, HostProfile, HostWorkProfile, HostWorkSchema};
-use crate::plan::TransferHostedLibraryModulePlan;
-use crate::plan::execution::{
-    HostSpecializationError, LibraryFunctionEntries, TransferHostedExecution,
-};
-pub use crate::runtime::SharedExecutionError;
+use crate::plan::execution::LibraryFunctionEntries;
 use crate::runtime::work::driver::Driver;
+pub use crate::runtime::{ObservationError, SharedExecutionError};
 use std::sync::Arc;
-
-/// Plans ordinary and work-valued functions for one Rust host.
-pub struct WorkModuleBuilder<Profile: HostProfile> {
-    inner: BindingBuilder<TransferHostedLibraryModulePlan<Profile>>,
-}
-
-/// Selects statically typed entries before sealing their shared execution.
-pub struct WorkModuleBindings<Profile: HostProfile> {
-    inner: Bindings<TransferHostedLibraryModulePlan<Profile>>,
-}
-
-/// One loaded execution and its persistent provider stores, shared across scopes.
-pub struct WorkModule<Profile: HostProfile> {
-    execution: TransferHostedExecution<Profile>,
-    stores: Profile::ExternalStores,
-    entries: LibraryFunctionEntries,
-    owner: Arc<()>,
-}
 
 /// An attachment to the application's original state, capabilities, and Echo.
 pub struct ExecutionScope<'scope, 'host, Profile: HostProfile> {
@@ -39,97 +17,7 @@ pub struct ExecutionScope<'scope, 'host, Profile: HostProfile> {
     brand: ScopeBrand<'scope>,
 }
 
-/// Work termination is separate from a source `Result` value.
-#[derive(Clone)]
-pub enum ObservationError {
-    /// The operation was cancelled before completing.
-    Cancelled,
-    /// A source panic or native failure at its original site.
-    Execution(SharedExecutionError),
-}
-
-impl<Profile: HostProfile> WorkModuleBuilder<Profile> {
-    /// Plans all supplied source and registered host bodies.
-    ///
-    /// Transferable execution requires Send state, but not Sync:
-    ///
-    /// ```compile_fail
-    /// use geam_core::{HostProfile, frontend::TransferHostedTypedProgram};
-    /// use geam_core::embedding::WorkModuleBuilder;
-    /// struct Local;
-    /// impl HostProfile for Local {
-    ///     type RunState = std::rc::Rc<()>;
-    ///     type ExternalStores = ();
-    /// }
-    /// fn build(program: TransferHostedTypedProgram<Local>) {
-    ///     let _ = WorkModuleBuilder::new(program);
-    /// }
-    /// ```
-    pub fn new(
-        program: crate::frontend::TransferHostedTypedProgram<Profile>,
-    ) -> Result<Self, crate::PlanError>
-    where
-        Profile::RunState: Send,
-        Profile::ExternalStores: Send,
-    {
-        let public = program.root_public_functions().cloned().collect();
-        crate::planner::plan_transfer_host_library_program(program).map(|plan| Self {
-            inner: BindingBuilder::new(plan, public),
-        })
-    }
-
-    /// Validates the first function's source signature.
-    #[allow(private_bounds)]
-    pub fn function<Args, Return>(
-        self,
-        declaration: FunctionDeclaration<Args, Return>,
-    ) -> Result<(WorkModuleBindings<Profile>, Function<Args, Return>), BindingError>
-    where
-        Profile: HostWorkProfile,
-        Args: Arguments + ScopedOutput<HostWorkSchema<Profile>>,
-        Return: ScopedReturn<HostWorkSchema<Profile>>,
-    {
-        self.inner
-            .function(declaration, Return::library_type())
-            .map(|(inner, function)| (WorkModuleBindings { inner }, function))
-    }
-}
-
-impl<Profile: HostProfile> WorkModuleBindings<Profile> {
-    /// Validates another entry without changing earlier call signatures.
-    #[allow(private_bounds)]
-    pub fn function<Args, Return>(
-        &mut self,
-        declaration: FunctionDeclaration<Args, Return>,
-    ) -> Result<Function<Args, Return>, BindingError>
-    where
-        Profile: HostWorkProfile,
-        Args: Arguments + ScopedOutput<HostWorkSchema<Profile>>,
-        Return: ScopedReturn<HostWorkSchema<Profile>>,
-    {
-        self.inner.function(declaration, Return::library_type())
-    }
-
-    /// Seals all selected entries into the same direct execution.
-    pub fn seal(self) -> Result<WorkModule<Profile>, HostSpecializationError> {
-        let BindingParts {
-            plan,
-            first,
-            remaining,
-            owner,
-        } = self.inner.into_parts();
-        let (execution, entries) =
-            TransferHostedExecution::from_library_plan(plan, first, remaining)?;
-        Ok(WorkModule {
-            execution,
-            entries,
-            owner,
-            stores: Profile::ExternalStores::default(),
-        })
-    }
-}
-
-impl<Profile: HostWorkProfile> WorkModule<Profile> {
+impl<Profile: HostWorkProfile> HostedModule<Profile> {
     /// Attaches one fresh execution lifetime to explicit caller-owned resources.
     pub fn attach<'scope, 'host>(
         &'host mut self,
@@ -141,9 +29,10 @@ impl<Profile: HostWorkProfile> WorkModule<Profile> {
         Profile::RunState: Send,
         Profile::ExternalStores: Send,
     {
-        let store = crate::host::work_store::<Profile>(&self.stores).clone_handle();
+        let (execution, stores) = self.execution.parts_mut();
+        let store = crate::host::work_store::<Profile>(stores).clone_handle();
         ExecutionScope {
-            driver: Driver::new(&self.execution, state, &mut self.stores, echo),
+            driver: Driver::new(execution, state, stores, echo),
             entries: &self.entries,
             owner: &self.owner,
             store,
@@ -159,18 +48,18 @@ impl<'scope, Profile: HostWorkProfile> ExecutionScope<'scope, '_, Profile> {
         &mut self,
         function: &Function<Args, Return, Shape>,
         arguments: Input,
-    ) -> Result<Return::Value<'scope>, AsyncCallError>
+    ) -> Result<Return::Value<'scope>, CallError>
     where
         Args:
-            AsyncArgumentsInput<Input, ScopeBrand<'scope>> + ScopedOutput<HostWorkSchema<Profile>>,
+            ScopedArgumentsInput<Input, ScopeBrand<'scope>> + ScopedOutput<HostWorkSchema<Profile>>,
         Return: ScopedReturn<HostWorkSchema<Profile>>,
         Shape: InputShape<Input>,
     {
         if !Arc::ptr_eq(&function.owner, self.owner) {
-            return Err(AsyncCallError::ForeignFunction);
+            return Err(CallError::ForeignFunction);
         }
         if !Args::owners_match(&arguments, self.owner) {
-            return Err(AsyncCallError::ForeignValue);
+            return Err(CallError::ForeignValue);
         }
         let constructions = Return::input_constructions(self.entries, function.slot);
         let inputs = Args::into_inputs(arguments, constructions);
@@ -183,7 +72,7 @@ impl<'scope, Profile: HostWorkProfile> ExecutionScope<'scope, '_, Profile> {
             &self.store,
             self.owner,
         )
-        .map_err(AsyncCallError::Execution)
+        .map_err(CallError::Execution)
     }
 
     /// Drives one observation using the executor polling this Rust Future.
@@ -205,41 +94,12 @@ impl<'scope, Profile: HostWorkProfile> ExecutionScope<'scope, '_, Profile> {
     }
 }
 
-impl std::fmt::Debug for ObservationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Cancelled => f.write_str("Cancelled"),
-            Self::Execution(error) => f.debug_tuple("Execution").field(error).finish(),
-        }
-    }
-}
-
-impl std::fmt::Display for ObservationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Cancelled => f.write_str("the Future operation was cancelled"),
-            Self::Execution(error) => std::fmt::Display::fmt(error, f),
-        }
-    }
-}
-
-impl std::error::Error for ObservationError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Cancelled => None,
-            Self::Execution(error) => Some(error),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{ObservationError, WorkModuleBuilder};
-    use crate::embedding::{AsyncCallError, FunctionDeclaration, List, with_execution_scope};
-    use crate::frontend::{TransferHostedTypedProgram, compile_typed_transfer_host_program};
-    use crate::host::{
-        AsyncHostComponentProfile, HostFutureStore, HostProfile, TransferHostProviderSet,
-    };
+    use crate::embedding::HostedModuleBuilder;
+    use crate::embedding::{CallError, FunctionDeclaration, List, with_execution_scope};
+    use crate::frontend::{HostedTypedProgram, compile_typed_host_program};
+    use crate::host::{HostComponentProfile, HostFutureStore, HostProfile, HostProviderSet};
     use crate::work_fixture::WorkComponent;
     use crate::{EchoOutput, EchoSink, ModuleSource, PackageSource, PlanError};
     use ecow::EcoString;
@@ -254,8 +114,8 @@ mod tests {
     impl crate::host::HostWorkProfile for Profile {
         type Work = crate::work_fixture::WorkComponent;
     }
-    impl AsyncHostComponentProfile<WorkComponent> for Profile {
-        fn component_async_stores(stores: &HostFutureStore) -> &HostFutureStore {
+    impl HostComponentProfile<WorkComponent> for Profile {
+        fn component_stores(stores: &HostFutureStore) -> &HostFutureStore {
             stores
         }
         fn component_state(state: &mut ()) -> &mut () {
@@ -270,8 +130,8 @@ mod tests {
         }
     }
 
-    fn program(source: &str) -> TransferHostedTypedProgram<Profile> {
-        compile_typed_transfer_host_program(
+    fn program(source: &str) -> HostedTypedProgram<Profile> {
+        compile_typed_host_program(
             "application",
             "library",
             [PackageSource::new(
@@ -279,14 +139,14 @@ mod tests {
                 Vec::<String>::new(),
                 [ModuleSource::new("library", "src/library.gleam", source)],
             )],
-            TransferHostProviderSet::new([]).expect("empty providers"),
+            HostProviderSet::from_providers([]).expect("empty providers"),
         )
         .expect("source typing")
     }
 
     #[test]
     fn preserves_library_planning_failures_in_unused_source() {
-        let error = WorkModuleBuilder::new(program(
+        let error = HostedModuleBuilder::new(program(
             "pub fn run() { 42 } pub fn unsupported() { <<1:native>> }",
         ))
         .err()
@@ -308,11 +168,11 @@ pub fn keep(values: List(String)) {
 }
 "#;
         type Strings = List<EcoString>;
-        let (left, keep) = WorkModuleBuilder::new(program(source))
+        let (left, keep) = HostedModuleBuilder::new(program(source))
             .expect("left plan")
             .function(FunctionDeclaration::<(Strings,), Strings>::new("keep"))
             .expect("left binding");
-        let (right, foreign) = WorkModuleBuilder::new(program(source))
+        let (right, foreign) = HostedModuleBuilder::new(program(source))
             .expect("right plan")
             .function(FunctionDeclaration::<(Strings,), Strings>::new("keep"))
             .expect("right binding");
@@ -330,7 +190,7 @@ pub fn keep(values: List(String)) {
                 scope
                     .call(&foreign, (vec![EcoString::from("unused")],))
                     .err(),
-                Some(AsyncCallError::ForeignFunction)
+                Some(CallError::ForeignFunction)
             );
             scope
                 .call(&keep, (vec![EcoString::from("first"), "second".into()],))
@@ -344,7 +204,7 @@ pub fn keep(values: List(String)) {
             let mut scope = right.attach(guard, &mut state, &mut right_echo);
             assert_eq!(
                 scope.call(&foreign, (&values,)).err(),
-                Some(AsyncCallError::ForeignValue)
+                Some(CallError::ForeignValue)
             );
         })
         .now_or_never()
@@ -354,7 +214,7 @@ pub fn keep(values: List(String)) {
             let mut scope = left.attach(guard, &mut state, &mut left_echo);
             assert_eq!(
                 scope.call(&foreign, (&values,)).err(),
-                Some(AsyncCallError::ForeignFunction)
+                Some(CallError::ForeignFunction)
             );
             scope.call(&keep, (&values,)).expect("same loaded owner")
         })
@@ -388,7 +248,7 @@ pub fn identity(
 ) { #(scalars, choice, rows) }
 pub fn empty() -> List(Int) { [] }
 "#;
-        let (mut bindings, identity) = WorkModuleBuilder::new(program(source))
+        let (mut bindings, identity) = HostedModuleBuilder::new(program(source))
             .expect("plan")
             .function(FunctionDeclaration::<Data, Data>::new("identity"))
             .expect("recursive data binding");
@@ -451,7 +311,7 @@ pub fn nil(value: Nil) { value }
 pub fn lists(value: List(List(Nil))) { value }
 pub fn results(value: List(Result(Int, String))) { value }
 "#;
-        let (mut bindings, integer) = WorkModuleBuilder::new(program(source))
+        let (mut bindings, integer) = HostedModuleBuilder::new(program(source))
             .expect("plan")
             .function(FunctionDeclaration::<(BigInt,), BigInt>::new("integer"))
             .expect("integer binding");
@@ -524,44 +384,5 @@ pub fn results(value: List(Result(Int, String))) { value }
         .now_or_never()
         .expect("no Future allocation or suspension for direct entries");
         assert!(echo.0.is_empty());
-    }
-
-    #[test]
-    fn cancelled_observation_has_its_own_lifecycle_message_without_an_error_source() {
-        use std::error::Error;
-        let cancelled = ObservationError::Cancelled;
-        assert_eq!(format!("{cancelled:?}"), "Cancelled");
-        assert_eq!(cancelled.to_string(), "the Future operation was cancelled");
-        assert!(cancelled.source().is_none());
-    }
-
-    #[test]
-    fn failed_observation_keeps_the_shared_execution_diagnostic_as_its_source() {
-        use crate::runtime::SharedExecutionError;
-        use crate::runtime::shared::Shared;
-        use crate::{AsyncExecutionError, InvariantError, ValueType};
-        use std::error::Error;
-        let error = ObservationError::Execution(SharedExecutionError(Shared::new(
-            AsyncExecutionError::Invariant(InvariantError::ListIndexOutOfBounds {
-                item_type: ValueType::Int,
-                index: 1,
-                length: 0,
-            }),
-        )));
-        assert_eq!(
-            error.to_string(),
-            "list index out of bounds for Int list (index 1, length 0)"
-        );
-        assert_eq!(
-            format!("{error:?}"),
-            "Execution(Invariant(ListIndexOutOfBounds { item_type: Int, index: 1, length: 0 }))"
-        );
-        assert_eq!(
-            error
-                .source()
-                .expect("shared execution failure")
-                .to_string(),
-            "list index out of bounds for Int list (index 1, length 0)"
-        );
     }
 }

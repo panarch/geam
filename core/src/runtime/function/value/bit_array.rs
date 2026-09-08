@@ -3,7 +3,7 @@ use crate::plan::execution::function::BitArrayFunctionId;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::evaluated::EvaluatedBitArray;
-use crate::runtime::graph::ProfiledRetainedValues;
+use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::RuntimeStateFor;
 
 pub(in crate::runtime) fn run_bit_array<Plan: ExecutableRuntimePlan>(
@@ -11,8 +11,8 @@ pub(in crate::runtime) fn run_bit_array<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     mut function: BitArrayFunctionId,
     mut origin: HostCallOrigin,
-    mut inputs: ProfiledRetainedValues<Plan::Values>,
-) -> ExecutionResult<EvaluatedBitArray, Plan::Values> {
+    mut inputs: RetainedValues,
+) -> ExecutionResult<EvaluatedBitArray> {
     loop {
         let exit = evaluate_entry(
             plan,
@@ -108,12 +108,14 @@ pub fn main() {
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         assert_eq!(
             execution
+                .execution()
                 .function_parameters()
                 .function(&FunctionTarget::BitArray(BitArrayFunctionId(2))),
             [ParamLocal::BitArray(BitArrayLocalId(0))],
         );
         assert_eq!(
             execution
+                .execution()
                 .function_parameters()
                 .function(&FunctionTarget::BitArray(BitArrayFunctionId(1))),
             [ParamLocal::BitArray(BitArrayLocalId(0))],

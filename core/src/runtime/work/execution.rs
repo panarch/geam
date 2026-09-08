@@ -1,17 +1,20 @@
 use super::request::{Reply, Requests, Sender};
 use super::{Cancelled, Shared, Work, WorkFactory, WorkScope};
 use crate::host::HostProfile;
-use crate::plan::execution::TransferHostedExecution;
+use crate::plan::execution::HostedProgram;
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::state::RuntimeStateFor;
-use crate::runtime::{
-    StoredRuntimeValue, TransferCallable, TransferCallbackInputs, TransferValues,
-};
+use crate::runtime::{CallbackInputs, RetainedCallable, StoredRuntimeValue};
 use std::future::Future;
+use std::sync::OnceLock;
 use std::task::Context;
 
 pub(in crate::runtime) struct ExecutionWork<Profile: HostProfile> {
+    initialized: OnceLock<ExecutionWorkState<Profile>>,
+}
+
+struct ExecutionWorkState<Profile: HostProfile> {
     work: WorkScope<Completion>,
     requests: Requests<Request<Profile>>,
 }
@@ -21,19 +24,17 @@ pub(crate) struct WorkContext<Profile: HostProfile> {
     requests: Sender<Request<Profile>>,
 }
 
-pub(crate) type NativeCompletion =
-    ExecutionResult<StoredRuntimeValue<TransferValues>, TransferValues>;
-pub(crate) type Completion =
-    Result<Shared<StoredRuntimeValue<TransferValues>>, Shared<crate::AsyncExecutionError>>;
+pub(crate) type NativeCompletion = ExecutionResult<StoredRuntimeValue>;
+pub(crate) type Completion = Result<Shared<StoredRuntimeValue>, Shared<crate::ExecutionError>>;
 pub(crate) type SourceWork = Work<Completion>;
 
 pub(in crate::runtime) enum Request<Profile: HostProfile> {
     State(Box<dyn StateOperation<Profile>>),
     Runtime(Box<dyn RuntimeOperation<Profile>>),
     Callback {
-        callable: TransferCallable,
+        callable: RetainedCallable,
         origin: HostCallOrigin,
-        inputs: TransferCallbackInputs,
+        inputs: CallbackInputs,
         reply: Reply<NativeCompletion>,
     },
 }
@@ -54,8 +55,8 @@ pub(in crate::runtime) trait RuntimeOperation<Profile: HostProfile>:
 {
     fn apply(
         self: Box<Self>,
-        plan: &TransferHostedExecution<Profile>,
-        state: &mut RuntimeStateFor<'_, TransferHostedExecution<Profile>>,
+        plan: &HostedProgram<Profile>,
+        state: &mut RuntimeStateFor<'_, HostedProgram<Profile>>,
     ) -> Option<Delivery>;
 }
 
@@ -67,20 +68,23 @@ struct RuntimeRequest<Operation, Output> {
 impl<Profile: HostProfile> ExecutionWork<Profile> {
     pub(in crate::runtime) fn new() -> Self {
         Self {
-            work: WorkScope::new(),
-            requests: Requests::new(),
+            initialized: OnceLock::new(),
         }
     }
 
     pub(in crate::runtime) fn context(&self) -> WorkContext<Profile> {
+        let state = self.initialized.get_or_init(|| ExecutionWorkState {
+            work: WorkScope::new(),
+            requests: Requests::new(),
+        });
         WorkContext {
-            work: self.work.factory(),
-            requests: self.requests.sender(),
+            work: state.work.factory(),
+            requests: state.requests.sender(),
         }
     }
 
     pub(in crate::runtime) fn next(&self, cx: &mut Context<'_>) -> Option<Request<Profile>> {
-        self.requests.next(cx)
+        self.initialized.get()?.requests.next(cx)
     }
 }
 
@@ -97,14 +101,14 @@ impl<Profile: HostProfile> WorkContext<Profile> {
         })
     }
 
-    pub(crate) fn ready(&self, value: StoredRuntimeValue<TransferValues>) -> SourceWork {
+    pub(crate) fn ready(&self, value: StoredRuntimeValue) -> SourceWork {
         self.work.ready(Ok(Shared::new(value)))
     }
 
     pub(crate) fn map(
         &self,
         input: SourceWork,
-        callable: TransferCallable,
+        callable: RetainedCallable,
         origin: HostCallOrigin,
     ) -> SourceWork {
         let context = self.clone();
@@ -113,7 +117,7 @@ impl<Profile: HostProfile> WorkContext<Profile> {
             let value = completed.read(Clone::clone);
             match value {
                 Ok(value) => {
-                    let mut inputs = TransferCallbackInputs::new();
+                    let mut inputs = CallbackInputs::new();
                     value.read(|value| inputs.push_value(value.value().clone()));
                     let result = context.invoke(callable, origin, inputs).await?;
                     Ok(Shared::new(result.map(Shared::new).map_err(Shared::new)))
@@ -150,9 +154,9 @@ impl<Profile: HostProfile> WorkContext<Profile> {
 
     pub(in crate::runtime) fn invoke(
         &self,
-        callable: TransferCallable,
+        callable: RetainedCallable,
         origin: HostCallOrigin,
-        inputs: TransferCallbackInputs,
+        inputs: CallbackInputs,
     ) -> impl Future<Output = Result<NativeCompletion, Cancelled>> + Send + use<Profile> {
         let requests = self.requests.clone();
         async move {
@@ -173,8 +177,8 @@ impl<Profile: HostProfile> WorkContext<Profile> {
     ) -> impl Future<Output = Result<Output, Cancelled>> + Send + use<Profile, Output, Operation>
     where
         Operation: FnOnce(
-                &TransferHostedExecution<Profile>,
-                &mut RuntimeStateFor<'_, TransferHostedExecution<Profile>>,
+                &HostedProgram<Profile>,
+                &mut RuntimeStateFor<'_, HostedProgram<Profile>>,
             ) -> Output
             + Send
             + 'static,
@@ -200,8 +204,8 @@ impl<Profile: HostProfile> Clone for WorkContext<Profile> {
 impl<Profile: HostProfile> Request<Profile> {
     pub(in crate::runtime) fn service(
         self,
-        plan: &TransferHostedExecution<Profile>,
-        state: &mut RuntimeStateFor<'_, TransferHostedExecution<Profile>>,
+        plan: &HostedProgram<Profile>,
+        state: &mut RuntimeStateFor<'_, HostedProgram<Profile>>,
     ) -> Option<Delivery> {
         match self {
             Self::State(operation) => operation.apply(state.host_state()),
@@ -261,17 +265,14 @@ impl Delivery {
 impl<Profile, Operation, Output> RuntimeOperation<Profile> for RuntimeRequest<Operation, Output>
 where
     Profile: HostProfile,
-    Operation: FnOnce(
-            &TransferHostedExecution<Profile>,
-            &mut RuntimeStateFor<'_, TransferHostedExecution<Profile>>,
-        ) -> Output
+    Operation: FnOnce(&HostedProgram<Profile>, &mut RuntimeStateFor<'_, HostedProgram<Profile>>) -> Output
         + Send,
     Output: Send + 'static,
 {
     fn apply(
         self: Box<Self>,
-        plan: &TransferHostedExecution<Profile>,
-        state: &mut RuntimeStateFor<'_, TransferHostedExecution<Profile>>,
+        plan: &HostedProgram<Profile>,
+        state: &mut RuntimeStateFor<'_, HostedProgram<Profile>>,
     ) -> Option<Delivery> {
         let Self { operation, reply } = *self;
         if reply.is_canceled() {
@@ -287,18 +288,16 @@ where
 #[cfg(test)]
 mod tests {
     use super::{ExecutionWork, WorkContext};
-    use crate::frontend::compile_typed_transfer_host_program;
-    use crate::host::{HostProfile, TransferHostProviderModule, TransferHostProviderSet};
-    use crate::plan::execution::TransferHostedExecution;
+    use crate::frontend::compile_typed_host_program;
+    use crate::host::{HostProfile, HostProviderModule, HostProviderSet};
+    use crate::plan::execution::HostedProgram;
     use crate::plan::execution::function::TupleFunctionId;
     use crate::plan::{LibraryEntry, LibraryValueType, ValueType};
     use crate::runtime::evaluated::{EvaluatedFunctionValueKind, EvaluatedValue};
     use crate::runtime::function::{InvocableFunctionValue, run_tuple};
-    use crate::runtime::state::{RuntimeState, TransferRuntimeHost};
+    use crate::runtime::state::{RuntimeHost, RuntimeState};
     use crate::runtime::work::{Cancelled, Shared};
-    use crate::runtime::{
-        HostCallOrigin, TransferCallable, TransferCallbackInputs, TransferInputs,
-    };
+    use crate::runtime::{CallbackInputs, HostCallOrigin, RetainedCallable, RetainedInputs};
     use crate::{ModuleSource, PackageSource};
     use num_bigint::BigInt;
     use std::cell::Cell;
@@ -326,10 +325,10 @@ mod tests {
 
     fn callback_program(
         source: &str,
-        providers: Vec<TransferHostProviderModule<Profile>>,
-    ) -> (TransferHostedExecution<Profile>, TupleFunctionId) {
-        let providers = TransferHostProviderSet::new(providers).expect("provider set");
-        let typed = compile_typed_transfer_host_program(
+        providers: Vec<HostProviderModule<Profile>>,
+    ) -> (HostedProgram<Profile>, TupleFunctionId) {
+        let providers = HostProviderSet::from_providers(providers).expect("provider set");
+        let typed = compile_typed_host_program(
             "application",
             "library",
             [PackageSource::new(
@@ -340,8 +339,7 @@ mod tests {
             providers,
         )
         .expect("callback source");
-        let plan =
-            crate::planner::plan_transfer_host_library_program(typed).expect("callback plan");
+        let plan = crate::planner::plan_host_library_program(typed).expect("callback plan");
         let entry = plan
             .functions()
             .iter()
@@ -355,9 +353,8 @@ mod tests {
             Vec::new(),
             Vec::new(),
         );
-        let (execution, entries) =
-            TransferHostedExecution::from_library_plan(plan, entry, Vec::new())
-                .expect("sealed callback program");
+        let (execution, entries) = HostedProgram::from_library_plan(plan, entry, Vec::new())
+            .expect("sealed callback program");
         (execution, *entries.tuples[0].function())
     }
 
@@ -369,22 +366,20 @@ mod tests {
     }
 
     fn int_callback(
-        plan: &TransferHostedExecution<Profile>,
+        plan: &HostedProgram<Profile>,
         entry: TupleFunctionId,
         host: &mut Cell<usize>,
         echo: &mut Vec<crate::EchoOutput>,
-        context: WorkContext<Profile>,
-    ) -> TransferCallable {
-        let mut runtime = RuntimeState::with_host(
-            echo,
-            TransferRuntimeHost::<Profile>::new(host, &(), context),
-        );
+        execution: &ExecutionWork<Profile>,
+    ) -> RetainedCallable {
+        let mut runtime =
+            RuntimeState::with_host(echo, RuntimeHost::<Profile>::new(host, &(), execution));
         let values = run_tuple(
             plan,
             &mut runtime,
             entry,
             HostCallOrigin::Entry,
-            TransferInputs::empty().into_retained(),
+            RetainedInputs::empty().into_retained(),
         )
         .expect("source constructs an owned closure");
         let [EvaluatedValue::Function(function)] = values.as_slice() else {
@@ -393,12 +388,12 @@ mod tests {
         let EvaluatedFunctionValueKind::Int(function) = function.kind() else {
             panic!("fixture callback returns Int");
         };
-        TransferCallable::new(InvocableFunctionValue::Int(function.clone()))
+        RetainedCallable::new(InvocableFunctionValue::Int(function.clone()))
     }
 
     async fn invoke_after_state_request(
         context: WorkContext<Profile>,
-        callback: TransferCallable,
+        callback: RetainedCallable,
     ) -> Result<super::NativeCompletion, Cancelled> {
         let previous = context
             .with_state(|state| {
@@ -407,11 +402,70 @@ mod tests {
                 previous
             })
             .await?;
-        let mut arguments = TransferCallbackInputs::new();
+        let mut arguments = CallbackInputs::new();
         arguments.push_value(crate::runtime::EvaluatedValue::Int(previous.into()));
         context
             .invoke(callback, HostCallOrigin::Entry, arguments)
             .await
+    }
+
+    #[test]
+    fn calls_without_work_leave_scope_resources_uninitialized() {
+        let execution = ExecutionWork::<Profile>::new();
+        let mut cx = Context::from_waker(Waker::noop());
+        assert!(execution.next(&mut cx).is_none());
+        assert!(execution.initialized.get().is_none());
+
+        let (plan, entry) = callback_program(
+            "pub fn make() { let captured = 40 #(fn(value: Int) { captured + value }) }",
+            Vec::new(),
+        );
+        let mut state = Cell::new(0);
+        let mut echo = Vec::new();
+        let callback = int_callback(&plan, entry, &mut state, &mut echo, &execution);
+        assert!(execution.initialized.get().is_none());
+        assert_eq!(state.get(), 0);
+        assert!(echo.is_empty());
+        drop(callback);
+
+        let first = execution.context();
+        let second = execution.context();
+        assert!(execution.initialized.get().is_some());
+        let mut request = Box::pin(first.with_state(|state| state.set(42)));
+        assert!(request.as_mut().poll(&mut cx).is_pending());
+        let operation = execution.next(&mut cx).expect("one shared request queue");
+        let mut runtime = RuntimeState::with_host(
+            &mut echo,
+            RuntimeHost::<Profile>::new(&mut state, &(), &execution),
+        );
+        operation
+            .service(&plan, &mut runtime)
+            .expect("live request")
+            .deliver();
+        assert_eq!(request.as_mut().poll(&mut cx), Poll::Ready(Ok(())));
+        drop(runtime);
+        assert_eq!(state.get(), 42);
+        let update_state = |state: &mut Cell<usize>| state.set(99);
+        let mut request = Box::pin(second.with_state(update_state));
+        assert!(request.as_mut().poll(&mut cx).is_pending());
+        execution
+            .next(&mut cx)
+            .expect("second queued state request")
+            .service(
+                &plan,
+                &mut RuntimeState::with_host(
+                    &mut echo,
+                    RuntimeHost::<Profile>::new(&mut state, &(), &execution),
+                ),
+            )
+            .expect("second live request")
+            .deliver();
+        assert_eq!(request.as_mut().poll(&mut cx), Poll::Ready(Ok(())));
+        assert_eq!(state.get(), 99);
+        let mut request = Box::pin(second.with_state(update_state));
+        drop(execution);
+        assert_eq!(request.as_mut().poll(&mut cx), Poll::Ready(Err(Cancelled)));
+        assert_eq!(state.get(), 99);
     }
 
     #[test]
@@ -431,7 +485,7 @@ mod tests {
         let mut host = Cell::new(2);
         let mut echo = Vec::new();
         let execution = ExecutionWork::<Profile>::new();
-        let callback = int_callback(&plan, entry, &mut host, &mut echo, execution.context());
+        let callback = int_callback(&plan, entry, &mut host, &mut echo, &execution);
         let context = execution.context();
         let native = invoke_after_state_request(context.clone(), callback);
         let work = context.compose(|_| async move {
@@ -450,7 +504,7 @@ mod tests {
         let delivery = {
             let mut runtime = RuntimeState::with_host(
                 &mut echo,
-                TransferRuntimeHost::<Profile>::new(&mut host, &(), execution.context()),
+                RuntimeHost::<Profile>::new(&mut host, &(), &execution),
             );
             state_request
                 .service(&plan, &mut runtime)
@@ -467,7 +521,7 @@ mod tests {
         let delivery = {
             let mut runtime = RuntimeState::with_host(
                 &mut echo,
-                TransferRuntimeHost::<Profile>::new(&mut host, &(), execution.context()),
+                RuntimeHost::<Profile>::new(&mut host, &(), &execution),
             );
             callback_request
                 .service(&plan, &mut runtime)
@@ -502,9 +556,9 @@ mod tests {
         let mut host = Cell::new(0);
         let mut echo = Vec::new();
         let execution = ExecutionWork::<Profile>::new();
-        let callback = int_callback(&plan, entry, &mut host, &mut echo, execution.context());
+        let callback = int_callback(&plan, entry, &mut host, &mut echo, &execution);
         let context = execution.context();
-        let mut arguments = TransferCallbackInputs::new();
+        let mut arguments = CallbackInputs::new();
         arguments.push_value(crate::runtime::EvaluatedValue::Int(41.into()));
         let mut request = pin!(context.invoke(callback, HostCallOrigin::Entry, arguments));
         let mut cx = Context::from_waker(Waker::noop());
@@ -526,7 +580,7 @@ mod tests {
         let mut host = Cell::new(41);
         let mut echo = Vec::new();
         let execution = ExecutionWork::<Profile>::new();
-        let callback = int_callback(&plan, entry, &mut host, &mut echo, execution.context());
+        let callback = int_callback(&plan, entry, &mut host, &mut echo, &execution);
         let mut request = Box::pin(invoke_after_state_request(execution.context(), callback));
         let mut cx = Context::from_waker(Waker::noop());
         assert!(request.as_mut().poll(&mut cx).is_pending());
@@ -540,15 +594,15 @@ mod tests {
     }
 
     fn int_codec(
-        plan: &TransferHostedExecution<Profile>,
+        plan: &HostedProgram<Profile>,
         entry: crate::plan::execution::function::IntFunctionId,
-    ) -> Option<crate::host::TransferHostCodecScope> {
+    ) -> Option<crate::host::HostCodecScope> {
         use crate::plan::execution::function::{ExecutionFunctionEntry, ExecutionFunctionRef};
         use crate::plan::execution::host::HostedFunctionTarget;
         use crate::plan::execution::runtime::RuntimeExecutionPlan;
         match plan.int_function(entry).as_ref() {
             ExecutionFunctionRef::Host(HostedFunctionTarget::Value(function)) => {
-                Some(crate::host::TransferHostCodecScope::new(Arc::clone(
+                Some(crate::host::HostCodecScope::new(Arc::clone(
                     plan.host_value_function(function).metadata_handle(),
                 )))
             }
@@ -558,7 +612,7 @@ mod tests {
 
     #[test]
     fn owned_callback_requests_terminate_at_each_conversion_boundary() {
-        use crate::host::{HostFutureError, HostProvider, TransferHostCall};
+        use crate::host::{HostCall, HostFutureError, HostProvider};
         struct Provider;
         impl HostProvider<Profile> for Provider {
             type State = Cell<usize>;
@@ -567,18 +621,18 @@ mod tests {
             }
         }
         fn increment<'call>(
-            mut call: TransferHostCall<'call, Profile, Provider, BigInt>,
+            mut call: HostCall<'call, Profile, Provider, BigInt>,
             value: BigInt,
-        ) -> Result<crate::HostCallCompletion<'call, BigInt>, crate::AsyncHostCallError> {
+        ) -> Result<crate::HostCallCompletion<'call, BigInt>, crate::HostCallError> {
             let next = call.state().get() + 1;
             call.state().set(next);
             Ok(call.return_value(value + 1))
         }
-        let provider = TransferHostProviderModule::new_for_profile("application", "library")
+        let provider = HostProviderModule::new("application", "library")
             .expect("module")
             .with_scoped_function::<Provider, (BigInt,), BigInt, _>("increment", increment)
             .expect("native function");
-        let typed = compile_typed_transfer_host_program(
+        let typed = compile_typed_host_program(
             "application",
             "library",
             [PackageSource::new(
@@ -601,10 +655,10 @@ pub fn make() { #(fn(value: Int) {
 "#,
                 )],
             )],
-            TransferHostProviderSet::new([provider]).expect("providers"),
+            HostProviderSet::from_providers([provider]).expect("providers"),
         )
         .expect("ordinary callback source");
-        let library = crate::planner::plan_transfer_host_library_program(typed).expect("plan");
+        let library = crate::planner::plan_host_library_program(typed).expect("plan");
         let entry = |name: &str, return_| {
             let function = library
                 .functions()
@@ -632,8 +686,8 @@ pub fn make() { #(fn(value: Int) {
             entry("increment", LibraryValueType::Int),
             entry("plain", LibraryValueType::Int),
         ];
-        let (plan, entries) = TransferHostedExecution::from_library_plan(library, first, remaining)
-            .expect("sealed callbacks");
+        let (plan, entries) =
+            HostedProgram::from_library_plan(library, first, remaining).expect("sealed callbacks");
         let codec =
             int_codec(&plan, *entries.ints[0].function()).expect("source-selected native codec");
         assert!(int_codec(&plan, *entries.ints[1].function()).is_none());
@@ -654,7 +708,7 @@ pub fn make() { #(fn(value: Int) {
                 *entries.tuples[0].function(),
                 &mut state,
                 &mut echo,
-                execution.context(),
+                &execution,
             );
             let context = execution.context();
             let mut invocation = Box::pin(context.invoke_owned(
@@ -662,7 +716,7 @@ pub fn make() { #(fn(value: Int) {
                 codec.clone(),
                 HostCallOrigin::Entry,
                 move |_| {
-                    let mut values = TransferCallbackInputs::new();
+                    let mut values = CallbackInputs::new();
                     values.push_value(EvaluatedValue::Int(input.into()));
                     values
                 },
@@ -684,7 +738,7 @@ pub fn make() { #(fn(value: Int) {
                 let request = execution.next(&mut cx).expect("next conversion boundary");
                 let mut runtime = RuntimeState::with_host(
                     &mut echo,
-                    TransferRuntimeHost::<Profile>::new(&mut state, &(), execution.context()),
+                    RuntimeHost::<Profile>::new(&mut state, &(), &execution),
                 );
                 request
                     .service(&plan, &mut runtime)
@@ -747,7 +801,7 @@ pub fn make() { #(fn(value: Int) {
                 let request = execution.next(&mut cx).expect("completion decoder request");
                 let mut runtime = RuntimeState::with_host(
                     &mut echo,
-                    TransferRuntimeHost::<Profile>::new(&mut state, &(), context),
+                    RuntimeHost::<Profile>::new(&mut state, &(), &execution),
                 );
                 request
                     .service(&plan, &mut runtime)
@@ -791,7 +845,7 @@ pub fn make() { #(fn(value: Int) {
             let mut echo = Vec::new();
             let mut runtime = RuntimeState::with_host(
                 &mut echo,
-                TransferRuntimeHost::<Profile>::new(&mut state, &(), context),
+                RuntimeHost::<Profile>::new(&mut state, &(), &execution),
             );
             let delivery = operation.service(&plan, &mut runtime);
             assert_eq!(delivery.is_none(), cancel);
@@ -826,7 +880,7 @@ pub fn make() { #(fn(value: Int) {
             let mut echo = Vec::new();
             let mut runtime = RuntimeState::with_host(
                 &mut echo,
-                TransferRuntimeHost::<Profile>::new(&mut state, &(), context),
+                RuntimeHost::<Profile>::new(&mut state, &(), &execution),
             );
             let delivery = operation.service(&plan, &mut runtime);
             assert_eq!(delivery.is_none(), cancel);
@@ -889,9 +943,9 @@ pub fn make() { #(fn(value: Int) {
     }
 
     fn fail_native<'call>(
-        mut call: crate::host::TransferHostCall<'call, Profile, NativeProvider, BigInt>,
+        mut call: crate::host::HostCall<'call, Profile, NativeProvider, BigInt>,
         value: BigInt,
-    ) -> Result<crate::host::HostCallCompletion<'call, BigInt>, crate::AsyncHostCallError> {
+    ) -> Result<crate::host::HostCallCompletion<'call, BigInt>, crate::HostCallError> {
         let state = call.state();
         state.set(state.get() + 1);
         Err(crate::HostFailure::new(format!("native rejected {value}")).into())
@@ -899,11 +953,10 @@ pub fn make() { #(fn(value: Int) {
 
     #[test]
     fn delayed_native_failure_keeps_its_provider_and_source_location_and_is_shared() {
-        let native =
-            TransferHostProviderModule::<Profile>::new_for_profile("application", "library")
-                .expect("native module")
-                .with_scoped_function::<NativeProvider, (BigInt,), BigInt, _>("native", fail_native)
-                .expect("native function");
+        let native = HostProviderModule::<Profile>::new("application", "library")
+            .expect("native module")
+            .with_scoped_function::<NativeProvider, (BigInt,), BigInt, _>("native", fail_native)
+            .expect("native function");
         let (plan, entry) = callback_program(
             "@external(erlang, \"native\", \"fail\")\nfn native(value: Int) -> Int\n\npub fn make() {\n  let captured = 40\n  #(fn(value: Int) {\n    echo captured\n    native(captured + value)\n  })\n}\n",
             vec![native],
@@ -911,9 +964,9 @@ pub fn make() { #(fn(value: Int) {
         let mut host = Cell::new(0);
         let mut echo = Vec::new();
         let execution = ExecutionWork::<Profile>::new();
-        let callback = int_callback(&plan, entry, &mut host, &mut echo, execution.context());
+        let callback = int_callback(&plan, entry, &mut host, &mut echo, &execution);
         let context = execution.context();
-        let mut arguments = TransferCallbackInputs::new();
+        let mut arguments = CallbackInputs::new();
         arguments.push_value(crate::runtime::EvaluatedValue::Int(2.into()));
         let native = context.invoke(callback, HostCallOrigin::Entry, arguments);
         let work = context.compose(|_| async move {
@@ -928,7 +981,7 @@ pub fn make() { #(fn(value: Int) {
         let delivery = {
             let mut runtime = RuntimeState::with_host(
                 &mut echo,
-                TransferRuntimeHost::<Profile>::new(&mut host, &(), execution.context()),
+                RuntimeHost::<Profile>::new(&mut host, &(), &execution),
             );
             request.service(&plan, &mut runtime).expect("live receiver")
         };
@@ -970,9 +1023,9 @@ pub fn make() { #(fn(value: Int) {
         let mut host = Cell::new(0);
         let mut echo = Vec::new();
         let execution = ExecutionWork::<Profile>::new();
-        let callback = int_callback(&plan, entry, &mut host, &mut echo, execution.context());
+        let callback = int_callback(&plan, entry, &mut host, &mut echo, &execution);
         let context = execution.context();
-        let mut arguments = TransferCallbackInputs::new();
+        let mut arguments = CallbackInputs::new();
         arguments.push_value(crate::runtime::EvaluatedValue::Int((-1).into()));
         let native = context.invoke(callback, HostCallOrigin::Entry, arguments);
         let work = context.compose(|_| async move {
@@ -987,7 +1040,7 @@ pub fn make() { #(fn(value: Int) {
         let delivery = {
             let mut runtime = RuntimeState::with_host(
                 &mut echo,
-                TransferRuntimeHost::<Profile>::new(&mut host, &(), execution.context()),
+                RuntimeHost::<Profile>::new(&mut host, &(), &execution),
             );
             request.service(&plan, &mut runtime).expect("live receiver")
         };
@@ -1015,9 +1068,9 @@ pub fn make() { #(fn(value: Int) {
         let mut host = Cell::new(0);
         let mut echo = Vec::new();
         let execution = ExecutionWork::<Profile>::new();
-        let callback = int_callback(&plan, entry, &mut host, &mut echo, execution.context());
+        let callback = int_callback(&plan, entry, &mut host, &mut echo, &execution);
         let context = execution.context();
-        let mut arguments = TransferCallbackInputs::new();
+        let mut arguments = CallbackInputs::new();
         arguments.push_value(crate::runtime::EvaluatedValue::Int(42.into()));
         let mut request = Box::pin(context.invoke(callback, HostCallOrigin::Entry, arguments));
         let mut cx = Context::from_waker(Waker::noop());
@@ -1026,7 +1079,7 @@ pub fn make() { #(fn(value: Int) {
         drop(request);
         let mut runtime = RuntimeState::with_host(
             &mut echo,
-            TransferRuntimeHost::<Profile>::new(&mut host, &(), execution.context()),
+            RuntimeHost::<Profile>::new(&mut host, &(), &execution),
         );
         assert!(request_to_service.service(&plan, &mut runtime).is_none());
         drop(runtime);
@@ -1063,13 +1116,7 @@ pub fn make() { #(fn(value: Int) {
     fn callback_fixture_rejects_a_non_function_tuple() {
         let (plan, entry) = callback_program("pub fn make() { #(42) }", Vec::new());
         let work = ExecutionWork::<Profile>::new();
-        int_callback(
-            &plan,
-            entry,
-            &mut Cell::new(0),
-            &mut Vec::new(),
-            work.context(),
-        );
+        int_callback(&plan, entry, &mut Cell::new(0), &mut Vec::new(), &work);
     }
 
     #[test]
@@ -1078,24 +1125,18 @@ pub fn make() { #(fn(value: Int) {
         let (plan, entry) =
             callback_program("pub fn make() { #(fn(_value: Int) { Nil }) }", Vec::new());
         let work = ExecutionWork::<Profile>::new();
-        int_callback(
-            &plan,
-            entry,
-            &mut Cell::new(0),
-            &mut Vec::new(),
-            work.context(),
-        );
+        int_callback(&plan, entry, &mut Cell::new(0), &mut Vec::new(), &work);
     }
-    fn host_error(error: &crate::AsyncExecutionError) -> &crate::HostError {
+    fn host_error(error: &crate::ExecutionError) -> &crate::HostError {
         match error {
-            crate::AsyncExecutionError::Host(error) => error,
+            crate::ExecutionError::Host(error) => error,
             _ => panic!("fixture must fail in a host provider"),
         }
     }
 
-    fn source_panic(error: &crate::AsyncExecutionError) -> &crate::Panic<crate::AsyncPanicValue> {
+    fn source_panic(error: &crate::ExecutionError) -> &crate::Panic<crate::PanicValue> {
         match error {
-            crate::AsyncExecutionError::Panic(error) => error,
+            crate::ExecutionError::Panic(error) => error,
             _ => panic!("fixture must stop with a source panic"),
         }
     }
@@ -1103,7 +1144,7 @@ pub fn make() { #(fn(value: Int) {
     #[test]
     #[should_panic(expected = "fixture must fail in a host provider")]
     fn host_error_rejects_an_invariant_fixture() {
-        host_error(&crate::AsyncExecutionError::Invariant(
+        host_error(&crate::ExecutionError::Invariant(
             crate::InvariantError::ListIndexOutOfBounds {
                 item_type: crate::ValueType::Int,
                 index: 0,
@@ -1115,7 +1156,7 @@ pub fn make() { #(fn(value: Int) {
     #[test]
     #[should_panic(expected = "fixture must stop with a source panic")]
     fn source_panic_rejects_an_invariant_fixture() {
-        source_panic(&crate::AsyncExecutionError::Invariant(
+        source_panic(&crate::ExecutionError::Invariant(
             crate::InvariantError::ListIndexOutOfBounds {
                 item_type: crate::ValueType::Int,
                 index: 0,

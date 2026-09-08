@@ -375,24 +375,6 @@ impl<Profile: HostProfile> BindingPlan for HostedLibraryModulePlan<Profile> {
     }
 }
 
-impl<Profile: HostProfile> BindingPlan for crate::plan::TransferHostedLibraryModulePlan<Profile> {
-    type External = crate::plan::ExternalType;
-
-    fn function_signature(&self, name: &EcoString) -> Option<&FunctionTemplateSignature> {
-        self.functions()
-            .iter()
-            .find(|function| function.name() == name)
-            .map(|function| function.signature())
-    }
-
-    fn custom_type(
-        &self,
-        name: &crate::plan::CustomTypeName,
-    ) -> Option<&crate::plan::CustomTypeDefinition> {
-        self.custom_type(name)
-    }
-}
-
 fn public_function_names(module: &TypedModule) -> HashSet<EcoString> {
     module
         .definitions

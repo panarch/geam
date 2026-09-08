@@ -1,8 +1,8 @@
-use geam_core::embedding::{BigInt, ExecutionScope, FunctionDeclaration, WorkModuleBuilder, List};
+use geam_core::embedding::{BigInt, ExecutionScope, FunctionDeclaration, HostedModuleBuilder, List};
 use geam_core::host::{HostFuturePayload, HostWorkProfile};
-use geam_runtime_api::{FutureComponent, embedding::{Future, FutureType}};
+use geam_builtin::{FutureComponent, embedding::{Future, FutureType}};
 
-pub fn bind<P: HostWorkProfile<Work = FutureComponent>>(builder: WorkModuleBuilder<P>) {
+pub fn bind<P: HostWorkProfile<Work = FutureComponent>>(builder: HostedModuleBuilder<P>) {
     type Nested = Result<(List<FutureType<BigInt>>,), ()>;
     let _ = builder.function(FunctionDeclaration::<(), Nested>::new("nested"));
 }
@@ -14,9 +14,9 @@ where P: HostWorkProfile<Work = FutureComponent> {
     let _observation = scope.observe(&work);
 }
 
-pub fn send_only<P>(program: geam_core::frontend::TransferHostedTypedProgram<P>)
+pub fn send_only<P>(program: geam_core::frontend::HostedTypedProgram<P>)
 where P: HostWorkProfile<RunState = std::cell::Cell<u32>>, P::ExternalStores: Send {
-    let _ = WorkModuleBuilder::new(program);
+    let _ = HostedModuleBuilder::new(program);
 }
 
 pub fn same(left: &HostFuturePayload, right: &HostFuturePayload) -> bool {

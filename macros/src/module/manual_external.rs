@@ -5,29 +5,24 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Path;
 
-pub(super) fn transfer_declaration(
+pub(super) fn declaration(
     external: &ExternalModel,
     generic: &GenericExternalModel,
-    owner: &Path,
     payload: &Path,
-    store: &TokenStream,
     support: &TokenStream,
 ) -> TokenStream {
+    let owner = payload;
     let parameters = &generic.parameters;
     let input = &generic.input;
     let output = &external.ident;
     let schema = &external.schema;
-    let storage = &external.storage;
     let visibility = &generic.visibility;
     let arguments = parameters
         .iter()
         .map(|parameter| quote!(<#parameter as #support::ProviderValue>::Host))
         .collect::<Vec<_>>();
     let arguments = host_type_token_sequence(&arguments, support);
-    let output_type =
-        quote!(#output<#(#parameters,)* #support::ProviderTransferExternalOutput<#payload>>);
-    let local_output_type =
-        quote!(#output<#(#parameters,)* #support::ProviderExternalOutput<#owner>>);
+    let output_type = quote!(#output<#(#parameters,)* #support::ProviderExternalOutput<#payload>>);
     let accessors = parameters.iter().enumerate().map(|(index, parameter)| {
         let method = retained_parameter_accessor(parameter);
         let index = host_type_index(index, support);
@@ -35,14 +30,14 @@ pub(super) fn transfer_declaration(
             #visibility fn #method<'__geam_value>(
                 &'__geam_value self,
                 select: impl ::core::ops::FnOnce(&'__geam_value #payload)
-                    -> &'__geam_value #support::ProviderTransferRetained<#owner, #index>,
-            ) -> #support::Stored<#parameter, #support::ProviderTransferStoredInput<
+                    -> &'__geam_value #support::Retained<#owner, #index>,
+            ) -> #support::Stored<#parameter, #support::ProviderStoredInput<
                 '__geam_value, #owner, #index,
                 <__GeamArguments as #support::HostTypeAt<#index>>::Type,
             >>
             where __GeamArguments: #support::HostTypeAt<#index>,
             {
-                #support::Stored::from_transfer_retained(select(self.__geam_context.payload()))
+                #support::Stored::from_retained(select(self.__geam_context.payload()))
             }
         }
     });
@@ -53,8 +48,8 @@ pub(super) fn transfer_declaration(
             #visibility fn #method(
                 &self,
                 select: impl for<'__geam_value> ::core::ops::FnOnce(&'__geam_value #payload)
-                    -> &'__geam_value #support::ProviderTransferRetained<#owner, #index>,
-            ) -> #support::Stored<#parameter, #support::ProviderAsyncStoredInput<
+                    -> &'__geam_value #support::Retained<#owner, #index>,
+            ) -> #support::Stored<#parameter, #support::ProviderOwnedStoredInput<
                 #owner, #index, <__GeamArguments as #support::HostTypeAt<#index>>::Type,
             >>
             where __GeamArguments: #support::HostTypeAt<#index>,
@@ -65,62 +60,52 @@ pub(super) fn transfer_declaration(
     });
 
     quote! {
-        impl<#(#parameters,)*> #support::ProviderTransferValue for #local_output_type
-        where #(#parameters: #support::ProviderValue + 'static,)*
-        {
-            type Output = #output_type;
-            type ImmediateInput = #input<#(#parameters,)* #support::ProviderTransferExternalInputContext<#payload, #arguments>>;
-            type ImmediateListInput = Self::ImmediateInput;
-            type TransferInput = #input<#(#parameters,)* #support::ProviderAsyncExternalInputContext<#payload, #arguments>>;
-            type TransferListInput = Self::TransferInput;
-        }
-
-        impl<#(#parameters,)*> #support::ProviderTransferValue for #output_type
+        impl<#(#parameters,)*> #support::ProviderValueForms for #output_type
         where #(#parameters: #support::ProviderValue + 'static,)*
         {
             type Output = Self;
-            type ImmediateInput = #input<#(#parameters,)* #support::ProviderTransferExternalInputContext<#payload, #arguments>>;
+            type ImmediateInput = #input<#(#parameters,)* #support::ProviderExternalInputContext<#payload, #arguments>>;
             type ImmediateListInput = Self::ImmediateInput;
-            type TransferInput = #input<#(#parameters,)* #support::ProviderAsyncExternalInputContext<#payload, #arguments>>;
-            type TransferListInput = Self::TransferInput;
+            type OwnedInput = #input<#(#parameters,)* #support::ProviderOwnedExternalInputContext<#payload, #arguments>>;
+            type OwnedListInput = Self::OwnedInput;
         }
 
         impl<#(#parameters,)* Profile, Provider, Return>
-            #support::ProviderTransferDynamicInput<Profile, Provider, Return>
+            #support::ProviderDynamicInput<Profile, Provider, Return>
             for #output<#(#parameters,)*>
         where
-            Profile: __GeamAsyncModuleProfile,
+            Profile: __GeamModuleProfile,
             Provider: #support::HostProvider<Profile>,
             Return: #support::HostType,
             #(#parameters: #support::ProviderValue,)*
-            #payload: #support::ProviderTransferPayload<Profile>,
+            #payload: ::core::marker::Send + 'static,
         {
             type Host = #support::HostExternalType<#schema, #arguments>;
-            type View = #input<#(#parameters,)* #support::ProviderTransferExternalInputContext<
+            type View = #input<#(#parameters,)* #support::ProviderExternalInputContext<
                 #payload, #arguments,
             >>;
 
             fn from_host<'__geam_call>(
-                call: &mut #support::TransferHostCall<'__geam_call, Profile, Provider, Return>,
+                call: &mut #support::HostCall<'__geam_call, Profile, Provider, Return>,
                 value: <Self::Host as #support::HostType>::Value<'__geam_call>,
             ) -> Self::View {
-                let value = call.provider_transfer_external_view_with::<
-                    __GeamAsyncProvider, #schema, #arguments,
+                let value = call.provider_external_view_with::<
+                    __GeamProvider, #schema, #arguments,
                 >(value);
-                #input::__geam_from_transfer_host(
-                    #support::ProviderTransferExternalInputContext::from_host(value),
+                #input::__geam_from_host(
+                    #support::ProviderExternalInputContext::from_host(value),
                 )
             }
         }
 
         impl<#(#parameters,)* __GeamArguments> #input<
-            #(#parameters,)* #support::ProviderTransferExternalInputContext<#payload, __GeamArguments>,
+            #(#parameters,)* #support::ProviderExternalInputContext<#payload, __GeamArguments>,
         >
         where
             __GeamArguments: #support::HostTypeSequence,
             #payload: ::core::marker::Send + 'static,
         {
-            fn __geam_from_transfer_host(context: #support::ProviderTransferExternalInputContext<
+            fn __geam_from_host(context: #support::ProviderExternalInputContext<
                 #payload, __GeamArguments,
             >) -> Self {
                 Self { __geam_context: context, __geam_parameters: ::core::marker::PhantomData }
@@ -139,13 +124,13 @@ pub(super) fn transfer_declaration(
         }
 
         impl<#(#parameters,)* __GeamArguments> #input<
-            #(#parameters,)* #support::ProviderAsyncExternalInputContext<#payload, __GeamArguments>,
+            #(#parameters,)* #support::ProviderOwnedExternalInputContext<#payload, __GeamArguments>,
         >
         where
             __GeamArguments: #support::HostTypeSequence,
             #payload: ::core::marker::Send + 'static,
         {
-            fn __geam_from_async_host(context: #support::ProviderAsyncExternalInputContext<
+            fn __geam_from_async_host(context: #support::ProviderOwnedExternalInputContext<
                 #payload, __GeamArguments,
             >) -> Self {
                 Self { __geam_context: context, __geam_parameters: ::core::marker::PhantomData }
@@ -165,35 +150,25 @@ pub(super) fn transfer_declaration(
             #(#owned_accessors)*
         }
 
-        impl<#(#parameters,)*> #support::ProviderValue for #output_type
-        where #(#parameters: #support::ProviderValue,)*
-        {
-            type Host = #support::HostExternalType<#schema, #arguments>;
-            type Input = Self;
-            type ListInput = Self;
-            type OutputRequirements = #support::ProviderConstruction<Self::Host>;
-            type RootRequirements = #support::ProviderNoConstructions;
-        }
-
         impl<#(#parameters,)* Profile, Provider, Return>
-            #support::ProviderTransferOutputValue<Profile, Provider, Return> for #output_type
+            #support::ProviderOutputValue<Profile, Provider, Return> for #output_type
         where
-            Profile: __GeamAsyncModuleProfile,
+            Profile: __GeamModuleProfile,
             Provider: #support::HostProvider<Profile>,
             Return: #support::HostType,
             #(#parameters: #support::ProviderValue,)*
-            #payload: #support::ProviderTransferPayload<Profile>,
+            #payload: ::core::marker::Send + 'static,
         {
             fn into_host<'__geam_call>(
                 self,
-                call: &mut #support::TransferHostCall<'__geam_call, Profile, Provider, Return>,
+                call: &mut #support::HostCall<'__geam_call, Profile, Provider, Return>,
                 construction: &#support::ProviderConstructions<'__geam_call, Self::OutputRequirements>,
             ) -> <Self::Host as #support::HostType>::Value<'__geam_call> {
                 match self.__geam_context.into_value() {
                     ::core::result::Result::Ok(payload) => call.construct_external_with_binding::<
-                        __GeamAsyncProvider, #schema, #arguments,
+                        __GeamProvider, #schema, #arguments,
                     >(construction.token(), payload),
-                    ::core::result::Result::Err(value) => call.provider_transfer_external_from_return::<
+                    ::core::result::Result::Err(value) => call.provider_external_from_return::<
                         #schema, #arguments, _,
                     >(value),
                 }
@@ -201,21 +176,21 @@ pub(super) fn transfer_declaration(
         }
 
         impl<#(#parameters,)* Profile, Provider>
-            #support::ProviderTransferRootOutputValue<Profile, Provider> for #output_type
+            #support::ProviderRootOutputValue<Profile, Provider> for #output_type
         where
-            Profile: __GeamAsyncModuleProfile,
+            Profile: __GeamModuleProfile,
             Provider: #support::HostProvider<Profile>,
             #(#parameters: #support::ProviderValue,)*
-            #payload: #support::ProviderTransferPayload<Profile>,
+            #payload: ::core::marker::Send + 'static,
         {
             fn complete<'__geam_call>(
                 self,
-                mut call: #support::TransferHostCall<'__geam_call, Profile, Provider, Self::Host>,
+                mut call: #support::HostCall<'__geam_call, Profile, Provider, Self::Host>,
                 _constructions: &#support::ProviderConstructions<'__geam_call, Self::RootRequirements>,
-            ) -> ::core::result::Result<#support::HostCallCompletion<'__geam_call, Self::Host>, #support::AsyncHostCallError> {
+            ) -> ::core::result::Result<#support::HostCallCompletion<'__geam_call, Self::Host>, #support::HostCallError> {
                 let value = match self.__geam_context.into_value() {
-                    ::core::result::Result::Ok(payload) => call.create_external_with_binding::<__GeamAsyncProvider>(payload),
-                    ::core::result::Result::Err(value) => call.provider_transfer_external_from_return::<
+                    ::core::result::Result::Ok(payload) => call.create_external_with_binding::<__GeamProvider>(payload),
+                    ::core::result::Result::Err(value) => call.provider_external_from_return::<
                         #schema, #arguments, _,
                     >(value),
                 };
@@ -223,24 +198,5 @@ pub(super) fn transfer_declaration(
             }
         }
 
-        impl<Profile> #support::AsyncHostExternalStorage<Profile, #schema> for #storage
-        where Profile: __GeamAsyncModuleProfile,
-        {
-            type Payload = #payload;
-            fn store(stores: &Profile::ExternalStores) -> &#support::AsyncHostExternalStore<Self::Payload> {
-                #store
-            }
-            fn source_equal(
-                context: &#support::AsyncHostExternalEquality<'_>, left: &Self::Payload, right: &Self::Payload,
-            ) -> bool {
-                <#payload as #support::RetainedExternalPayload<#support::ProviderTransferRetainedContext>>::source_equal(left, context, right)
-            }
-            fn source_hash(context: &#support::AsyncHostExternalHashing<'_>, value: &Self::Payload) -> u64 {
-                <#payload as #support::RetainedExternalPayload<#support::ProviderTransferRetainedContext>>::source_hash(value, context)
-            }
-            fn inspect(context: &#support::AsyncHostExternalInspection<'_>, value: &Self::Payload) -> #support::EcoString {
-                <#payload as #support::RetainedExternalPayload<#support::ProviderTransferRetainedContext>>::inspect(value, context)
-            }
-        }
     }
 }

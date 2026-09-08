@@ -13,46 +13,37 @@ use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedValue, values_equal,
 };
 use crate::runtime::state::RuntimeStateFor;
-use crate::runtime::{
-    ExecutableRuntimePlan, InvariantError, RuntimeListStorage, RuntimeValueProfile,
-};
+use crate::runtime::{ExecutableRuntimePlan, InvariantError};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
-pub(in crate::runtime) enum InstructionValue<Profile, Value, Function, Constant>
-where
-    Profile: RuntimeValueProfile,
-{
+pub(in crate::runtime) enum InstructionValue<Value, Function, Constant> {
     Ready(Value),
     Constant(ConstantId<Constant>),
     Call {
         function: Function,
         origin: crate::runtime::error::HostCallOrigin,
-        inputs: super::super::environment::ProfiledRetainedValues<Profile>,
+        inputs: super::super::environment::RetainedValues,
     },
 }
 
-pub(in crate::runtime) enum InstructionValueWithoutConstant<Profile, Value, Function>
-where
-    Profile: RuntimeValueProfile,
-{
+pub(in crate::runtime) enum InstructionValueWithoutConstant<Value, Function> {
     Ready(Value),
     Call {
         function: Function,
         origin: crate::runtime::error::HostCallOrigin,
-        inputs: super::super::environment::ProfiledRetainedValues<Profile>,
+        inputs: super::super::environment::RetainedValues,
     },
 }
 
-pub(in crate::runtime) fn int<Plan, Profile, State>(
+pub(in crate::runtime) fn int<Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment<Profile>,
+    environment: &BlockEnvironment,
     instruction: &IntInstruction,
     expected: &ValueType,
 ) -> Result<
     InstructionValue<
-        Profile,
         BigInt,
         crate::plan::execution::function::IntFunctionId,
         crate::plan::execution::graph::IntLocalId,
@@ -61,8 +52,7 @@ pub(in crate::runtime) fn int<Plan, Profile, State>(
 >
 where
     Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
-    Profile: RuntimeValueProfile,
-    State: RuntimeGraphState<Profile>,
+    State: RuntimeGraphState,
 {
     use InstructionValue as V;
     use IntInstruction as I;
@@ -144,15 +134,14 @@ where
     }
 }
 
-pub(in crate::runtime) fn float<Plan, Profile, State>(
+pub(in crate::runtime) fn float<Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment<Profile>,
+    environment: &BlockEnvironment,
     instruction: &FloatInstruction,
     expected: &ValueType,
 ) -> Result<
     InstructionValue<
-        Profile,
         f64,
         crate::plan::execution::function::FloatFunctionId,
         crate::plan::execution::graph::FloatLocalId,
@@ -161,8 +150,7 @@ pub(in crate::runtime) fn float<Plan, Profile, State>(
 >
 where
     Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
-    Profile: RuntimeValueProfile,
-    State: RuntimeGraphState<Profile>,
+    State: RuntimeGraphState,
 {
     use FloatInstruction as I;
     use InstructionValue as V;
@@ -241,15 +229,14 @@ where
     }
 }
 
-pub(in crate::runtime) fn string<Plan, Profile, State>(
+pub(in crate::runtime) fn string<Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment<Profile>,
+    environment: &BlockEnvironment,
     instruction: &StringInstruction,
     expected: &ValueType,
 ) -> Result<
     InstructionValue<
-        Profile,
         EcoString,
         crate::plan::execution::function::StringFunctionId,
         crate::plan::execution::graph::StringLocalId,
@@ -258,8 +245,7 @@ pub(in crate::runtime) fn string<Plan, Profile, State>(
 >
 where
     Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
-    Profile: RuntimeValueProfile,
-    State: RuntimeGraphState<Profile>,
+    State: RuntimeGraphState,
 {
     use InstructionValue as V;
     use StringInstruction as I;
@@ -333,15 +319,14 @@ where
     }
 }
 
-pub(in crate::runtime) fn bit_array<Plan, Profile, State>(
+pub(in crate::runtime) fn bit_array<Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment<Profile>,
+    environment: &BlockEnvironment,
     instruction: &BitArrayInstruction,
     expected: &ValueType,
 ) -> Result<
     InstructionValue<
-        Profile,
         EvaluatedBitArray,
         crate::plan::execution::function::BitArrayFunctionId,
         crate::plan::execution::graph::BitArrayLocalId,
@@ -350,8 +335,7 @@ pub(in crate::runtime) fn bit_array<Plan, Profile, State>(
 >
 where
     Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
-    Profile: RuntimeValueProfile,
-    State: RuntimeGraphState<Profile>,
+    State: RuntimeGraphState,
 {
     use BitArrayInstruction as I;
     use InstructionValue as V;
@@ -417,24 +401,19 @@ where
     }
 }
 
-pub(in crate::runtime) fn utf_codepoint<Plan, Profile, State>(
+pub(in crate::runtime) fn utf_codepoint<Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment<Profile>,
+    environment: &BlockEnvironment,
     instruction: &UtfCodepointInstruction,
     expected: &ValueType,
 ) -> Result<
-    InstructionValueWithoutConstant<
-        Profile,
-        char,
-        crate::plan::execution::function::UtfCodepointFunctionId,
-    >,
+    InstructionValueWithoutConstant<char, crate::plan::execution::function::UtfCodepointFunctionId>,
     State::Error,
 >
 where
     Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
-    Profile: RuntimeValueProfile,
-    State: RuntimeGraphState<Profile>,
+    State: RuntimeGraphState,
 {
     use InstructionValueWithoutConstant as V;
     use UtfCodepointInstruction as I;
@@ -496,16 +475,15 @@ where
     }
 }
 
-pub(in crate::runtime) fn custom<Plan, Profile, State>(
+pub(in crate::runtime) fn custom<Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment<Profile>,
+    environment: &BlockEnvironment,
     instruction: &CustomInstruction,
     expected: &ValueType,
 ) -> Result<
     InstructionValue<
-        Profile,
-        EvaluatedCustomValue<Profile>,
+        EvaluatedCustomValue,
         crate::plan::execution::function::CustomFunctionId,
         crate::plan::execution::graph::CustomLocal,
     >,
@@ -513,8 +491,7 @@ pub(in crate::runtime) fn custom<Plan, Profile, State>(
 >
 where
     Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
-    Profile: RuntimeValueProfile,
-    State: RuntimeGraphState<Profile>,
+    State: RuntimeGraphState,
 {
     use CustomInstruction as I;
     use InstructionValue as V;
@@ -590,15 +567,14 @@ where
     }
 }
 
-pub(in crate::runtime) fn bool<Plan, Profile, State>(
+pub(in crate::runtime) fn bool<Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment<Profile>,
+    environment: &BlockEnvironment,
     instruction: &BoolInstruction,
     expected: &ValueType,
 ) -> Result<
     InstructionValue<
-        Profile,
         bool,
         crate::plan::execution::function::BoolFunctionId,
         crate::plan::execution::graph::BoolLocalId,
@@ -607,8 +583,7 @@ pub(in crate::runtime) fn bool<Plan, Profile, State>(
 >
 where
     Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
-    Profile: RuntimeValueProfile,
-    State: RuntimeGraphState<Profile>,
+    State: RuntimeGraphState,
 {
     use BoolInstruction as I;
     use InstructionValue as V;
@@ -710,15 +685,14 @@ where
     }
 }
 
-pub(in crate::runtime) fn nil<Plan, Profile, State>(
+pub(in crate::runtime) fn nil<Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment<Profile>,
+    environment: &BlockEnvironment,
     instruction: &NilInstruction,
     expected: &ValueType,
 ) -> Result<
     InstructionValue<
-        Profile,
         (),
         crate::plan::execution::function::NilFunctionId,
         crate::plan::execution::graph::NilLocalId,
@@ -727,8 +701,7 @@ pub(in crate::runtime) fn nil<Plan, Profile, State>(
 >
 where
     Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
-    Profile: RuntimeValueProfile,
-    State: RuntimeGraphState<Profile>,
+    State: RuntimeGraphState,
 {
     use InstructionValue as V;
     use NilInstruction as I;
@@ -779,24 +752,22 @@ where
     }
 }
 
-type TupleInstructionValue<Profile> = InstructionValue<
-    Profile,
-    Vec<EvaluatedValue<Profile>>,
+type TupleInstructionValue = InstructionValue<
+    Vec<EvaluatedValue>,
     crate::plan::execution::function::TupleFunctionId,
     crate::plan::execution::graph::TupleLocalId,
 >;
 
-pub(in crate::runtime) fn tuple<Plan, Profile, State>(
+pub(in crate::runtime) fn tuple<Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment<Profile>,
+    environment: &BlockEnvironment,
     instruction: &TupleInstruction,
     expected: &ValueType,
-) -> Result<TupleInstructionValue<Profile>, State::Error>
+) -> Result<TupleInstructionValue, State::Error>
 where
     Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
-    Profile: RuntimeValueProfile,
-    State: RuntimeGraphState<Profile>,
+    State: RuntimeGraphState,
 {
     use InstructionValue as V;
     use TupleInstruction as I;
@@ -862,24 +833,23 @@ pub(super) fn constant<Plan, Value>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
     id: ConstantId<Value>,
-) -> ExecutionResult<Value::Evaluated, Plan::Values>
+) -> ExecutionResult<Value::Evaluated>
 where
     Plan: ExecutableRuntimePlan,
-    Value: ConstantValue + GraphValue<Plan::Values>,
+    Value: ConstantValue + GraphValue,
 {
     evaluate_constant(plan, state, plan.constant(id))
 }
 
-pub(in crate::runtime) fn tuple_projection<Profile, Value, Error>(
+pub(in crate::runtime) fn tuple_projection<Value, Error>(
     metadata: crate::plan::execution::runtime::RuntimeValueMetadata<'_>,
-    environment: &BlockEnvironment<Profile>,
+    environment: &BlockEnvironment,
     tuple: crate::plan::execution::graph::TupleLocalId,
     index: usize,
     expected: &ValueType,
-    project: impl FnOnce(&EvaluatedValue<Profile>) -> Option<Value>,
+    project: impl FnOnce(&EvaluatedValue) -> Option<Value>,
 ) -> Result<Value, Error>
 where
-    Profile: RuntimeValueProfile,
     Error: From<InvariantError>,
 {
     let values = environment.tuple(tuple);
@@ -909,16 +879,15 @@ where
     .into())
 }
 
-pub(in crate::runtime) fn custom_projection<Profile, Value, Error>(
+pub(in crate::runtime) fn custom_projection<Value, Error>(
     plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
-    environment: &BlockEnvironment<Profile>,
+    environment: &BlockEnvironment,
     source: &crate::plan::execution::graph::CustomLocal,
     index: usize,
     expected: &ValueType,
-    project: impl FnOnce(&EvaluatedValue<Profile>) -> Option<Value>,
+    project: impl FnOnce(&EvaluatedValue) -> Option<Value>,
 ) -> Result<Value, Error>
 where
-    Profile: RuntimeValueProfile,
     Error: From<InvariantError>,
 {
     let source = environment.custom(*source);
@@ -981,11 +950,11 @@ where
     }
 }
 
-pub(in crate::runtime) fn inputs_with_captures<Profile: RuntimeValueProfile>(
-    environment: &BlockEnvironment<Profile>,
+pub(in crate::runtime) fn inputs_with_captures(
+    environment: &BlockEnvironment,
     args: &[ParamLocal],
-    captures: &[crate::runtime::EvaluatedCapture<Profile>],
-) -> super::super::environment::ProfiledRetainedValues<Profile> {
+    captures: &[crate::runtime::EvaluatedCapture],
+) -> super::super::environment::RetainedValues {
     let mut inputs = environment.retain(args);
     inputs.append_captures(captures);
     inputs
@@ -1035,7 +1004,7 @@ mod tests {
                 &ValueType::String,
                 string_value,
             ),
-            Err(ExecutionError::<crate::Value>::Invariant(
+            Err(ExecutionError::<crate::runtime::PanicValue>::Invariant(
                 InvariantError::TupleIndexFamilyMismatch {
                     expected: ValueType::String,
                     actual: ValueType::Tuple(vec![ValueType::Int]),
@@ -1078,7 +1047,7 @@ mod tests {
                 &expected,
                 string_value,
             ),
-            Err(ExecutionError::<crate::Value>::Invariant(
+            Err(ExecutionError::<crate::runtime::PanicValue>::Invariant(
                 InvariantError::TupleIndexFamilyMismatch {
                     expected,
                     actual: ValueType::Int,
@@ -1103,7 +1072,7 @@ mod tests {
 
         assert_eq!(
             ensure_list_index(&ValueType::Nil, 2, 0),
-            Err(ExecutionError::<crate::Value>::Invariant(
+            Err(ExecutionError::<crate::runtime::PanicValue>::Invariant(
                 InvariantError::ListIndexOutOfBounds {
                     item_type: ValueType::Nil,
                     index: 2,
@@ -1117,7 +1086,7 @@ mod tests {
         let values: &[Value] = &[];
         assert_eq!(
             list_element(&type_, 2, values).map(|_| ()),
-            Err(ExecutionError::<crate::Value>::Invariant(
+            Err(ExecutionError::<crate::runtime::PanicValue>::Invariant(
                 InvariantError::ListIndexOutOfBounds {
                     item_type: type_,
                     index: 2,
@@ -1467,9 +1436,128 @@ pub fn main() {
         ];
 
         assert_eq!(
-            crate::runtime::run_src(include_str!(
-                "../../../../tests/fixtures/execution/values/utf_codepoint_expression_paths.gleam"
-            )),
+            crate::runtime::run_src(
+                r#"fn codepoint(value: Int) -> UtfCodepoint {
+  case <<value>> {
+    <<value:utf8_codepoint>> -> value
+    _ -> panic
+  }
+}
+
+fn bits(value: UtfCodepoint) -> BitArray {
+  <<value:utf8_codepoint>>
+}
+
+fn direct(value: Int) -> UtfCodepoint {
+  codepoint(value)
+}
+
+fn choose_bool(value: Bool) -> UtfCodepoint {
+  case value {
+    True -> codepoint(3)
+    False -> codepoint(4)
+  }
+}
+
+fn choose_int(value: Int) -> UtfCodepoint {
+  case value {
+    1 -> codepoint(5)
+    _ -> codepoint(6)
+  }
+}
+
+fn choose_string(value: String) -> UtfCodepoint {
+  case value {
+    "hit" -> codepoint(7)
+    _ -> codepoint(8)
+  }
+}
+
+fn choose_float(value: Float) -> UtfCodepoint {
+  case value {
+    1.0 -> codepoint(9)
+    _ -> codepoint(10)
+  }
+}
+
+pub fn main() {
+  let local = codepoint(1)
+  let function = direct
+  let pair = #(codepoint(11))
+  let assert [from_list] = [codepoint(12)]
+  let true_selector = True
+  let false_selector = False
+  let from_bool_case = case true_selector {
+    True -> codepoint(14)
+    False -> codepoint(15)
+  }
+  let from_bool_case_fallback = case false_selector {
+    True -> codepoint(14)
+    False -> codepoint(15)
+  }
+  let from_int_case = case 1 {
+    1 -> codepoint(16)
+    _ -> codepoint(17)
+  }
+  let from_int_case_fallback = case 0 {
+    1 -> codepoint(16)
+    _ -> codepoint(17)
+  }
+  let from_string_case = case "hit" {
+    "hit" -> codepoint(18)
+    _ -> codepoint(19)
+  }
+  let from_string_case_fallback = case "miss" {
+    "hit" -> codepoint(18)
+    _ -> codepoint(19)
+  }
+  let from_float_case = case 1.0 {
+    1.0 -> codepoint(20)
+    _ -> codepoint(21)
+  }
+  let from_float_case_fallback = case 0.0 {
+    1.0 -> codepoint(20)
+    _ -> codepoint(21)
+  }
+  let from_list_case = case [codepoint(22)] {
+    [value] -> value
+    _ -> panic
+  }
+  let from_block = {
+    let ignored = 1
+    codepoint(13)
+  }
+
+  #(
+    bits(local),
+    bits(direct(2)),
+    bits(function(3)),
+    bits(pair.0),
+    bits(from_list),
+    bits(choose_bool(True)),
+    bits(choose_bool(False)),
+    bits(choose_int(1)),
+    bits(choose_int(0)),
+    bits(choose_string("hit")),
+    bits(choose_string("miss")),
+    bits(choose_float(1.0)),
+    bits(choose_float(0.0)),
+    bits(from_bool_case),
+    bits(from_bool_case_fallback),
+    bits(from_int_case),
+    bits(from_int_case_fallback),
+    bits(from_string_case),
+    bits(from_string_case_fallback),
+    bits(from_float_case),
+    bits(from_float_case_fallback),
+    bits(from_list_case),
+    bits(from_block),
+  )
+}
+
+// @geam:expect Tuple([BitArray(bytes=[1], bit_len=8), BitArray(bytes=[2], bit_len=8), BitArray(bytes=[3], bit_len=8), BitArray(bytes=[11], bit_len=8), BitArray(bytes=[12], bit_len=8), BitArray(bytes=[3], bit_len=8), BitArray(bytes=[4], bit_len=8), BitArray(bytes=[5], bit_len=8), BitArray(bytes=[6], bit_len=8), BitArray(bytes=[7], bit_len=8), BitArray(bytes=[8], bit_len=8), BitArray(bytes=[9], bit_len=8), BitArray(bytes=[10], bit_len=8), BitArray(bytes=[14], bit_len=8), BitArray(bytes=[15], bit_len=8), BitArray(bytes=[16], bit_len=8), BitArray(bytes=[17], bit_len=8), BitArray(bytes=[18], bit_len=8), BitArray(bytes=[19], bit_len=8), BitArray(bytes=[20], bit_len=8), BitArray(bytes=[21], bit_len=8), BitArray(bytes=[22], bit_len=8), BitArray(bytes=[13], bit_len=8)])
+"#
+            ),
             Value::Tuple(
                 bytes
                     .into_iter()
@@ -1603,7 +1691,7 @@ pub fn main() -> {return_type} {{ {expression} }}
                     ),
                     functions,
                 ),
-                Err(ExecutionError::<crate::Value>::Invariant(
+                Err(ExecutionError::<crate::runtime::PanicValue>::Invariant(
                     InvariantError::CustomFieldFamilyMismatch {
                         custom_type: boxed_type(),
                         constructor: "Boxed".into(),
@@ -1626,7 +1714,7 @@ pub fn main() -> {return_type} {{ {expression} }}
                     ),
                     tuple_functions,
                 ),
-                Err(ExecutionError::<crate::Value>::Invariant(
+                Err(ExecutionError::<crate::runtime::PanicValue>::Invariant(
                     InvariantError::TupleIndexFamilyMismatch {
                         expected: expected.clone(),
                         actual: actual.clone(),
@@ -1654,7 +1742,7 @@ pub fn main() -> {return_type} {{ {expression} }}
                     ),
                     Vec::new(),
                 ),
-                Err(ExecutionError::<crate::Value>::Invariant(
+                Err(ExecutionError::<crate::runtime::PanicValue>::Invariant(
                     InvariantError::TupleIndexFamilyMismatch {
                         expected: ValueType::Custom(boxed_type()),
                         actual: ValueType::Int,

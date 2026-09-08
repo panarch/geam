@@ -1,25 +1,23 @@
-use crate::storage::StorageContext;
 use ecow::EcoString;
-use geam_core::provider::advanced::LocalRetainedContext;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::mem;
 
-pub struct StringTree<Context: StorageContext = LocalRetainedContext> {
-    root: Context::Shared<StringTreeNode<Context>>,
+pub struct StringTree {
+    root: std::sync::Arc<StringTreeNode>,
 }
 
-struct StringTreeNode<Context: StorageContext = LocalRetainedContext> {
+struct StringTreeNode {
     byte_len: usize,
-    kind: StringTreeNodeKind<Context>,
+    kind: StringTreeNodeKind,
 }
 
-enum StringTreeNodeKind<Context: StorageContext = LocalRetainedContext> {
+enum StringTreeNodeKind {
     Text(EcoString),
-    Sequence(Box<[Context::Shared<StringTreeNode<Context>>]>),
+    Sequence(Box<[std::sync::Arc<StringTreeNode>]>),
 }
 
-impl<Context: StorageContext> Clone for StringTree<Context> {
+impl Clone for StringTree {
     fn clone(&self) -> Self {
         Self {
             root: self.root.clone(),
@@ -27,10 +25,10 @@ impl<Context: StorageContext> Clone for StringTree<Context> {
     }
 }
 
-impl<Context: StorageContext> StringTree<Context> {
+impl StringTree {
     pub fn text(text: EcoString) -> Self {
         Self {
-            root: Context::share(StringTreeNode {
+            root: std::sync::Arc::new(StringTreeNode {
                 byte_len: text.len(),
                 kind: StringTreeNodeKind::Text(text),
             }),
@@ -44,7 +42,7 @@ impl<Context: StorageContext> StringTree<Context> {
             .collect::<Box<[_]>>();
         let byte_len = children.iter().map(|child| child.byte_len).sum();
         Self {
-            root: Context::share(StringTreeNode {
+            root: std::sync::Arc::new(StringTreeNode {
                 byte_len,
                 kind: StringTreeNodeKind::Sequence(children),
             }),
@@ -129,11 +127,11 @@ impl<Context: StorageContext> StringTree<Context> {
     }
 }
 
-impl<Context: StorageContext> Drop for StringTreeNode<Context> {
+impl Drop for StringTreeNode {
     fn drop(&mut self) {
         let mut pending = take_children(&mut self.kind);
         while let Some(child) = pending.pop() {
-            let Ok(mut child) = Context::try_unwrap(child) else {
+            let Ok(mut child) = std::sync::Arc::try_unwrap(child) else {
                 continue;
             };
             pending.extend(take_children(&mut child.kind));
@@ -141,9 +139,7 @@ impl<Context: StorageContext> Drop for StringTreeNode<Context> {
     }
 }
 
-fn take_children<Context: StorageContext>(
-    kind: &mut StringTreeNodeKind<Context>,
-) -> Vec<Context::Shared<StringTreeNode<Context>>> {
+fn take_children(kind: &mut StringTreeNodeKind) -> Vec<std::sync::Arc<StringTreeNode>> {
     match mem::replace(kind, StringTreeNodeKind::Text(EcoString::new())) {
         StringTreeNodeKind::Text(_) => Vec::new(),
         StringTreeNodeKind::Sequence(children) => children.into_vec(),
@@ -153,15 +149,12 @@ fn take_children<Context: StorageContext>(
 #[cfg(test)]
 mod tests {
     use super::{StringTreeNode, StringTreeNodeKind};
-    use crate::storage::StorageContext;
     use ecow::EcoString;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     type StringTree = super::StringTree;
 
-    fn children<Context: StorageContext>(
-        tree: &super::StringTree<Context>,
-    ) -> Option<&[Context::Shared<StringTreeNode<Context>>]> {
+    fn children(tree: &super::StringTree) -> Option<&[std::sync::Arc<StringTreeNode>]> {
         match &tree.root.kind {
             StringTreeNodeKind::Text(_) => None,
             StringTreeNodeKind::Sequence(children) => Some(children),
@@ -194,8 +187,8 @@ mod tests {
         let appended = prefix.append(&suffix);
         assert!(children(&prefix).is_none());
         let children = children(&appended).expect("append should create a sequence node");
-        assert!(Rc::ptr_eq(&children[0], &prefix.root));
-        assert!(Rc::ptr_eq(&children[1], &suffix.root));
+        assert!(Arc::ptr_eq(&children[0], &prefix.root));
+        assert!(Arc::ptr_eq(&children[1], &suffix.root));
 
         let mut deep = StringTree::text(EcoString::new());
         for _ in 0..50_000 {
@@ -219,9 +212,8 @@ mod tests {
 
     #[test]
     fn transferable_trees_share_nodes_and_release_deep_graphs_on_another_worker() {
-        use geam_core::__macro_support::ProviderTransferRetainedContext;
         use std::sync::Arc;
-        type TransferTree = super::StringTree<ProviderTransferRetainedContext>;
+        type TransferTree = super::StringTree;
 
         let prefix = TransferTree::text("a".into());
         let suffix = TransferTree::text("b".into());

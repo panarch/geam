@@ -98,8 +98,7 @@ pub(crate) fn from_token<'call, Type: HostType, Profile: crate::host::HostProfil
     runtime: &dyn crate::host::HostCallRuntime<Profile>,
     token: crate::host::HostValueToken,
 ) -> Type::Value<'call> {
-    let runtime = crate::host::HostCallTokenRuntime::new(runtime);
-    <Type as private::Abi>::from_token(&runtime, token)
+    <Type as private::Abi>::from_token(runtime, token)
 }
 
 pub(crate) fn from_runtime_token<'call, Type, Runtime>(
@@ -124,19 +123,6 @@ pub(crate) fn from_tokens<'call, Types: HostTypeSequence, Profile: crate::host::
     runtime: &dyn crate::host::HostCallRuntime<Profile>,
     tokens: &[crate::host::HostValueToken],
 ) -> Types::Values<'call> {
-    let runtime = crate::host::HostCallTokenRuntime::new(runtime);
-    let mut index = 0;
-    <Types as private::Sequence>::from_tokens(&runtime, tokens, &mut index)
-}
-
-pub(crate) fn from_runtime_tokens<'call, Types, Runtime>(
-    runtime: &Runtime,
-    tokens: &[crate::host::HostValueToken],
-) -> Types::Values<'call>
-where
-    Types: HostTypeSequence,
-    Runtime: crate::host::HostTokenRuntime + ?Sized,
-{
     let mut index = 0;
     <Types as private::Sequence>::from_tokens(runtime, tokens, &mut index)
 }

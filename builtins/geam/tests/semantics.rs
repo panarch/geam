@@ -1,18 +1,15 @@
 use ecow::EcoString;
 use futures_util::FutureExt;
-use geam_core::embedding::{FunctionDeclaration, WorkModuleBuilder, with_execution_scope};
-use geam_core::frontend::compile_typed_transfer_host_program;
+use geam_builtin::embedding::FutureType;
+use geam_builtin::{FutureComponent, HostFutureSchema, HostFutureStorage, HostFutureType};
+use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
+use geam_core::frontend::compile_typed_host_program;
 use geam_core::host::{
-    AsyncHostComponentProfile, HostProfile, HostProvider, TransferHostCall,
-    TransferHostProviderModule, TransferHostProviderSet,
+    HostCall, HostComponentProfile, HostProfile, HostProvider, HostProviderModule, HostProviderSet,
 };
 use geam_core::host::{HostFuturePayload, HostFutureStore, HostWorkProfile};
-use geam_core::provider::ProviderTransferExternalItem;
-use geam_core::{
-    AsyncHostCallError, HostCallCompletion, HostExternal, ModuleSource, PackageSource,
-};
-use geam_runtime_api::embedding::FutureType;
-use geam_runtime_api::{FutureComponent, HostFutureSchema, HostFutureStorage, HostFutureType};
+use geam_core::provider::ProviderOwnedExternal;
+use geam_core::{HostCallCompletion, HostCallError, HostExternal, ModuleSource, PackageSource};
 use num_bigint::BigInt;
 
 struct Profile;
@@ -22,7 +19,7 @@ struct Observer;
 struct State {
     work: (),
     observations: Vec<(u64, EcoString)>,
-    retained: Option<ProviderTransferExternalItem<HostFuturePayload>>,
+    retained: Option<ProviderOwnedExternal<HostFuturePayload>>,
 }
 
 impl HostProfile for Profile {
@@ -34,8 +31,8 @@ impl HostWorkProfile for Profile {
     type Work = FutureComponent;
 }
 
-impl AsyncHostComponentProfile<FutureComponent> for Profile {
-    fn component_async_stores(stores: &HostFutureStore) -> &HostFutureStore {
+impl HostComponentProfile<FutureComponent> for Profile {
+    fn component_stores(stores: &HostFutureStore) -> &HostFutureStore {
         stores
     }
 
@@ -52,15 +49,15 @@ impl HostProvider<Profile> for Observer {
     }
 }
 
-impl geam_core::host::AsyncHostExternalBinding<Profile, HostFutureSchema> for Observer {
+impl geam_core::host::HostExternalBinding<Profile, HostFutureSchema> for Observer {
     type Storage = HostFutureStorage;
 }
 
 fn snapshot<'call>(
-    mut call: TransferHostCall<'call, Profile, Observer, ()>,
+    mut call: HostCall<'call, Profile, Observer, ()>,
     value: HostExternal<'call, HostFutureType<BigInt>>,
-) -> Result<HostCallCompletion<'call, ()>, AsyncHostCallError> {
-    let work = call.provider_transfer_external_item_with::<Observer, HostFutureSchema, _>(value);
+) -> Result<HostCallCompletion<'call, ()>, HostCallError> {
+    let work = call.provider_external_item_with::<Observer, HostFutureSchema, _>(value);
     let hash = call.source_hash::<HostFutureType<BigInt>>(value);
     let inspection = call.inspect::<HostFutureType<BigInt>>(value);
     call.state().retained = Some(work);
@@ -69,10 +66,10 @@ fn snapshot<'call>(
 }
 
 fn recall(
-    mut call: TransferHostCall<'_, Profile, Observer, HostFutureType<BigInt>>,
-) -> Result<HostCallCompletion<'_, HostFutureType<BigInt>>, AsyncHostCallError> {
+    mut call: HostCall<'_, Profile, Observer, HostFutureType<BigInt>>,
+) -> Result<HostCallCompletion<'_, HostFutureType<BigInt>>, HostCallError> {
     let work = call.state().retained.take().expect("observed work");
-    let value = call.provider_transfer_external_from_item::<HostFutureSchema, geam_core::HostTypeList<BigInt, geam_core::HostTypeListEnd>, _>(work);
+    let value = call.provider_external_from_item::<HostFutureSchema, geam_core::HostTypeList<BigInt, geam_core::HostTypeListEnd>, _>(work);
     Ok(call.return_value(value))
 }
 
@@ -80,7 +77,7 @@ fn recall(
 fn source_hash_and_inspection_survive_completion_and_scope_cancellation() {
     let mut providers = FutureComponent::providers::<Profile>().expect("Future registration");
     providers.push(
-        TransferHostProviderModule::new_for_profile("application", "library")
+        HostProviderModule::new("application", "library")
             .expect("observer module")
             .with_scoped_function::<Observer, (HostFutureType<BigInt>,), (), _>(
                 "snapshot", snapshot,
@@ -89,7 +86,7 @@ fn source_hash_and_inspection_survive_completion_and_scope_cancellation() {
             .with_scoped_function::<Observer, (), HostFutureType<BigInt>, _>("recall", recall)
             .expect("retained work registration"),
     );
-    let program = compile_typed_transfer_host_program(
+    let program = compile_typed_host_program(
         "application",
         "library",
         [
@@ -124,10 +121,10 @@ pub fn check() { let work = recall() snapshot(work) work }
                 )],
             ),
         ],
-        TransferHostProviderSet::new(providers).expect("providers"),
+        HostProviderSet::from_providers(providers).expect("providers"),
     )
     .expect("ordinary source");
-    let (mut bindings, work) = WorkModuleBuilder::new(program)
+    let (mut bindings, work) = HostedModuleBuilder::new(program)
         .expect("plan")
         .function(FunctionDeclaration::<(), FutureType<BigInt>>::new("work"))
         .expect("work entry");
@@ -138,7 +135,7 @@ pub fn check() { let work = recall() snapshot(work) work }
     for complete in [true, false] {
         let mut state = State::default();
         assert!(std::ptr::eq(
-            <Profile as AsyncHostComponentProfile<FutureComponent>>::component_state(&mut state),
+            <Profile as HostComponentProfile<FutureComponent>>::component_state(&mut state),
             &state.work,
         ));
         let mut outputs = Vec::new();

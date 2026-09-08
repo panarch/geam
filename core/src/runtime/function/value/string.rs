@@ -2,7 +2,7 @@ use super::super::{EvaluatedFunctionExit, evaluate_entry};
 use crate::plan::execution::function::StringFunctionId;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
-use crate::runtime::graph::ProfiledRetainedValues;
+use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::RuntimeStateFor;
 use ecow::EcoString;
 
@@ -11,8 +11,8 @@ pub(in crate::runtime) fn run_string<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     mut function: StringFunctionId,
     mut origin: HostCallOrigin,
-    mut inputs: ProfiledRetainedValues<Plan::Values>,
-) -> ExecutionResult<EcoString, Plan::Values> {
+    mut inputs: RetainedValues,
+) -> ExecutionResult<EcoString> {
     loop {
         let exit = evaluate_entry(plan, state, plan.string_function(function), origin, inputs)?;
         match exit {
@@ -102,12 +102,14 @@ pub fn main() {
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         assert_eq!(
             execution
+                .execution()
                 .function_parameters()
                 .function(&FunctionTarget::String(StringFunctionId(2))),
             [ParamLocal::String(StringLocalId(0))],
         );
         assert_eq!(
             execution
+                .execution()
                 .function_parameters()
                 .function(&FunctionTarget::String(StringFunctionId(1))),
             [ParamLocal::String(StringLocalId(0))],

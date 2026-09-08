@@ -38,7 +38,7 @@ impl BuiltInProvider {
             Self::Stdlib => "gleam-stdlib",
             Self::Json => "gleam-json",
             Self::Time => "gleam-time",
-            Self::Geam => "geam-runtime-api",
+            Self::Geam => "geam-builtin",
         }
     }
 
@@ -87,12 +87,7 @@ mod tests {
         );
         assert_eq!(
             BuiltInProvider::ALL.map(BuiltInProvider::geam_feature),
-            [
-                "gleam-stdlib",
-                "gleam-json",
-                "gleam-time",
-                "geam-runtime-api"
-            ],
+            ["gleam-stdlib", "gleam-json", "gleam-time", "geam-builtin"],
         );
         assert_eq!(
             ["gleam_stdlib", "gleam_json", "gleam_time", "geam"].map(BuiltInProvider::from_package),

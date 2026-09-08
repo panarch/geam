@@ -73,11 +73,6 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             #module: #module::__GeamStores,
         }
     });
-    let async_store_fields = modules.iter().map(|module| {
-        quote! {
-            #module: #module::__GeamAsyncStores,
-        }
-    });
 
     Ok(quote! {
         #component
@@ -88,20 +83,10 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             #(#store_fields)*
         }
 
-        #[doc(hidden)]
-        #[derive(Default)]
-        pub struct AsyncStores {
-            #(#async_store_fields)*
-        }
-
         impl #support::HostProviderComponent for Component {
             const ID: &'static str = #id;
             type Stores = Stores;
             type RunState = #state;
-        }
-
-        impl #support::AsyncHostProviderComponent for Component {
-            type AsyncStores = AsyncStores;
         }
 
         impl #support::ProviderPackage for Component {
@@ -136,31 +121,6 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                     providers.push(
                         <#modules::__GeamModule as
                             #support::ProviderModuleRegistration<Profile>>::module()?,
-                    );
-                )*
-                ::core::result::Result::Ok(providers)
-            }
-        }
-
-
-        impl<Profile> #support::TransferHostProviderComponentRegistration<Profile> for Component
-        where
-            Profile: #support::AsyncHostComponentProfile<Self>,
-            Profile::RunState: ::core::marker::Send,
-            #(
-                #modules::__GeamModule:
-                    #support::TransferProviderModuleRegistration<Profile>,
-            )*
-        {
-            fn providers() -> ::core::result::Result<
-                ::std::vec::Vec<#support::TransferHostProviderModule<Profile>>,
-                #support::HostRegistrationError,
-            > {
-                let mut providers = ::std::vec::Vec::with_capacity(#module_count);
-                #(
-                    providers.push(
-                        <#modules::__GeamModule as
-                            #support::TransferProviderModuleRegistration<Profile>>::module()?,
                     );
                 )*
                 ::core::result::Result::Ok(providers)

@@ -30,12 +30,36 @@ For a Rust embedding application, run this inside its nested `gleam/` directory.
 This is an ordinary dependency, so the Gleam language server can provide type
 checking, completion and navigation for `geam/future`.
 
-Select transferable storage and run `geam embedding sync` as described in the
-[embedding guide](embedding.md#drive-explicit-future-values).
+The Gleam package is versioned independently of the Rust runtime; their version
+numbers do not need to match.
+
 The Rust implementation is included with Geam; no external provider selection is
-needed for this package. Future work currently runs through Rust embedding;
-`geam run` does not drive it. An Erlang implementation is not currently available,
-and calling these operations on Erlang reports that limitation.
+needed for this package. Use `geam run` in a standalone project, or run
+`geam embedding sync` in a Rust embedding application. An Erlang implementation
+is not currently available, and calling these operations on Erlang reports that
+limitation.
+
+## Run a Future-returning program
+
+When a standalone program returns a Future from `main`, `geam run` drives it to
+completion:
+
+```gleam
+import geam/future.{type Future}
+import gleam/int
+import gleam/io
+
+pub fn main() -> Future(Nil) {
+  use value <- future.map(future.ready(42))
+  io.println(int.to_string(value))
+}
+```
+
+The standalone runner supplies the Tokio runtime. Only the outer Future returned
+by `main` is observed: returning a List of Futures does not drive them, and
+`Future(Future(a))` is not implicitly flattened. Use `all` or `then` to express
+that composition. A Future completing with `Error(...)` returns source data;
+the application decides how to handle it.
 
 ## Transform a result with map
 
@@ -57,8 +81,8 @@ code as the callback to `map`, so `value` is an ordinary `Int` inside it.
 The same pattern works with a Future returned by an async provider. The
 [async files provider](../examples/provider/async_files) supplies
 `read(String) -> Future(Result(String, String))`. The next examples use that
-package; its [embedding application](../examples/embedding/async_host) includes
-the Gleam dependency and Rust provider setup.
+package; the provider example includes a standalone application, and its
+[embedding application](../examples/embedding/async_host) shows the Rust setup.
 
 ## Continue with another operation
 

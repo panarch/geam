@@ -3,7 +3,7 @@ use crate::plan::execution::function::ExternalFunctionId;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::evaluated::EvaluatedExternalValue;
-use crate::runtime::graph::ProfiledRetainedValues;
+use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::RuntimeStateFor;
 
 pub(in crate::runtime) fn run_external<Plan: ExecutableRuntimePlan>(
@@ -11,8 +11,8 @@ pub(in crate::runtime) fn run_external<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     function: ExternalFunctionId,
     origin: HostCallOrigin,
-    inputs: ProfiledRetainedValues<Plan::Values>,
-) -> ExecutionResult<EvaluatedExternalValue<Plan::Values>, Plan::Values> {
+    inputs: RetainedValues,
+) -> ExecutionResult<EvaluatedExternalValue> {
     run_tail(
         plan,
         state,

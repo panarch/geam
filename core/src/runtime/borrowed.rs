@@ -1,6 +1,6 @@
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedCustomValue, EvaluatedValue};
 use crate::runtime::state::list::{ListValueId, ParameterListValueId, StoredListValueId};
-use crate::runtime::{EvaluatedExternalValue, RuntimeValueProfile, StoredRuntimeValue};
+use crate::runtime::{EvaluatedExternalValue, StoredRuntimeValue};
 use ecow::EcoString;
 use num_bigint::BigInt;
 use std::slice;
@@ -9,26 +9,26 @@ use std::slice;
 /// one root value; tuple/custom fields and list items are not traversed here.
 /// Typed provider and embedding readers select their proven column. Opaque
 /// functions remain in the stored owner; this view grants no call permission.
-pub(crate) struct BorrowedValue<'value, Values: RuntimeValueProfile> {
+pub(crate) struct BorrowedValue<'value> {
     ints: &'value [BigInt],
     floats: &'value [f64],
     strings: &'value [EcoString],
     bit_arrays: &'value [EvaluatedBitArray],
     utf_codepoints: &'value [char],
     bools: &'value [bool],
-    customs: &'value [EvaluatedCustomValue<Values>],
-    tuples: &'value [Vec<EvaluatedValue<Values>>],
-    lists: &'value [StoredListValueId<Values>],
-    parameter_lists: &'value [ParameterListValueId<Values>],
-    externals: &'value [EvaluatedExternalValue<Values>],
+    customs: &'value [EvaluatedCustomValue],
+    tuples: &'value [Vec<EvaluatedValue>],
+    lists: &'value [StoredListValueId],
+    parameter_lists: &'value [ParameterListValueId],
+    externals: &'value [EvaluatedExternalValue],
 }
 
-impl<'value, Values: RuntimeValueProfile> BorrowedValue<'value, Values> {
-    pub(crate) fn from_stored(value: &'value StoredRuntimeValue<Values>) -> Self {
+impl<'value> BorrowedValue<'value> {
+    pub(crate) fn from_stored(value: &'value StoredRuntimeValue) -> Self {
         Self::from_value(value.value())
     }
 
-    pub(in crate::runtime) fn from_value(value: &'value EvaluatedValue<Values>) -> Self {
+    pub(in crate::runtime) fn from_value(value: &'value EvaluatedValue) -> Self {
         let mut row = Self::empty();
         match value {
             EvaluatedValue::Int(value) => row.ints = slice::from_ref(value),
@@ -77,11 +77,11 @@ impl<'value, Values: RuntimeValueProfile> BorrowedValue<'value, Values> {
         Self::from_value(&self.customs[0].fields()[index])
     }
 
-    pub(in crate::runtime) fn stored_list(&self) -> &'value StoredListValueId<Values> {
+    pub(in crate::runtime) fn stored_list(&self) -> &'value StoredListValueId {
         &self.lists[0]
     }
 
-    pub(in crate::runtime) fn list(&self) -> ListValueId<Values> {
+    pub(in crate::runtime) fn list(&self) -> ListValueId {
         if let Some(value) = self.parameter_lists.first() {
             ListValueId::Parameter(*value)
         } else {
@@ -89,7 +89,7 @@ impl<'value, Values: RuntimeValueProfile> BorrowedValue<'value, Values> {
         }
     }
 
-    pub(crate) fn external(&self) -> &'value EvaluatedExternalValue<Values> {
+    pub(crate) fn external(&self) -> &'value EvaluatedExternalValue {
         &self.externals[0]
     }
 
@@ -110,15 +110,15 @@ impl<'value, Values: RuntimeValueProfile> BorrowedValue<'value, Values> {
     }
 }
 
-impl BorrowedValue<'_, crate::runtime::TransferValues> {
+impl BorrowedValue<'_> {
     pub(super) fn read_list_item<Output>(
-        value: &StoredListValueId<crate::runtime::TransferValues>,
+        value: &StoredListValueId,
         index: usize,
-        read: impl FnOnce(BorrowedValue<'_, crate::runtime::TransferValues>) -> Output,
+        read: impl FnOnce(BorrowedValue<'_>) -> Output,
     ) -> Option<Output> {
-        use crate::runtime::TransferListStorage;
+        use crate::runtime::RuntimeListStorage;
         let handle = value.clone().into_core();
-        let storage = TransferListStorage::from_handle(&handle);
+        let storage = RuntimeListStorage::from_handle(&handle);
         macro_rules! item {
             ($value:expr, $read:ident, $field:ident) => {{
                 let values = storage.$read($value);
@@ -156,7 +156,7 @@ mod tests {
     use super::BorrowedValue;
     use crate::runtime::evaluated::EvaluatedValue;
     use crate::runtime::state::list::StoredListValueId;
-    use crate::runtime::{StoredRuntimeValue, TransferListStorage, TransferValues};
+    use crate::runtime::{RuntimeListStorage, StoredRuntimeValue};
     use num_bigint::BigInt;
 
     struct Profile;
@@ -169,8 +169,8 @@ mod tests {
     impl crate::host::HostWorkProfile for Profile {
         type Work = crate::work_fixture::WorkComponent;
     }
-    impl crate::host::AsyncHostComponentProfile<crate::work_fixture::WorkComponent> for Profile {
-        fn component_async_stores(stores: &Self::ExternalStores) -> &Self::ExternalStores {
+    impl crate::host::HostComponentProfile<crate::work_fixture::WorkComponent> for Profile {
+        fn component_stores(stores: &Self::ExternalStores) -> &Self::ExternalStores {
             stores
         }
 
@@ -181,20 +181,18 @@ mod tests {
 
     #[test]
     fn source_list_families_select_only_their_borrowed_column() {
-        use crate::embedding::{FunctionDeclaration, WorkModuleBuilder, with_execution_scope};
-        use crate::host::{
-            HostListType, HostTypeParameter, TransferHostProviderModule, TransferHostProviderSet,
-        };
+        use crate::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
+        use crate::host::{HostListType, HostProviderModule, HostProviderSet, HostTypeParameter};
         use crate::work_fixture::WorkComponent;
         use crate::{ModuleSource, PackageSource};
         use futures_util::FutureExt;
 
         let mut providers = WorkComponent::providers::<Profile>().expect("Future module");
-        providers.push(TransferHostProviderModule::new_for_profile("application", "library")
+        providers.push(HostProviderModule::new("application", "library")
             .expect("native module")
             .with_scoped_function::<WorkComponent, (HostListType<HostTypeParameter<0>>, ecow::EcoString), (), _>("check", check_list)
             .expect("generic list observer"));
-        let program = crate::frontend::compile_typed_transfer_host_program(
+        let program = crate::frontend::compile_typed_host_program(
             "application",
             "library",
             [
@@ -238,10 +236,10 @@ pub fn run() {
                     )],
                 ),
             ],
-            TransferHostProviderSet::new(providers).expect("providers"),
+            HostProviderSet::from_providers(providers).expect("providers"),
         )
         .expect("ordinary typed source");
-        let (bindings, run) = WorkModuleBuilder::new(program)
+        let (bindings, run) = HostedModuleBuilder::new(program)
             .expect("plan")
             .function(FunctionDeclaration::<(), ()>::new("run"))
             .expect("entry");
@@ -259,15 +257,10 @@ pub fn run() {
     }
 
     fn check_list<'call>(
-        mut call: crate::host::TransferHostCall<
-            'call,
-            Profile,
-            crate::work_fixture::WorkComponent,
-            (),
-        >,
+        mut call: crate::host::HostCall<'call, Profile, crate::work_fixture::WorkComponent, ()>,
         values: crate::host::HostList<'call, crate::host::HostTypeParameter<0>>,
         expected: ecow::EcoString,
-    ) -> Result<crate::host::HostCallCompletion<'call, ()>, crate::AsyncHostCallError> {
+    ) -> Result<crate::host::HostCallCompletion<'call, ()>, crate::HostCallError> {
         assert_eq!(call.state(), &());
         let stored = call
             .retain_value::<crate::host::HostListType<crate::host::HostTypeParameter<0>>>(values);
@@ -293,7 +286,7 @@ pub fn run() {
         Ok(call.return_value(()))
     }
 
-    fn populated_columns(row: BorrowedValue<'_, TransferValues>) -> Vec<&'static str> {
+    fn populated_columns(row: BorrowedValue<'_>) -> Vec<&'static str> {
         [
             ("int", row.ints.len()),
             ("float", row.floats.len()),
@@ -315,7 +308,7 @@ pub fn run() {
     #[test]
     fn recursive_reads_borrow_the_original_scalar_storage() {
         let number = BigInt::from(1u64) << 256;
-        let stored = StoredRuntimeValue::<TransferValues>::new(
+        let stored = StoredRuntimeValue::new(
             EvaluatedValue::Tuple(vec![
                 EvaluatedValue::Int(number),
                 EvaluatedValue::String("a string longer than the inline storage".into()),
@@ -353,13 +346,13 @@ pub fn run() {
     #[test]
     fn list_item_reads_borrow_the_persistent_allocation_without_copying_items() {
         let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [1] }");
-        let storage = TransferListStorage::default();
+        let storage = RuntimeListStorage::default();
         let handle = storage.int(
             plan.int_list_function_id(0).type_id(),
             vec![BigInt::from(1u64) << 256],
         );
         let values = storage.int_values(&handle);
-        let retained: StoredListValueId<TransferValues> = handle.into();
+        let retained: StoredListValueId = handle.into();
         for _ in 0..2 {
             assert_eq!(
                 BorrowedValue::read_list_item(&retained, 0, |value| {

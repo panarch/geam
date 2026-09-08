@@ -8,17 +8,15 @@ use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::{EvaluatedExternalValue, EvaluatedValue};
 use crate::runtime::graph::RuntimeGraphState;
 use crate::runtime::state::RuntimeStateFor;
-use crate::runtime::{
-    ExecutableRuntimePlan, RuntimeGraph, RuntimeListStorage, RuntimeValueProfile,
-};
+use crate::runtime::{ExecutableRuntimePlan, RuntimeGraph};
 
 pub(super) fn evaluate<Plan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &BlockEnvironment<Plan::Values>,
+    environment: &BlockEnvironment,
     instruction: &<RuntimeGraph<Plan> as ExecutionGraphProfile>::ExternalInstruction,
     expected: &ValueType,
-) -> ExecutionResult<EvaluatedExternalValue<Plan::Values>, Plan::Values>
+) -> ExecutionResult<EvaluatedExternalValue>
 where
     Plan: ExecutableRuntimePlan,
 {
@@ -33,24 +31,22 @@ where
     })
 }
 
-pub(in crate::runtime) fn evaluate_action<Plan, Profile, State>(
+pub(in crate::runtime) fn evaluate_action<Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment<Profile>,
+    environment: &BlockEnvironment,
     instruction: &<RuntimeGraph<Plan> as ExecutionGraphProfile>::ExternalInstruction,
     expected: &ValueType,
 ) -> Result<
     InstructionValueWithoutConstant<
-        Profile,
-        EvaluatedExternalValue<Profile>,
+        EvaluatedExternalValue,
         crate::plan::execution::function::ExternalFunctionId,
     >,
     State::Error,
 >
 where
     Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
-    Profile: RuntimeValueProfile,
-    State: RuntimeGraphState<Profile>,
+    State: RuntimeGraphState,
 {
     use InstructionValueWithoutConstant as V;
 
@@ -97,9 +93,7 @@ where
     }
 }
 
-fn external_value<Profile: RuntimeValueProfile>(
-    value: &EvaluatedValue<Profile>,
-) -> Option<EvaluatedExternalValue<Profile>> {
+fn external_value(value: &EvaluatedValue) -> Option<EvaluatedExternalValue> {
     let EvaluatedValue::External(value) = value else {
         return None;
     };
@@ -152,18 +146,19 @@ mod tests {
             source_hash,
             inspect,
         );
-        let stored_equal =
-            |left: &crate::runtime::StoredRuntimeValue,
-             right: &crate::runtime::StoredRuntimeValue| left.value() == right.value();
-        let equality = crate::host::HostExternalEquality::new(&stored_equal);
+        let stored_equal = |left: &crate::runtime::RetainedValueRef,
+                            right: &crate::runtime::RetainedValueRef| {
+            left.value() == right.value()
+        };
+        let equality = crate::host::RetainedValueEquality::new(&stored_equal);
         assert!(lease.source_equal(&equality, &equal));
-        let expected: EvaluatedExternalValue<crate::runtime::LocalValues> =
+        let expected: EvaluatedExternalValue =
             EvaluatedExternalValue::new(ExternalTypeId::new(0), lease);
-        let stored_inspect = |_: &crate::runtime::StoredRuntimeValue| "7".into();
-        let inspection = crate::host::HostExternalInspection::new(&stored_inspect);
+        let stored_inspect = |_: &crate::runtime::RetainedValueRef| "7".into();
+        let inspection = crate::host::RetainedValueInspection::new(&stored_inspect);
 
-        let stored_hash = |_: &crate::runtime::StoredRuntimeValue| 7;
-        let hashing = crate::host::HostExternalHashing::new(&stored_hash);
+        let stored_hash = |_: &crate::runtime::RetainedValueRef| 7;
+        let hashing = crate::host::RetainedValueHashing::new(&stored_hash);
         assert_eq!(expected.source_hash(&hashing), 7);
         assert_eq!(expected.lease().inspection(&inspection), "7");
         assert_eq!(
@@ -174,9 +169,6 @@ mod tests {
 
     #[test]
     fn rejects_non_external_instruction_values() {
-        assert_eq!(
-            external_value(&EvaluatedValue::<crate::runtime::LocalValues>::Bool(true)),
-            None,
-        );
+        assert_eq!(external_value(&EvaluatedValue::Bool(true)), None,);
     }
 }

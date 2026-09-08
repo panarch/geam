@@ -1,7 +1,6 @@
 mod adapter;
 mod argument;
 mod return_;
-mod transfer;
 
 use crate::host::{HostProfile, HostProvider};
 use crate::plan::{FunctionType, TypeScheme};
@@ -23,15 +22,6 @@ pub(crate) use return_::HostNeverFunction;
 pub(crate) use return_::{HostFunctionImplementation, HostValueFunction};
 #[cfg(test)]
 pub(crate) use return_::{expect_never_implementation, expect_value_implementation};
-pub(crate) use transfer::{
-    TransferHostFunctionDefinition, TransferHostFunctionImplementation, TransferHostNeverFunction,
-    TransferHostValueFunction,
-};
-#[doc(hidden)]
-pub use transfer::{
-    TransferScopedConstructingHostFunction, TransferScopedDivergingHostFunction,
-    TransferScopedHostFunction,
-};
 
 /// A Rust function that can be registered as a Geam host function.
 ///
@@ -513,11 +503,11 @@ mod tests {
     use crate::host::function::argument::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
-        HostCall, HostCallCompletion, HostCallError, HostCustomConstructorSchema,
-        HostCustomFieldSchema, HostCustomTypeSchema, HostExternalTypeSchema, HostListType,
-        HostProvider, HostRegistrationError, HostSchemaType, HostScopedValue, HostTypeDescriptor,
-        HostTypeIndex0, HostTypeList, HostTypeListEnd, HostValueFamily,
-        expect_value_implementation,
+        HostCall, HostCallCompletion, HostCallError, HostConstructions,
+        HostCustomConstructorSchema, HostCustomFieldSchema, HostCustomTypeSchema,
+        HostExternalTypeSchema, HostListType, HostProvider, HostRegistrationError, HostSchemaType,
+        HostScopedValue, HostType, HostTypeDescriptor, HostTypeIndex0, HostTypeList,
+        HostTypeListEnd, HostTypeParameter, HostValueFamily, expect_value_implementation,
     };
     use crate::plan::ValueType;
     use ecow::EcoString;
@@ -832,5 +822,85 @@ mod tests {
             error.to_string(),
             "host function identity uses type parameter indices [2]; indices must be contiguous from zero",
         );
+    }
+
+    type UnboundConstructions = HostTypeList<HostTypeParameter<0>, HostTypeListEnd>;
+
+    fn ready_with_construction<'call, Value: HostType>(
+        mut call: HostCall<'call, TestHostProfile, ConstructionProvider, bool>,
+        _constructions: HostConstructions<'call, HostTypeList<Value, HostTypeListEnd>>,
+    ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+        *call.state() += 1;
+        Ok(call.return_value(true))
+    }
+
+    #[test]
+    fn construction_types_must_be_bound_by_the_function_scheme() {
+        let error = HostFunctionDefinition::new_scoped_with_constructions::<
+            ConstructionProvider,
+            (),
+            bool,
+            UnboundConstructions,
+            _,
+        >(
+            "ready".into(),
+            ready_with_construction::<HostTypeParameter<0>>,
+        )
+        .err()
+        .expect("unbound construction should be rejected");
+
+        assert_eq!(
+            error,
+            HostRegistrationError::UnboundConstructionTypeParameters {
+                function: "ready".into(),
+                parameters: vec![0].into_boxed_slice(),
+            },
+        );
+    }
+
+    #[test]
+    fn a_concrete_construction_uses_the_original_projected_state() {
+        use crate::host::{HostProviderModule, HostProviderSet};
+        use crate::plan::execution::HostedProgram;
+        use crate::plan::{LibraryEntry, LibraryValueType};
+        use crate::runtime::RetainedInputs;
+        use crate::runtime::work::driver::Driver;
+        let provider = HostProviderModule::<TestHostProfile>::new("application", "library")
+            .expect("provider")
+            .with_scoped_function_and_constructions::<ConstructionProvider, (), bool,
+                HostTypeList<bool, HostTypeListEnd>, _>("ready", ready_with_construction::<bool>)
+            .expect("concrete construction is closed");
+        let program = crate::frontend::compile_typed_host_program("application", "library", [
+            crate::PackageSource::new("application", Vec::<String>::new(), [
+                crate::ModuleSource::new("library", "src/library.gleam",
+                    "@external(erlang, \"native\", \"ready\") fn ready() -> Bool\npub fn run() { ready() }"),
+            ]),
+        ], HostProviderSet::from_providers([provider]).expect("provider set")).expect("source");
+        let plan = crate::planner::plan_host_library_program(program).expect("plan");
+        let entry = plan
+            .functions()
+            .iter()
+            .find(|function| function.name() == "run")
+            .expect("entry")
+            .gleam_body()
+            .expect("source body");
+        let entry = LibraryEntry::new(entry.id(), LibraryValueType::Bool, Vec::new(), Vec::new());
+        let (plan, entries) =
+            HostedProgram::from_library_plan(plan, entry, Vec::new()).expect("sealed executable");
+        let mut state = TestRunState {
+            counter: 4,
+            unrelated: true,
+        };
+        let mut stores = ();
+        let mut echo = drop;
+        let mut driver = Driver::new(&plan, &mut state, &mut stores, &mut echo);
+        assert!(
+            driver
+                .run_bool(*entries.bools[0].function(), RetainedInputs::empty())
+                .expect("native ready")
+        );
+        drop(driver);
+        assert_eq!(state.counter, 5);
+        assert!(state.unrelated);
     }
 }

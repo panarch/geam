@@ -18,15 +18,14 @@ use crate::plan::execution::graph::{
     UtfCodepointLocalId,
 };
 use crate::runtime::state::list::ExternalListValueId;
-use crate::runtime::{LocalValues, RuntimeValueProfile};
 
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::runtime) struct EvaluatedCapture<Profile: RuntimeValueProfile = LocalValues> {
-    kind: EvaluatedCaptureKind<Profile>,
+pub(in crate::runtime) struct EvaluatedCapture {
+    kind: EvaluatedCaptureKind,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::runtime) enum EvaluatedCaptureKind<Profile: RuntimeValueProfile = LocalValues> {
+pub(in crate::runtime) enum EvaluatedCaptureKind {
     Int {
         local: IntLocalId,
         value: BigInt,
@@ -49,11 +48,11 @@ pub(in crate::runtime) enum EvaluatedCaptureKind<Profile: RuntimeValueProfile = 
     },
     Custom {
         local: CustomLocal,
-        value: EvaluatedCustomValue<Profile>,
+        value: EvaluatedCustomValue,
     },
     External {
         local: ExternalLocal,
-        value: EvaluatedExternalValue<Profile>,
+        value: EvaluatedExternalValue,
     },
     Bool {
         local: BoolLocalId,
@@ -64,133 +63,133 @@ pub(in crate::runtime) enum EvaluatedCaptureKind<Profile: RuntimeValueProfile = 
     },
     Tuple {
         local: TupleLocalId,
-        value: Vec<EvaluatedValue<Profile>>,
+        value: Vec<EvaluatedValue>,
     },
-    List(EvaluatedListCapture<Profile>),
+    List(EvaluatedListCapture),
     IntFunction {
         local: IntFunctionLocalId,
-        value: EvaluatedIntFunction<Profile>,
+        value: EvaluatedIntFunction,
     },
     FloatFunction {
         local: FloatFunctionLocalId,
-        value: EvaluatedFloatFunction<Profile>,
+        value: EvaluatedFloatFunction,
     },
     StringFunction {
         local: StringFunctionLocalId,
-        value: EvaluatedStringFunction<Profile>,
+        value: EvaluatedStringFunction,
     },
     BitArrayFunction {
         local: BitArrayFunctionLocalId,
-        value: EvaluatedBitArrayFunction<Profile>,
+        value: EvaluatedBitArrayFunction,
     },
     UtfCodepointFunction {
         local: UtfCodepointFunctionLocalId,
-        value: EvaluatedUtfCodepointFunction<Profile>,
+        value: EvaluatedUtfCodepointFunction,
     },
     CustomFunction {
         local: CustomFunctionLocal,
-        value: EvaluatedCustomFunction<Profile>,
+        value: EvaluatedCustomFunction,
     },
     ExternalFunction {
         local: ExternalFunctionLocal,
-        value: EvaluatedExternalFunction<Profile>,
+        value: EvaluatedExternalFunction,
     },
     BoolFunction {
         local: BoolFunctionLocalId,
-        value: EvaluatedBoolFunction<Profile>,
+        value: EvaluatedBoolFunction,
     },
     NilFunction {
         local: NilFunctionLocalId,
-        value: EvaluatedNilFunction<Profile>,
+        value: EvaluatedNilFunction,
     },
     TupleFunction {
         local: TupleFunctionLocalId,
-        value: EvaluatedTupleFunction<Profile>,
+        value: EvaluatedTupleFunction,
     },
     ListFunction {
         local: ListFunctionLocal,
-        value: EvaluatedListFunction<Profile>,
+        value: EvaluatedListFunction,
     },
     FunctionFunction {
         local: FunctionFunctionLocal,
-        value: EvaluatedFunctionFunction<Profile>,
+        value: EvaluatedFunctionFunction,
     },
     GenericFunction {
         local: GenericFunctionLocal,
-        value: EvaluatedGenericFunction<Profile>,
+        value: EvaluatedGenericFunction,
     },
     NeverFunction {
         local: NeverFunctionLocal,
-        value: EvaluatedNeverFunction<Profile>,
+        value: EvaluatedNeverFunction,
     },
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::runtime) enum EvaluatedListCapture<Profile: RuntimeValueProfile = LocalValues> {
+pub(in crate::runtime) enum EvaluatedListCapture {
     Parameter {
         local: crate::plan::execution::graph::ParameterListLocalId,
-        value: crate::runtime::state::list::ParameterListValueId<Profile>,
+        value: crate::runtime::state::list::ParameterListValueId,
     },
     ParameterList {
         local: crate::plan::execution::graph::ParameterListListLocalId,
-        value: crate::runtime::state::list::ParameterListListValueId<Profile>,
+        value: crate::runtime::state::list::ParameterListListValueId,
     },
     Int {
         local: crate::plan::execution::graph::IntListLocalId,
-        value: crate::runtime::state::list::IntListValueId<Profile>,
+        value: crate::runtime::state::list::IntListValueId,
     },
     String {
         local: crate::plan::execution::graph::StringListLocalId,
-        value: crate::runtime::state::list::StringListValueId<Profile>,
+        value: crate::runtime::state::list::StringListValueId,
     },
     BitArray {
         local: crate::plan::execution::graph::BitArrayListLocalId,
-        value: crate::runtime::state::list::BitArrayListValueId<Profile>,
+        value: crate::runtime::state::list::BitArrayListValueId,
     },
     UtfCodepoint {
         local: crate::plan::execution::graph::UtfCodepointListLocalId,
-        value: crate::runtime::state::list::UtfCodepointListValueId<Profile>,
+        value: crate::runtime::state::list::UtfCodepointListValueId,
     },
     Custom {
         local: crate::plan::execution::graph::CustomListLocalId,
-        value: crate::runtime::state::list::CustomListValueId<Profile>,
+        value: crate::runtime::state::list::CustomListValueId,
     },
     External {
         local: crate::plan::execution::graph::ExternalListLocalId,
-        value: ExternalListValueId<Profile>,
+        value: ExternalListValueId,
     },
     Float {
         local: crate::plan::execution::graph::FloatListLocalId,
-        value: crate::runtime::state::list::FloatListValueId<Profile>,
+        value: crate::runtime::state::list::FloatListValueId,
     },
     Bool {
         local: crate::plan::execution::graph::BoolListLocalId,
-        value: crate::runtime::state::list::BoolListValueId<Profile>,
+        value: crate::runtime::state::list::BoolListValueId,
     },
     Nil {
         local: crate::plan::execution::graph::NilListLocalId,
-        value: crate::runtime::state::list::NilListValueId<Profile>,
+        value: crate::runtime::state::list::NilListValueId,
     },
     Tuple {
         local: crate::plan::execution::graph::TupleListLocalId,
-        value: crate::runtime::state::list::TupleListValueId<Profile>,
+        value: crate::runtime::state::list::TupleListValueId,
     },
     List {
         local: crate::plan::execution::graph::ListListLocalId,
-        value: crate::runtime::state::list::ListListValueId<Profile>,
+        value: crate::runtime::state::list::ListListValueId,
     },
     Function {
         local: crate::plan::execution::graph::FunctionListLocalId,
-        value: crate::runtime::state::list::FunctionListValueId<Profile>,
+        value: crate::runtime::state::list::FunctionListValueId,
     },
 }
 
-impl<Profile: RuntimeValueProfile> EvaluatedCapture<Profile> {
-    pub(in crate::runtime) fn from_kind(kind: EvaluatedCaptureKind<Profile>) -> Self {
+impl EvaluatedCapture {
+    pub(in crate::runtime) fn from_kind(kind: EvaluatedCaptureKind) -> Self {
         Self { kind }
     }
 
-    pub(in crate::runtime) fn kind(&self) -> &EvaluatedCaptureKind<Profile> {
+    pub(in crate::runtime) fn kind(&self) -> &EvaluatedCaptureKind {
         &self.kind
     }
 
@@ -214,16 +213,13 @@ impl<Profile: RuntimeValueProfile> EvaluatedCapture<Profile> {
         Self::from_kind(EvaluatedCaptureKind::UtfCodepoint { local, value })
     }
 
-    pub(in crate::runtime) fn custom(
-        local: CustomLocal,
-        value: EvaluatedCustomValue<Profile>,
-    ) -> Self {
+    pub(in crate::runtime) fn custom(local: CustomLocal, value: EvaluatedCustomValue) -> Self {
         Self::from_kind(EvaluatedCaptureKind::Custom { local, value })
     }
 
     pub(in crate::runtime) fn external(
         local: ExternalLocal,
-        value: EvaluatedExternalValue<Profile>,
+        value: EvaluatedExternalValue,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::External { local, value })
     }
@@ -236,111 +232,108 @@ impl<Profile: RuntimeValueProfile> EvaluatedCapture<Profile> {
         Self::from_kind(EvaluatedCaptureKind::Nil { local })
     }
 
-    pub(in crate::runtime) fn tuple(
-        local: TupleLocalId,
-        value: Vec<EvaluatedValue<Profile>>,
-    ) -> Self {
+    pub(in crate::runtime) fn tuple(local: TupleLocalId, value: Vec<EvaluatedValue>) -> Self {
         Self::from_kind(EvaluatedCaptureKind::Tuple { local, value })
     }
 
-    pub(in crate::runtime) fn list(value: EvaluatedListCapture<Profile>) -> Self {
+    pub(in crate::runtime) fn list(value: EvaluatedListCapture) -> Self {
         Self::from_kind(EvaluatedCaptureKind::List(value))
     }
 
     pub(in crate::runtime) fn int_function(
         local: IntFunctionLocalId,
-        value: EvaluatedIntFunction<Profile>,
+        value: EvaluatedIntFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::IntFunction { local, value })
     }
 
     pub(in crate::runtime) fn float_function(
         local: FloatFunctionLocalId,
-        value: EvaluatedFloatFunction<Profile>,
+        value: EvaluatedFloatFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::FloatFunction { local, value })
     }
 
     pub(in crate::runtime) fn string_function(
         local: StringFunctionLocalId,
-        value: EvaluatedStringFunction<Profile>,
+        value: EvaluatedStringFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::StringFunction { local, value })
     }
 
     pub(in crate::runtime) fn bit_array_function(
         local: BitArrayFunctionLocalId,
-        value: EvaluatedBitArrayFunction<Profile>,
+        value: EvaluatedBitArrayFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::BitArrayFunction { local, value })
     }
 
     pub(in crate::runtime) fn utf_codepoint_function(
         local: UtfCodepointFunctionLocalId,
-        value: EvaluatedUtfCodepointFunction<Profile>,
+        value: EvaluatedUtfCodepointFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::UtfCodepointFunction { local, value })
     }
 
     pub(in crate::runtime) fn custom_function(
         local: CustomFunctionLocal,
-        value: EvaluatedCustomFunction<Profile>,
+        value: EvaluatedCustomFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::CustomFunction { local, value })
     }
 
     pub(in crate::runtime) fn external_function(
         local: ExternalFunctionLocal,
-        value: EvaluatedExternalFunction<Profile>,
+        value: EvaluatedExternalFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::ExternalFunction { local, value })
     }
 
     pub(in crate::runtime) fn bool_function(
         local: BoolFunctionLocalId,
-        value: EvaluatedBoolFunction<Profile>,
+        value: EvaluatedBoolFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::BoolFunction { local, value })
     }
 
     pub(in crate::runtime) fn nil_function(
         local: NilFunctionLocalId,
-        value: EvaluatedNilFunction<Profile>,
+        value: EvaluatedNilFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::NilFunction { local, value })
     }
 
     pub(in crate::runtime) fn tuple_function(
         local: TupleFunctionLocalId,
-        value: EvaluatedTupleFunction<Profile>,
+        value: EvaluatedTupleFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::TupleFunction { local, value })
     }
 
     pub(in crate::runtime) fn list_function(
         local: ListFunctionLocal,
-        value: EvaluatedListFunction<Profile>,
+        value: EvaluatedListFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::ListFunction { local, value })
     }
 
     pub(in crate::runtime) fn function_function(
         local: FunctionFunctionLocal,
-        value: EvaluatedFunctionFunction<Profile>,
+        value: EvaluatedFunctionFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::FunctionFunction { local, value })
     }
 
     pub(in crate::runtime) fn generic_function(
         local: GenericFunctionLocal,
-        value: EvaluatedGenericFunction<Profile>,
+        value: EvaluatedGenericFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::GenericFunction { local, value })
     }
 
     pub(in crate::runtime) fn never_function(
         local: NeverFunctionLocal,
-        value: EvaluatedNeverFunction<Profile>,
+        value: EvaluatedNeverFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::NeverFunction { local, value })
     }
@@ -351,7 +344,7 @@ mod tests {
     use super::{EvaluatedCapture, EvaluatedCaptureKind, EvaluatedListCapture};
     use crate::plan::execution::function::IntFunctionId;
     use crate::plan::execution::graph::{IntFunctionLocalId, IntListLocalId, IntLocalId};
-    use crate::runtime::LocalValues;
+
     use crate::runtime::evaluated::EvaluatedIntFunction;
     use crate::runtime::state::RuntimeState;
 
@@ -383,14 +376,14 @@ pub fn main() {
         );
 
         assert_eq!(
-            EvaluatedCapture::<LocalValues>::int(IntLocalId(0), 1.into()).kind(),
+            EvaluatedCapture::int(IntLocalId(0), 1.into()).kind(),
             &EvaluatedCaptureKind::Int {
                 local: IntLocalId(0),
                 value: 1.into(),
             },
         );
         assert_eq!(
-            EvaluatedCapture::<LocalValues>::list(EvaluatedListCapture::Int {
+            EvaluatedCapture::list(EvaluatedListCapture::Int {
                 local: IntListLocalId(0),
                 value: list_value.clone(),
             })
@@ -401,11 +394,7 @@ pub fn main() {
             }),
         );
         assert_eq!(
-            EvaluatedCapture::<LocalValues>::int_function(
-                IntFunctionLocalId(0),
-                function_value.clone(),
-            )
-            .kind(),
+            EvaluatedCapture::int_function(IntFunctionLocalId(0), function_value.clone(),).kind(),
             &EvaluatedCaptureKind::IntFunction {
                 local: IntFunctionLocalId(0),
                 value: function_value,

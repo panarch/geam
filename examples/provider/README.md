@@ -5,9 +5,8 @@ functions declared by a Gleam package. These examples let you read the public
 Gleam API, its Rust implementation, and the application that connects them as
 one complete flow.
 
-Read the examples in order when learning provider authoring. The first stages each have
-a runnable Gleam application. The async stage uses a Rust embedding application
-to drive the work.
+Read the examples in order when learning provider authoring. Each stage has
+a runnable Gleam application.
 
 | Stage | Example | Adds |
 | --- | --- | --- |
@@ -19,7 +18,7 @@ to drive the work.
 | Custom value behavior | [`run_metrics`](run_metrics/README.md) | Define equality, hashing, and inspection for an external value |
 | Gleam callback | [`call_tracing`](call_tracing/README.md) | Invoke a typed Gleam function and re-enter the same provider |
 | Retained Gleam value | [`generic_box`](generic_box/README.md) | Store a generic source value across provider calls |
-| Async Rust work | [`async_files`](async_files/README.md) | Return Future values for an embedding application to drive |
+| Async Rust work | [`async_files`](async_files/README.md) | Read a file through a Rust async function and compose its Future in Gleam |
 | Published pair | [`text_pattern`](text_pattern/README.md) | Pair a Hex package with a crates.io provider while keeping its Erlang implementation |
 
 Start with [`text_tools`](text_tools/README.md), then follow the next-example
@@ -63,15 +62,15 @@ host boundary:
 
 ## Example layout
 
-The synchronous examples keep the two packages side by side:
+The examples keep the two packages side by side:
 
 ```text
 project/   Gleam application and local Gleam package
 provider/  separately buildable and testable Rust provider crate
 ```
 
-The async files package follows the same provider/package split; its Rust
-application is in [`embedding/async_host`](../embedding/async_host).
+The async files provider also has a Rust application in
+[`embedding/async_host`](../embedding/async_host).
 
 The application adds and imports the Gleam package. `geam provider add` selects
 the companion Rust crate for the checkout. The provider's Cargo metadata names

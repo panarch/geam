@@ -1,31 +1,30 @@
 use super::transfer_fixture::ObservedEcho;
 use super::transfer_support::{Profile, RunState};
 pub(super) use super::transfer_support::{assert_fixture, fixture};
-use geam_core::{TransferHostProviderSet, compile_typed_transfer_host_project};
+use geam_core::{HostProviderSet, compile_typed_host_project};
 use geam_stdlib::GleamStdlibRunState;
 
 #[test]
 fn dict_callback_failure_preserves_source_origin_and_allows_the_next_call() {
     use geam_core::embedding::{
-        AsyncCallError, FunctionDeclaration, WorkModuleBuilder, with_execution_scope,
+        CallError, FunctionDeclaration, HostedModuleBuilder, with_execution_scope,
     };
-    use geam_core::{AsyncExecutionError, PanicMessage};
+    use geam_core::{ExecutionError, PanicMessage};
     use num_bigint::BigInt;
     use std::future::Future;
     use std::pin::pin;
     use std::task::{Context, Poll, Waker};
 
-    let program = compile_typed_transfer_host_project(
+    let program = compile_typed_host_project(
         super::project_root(),
         "gleam_dict",
-        TransferHostProviderSet::new(
-            geam_stdlib::transfer_host_providers::<Profile>()
-                .expect("stdlib transfer registration"),
+        HostProviderSet::from_providers(
+            geam_stdlib::host_providers::<Profile>().expect("stdlib transfer registration"),
         )
         .expect("stdlib provider set"),
     )
     .expect("official dict source linkage");
-    let (mut bindings, map) = WorkModuleBuilder::new(program)
+    let (mut bindings, map) = HostedModuleBuilder::new(program)
         .expect("dict plan")
         .function(FunctionDeclaration::<(bool,), BigInt>::new("map_probe"))
         .expect("typed probe");
@@ -52,7 +51,7 @@ fn dict_callback_failure_preserves_source_origin_and_allows_the_next_call() {
                 .call(&entry, (true,))
                 .expect_err("nested source callback fails");
             assert!(
-                matches!(error, AsyncCallError::Execution(AsyncExecutionError::Panic(ref error))
+                matches!(error, CallError::Execution(ExecutionError::Panic(ref error))
                 if error.message() == &PanicMessage::Explicit(message.into())
                     && error.site().module() == "gleam_dict")
             );

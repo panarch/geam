@@ -1,15 +1,15 @@
 use camino::Utf8Path;
+use geam_builtin::FutureComponent;
 use geam_core::embedding::{
-    AsyncCallError, Function, FunctionDeclaration, WorkModule, WorkModuleBuilder,
+    CallError, Function, FunctionDeclaration, HostedModule, HostedModuleBuilder,
     with_execution_scope,
 };
-use geam_core::frontend::TransferHostedTypedProgram;
-use geam_core::host::AsyncHostComponentProfile;
+use geam_core::frontend::HostedTypedProgram;
+use geam_core::host::HostComponentProfile;
 use geam_core::{
-    EchoOutput, EchoSink, HostProfile, TransferHostProviderSet, Value, ValueType,
-    compile_typed_transfer_host_project,
+    EchoOutput, EchoSink, HostProfile, HostProviderSet, Value, ValueType,
+    compile_typed_host_project,
 };
-use geam_runtime_api::FutureComponent;
 use std::fs;
 use std::future::Future;
 use std::path::Path;
@@ -22,7 +22,7 @@ mod fixture_observation;
 pub(crate) use fixture_observation::ENTRY;
 
 pub(crate) struct TransferFixture<Profile: HostProfile> {
-    module: WorkModule<Profile>,
+    module: HostedModule<Profile>,
     entry: Function<(), ()>,
 }
 
@@ -32,8 +32,8 @@ where
     Profile::RunState: Send,
     Profile::ExternalStores: Send,
 {
-    pub(crate) fn new(program: TransferHostedTypedProgram<Profile>, entry: &str) -> Self {
-        let (bindings, entry) = WorkModuleBuilder::new(program)
+    pub(crate) fn new(program: HostedTypedProgram<Profile>, entry: &str) -> Self {
+        let (bindings, entry) = HostedModuleBuilder::new(program)
             .expect("official source transfer plan")
             .function(FunctionDeclaration::<(), ()>::new(entry))
             .expect("typed observation entry");
@@ -47,7 +47,7 @@ where
         &mut self,
         state: &mut Profile::RunState,
         echo: &mut (dyn EchoSink + Send),
-    ) -> Result<(), AsyncCallError> {
+    ) -> Result<(), CallError> {
         let mut task = pin!(with_execution_scope(async |guard| {
             self.module.attach(guard, state, echo).call(&self.entry, ())
         }));
@@ -93,8 +93,8 @@ impl ObservedEcho {
 pub(crate) fn observed_project<Profile: HostProfile>(
     root: &Utf8Path,
     root_module: &str,
-    hosts: TransferHostProviderSet<Profile>,
-) -> TransferHostedTypedProgram<Profile> {
+    hosts: HostProviderSet<Profile>,
+) -> HostedTypedProgram<Profile> {
     let directory = tempfile::tempdir().expect("temporary observation project");
     let observed = Utf8Path::from_path(directory.path()).expect("UTF-8 fixture path");
     for name in ["gleam.toml", "manifest.toml"] {
@@ -116,7 +116,7 @@ pub(crate) fn observed_project<Profile: HostProfile>(
         .expect("add temporary observation entry");
 
     // The real loader owns all compiled source before the temporary copy is dropped.
-    compile_typed_transfer_host_project(observed, root_module, hosts)
+    compile_typed_host_project(observed, root_module, hosts)
         .expect("resolved observation project should compile")
 }
 
@@ -148,8 +148,8 @@ fn observes_a_locked_project_without_mutating_its_sources() {
     impl geam_core::host::HostWorkProfile for Profile {
         type Work = FutureComponent;
     }
-    impl AsyncHostComponentProfile<FutureComponent> for Profile {
-        fn component_async_stores(stores: &HostFutureStore) -> &HostFutureStore {
+    impl HostComponentProfile<FutureComponent> for Profile {
+        fn component_stores(stores: &HostFutureStore) -> &HostFutureStore {
             stores
         }
 
@@ -202,7 +202,7 @@ observation_dependency = { version = "1.0.0" }
     let program = observed_project(
         root,
         "nested/entry",
-        TransferHostProviderSet::<Profile>::new([]).expect("provider-free fixture"),
+        HostProviderSet::<Profile>::from_providers([]).expect("provider-free fixture"),
     );
     let mut execution = TransferFixture::new(program, ENTRY);
     let mut echo = ObservedEcho::default();

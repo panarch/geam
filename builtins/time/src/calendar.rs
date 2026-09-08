@@ -1,6 +1,6 @@
-use super::{GleamTimeLocalProfile, TimeSource};
+use super::{GleamTimeProviderProfile, TimeSource};
 use crate::{HostProviderModule, HostRegistrationError};
-use geam_core::provider::{Call, HostResult};
+use geam_core::provider::Call;
 use num_bigint::BigInt;
 
 #[geam_macros::module(
@@ -10,7 +10,8 @@ use num_bigint::BigInt;
     component = crate::Component<Profile::Source>,
 )]
 mod provider {
-    use super::{BigInt, Call, HostResult, TimeSource};
+    use super::{BigInt, Call, TimeSource};
+    use geam_core::provider::HostResult;
 
     #[geam_macros::function(profile = Profile)]
     fn local_time_offset_seconds(
@@ -23,18 +24,9 @@ mod provider {
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
-    Profile: GleamTimeLocalProfile,
+    Profile: GleamTimeProviderProfile,
 {
     provider::__geam_module::<Profile>()
-}
-
-pub(super) fn transfer_host_provider<Profile>()
--> Result<geam_core::TransferHostProviderModule<Profile>, HostRegistrationError>
-where
-    Profile: crate::GleamTimeTransferProfile,
-    Profile::RunState: Send,
-{
-    provider::__geam_transfer_module::<Profile>()
 }
 
 #[cfg(test)]

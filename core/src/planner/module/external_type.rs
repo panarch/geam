@@ -317,8 +317,9 @@ mod tests {
 
     #[test]
     fn thing_fixture_source_hash_is_exact() {
-        let retained_hash = |_: &crate::runtime::StoredRuntimeValue| 7;
-        let hashing = crate::host::HostExternalHashing::new(&retained_hash);
+        let retained_hash = |_: &crate::runtime::RetainedValueRef| 7;
+        let raw_hashing = crate::host::RetainedValueHashing::new(&retained_hash);
+        let hashing = crate::host::HostExternalHashing(&raw_hashing);
 
         assert_eq!(
             <ThingStorage as HostExternalStorage<ExternalTestProfile, ThingSchema>>::source_hash(

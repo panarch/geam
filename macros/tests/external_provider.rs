@@ -70,11 +70,17 @@ mod metrics {
 
     #[geam_macros::function]
     pub(super) fn record(metrics: &Metrics, name: EcoString, value: f64) -> Metrics {
-        let mut updated = metrics.clone();
-        let metric = updated.entries.entry(name).or_default();
-        metric.count += 1u8;
-        metric.total += value;
-        updated
+        metrics.record(name, value)
+    }
+
+    impl Metrics {
+        pub(super) fn record(&self, name: EcoString, value: f64) -> Self {
+            let mut updated = self.clone();
+            let metric = updated.entries.entry(name).or_default();
+            metric.count += 1u8;
+            metric.total += value;
+            updated
+        }
     }
 
     #[geam_macros::function]
@@ -257,8 +263,8 @@ fn macro_authored_external_values_preserve_updates_equality_and_lifetime() {
     use metrics::Metrics;
 
     let zero = Metrics::default();
-    let positive_zero = metrics::record(&zero, "zero".into(), 0.0);
-    let negative_zero = metrics::record(&zero, "zero".into(), -0.0);
+    let positive_zero = zero.record("zero".into(), 0.0);
+    let negative_zero = zero.record("zero".into(), -0.0);
     assert!(positive_zero.source_equal(&negative_zero));
     assert_eq!(positive_zero.source_hash(), negative_zero.source_hash());
     assert_eq!(positive_zero.inspect(), negative_zero.inspect());

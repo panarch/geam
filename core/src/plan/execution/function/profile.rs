@@ -11,7 +11,6 @@ use crate::plan::execution::graph::{
 };
 use crate::plan::execution::host::{
     HostNeverFunctionId, HostedExecutionProfile, HostedFunctionTarget,
-    TransferHostedExecutionProfile,
 };
 use std::convert::Infallible;
 use std::fmt::Debug;
@@ -125,36 +124,6 @@ impl ExecutionProfile for HostedExecutionProfile {
         ValueFunctionEntry::graph(function)
     }
 }
-
-impl ExecutionProfile for TransferHostedExecutionProfile {
-    type Graph = HostedExecutionGraph;
-    type HostTarget<Body: ExecutionFunctionBody> = HostedFunctionTarget<Body>;
-    type Function<Body: ExecutionFunctionBody> =
-        ValueFunctionEntry<Body, HostedFunctionTarget<Body>>;
-    type NeverHostTarget = HostNeverFunctionId;
-    type NeverFunction =
-        ValueFunctionEntry<super::ExecutionNeverFunctionBody<Self>, HostNeverFunctionId>;
-
-    fn graph<Body: ExecutionFunctionBody>(
-        function: ExecutableFunction<Body>,
-    ) -> Self::Function<Body> {
-        ValueFunctionEntry::graph(function)
-    }
-
-    fn never_graph(
-        function: ExecutableFunction<super::ExecutionNeverFunctionBody<Self>>,
-    ) -> Self::NeverFunction {
-        ValueFunctionEntry::graph(function)
-    }
-}
-
-pub(crate) trait DirectHostedExecutionProfile:
-    ExecutionProfile<Graph = HostedExecutionGraph>
-{
-}
-
-impl DirectHostedExecutionProfile for HostedExecutionProfile {}
-impl DirectHostedExecutionProfile for TransferHostedExecutionProfile {}
 
 impl ExecutionGraphProfile for Infallible {
     type ExternalFunctionId = Infallible;
@@ -416,7 +385,6 @@ mod tests {
     use super::{
         ExecutionFunction, ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionGraphProfile,
         ExecutionHostTarget, ExecutionProfile, HostedExecutionGraph, HostedExecutionProfile,
-        TransferHostedExecutionProfile,
     };
     use crate::plan::execution::function::{
         BitArrayFunctionBody, BitArrayFunctionFunctionBody, BitArrayListFunctionBody,
@@ -525,9 +493,9 @@ mod tests {
 
     #[test]
     fn transfer_profile_keeps_graph_entries() {
-        let transfer = <TransferHostedExecutionProfile as ExecutionProfile>::graph(int_graph());
+        let transfer = <HostedExecutionProfile as ExecutionProfile>::graph(int_graph());
         let transfer_never =
-            <TransferHostedExecutionProfile as ExecutionProfile>::never_graph(never_graph());
+            <HostedExecutionProfile as ExecutionProfile>::never_graph(never_graph());
         for (entry, graph) in [
             (transfer, true),
             (

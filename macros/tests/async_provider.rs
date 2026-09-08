@@ -1,17 +1,17 @@
+use geam_builtin::FutureComponent;
+use geam_builtin::embedding::FutureType;
 use geam_core::embedding::{
-    AsyncCallError, BigInt, FunctionDeclaration, List, ObservationError, WorkModuleBuilder,
+    BigInt, CallError, FunctionDeclaration, HostedModuleBuilder, List, ObservationError,
     with_execution_scope,
 };
-use geam_core::frontend::{TransferHostedTypedProgram, compile_typed_transfer_host_program};
+use geam_core::frontend::{HostedTypedProgram, compile_typed_host_program};
 use geam_core::host::{
-    AsyncHostComponentProfile, HostFutureStore, HostProfile,
-    TransferHostProviderComponentRegistration, TransferHostProviderSet,
+    HostComponentProfile, HostFutureStore, HostProfile, HostProviderComponentRegistration,
+    HostProviderSet,
 };
 use geam_core::{
-    AsyncExecutionError, EchoOutput, EchoSink, ModuleSource, PackageSource, PanicKind, PanicMessage,
+    EchoOutput, EchoSink, ExecutionError, ModuleSource, PackageSource, PanicKind, PanicMessage,
 };
-use geam_runtime_api::FutureComponent;
-use geam_runtime_api::embedding::FutureType;
 use std::future::Future;
 use std::pin::pin;
 use std::task::{Context, Poll, Waker};
@@ -26,7 +26,7 @@ struct State {
 }
 #[derive(Default)]
 struct HostStores {
-    provider: AsyncStores,
+    provider: Stores,
     future: HostFutureStore,
 }
 
@@ -34,8 +34,8 @@ impl HostProfile for Profile {
     type RunState = State;
     type ExternalStores = HostStores;
 }
-impl AsyncHostComponentProfile<Component> for Profile {
-    fn component_async_stores(stores: &HostStores) -> &AsyncStores {
+impl HostComponentProfile<Component> for Profile {
+    fn component_stores(stores: &HostStores) -> &Stores {
         &stores.provider
     }
     fn component_state(state: &mut State) -> &mut BigInt {
@@ -45,8 +45,8 @@ impl AsyncHostComponentProfile<Component> for Profile {
 impl geam_core::host::HostWorkProfile for Profile {
     type Work = FutureComponent;
 }
-impl AsyncHostComponentProfile<FutureComponent> for Profile {
-    fn component_async_stores(stores: &HostStores) -> &HostFutureStore {
+impl HostComponentProfile<FutureComponent> for Profile {
+    fn component_stores(stores: &HostStores) -> &HostFutureStore {
         &stores.future
     }
     fn component_state(state: &mut State) -> &mut () {
@@ -62,18 +62,18 @@ impl EchoSink for Echo {
     }
 }
 
-fn program() -> TransferHostedTypedProgram<Profile> {
+fn program() -> HostedTypedProgram<Profile> {
     compile(include_str!("fixtures/future_families/main.gleam"))
         .expect("explicit Future source linkage")
 }
 
-fn compile(source: &str) -> Result<TransferHostedTypedProgram<Profile>, geam_core::FrontendError> {
+fn compile(source: &str) -> Result<HostedTypedProgram<Profile>, geam_core::FrontendError> {
     let mut providers = FutureComponent::providers().expect("Future component");
     providers.extend(
-        <Component as TransferHostProviderComponentRegistration<Profile>>::providers()
+        <Component as HostProviderComponentRegistration<Profile>>::providers()
             .expect("macro-authored component"),
     );
-    compile_typed_transfer_host_program(
+    compile_typed_host_program(
         "application",
         "main",
         [
@@ -117,7 +117,7 @@ fn compile(source: &str) -> Result<TransferHostedTypedProgram<Profile>, geam_cor
                 [ModuleSource::new("main", "src/main.gleam", source)],
             ),
         ],
-        TransferHostProviderSet::new(providers).expect("provider set"),
+        HostProviderSet::from_providers(providers).expect("provider set"),
     )
 }
 
@@ -147,7 +147,7 @@ fn manual_payloads_retain_rich_values_and_work_across_native_suspension() {
 }
 
 fn assert_work_checks(entry: &str) {
-    let (bindings, function) = WorkModuleBuilder::new(program())
+    let (bindings, function) = HostedModuleBuilder::new(program())
         .expect("plan")
         .function(FunctionDeclaration::<(), FutureType<bool>>::new(entry))
         .expect("work entry");
@@ -170,7 +170,7 @@ fn assert_work_checks(entry: &str) {
 
 #[test]
 fn direct_scalar_generic_and_lazy_values_keep_their_ordinary_call_path() {
-    let (bindings, function) = WorkModuleBuilder::new(program())
+    let (bindings, function) = HostedModuleBuilder::new(program())
         .expect("plan")
         .function(FunctionDeclaration::<(), bool>::new("direct_families"))
         .expect("ordinary entry");
@@ -212,7 +212,7 @@ fn external_and_stored_values_keep_original_identity_after_native_suspension() {
 
 #[test]
 fn direct_calls_and_pending_work_share_one_caller_owned_state() {
-    let (mut bindings, direct) = WorkModuleBuilder::new(program())
+    let (mut bindings, direct) = HostedModuleBuilder::new(program())
         .expect("plan")
         .function(FunctionDeclaration::<(BigInt,), BigInt>::new("direct"))
         .expect("direct");
@@ -283,7 +283,7 @@ fn direct_calls_and_pending_work_share_one_caller_owned_state() {
 
 #[test]
 fn retained_list_results_pass_back_to_native_work_without_materialization() {
-    let (mut bindings, direct) = WorkModuleBuilder::new(program())
+    let (mut bindings, direct) = HostedModuleBuilder::new(program())
         .expect("plan")
         .function(FunctionDeclaration::<(List<BigInt>,), List<BigInt>>::new(
             "list_direct",
@@ -322,7 +322,7 @@ fn retained_list_results_pass_back_to_native_work_without_materialization() {
 
 #[test]
 fn direct_failures_keep_the_provider_or_source_origin() {
-    let (mut bindings, direct) = WorkModuleBuilder::new(program())
+    let (mut bindings, direct) = HostedModuleBuilder::new(program())
         .expect("plan")
         .function(FunctionDeclaration::<(), BigInt>::new("direct_failure"))
         .expect("direct failure");
@@ -339,7 +339,7 @@ fn direct_failures_keep_the_provider_or_source_origin() {
     let mut echo = Echo::default();
     poll_ready(with_execution_scope(async |guard| {
         let mut scope = module.attach(guard, &mut state, &mut echo);
-        let AsyncCallError::Execution(AsyncExecutionError::Host(error)) =
+        let CallError::Execution(ExecutionError::Host(error)) =
             scope.call(&direct, ()).expect_err("direct failure")
         else {
             panic!("host origin");
@@ -348,14 +348,14 @@ fn direct_failures_keep_the_provider_or_source_origin() {
         assert_eq!(error.module(), "async_provider/native");
         assert_eq!(error.function(), "fail_direct");
         assert_eq!(error.failure().message(), "immediate provider failed");
-        let AsyncCallError::Execution(AsyncExecutionError::Host(error)) =
+        let CallError::Execution(ExecutionError::Host(error)) =
             scope.call(&nil, ()).expect_err("Nil failure")
         else {
             panic!("Nil host origin");
         };
         assert_eq!(error.function(), "fail_nil");
         assert_eq!(error.failure().message(), "immediate Nil provider failed");
-        let AsyncCallError::Execution(AsyncExecutionError::Panic(error)) =
+        let CallError::Execution(ExecutionError::Panic(error)) =
             scope.call(&panic, ()).expect_err("callback panic")
         else {
             panic!("source origin");
@@ -378,7 +378,7 @@ fn future_and_composed_provider_failures_share_the_original_failure() {
         "callback_future_failure",
     ] {
         assert_work_failure(entry, |error| {
-            let AsyncExecutionError::Host(error) = error else {
+            let ExecutionError::Host(error) = error else {
                 panic!("host origin");
             };
             assert_eq!(error.package(), "async_provider");
@@ -404,7 +404,7 @@ fn delayed_source_panics_keep_their_function_and_never_return_family() {
         ),
     ] {
         assert_work_failure(entry, |error| {
-            let AsyncExecutionError::Panic(error) = error else {
+            let ExecutionError::Panic(error) = error else {
                 panic!("source origin");
             };
             assert_eq!(error.kind(), PanicKind::Panic);
@@ -415,8 +415,8 @@ fn delayed_source_panics_keep_their_function_and_never_return_family() {
     }
 }
 
-fn assert_work_failure(entry: &str, inspect: impl Fn(&AsyncExecutionError)) {
-    let (bindings, function) = WorkModuleBuilder::new(program())
+fn assert_work_failure(entry: &str, inspect: impl Fn(&ExecutionError)) {
+    let (bindings, function) = HostedModuleBuilder::new(program())
         .expect("plan")
         .function(FunctionDeclaration::<(), FutureType<BigInt>>::new(entry))
         .expect("work entry");

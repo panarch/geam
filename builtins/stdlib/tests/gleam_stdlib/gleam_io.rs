@@ -8,8 +8,7 @@ use geam_stdlib::{
     Component, GleamStdlibHostProfile, GleamStdlibProfile, GleamStdlibRunState, GleamStdlibStores,
     IoOutput, IoSink, IoStream, host_providers,
 };
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use super::{ExpectedSurface, assert_surface, project_root};
 
@@ -135,17 +134,17 @@ fn runs_official_gleam_io_with_caller_owned_output() {
 #[test]
 fn preserves_io_and_echo_order_before_a_later_panic() {
     let execution = execution::<RecordingProfile>("gleam_io_order_and_panic");
-    let events = Rc::new(RefCell::new(Vec::new()));
+    let events = Arc::new(Mutex::new(Vec::new()));
     let mut state = RecordingRunState {
         stdlib: GleamStdlibRunState::from_seed_with_io(
             [9; 32],
             RecordingIoSink {
-                events: Rc::clone(&events),
+                events: Arc::clone(&events),
             },
         ),
     };
     let mut echo = RecordingEchoSink {
-        events: Rc::clone(&events),
+        events: Arc::clone(&events),
     };
 
     let error = execution
@@ -158,7 +157,7 @@ fn preserves_io_and_echo_order_before_a_later_panic() {
     assert_eq!(panic.kind(), PanicKind::Panic);
     assert_eq!(panic.message(), &PanicMessage::Explicit("stop".into()));
     assert_eq!(
-        events.borrow().as_slice(),
+        events.lock().expect("event lock").as_slice(),
         [
             RecordedEvent::Io(IoStream::Stdout, "before".into()),
             RecordedEvent::Io(IoStream::Stdout, "stdout line\n".into()),
@@ -174,7 +173,7 @@ fn preserves_io_and_echo_order_before_a_later_panic() {
 
 fn execution<Profile>(root_module: &str) -> HostedExecution<Profile>
 where
-    Profile: geam_stdlib::GleamStdlibLocalProfile,
+    Profile: geam_stdlib::GleamStdlibProviderProfile,
 {
     let providers = host_providers::<Profile>().expect("official stdlib providers should register");
     let hosts = HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), providers)
@@ -222,11 +221,11 @@ struct RecordingStores {
 }
 
 struct RecordingIoSink {
-    events: Rc<RefCell<Vec<RecordedEvent>>>,
+    events: Arc<Mutex<Vec<RecordedEvent>>>,
 }
 
 struct RecordingEchoSink {
-    events: Rc<RefCell<Vec<RecordedEvent>>>,
+    events: Arc<Mutex<Vec<RecordedEvent>>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -260,16 +259,20 @@ impl GleamStdlibHostProfile for RecordingProfile {
 impl IoSink for RecordingIoSink {
     fn emit(&mut self, output: IoOutput) {
         self.events
-            .borrow_mut()
+            .lock()
+            .expect("event lock")
             .push(RecordedEvent::Io(output.stream(), output.text().clone()));
     }
 }
 
 impl EchoSink for RecordingEchoSink {
     fn emit(&mut self, output: EchoOutput) {
-        self.events.borrow_mut().push(RecordedEvent::Echo {
-            message: output.message().cloned(),
-            value: output.value().inspect().to_string().into(),
-        });
+        self.events
+            .lock()
+            .expect("event lock")
+            .push(RecordedEvent::Echo {
+                message: output.message().cloned(),
+                value: output.value().inspect().to_string().into(),
+            });
     }
 }

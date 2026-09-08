@@ -3,7 +3,7 @@ use crate::plan::execution::function::NeverFunctionId;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::evaluated::EvaluatedNeverFunction;
-use crate::runtime::graph::ProfiledRetainedValues;
+use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::RuntimeStateFor;
 use std::convert::Infallible;
 
@@ -12,8 +12,8 @@ pub(in crate::runtime) fn run_never<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     function: NeverFunctionId,
     origin: HostCallOrigin,
-    inputs: ProfiledRetainedValues<Plan::Values>,
-) -> ExecutionResult<Infallible, Plan::Values> {
+    inputs: RetainedValues,
+) -> ExecutionResult<Infallible> {
     run_tail(
         plan,
         state,
@@ -35,10 +35,10 @@ pub(in crate::runtime) fn run_never<Plan: ExecutableRuntimePlan>(
 pub(in crate::runtime) fn run_never_value<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    function: EvaluatedNeverFunction<Plan::Values>,
+    function: EvaluatedNeverFunction,
     origin: HostCallOrigin,
-    mut inputs: ProfiledRetainedValues<Plan::Values>,
-) -> ExecutionResult<Infallible, Plan::Values> {
+    mut inputs: RetainedValues,
+) -> ExecutionResult<Infallible> {
     inputs.append_captures(function.captures());
     run_never(plan, state, function.runtime_id(), origin, inputs)
 }

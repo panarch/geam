@@ -66,9 +66,9 @@ pub(crate) use list_return::{
 };
 pub(crate) use parameters::{FunctionParameterCatalog, FunctionTableFamily};
 pub(crate) use profile::{
-    DirectHostedExecutionProfile, ExecutionFunction, ExecutionFunctionBody, ExecutionFunctionEntry,
-    ExecutionFunctionRef, ExecutionGraphProfile, ExecutionHostTarget, ExecutionNeverFunction,
-    ExecutionNeverHostTarget, ExecutionProfile, HostedExecutionGraph,
+    ExecutionFunction, ExecutionFunctionBody, ExecutionFunctionEntry, ExecutionFunctionRef,
+    ExecutionGraphProfile, ExecutionHostTarget, ExecutionNeverFunction, ExecutionNeverHostTarget,
+    ExecutionProfile, HostedExecutionGraph,
 };
 pub(crate) use runtime::{
     CoreRuntimeFunctionId, FunctionReturnFamily, GenericCallableId, ProfiledCoreRuntimeFunctionId,

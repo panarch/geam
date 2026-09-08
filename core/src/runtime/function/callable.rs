@@ -7,57 +7,28 @@ use crate::runtime::evaluated::{
     EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
     EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
-use crate::runtime::graph::ProfiledRetainedValues;
+use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::RuntimeStateFor;
-use crate::runtime::{LocalValues, RuntimeValueProfile};
 
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::runtime) enum InvocableFunctionValue<Values: RuntimeValueProfile = LocalValues> {
-    Never(EvaluatedNeverFunction<Values>),
-    Int(EvaluatedIntFunction<Values>),
-    Float(EvaluatedFloatFunction<Values>),
-    String(EvaluatedStringFunction<Values>),
-    BitArray(EvaluatedBitArrayFunction<Values>),
-    UtfCodepoint(EvaluatedUtfCodepointFunction<Values>),
-    Custom(EvaluatedCustomFunction<Values>),
-    External(EvaluatedExternalFunction<Values>),
-    Bool(EvaluatedBoolFunction<Values>),
-    Nil(EvaluatedNilFunction<Values>),
-    Tuple(EvaluatedTupleFunction<Values>),
-    List(EvaluatedListFunction<Values>),
-    Function(EvaluatedFunctionFunction<Values>),
+pub(in crate::runtime) enum InvocableFunctionValue {
+    Never(EvaluatedNeverFunction),
+    Int(EvaluatedIntFunction),
+    Float(EvaluatedFloatFunction),
+    String(EvaluatedStringFunction),
+    BitArray(EvaluatedBitArrayFunction),
+    UtfCodepoint(EvaluatedUtfCodepointFunction),
+    Custom(EvaluatedCustomFunction),
+    External(EvaluatedExternalFunction),
+    Bool(EvaluatedBoolFunction),
+    Nil(EvaluatedNilFunction),
+    Tuple(EvaluatedTupleFunction),
+    List(EvaluatedListFunction),
+    Function(EvaluatedFunctionFunction),
 }
 
-pub(in crate::runtime) trait StoredCallable<Values: RuntimeValueProfile>:
-    Clone
-{
-    fn from_callable(value: InvocableFunctionValue<Values>) -> Self;
-    fn into_evaluated(self) -> EvaluatedFunctionValue<Values>;
-}
-
-#[derive(Clone)]
-pub(crate) struct LocalCallable(InvocableFunctionValue);
-
-impl StoredCallable<LocalValues> for LocalCallable {
-    fn from_callable(value: InvocableFunctionValue) -> Self {
-        Self(value)
-    }
-    fn into_evaluated(self) -> EvaluatedFunctionValue {
-        self.0.into_evaluated()
-    }
-}
-
-impl LocalCallable {
-    pub(in crate::runtime) fn with_value<Output>(
-        &self,
-        read: impl FnOnce(&InvocableFunctionValue) -> Output,
-    ) -> Output {
-        read(&self.0)
-    }
-}
-
-impl<Values: RuntimeValueProfile> InvocableFunctionValue<Values> {
-    pub(in crate::runtime) fn into_evaluated(self) -> EvaluatedFunctionValue<Values> {
+impl InvocableFunctionValue {
+    pub(in crate::runtime) fn into_evaluated(self) -> EvaluatedFunctionValue {
         match self {
             Self::Never(function) => function.into(),
             Self::Int(function) => function.into(),
@@ -79,10 +50,10 @@ impl<Values: RuntimeValueProfile> InvocableFunctionValue<Values> {
 pub(in crate::runtime) fn invoke_callable<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    function: &InvocableFunctionValue<Plan::Values>,
+    function: &InvocableFunctionValue,
     origin: HostCallOrigin,
-    arguments: Box<[EvaluatedValue<Plan::Values>]>,
-) -> ExecutionResult<EvaluatedValue<Plan::Values>, Plan::Values> {
+    arguments: Box<[EvaluatedValue]>,
+) -> ExecutionResult<EvaluatedValue> {
     match function {
         InvocableFunctionValue::Never(function) => {
             let inputs = callable_inputs(arguments, function.captures());
@@ -170,11 +141,11 @@ pub(in crate::runtime) fn invoke_callable<Plan: ExecutableRuntimePlan>(
     }
 }
 
-pub(in crate::runtime) fn callable_inputs<Values: RuntimeValueProfile>(
-    arguments: Box<[EvaluatedValue<Values>]>,
-    captures: &[crate::runtime::evaluated::EvaluatedCapture<Values>],
-) -> ProfiledRetainedValues<Values> {
-    let mut inputs = ProfiledRetainedValues::empty();
+pub(in crate::runtime) fn callable_inputs(
+    arguments: Box<[EvaluatedValue]>,
+    captures: &[crate::runtime::evaluated::EvaluatedCapture],
+) -> RetainedValues {
+    let mut inputs = RetainedValues::empty();
     for value in arguments {
         inputs.push_evaluated(value);
     }

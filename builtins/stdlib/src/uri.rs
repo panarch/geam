@@ -1,9 +1,8 @@
 mod function;
 
-use super::GleamStdlibLocalProfile;
+use super::GleamStdlibProviderProfile;
 use crate::{HostProviderModule, HostRegistrationError};
 use ecow::EcoString;
-use geam_core::provider::HostResult;
 use num_bigint::BigInt;
 
 #[geam_macros::module(
@@ -13,7 +12,8 @@ use num_bigint::BigInt;
     component = crate::Component<Profile::Io>,
 )]
 mod provider {
-    use super::{BigInt, EcoString, HostResult, function};
+    use super::{BigInt, EcoString, function};
+    use geam_core::provider::HostResult;
 
     #[geam_macros::function]
     fn pop_codeunit(string: EcoString) -> (BigInt, EcoString) {
@@ -43,18 +43,9 @@ mod provider {
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
-    Profile: GleamStdlibLocalProfile,
+    Profile: GleamStdlibProviderProfile,
 {
     provider::__geam_module::<Profile>()
-}
-
-pub(super) fn transfer_host_provider<Profile>()
--> Result<geam_core::TransferHostProviderModule<Profile>, HostRegistrationError>
-where
-    Profile: crate::GleamStdlibTransferProfile,
-    Profile::RunState: Send,
-{
-    provider::__geam_transfer_module::<Profile>()
 }
 
 #[cfg(test)]

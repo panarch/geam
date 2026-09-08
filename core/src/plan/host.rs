@@ -6,7 +6,7 @@ use super::{FunctionTemplateId, ModuleId};
 use crate::host::HostProfile;
 
 pub use function::HostFunctionTemplate;
-pub(crate) use implementation::{HostImplementationBinding, TransferHostImplementationBinding};
+pub(crate) use implementation::HostImplementationBinding;
 pub(crate) use module::HostedPlannedModuleParts;
 pub use module::{HostedFunctionTemplate, HostedPlannedModule};
 
@@ -25,8 +25,6 @@ pub(crate) struct ProfiledHostedLibraryModulePlan<Implementation> {
 
 pub(crate) type HostedLibraryModulePlan<Profile> =
     ProfiledHostedLibraryModulePlan<crate::host::HostFunctionImplementation<Profile>>;
-pub(crate) type TransferHostedLibraryModulePlan<Profile> =
-    ProfiledHostedLibraryModulePlan<crate::host::TransferHostFunctionImplementation<Profile>>;
 
 pub(crate) struct HostedModulePlanParts<Profile: HostProfile> {
     pub(crate) root: ModuleId,
@@ -44,8 +42,6 @@ pub(crate) struct ProfiledHostedLibraryModulePlanParts<Implementation> {
 
 pub(crate) type HostedLibraryModulePlanParts<Profile> =
     ProfiledHostedLibraryModulePlanParts<crate::host::HostFunctionImplementation<Profile>>;
-pub(crate) type TransferHostedLibraryModulePlanParts<Profile> =
-    ProfiledHostedLibraryModulePlanParts<crate::host::TransferHostFunctionImplementation<Profile>>;
 
 impl<Profile: HostProfile> HostedModulePlan<Profile> {
     pub(crate) fn new(

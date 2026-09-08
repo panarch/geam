@@ -7,12 +7,11 @@ use super::function::{
     EvaluatedFunctionIdentity, EvaluatedFunctionValue, EvaluatedFunctionValueKind,
 };
 use crate::runtime::state::list::StoredListValueId;
-use crate::runtime::{RuntimeListStorage, RuntimeValueProfile};
 
-pub(in crate::runtime) fn values_equal<Profile: RuntimeValueProfile>(
-    storage: &Profile::ListStorage,
-    left: &EvaluatedValue<Profile>,
-    right: &EvaluatedValue<Profile>,
+pub(in crate::runtime) fn values_equal(
+    storage: &crate::runtime::RuntimeListStorage,
+    left: &EvaluatedValue,
+    right: &EvaluatedValue,
 ) -> bool {
     match (left, right) {
         (EvaluatedValue::Int(left), EvaluatedValue::Int(right)) => left == right,
@@ -30,7 +29,7 @@ pub(in crate::runtime) fn values_equal<Profile: RuntimeValueProfile>(
                     .all(|(left, right)| values_equal(storage, left, right))
         }
         (EvaluatedValue::External(left), EvaluatedValue::External(right)) => {
-            Profile::external_values_equal(storage, left, right)
+            super::external::source::values_equal(storage, left, right)
         }
         (EvaluatedValue::Bool(left), EvaluatedValue::Bool(right)) => left == right,
         (EvaluatedValue::Nil, EvaluatedValue::Nil) => true,
@@ -54,18 +53,18 @@ pub(in crate::runtime) fn values_equal<Profile: RuntimeValueProfile>(
     }
 }
 
-pub(in crate::runtime) fn value_source_hash<Profile: RuntimeValueProfile>(
-    storage: &Profile::ListStorage,
-    value: &EvaluatedValue<Profile>,
+pub(in crate::runtime) fn value_source_hash(
+    storage: &crate::runtime::RuntimeListStorage,
+    value: &EvaluatedValue,
 ) -> u64 {
     let mut hasher = DefaultHasher::new();
     hash_value(storage, value, &mut hasher);
     hasher.finish()
 }
 
-fn hash_value<Profile: RuntimeValueProfile>(
-    storage: &Profile::ListStorage,
-    value: &EvaluatedValue<Profile>,
+fn hash_value(
+    storage: &crate::runtime::RuntimeListStorage,
+    value: &EvaluatedValue,
     hasher: &mut DefaultHasher,
 ) {
     match value {
@@ -105,7 +104,7 @@ fn hash_value<Profile: RuntimeValueProfile>(
         EvaluatedValue::External(value) => {
             6u8.hash(hasher);
             value.type_id().hash(hasher);
-            Profile::external_value_source_hash(storage, value).hash(hasher);
+            super::external::source::source_hash(storage, value).hash(hasher);
         }
         EvaluatedValue::Bool(value) => {
             7u8.hash(hasher);
@@ -141,10 +140,7 @@ fn hash_value<Profile: RuntimeValueProfile>(
     }
 }
 
-fn hash_function<Profile: RuntimeValueProfile>(
-    value: &EvaluatedFunctionValue<Profile>,
-    hasher: &mut DefaultHasher,
-) {
+fn hash_function(value: &EvaluatedFunctionValue, hasher: &mut DefaultHasher) {
     match value.kind() {
         EvaluatedFunctionValueKind::Generic(value) => {
             0u8.hash(hasher);
@@ -227,10 +223,10 @@ fn hash_function_identity(value: &EvaluatedFunctionIdentity, hasher: &mut Defaul
     }
 }
 
-fn lists_equal<Profile: RuntimeValueProfile>(
-    storage: &Profile::ListStorage,
-    left: &StoredListValueId<Profile>,
-    right: &StoredListValueId<Profile>,
+fn lists_equal(
+    storage: &crate::runtime::RuntimeListStorage,
+    left: &StoredListValueId,
+    right: &StoredListValueId,
 ) -> bool {
     if left.list_type() != right.list_type() {
         return false;
@@ -245,10 +241,7 @@ fn lists_equal<Profile: RuntimeValueProfile>(
             .all(|(left, right)| values_equal(storage, left, right))
 }
 
-fn functions_equal<Profile: RuntimeValueProfile>(
-    left: &EvaluatedFunctionValue<Profile>,
-    right: &EvaluatedFunctionValue<Profile>,
-) -> bool {
+fn functions_equal(left: &EvaluatedFunctionValue, right: &EvaluatedFunctionValue) -> bool {
     match (left.kind(), right.kind()) {
         (EvaluatedFunctionValueKind::Generic(left), EvaluatedFunctionValueKind::Generic(right)) => {
             function_values_equal(left, right)
@@ -300,16 +293,13 @@ fn functions_equal<Profile: RuntimeValueProfile>(
     }
 }
 
-fn function_values_equal<Id, Profile: RuntimeValueProfile>(
-    left: &EvaluatedFunction<Id, Profile>,
-    right: &EvaluatedFunction<Id, Profile>,
-) -> bool {
+fn function_values_equal<Id>(left: &EvaluatedFunction<Id>, right: &EvaluatedFunction<Id>) -> bool {
     left.identity == right.identity
 }
 
-fn custom_function_values_equal<Profile: RuntimeValueProfile>(
-    left: &EvaluatedCustomFunction<Profile>,
-    right: &EvaluatedCustomFunction<Profile>,
+fn custom_function_values_equal(
+    left: &EvaluatedCustomFunction,
+    right: &EvaluatedCustomFunction,
 ) -> bool {
     match (left, right) {
         (EvaluatedCustomFunction::Function(left), EvaluatedCustomFunction::Function(right)) => {
@@ -323,9 +313,9 @@ fn custom_function_values_equal<Profile: RuntimeValueProfile>(
     }
 }
 
-fn function_function_values_equal<Profile: RuntimeValueProfile>(
-    left: &EvaluatedFunctionFunction<Profile>,
-    right: &EvaluatedFunctionFunction<Profile>,
+fn function_function_values_equal(
+    left: &EvaluatedFunctionFunction,
+    right: &EvaluatedFunctionFunction,
 ) -> bool {
     left.identity() == right.identity()
 }
@@ -841,10 +831,7 @@ pub fn main() {
         }
 
         let bit_array = EvaluatedBitArray::new(bitvec::bitvec![u8, Msb0; 1, 0, 1]);
-        let scalar_and_compound_pairs: Vec<(
-            EvaluatedValue<crate::runtime::LocalValues>,
-            EvaluatedValue<crate::runtime::LocalValues>,
-        )> = vec![
+        let scalar_and_compound_pairs: Vec<(EvaluatedValue, EvaluatedValue)> = vec![
             (EvaluatedValue::Int(1.into()), EvaluatedValue::Int(1.into())),
             (EvaluatedValue::Float(0.0), EvaluatedValue::Float(-0.0)),
             (EvaluatedValue::Float(1.5), EvaluatedValue::Float(1.5)),
@@ -918,15 +905,15 @@ pub fn main() {
             |_, _| 41,
             inspect,
         );
-        let stored_inspect = |_: &crate::runtime::StoredRuntimeValue| "stored".into();
-        let inspection = crate::host::HostExternalInspection::new(&stored_inspect);
+        let stored_inspect = |_: &crate::runtime::RetainedValueRef| "stored".into();
+        let inspection = crate::host::RetainedValueInspection::new(&stored_inspect);
         assert_eq!(first.inspection(&inspection), "stored");
         let external_type = crate::plan::execution::type_::ExternalTypeId::new(0);
-        let first: EvaluatedValue<crate::runtime::LocalValues> =
+        let first: EvaluatedValue =
             EvaluatedValue::External(EvaluatedExternalValue::new(external_type, first));
-        let equal: EvaluatedValue<crate::runtime::LocalValues> =
+        let equal: EvaluatedValue =
             EvaluatedValue::External(EvaluatedExternalValue::new(external_type, equal));
-        let collision: EvaluatedValue<crate::runtime::LocalValues> =
+        let collision: EvaluatedValue =
             EvaluatedValue::External(EvaluatedExternalValue::new(external_type, collision));
         assert!(values_equal(state.lists(), &first, &equal));
         assert_eq!(
@@ -940,31 +927,23 @@ pub fn main() {
         );
         assert!(!values_equal(
             state.lists(),
-            &EvaluatedValue::<crate::runtime::LocalValues>::from(ListValueId::Int(int_lists.0)),
-            &EvaluatedValue::<crate::runtime::LocalValues>::from(ListValueId::String(
-                string_lists.0,
-            )),
+            &EvaluatedValue::from(ListValueId::Int(int_lists.0)),
+            &EvaluatedValue::from(ListValueId::String(string_lists.0,)),
         ));
         assert!(values_equal(
             state.lists(),
-            &EvaluatedValue::<crate::runtime::LocalValues>::Tuple(vec![EvaluatedValue::Int(
-                1.into(),
-            )]),
-            &EvaluatedValue::<crate::runtime::LocalValues>::Tuple(vec![EvaluatedValue::Int(
-                1.into(),
-            )]),
+            &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into(),)]),
+            &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into(),)]),
         ));
         assert!(!values_equal(
             state.lists(),
-            &EvaluatedValue::<crate::runtime::LocalValues>::Tuple(vec![EvaluatedValue::Int(
-                1.into(),
-            )]),
-            &EvaluatedValue::<crate::runtime::LocalValues>::Tuple(Vec::new()),
+            &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into(),)]),
+            &EvaluatedValue::Tuple(Vec::new()),
         ));
         assert!(!values_equal(
             state.lists(),
-            &EvaluatedValue::<crate::runtime::LocalValues>::Int(1.into()),
-            &EvaluatedValue::<crate::runtime::LocalValues>::String("one".into()),
+            &EvaluatedValue::Int(1.into()),
+            &EvaluatedValue::String("one".into()),
         ));
     }
 }

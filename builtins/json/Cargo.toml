@@ -18,7 +18,7 @@ num-bigint.workspace = true
 ryu.workspace = true
 
 [dev-dependencies]
-geam-runtime-api.workspace = true
+geam-builtin.workspace = true
 camino.workspace = true
 gleam-core.workspace = true
 tempfile.workspace = true

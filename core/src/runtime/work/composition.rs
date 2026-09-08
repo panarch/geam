@@ -1,12 +1,12 @@
 use super::Shared;
 use super::execution::{Completion, SourceWork, WorkContext};
 use crate::host::{
-    AsyncHostCallErrorKind, HostFutureCompletion, HostFutureError, HostFutureStore, HostProvider,
-    HostScopedValue, HostTokenRuntime, HostType, HostTypeDescriptor, HostTypeSequence,
-    HostWorkProfile, TransferHostCallRuntime, TransferHostCodecScope,
+    HostCallErrorKind, HostCallRuntime, HostCodecScope, HostFutureCompletion, HostFutureError,
+    HostFutureStore, HostProvider, HostScopedValue, HostTokenRuntime, HostType, HostTypeDescriptor,
+    HostTypeSequence, HostWorkProfile,
 };
-use crate::runtime::host::RuntimeTransferHostCall;
-use crate::runtime::{HostCallOrigin, StoredRuntimeList, TransferValues};
+use crate::runtime::host::RuntimeHostCall;
+use crate::runtime::{HostCallOrigin, StoredRuntimeList};
 use futures_util::StreamExt;
 use futures_util::stream::FuturesUnordered;
 use std::collections::BTreeMap;
@@ -16,7 +16,7 @@ impl<Profile: HostWorkProfile> WorkContext<Profile> {
     pub(crate) fn native<Provider, Output, Constructions, Native>(
         &self,
         start: impl FnOnce(super::Dependencies<Completion>) -> Native,
-        codec: TransferHostCodecScope,
+        codec: HostCodecScope,
         origin: HostCallOrigin,
     ) -> SourceWork
     where
@@ -44,26 +44,22 @@ impl<Profile: HostWorkProfile> WorkContext<Profile> {
                 let result = context
                     .with_runtime(move |plan, state| {
                         let output = completion.and_then(|completion| {
-                            let mut runtime = RuntimeTransferHostCall::new_codec(
-                                plan,
-                                state,
-                                &codec,
-                                origin.clone(),
-                            );
+                            let mut runtime =
+                                RuntimeHostCall::new_codec(plan, state, &codec, origin.clone());
                             completion
                                 .complete(&mut runtime)
                                 .map(|token| runtime.retain_stored(HostScopedValue::Value(token)))
                         });
                         output.map_err(|error| match error.into_kind() {
-                            AsyncHostCallErrorKind::Failure(failure) => {
-                                crate::AsyncExecutionError::host_failure(
+                            HostCallErrorKind::Failure(failure) => {
+                                crate::ExecutionError::host_failure(
                                     plan,
                                     origin,
                                     codec.function(),
                                     failure,
                                 )
                             }
-                            AsyncHostCallErrorKind::Nested(error) => error,
+                            HostCallErrorKind::Nested(error) => error,
                         })
                     })
                     .await?;
@@ -75,7 +71,7 @@ impl<Profile: HostWorkProfile> WorkContext<Profile> {
     pub(crate) fn flatten(
         &self,
         input: SourceWork,
-        codec: TransferHostCodecScope,
+        codec: HostCodecScope,
         origin: HostCallOrigin,
     ) -> SourceWork {
         let context = self.clone();
@@ -87,7 +83,7 @@ impl<Profile: HostWorkProfile> WorkContext<Profile> {
                     let inner = context
                         .with_runtime(move |plan, state| {
                             let mut runtime =
-                                RuntimeTransferHostCall::new_codec(plan, state, &codec, origin);
+                                RuntimeHostCall::new_codec(plan, state, &codec, origin);
                             let token = value.read(|value| runtime.restore_stored(value));
                             let lease = runtime.external_lease(runtime.external_token(token));
                             crate::host::work_store::<Profile>(runtime.external_stores())
@@ -103,10 +99,10 @@ impl<Profile: HostWorkProfile> WorkContext<Profile> {
 
     pub(crate) fn all(
         &self,
-        inputs: StoredRuntimeList<TransferValues>,
+        inputs: StoredRuntimeList,
         store: HostFutureStore,
         list_type: HostTypeDescriptor,
-        codec: TransferHostCodecScope,
+        codec: HostCodecScope,
         origin: HostCallOrigin,
     ) -> SourceWork {
         let context = self.clone();
@@ -134,8 +130,7 @@ impl<Profile: HostWorkProfile> WorkContext<Profile> {
             }
             let result = context
                 .with_runtime(move |plan, state| {
-                    let mut runtime =
-                        RuntimeTransferHostCall::new_codec(plan, state, &codec, origin);
+                    let mut runtime = RuntimeHostCall::new_codec(plan, state, &codec, origin);
                     let values = completed
                         .into_values()
                         .map(|value| {

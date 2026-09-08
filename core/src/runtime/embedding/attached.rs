@@ -6,7 +6,7 @@ use crate::plan::execution::function::{
 };
 use crate::runtime::function;
 use crate::runtime::work::driver::Driver;
-use crate::runtime::{EmbeddingOutput, HostCallOrigin, TransferInputs, TransferValues};
+use crate::runtime::{EmbeddingOutput, HostCallOrigin, RetainedInputs};
 
 macro_rules! scalar {
     ($method:ident, $entry:ty, $output:ty, $run:ident) => {
@@ -14,8 +14,8 @@ macro_rules! scalar {
             pub(crate) fn $method(
                 &mut self,
                 function: $entry,
-                inputs: TransferInputs,
-            ) -> Result<$output, crate::AsyncExecutionError> {
+                inputs: RetainedInputs,
+            ) -> Result<$output, crate::ExecutionError> {
                 self.call(|plan, state| {
                     function::$run(
                         plan,
@@ -44,7 +44,7 @@ scalar!(run_nil, NilFunctionId, (), run_nil);
 scalar!(
     run_external,
     ExternalFunctionId,
-    crate::runtime::EvaluatedExternalValue<TransferValues>,
+    crate::runtime::EvaluatedExternalValue,
     run_external
 );
 
@@ -52,8 +52,8 @@ impl<Profile: HostProfile> Driver<'_, Profile> {
     pub(crate) fn run_bit_array(
         &mut self,
         function: BitArrayFunctionId,
-        inputs: TransferInputs,
-    ) -> Result<crate::BitArrayValue, crate::AsyncExecutionError> {
+        inputs: RetainedInputs,
+    ) -> Result<crate::BitArrayValue, crate::ExecutionError> {
         self.call(|plan, state| {
             function::run_bit_array(
                 plan,
@@ -69,8 +69,8 @@ impl<Profile: HostProfile> Driver<'_, Profile> {
     pub(crate) fn run_tuple(
         &mut self,
         function: TupleFunctionId,
-        inputs: TransferInputs,
-    ) -> Result<EmbeddingOutput<TransferValues>, crate::AsyncExecutionError> {
+        inputs: RetainedInputs,
+    ) -> Result<EmbeddingOutput, crate::ExecutionError> {
         self.call(|plan, state| {
             function::run_tuple(
                 plan,
@@ -86,8 +86,8 @@ impl<Profile: HostProfile> Driver<'_, Profile> {
     pub(crate) fn run_custom(
         &mut self,
         function: CustomFunctionId,
-        inputs: TransferInputs,
-    ) -> Result<EmbeddingOutput<TransferValues>, crate::AsyncExecutionError> {
+        inputs: RetainedInputs,
+    ) -> Result<EmbeddingOutput, crate::ExecutionError> {
         self.call(|plan, state| {
             function::run_custom(
                 plan,
@@ -103,8 +103,8 @@ impl<Profile: HostProfile> Driver<'_, Profile> {
     pub(crate) fn run_list(
         &mut self,
         function: LibraryListFunctionId,
-        inputs: TransferInputs,
-    ) -> Result<EmbeddingOutput<TransferValues>, crate::AsyncExecutionError> {
+        inputs: RetainedInputs,
+    ) -> Result<EmbeddingOutput, crate::ExecutionError> {
         self.call(|plan, state| {
             function::run_list(
                 plan,

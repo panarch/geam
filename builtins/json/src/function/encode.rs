@@ -1,38 +1,32 @@
 use super::provider::JsonPayload;
 use ecow::EcoString;
 use geam_core::HostFailure;
-use geam_stdlib::provider_support::{StorageContext, StoredStringTree, StringTreePayload};
+use geam_stdlib::provider_support::{StoredStringTree, StringTreePayload};
 use num_bigint::BigInt;
 use std::ops::Deref;
 
-pub(super) fn do_to_string<Context: StorageContext>(
-    json: impl Deref<Target = JsonPayload<Context>>,
-) -> EcoString {
+pub(super) fn do_to_string(json: impl Deref<Target = JsonPayload>) -> EcoString {
     json.tree().flatten()
 }
 
-pub(super) fn to_string_tree<Context: StorageContext>(
-    json: impl Deref<Target = JsonPayload<Context>>,
-) -> StringTreePayload<Context> {
+pub(super) fn to_string_tree(json: impl Deref<Target = JsonPayload>) -> StringTreePayload {
     StringTreePayload::from_stored(json.tree().clone())
 }
 
-pub(super) fn do_string<Context: StorageContext>(value: EcoString) -> JsonPayload<Context> {
+pub(super) fn do_string(value: EcoString) -> JsonPayload {
     JsonPayload::from_tree(StoredStringTree::text(encode_string(&value)))
 }
 
-pub(super) fn do_bool<Context: StorageContext>(value: bool) -> JsonPayload<Context> {
+pub(super) fn do_bool(value: bool) -> JsonPayload {
     let text = if value { "true" } else { "false" };
     JsonPayload::from_tree(StoredStringTree::text(text.into()))
 }
 
-pub(super) fn do_int<Context: StorageContext>(value: BigInt) -> JsonPayload<Context> {
+pub(super) fn do_int(value: BigInt) -> JsonPayload {
     JsonPayload::from_tree(StoredStringTree::text(value.to_string().into()))
 }
 
-pub(super) fn do_float<Context: StorageContext>(
-    value: f64,
-) -> Result<JsonPayload<Context>, HostFailure> {
+pub(super) fn do_float(value: f64) -> Result<JsonPayload, HostFailure> {
     if !value.is_finite() {
         return Err(HostFailure::new("JSON cannot encode a non-finite Float"));
     }
@@ -41,7 +35,7 @@ pub(super) fn do_float<Context: StorageContext>(
     )))
 }
 
-pub(super) fn do_null<Context: StorageContext>() -> JsonPayload<Context> {
+pub(super) fn do_null() -> JsonPayload {
     JsonPayload::from_tree(StoredStringTree::text("null".into()))
 }
 

@@ -1,130 +1,109 @@
 use super::environment::BlockEnvironment;
 use crate::runtime::evaluated::{EvaluatedFunctionValue, EvaluatedValue};
-use crate::runtime::{LocalValues, RuntimeValueProfile};
 use ecow::EcoString;
 use num_bigint::BigInt;
 use std::convert::Infallible;
 
-pub(in crate::runtime) trait GraphValue<Profile: RuntimeValueProfile = LocalValues> {
+pub(in crate::runtime) trait GraphValue {
     type Evaluated;
 
-    fn read(&self, environment: &BlockEnvironment<Profile>) -> Self::Evaluated;
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated;
 }
 
-impl<Profile: RuntimeValueProfile> GraphValue<Profile> for Infallible {
+impl GraphValue for Infallible {
     type Evaluated = Infallible;
 
-    fn read(&self, _environment: &BlockEnvironment<Profile>) -> Self::Evaluated {
+    fn read(&self, _environment: &BlockEnvironment) -> Self::Evaluated {
         match *self {}
     }
 }
 
-impl<Profile: RuntimeValueProfile> GraphValue<Profile>
-    for crate::plan::execution::graph::IntLocalId
-{
+impl GraphValue for crate::plan::execution::graph::IntLocalId {
     type Evaluated = BigInt;
 
-    fn read(&self, environment: &BlockEnvironment<Profile>) -> Self::Evaluated {
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
         environment.int(*self)
     }
 }
 
-impl<Profile: RuntimeValueProfile> GraphValue<Profile>
-    for crate::plan::execution::graph::FloatLocalId
-{
+impl GraphValue for crate::plan::execution::graph::FloatLocalId {
     type Evaluated = f64;
 
-    fn read(&self, environment: &BlockEnvironment<Profile>) -> Self::Evaluated {
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
         environment.float(*self)
     }
 }
 
-impl<Profile: RuntimeValueProfile> GraphValue<Profile>
-    for crate::plan::execution::graph::StringLocalId
-{
+impl GraphValue for crate::plan::execution::graph::StringLocalId {
     type Evaluated = EcoString;
 
-    fn read(&self, environment: &BlockEnvironment<Profile>) -> Self::Evaluated {
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
         environment.string(*self)
     }
 }
 
-impl<Profile: RuntimeValueProfile> GraphValue<Profile>
-    for crate::plan::execution::graph::BitArrayLocalId
-{
+impl GraphValue for crate::plan::execution::graph::BitArrayLocalId {
     type Evaluated = crate::runtime::EvaluatedBitArray;
 
-    fn read(&self, environment: &BlockEnvironment<Profile>) -> Self::Evaluated {
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
         environment.bit_array(*self)
     }
 }
 
-impl<Profile: RuntimeValueProfile> GraphValue<Profile>
-    for crate::plan::execution::graph::UtfCodepointLocalId
-{
+impl GraphValue for crate::plan::execution::graph::UtfCodepointLocalId {
     type Evaluated = char;
 
-    fn read(&self, environment: &BlockEnvironment<Profile>) -> Self::Evaluated {
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
         environment.utf_codepoint(*self)
     }
 }
 
-impl<Profile: RuntimeValueProfile> GraphValue<Profile>
-    for crate::plan::execution::graph::CustomLocal
-{
-    type Evaluated = crate::runtime::EvaluatedCustomValue<Profile>;
+impl GraphValue for crate::plan::execution::graph::CustomLocal {
+    type Evaluated = crate::runtime::EvaluatedCustomValue;
 
-    fn read(&self, environment: &BlockEnvironment<Profile>) -> Self::Evaluated {
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
         environment.custom(*self)
     }
 }
 
-impl<Profile: RuntimeValueProfile> GraphValue<Profile>
-    for crate::plan::execution::graph::ExternalLocal
-{
-    type Evaluated = crate::runtime::EvaluatedExternalValue<Profile>;
+impl GraphValue for crate::plan::execution::graph::ExternalLocal {
+    type Evaluated = crate::runtime::EvaluatedExternalValue;
 
-    fn read(&self, environment: &BlockEnvironment<Profile>) -> Self::Evaluated {
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
         environment.external(*self)
     }
 }
 
-impl<Profile: RuntimeValueProfile> GraphValue<Profile>
-    for crate::plan::execution::graph::BoolLocalId
-{
+impl GraphValue for crate::plan::execution::graph::BoolLocalId {
     type Evaluated = bool;
 
-    fn read(&self, environment: &BlockEnvironment<Profile>) -> Self::Evaluated {
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
         environment.bool(*self)
     }
 }
 
-impl<Profile: RuntimeValueProfile> GraphValue<Profile>
-    for crate::plan::execution::graph::NilLocalId
-{
+impl GraphValue for crate::plan::execution::graph::NilLocalId {
     type Evaluated = ();
 
-    fn read(&self, environment: &BlockEnvironment<Profile>) -> Self::Evaluated {
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
         environment.nil(*self)
     }
 }
 
-impl<Profile: RuntimeValueProfile> GraphValue<Profile>
-    for crate::plan::execution::graph::TupleLocalId
-{
-    type Evaluated = Vec<EvaluatedValue<Profile>>;
+impl GraphValue for crate::plan::execution::graph::TupleLocalId {
+    type Evaluated = Vec<EvaluatedValue>;
 
-    fn read(&self, environment: &BlockEnvironment<Profile>) -> Self::Evaluated {
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
         environment.tuple(*self)
     }
 }
 
 macro_rules! list_graph_value {
     ($local:ty, $value:ty, $method:ident) => {
-        impl<Profile: RuntimeValueProfile> GraphValue<Profile> for $local {
+        impl GraphValue for $local {
             type Evaluated = $value;
 
-            fn read(&self, environment: &BlockEnvironment<Profile>) -> Self::Evaluated {
+            fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
                 environment.$method(*self)
             }
         }
@@ -133,81 +112,81 @@ macro_rules! list_graph_value {
 
 list_graph_value!(
     crate::plan::execution::graph::ParameterListLocalId,
-    crate::runtime::state::list::ParameterListValueId<Profile>,
+    crate::runtime::state::list::ParameterListValueId,
     parameter_list
 );
 list_graph_value!(
     crate::plan::execution::graph::IntListLocalId,
-    crate::runtime::state::list::IntListValueId<Profile>,
+    crate::runtime::state::list::IntListValueId,
     int_list
 );
 list_graph_value!(
     crate::plan::execution::graph::StringListLocalId,
-    crate::runtime::state::list::StringListValueId<Profile>,
+    crate::runtime::state::list::StringListValueId,
     string_list
 );
 list_graph_value!(
     crate::plan::execution::graph::BitArrayListLocalId,
-    crate::runtime::state::list::BitArrayListValueId<Profile>,
+    crate::runtime::state::list::BitArrayListValueId,
     bit_array_list
 );
 list_graph_value!(
     crate::plan::execution::graph::UtfCodepointListLocalId,
-    crate::runtime::state::list::UtfCodepointListValueId<Profile>,
+    crate::runtime::state::list::UtfCodepointListValueId,
     utf_codepoint_list
 );
 list_graph_value!(
     crate::plan::execution::graph::CustomListLocalId,
-    crate::runtime::state::list::CustomListValueId<Profile>,
+    crate::runtime::state::list::CustomListValueId,
     custom_list
 );
 list_graph_value!(
     crate::plan::execution::graph::ExternalListLocalId,
-    crate::runtime::state::list::ExternalListValueId<Profile>,
+    crate::runtime::state::list::ExternalListValueId,
     external_list
 );
 list_graph_value!(
     crate::plan::execution::graph::FloatListLocalId,
-    crate::runtime::state::list::FloatListValueId<Profile>,
+    crate::runtime::state::list::FloatListValueId,
     float_list
 );
 list_graph_value!(
     crate::plan::execution::graph::BoolListLocalId,
-    crate::runtime::state::list::BoolListValueId<Profile>,
+    crate::runtime::state::list::BoolListValueId,
     bool_list
 );
 list_graph_value!(
     crate::plan::execution::graph::NilListLocalId,
-    crate::runtime::state::list::NilListValueId<Profile>,
+    crate::runtime::state::list::NilListValueId,
     nil_list
 );
 list_graph_value!(
     crate::plan::execution::graph::TupleListLocalId,
-    crate::runtime::state::list::TupleListValueId<Profile>,
+    crate::runtime::state::list::TupleListValueId,
     tuple_list
 );
 list_graph_value!(
     crate::plan::execution::graph::ParameterListListLocalId,
-    crate::runtime::state::list::ParameterListListValueId<Profile>,
+    crate::runtime::state::list::ParameterListListValueId,
     parameter_list_list
 );
 list_graph_value!(
     crate::plan::execution::graph::ListListLocalId,
-    crate::runtime::state::list::ListListValueId<Profile>,
+    crate::runtime::state::list::ListListValueId,
     list_list
 );
 list_graph_value!(
     crate::plan::execution::graph::FunctionListLocalId,
-    crate::runtime::state::list::FunctionListValueId<Profile>,
+    crate::runtime::state::list::FunctionListValueId,
     function_list
 );
 
 macro_rules! function_graph_value {
     ($local:ty, $value:ty, $method:ident) => {
-        impl<Profile: RuntimeValueProfile> GraphValue<Profile> for $local {
+        impl GraphValue for $local {
             type Evaluated = $value;
 
-            fn read(&self, environment: &BlockEnvironment<Profile>) -> Self::Evaluated {
+            fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
                 environment.$method(self.clone())
             }
         }
@@ -216,111 +195,97 @@ macro_rules! function_graph_value {
 
 function_graph_value!(
     crate::plan::execution::graph::IntFunctionLocalId,
-    crate::runtime::EvaluatedIntFunction<Profile>,
+    crate::runtime::EvaluatedIntFunction,
     int_function
 );
 function_graph_value!(
     crate::plan::execution::graph::FloatFunctionLocalId,
-    crate::runtime::EvaluatedFloatFunction<Profile>,
+    crate::runtime::EvaluatedFloatFunction,
     float_function
 );
 function_graph_value!(
     crate::plan::execution::graph::StringFunctionLocalId,
-    crate::runtime::EvaluatedStringFunction<Profile>,
+    crate::runtime::EvaluatedStringFunction,
     string_function
 );
 function_graph_value!(
     crate::plan::execution::graph::BitArrayFunctionLocalId,
-    crate::runtime::EvaluatedBitArrayFunction<Profile>,
+    crate::runtime::EvaluatedBitArrayFunction,
     bit_array_function
 );
 function_graph_value!(
     crate::plan::execution::graph::UtfCodepointFunctionLocalId,
-    crate::runtime::EvaluatedUtfCodepointFunction<Profile>,
+    crate::runtime::EvaluatedUtfCodepointFunction,
     utf_codepoint_function
 );
 function_graph_value!(
     crate::plan::execution::graph::BoolFunctionLocalId,
-    crate::runtime::EvaluatedBoolFunction<Profile>,
+    crate::runtime::EvaluatedBoolFunction,
     bool_function
 );
 function_graph_value!(
     crate::plan::execution::graph::NilFunctionLocalId,
-    crate::runtime::EvaluatedNilFunction<Profile>,
+    crate::runtime::EvaluatedNilFunction,
     nil_function
 );
 function_graph_value!(
     crate::plan::execution::graph::TupleFunctionLocalId,
-    crate::runtime::EvaluatedTupleFunction<Profile>,
+    crate::runtime::EvaluatedTupleFunction,
     tuple_function
 );
 
-impl<Profile: RuntimeValueProfile> GraphValue<Profile>
-    for crate::plan::execution::graph::GenericFunctionLocal
-{
-    type Evaluated = crate::runtime::EvaluatedGenericFunction<Profile>;
+impl GraphValue for crate::plan::execution::graph::GenericFunctionLocal {
+    type Evaluated = crate::runtime::EvaluatedGenericFunction;
 
-    fn read(&self, environment: &BlockEnvironment<Profile>) -> Self::Evaluated {
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
         environment.generic_function(self)
     }
 }
 
-impl<Profile: RuntimeValueProfile> GraphValue<Profile>
-    for crate::plan::execution::graph::NeverFunctionLocal
-{
-    type Evaluated = crate::runtime::EvaluatedNeverFunction<Profile>;
+impl GraphValue for crate::plan::execution::graph::NeverFunctionLocal {
+    type Evaluated = crate::runtime::EvaluatedNeverFunction;
 
-    fn read(&self, environment: &BlockEnvironment<Profile>) -> Self::Evaluated {
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
         environment.never_function(self)
     }
 }
 
-impl<Profile: RuntimeValueProfile> GraphValue<Profile>
-    for crate::plan::execution::graph::CustomFunctionLocal
-{
-    type Evaluated = crate::runtime::EvaluatedCustomFunction<Profile>;
+impl GraphValue for crate::plan::execution::graph::CustomFunctionLocal {
+    type Evaluated = crate::runtime::EvaluatedCustomFunction;
 
-    fn read(&self, environment: &BlockEnvironment<Profile>) -> Self::Evaluated {
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
         environment.custom_function(self)
     }
 }
 
-impl<Profile: RuntimeValueProfile> GraphValue<Profile>
-    for crate::plan::execution::graph::ExternalFunctionLocal
-{
-    type Evaluated = crate::runtime::EvaluatedExternalFunction<Profile>;
+impl GraphValue for crate::plan::execution::graph::ExternalFunctionLocal {
+    type Evaluated = crate::runtime::EvaluatedExternalFunction;
 
-    fn read(&self, environment: &BlockEnvironment<Profile>) -> Self::Evaluated {
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
         environment.external_function(self)
     }
 }
 
-impl<Profile: RuntimeValueProfile> GraphValue<Profile>
-    for crate::plan::execution::graph::ListFunctionLocal
-{
-    type Evaluated = crate::runtime::EvaluatedListFunction<Profile>;
+impl GraphValue for crate::plan::execution::graph::ListFunctionLocal {
+    type Evaluated = crate::runtime::EvaluatedListFunction;
 
-    fn read(&self, environment: &BlockEnvironment<Profile>) -> Self::Evaluated {
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
         environment.list_function(self)
     }
 }
 
-impl<Profile: RuntimeValueProfile> GraphValue<Profile>
-    for crate::plan::execution::graph::FunctionFunctionLocal
-{
-    type Evaluated = crate::runtime::EvaluatedFunctionFunction<Profile>;
+impl GraphValue for crate::plan::execution::graph::FunctionFunctionLocal {
+    type Evaluated = crate::runtime::EvaluatedFunctionFunction;
 
-    fn read(&self, environment: &BlockEnvironment<Profile>) -> Self::Evaluated {
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
         environment.function_function(self)
     }
 }
 
-impl<Profile: RuntimeValueProfile> GraphValue<Profile>
-    for crate::plan::execution::graph::FunctionLocal
-{
-    type Evaluated = EvaluatedFunctionValue<Profile>;
+impl GraphValue for crate::plan::execution::graph::FunctionLocal {
+    type Evaluated = EvaluatedFunctionValue;
 
-    fn read(&self, environment: &BlockEnvironment<Profile>) -> Self::Evaluated {
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
         match self {
             Self::Generic(local) => environment.generic_function(local).into(),
             Self::Never(local) => environment.never_function(local).into(),

@@ -1,9 +1,11 @@
-use super::execution::{Completion, ExecutionWork, Request, SourceWork, WorkContext};
+#[cfg(test)]
+use super::execution::WorkContext;
+use super::execution::{Completion, ExecutionWork, Request, SourceWork};
 use super::{Cancelled, Observer, Observers, Shared};
 use crate::host::HostProfile;
-use crate::plan::execution::TransferHostedExecution;
-use crate::runtime::state::{RuntimeState, RuntimeStateFor, TransferRuntimeHost};
-use crate::runtime::{EchoSink, TransferListStorage};
+use crate::plan::execution::HostedProgram;
+use crate::runtime::state::{RuntimeHost, RuntimeState, RuntimeStateFor};
+use crate::runtime::{EchoSink, RuntimeListStorage};
 use parking_lot::Mutex;
 use std::future::Future;
 use std::pin::Pin;
@@ -18,11 +20,11 @@ pub(crate) struct Driver<'host, Profile: HostProfile> {
 }
 
 struct AttachedRuntime<'host, Profile: HostProfile> {
-    plan: &'host TransferHostedExecution<Profile>,
+    plan: &'host HostedProgram<Profile>,
     host: &'host mut Profile::RunState,
     stores: &'host mut Profile::ExternalStores,
     echo: &'host mut (dyn EchoSink + Send),
-    lists: TransferListStorage,
+    lists: RuntimeListStorage,
 }
 
 pub(crate) struct DrivenObservation<'driver, 'host, Profile: HostProfile> {
@@ -33,7 +35,7 @@ pub(crate) struct DrivenObservation<'driver, 'host, Profile: HostProfile> {
 
 impl<'host, Profile: HostProfile> Driver<'host, Profile> {
     pub(crate) fn new(
-        plan: &'host TransferHostedExecution<Profile>,
+        plan: &'host HostedProgram<Profile>,
         host: &'host mut Profile::RunState,
         stores: &'host mut Profile::ExternalStores,
         echo: &'host mut (dyn EchoSink + Send),
@@ -45,7 +47,7 @@ impl<'host, Profile: HostProfile> Driver<'host, Profile> {
                 host,
                 stores,
                 echo,
-                lists: TransferListStorage::default(),
+                lists: RuntimeListStorage::default(),
             }),
             wake: Arc::new(Observers::default()),
         }
@@ -59,11 +61,11 @@ impl<'host, Profile: HostProfile> Driver<'host, Profile> {
     pub(in crate::runtime) fn call<Output>(
         &mut self,
         call: impl FnOnce(
-            &TransferHostedExecution<Profile>,
-            &mut RuntimeStateFor<'_, TransferHostedExecution<Profile>>,
+            &HostedProgram<Profile>,
+            &mut RuntimeStateFor<'_, HostedProgram<Profile>>,
         ) -> Output,
     ) -> Output {
-        self.runtime.get_mut().call(self.work.context(), call)
+        self.runtime.get_mut().call(&self.work, call)
     }
 
     pub(crate) fn observe(&self, work: &SourceWork) -> DrivenObservation<'_, 'host, Profile> {
@@ -95,9 +97,7 @@ impl<'host, Profile: HostProfile> Driver<'host, Profile> {
         request: Request<Profile>,
         mut runtime: parking_lot::MutexGuard<'_, AttachedRuntime<'host, Profile>>,
     ) {
-        let delivery = runtime.call(self.work.context(), |plan, state| {
-            request.service(plan, state)
-        });
+        let delivery = runtime.call(&self.work, |plan, state| request.service(plan, state));
         drop(runtime);
         if let Some(delivery) = delivery {
             delivery.deliver();
@@ -109,15 +109,15 @@ impl<'host, Profile: HostProfile> Driver<'host, Profile> {
 impl<Profile: HostProfile> AttachedRuntime<'_, Profile> {
     fn call<Output>(
         &mut self,
-        work: WorkContext<Profile>,
+        work: &ExecutionWork<Profile>,
         call: impl FnOnce(
-            &TransferHostedExecution<Profile>,
-            &mut RuntimeStateFor<'_, TransferHostedExecution<Profile>>,
+            &HostedProgram<Profile>,
+            &mut RuntimeStateFor<'_, HostedProgram<Profile>>,
         ) -> Output,
     ) -> Output {
         let mut state = RuntimeState::with_host_and_lists(
             &mut *self.echo,
-            TransferRuntimeHost::<Profile>::new(&mut *self.host, &*self.stores, work),
+            RuntimeHost::<Profile>::new(&mut *self.host, &*self.stores, work),
             self.lists.clone(),
         );
         call(self.plan, &mut state)
@@ -147,16 +147,14 @@ impl<Profile: HostProfile> Drop for DrivenObservation<'_, '_, Profile> {
 #[cfg(test)]
 mod tests {
     use super::Driver;
-    use crate::frontend::compile_typed_transfer_host_program;
-    use crate::host::{HostProfile, TransferHostProviderSet};
-    use crate::plan::execution::TransferHostedExecution;
+    use crate::frontend::compile_typed_host_program;
+    use crate::host::{HostProfile, HostProviderSet};
+    use crate::plan::execution::HostedProgram;
     use crate::plan::{LibraryEntry, LibraryValueType, ValueType};
     use crate::runtime::evaluated::{EvaluatedFunctionValueKind, EvaluatedValue};
     use crate::runtime::function::{InvocableFunctionValue, run_tuple};
     use crate::runtime::work::Cancelled;
-    use crate::runtime::{
-        HostCallOrigin, TransferCallable, TransferCallbackInputs, TransferInputs,
-    };
+    use crate::runtime::{CallbackInputs, HostCallOrigin, RetainedCallable, RetainedInputs};
     use crate::{ModuleSource, PackageSource};
     use std::cell::Cell;
     use std::future::Future;
@@ -206,7 +204,7 @@ mod tests {
             }
         }
         let source = "pub fn idle() { Nil }";
-        let program = compile_typed_transfer_host_program(
+        let program = compile_typed_host_program(
             "application",
             "library",
             [PackageSource::new(
@@ -214,10 +212,10 @@ mod tests {
                 Vec::<String>::new(),
                 [ModuleSource::new("library", "src/library.gleam", source)],
             )],
-            TransferHostProviderSet::<Profile>::new(Vec::new()).expect("no providers"),
+            HostProviderSet::<Profile>::from_providers(Vec::new()).expect("no providers"),
         )
         .expect("source");
-        let library = crate::planner::plan_transfer_host_library_program(program).expect("plan");
+        let library = crate::planner::plan_host_library_program(program).expect("plan");
         let id = library
             .functions()
             .iter()
@@ -225,7 +223,7 @@ mod tests {
             .expect("idle")
             .signature()
             .id();
-        let (plan, _) = TransferHostedExecution::from_library_plan(
+        let (plan, _) = HostedProgram::from_library_plan(
             library,
             LibraryEntry::new(id, LibraryValueType::Nil, Vec::new(), Vec::new()),
             Vec::new(),
@@ -289,7 +287,7 @@ mod tests {
         use crate::runtime::shared::Shared;
         use std::sync::Barrier;
 
-        let typed = compile_typed_transfer_host_program(
+        let typed = compile_typed_host_program(
             "application",
             "library",
             [PackageSource::new(
@@ -301,10 +299,10 @@ mod tests {
                     "pub fn run() { Nil }",
                 )],
             )],
-            TransferHostProviderSet::<Profile>::new(Vec::new()).expect("provider set"),
+            HostProviderSet::<Profile>::from_providers(Vec::new()).expect("provider set"),
         )
         .expect("typed source");
-        let plan = crate::planner::plan_transfer_host_library_program(typed).expect("library plan");
+        let plan = crate::planner::plan_host_library_program(typed).expect("library plan");
         let function = plan
             .functions()
             .iter()
@@ -313,8 +311,8 @@ mod tests {
             .gleam_body()
             .expect("source body");
         let entry = LibraryEntry::new(function.id(), LibraryValueType::Nil, Vec::new(), Vec::new());
-        let (plan, _) = TransferHostedExecution::from_library_plan(plan, entry, Vec::new())
-            .expect("sealed execution");
+        let (plan, _) =
+            HostedProgram::from_library_plan(plan, entry, Vec::new()).expect("sealed execution");
         let mut host = Cell::new(0);
         let mut stores = Cell::new(());
         let mut echo = Echo::default();
@@ -379,7 +377,7 @@ mod tests {
     #[test]
     fn a_pending_driver_moves_between_workers_and_reenters_the_original_source_and_state() {
         let source = "pub fn make() {\n  let captured = 40\n  #(fn(value: Int) {\n    echo value\n    captured + value\n  })\n}\n";
-        let typed = compile_typed_transfer_host_program(
+        let typed = compile_typed_host_program(
             "application",
             "library",
             [PackageSource::new(
@@ -387,10 +385,10 @@ mod tests {
                 Vec::<String>::new(),
                 [ModuleSource::new("library", "src/library.gleam", source)],
             )],
-            TransferHostProviderSet::<Profile>::new(Vec::new()).expect("provider set"),
+            HostProviderSet::<Profile>::from_providers(Vec::new()).expect("provider set"),
         )
         .expect("typed source");
-        let plan = crate::planner::plan_transfer_host_library_program(typed).expect("library plan");
+        let plan = crate::planner::plan_host_library_program(typed).expect("library plan");
         let function = plan
             .functions()
             .iter()
@@ -405,8 +403,8 @@ mod tests {
             Vec::new(),
             Vec::new(),
         );
-        let (plan, entries) = TransferHostedExecution::from_library_plan(plan, entry, Vec::new())
-            .expect("sealed execution");
+        let (plan, entries) =
+            HostedProgram::from_library_plan(plan, entry, Vec::new()).expect("sealed execution");
         let entry = *entries.tuples[0].function();
         let mut host = Cell::new(2);
         let mut stores = Cell::new(());
@@ -422,7 +420,7 @@ mod tests {
                 runtime,
                 entry,
                 HostCallOrigin::Entry,
-                TransferInputs::empty().into_retained(),
+                RetainedInputs::empty().into_retained(),
             )
             .expect("source closure");
             int_callback(&values)
@@ -482,7 +480,7 @@ mod tests {
                     runtime,
                     entry,
                     HostCallOrigin::Entry,
-                    TransferInputs::empty().into_retained(),
+                    RetainedInputs::empty().into_retained(),
                 )
                 .expect("source callback");
                 int_callback(&values)
@@ -514,7 +512,7 @@ mod tests {
     async fn resume_callback_after_gate(
         context: super::WorkContext<Profile>,
         wait: futures_channel::oneshot::Receiver<()>,
-        callback: crate::runtime::TransferCallable,
+        callback: crate::runtime::RetainedCallable,
     ) -> Result<super::Shared<super::Completion>, Cancelled> {
         wait.await.map_err(|_| Cancelled)?;
         let previous = context
@@ -524,7 +522,7 @@ mod tests {
                 previous
             })
             .await?;
-        let mut inputs = TransferCallbackInputs::new();
+        let mut inputs = CallbackInputs::new();
         inputs.push_value(EvaluatedValue::Int(previous.into()));
         let result = context
             .invoke(callback, HostCallOrigin::Entry, inputs)
@@ -572,8 +570,8 @@ mod tests {
     impl crate::host::HostWorkProfile for NativeProfile {
         type Work = crate::work_fixture::WorkComponent;
     }
-    impl crate::host::AsyncHostComponentProfile<crate::work_fixture::WorkComponent> for NativeProfile {
-        fn component_async_stores(stores: &Self::ExternalStores) -> &crate::host::HostFutureStore {
+    impl crate::host::HostComponentProfile<crate::work_fixture::WorkComponent> for NativeProfile {
+        fn component_stores(stores: &Self::ExternalStores) -> &crate::host::HostFutureStore {
             stores
         }
 
@@ -583,7 +581,7 @@ mod tests {
     }
 
     fn fetch<'call>(
-        mut call: crate::host::TransferHostCall<
+        mut call: crate::host::HostCall<
             'call,
             NativeProfile,
             NativeProvider,
@@ -593,7 +591,7 @@ mod tests {
         value: num_bigint::BigInt,
     ) -> Result<
         crate::HostCallCompletion<'call, crate::work_fixture::WorkHostType<num_bigint::BigInt>>,
-        crate::AsyncHostCallError,
+        crate::HostCallError,
     > {
         let mut gate = call
             .state()
@@ -617,7 +615,7 @@ mod tests {
     }
 
     fn delayed<'call>(
-        mut call: crate::host::TransferHostCall<
+        mut call: crate::host::HostCall<
             'call,
             NativeProfile,
             NativeProvider,
@@ -631,7 +629,7 @@ mod tests {
         >,
     ) -> Result<
         crate::HostCallCompletion<'call, crate::work_fixture::WorkHostType<num_bigint::BigInt>>,
-        crate::AsyncHostCallError,
+        crate::HostCallError,
     > {
         let retained_callback = call.retain_value::<crate::HostFunctionType<
             crate::HostTypeList<num_bigint::BigInt, crate::HostTypeListEnd>,
@@ -676,14 +674,8 @@ mod tests {
     }
 
     fn touch<'call>(
-        mut call: crate::host::TransferHostCall<
-            'call,
-            NativeProfile,
-            NativeProvider,
-            num_bigint::BigInt,
-        >,
-    ) -> Result<crate::HostCallCompletion<'call, num_bigint::BigInt>, crate::AsyncHostCallError>
-    {
+        mut call: crate::host::HostCall<'call, NativeProfile, NativeProvider, num_bigint::BigInt>,
+    ) -> Result<crate::HostCallCompletion<'call, num_bigint::BigInt>, crate::HostCallError> {
         let state = call.state();
         let value = state.generation;
         if state.fail_touch && value == 4 {
@@ -728,7 +720,7 @@ pub fn make() {{
             let mut providers = crate::work_fixture::WorkComponent::providers::<NativeProfile>()
                 .expect("Future provider");
             providers.push(
-                crate::host::TransferHostProviderModule::new_for_profile("application", "library")
+                crate::host::HostProviderModule::new("application", "library")
                     .expect("native callback module")
                     .with_scoped_function_and_constructions::<NativeProvider, (
                         crate::HostFunctionType<
@@ -744,7 +736,7 @@ pub fn make() {{
                     )
                     .expect("same-component state registration"),
             );
-            let typed = compile_typed_transfer_host_program(
+            let typed = compile_typed_host_program(
                 "application",
                 "library",
                 [
@@ -763,12 +755,11 @@ pub fn make() {{
                         [ModuleSource::new("library", "src/library.gleam", source)],
                     ),
                 ],
-                TransferHostProviderSet::<NativeProfile>::new(providers)
+                HostProviderSet::<NativeProfile>::from_providers(providers)
                     .expect("callback provider set"),
             )
             .expect("Future callback source");
-            let plan = crate::planner::plan_transfer_host_library_program(typed)
-                .expect("callback library");
+            let plan = crate::planner::plan_host_library_program(typed).expect("callback library");
             let function = plan
                 .functions()
                 .iter()
@@ -783,9 +774,8 @@ pub fn make() {{
                 Vec::new(),
                 Vec::new(),
             );
-            let (plan, entries) =
-                TransferHostedExecution::from_library_plan(plan, entry, Vec::new())
-                    .expect("retained callback specialization");
+            let (plan, entries) = HostedProgram::from_library_plan(plan, entry, Vec::new())
+                .expect("retained callback specialization");
             let entry = *entries.tuples[0].function();
             let (send, gate) = futures_channel::oneshot::channel();
             let mut state = NativeState {
@@ -804,7 +794,7 @@ pub fn make() {{
                     runtime,
                     entry,
                     HostCallOrigin::Entry,
-                    TransferInputs::empty().into_retained(),
+                    RetainedInputs::empty().into_retained(),
                 )
                 .expect("construct owned callback work");
                 let [value] = external_values(&value);
@@ -874,7 +864,7 @@ pub fn make() {{
                             runtime,
                             entry,
                             HostCallOrigin::Entry,
-                            TransferInputs::empty().into_retained(),
+                            RetainedInputs::empty().into_retained(),
                         )
                         .expect("owned callback work");
                         let [value] = external_values(&values);
@@ -945,7 +935,7 @@ pub fn make() {{
 
     #[test]
     fn discarded_driver_requests_cancel_only_the_dependent_composition() {
-        use crate::host::TransferHostProviderModule;
+        use crate::host::HostProviderModule;
         use crate::work_fixture::{WorkComponent, WorkHostType};
         let cases = [
             ("native", "fetch(40)", 1),
@@ -970,10 +960,10 @@ pub fn make() {{ echo 7 #({expression}, future.ready(7)) }}
 "#
             );
             let mut providers = WorkComponent::providers::<NativeProfile>().expect("Future module");
-            providers.push(TransferHostProviderModule::new_for_profile("application", "library")
+            providers.push(HostProviderModule::new("application", "library")
                 .expect("native module")
                 .with_scoped_function_and_constructions::<NativeProvider, (num_bigint::BigInt,), WorkHostType<num_bigint::BigInt>, crate::HostTypeListEnd, _>("fetch", fetch).expect("native constructor"));
-            let typed = compile_typed_transfer_host_program(
+            let typed = compile_typed_host_program(
                 "application",
                 "library",
                 [
@@ -996,10 +986,10 @@ pub fn make() {{ echo 7 #({expression}, future.ready(7)) }}
                         )],
                     ),
                 ],
-                TransferHostProviderSet::new(providers).expect("providers"),
+                HostProviderSet::from_providers(providers).expect("providers"),
             )
             .expect("source");
-            let library = crate::planner::plan_transfer_host_library_program(typed).expect("plan");
+            let library = crate::planner::plan_host_library_program(typed).expect("plan");
             let make = library
                 .functions()
                 .iter()
@@ -1013,9 +1003,8 @@ pub fn make() {{ echo 7 #({expression}, future.ready(7)) }}
                 Vec::new(),
                 Vec::new(),
             );
-            let (plan, entries) =
-                TransferHostedExecution::from_library_plan(library, entry, Vec::new())
-                    .expect("sealed source");
+            let (plan, entries) = HostedProgram::from_library_plan(library, entry, Vec::new())
+                .expect("sealed source");
             for discarded in 0..=request_count {
                 let (sender, gate) = futures_channel::oneshot::channel();
                 sender.send(Ok(2)).expect("ready native result");
@@ -1031,7 +1020,7 @@ pub fn make() {{ echo 7 #({expression}, future.ready(7)) }}
                         runtime,
                         *entries.tuples[0].function(),
                         HostCallOrigin::Entry,
-                        TransferInputs::empty().into_retained(),
+                        RetainedInputs::empty().into_retained(),
                     )
                     .expect("source work construction");
                     let [work, independent] = external_values::<2>(&values);
@@ -1086,126 +1075,163 @@ pub fn make() {{ echo 7 #({expression}, future.ready(7)) }}
 
     #[test]
     fn native_work_is_unpolled_at_construction_and_preserves_completion_and_error_origin() {
-        let source = "import fixture/work as future\n@external(erlang, \"native\", \"fetch\")\nfn fetch(value: Int) -> future.Work(Int)\npub fn make() {\n  let original = fetch(40)\n  #(future.map(original, fn(value) { echo value value + 2 }), original)\n}\n";
-        let mut providers = crate::work_fixture::WorkComponent::providers::<NativeProfile>()
-            .expect("Future provider");
-        providers.push(crate::host::TransferHostProviderModule::new_for_profile("application", "library")
+        fn invoke<'call>(
+            mut call: crate::HostCall<
+                'call,
+                NativeProfile,
+                NativeProvider,
+                crate::work_fixture::WorkHostType<num_bigint::BigInt>,
+            >,
+            callback: crate::HostCallable<
+                'call,
+                crate::HostTypeList<num_bigint::BigInt, crate::HostTypeListEnd>,
+                crate::work_fixture::WorkHostType<num_bigint::BigInt>,
+            >,
+            value: num_bigint::BigInt,
+        ) -> Result<
+            crate::HostCallCompletion<'call, crate::work_fixture::WorkHostType<num_bigint::BigInt>>,
+            crate::HostCallError,
+        > {
+            call.invoke(callback, (value, ()))
+                .map(|value| call.return_value(value))
+        }
+        for construction in ["fetch(40)", "invoke(fetch, 40)"] {
+            let source = format!(
+                "import fixture/work as future\n@external(erlang, \"native\", \"fetch\")\nfn fetch(value: Int) -> future.Work(Int)\npub fn make() {{\n  let original = {construction}\n  #(future.map(original, fn(value) {{ echo value value + 2 }}), original)\n}}\n@external(erlang, \"native\", \"invoke\")\nfn invoke(callback: fn(Int) -> future.Work(Int), value: Int) -> future.Work(Int)\n"
+            );
+            let mut providers = crate::work_fixture::WorkComponent::providers::<NativeProfile>()
+                .expect("Future provider");
+            providers.push(crate::host::HostProviderModule::new("application", "library")
             .expect("native module")
             .with_scoped_function_and_constructions::<NativeProvider, (num_bigint::BigInt,), crate::work_fixture::WorkHostType<num_bigint::BigInt>, crate::HostTypeListEnd, _>("fetch", fetch)
-            .expect("native Future function"));
-        let typed = compile_typed_transfer_host_program(
-            "application",
-            "library",
-            [
-                PackageSource::new(
-                    "work_fixture",
-                    Vec::<String>::new(),
-                    [ModuleSource::new(
-                        "fixture/work",
-                        "src/fixture/work.gleam",
-                        FUTURE_SOURCE,
-                    )],
-                ),
-                PackageSource::new(
-                    "application",
-                    ["work_fixture"],
-                    [ModuleSource::new("library", "src/library.gleam", source)],
-                ),
-            ],
-            TransferHostProviderSet::<NativeProfile>::new(providers).expect("native provider set"),
-        )
-        .expect("ordinary Future-typed external");
-        let plan =
-            crate::planner::plan_transfer_host_library_program(typed).expect("native library");
-        let function = plan
-            .functions()
-            .iter()
-            .find(|function| function.name() == "make")
-            .expect("make entry")
-            .gleam_body()
-            .expect("source entry");
-        let types = tuple_return(function.signature().shape().type_().return_());
-        let entry = LibraryEntry::new(
-            function.id(),
-            LibraryValueType::Tuple(types),
-            Vec::new(),
-            Vec::new(),
-        );
-        let (plan, entries) = TransferHostedExecution::from_library_plan(plan, entry, Vec::new())
-            .expect("native Future execution");
-        let entry = *entries.tuples[0].function();
-
-        for outcome in [Ok(0), Err(crate::HostFailure::new("native unavailable"))] {
-            let failed = outcome.is_err();
-            let (send, gate) = futures_channel::oneshot::channel();
-            let polls = Arc::new(AtomicUsize::new(0));
-            let mut state = NativeState {
-                gates: [gate].into(),
-                polls: Arc::clone(&polls),
-                ..NativeState::default()
-            };
-            let mut stores = crate::host::HostFutureStore::default();
-            let mut echo = Echo::default();
-            let mut driver =
-                Driver::<NativeProfile>::new(&plan, &mut state, &mut stores, &mut echo);
-            let (mapped, original) = driver.call(|plan, runtime| {
-                let values = run_tuple(
-                    plan,
-                    runtime,
-                    entry,
-                    HostCallOrigin::Entry,
-                    TransferInputs::empty().into_retained(),
-                )
-                .expect("construct native Future");
-                let [mapped, original] = external_values(&values);
-                (
-                    runtime.host().stores().work(mapped.lease()),
-                    runtime.host().stores().work(original.lease()),
-                )
-            });
-            assert_eq!(polls.load(Ordering::SeqCst), 0);
-            let wake = Arc::new(WakeCount::default());
-            let waker = Waker::from(Arc::clone(&wake));
-            let mut cx = Context::from_waker(&waker);
-            let mut observation = Box::pin(driver.observe(&mapped));
-            assert!(observation.as_mut().poll(&mut cx).is_pending());
-            assert_eq!(polls.load(Ordering::SeqCst), 1);
-            drop(observation);
-            send.send(outcome).expect("native operation still retained");
-            assert_eq!(polls.load(Ordering::SeqCst), 1);
-            let mut observation = Box::pin(driver.observe(&mapped));
-            let completion = completed_observation(observation.as_mut().poll(&mut cx));
-            assert_eq!(polls.load(Ordering::SeqCst), 2);
-            drop(observation);
-            drop(driver);
-            completion.read(|result| match result {
-                Ok(value) => {
-                    assert!(!failed);
-                    value.read(|value| assert_eq!(value.value(), &EvaluatedValue::Int(42.into())));
-                    assert_eq!(echo.output.len(), 1);
-                    assert!(echo.output[0].ends_with("\n40"));
-                }
-                Err(error) => {
-                    assert!(failed);
-                    assert!(echo.output.is_empty());
-                    error.read(|error| {
-                        let error = host_error(error);
-                        assert_eq!(error.package(), "application");
-                        assert_eq!(error.module(), "library");
-                        assert_eq!(error.function(), "fetch");
-                        assert_eq!(error.location().line(), Some(5));
-                        assert_eq!(error.failure().message(), "native unavailable");
-                    });
-                }
-            });
-            assert!(Box::pin(mapped.observe()).as_mut().poll(&mut cx).is_ready());
-            assert!(
-                Box::pin(original.observe())
-                    .as_mut()
-                    .poll(&mut cx)
-                    .is_ready()
+            .expect("native Future function")
+            .with_scoped_function::<NativeProvider, (crate::HostFunctionType<crate::HostTypeList<num_bigint::BigInt, crate::HostTypeListEnd>, crate::work_fixture::WorkHostType<num_bigint::BigInt>>, num_bigint::BigInt), crate::work_fixture::WorkHostType<num_bigint::BigInt>, _>("invoke", invoke)
+            .expect("native constructor callback"));
+            let typed = compile_typed_host_program(
+                "application",
+                "library",
+                [
+                    PackageSource::new(
+                        "work_fixture",
+                        Vec::<String>::new(),
+                        [ModuleSource::new(
+                            "fixture/work",
+                            "src/fixture/work.gleam",
+                            FUTURE_SOURCE,
+                        )],
+                    ),
+                    PackageSource::new(
+                        "application",
+                        ["work_fixture"],
+                        [ModuleSource::new("library", "src/library.gleam", source)],
+                    ),
+                ],
+                HostProviderSet::<NativeProfile>::from_providers(providers)
+                    .expect("native provider set"),
+            )
+            .expect("ordinary Future-typed external");
+            let plan = crate::planner::plan_host_library_program(typed).expect("native library");
+            let function = plan
+                .functions()
+                .iter()
+                .find(|function| function.name() == "make")
+                .expect("make entry")
+                .gleam_body()
+                .expect("source entry");
+            let types = tuple_return(function.signature().shape().type_().return_());
+            let entry = LibraryEntry::new(
+                function.id(),
+                LibraryValueType::Tuple(types),
+                Vec::new(),
+                Vec::new(),
             );
-            assert_eq!(polls.load(Ordering::SeqCst), 2);
+            let (plan, entries) = HostedProgram::from_library_plan(plan, entry, Vec::new())
+                .expect("native Future execution");
+            let entry = *entries.tuples[0].function();
+
+            for outcome in [Ok(0), Err(crate::HostFailure::new("native unavailable"))] {
+                let failed = outcome.is_err();
+                let (send, gate) = futures_channel::oneshot::channel();
+                let polls = Arc::new(AtomicUsize::new(0));
+                let mut state = NativeState {
+                    gates: [gate].into(),
+                    polls: Arc::clone(&polls),
+                    ..NativeState::default()
+                };
+                let mut stores = crate::host::HostFutureStore::default();
+                let mut echo = Echo::default();
+                let mut driver =
+                    Driver::<NativeProfile>::new(&plan, &mut state, &mut stores, &mut echo);
+                let (mapped, original) = driver.call(|plan, runtime| {
+                    let values = run_tuple(
+                        plan,
+                        runtime,
+                        entry,
+                        HostCallOrigin::Entry,
+                        RetainedInputs::empty().into_retained(),
+                    )
+                    .expect("construct native Future");
+                    let [mapped, original] = external_values(&values);
+                    (
+                        runtime.host().stores().work(mapped.lease()),
+                        runtime.host().stores().work(original.lease()),
+                    )
+                });
+                assert_eq!(polls.load(Ordering::SeqCst), 0);
+                let wake = Arc::new(WakeCount::default());
+                let waker = Waker::from(Arc::clone(&wake));
+                let mut cx = Context::from_waker(&waker);
+                let mut observation = Box::pin(driver.observe(&mapped));
+                assert!(observation.as_mut().poll(&mut cx).is_pending());
+                assert_eq!(polls.load(Ordering::SeqCst), 1);
+                drop(observation);
+                send.send(outcome).expect("native operation still retained");
+                assert_eq!(polls.load(Ordering::SeqCst), 1);
+                let mut observation = Box::pin(driver.observe(&mapped));
+                let completion = completed_observation(observation.as_mut().poll(&mut cx));
+                assert_eq!(polls.load(Ordering::SeqCst), 2);
+                drop(observation);
+                drop(driver);
+                completion.read(|result| match result {
+                    Ok(value) => {
+                        assert!(!failed);
+                        value.read(|value| {
+                            assert_eq!(value.value(), &EvaluatedValue::Int(42.into()))
+                        });
+                        assert_eq!(echo.output.len(), 1);
+                        assert!(echo.output[0].ends_with("\n40"));
+                    }
+                    Err(error) => {
+                        assert!(failed);
+                        assert!(echo.output.is_empty());
+                        error.read(|error| {
+                            let error = host_error(error);
+                            assert_eq!(error.package(), "application");
+                            assert_eq!(error.module(), "library");
+                            assert_eq!(error.function(), "fetch");
+                            if construction == "fetch(40)" {
+                                assert_eq!(error.location().line(), Some(5));
+                                assert_eq!(error.location().caller(), None);
+                            } else {
+                                assert_eq!(error.location().line(), None);
+                                let caller = error.location().caller().expect("native caller");
+                                assert_eq!(caller.package(), "application");
+                                assert_eq!(caller.module(), "library");
+                                assert_eq!(caller.function(), "invoke");
+                            }
+                            assert_eq!(error.failure().message(), "native unavailable");
+                        });
+                    }
+                });
+                assert!(Box::pin(mapped.observe()).as_mut().poll(&mut cx).is_ready());
+                assert!(
+                    Box::pin(original.observe())
+                        .as_mut()
+                        .poll(&mut cx)
+                        .is_ready()
+                );
+                assert_eq!(polls.load(Ordering::SeqCst), 2);
+            }
         }
     }
 
@@ -1217,8 +1243,8 @@ pub fn make() {{ echo 7 #({expression}, future.ready(7)) }}
     impl crate::host::HostWorkProfile for FutureProfile {
         type Work = crate::work_fixture::WorkComponent;
     }
-    impl crate::host::AsyncHostComponentProfile<crate::work_fixture::WorkComponent> for FutureProfile {
-        fn component_async_stores(stores: &Self::ExternalStores) -> &crate::host::HostFutureStore {
+    impl crate::host::HostComponentProfile<crate::work_fixture::WorkComponent> for FutureProfile {
+        fn component_stores(stores: &Self::ExternalStores) -> &crate::host::HostFutureStore {
             stores
         }
 
@@ -1229,7 +1255,7 @@ pub fn make() {{ echo 7 #({expression}, future.ready(7)) }}
 
     #[test]
     fn then_preserves_native_failure_or_cancellation_before_its_callback_runs() {
-        use crate::embedding::{FunctionDeclaration, WorkModuleBuilder, with_execution_scope};
+        use crate::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
         use crate::work_fixture::WorkType;
         use futures_util::FutureExt;
         use num_bigint::BigInt;
@@ -1245,11 +1271,11 @@ pub fn make() {
 "#;
         let mut providers = crate::work_fixture::WorkComponent::providers::<NativeProfile>()
             .expect("Future module");
-        providers.push(crate::host::TransferHostProviderModule::new_for_profile("application", "library")
+        providers.push(crate::host::HostProviderModule::new("application", "library")
             .expect("native module")
             .with_scoped_function_and_constructions::<NativeProvider, (BigInt,), crate::work_fixture::WorkHostType<BigInt>, crate::HostTypeListEnd, _>("fetch", fetch)
             .expect("native function"));
-        let program = compile_typed_transfer_host_program(
+        let program = compile_typed_host_program(
             "application",
             "library",
             [
@@ -1268,10 +1294,10 @@ pub fn make() {
                     [ModuleSource::new("library", "src/library.gleam", source)],
                 ),
             ],
-            TransferHostProviderSet::new(providers).expect("providers"),
+            HostProviderSet::from_providers(providers).expect("providers"),
         )
         .expect("typed source");
-        let (bindings, make) = WorkModuleBuilder::new(program)
+        let (bindings, make) = HostedModuleBuilder::new(program)
             .expect("plan")
             .function(FunctionDeclaration::<(), WorkType<BigInt>>::new("make"))
             .expect("binding");
@@ -1351,11 +1377,11 @@ pub fn make() {
 "#;
         let mut providers = crate::work_fixture::WorkComponent::providers::<NativeProfile>()
             .expect("Future provider");
-        providers.push(crate::host::TransferHostProviderModule::new_for_profile("application", "library")
+        providers.push(crate::host::HostProviderModule::new("application", "library")
             .expect("all native module")
             .with_scoped_function_and_constructions::<NativeProvider, (num_bigint::BigInt,), crate::work_fixture::WorkHostType<num_bigint::BigInt>, crate::HostTypeListEnd, _>("fetch", fetch)
             .expect("all native function"));
-        let typed = compile_typed_transfer_host_program(
+        let typed = compile_typed_host_program(
             "application",
             "library",
             [
@@ -1374,10 +1400,10 @@ pub fn make() {
                     [ModuleSource::new("library", "src/library.gleam", source)],
                 ),
             ],
-            TransferHostProviderSet::<NativeProfile>::new(providers).expect("all providers"),
+            HostProviderSet::<NativeProfile>::from_providers(providers).expect("all providers"),
         )
         .expect("all source");
-        let plan = crate::planner::plan_transfer_host_library_program(typed).expect("all library");
+        let plan = crate::planner::plan_host_library_program(typed).expect("all library");
         let function = plan
             .functions()
             .iter()
@@ -1392,8 +1418,8 @@ pub fn make() {
             Vec::new(),
             Vec::new(),
         );
-        let (plan, entries) = TransferHostedExecution::from_library_plan(plan, entry, Vec::new())
-            .expect("all execution");
+        let (plan, entries) =
+            HostedProgram::from_library_plan(plan, entry, Vec::new()).expect("all execution");
         let entry = *entries.tuples[0].function();
 
         for (failure, cancelled) in [(false, false), (true, false), (false, true)] {
@@ -1415,7 +1441,7 @@ pub fn make() {
                     runtime,
                     entry,
                     HostCallOrigin::Entry,
-                    TransferInputs::empty().into_retained(),
+                    RetainedInputs::empty().into_retained(),
                 )
                 .expect("construct independent work");
                 let [all, sibling] = external_values(&values);
@@ -1584,7 +1610,7 @@ pub fn make() {
 }
 "#,
         ] {
-            let typed = compile_typed_transfer_host_program(
+            let typed = compile_typed_host_program(
                 "application",
                 "library",
                 [
@@ -1603,14 +1629,13 @@ pub fn make() {
                         [ModuleSource::new("library", "src/library.gleam", source)],
                     ),
                 ],
-                TransferHostProviderSet::<FutureProfile>::new(
+                HostProviderSet::<FutureProfile>::from_providers(
                     crate::work_fixture::WorkComponent::providers().expect("Future registration"),
                 )
                 .expect("source providers"),
             )
             .expect("ordinary dependency source");
-            let plan =
-                crate::planner::plan_transfer_host_library_program(typed).expect("Future library");
+            let plan = crate::planner::plan_host_library_program(typed).expect("Future library");
             let function = plan
                 .functions()
                 .iter()
@@ -1625,9 +1650,8 @@ pub fn make() {
                 Vec::new(),
                 Vec::new(),
             );
-            let (plan, entries) =
-                TransferHostedExecution::from_library_plan(plan, entry, Vec::new())
-                    .expect("specialized Future callbacks");
+            let (plan, entries) = HostedProgram::from_library_plan(plan, entry, Vec::new())
+                .expect("specialized Future callbacks");
             let entry = *entries.tuples[0].function();
             let mut host = FutureState { unit: () };
             assert!(std::ptr::eq(
@@ -1645,7 +1669,7 @@ pub fn make() {
                     runtime,
                     entry,
                     HostCallOrigin::Entry,
-                    TransferInputs::empty().into_retained(),
+                    RetainedInputs::empty().into_retained(),
                 )
                 .expect("construct Future graph");
                 let [value] = external_values(&values[..1]);
@@ -1676,13 +1700,12 @@ pub fn make() {
     #[test]
     fn work_hidden_in_a_completed_external_payload_cannot_restart_in_another_execution() {
         use crate::host::{
-            AsyncHostComponentProfile, AsyncHostExternalBinding, AsyncHostExternalEquality,
-            AsyncHostExternalHashing, AsyncHostExternalInspection, AsyncHostExternalStorage,
-            AsyncHostExternalStore, HostCallCompletion, HostConstructions, HostExternal,
-            HostExternalSchema, HostExternalType, HostFutureStore, HostProvider, HostTypeListEnd,
-            TransferHostCall, TransferHostProviderModule,
+            HostCall, HostCallCompletion, HostComponentProfile, HostConstructions, HostExternal,
+            HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
+            HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType,
+            HostFutureStore, HostProvider, HostProviderModule, HostTypeListEnd,
         };
-        use crate::runtime::{StoredRuntimeValue, TransferValues};
+        use crate::runtime::StoredRuntimeValue;
         use crate::work_fixture::{WorkComponent, WorkHostType};
         use num_bigint::BigInt;
 
@@ -1693,7 +1716,7 @@ pub fn make() {
         #[derive(Default)]
         struct Stores {
             future: HostFutureStore,
-            envelopes: AsyncHostExternalStore<StoredRuntimeValue<TransferValues>>,
+            envelopes: HostExternalStore<StoredRuntimeValue>,
         }
         struct State {
             gate: Option<futures_channel::oneshot::Receiver<Result<(), crate::HostFailure>>>,
@@ -1713,8 +1736,8 @@ pub fn make() {
         impl crate::host::HostWorkProfile for RetainedProfile {
             type Work = crate::work_fixture::WorkComponent;
         }
-        impl AsyncHostComponentProfile<WorkComponent> for RetainedProfile {
-            fn component_async_stores(stores: &Stores) -> &HostFutureStore {
+        impl HostComponentProfile<WorkComponent> for RetainedProfile {
+            fn component_stores(stores: &Stores) -> &HostFutureStore {
                 &stores.future
             }
             fn component_state(state: &mut State) -> &mut () {
@@ -1727,36 +1750,35 @@ pub fn make() {
             const NAME: &'static str = "Envelope";
             const PARAMETER_COUNT: usize = 0;
         }
-        impl AsyncHostExternalBinding<RetainedProfile, Envelope> for Provider {
+        impl HostExternalBinding<RetainedProfile, Envelope> for Provider {
             type Storage = EnvelopeStorage;
         }
-        impl AsyncHostExternalStorage<RetainedProfile, Envelope> for EnvelopeStorage {
-            type Payload = StoredRuntimeValue<TransferValues>;
-            fn store(stores: &Stores) -> &AsyncHostExternalStore<Self::Payload> {
+        impl HostExternalStorage<RetainedProfile, Envelope> for EnvelopeStorage {
+            type Payload = StoredRuntimeValue;
+            fn store(stores: &Stores) -> &HostExternalStore<Self::Payload> {
                 &stores.envelopes
             }
             fn source_equal(
-                context: &AsyncHostExternalEquality<'_>,
+                context: &HostExternalEquality<'_>,
                 a: &Self::Payload,
                 b: &Self::Payload,
             ) -> bool {
                 context.provider_stored_values_equal(a, b)
             }
-            fn source_hash(context: &AsyncHostExternalHashing<'_>, value: &Self::Payload) -> u64 {
+            fn source_hash(context: &HostExternalHashing<'_>, value: &Self::Payload) -> u64 {
                 context.provider_stored_value_hash(value)
             }
             fn inspect(
-                context: &AsyncHostExternalInspection<'_>,
+                context: &HostExternalInspection<'_>,
                 value: &Self::Payload,
             ) -> ecow::EcoString {
                 format!("Envelope({})", context.provider_inspect_stored_value(value)).into()
             }
         }
         fn fetch<'call>(
-            mut call: TransferHostCall<'call, RetainedProfile, Provider, WorkHostType<BigInt>>,
+            mut call: HostCall<'call, RetainedProfile, Provider, WorkHostType<BigInt>>,
             constructions: HostConstructions<'call, HostTypeListEnd>,
-        ) -> Result<HostCallCompletion<'call, WorkHostType<BigInt>>, crate::AsyncHostCallError>
-        {
+        ) -> Result<HostCallCompletion<'call, WorkHostType<BigInt>>, crate::HostCallError> {
             let mut gate = call.state().gate.take().expect("one original construction");
             let polls = Arc::clone(&call.state().polls);
             Ok(call.return_future(constructions, move |_| {
@@ -1774,42 +1796,35 @@ pub fn make() {
             }))
         }
         fn retain<'call>(
-            mut call: TransferHostCall<
-                'call,
-                RetainedProfile,
-                Provider,
-                HostExternalType<Envelope>,
-            >,
+            mut call: HostCall<'call, RetainedProfile, Provider, HostExternalType<Envelope>>,
             value: HostExternal<'call, WorkHostType<BigInt>>,
-        ) -> Result<HostCallCompletion<'call, HostExternalType<Envelope>>, crate::AsyncHostCallError>
+        ) -> Result<HostCallCompletion<'call, HostExternalType<Envelope>>, crate::HostCallError>
         {
             let stored = call.retain_value::<WorkHostType<BigInt>>(value);
             let value = call.create_external_with_binding::<Provider>(stored);
             Ok(call.return_value(value))
         }
         fn restore<'call>(
-            mut call: TransferHostCall<'call, RetainedProfile, Provider, WorkHostType<BigInt>>,
+            mut call: HostCall<'call, RetainedProfile, Provider, WorkHostType<BigInt>>,
             value: HostExternal<'call, HostExternalType<Envelope>>,
-        ) -> Result<HostCallCompletion<'call, WorkHostType<BigInt>>, crate::AsyncHostCallError>
-        {
+        ) -> Result<HostCallCompletion<'call, WorkHostType<BigInt>>, crate::HostCallError> {
             let payload = call.external_payload(value);
             let work = call.restore_value::<WorkHostType<BigInt>>(&payload);
             drop(payload);
             Ok(call.return_value(work))
         }
         fn hash<'call>(
-            call: TransferHostCall<'call, RetainedProfile, Provider, BigInt>,
+            call: HostCall<'call, RetainedProfile, Provider, BigInt>,
             value: HostExternal<'call, HostExternalType<Envelope>>,
-        ) -> Result<HostCallCompletion<'call, BigInt>, crate::AsyncHostCallError> {
+        ) -> Result<HostCallCompletion<'call, BigInt>, crate::HostCallError> {
             let hash = call.source_hash::<HostExternalType<Envelope>>(value);
             Ok(call.return_value(hash.into()))
         }
         fn observe_native<'call>(
-            call: TransferHostCall<'call, RetainedProfile, Provider, WorkHostType<BigInt>>,
+            call: HostCall<'call, RetainedProfile, Provider, WorkHostType<BigInt>>,
             constructions: HostConstructions<'call, HostTypeListEnd>,
             work: HostExternal<'call, WorkHostType<BigInt>>,
-        ) -> Result<HostCallCompletion<'call, WorkHostType<BigInt>>, crate::AsyncHostCallError>
-        {
+        ) -> Result<HostCallCompletion<'call, WorkHostType<BigInt>>, crate::HostCallError> {
             let work = call.future_value(work);
             Ok(call.return_future(constructions, move |context| {
                 Box::pin(async move {
@@ -1823,7 +1838,7 @@ pub fn make() {
                 })
             }))
         }
-        let native = TransferHostProviderModule::new_for_profile("application", "library")
+        let native = HostProviderModule::new("application", "library")
             .expect("native module")
             .with_external_type::<Provider, Envelope>().expect("Envelope schema")
             .with_scoped_function_and_constructions::<Provider, (), WorkHostType<BigInt>, HostTypeListEnd, _>("fetch", fetch).expect("fetch")
@@ -1861,7 +1876,7 @@ fn observe_native(work: future.Work(Int)) -> future.Work(Int)
 pub fn observe_negative() { #(observe_native(future.ready(-1))) }
 pub fn observe_ready() { #(observe_native(future.ready(43))) }
 "#;
-        let typed = compile_typed_transfer_host_program(
+        let typed = compile_typed_host_program(
             "application",
             "library",
             [
@@ -1880,10 +1895,10 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
                     [ModuleSource::new("library", "src/library.gleam", source)],
                 ),
             ],
-            TransferHostProviderSet::<RetainedProfile>::new(providers).expect("providers"),
+            HostProviderSet::<RetainedProfile>::from_providers(providers).expect("providers"),
         )
         .expect("source");
-        let library = crate::planner::plan_transfer_host_library_program(typed).expect("library");
+        let library = crate::planner::plan_host_library_program(typed).expect("library");
         let mut entries = Vec::new();
         for name in ["make", "open", "observe_negative", "observe_ready"] {
             let function = library
@@ -1902,8 +1917,8 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
             ));
         }
         let entry = entries.remove(0);
-        let (plan, entries) = TransferHostedExecution::from_library_plan(library, entry, entries)
-            .expect("sealed entries");
+        let (plan, entries) =
+            HostedProgram::from_library_plan(library, entry, entries).expect("sealed entries");
         let make = *entries.tuples[0].function();
         let open = *entries.tuples[1].function();
         for (entry, cancelled) in [
@@ -1925,7 +1940,7 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
                     runtime,
                     entry,
                     HostCallOrigin::Entry,
-                    TransferInputs::empty().into_retained(),
+                    RetainedInputs::empty().into_retained(),
                 )
                 .expect("native observation of a ready input");
                 let [value] = external_values(&values);
@@ -1991,7 +2006,7 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
                     runtime,
                     make,
                     HostCallOrigin::Entry,
-                    TransferInputs::empty().into_retained(),
+                    RetainedInputs::empty().into_retained(),
                 )
                 .expect("construct retained graph");
                 let [outer, inner] = external_values(&values);
@@ -2059,7 +2074,7 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
             };
             let mut next = Driver::new(&plan, &mut fresh, &mut stores, &mut echo);
             let restored = next.call(|plan, runtime| {
-                let mut input = TransferInputs::empty();
+                let mut input = RetainedInputs::empty();
                 input.push_value(envelope);
                 let values = run_tuple(
                     plan,
@@ -2129,8 +2144,8 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
     }
 
     fn external_values<const N: usize>(
-        values: &[EvaluatedValue<crate::runtime::TransferValues>],
-    ) -> [&crate::runtime::EvaluatedExternalValue<crate::runtime::TransferValues>; N] {
+        values: &[EvaluatedValue],
+    ) -> [&crate::runtime::EvaluatedExternalValue; N] {
         let values: &[_; N] = values.try_into().expect("fixture external tuple length");
         values.each_ref().map(|value| match value {
             EvaluatedValue::External(value) => value,
@@ -2155,16 +2170,16 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
     fn external_values_rejects_another_tuple_length() {
         external_values::<1>(&[]);
     }
-    fn host_error(error: &crate::AsyncExecutionError) -> &crate::HostError {
+    fn host_error(error: &crate::ExecutionError) -> &crate::HostError {
         match error {
-            crate::AsyncExecutionError::Host(error) => error,
+            crate::ExecutionError::Host(error) => error,
             _ => panic!("fixture must fail in a host provider"),
         }
     }
 
-    fn source_panic(error: &crate::AsyncExecutionError) -> &crate::Panic<crate::AsyncPanicValue> {
+    fn source_panic(error: &crate::ExecutionError) -> &crate::Panic<crate::PanicValue> {
         match error {
-            crate::AsyncExecutionError::Panic(error) => error,
+            crate::ExecutionError::Panic(error) => error,
             _ => panic!("fixture must stop with a source panic"),
         }
     }
@@ -2172,7 +2187,7 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
     #[test]
     #[should_panic(expected = "fixture must fail in a host provider")]
     fn host_error_rejects_an_invariant_fixture() {
-        host_error(&crate::AsyncExecutionError::Invariant(
+        host_error(&crate::ExecutionError::Invariant(
             crate::InvariantError::ListIndexOutOfBounds {
                 item_type: ValueType::Int,
                 index: 0,
@@ -2184,7 +2199,7 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
     #[test]
     #[should_panic(expected = "fixture must stop with a source panic")]
     fn source_panic_rejects_an_invariant_fixture() {
-        source_panic(&crate::AsyncExecutionError::Invariant(
+        source_panic(&crate::ExecutionError::Invariant(
             crate::InvariantError::ListIndexOutOfBounds {
                 item_type: ValueType::Int,
                 index: 0,
@@ -2192,14 +2207,14 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
             },
         ));
     }
-    fn int_callback(values: &[EvaluatedValue<crate::runtime::TransferValues>]) -> TransferCallable {
+    fn int_callback(values: &[EvaluatedValue]) -> RetainedCallable {
         let [EvaluatedValue::Function(value)] = values else {
             panic!("fixture must return one callback");
         };
         let EvaluatedFunctionValueKind::Int(value) = value.kind() else {
             panic!("fixture callback must return Int");
         };
-        TransferCallable::new(InvocableFunctionValue::Int(value.clone()))
+        RetainedCallable::new(InvocableFunctionValue::Int(value.clone()))
     }
 
     #[test]

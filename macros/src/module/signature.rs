@@ -1,101 +1,83 @@
 use super::custom_value::{CustomFieldValueType, CustomModel};
-use super::list::transfer_list_decoder_ident;
+use super::list::list_decoder_ident;
 use super::{
     CallbackType, DeclaredInput, FunctionArgumentType, FunctionFlavor, FunctionInputType,
     FunctionInputValueType, FunctionOutputLeafType, FunctionOutputValueType, FunctionReturnType,
     FunctionRootOutputValueType, GeneratedNames, GeneratedValue, GenericExternalStorage,
     GenericExternalType, GenericHostType, GenericInputSource, GenericValueType, ListType,
-    ProviderValueType, StaticValueType, TransferFlavor,
+    ProviderValueType, StaticValueType,
 };
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Ident, PathArguments, Type};
 
-pub(super) fn list_signature_type(
-    list: &ListType,
-    customs: &[CustomModel],
-    support: &TokenStream,
-) -> Type {
-    let item = &list.collection.item;
-    let host_item = host_static_value_type(&list.collection.value, customs, support);
-    let decoder = &list.decoder;
-    syn::parse_quote! {
-        #support::List<
-            #item,
-            #support::ProviderListContext<'__geam_list, #host_item, #decoder>,
-        >
-    }
-}
-
-fn transfer_static_list_item_type(
+fn static_list_item_type(
     type_: &StaticValueType,
     customs: &[CustomModel],
     support: &TokenStream,
-    flavor: TransferFlavor,
+    flavor: FunctionFlavor,
 ) -> TokenStream {
     match type_ {
         StaticValueType::Scalar(type_) => quote!(#type_),
         StaticValueType::Declared { type_, .. } => match flavor {
-            TransferFlavor::Immediate => {
-                quote!(<#type_ as #support::ProviderTransferValue>::ImmediateListInput)
+            FunctionFlavor::Immediate => {
+                quote!(<#type_ as #support::ProviderValueForms>::ImmediateListInput)
             }
-            TransferFlavor::Async => {
-                quote!(<#type_ as #support::ProviderTransferValue>::TransferListInput)
+            FunctionFlavor::Async => {
+                quote!(<#type_ as #support::ProviderValueForms>::OwnedListInput)
             }
         },
-        StaticValueType::External {
-            transfer_payload, ..
-        } => match flavor {
-            TransferFlavor::Immediate => {
-                quote!(#support::ProviderTransferExternalView<#transfer_payload>)
+        StaticValueType::External { payload, .. } => match flavor {
+            FunctionFlavor::Immediate => {
+                quote!(#support::ProviderExternalView<#payload>)
             }
-            TransferFlavor::Async => {
-                quote!(#support::ProviderTransferExternalItem<#transfer_payload>)
+            FunctionFlavor::Async => {
+                quote!(#support::ProviderOwnedExternal<#payload>)
             }
         },
         StaticValueType::Custom { index, .. } => {
             let type_ = &customs[*index].ident;
             match flavor {
-                TransferFlavor::Immediate => {
-                    quote!(<#type_ as #support::ProviderTransferValue>::ImmediateListInput)
+                FunctionFlavor::Immediate => {
+                    quote!(<#type_ as #support::ProviderValueForms>::ImmediateListInput)
                 }
-                TransferFlavor::Async => {
-                    quote!(<#type_ as #support::ProviderTransferValue>::TransferListInput)
+                FunctionFlavor::Async => {
+                    quote!(<#type_ as #support::ProviderValueForms>::OwnedListInput)
                 }
             }
         }
         StaticValueType::Tuple(elements) => {
             let elements = elements
                 .iter()
-                .map(|element| transfer_static_list_item_type(element, customs, support, flavor))
+                .map(|element| static_list_item_type(element, customs, support, flavor))
                 .collect::<Vec<_>>();
             quote!((#(#elements,)*))
         }
         StaticValueType::Result { success, failure } => {
-            let success = transfer_static_list_item_type(success, customs, support, flavor);
-            let failure = transfer_static_list_item_type(failure, customs, support, flavor);
+            let success = static_list_item_type(success, customs, support, flavor);
+            let failure = static_list_item_type(failure, customs, support, flavor);
             quote!(::core::result::Result<#success, #failure>)
         }
         StaticValueType::Option { value } => {
-            let value = transfer_static_list_item_type(value, customs, support, flavor);
+            let value = static_list_item_type(value, customs, support, flavor);
             quote!(::core::option::Option<#value>)
         }
     }
 }
 
-pub(super) fn transfer_list_signature_type(
+pub(super) fn list_signature_type(
     list: &ListType,
     customs: &[CustomModel],
     support: &TokenStream,
-    flavor: TransferFlavor,
+    flavor: FunctionFlavor,
 ) -> Type {
-    let item = transfer_static_list_item_type(&list.collection.value, customs, support, flavor);
+    let item = static_list_item_type(&list.collection.value, customs, support, flavor);
     let host_item = host_static_value_type(&list.collection.value, customs, support);
-    let decoder = transfer_list_decoder_ident(&list.decoder, flavor);
+    let decoder = list_decoder_ident(&list.decoder, flavor);
     syn::parse_quote! {
         #support::List<
             #item,
-            #support::ProviderTransferListContext<#host_item, #decoder>,
+            #support::ProviderListContext<#host_item, #decoder>,
         >
     }
 }
@@ -104,6 +86,7 @@ pub(super) fn provider_input_signature_type(
     type_: &ProviderValueType,
     customs: &[CustomModel],
     support: &TokenStream,
+    flavor: FunctionFlavor,
 ) -> Type {
     match type_ {
         ProviderValueType::Scalar(type_) => type_.clone(),
@@ -112,70 +95,12 @@ pub(super) fn provider_input_signature_type(
             type_,
             input: DeclaredInput::Owned,
             ..
-        } => type_.clone(),
-        ProviderValueType::Declared {
-            type_,
-            input: DeclaredInput::BorrowedExternal,
-            ..
-        } => syn::parse_quote!(<#type_ as #support::ProviderValue>::Input),
-        ProviderValueType::External { payload, .. } => {
-            syn::parse_quote!(#support::ProviderExternalItem<#payload>)
-        }
-        ProviderValueType::Custom { index, .. } => {
-            let type_ = &customs[*index].ident;
-            syn::parse_quote!(<#type_ as #support::ProviderValue>::Input)
-        }
-        ProviderValueType::List(list) => {
-            let item = &list.collection.item;
-            let host_item = host_static_value_type(&list.collection.value, customs, support);
-            let decoder = &list.decoder;
-            syn::parse_quote! {
-                #support::List<
-                    #item,
-                    #support::ProviderListContext<'__geam_call, #host_item, #decoder>,
-                >
-            }
-        }
-        ProviderValueType::Tuple(elements) => {
-            let mut types = Vec::with_capacity(elements.len());
-            for element in elements {
-                types.push(provider_input_signature_type(element, customs, support));
-            }
-            syn::parse_quote!((#(#types,)*))
-        }
-        ProviderValueType::Result { success, failure } => {
-            let success = provider_input_signature_type(success, customs, support);
-            let failure = provider_input_signature_type(failure, customs, support);
-            syn::parse_quote!(::core::result::Result<#success, #failure>)
-        }
-        ProviderValueType::Option { value } => {
-            let value = provider_input_signature_type(value, customs, support);
-            syn::parse_quote!(::core::option::Option<#value>)
-        }
-    }
-}
-
-pub(super) fn transfer_provider_input_signature_type(
-    type_: &ProviderValueType,
-    customs: &[CustomModel],
-    support: &TokenStream,
-    flavor: TransferFlavor,
-) -> Type {
-    match type_ {
-        ProviderValueType::Scalar(type_) => type_.clone(),
-        ProviderValueType::Generic(value) => {
-            transfer_generic_value_signature_type(value, customs, support)
-        }
-        ProviderValueType::Declared {
-            type_,
-            input: DeclaredInput::Owned,
-            ..
         } => match flavor {
-            TransferFlavor::Immediate => syn::parse_quote!(
-                <#type_ as #support::ProviderTransferValue>::ImmediateInput
+            FunctionFlavor::Immediate => syn::parse_quote!(
+                <#type_ as #support::ProviderValueForms>::ImmediateInput
             ),
-            TransferFlavor::Async => syn::parse_quote!(
-                <#type_ as #support::ProviderTransferValue>::TransferInput
+            FunctionFlavor::Async => syn::parse_quote!(
+                <#type_ as #support::ProviderValueForms>::OwnedInput
             ),
         },
         ProviderValueType::Declared {
@@ -183,53 +108,47 @@ pub(super) fn transfer_provider_input_signature_type(
             input: DeclaredInput::BorrowedExternal,
             ..
         } => match flavor {
-            TransferFlavor::Immediate => syn::parse_quote!(
-                <#type_ as #support::ProviderTransferValue>::ImmediateInput
+            FunctionFlavor::Immediate => syn::parse_quote!(
+                <#type_ as #support::ProviderValueForms>::ImmediateInput
             ),
-            TransferFlavor::Async => syn::parse_quote!(
-                <#type_ as #support::ProviderTransferValue>::TransferInput
+            FunctionFlavor::Async => syn::parse_quote!(
+                <#type_ as #support::ProviderValueForms>::OwnedInput
             ),
         },
-        ProviderValueType::External {
-            transfer_payload, ..
-        } => match flavor {
-            TransferFlavor::Immediate => {
-                syn::parse_quote!(#support::ProviderTransferExternalView<#transfer_payload>)
+        ProviderValueType::External { payload, .. } => match flavor {
+            FunctionFlavor::Immediate => {
+                syn::parse_quote!(#support::ProviderExternalView<#payload>)
             }
-            TransferFlavor::Async => {
-                syn::parse_quote!(#support::ProviderTransferExternalItem<#transfer_payload>)
+            FunctionFlavor::Async => {
+                syn::parse_quote!(#support::ProviderOwnedExternal<#payload>)
             }
         },
         ProviderValueType::Custom { index, .. } => {
             let type_ = &customs[*index].ident;
             match flavor {
-                TransferFlavor::Immediate => {
-                    syn::parse_quote!(<#type_ as #support::ProviderTransferValue>::ImmediateInput)
+                FunctionFlavor::Immediate => {
+                    syn::parse_quote!(<#type_ as #support::ProviderValueForms>::ImmediateInput)
                 }
-                TransferFlavor::Async => {
-                    syn::parse_quote!(<#type_ as #support::ProviderTransferValue>::TransferInput)
+                FunctionFlavor::Async => {
+                    syn::parse_quote!(<#type_ as #support::ProviderValueForms>::OwnedInput)
                 }
             }
         }
-        ProviderValueType::List(list) => {
-            transfer_list_signature_type(list, customs, support, flavor)
-        }
+        ProviderValueType::List(list) => list_signature_type(list, customs, support, flavor),
         ProviderValueType::Tuple(elements) => {
             let types = elements
                 .iter()
-                .map(|element| {
-                    transfer_provider_input_signature_type(element, customs, support, flavor)
-                })
+                .map(|element| provider_input_signature_type(element, customs, support, flavor))
                 .collect::<Vec<_>>();
             syn::parse_quote!((#(#types,)*))
         }
         ProviderValueType::Result { success, failure } => {
-            let success = transfer_provider_input_signature_type(success, customs, support, flavor);
-            let failure = transfer_provider_input_signature_type(failure, customs, support, flavor);
+            let success = provider_input_signature_type(success, customs, support, flavor);
+            let failure = provider_input_signature_type(failure, customs, support, flavor);
             syn::parse_quote!(::core::result::Result<#success, #failure>)
         }
         ProviderValueType::Option { value } => {
-            let value = transfer_provider_input_signature_type(value, customs, support, flavor);
+            let value = provider_input_signature_type(value, customs, support, flavor);
             syn::parse_quote!(::core::option::Option<#value>)
         }
     }
@@ -245,23 +164,7 @@ pub(super) fn generic_value_signature_type(
     let mut path = value.path.clone();
     for segment in path.path.segments.iter_mut().rev().take(1) {
         segment.arguments = PathArguments::AngleBracketed(syn::parse_quote! {
-            <#source, #support::ProviderValueContext<'__geam_call, #host>>
-        });
-    }
-    Type::Path(path)
-}
-
-pub(super) fn transfer_generic_value_signature_type(
-    value: &GenericValueType,
-    customs: &[CustomModel],
-    support: &TokenStream,
-) -> Type {
-    let source = &value.source;
-    let host = generic_host_type(&value.host, customs, support);
-    let mut path = value.path.clone();
-    for segment in path.path.segments.iter_mut().rev().take(1) {
-        segment.arguments = PathArguments::AngleBracketed(syn::parse_quote! {
-            <#source, #support::ProviderTransferValueContext<#host>>
+            <#source, #support::ProviderValueContext<#host>>
         });
     }
     Type::Path(path)
@@ -287,14 +190,13 @@ pub(super) fn generate_generic_external_payload(
     input: TokenStream,
     support: &TokenStream,
     names: &mut GeneratedNames,
-    representation: super::ProviderRepresentation,
 ) -> GeneratedValue {
     let output = &external.output;
     let payload = names.next("external_payload");
     match &external.storage {
         GenericExternalStorage::StoredFields {
             payload: payload_type,
-            transfer_payload,
+
             fields,
             ..
         } => {
@@ -307,24 +209,14 @@ pub(super) fn generate_generic_external_payload(
                 })
                 .collect::<Vec<_>>();
             let patterns = fields.iter().map(|(ident, value)| quote!(#ident: #value));
-            let (payload_type, item_type, values) = match representation {
-                super::ProviderRepresentation::Local => (
-                    quote!(#payload_type),
-                    quote!(#support::ProviderExternalItem<#payload_type>),
-                    fields
-                        .iter()
-                        .map(|(ident, value)| quote!(#ident: #value.into_host()))
-                        .collect::<Vec<_>>(),
-                ),
-                super::ProviderRepresentation::Transfer => (
-                    quote!(#transfer_payload),
-                    quote!(#support::ProviderTransferExternalItem<#transfer_payload>),
-                    fields
-                        .iter()
-                        .map(|(ident, value)| quote!(#ident: #value.into_retained()))
-                        .collect::<Vec<_>>(),
-                ),
-            };
+            let (payload_type, item_type, values) = (
+                quote!(#payload_type),
+                quote!(#support::ProviderOwnedExternal<#payload_type>),
+                fields
+                    .iter()
+                    .map(|(ident, value)| quote!(#ident: #value.into_retained()))
+                    .collect::<Vec<_>>(),
+            );
             GeneratedValue {
                 statements: quote! {
                     let #output { #(#patterns,)* } = #input;
@@ -351,53 +243,12 @@ pub(super) fn generate_generic_external_payload(
     }
 }
 
-pub(super) fn transfer_generic_external_input_signature_type(
-    external: &GenericExternalType,
-    customs: &[CustomModel],
-    support: &TokenStream,
-    source: GenericInputSource,
-    flavor: TransferFlavor,
-) -> Type {
-    let mut arguments = match source {
-        GenericInputSource::Declared => external.source_arguments.clone(),
-        GenericInputSource::Instantiated => external
-            .arguments
-            .iter()
-            .map(|argument| argument.instantiated.clone())
-            .collect(),
-    };
-    let host_arguments = external
-        .arguments
-        .iter()
-        .map(|argument| generic_host_type(&argument.host, customs, support))
-        .collect::<Vec<_>>();
-    let host_arguments = host_type_token_sequence(&host_arguments, support);
-    let payload = match &external.storage {
-        GenericExternalStorage::StoredFields {
-            transfer_payload, ..
-        } => quote!(#transfer_payload),
-        GenericExternalStorage::ManualPayload {
-            transfer_payload, ..
-        } => quote!(#transfer_payload),
-    };
-    let context = match flavor {
-        TransferFlavor::Immediate => quote! {
-            #support::ProviderTransferExternalInputContext<#payload, #host_arguments>
-        },
-        TransferFlavor::Async => quote! {
-            #support::ProviderAsyncExternalInputContext<#payload, #host_arguments>
-        },
-    };
-    arguments.push(syn::parse_quote!(#context));
-    let input = &external.input;
-    syn::parse_quote!(#input<#(#arguments),*>)
-}
-
 pub(super) fn generic_external_input_signature_type(
     external: &GenericExternalType,
     customs: &[CustomModel],
     support: &TokenStream,
     source: GenericInputSource,
+    flavor: FunctionFlavor,
 ) -> Type {
     let mut arguments = match source {
         GenericInputSource::Declared => external.source_arguments.clone(),
@@ -417,9 +268,15 @@ pub(super) fn generic_external_input_signature_type(
         GenericExternalStorage::StoredFields { payload, .. } => quote!(#payload),
         GenericExternalStorage::ManualPayload { payload, .. } => quote!(#payload),
     };
-    arguments.push(syn::parse_quote! {
-        #support::ProviderExternalInputContext<'__geam_call, #payload, #host_arguments>
-    });
+    let context = match flavor {
+        FunctionFlavor::Immediate => quote! {
+            #support::ProviderExternalInputContext<#payload, #host_arguments>
+        },
+        FunctionFlavor::Async => quote! {
+            #support::ProviderOwnedExternalInputContext<#payload, #host_arguments>
+        },
+    };
+    arguments.push(syn::parse_quote!(#context));
     let input = &external.input;
     syn::parse_quote!(#input<#(#arguments),*>)
 }
@@ -440,45 +297,13 @@ pub(super) fn generic_external_output_signature_type(
                     support,
                 );
                 arguments.push(syn::parse_quote! {
-                    #support::ProviderStoredOutput<'__geam_call, #owner, #index, #host>
+                    #support::ProviderStoredOutput<#owner, #index, #host>
                 });
             }
         }
         GenericExternalStorage::ManualPayload { payload, .. } => {
             arguments.push(syn::parse_quote! {
                 #support::ProviderExternalOutput<#payload>
-            });
-        }
-    }
-    let output = &external.output;
-    syn::parse_quote!(#output<#(#arguments),*>)
-}
-
-pub(super) fn transfer_generic_external_output_signature_type(
-    external: &GenericExternalType,
-    customs: &[CustomModel],
-    support: &TokenStream,
-) -> Type {
-    let mut arguments = external.source_arguments.clone();
-    match &external.storage {
-        GenericExternalStorage::StoredFields { owner, fields, .. } => {
-            for field in fields {
-                let index = &field.index;
-                let host = generic_host_type(
-                    &external.arguments[field.parameter_index].host,
-                    customs,
-                    support,
-                );
-                arguments.push(syn::parse_quote! {
-                    #support::ProviderTransferStoredOutput<#owner, #index, #host>
-                });
-            }
-        }
-        GenericExternalStorage::ManualPayload {
-            transfer_payload, ..
-        } => {
-            arguments.push(syn::parse_quote! {
-                #support::ProviderTransferExternalOutput<#transfer_payload>
             });
         }
     }
@@ -500,18 +325,13 @@ pub(super) fn callback_signature_type(
         generics.iter().map(|ident| quote!(#ident)).collect(),
     );
     let context = match flavor {
-        FunctionFlavor::Local => quote!(
+        FunctionFlavor::Immediate => quote!(
             #support::ProviderCallbackContext<
                 '__geam_call, #profile, __GeamProvider, #return_type, #codec
             >
         ),
-        FunctionFlavor::TransferImmediate => quote!(
-            #support::ProviderTransferCallbackContext<
-                '__geam_call, #profile, __GeamAsyncProvider, #return_type, #codec
-            >
-        ),
         FunctionFlavor::Async => quote!(
-            #support::ProviderFutureCallbackContext<#profile, __GeamAsyncProvider, #codec>
+            #support::ProviderFutureCallbackContext<#profile, __GeamProvider, #codec>
         ),
     };
     let mut path = callback.path.clone();
@@ -523,26 +343,22 @@ pub(super) fn callback_signature_type(
     Type::Path(path)
 }
 
-pub(super) fn transfer_callback_output_signature_type(
+pub(super) fn callback_output_signature_type(
     type_: &FunctionReturnType,
     customs: &[CustomModel],
     support: &TokenStream,
-    flavor: TransferFlavor,
+    flavor: FunctionFlavor,
 ) -> Type {
     match type_ {
         FunctionReturnType::Value(value) => {
             let value = function_output_from_root(value);
-            transfer_function_output_rust_type(&value, customs, support, flavor)
+            function_output_rust_type(&value, customs, support)
         }
-        FunctionReturnType::Generic(value) => {
-            transfer_generic_value_signature_type(value, customs, support)
-        }
+        FunctionReturnType::Generic(value) => generic_value_signature_type(value, customs, support),
         FunctionReturnType::External(external) => {
-            transfer_generic_external_output_signature_type(external, customs, support)
+            generic_external_output_signature_type(external, customs, support)
         }
-        FunctionReturnType::List(list) => {
-            transfer_list_signature_type(list, customs, support, flavor)
-        }
+        FunctionReturnType::List(list) => list_signature_type(list, customs, support, flavor),
     }
 }
 
@@ -554,24 +370,6 @@ pub(super) fn callback_codec_type(codec: &Ident, arguments: Vec<TokenStream>) ->
     }
 }
 
-pub(super) fn callback_output_signature_type(
-    type_: &FunctionReturnType,
-    customs: &[CustomModel],
-    support: &TokenStream,
-) -> Type {
-    match type_ {
-        FunctionReturnType::Value(value) => {
-            let value = function_output_from_root(value);
-            function_output_rust_type(&value, customs, support)
-        }
-        FunctionReturnType::Generic(value) => generic_value_signature_type(value, customs, support),
-        FunctionReturnType::External(external) => {
-            generic_external_output_signature_type(external, customs, support)
-        }
-        FunctionReturnType::List(list) => callback_list_signature_type(list, customs, support),
-    }
-}
-
 pub(super) fn callback_input_signature_type(
     type_: &FunctionInputType,
     customs: &[CustomModel],
@@ -579,47 +377,23 @@ pub(super) fn callback_input_signature_type(
     flavor: FunctionFlavor,
     profile: &TokenStream,
 ) -> Type {
-    let transfer = match flavor {
-        FunctionFlavor::Local => None,
-        FunctionFlavor::TransferImmediate => Some(TransferFlavor::Immediate),
-        FunctionFlavor::Async => Some(TransferFlavor::Async),
-    };
     match type_ {
         FunctionInputType::Future(value) => {
             future_input_signature_type(value, customs, support, profile)
         }
         FunctionInputType::Value(value) => {
             let value = provider_value_from_input_root(value);
-            match transfer {
-                None => provider_input_signature_type(&value, customs, support),
-                Some(flavor) => {
-                    transfer_provider_input_signature_type(&value, customs, support, flavor)
-                }
-            }
+            provider_input_signature_type(&value, customs, support, flavor)
         }
-        FunctionInputType::Generic(value) => match transfer {
-            None => generic_value_signature_type(value, customs, support),
-            Some(_) => transfer_generic_value_signature_type(value, customs, support),
-        },
-        FunctionInputType::External(external) => match transfer {
-            None => generic_external_input_signature_type(
-                external,
-                customs,
-                support,
-                GenericInputSource::Declared,
-            ),
-            Some(flavor) => transfer_generic_external_input_signature_type(
-                external,
-                customs,
-                support,
-                GenericInputSource::Declared,
-                flavor,
-            ),
-        },
-        FunctionInputType::List(list) => match transfer {
-            None => callback_list_signature_type(list, customs, support),
-            Some(flavor) => transfer_list_signature_type(list, customs, support, flavor),
-        },
+        FunctionInputType::Generic(value) => generic_value_signature_type(value, customs, support),
+        FunctionInputType::External(external) => generic_external_input_signature_type(
+            external,
+            customs,
+            support,
+            GenericInputSource::Declared,
+            flavor,
+        ),
+        FunctionInputType::List(list) => list_signature_type(list, customs, support, flavor),
     }
 }
 
@@ -638,28 +412,13 @@ pub(super) fn future_input_signature_type(
         FunctionFlavor::Async,
         profile,
     );
-    let context = quote!(#support::ProviderFutureValueContext<#profile, __GeamAsyncProvider, #host, #returned>);
+    let context =
+        quote!(#support::ProviderFutureValueContext<#profile, __GeamProvider, #host, #returned>);
     let mut path = input.path.clone();
     for segment in path.path.segments.iter_mut().rev().take(1) {
         segment.arguments = PathArguments::AngleBracketed(syn::parse_quote!(<#source, #context>));
     }
     Type::Path(path)
-}
-
-fn callback_list_signature_type(
-    list: &ListType,
-    customs: &[CustomModel],
-    support: &TokenStream,
-) -> Type {
-    let item = &list.collection.item;
-    let host_item = host_static_value_type(&list.collection.value, customs, support);
-    let decoder = &list.decoder;
-    syn::parse_quote! {
-        #support::List<
-            #item,
-            #support::ProviderListContext<'__geam_call, #host_item, #decoder>,
-        >
-    }
 }
 
 pub(super) fn function_output_rust_type(
@@ -700,70 +459,6 @@ pub(super) fn function_output_rust_type(
     }
 }
 
-pub(super) fn transfer_function_output_rust_type(
-    type_: &FunctionOutputValueType,
-    customs: &[CustomModel],
-    support: &TokenStream,
-    flavor: TransferFlavor,
-) -> Type {
-    match type_ {
-        FunctionOutputValueType::Value(value) => match value.as_ref() {
-            FunctionOutputLeafType::Declared { type_, .. }
-                if matches!(
-                    type_,
-                    Type::Path(path)
-                        if path.path.segments.last().is_some_and(|segment| segment.ident == "External")
-                ) =>
-            {
-                match flavor {
-                    TransferFlavor::Immediate => syn::parse_quote! {
-                        <#type_ as #support::ProviderTransferValue>::ImmediateInput
-                    },
-                    TransferFlavor::Async => syn::parse_quote! {
-                        <#type_ as #support::ProviderTransferValue>::TransferInput
-                    },
-                }
-            }
-            FunctionOutputLeafType::Scalar(type_) => type_.clone(),
-            FunctionOutputLeafType::Declared { type_, .. } => syn::parse_quote!(
-                <#type_ as #support::ProviderTransferValue>::Output
-            ),
-            FunctionOutputLeafType::External {
-                transfer_payload, ..
-            } => syn::parse_quote!(#transfer_payload),
-            FunctionOutputLeafType::Custom { rust, .. } => syn::parse_quote!(
-                <#rust as #support::ProviderTransferValue>::Output
-            ),
-        },
-        FunctionOutputValueType::Generic(value) => {
-            transfer_generic_value_signature_type(value, customs, support)
-        }
-        FunctionOutputValueType::Tuple(elements) => {
-            let elements = elements
-                .iter()
-                .map(|element| {
-                    transfer_function_output_rust_type(element, customs, support, flavor)
-                })
-                .collect::<Vec<_>>();
-            syn::parse_quote!((#(#elements,)*))
-        }
-        FunctionOutputValueType::Result { success, failure } => {
-            let success = transfer_function_output_rust_type(success, customs, support, flavor);
-            let failure = transfer_function_output_rust_type(failure, customs, support, flavor);
-            syn::parse_quote!(::core::result::Result<#success, #failure>)
-        }
-        FunctionOutputValueType::Option { value } => {
-            let value = transfer_function_output_rust_type(value, customs, support, flavor);
-            syn::parse_quote!(::core::option::Option<#value>)
-        }
-        FunctionOutputValueType::Vec(collection) => {
-            let value =
-                transfer_function_output_rust_type(&collection.value, customs, support, flavor);
-            syn::parse_quote!(::std::vec::Vec<#value>)
-        }
-    }
-}
-
 pub(super) fn instantiated_generic_source_type(value: &GenericValueType) -> Type {
     value.instantiated.clone()
 }
@@ -774,13 +469,8 @@ fn provider_value_from_output_leaf(type_: &FunctionOutputLeafType) -> ProviderVa
             type_: type_.clone(),
             input: *input,
         },
-        FunctionOutputLeafType::External {
-            payload,
-            transfer_payload,
-            schema,
-        } => ProviderValueType::External {
+        FunctionOutputLeafType::External { payload, schema } => ProviderValueType::External {
             payload: payload.clone(),
-            transfer_payload: transfer_payload.clone(),
             schema: schema.clone(),
         },
         FunctionOutputLeafType::Custom { index, rust } => ProviderValueType::Custom {
@@ -797,13 +487,8 @@ pub(super) fn provider_value_from_input_root(type_: &FunctionInputValueType) -> 
             type_: type_.clone(),
             input: *input,
         },
-        FunctionInputValueType::External {
-            payload,
-            transfer_payload,
-            schema,
-        } => ProviderValueType::External {
+        FunctionInputValueType::External { payload, schema } => ProviderValueType::External {
             payload: payload.clone(),
-            transfer_payload: transfer_payload.clone(),
             schema: schema.clone(),
         },
         FunctionInputValueType::Custom { index, rust } => ProviderValueType::Custom {

@@ -42,32 +42,6 @@ pub(crate) fn plan_host_library_program<Profile: HostProfile>(
     )
 }
 
-pub(crate) fn plan_transfer_host_library_program<Profile: HostProfile>(
-    program: crate::frontend::TransferHostedTypedProgram<Profile>,
-) -> Result<crate::plan::TransferHostedLibraryModulePlan<Profile>, PlanError> {
-    let (root_index, modules, providers, implementations) = program.into_parts();
-    plan_host_program_schema(root_index, modules, providers, super::ModuleRole::Library).map(
-        |planned| {
-            let bindings = planned
-                .implementations
-                .into_iter()
-                .map(|(template, constructions, implementation)| {
-                    crate::plan::TransferHostImplementationBinding::new(
-                        template,
-                        constructions,
-                        implementations.implementation(implementation),
-                    )
-                })
-                .collect();
-            crate::plan::TransferHostedLibraryModulePlan::new(
-                planned.root,
-                planned.modules,
-                bindings,
-            )
-        },
-    )
-}
-
 fn bind_implementations<Profile: HostProfile>(
     planned: Vec<(
         crate::plan::FunctionTemplateId,

@@ -9,7 +9,7 @@ publish = false
 [workspace.dependencies]
 ecow = "=0.2.6"
 geam-core = { path = "../../../../core" }
-geam-runtime-api = { path = "../../../../builtins/geam" }
+geam-builtin = { path = "../../../../builtins/geam" }
 geam-macro-cross-crate-consumer = { path = "consumer" }
 geam-macro-cross-crate-declarations = { path = "declarations" }
 geam-macros = { path = "../../.." }

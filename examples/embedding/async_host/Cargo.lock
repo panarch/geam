@@ -1064,9 +1064,17 @@ dependencies = [
 name = "geam"
 version = "0.2.3"
 dependencies = [
+ "geam-builtin",
  "geam-core",
  "geam-macros",
- "geam-runtime-api",
+]
+
+[[package]]
+name = "geam-builtin"
+version = "0.2.3"
+dependencies = [
+ "ecow",
+ "geam-core",
 ]
 
 [[package]]
@@ -1224,14 +1232,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "geam-runtime-api"
-version = "0.2.3"
-dependencies = [
- "ecow",
- "geam-core",
 ]
 
 [[package]]

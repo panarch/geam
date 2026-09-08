@@ -10,3 +10,6 @@ geam-core.workspace = true
 geam-macro-cross-crate-declarations.workspace = true
 geam-macros.workspace = true
 num-bigint.workspace = true
+
+[dev-dependencies]
+geam-builtin.workspace = true

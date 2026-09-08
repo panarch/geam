@@ -1,7 +1,5 @@
 use crate::plan::execution::runtime::{OwnedRuntimeValueMetadata, RuntimeExecutionPlan};
-use crate::runtime::{
-    EvaluatedValue, LocalValues, RuntimeValueProfile, TransferListStorage, TransferValues, Value,
-};
+use crate::runtime::{EvaluatedValue, RuntimeListStorage, Value};
 use std::fmt;
 
 /// The retained failed value of an async `let assert`.
@@ -9,17 +7,17 @@ use std::fmt;
 /// It owns the value's lifetime without borrowing the execution or requiring
 /// thread-local storage. Inspecting a diagnostic does not consume that lifetime.
 #[derive(Clone)]
-pub struct AsyncPanicValue {
-    subject: EvaluatedValue<TransferValues>,
+pub struct PanicValue {
+    subject: EvaluatedValue,
     metadata: OwnedRuntimeValueMetadata,
-    lists: TransferListStorage,
+    lists: RuntimeListStorage,
 }
 
-impl AsyncPanicValue {
+impl PanicValue {
     pub(in crate::runtime) fn new(
         plan: &impl RuntimeExecutionPlan,
-        lists: &TransferListStorage,
-        subject: EvaluatedValue<TransferValues>,
+        lists: &RuntimeListStorage,
+        subject: EvaluatedValue,
     ) -> Self {
         Self {
             subject,
@@ -45,41 +43,13 @@ impl AsyncPanicValue {
     }
 }
 
-pub(in crate::runtime) trait PanicSubjectProfile: RuntimeValueProfile {
-    fn panic_subject(
-        plan: &impl RuntimeExecutionPlan,
-        lists: &Self::ListStorage,
-        value: EvaluatedValue<Self>,
-    ) -> Self::PanicSubject;
-}
-
-impl PanicSubjectProfile for LocalValues {
-    fn panic_subject(
-        plan: &impl RuntimeExecutionPlan,
-        lists: &Self::ListStorage,
-        value: EvaluatedValue<Self>,
-    ) -> Value {
-        crate::runtime::materialize::value(plan.value_metadata(), lists, value)
-    }
-}
-
-impl PanicSubjectProfile for TransferValues {
-    fn panic_subject(
-        plan: &impl RuntimeExecutionPlan,
-        lists: &Self::ListStorage,
-        value: EvaluatedValue<Self>,
-    ) -> AsyncPanicValue {
-        AsyncPanicValue::new(plan, lists, value)
-    }
-}
-
-impl fmt::Debug for AsyncPanicValue {
+impl fmt::Debug for PanicValue {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&self.to_value(), formatter)
     }
 }
 
-impl PartialEq for AsyncPanicValue {
+impl PartialEq for PanicValue {
     fn eq(&self, other: &Self) -> bool {
         self.to_value() == other.to_value()
     }
@@ -87,20 +57,20 @@ impl PartialEq for AsyncPanicValue {
 
 #[cfg(test)]
 mod tests {
-    use super::{AsyncPanicValue, PanicSubjectProfile};
+    use super::PanicValue;
     use crate::plan::{FunctionType, ValueType};
-    use crate::runtime::{EvaluatedValue, TransferListStorage, TransferValues, Value};
+    use crate::runtime::{EvaluatedValue, RuntimeListStorage, Value};
     use crate::{
-        AsyncExecutionError, BitArraySegmentPanicReason, ExecutionError, HostCallSite, HostError,
-        HostFailure, InvariantError, PanicKind, PanicSite, SourceContext, SourceSpan,
+        BitArraySegmentPanicReason, ExecutionError, HostCallSite, HostError, HostFailure,
+        InvariantError, PanicKind, PanicSite, SourceContext, SourceSpan,
     };
     use miette::Diagnostic;
 
-    fn subject(value: i64) -> AsyncPanicValue {
+    fn subject(value: i64) -> PanicValue {
         let plan = crate::runtime::plan_src("pub fn main() { Nil }");
-        <TransferValues as PanicSubjectProfile>::panic_subject(
+        crate::runtime::error::PanicValue::new(
             &plan,
-            &TransferListStorage::default(),
+            &RuntimeListStorage::default(),
             EvaluatedValue::Int(value.into()),
         )
     }
@@ -127,7 +97,7 @@ mod tests {
     fn transferable_errors_preserve_source_diagnostics_and_every_failure_domain() {
         let source = SourceContext::new("src/main.gleam", "pub fn main() { let assert 1 = 2 }");
         let site = PanicSite::new("main".into(), "main".into(), SourceSpan::new(16, 32));
-        let assertion = AsyncExecutionError::let_assert_panic(
+        let assertion = ExecutionError::let_assert_panic(
             Some(&source),
             Some("expected one".into()),
             site.clone(),
@@ -161,7 +131,7 @@ mod tests {
             .join()
             .expect("error worker");
         assert_eq!(
-            transferred.into_local(),
+            transferred.into_materialized(),
             ExecutionError::let_assert_panic(
                 Some(&source),
                 Some("expected one".into()),
@@ -172,7 +142,7 @@ mod tests {
         );
 
         for context in [None, Some(&source)] {
-            let error = AsyncExecutionError::source_panic(
+            let error = ExecutionError::source_panic(
                 context,
                 PanicKind::Todo,
                 Some("unfinished".into()),
@@ -186,7 +156,7 @@ mod tests {
                 context.map(|_| 1)
             );
             assert_eq!(
-                error.into_local(),
+                error.into_materialized(),
                 ExecutionError::source_panic(
                     context,
                     PanicKind::Todo,
@@ -213,7 +183,7 @@ mod tests {
                 "BitArray segment size 1 exceeds the supported host range",
             ),
         ] {
-            let error = AsyncExecutionError::bit_array_segment_panic(
+            let error = ExecutionError::bit_array_segment_panic(
                 Some(&source),
                 reason.clone(),
                 site.clone(),
@@ -221,7 +191,7 @@ mod tests {
             assert_eq!(error.help().expect("segment help").to_string(), help);
             assert_eq!(error.labels().expect("segment labels").count(), 1);
             assert_eq!(
-                error.into_local(),
+                error.into_materialized(),
                 ExecutionError::bit_array_segment_panic(Some(&source), reason, site.clone())
             );
         }
@@ -231,7 +201,7 @@ mod tests {
             index: 1,
             length: 1,
         };
-        let error = AsyncExecutionError::from(invariant.clone());
+        let error = ExecutionError::from(invariant.clone());
         assert_eq!(
             error.code().expect("code").to_string(),
             "geam::list_index_out_of_bounds"
@@ -240,7 +210,10 @@ mod tests {
         assert!(error.source_code().is_none());
         assert!(error.labels().is_none());
         assert_eq!(error.to_string(), invariant.to_string());
-        assert_eq!(error.into_local(), ExecutionError::Invariant(invariant));
+        assert_eq!(
+            error.into_materialized(),
+            ExecutionError::Invariant(invariant)
+        );
 
         let host = HostError::new(
             "application".into(),
@@ -251,7 +224,7 @@ mod tests {
             HostCallSite::new("main".into(), "main".into(), SourceSpan::new(16, 32)),
             Some(&source),
         );
-        let error = AsyncExecutionError::Host(Box::new(host.clone()));
+        let error = ExecutionError::Host(Box::new(host.clone()));
         assert_eq!(
             error.code().expect("code").to_string(),
             "geam::host_function"
@@ -260,6 +233,9 @@ mod tests {
         assert!(error.source_code().is_some());
         assert_eq!(error.labels().expect("host labels").count(), 1);
         assert_eq!(error.to_string(), host.to_string());
-        assert_eq!(error.into_local(), ExecutionError::Host(Box::new(host)));
+        assert_eq!(
+            error.into_materialized(),
+            ExecutionError::Host(Box::new(host))
+        );
     }
 }

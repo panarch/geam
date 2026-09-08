@@ -2,10 +2,10 @@ use super::storage::{DictEntry, DictPayload, DictStorage};
 use super::{DictOf, DictSchema};
 use crate::dynamic::Dynamic;
 use crate::{
-    Component, GleamStdlibRunState, HostCall, HostConstruction, HostExternal, HostProvider,
-    HostType, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
+    Component, GleamStdlibRunState, HostConstruction, HostExternal, HostProvider, HostType,
+    HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
 };
-use geam_core::provider::{Call, Callback, HostResult, Value};
+use geam_core::provider::{Call, Callback, Value};
 use num_bigint::BigInt;
 use std::collections::HashMap;
 
@@ -18,9 +18,9 @@ use std::collections::HashMap;
 )]
 pub(super) mod provider {
     use super::{
-        BigInt, Call, Callback, DictEntry, DictPayload, DictStorage, GleamStdlibRunState,
-        HostResult, Value,
+        BigInt, Call, Callback, DictEntry, DictPayload, DictStorage, GleamStdlibRunState, Value,
     };
+    use geam_core::provider::HostResult;
 
     #[geam_macros::external(
         name = "Dict",
@@ -28,7 +28,7 @@ pub(super) mod provider {
         input = DictInput,
         payload = DictPayload,
         manual,
-        context = Context,
+
     )]
     pub struct DictValue<Key, Item>;
 
@@ -38,7 +38,7 @@ pub(super) mod provider {
         input = TransientDictInput,
         payload = DictPayload,
         manual,
-        context = Context,
+
     )]
     pub(super) struct TransientDictValue<Key, Item>;
 
@@ -288,77 +288,21 @@ pub(super) mod provider {
 type KeyIndex = HostTypeIndex0;
 type ItemIndex = HostTypeIndexNext<KeyIndex>;
 
-pub fn create_dynamic_dict<'call, Profile, Provider, Return>(
-    call: &mut HostCall<'call, Profile, Provider, Return>,
-    construction: HostConstruction<'call, DictOf<Dynamic, Dynamic>>,
-    entries: impl IntoIterator<Item = (HostExternal<'call, Dynamic>, HostExternal<'call, Dynamic>)>,
-) -> HostExternal<'call, DictOf<Dynamic, Dynamic>>
-where
-    Profile: crate::GleamStdlibLocalProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-{
-    let mut buckets = HashMap::new();
-    for (key, value) in entries {
-        let key_hash = call.source_hash::<Dynamic>(key);
-        insert_first(&mut buckets, key_hash, key, value, |stored, candidate| {
-            call.equal::<Dynamic>(*stored, *candidate)
-        });
-    }
-
-    call.construct_retained_external_with_binding::<
-        provider::__GeamProvider,
-        DictSchema,
-        HostTypeList<Dynamic, HostTypeList<Dynamic, HostTypeListEnd>>,
-    >(construction, move |builder| {
-        let len = buckets.values().map(Vec::len).sum();
-        let buckets = buckets
-            .into_iter()
-            .map(|(key_hash, entries)| {
-                let entries = entries
-                    .into_iter()
-                    .map(|(key, value)| {
-                        DictEntry::new(
-                            key_hash,
-                            geam_core::__macro_support::retain_argument::<
-                                _,
-                                _,
-                                DictPayload,
-                                KeyIndex,
-                            >(builder, key),
-                            geam_core::__macro_support::retain_argument::<
-                                _,
-                                _,
-                                DictPayload,
-                                ItemIndex,
-                            >(builder, value),
-                        )
-                    })
-                    .collect();
-                (key_hash, entries)
-            })
-            .collect();
-        DictPayload {
-            storage: DictStorage { buckets, len },
-        }
-    })
-}
-
 pub(super) fn host_provider<Profile>()
 -> Result<crate::HostProviderModule<Profile>, crate::HostRegistrationError>
 where
-    Profile: crate::GleamStdlibLocalProfile,
+    Profile: crate::GleamStdlibProviderProfile,
 {
     provider::__geam_module::<Profile>()
 }
 
-pub fn create_transfer_dynamic_dict<'call, Profile, Provider, Return>(
-    call: &mut geam_core::host::TransferHostCall<'call, Profile, Provider, Return>,
+pub fn create_dynamic_dict<'call, Profile, Provider, Return>(
+    call: &mut geam_core::host::HostCall<'call, Profile, Provider, Return>,
     construction: HostConstruction<'call, DictOf<Dynamic, Dynamic>>,
     entries: impl IntoIterator<Item = (HostExternal<'call, Dynamic>, HostExternal<'call, Dynamic>)>,
 ) -> HostExternal<'call, DictOf<Dynamic, Dynamic>>
 where
-    Profile: crate::GleamStdlibTransferProfile,
+    Profile: crate::GleamStdlibProviderProfile,
     Profile::RunState: Send,
     Provider: HostProvider<Profile>,
     Return: HostType,
@@ -379,7 +323,7 @@ where
                 .map(|(key, value)| {
                     DictEntry::new(
                         key_hash,
-                        geam_core::__macro_support::retain_transfer_argument::<
+                        geam_core::__macro_support::retain_constructed_argument::<
                             _,
                             _,
                             _,
@@ -388,7 +332,7 @@ where
                             DictPayload,
                             KeyIndex,
                         >(call, &construction, key),
-                        geam_core::__macro_support::retain_transfer_argument::<
+                        geam_core::__macro_support::retain_constructed_argument::<
                             _,
                             _,
                             _,
@@ -403,18 +347,9 @@ where
             (key_hash, entries)
         })
         .collect();
-    call.construct_external_with_binding::<provider::__GeamAsyncProvider, DictSchema, HostTypeList<Dynamic, HostTypeList<Dynamic, HostTypeListEnd>>>(
+    call.construct_external_with_binding::<provider::__GeamProvider, DictSchema, HostTypeList<Dynamic, HostTypeList<Dynamic, HostTypeListEnd>>>(
         construction, DictPayload { storage: DictStorage { buckets, len } },
     )
-}
-
-pub(super) fn transfer_host_provider<Profile>()
--> Result<geam_core::TransferHostProviderModule<Profile>, crate::HostRegistrationError>
-where
-    Profile: crate::GleamStdlibTransferProfile,
-    Profile::RunState: Send,
-{
-    provider::__geam_transfer_module::<Profile>()
 }
 
 pub(super) fn insert_first<Key, Value>(
@@ -434,25 +369,25 @@ pub(super) fn insert_first<Key, Value>(
 mod tests {
     mod transfer {
         use super::DICT_DECLARATIONS;
-        use crate::dict::function::provider::__GeamAsyncProvider as DictProvider;
+        use crate::dict::function::provider::__GeamProvider as DictProvider;
         use crate::dict::storage::DictEntry;
         use crate::dict::{DictOf, DictSchema};
         use crate::{
-            Component, GleamStdlibHostProfile, GleamStdlibRunState, GleamStdlibTransferStores,
-            IoOutput,
+            Component, GleamStdlibHostProfile, GleamStdlibRunState, GleamStdlibStores, IoOutput,
         };
         use ecow::EcoString;
-        use geam_core::embedding::{FunctionDeclaration, WorkModuleBuilder, with_execution_scope};
-        use geam_core::frontend::compile_typed_transfer_host_program;
+        use geam_builtin::FutureComponent;
+        use geam_core::embedding::{
+            FunctionDeclaration, HostedModuleBuilder, with_execution_scope,
+        };
+        use geam_core::frontend::compile_typed_host_program;
         use geam_core::host::{
-            AsyncHostComponentProfile, AsyncHostExternalBinding, HostFutureStore, TransferHostCall,
+            HostCall, HostComponentProfile, HostExternalBinding, HostFutureStore,
         };
-        use geam_core::provider::advanced::ProviderTransferRetainedContext as TransferRetainedContext;
         use geam_core::{
-            HostCallCompletion, HostExternal, HostProfile, HostProvider, ModuleSource,
-            PackageSource, TransferHostProviderSet,
+            HostCallCompletion, HostExternal, HostProfile, HostProvider, HostProviderSet,
+            ModuleSource, PackageSource,
         };
-        use geam_runtime_api::FutureComponent;
         use num_bigint::BigInt;
         use std::future::Future;
         use std::pin::pin;
@@ -462,13 +397,13 @@ mod tests {
         struct Profile;
         #[derive(Default)]
         struct Stores {
-            stdlib: GleamStdlibTransferStores,
+            stdlib: GleamStdlibStores,
             work: HostFutureStore,
         }
         struct State {
             stdlib: GleamStdlibRunState,
             work: (),
-            entries: Vec<Weak<DictEntry<TransferRetainedContext>>>,
+            entries: Vec<Weak<DictEntry>>,
         }
         struct Observer;
         #[derive(Default)]
@@ -487,8 +422,8 @@ mod tests {
         impl GleamStdlibHostProfile for Profile {
             type Io = Vec<IoOutput>;
         }
-        impl AsyncHostComponentProfile<Component> for Profile {
-            fn component_async_stores(stores: &Stores) -> &GleamStdlibTransferStores {
+        impl HostComponentProfile<Component> for Profile {
+            fn component_stores(stores: &Stores) -> &GleamStdlibStores {
                 &stores.stdlib
             }
             fn component_state(state: &mut State) -> &mut GleamStdlibRunState {
@@ -498,8 +433,8 @@ mod tests {
         impl geam_core::host::HostWorkProfile for Profile {
             type Work = FutureComponent;
         }
-        impl AsyncHostComponentProfile<FutureComponent> for Profile {
-            fn component_async_stores(stores: &Stores) -> &HostFutureStore {
+        impl HostComponentProfile<FutureComponent> for Profile {
+            fn component_stores(stores: &Stores) -> &HostFutureStore {
                 &stores.work
             }
             fn component_state(state: &mut State) -> &mut () {
@@ -507,21 +442,21 @@ mod tests {
             }
         }
         impl HostProvider<Profile> for Observer {
-            type State = Vec<Weak<DictEntry<TransferRetainedContext>>>;
+            type State = Vec<Weak<DictEntry>>;
             fn project(state: &mut State) -> &mut Self::State {
                 &mut state.entries
             }
         }
-        impl AsyncHostExternalBinding<Profile, DictSchema> for Observer {
-            type Storage = <DictProvider as AsyncHostExternalBinding<Profile, DictSchema>>::Storage;
+        impl HostExternalBinding<Profile, DictSchema> for Observer {
+            type Storage = <DictProvider as HostExternalBinding<Profile, DictSchema>>::Storage;
         }
 
         fn observe<'call>(
-            mut call: TransferHostCall<'call, Profile, Observer, ()>,
+            mut call: HostCall<'call, Profile, Observer, ()>,
             before: HostExternal<'call, Dict>,
             after: HostExternal<'call, Dict>,
             mapped: bool,
-        ) -> Result<HostCallCompletion<'call, ()>, geam_core::AsyncHostCallError> {
+        ) -> Result<HostCallCompletion<'call, ()>, geam_core::HostCallError> {
             let before = call.external_payload(before);
             let after = call.external_payload(after);
             assert_eq!(before.storage.len, 2);
@@ -568,11 +503,11 @@ pub fn run() -> Nil {
 }
 "#
             );
-            let dict = super::super::transfer_host_provider::<Profile>()
+            let dict = super::super::host_provider::<Profile>()
                 .expect("dict registration")
                 .with_scoped_function::<Observer, (Dict, Dict, bool), (), _>("observe", observe)
                 .expect("observation registration");
-            let program = compile_typed_transfer_host_program(
+            let program = compile_typed_host_program(
                 "gleam_stdlib",
                 "gleam/dict",
                 [PackageSource::new(
@@ -584,10 +519,10 @@ pub fn run() -> Nil {
                         source,
                     )],
                 )],
-                TransferHostProviderSet::new([dict]).expect("provider set"),
+                HostProviderSet::from_providers([dict]).expect("provider set"),
             )
             .expect("dict source");
-            let (bindings, entry) = WorkModuleBuilder::new(program)
+            let (bindings, entry) = HostedModuleBuilder::new(program)
                 .expect("plan")
                 .function(FunctionDeclaration::<(), ()>::new("run"))
                 .expect("entry");
@@ -598,13 +533,11 @@ pub fn run() -> Nil {
                 entries: Vec::new(),
             };
             assert!(std::ptr::eq(
-                <Profile as AsyncHostComponentProfile<Component>>::component_state(&mut state),
+                <Profile as HostComponentProfile<Component>>::component_state(&mut state),
                 &state.stdlib,
             ));
             assert!(std::ptr::eq(
-                <Profile as AsyncHostComponentProfile<FutureComponent>>::component_state(
-                    &mut state
-                ),
+                <Profile as HostComponentProfile<FutureComponent>>::component_state(&mut state),
                 &state.work,
             ));
             let mut echo = Echo::default();

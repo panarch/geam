@@ -7,11 +7,8 @@ publish = false
 
 [dependencies]
 futures = "0.3"
-geam = { version = "=0.2.3", default-features = false, features = ["embedding", "geam-runtime-api"] }
+geam = { version = "=0.2.3", default-features = false, features = ["embedding", "geam-builtin"] }
 geam-example-async-files = { path = "../../provider/async_files/provider" }
-
-[package.metadata.geam.embedding]
-storage = "transferable"
 
 [patch.crates-io]
 geam = { path = "../../.." }

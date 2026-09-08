@@ -1,8 +1,8 @@
-error[E0618]: expected function, found `geam_core::provider::Value<fn(Item) -> Item, geam_core::provider::ProviderTransferValueContext<geam_core::__macro_support::HostOpaqueFunctionType<HostTypeList<HostTypeParameter<0>, HostTypeListEnd>, HostTypeParameter<0>>>>`
+error[E0618]: expected function, found `geam_core::provider::Value<fn(Item) -> Item, geam_core::provider::ProviderValueContext<geam_core::__macro_support::HostOpaqueFunctionType<HostTypeList<HostTypeParameter<0>, HostTypeListEnd>, HostTypeParameter<0>>>>`
   --> tests/ui/async/opaque_value_not_callback.rs:20:9
    |
 16 |         callback: Value<fn(Item) -> Item>,
-   |         -------- `callback` has type `geam_core::provider::Value<fn(Item) -> Item, geam_core::provider::ProviderTransferValueContext<geam_core::__macro_support::HostOpaqueFunctionType<HostTypeList<HostTypeParameter<0>, HostTypeListEnd>, HostTypeParameter<0>>>>`
+   |         -------- `callback` has type `geam_core::provider::Value<fn(Item) -> Item, geam_core::provider::ProviderValueContext<geam_core::__macro_support::HostOpaqueFunctionType<HostTypeList<HostTypeParameter<0>, HostTypeListEnd>, HostTypeParameter<0>>>>`
 ...
 20 |         callback(value)
    |         ^^^^^^^^-------

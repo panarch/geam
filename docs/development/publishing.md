@@ -3,7 +3,7 @@
 Each Geam release publishes the workspace crates, the
 `geam-example-text-pattern` reference provider on crates.io, and the
 `example_text_pattern` package on Hex. The workspace crates are `geam-core`,
-`geam-macros`, `geam-stdlib`, `geam-json`, `geam-time`, `geam-runtime-api`, `geam-cli`, and the root
+`geam-macros`, `geam-stdlib`, `geam-json`, `geam-time`, `geam-builtin`, `geam-cli`, and the root
 `geam` facade. The root owns the installable `geam` binary.
 
 `Cargo.toml` owns the release version; this guide does not repeat the current
@@ -159,14 +159,37 @@ newer main commit for the same version.
 Registry and GitHub network or permission failures stop the run. There is no
 custom registry client, missing-package inference, or automatic recovery loop.
 
-Publication attempts are serialized. There is no upload retry loop, personal
-token fallback, or publication from a non-main workflow ref.
+Automated publication attempts are serialized. There is no upload retry loop,
+personal token fallback, or publication from a non-main workflow ref.
 
-## Geam Runtime API Package
+## Geam Hex Package
 
-The `geam` Gleam package lives in `builtins/geam/gleam`. Release preparation
-updates its version and the checkout consumers together. Its Hex publication
-is separate from the reference-example workflow:
+The `geam` Gleam package in `builtins/geam/gleam` has its own version, independent
+of the Rust workspace. The maintainer publishes it manually when its package
+contents change. No workflow bumps its version or publishes it, and a Rust-only
+release does not require a new Hex release. The Rust `geam-builtin` crate
+continues to follow the workspace version and publication workflow.
+
+For a Hex release, update `builtins/geam/gleam/gleam.toml` and review the package
+changes. When adding APIs, document the Geam release that provides their Rust
+implementation. Refresh the tracked local consumers from the repository root:
+
+```sh
+for project in \
+  examples/embedding/async_host/gleam \
+  examples/provider/async_files/project \
+  tests/fixtures/projects/future_builtins
+do
+  (cd "$project" && gleam deps update geam)
+done
+```
+
+Review the lock changes and run the package and consumer checks described in
+the [testing guide](testing.md). CI verifies the source, Rust implementation,
+editor support, and Hex tarball without publishing the package.
+
+Once a compatible Rust release is available, publish manually from the reviewed
+package checkout:
 
 ```sh
 cd builtins/geam/gleam
@@ -174,10 +197,7 @@ gleam export hex-tarball
 gleam publish
 ```
 
-Publish from the reviewed release checkout after the corresponding Rust crates
-are available. The first release also needs the `geam-runtime-api` crate's
-Trusted Publisher registration, just like the other workspace crates. Local
-tests and tarball generation do not verify registry ownership or credentials.
+Local tests and tarball generation do not verify Hex ownership or credentials.
 
 ## Authentication
 
@@ -187,6 +207,9 @@ The workspace crates use this Trusted Publisher configuration:
 - repository: `geam`
 - workflow: `publish.yml`
 - environment: `crates-io`
+
+New workspace crates, including `geam-builtin`, need their own Trusted
+Publisher registration before their first automated publication.
 
 The reference provider needs two configurations with the same repository and
 environment: `publish.yml` authorizes the reusable workflow when the main
@@ -201,7 +224,10 @@ checks CI, and the final release job alone receives `contents: write`. No
 long-lived registry token or local-publish fallback is part of the regular
 release path.
 
-The same `crates-io` environment stores `HEXPM_API_KEY` for the Hex publication.
-The reference workflow resolves that environment secret in both automatic and
-direct runs. It does not use the key for crates.io and does not provide a local
-or personal-token fallback for either registry.
+The same `crates-io` environment stores `HEXPM_API_KEY` for automated
+`example_text_pattern` publication. The reference workflow resolves that secret
+in both automatic and direct runs. It does not use the key for crates.io and
+does not provide a local or personal-token fallback for either registry.
+
+Manual publication of the Hex `geam` package uses the maintainer's local Hex
+authentication, separate from the GitHub release environment.

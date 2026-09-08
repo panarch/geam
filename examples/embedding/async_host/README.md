@@ -48,17 +48,9 @@ Observing the same work again shares its completion; it does not read the file
 again. `Completed::read` borrows the result so sharing does not require cloning
 its payload.
 
-This Cargo package explicitly selects transferable execution:
-
-```toml
-[package.metadata.geam.embedding]
-storage = "transferable"
-```
-
-The default storage selection is `local`. This choice applies to the provider
-composition, not individual function signatures. With transferable storage,
-ordinary entries still return their values directly and Future entries return
-work. The host remains responsible for provider state, Echo and its executor.
+Ordinary entries return their values directly and Future entries return work.
+Both use the same module and `Send` provider state, with no storage setting.
+The host remains responsible for state, Echo and its executor.
 
 ## Source Package
 
@@ -70,6 +62,6 @@ In your own application's `gleam/` directory, add the package with:
 gleam add geam
 ```
 
-The Rust dependency enables `geam-runtime-api` for the built-in implementation.
+The Rust dependency enables `geam-builtin` for the built-in implementation.
 See the [Future guide](../../../docs/future.md) for composition and lifetime
 examples.

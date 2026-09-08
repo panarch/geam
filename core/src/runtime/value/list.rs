@@ -718,22 +718,23 @@ mod tests {
             source_hash,
             inspect,
         );
-        let stored_equal =
-            |left: &crate::runtime::StoredRuntimeValue,
-             right: &crate::runtime::StoredRuntimeValue| left.value() == right.value();
-        let equality = crate::host::HostExternalEquality::new(&stored_equal);
+        let stored_equal = |left: &crate::runtime::RetainedValueRef,
+                            right: &crate::runtime::RetainedValueRef| {
+            left.value() == right.value()
+        };
+        let equality = crate::host::RetainedValueEquality::new(&stored_equal);
         assert!(first.source_equal(&equality, &equal));
-        let stored_hash = |_: &crate::runtime::StoredRuntimeValue| payload as u64;
+        let stored_hash = |_: &crate::runtime::RetainedValueRef| payload as u64;
         let stored_inspect =
-            |_: &crate::runtime::StoredRuntimeValue| format!("Resource({payload})").into();
+            |_: &crate::runtime::RetainedValueRef| format!("Resource({payload})").into();
         assert_eq!(
-            first.source_hash(&crate::host::HostExternalHashing::new(&stored_hash)),
+            first.source_hash(&crate::host::RetainedValueHashing::new(&stored_hash)),
             payload as u64,
         );
         let expected_inspection = format!("Resource({payload})");
         assert_eq!(
             first
-                .inspection(&crate::host::HostExternalInspection::new(&stored_inspect))
+                .inspection(&crate::host::RetainedValueInspection::new(&stored_inspect))
                 .as_str(),
             expected_inspection,
         );

@@ -68,7 +68,7 @@ impl HostStoredDynamic {
             .map_err(Self::new)
     }
 
-    pub(super) fn runtime_value(&self) -> &crate::runtime::StoredRuntimeValue {
+    pub(crate) fn runtime_value(&self) -> &crate::runtime::StoredRuntimeValue {
         &self.value
     }
 

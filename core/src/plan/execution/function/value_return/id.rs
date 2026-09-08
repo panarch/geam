@@ -70,6 +70,10 @@ impl ExternalFunctionId {
         self.index
     }
 
+    pub(in crate::plan::execution) fn return_type(self) -> ExternalTypeId {
+        self.return_type
+    }
+
     pub(crate) fn with_index(self, index: usize) -> Self {
         Self {
             index,

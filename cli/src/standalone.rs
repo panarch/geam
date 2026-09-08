@@ -83,12 +83,6 @@ impl Preparation<'_> {
             .report(format_args!("Preparing {module} in {project_root}"))?;
         let project = read_resolved_project_with_progress(project_root, &mut self.progress)?;
         let typed = compile_resolved_project(project_root, module.to_owned(), &mut self.progress)?;
-        if geam_core::required_host_functions(&typed)
-            .iter()
-            .any(|requirement| requirement.package() == "geam")
-        {
-            return Err(CliError::StandaloneFuture);
-        }
         let mut managed = ManagedProject::load(project_root, project.root_package())?;
         managed.retain_packages(&project.package_names());
         if managed.has_providers() {
@@ -353,7 +347,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_required_future_execution_before_writing_or_running_a_standalone_runner() {
+    fn prepares_and_runs_work_entries_through_the_same_managed_runner() {
         let project = project(
             "application",
             "import geam/future\npub fn main() { future.ready(Nil) }\n",
@@ -366,35 +360,41 @@ mod tests {
         fs::write(root.join("gleam.toml"), format!("name = \"application\"\nversion = \"1.0.0\"\n[dependencies]\ngeam = {{ path = {future:?} }}\n")).expect("application dependency");
         fs::write(root.join("manifest.toml"), format!("packages = [{{ name = \"geam\", version = \"{}\", build_tools = [\"gleam\"], requirements = [], source = \"local\", path = {future:?} }}]\n[requirements]\ngeam = {{ path = {future:?} }}\n", env!("CARGO_PKG_VERSION"))).expect("locked local dependency");
         let cargo = RecordingCargo::default();
-        let expected = "geam/future requires an explicit Rust embedding execution scope; the standalone runner does not drive Future values";
+        prepare_with(&root, "application".to_owned(), &cargo, &cargo)
+            .expect("prepare the work entry");
+        assert_eq!(*cargo.operations.borrow(), ["lock", "check:application"]);
+        cargo.operations.borrow_mut().clear();
+        let manifest = fs::read(root.join("Cargo.toml")).expect("managed manifest");
+        let runner = fs::read(root.join("build/geam/runner.rs")).expect("generated runner");
+        run_with(
+            &root,
+            &root,
+            "application".to_owned(),
+            Vec::new(),
+            &cargo,
+            &cargo,
+        )
+        .expect("run through the existing runner executor");
+        assert_eq!(*cargo.operations.borrow(), ["run:application:"]);
         assert_eq!(
-            prepare_with(&root, "application".to_owned(), &cargo, &cargo)
-                .expect_err("standalone cannot drive source work")
-                .to_string(),
-            expected
+            fs::read(root.join("Cargo.toml")).expect("manifest"),
+            manifest
         );
         assert_eq!(
-            run_with(
-                &root,
-                &root,
-                "application".to_owned(),
-                Vec::new(),
-                &cargo,
-                &cargo
-            )
-            .expect_err("standalone cannot run source work")
-            .to_string(),
-            expected
+            fs::read(root.join("build/geam/runner.rs")).expect("runner"),
+            runner
         );
-        assert!(cargo.operations.borrow().is_empty());
-        assert!(!root.join("Cargo.toml").exists());
-        assert!(!root.join("build/geam/runner.rs").exists());
+        cargo.operations.borrow_mut().clear();
 
         fs::write(root.join("src/application.gleam"), "pub fn main() { 1 }\n")
             .expect("dependency outside the source closure");
         prepare_with(&root, "application".to_owned(), &cargo, &cargo)
             .expect("unused dependency does not select an execution capability");
-        assert_eq!(*cargo.operations.borrow(), ["lock", "check:application"]);
+        assert_eq!(*cargo.operations.borrow(), ["check:application"]);
+        assert_eq!(
+            fs::read(root.join("build/geam/runner.rs")).expect("runner"),
+            runner
+        );
     }
 
     #[test]

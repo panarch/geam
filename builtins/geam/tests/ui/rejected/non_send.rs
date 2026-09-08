@@ -1,7 +1,8 @@
-use geam_core::{embedding::WorkModuleBuilder, host::HostWorkProfile};
+use geam_core::HostProfile;
 
-pub fn non_send<P>(program: geam_core::frontend::TransferHostedTypedProgram<P>)
-where P: HostWorkProfile<RunState = std::rc::Rc<()>>, P::ExternalStores: Send {
-    let _ = WorkModuleBuilder::new(program);
+struct NonSend;
+impl HostProfile for NonSend {
+    type RunState = std::rc::Rc<()>;
+    type ExternalStores = ();
 }
 fn main() {}

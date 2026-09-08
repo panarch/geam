@@ -959,6 +959,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "geam-builtin"
+version = "0.2.3"
+dependencies = [
+ "ecow",
+ "geam-core",
+]
+
+[[package]]
 name = "geam-core"
 version = "0.2.3"
 dependencies = [
@@ -1102,10 +1110,10 @@ name = "geam-macro-cross-crate-application"
 version = "0.0.0"
 dependencies = [
  "ecow",
+ "geam-builtin",
  "geam-core",
  "geam-macro-cross-crate-consumer",
  "geam-macro-cross-crate-declarations",
- "geam-runtime-api",
  "num-bigint",
 ]
 
@@ -1114,6 +1122,7 @@ name = "geam-macro-cross-crate-consumer"
 version = "0.0.0"
 dependencies = [
  "ecow",
+ "geam-builtin",
  "geam-core",
  "geam-macro-cross-crate-declarations",
  "geam-macros",
@@ -1138,14 +1147,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "geam-runtime-api"
-version = "0.2.3"
-dependencies = [
- "ecow",
- "geam-core",
 ]
 
 [[package]]

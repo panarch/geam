@@ -1,0 +1,26 @@
+error[E0277]: `Rc<()>` cannot be sent between threads safely
+ --> tests/ui/non_send_state.rs:6:13
+  |
+6 |     state = Rc<()>,
+  |             ^^^^^^ `Rc<()>` cannot be sent between threads safely
+  |
+  = help: the trait `Send` is not implemented for `Rc<()>`
+note: required by a bound in `geam_core::HostProviderComponent::RunState`
+ --> $WORKSPACE/core/src/host/component.rs
+  |
+  |     type RunState: Send + 'static;
+  |                    ^^^^ required by this bound in `HostProviderComponent::RunState`
+
+error[E0277]: `Rc<()>` cannot be sent between threads safely
+  --> tests/ui/non_send_state.rs:11:1
+   |
+11 | #[geam_macros::module(path = "state", crate_path = geam_core)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rc<()>` cannot be sent between threads safely
+   |
+   = help: the trait `Send` is not implemented for `Rc<()>`
+note: required by a bound in `geam_core::HostProvider::State`
+  --> $WORKSPACE/core/src/host/profile.rs
+   |
+   |     type State: Send;
+   |                 ^^^^ required by this bound in `HostProvider::State`
+   = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -275,25 +275,16 @@ pub fn greeting(path: String) -> Future(Result(String, String)) {
 }
 ```
 
-Select transferable storage once in the Rust application's Cargo manifest,
-then run `geam embedding sync`. Sync enables the required `geam-runtime-api`
-feature on the application's Geam dependency:
-
-```toml
-[package.metadata.geam.embedding]
-storage = "transferable"
-```
-
-This selects the storage used by the generated module, including its provider
-values and state. It does not change an ordinary function into an async
-function. The default local storage remains available for applications with
-local-only Rust values.
+Run `geam embedding sync` after adding the Gleam package and Rust provider.
+Sync enables `geam-builtin` on the application's Geam dependency for hosted
+bindings. Ordinary functions and Future functions share one loaded module and
+provider state.
 
 The generated project and bindings use the same loading sequence:
 
 ```rust
 let program = geam_bindings::project().compile()?;
-let builder = WorkModuleBuilder::new(program)?;
+let builder = HostedModuleBuilder::new(program)?;
 let (bindings, functions) = geam_bindings::bind(builder)?;
 let mut module = bindings.seal()?;
 ```
@@ -329,8 +320,12 @@ for nested Future values and completion errors.
 
 The [async-host example](../examples/embedding/async_host) contains the complete
 Gleam package, independent async file provider, generated bindings, state
-initialization, and caller-owned executor. This workflow uses Rust embedding;
-`geam run` does not drive source Future values.
+initialization, and caller-owned executor. The same provider also works through
+the [standalone async example](../examples/provider/async_files).
+
+State, retained values, native Futures, and the Echo sink must be `Send`; borrowed
+host resources need only live for the execution scope. Geam does not require
+`Sync` for exclusively accessed state or create an executor for embedding.
 
 ## Verify a prepared checkout
 
@@ -362,7 +357,7 @@ Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data) | Futur
 ```
 
 This includes nested Lists and combinations of Tuple, Result, and Option.
-Transferable bindings also recognize the nominal `geam/future.Future` type in
+Bindings also recognize the nominal `geam/future.Future` type in
 these positions.
 Records, arbitrary custom types, external values, callbacks, and generic types
 cannot currently be used in generated Rust function signatures. Gleam code may
@@ -379,10 +374,10 @@ boundary](reference/embedding-boundary.md) for the complete type map, ownership
 rules, list transfer behavior, provider state, and lower-level manual binding
 API.
 
-Both storage choices use `List<T>` in declarations. Transferable calls expose
-shared, lazily inspected list values, so the same source type can move with
-the application's Future between executor workers. Nested Future values keep
-their execution scope; putting work inside a List does not erase its owner.
+Within an attached execution scope, `List<T>` declarations produce `SharedList`
+values with borrowed item access. Ordinary module calls return `List<T>` values
+with owned item access. Both retain their source storage. Nested Future values
+keep their execution scope; putting work inside a List does not erase its owner.
 
 ## Ship the Gleam sources with your application
 

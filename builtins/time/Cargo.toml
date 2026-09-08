@@ -16,7 +16,7 @@ jiff.workspace = true
 num-bigint.workspace = true
 
 [dev-dependencies]
-geam-runtime-api.workspace = true
+geam-builtin.workspace = true
 camino.workspace = true
 ecow.workspace = true
 gleam-core.workspace = true

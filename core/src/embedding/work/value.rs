@@ -1,9 +1,7 @@
 use super::ScopeBrand;
 use crate::host::{HostExternalSchema, HostFutureStore};
 use crate::runtime::shared::Shared;
-use crate::runtime::{
-    BorrowedValue, EmbeddingList, EvaluatedExternalValue, StoredRuntimeValue, TransferValues,
-};
+use crate::runtime::{BorrowedValue, EmbeddingList, EvaluatedExternalValue, StoredRuntimeValue};
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -41,7 +39,7 @@ pub struct FutureType<Value, Schema: HostExternalSchema>(PhantomData<fn() -> (Va
 /// ```
 #[allow(private_bounds)]
 pub struct Future<'scope, Value: SharedValue, Schema: HostExternalSchema> {
-    pub(in crate::embedding) value: EvaluatedExternalValue<TransferValues>,
+    pub(in crate::embedding) value: EvaluatedExternalValue,
     pub(in crate::embedding) context: FutureContext<'scope, Value, Schema>,
 }
 
@@ -60,14 +58,14 @@ pub struct Future<'scope, Value: SharedValue, Schema: HostExternalSchema> {
 /// ```
 #[allow(private_bounds)]
 pub struct Completed<Value: SharedValue> {
-    value: Shared<StoredRuntimeValue<TransferValues>>,
+    value: Shared<StoredRuntimeValue>,
     context: Value::Context,
 }
 
 /// A lazy list read from a shared completion.
 #[allow(private_bounds)]
 pub struct SharedList<Value: SharedValue> {
-    value: Shared<EmbeddingList<TransferValues>>,
+    value: Shared<EmbeddingList>,
     context: ListContext<Value>,
 }
 
@@ -92,10 +90,7 @@ mod sealed {
 pub(crate) trait SharedValue: ReadValue {
     type Context: Clone + Send;
 
-    fn view<'value>(
-        value: BorrowedValue<'value, TransferValues>,
-        context: &Self::Context,
-    ) -> Self::View<'value>;
+    fn view<'value>(value: BorrowedValue<'value>, context: &Self::Context) -> Self::View<'value>;
 }
 
 pub(crate) trait ScopedOutput<Schema: HostExternalSchema>: SourceType {
@@ -156,7 +151,7 @@ impl<Value: SharedValue> Clone for ListContext<Value> {
 #[allow(private_bounds)]
 impl<'scope, Value: SharedValue, Schema: HostExternalSchema> Future<'scope, Value, Schema> {
     pub(in crate::embedding) fn new(
-        value: EvaluatedExternalValue<TransferValues>,
+        value: EvaluatedExternalValue,
         context: FutureContext<'scope, Value, Schema>,
     ) -> Self {
         Self { value, context }
@@ -183,7 +178,7 @@ impl<Value: SharedValue, Schema: HostExternalSchema> Clone for Future<'_, Value,
 #[allow(private_bounds)]
 impl<Value: SharedValue> Completed<Value> {
     pub(in crate::embedding) fn new(
-        value: Shared<StoredRuntimeValue<TransferValues>>,
+        value: Shared<StoredRuntimeValue>,
         context: Value::Context,
     ) -> Self {
         Self { value, context }
@@ -214,10 +209,7 @@ impl<Value: SharedValue> Clone for Completed<Value> {
 
 #[allow(private_bounds)]
 impl<Value: SharedValue> SharedList<Value> {
-    pub(in crate::embedding) fn new(
-        value: EmbeddingList<TransferValues>,
-        context: ListContext<Value>,
-    ) -> Self {
+    pub(in crate::embedding) fn new(value: EmbeddingList, context: ListContext<Value>) -> Self {
         Self {
             value: Shared::new(value),
             context,
@@ -248,7 +240,7 @@ impl<Value: SharedValue> SharedList<Value> {
         Arc::ptr_eq(&self.context.owner, owner)
     }
 
-    pub(in crate::embedding) fn input(&self) -> crate::runtime::EmbeddingListInput<TransferValues> {
+    pub(in crate::embedding) fn input(&self) -> crate::runtime::EmbeddingListInput {
         self.value.read(EmbeddingList::input)
     }
 }
@@ -269,10 +261,7 @@ macro_rules! scalar {
         }
         impl SharedValue for $type {
             type Context = ();
-            fn view<'value>(
-                value: BorrowedValue<'value, TransferValues>,
-                _: &(),
-            ) -> Self::View<'value> {
+            fn view<'value>(value: BorrowedValue<'value>, _: &()) -> Self::View<'value> {
                 value.$method()
             }
         }
@@ -306,7 +295,7 @@ impl ReadValue for () {
 
 impl SharedValue for () {
     type Context = ();
-    fn view(_: BorrowedValue<'_, TransferValues>, _: &()) {}
+    fn view(_: BorrowedValue<'_>, _: &()) {}
 }
 
 impl SourceType for () {
@@ -324,7 +313,7 @@ macro_rules! tuple {
         }
         impl<$($type: SharedValue),+> SharedValue for ($($type,)+) {
             type Context = ($($type::Context,)+);
-            fn view<'value>(value: BorrowedValue<'value, TransferValues>, context: &Self::Context) -> Self::View<'value> {
+            fn view<'value>(value: BorrowedValue<'value>, context: &Self::Context) -> Self::View<'value> {
                 ($($type::view(value.tuple_item($index), &context.$index),)+)
             }
         }
@@ -353,10 +342,7 @@ impl<Success: SharedValue, Failure: SharedValue> ReadValue for Result<Success, F
 
 impl<Success: SharedValue, Failure: SharedValue> SharedValue for Result<Success, Failure> {
     type Context = (Success::Context, Failure::Context);
-    fn view<'value>(
-        value: BorrowedValue<'value, TransferValues>,
-        context: &Self::Context,
-    ) -> Self::View<'value> {
+    fn view<'value>(value: BorrowedValue<'value>, context: &Self::Context) -> Self::View<'value> {
         if value.variant() == 0 {
             Ok(Success::view(value.custom_field(0), &context.0))
         } else {
@@ -390,10 +376,7 @@ impl<Value: SharedValue> ReadValue for Option<Value> {
 
 impl<Value: SharedValue> SharedValue for Option<Value> {
     type Context = Value::Context;
-    fn view<'value>(
-        value: BorrowedValue<'value, TransferValues>,
-        context: &Self::Context,
-    ) -> Self::View<'value> {
+    fn view<'value>(value: BorrowedValue<'value>, context: &Self::Context) -> Self::View<'value> {
         if value.variant() == 0 {
             Some(Value::view(value.custom_field(0), context))
         } else {
@@ -424,7 +407,7 @@ impl<Value: SharedValue> ReadValue for SharedList<Value> {
 
 impl<Value: SharedValue> SharedValue for SharedList<Value> {
     type Context = ListContext<Value>;
-    fn view(value: BorrowedValue<'_, TransferValues>, context: &Self::Context) -> Self {
+    fn view(value: BorrowedValue<'_>, context: &Self::Context) -> Self {
         Self {
             value: Shared::new(EmbeddingList::from_borrowed(value)),
             context: context.clone(),
@@ -470,7 +453,7 @@ impl<'scope, Value: SharedValue, Schema: HostExternalSchema> SharedValue
     for Future<'scope, Value, Schema>
 {
     type Context = FutureContext<'scope, Value, Schema>;
-    fn view(value: BorrowedValue<'_, TransferValues>, context: &Self::Context) -> Self {
+    fn view(value: BorrowedValue<'_>, context: &Self::Context) -> Self {
         Self {
             value: value.external().clone(),
             context: context.clone(),
@@ -501,11 +484,9 @@ impl<Value: ScopedOutput<Schema>, Schema: HostExternalSchema> ScopedOutput<Schem
 
 #[cfg(test)]
 mod tests {
-    use crate::embedding::{FunctionDeclaration, List, WorkModuleBuilder, with_execution_scope};
-    use crate::frontend::compile_typed_transfer_host_program;
-    use crate::host::{
-        AsyncHostComponentProfile, HostFutureStore, HostProfile, TransferHostProviderSet,
-    };
+    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder, List, with_execution_scope};
+    use crate::frontend::compile_typed_host_program;
+    use crate::host::{HostComponentProfile, HostFutureStore, HostProfile, HostProviderSet};
     use crate::work_fixture::WorkComponent;
     use crate::work_fixture::WorkType;
     use crate::{EchoOutput, EchoSink, ModuleSource, PackageSource};
@@ -520,8 +501,8 @@ mod tests {
     impl crate::host::HostWorkProfile for Profile {
         type Work = crate::work_fixture::WorkComponent;
     }
-    impl AsyncHostComponentProfile<WorkComponent> for Profile {
-        fn component_async_stores(stores: &HostFutureStore) -> &HostFutureStore {
+    impl HostComponentProfile<WorkComponent> for Profile {
+        fn component_stores(stores: &HostFutureStore) -> &HostFutureStore {
             stores
         }
         fn component_state(state: &mut ()) -> &mut () {
@@ -538,7 +519,7 @@ mod tests {
 
     #[test]
     fn retained_lists_share_source_storage_and_borrow_items_after_the_owner_drops() {
-        let program = compile_typed_transfer_host_program(
+        let program = compile_typed_host_program(
             "application",
             "library",
             [PackageSource::new(
@@ -550,10 +531,10 @@ mod tests {
                     "pub fn keep(values: List(String)) { values }",
                 )],
             )],
-            TransferHostProviderSet::<Profile>::new([]).expect("empty providers"),
+            HostProviderSet::<Profile>::from_providers([]).expect("empty providers"),
         )
         .expect("typed source");
-        let (bindings, keep) = WorkModuleBuilder::new(program)
+        let (bindings, keep) = HostedModuleBuilder::new(program)
             .expect("plan")
             .function(FunctionDeclaration::<(List<EcoString>,), List<EcoString>>::new("keep"))
             .expect("list binding");
@@ -606,7 +587,7 @@ mod tests {
         use num_bigint::BigInt;
         type Choice = Option<Result<BigInt, ()>>;
         type Choices = List<Choice>;
-        let program = compile_typed_transfer_host_program(
+        let program = compile_typed_host_program(
             "application",
             "library",
             [
@@ -645,13 +626,13 @@ pub fn ready_list(values: List(Option(Result(Int, Nil)))) { future.ready(values)
                     )],
                 ),
             ],
-            TransferHostProviderSet::new(
+            HostProviderSet::from_providers(
                 WorkComponent::providers::<Profile>().expect("Future component"),
             )
             .expect("providers"),
         )
         .expect("ordinary source");
-        let (mut bindings, choice) = WorkModuleBuilder::new(program)
+        let (mut bindings, choice) = HostedModuleBuilder::new(program)
             .expect("plan")
             .function(FunctionDeclaration::<(Choice,), Choice>::new("choice"))
             .expect("optional result");
@@ -725,7 +706,7 @@ pub fn ready_list(values: List(Option(Result(Int, Nil)))) { future.ready(values)
             List<BitArrayValue>,
             (List<char>, List<bool>, WorkType<BigInt>),
         );
-        let program = compile_typed_transfer_host_program(
+        let program = compile_typed_host_program(
             "application", "library",
             [
                 PackageSource::new("work_fixture", Vec::<String>::new(), [
@@ -736,10 +717,10 @@ pub fn ready_list(values: List(Option(Result(Int, Nil)))) { future.ready(values)
                     "import fixture/work as future\npub fn ready_int(value: Int) { echo \"ready\" future.ready(value) }\npub fn ready_values(value: #(Float, BitArray, UtfCodepoint, Bool, List(Float), List(BitArray), #(List(UtfCodepoint), List(Bool), future.Work(Int)))) { echo \"ready\" future.ready(value) }",
                 )]),
             ],
-            TransferHostProviderSet::new(WorkComponent::providers::<Profile>().expect("Future module"))
+            HostProviderSet::from_providers(WorkComponent::providers::<Profile>().expect("Future module"))
                 .expect("providers"),
         ).expect("ordinary concrete source");
-        let (mut bindings, ready_int) = WorkModuleBuilder::new(program)
+        let (mut bindings, ready_int) = HostedModuleBuilder::new(program)
             .expect("plan")
             .function(FunctionDeclaration::<(BigInt,), WorkType<BigInt>>::new(
                 "ready_int",
@@ -826,7 +807,7 @@ pub fn ready_list(values: List(Option(Result(Int, Nil)))) { future.ready(values)
         use crate::BitArrayValue;
         use num_bigint::BigInt;
 
-        let program = compile_typed_transfer_host_program(
+        let program = compile_typed_host_program(
             "application",
             "library",
             [
@@ -863,13 +844,13 @@ pub fn work(values: List(future.Work(Int))) { values }
                     )],
                 ),
             ],
-            TransferHostProviderSet::new(
+            HostProviderSet::from_providers(
                 WorkComponent::providers::<Profile>().expect("Future module"),
             )
             .expect("providers"),
         )
         .expect("ordinary source");
-        let (mut bindings, ready) = WorkModuleBuilder::new(program)
+        let (mut bindings, ready) = HostedModuleBuilder::new(program)
             .expect("plan")
             .function(FunctionDeclaration::<(BigInt,), WorkType<BigInt>>::new(
                 "ready",

@@ -3,12 +3,10 @@ mod work_fixture;
 use crate::work_fixture::WorkComponent;
 use crate::work_fixture::WorkType;
 use geam_core::embedding::{
-    BigInt, EcoString, FunctionDeclaration, List, WorkModuleBuilder, with_execution_scope,
+    BigInt, EcoString, FunctionDeclaration, HostedModuleBuilder, List, with_execution_scope,
 };
-use geam_core::frontend::compile_typed_transfer_host_program;
-use geam_core::host::{
-    AsyncHostComponentProfile, HostFutureStore, HostProfile, TransferHostProviderSet,
-};
+use geam_core::frontend::compile_typed_host_program;
+use geam_core::host::{HostComponentProfile, HostFutureStore, HostProfile, HostProviderSet};
 use geam_core::{ModuleSource, PackageSource};
 use std::future::Future as _;
 use std::task::{Context, Poll, Waker};
@@ -31,8 +29,8 @@ impl HostProfile for Profile {
 impl geam_core::host::HostWorkProfile for Profile {
     type Work = crate::work_fixture::WorkComponent;
 }
-impl AsyncHostComponentProfile<WorkComponent> for Profile {
-    fn component_async_stores(stores: &HostFutureStore) -> &HostFutureStore {
+impl HostComponentProfile<WorkComponent> for Profile {
+    fn component_stores(stores: &HostFutureStore) -> &HostFutureStore {
         stores
     }
     fn component_state(state: &mut ()) -> &mut () {
@@ -55,9 +53,9 @@ type IntCallbackTupleElements = geam_core::HostTypeList<IntCallback, geam_core::
 type IntCallbackTuple = geam_core::host::HostTupleType<IntCallbackTupleElements>;
 
 fn invoke_nested_callback<'call>(
-    mut call: geam_core::host::TransferHostCall<'call, Profile, DirectProvider, BigInt>,
+    mut call: geam_core::host::HostCall<'call, Profile, DirectProvider, BigInt>,
     callback: geam_core::host::HostTuple<'call, IntCallbackTupleElements>,
-) -> Result<geam_core::HostCallCompletion<'call, BigInt>, geam_core::AsyncHostCallError> {
+) -> Result<geam_core::HostCallCompletion<'call, BigInt>, geam_core::HostCallError> {
     let (callback, ()) = call.tuple_values(callback);
     let returned = call.invoke(callback, (BigInt::from(41), ()))?;
     Ok(call.return_value(returned))
@@ -65,14 +63,14 @@ fn invoke_nested_callback<'call>(
 
 #[test]
 fn direct_transfer_calls_decode_callbacks_nested_in_compound_arguments() {
-    let provider = geam_core::host::TransferHostProviderModule::new_for_profile("app", "app")
+    let provider = geam_core::host::HostProviderModule::new("app", "app")
         .expect("native module")
         .with_scoped_function::<DirectProvider, (IntCallbackTuple,), BigInt, _>(
             "invoke_nested",
             invoke_nested_callback,
         )
         .expect("nested callback registration");
-    let typed = compile_typed_transfer_host_program(
+    let typed = compile_typed_host_program(
         "app",
         "app",
         [PackageSource::new(
@@ -92,10 +90,10 @@ pub fn captured(offset: Int) -> Int {
 "#,
             )],
         )],
-        TransferHostProviderSet::new([provider]).expect("providers"),
+        HostProviderSet::from_providers([provider]).expect("providers"),
     )
     .expect("source");
-    let (mut bindings, run) = WorkModuleBuilder::new(typed)
+    let (mut bindings, run) = HostedModuleBuilder::new(typed)
         .expect("plan")
         .function(FunctionDeclaration::<(), BigInt>::new("run"))
         .expect("entry");
@@ -127,11 +125,11 @@ pub fn captured(offset: Int) -> Int {
 
 #[test]
 fn independent_scopes_can_drive_their_own_work_at_the_same_time() {
-    let (left, left_work) = WorkModuleBuilder::new(program())
+    let (left, left_work) = HostedModuleBuilder::new(program())
         .expect("left plan")
         .function(FunctionDeclaration::<(), WorkType<BigInt>>::new("delayed"))
         .expect("left entry");
-    let (right, right_work) = WorkModuleBuilder::new(program())
+    let (right, right_work) = HostedModuleBuilder::new(program())
         .expect("right plan")
         .function(FunctionDeclaration::<(), WorkType<BigInt>>::new("delayed"))
         .expect("right entry");
@@ -165,8 +163,8 @@ fn independent_scopes_can_drive_their_own_work_at_the_same_time() {
     );
 }
 
-fn program() -> geam_core::frontend::TransferHostedTypedProgram<Profile> {
-    compile_typed_transfer_host_program(
+fn program() -> geam_core::frontend::HostedTypedProgram<Profile> {
+    compile_typed_host_program(
         "app",
         "app",
         [
@@ -205,7 +203,7 @@ pub fn packet(value: #(future.Work(Result(List(Int), String)), Result(List(Int),
                 )],
             ),
         ],
-        TransferHostProviderSet::new(
+        HostProviderSet::from_providers(
             WorkComponent::providers::<Profile>().expect("Future registration"),
         )
         .expect("provider set"),
@@ -215,7 +213,7 @@ pub fn packet(value: #(future.Work(Result(List(Int), String)), Result(List(Int),
 
 #[test]
 fn public_calls_preserve_direct_results_and_recursively_scoped_shared_work() {
-    let (mut bindings, double) = WorkModuleBuilder::new(program())
+    let (mut bindings, double) = HostedModuleBuilder::new(program())
         .expect("planned library")
         .function(FunctionDeclaration::<(BigInt,), BigInt>::new("double"))
         .expect("direct entry");
@@ -264,7 +262,7 @@ fn public_calls_preserve_direct_results_and_recursively_scoped_shared_work() {
 
 #[test]
 fn public_future_inputs_retain_identity_and_do_not_construct_their_completion_type() {
-    let (mut bindings, delayed) = WorkModuleBuilder::new(program())
+    let (mut bindings, delayed) = HostedModuleBuilder::new(program())
         .expect("planned library")
         .function(FunctionDeclaration::<(), WorkType<BigInt>>::new("delayed"))
         .expect("work entry");
@@ -366,8 +364,8 @@ impl geam_core::HostProvider<NativeProfile> for NativeProvider {
 impl geam_core::host::HostWorkProfile for NativeProfile {
     type Work = crate::work_fixture::WorkComponent;
 }
-impl AsyncHostComponentProfile<WorkComponent> for NativeProfile {
-    fn component_async_stores(stores: &HostFutureStore) -> &HostFutureStore {
+impl HostComponentProfile<WorkComponent> for NativeProfile {
+    fn component_stores(stores: &HostFutureStore) -> &HostFutureStore {
         stores
     }
     fn component_state(state: &mut NativeState) -> &mut () {
@@ -376,7 +374,7 @@ impl AsyncHostComponentProfile<WorkComponent> for NativeProfile {
 }
 
 fn native_work<'call>(
-    mut call: geam_core::host::TransferHostCall<
+    mut call: geam_core::host::HostCall<
         'call,
         NativeProfile,
         NativeProvider,
@@ -385,7 +383,7 @@ fn native_work<'call>(
     constructions: geam_core::HostConstructions<'call, geam_core::HostTypeListEnd>,
 ) -> Result<
     geam_core::HostCallCompletion<'call, crate::work_fixture::WorkHostType<BigInt>>,
-    geam_core::AsyncHostCallError,
+    geam_core::HostCallError,
 > {
     let gate = call.state().gate.take().expect("one native construction");
     Ok(call.return_future(constructions, move |context| {
@@ -405,7 +403,7 @@ fn native_work<'call>(
 }
 
 fn await_future_callback<'call>(
-    call: geam_core::host::TransferHostCall<
+    call: geam_core::host::HostCall<
         'call,
         NativeProfile,
         NativeProvider,
@@ -419,7 +417,7 @@ fn await_future_callback<'call>(
     >,
 ) -> Result<
     geam_core::HostCallCompletion<'call, crate::work_fixture::WorkHostType<BigInt>>,
-    geam_core::AsyncHostCallError,
+    geam_core::HostCallError,
 > {
     let callback = call.future_callable(callback, &constructions);
     Ok(call.return_future(constructions, move |context| {
@@ -467,15 +465,15 @@ fn await_future_callback<'call>(
 #[test]
 fn native_code_receives_and_explicitly_drives_a_future_valued_gleam_callback() {
     use crate::work_fixture::WorkHostType;
-    use geam_core::host::{HostFunctionType, TransferHostProviderModule};
+    use geam_core::host::{HostFunctionType, HostProviderModule};
     for (native_succeeds, source_succeeds) in [(true, true), (false, true), (true, false)] {
-        let native = TransferHostProviderModule::new_for_profile("app", "app").expect("native module")
+        let native = HostProviderModule::new("app", "app").expect("native module")
             .with_scoped_function_and_constructions::<NativeProvider, (), WorkHostType<BigInt>, geam_core::HostTypeListEnd, _>("fetch", native_work).expect("fetch registration")
             .with_scoped_function_and_constructions::<NativeProvider, (HostFunctionType<IntCallbackArguments, WorkHostType<BigInt>>,), WorkHostType<BigInt>, geam_core::HostTypeListEnd, _>("await_callback", await_future_callback).expect("callback registration");
         let mut providers =
             WorkComponent::providers::<NativeProfile>().expect("Future registration");
         providers.push(native);
-        let typed = compile_typed_transfer_host_program(
+        let typed = compile_typed_host_program(
             "app",
             "app",
             [
@@ -515,10 +513,10 @@ pub fn work(succeeds: Bool) -> future.Work(Int) {
                     )],
                 ),
             ],
-            TransferHostProviderSet::new(providers).expect("providers"),
+            HostProviderSet::from_providers(providers).expect("providers"),
         )
         .expect("source");
-        let (bindings, work) = WorkModuleBuilder::new(typed)
+        let (bindings, work) = HostedModuleBuilder::new(typed)
             .expect("plan")
             .function(FunctionDeclaration::<(bool,), WorkType<BigInt>>::new(
                 "work",
@@ -566,12 +564,12 @@ pub fn work(succeeds: Bool) -> future.Work(Int) {
                 panic!("original execution failure");
             };
             error.read(|error| match error {
-                geam_core::AsyncExecutionError::Host(error) => {
+                geam_core::ExecutionError::Host(error) => {
                     assert!(!native_succeeds);
                     assert_eq!(error.function(), "fetch");
                     assert!(error.to_string().contains("fetch failed"));
                 }
-                geam_core::AsyncExecutionError::Panic(error) => {
+                geam_core::ExecutionError::Panic(error) => {
                     assert!(!source_succeeds);
                     assert_eq!(error.site().function(), "checked");
                     assert_eq!(error.kind(), geam_core::PanicKind::LetAssert);
@@ -587,14 +585,14 @@ pub fn work(succeeds: Bool) -> future.Work(Int) {
 #[test]
 fn public_pending_work_and_shared_completion_transfer_with_borrowed_send_only_state() {
     use crate::work_fixture::WorkHostType;
-    use geam_core::host::TransferHostProviderModule;
+    use geam_core::host::HostProviderModule;
     for succeeds in [true, false] {
-        let native = TransferHostProviderModule::new_for_profile("app", "app").expect("native module")
+        let native = HostProviderModule::new("app", "app").expect("native module")
             .with_scoped_function_and_constructions::<NativeProvider, (), WorkHostType<BigInt>, geam_core::HostTypeListEnd, _>("fetch", native_work).expect("native registration");
         let mut providers =
             WorkComponent::providers::<NativeProfile>().expect("Future registration");
         providers.push(native);
-        let typed = compile_typed_transfer_host_program(
+        let typed = compile_typed_host_program(
             "app",
             "app",
             [
@@ -627,10 +625,10 @@ pub fn work() {
                     )],
                 ),
             ],
-            TransferHostProviderSet::new(providers).expect("providers"),
+            HostProviderSet::from_providers(providers).expect("providers"),
         )
         .expect("native source");
-        let (bindings, work) = WorkModuleBuilder::new(typed)
+        let (bindings, work) = HostedModuleBuilder::new(typed)
             .expect("native plan")
             .function(FunctionDeclaration::<(), WorkType<BigInt>>::new("work"))
             .expect("native entry");
@@ -710,14 +708,14 @@ pub fn work() {
 #[test]
 fn dropping_work_or_its_execution_releases_native_inputs_without_late_source_execution() {
     use crate::work_fixture::WorkHostType;
-    use geam_core::host::TransferHostProviderModule;
-    let native = TransferHostProviderModule::new_for_profile("app", "app")
+    use geam_core::host::HostProviderModule;
+    let native = HostProviderModule::new("app", "app")
         .expect("native module")
         .with_scoped_function_and_constructions::<NativeProvider, (), WorkHostType<BigInt>, geam_core::HostTypeListEnd, _>("fetch", native_work)
         .expect("native registration");
     let mut providers = WorkComponent::providers::<NativeProfile>().expect("Future registration");
     providers.push(native);
-    let typed = compile_typed_transfer_host_program(
+    let typed = compile_typed_host_program(
         "app",
         "app",
         [
@@ -749,10 +747,10 @@ pub fn work() {
                 )],
             ),
         ],
-        TransferHostProviderSet::new(providers).expect("providers"),
+        HostProviderSet::from_providers(providers).expect("providers"),
     )
     .expect("source");
-    let (bindings, work) = WorkModuleBuilder::new(typed)
+    let (bindings, work) = HostedModuleBuilder::new(typed)
         .expect("plan")
         .function(FunctionDeclaration::<(), WorkType<BigInt>>::new("work"))
         .expect("entry");

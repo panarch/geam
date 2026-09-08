@@ -2,11 +2,11 @@ mod geam_bindings;
 
 use futures::executor::block_on;
 use geam::HostProviderConfiguration;
-use geam::embedding::{WorkModuleBuilder, with_execution_scope};
+use geam::embedding::{HostedModuleBuilder, with_execution_scope};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let program = geam_bindings::project().compile()?;
-    let builder = WorkModuleBuilder::new(program)?;
+    let builder = HostedModuleBuilder::new(program)?;
     let (bindings, functions) = geam_bindings::bind(builder)?;
     let mut module = bindings.seal()?;
     let mut state = geam_bindings::RunStateInputs {

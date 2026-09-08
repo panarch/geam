@@ -973,8 +973,17 @@ dependencies = [
 name = "geam"
 version = "0.2.3"
 dependencies = [
+ "geam-builtin",
  "geam-core",
  "geam-stdlib",
+]
+
+[[package]]
+name = "geam-builtin"
+version = "0.2.3"
+dependencies = [
+ "ecow",
+ "geam-core",
 ]
 
 [[package]]

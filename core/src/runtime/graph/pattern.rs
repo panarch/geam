@@ -9,15 +9,15 @@ use crate::plan::execution::graph::{
     BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, MatchIntBindingId,
     MatchPattern, MatchPatternBinding, MatchPatternListTail,
 };
+use crate::runtime::InvariantError;
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedValue};
-use crate::runtime::{InvariantError, RuntimeListStorage, RuntimeValueProfile};
 
-pub(super) struct MatchBindings<Profile: RuntimeValueProfile> {
-    values: Vec<EvaluatedValue<Profile>>,
+pub(super) struct MatchBindings {
+    values: Vec<EvaluatedValue>,
     ints: HashMap<MatchIntBindingId, BigInt>,
 }
 
-impl<Profile: RuntimeValueProfile> MatchBindings<Profile> {
+impl MatchBindings {
     fn new() -> Self {
         Self {
             values: Vec::new(),
@@ -25,7 +25,7 @@ impl<Profile: RuntimeValueProfile> MatchBindings<Profile> {
         }
     }
 
-    fn bind(&mut self, _binding: &MatchPatternBinding, value: EvaluatedValue<Profile>) {
+    fn bind(&mut self, _binding: &MatchPatternBinding, value: EvaluatedValue) {
         self.values.push(value);
     }
 
@@ -38,21 +38,20 @@ impl<Profile: RuntimeValueProfile> MatchBindings<Profile> {
         self.ints[&binding].clone()
     }
 
-    pub(super) fn value(&self, index: usize) -> EvaluatedValue<Profile> {
+    pub(super) fn value(&self, index: usize) -> EvaluatedValue {
         self.values[index].clone()
     }
 }
 
-pub(super) fn match_pattern<Plan, Profile>(
+pub(super) fn match_pattern<Plan>(
     plan: &Plan,
-    lists: &mut Profile::ListStorage,
-    environment: &BlockEnvironment<Profile>,
+    lists: &mut crate::runtime::RuntimeListStorage,
+    environment: &BlockEnvironment,
     pattern: &MatchPattern,
-    subject: &EvaluatedValue<Profile>,
-) -> Result<Option<MatchBindings<Profile>>, InvariantError>
+    subject: &EvaluatedValue,
+) -> Result<Option<MatchBindings>, InvariantError>
 where
     Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
-    Profile: RuntimeValueProfile,
 {
     let mut bindings = MatchBindings::new();
     if matches(plan, lists, environment, pattern, subject, &mut bindings)? {
@@ -62,17 +61,16 @@ where
     }
 }
 
-fn matches<Plan, Profile>(
+fn matches<Plan>(
     plan: &Plan,
-    lists: &mut Profile::ListStorage,
-    environment: &BlockEnvironment<Profile>,
+    lists: &mut crate::runtime::RuntimeListStorage,
+    environment: &BlockEnvironment,
     pattern: &MatchPattern,
-    value: &EvaluatedValue<Profile>,
-    bindings: &mut MatchBindings<Profile>,
+    value: &EvaluatedValue,
+    bindings: &mut MatchBindings,
 ) -> Result<bool, InvariantError>
 where
     Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
-    Profile: RuntimeValueProfile,
 {
     match pattern {
         MatchPattern::Bind(binding) => {
@@ -207,11 +205,11 @@ where
     }
 }
 
-fn match_bit_array<Profile: RuntimeValueProfile>(
-    environment: &BlockEnvironment<Profile>,
+fn match_bit_array(
+    environment: &BlockEnvironment,
     subject: &EvaluatedBitArray,
     pattern: &BitArrayPattern,
-    bindings: &mut MatchBindings<Profile>,
+    bindings: &mut MatchBindings,
 ) -> bool {
     let mut cursor = 0;
     for segment in pattern.segments() {
@@ -316,9 +314,9 @@ fn match_bit_array<Profile: RuntimeValueProfile>(
     cursor == subject.bits().len()
 }
 
-fn evaluate_size<Profile: RuntimeValueProfile>(
-    environment: &BlockEnvironment<Profile>,
-    bindings: &MatchBindings<Profile>,
+fn evaluate_size(
+    environment: &BlockEnvironment,
+    bindings: &MatchBindings,
     size: &BitArrayPatternSize,
 ) -> Option<usize> {
     let value = evaluate_size_expression(environment, bindings, size.value());
@@ -331,9 +329,9 @@ fn evaluate_size<Profile: RuntimeValueProfile>(
     value.checked_mul(usize::from(size.unit()))
 }
 
-fn evaluate_size_expression<Profile: RuntimeValueProfile>(
-    environment: &BlockEnvironment<Profile>,
-    bindings: &MatchBindings<Profile>,
+fn evaluate_size_expression(
+    environment: &BlockEnvironment,
+    bindings: &MatchBindings,
     expression: &BitArrayPatternSizeExpr,
 ) -> BigInt {
     match expression {
@@ -371,10 +369,10 @@ fn evaluate_size_expression<Profile: RuntimeValueProfile>(
     }
 }
 
-fn match_int<Profile: RuntimeValueProfile>(
+fn match_int(
     pattern: &BitArrayPatternValue<BigInt>,
     value: &BigInt,
-    bindings: &mut MatchBindings<Profile>,
+    bindings: &mut MatchBindings,
 ) -> bool {
     match pattern {
         BitArrayPatternValue::Literal(expected) => expected == value,
@@ -393,10 +391,10 @@ fn match_int<Profile: RuntimeValueProfile>(
     }
 }
 
-fn match_float<Profile: RuntimeValueProfile>(
+fn match_float(
     pattern: &BitArrayPatternValue<f64>,
     value: f64,
-    bindings: &mut MatchBindings<Profile>,
+    bindings: &mut MatchBindings,
 ) -> bool {
     match pattern {
         BitArrayPatternValue::Literal(expected) => *expected == value,
@@ -415,10 +413,10 @@ fn match_float<Profile: RuntimeValueProfile>(
     }
 }
 
-fn bind_bit_array<Profile: RuntimeValueProfile>(
+fn bind_bit_array(
     pattern: &BitArrayBindingPattern,
     value: &EvaluatedBitArray,
-    bindings: &mut MatchBindings<Profile>,
+    bindings: &mut MatchBindings,
 ) {
     match pattern {
         BitArrayBindingPattern::Bind(binding) => {
@@ -432,11 +430,7 @@ fn bind_bit_array<Profile: RuntimeValueProfile>(
     }
 }
 
-fn bind_utf_codepoint<Profile: RuntimeValueProfile>(
-    pattern: &BitArrayBindingPattern,
-    value: char,
-    bindings: &mut MatchBindings<Profile>,
-) {
+fn bind_utf_codepoint(pattern: &BitArrayBindingPattern, value: char, bindings: &mut MatchBindings) {
     match pattern {
         BitArrayBindingPattern::Bind(binding) => {
             bindings.bind(binding, EvaluatedValue::UtfCodepoint(value));
@@ -465,9 +459,69 @@ mod tests {
     #[test]
     fn recursive_matcher_executes_every_supported_pattern_family() {
         assert_eq!(
-            crate::runtime::run_src(include_str!(
-                "../../../tests/fixtures/execution/bindings/let_assert_pattern_families.gleam"
-            )),
+            crate::runtime::run_src(
+                r#"pub type Payload {
+  Payload(Int, BitArray, String, fn(Int) -> Int)
+  Empty
+}
+
+fn add(captured: Int) {
+  fn(value) { captured + value }
+}
+
+fn final_literal(value: Int) {
+  let assert 42 = value
+}
+
+pub fn main() {
+  let assert 1 as one = 1
+  let assert 1.5 = 1.5
+  let assert "ready" = "ready"
+  let assert Nil = Nil
+
+  let function = add(10)
+  let subject = #(
+    [1],
+    <<2>>,
+    Payload(3, <<4>>, "prefix", function),
+  )
+  let assert #(
+    [first],
+    <<second>>,
+    Payload(third, <<fourth>>, "pre" <> suffix, nested_function) as payload,
+  ) as whole = subject
+  let assert #(
+    [whole_first],
+    <<whole_second>>,
+    Payload(whole_third, _, _, whole_function),
+  ) = whole
+  let assert Payload(payload_number, _, _, payload_function) = payload
+
+  let captured = 5
+  let message = "unused"
+  let closure = fn(value) {
+    let assert #(captured_value, [item]) = #(captured, [value]) as message
+    captured_value + item
+  }
+
+  #(
+    first,
+    one,
+    second,
+    third,
+    fourth,
+    suffix,
+    nested_function(1),
+    whole_first + whole_second + whole_third + whole_function(1),
+    payload_number + payload_function(1),
+    closure(6),
+    final_literal(42),
+  )
+}
+
+// @geam:expect Tuple([Int(1), Int(1), Int(2), Int(3), Int(4), String("fix"), Int(11), Int(17), Int(14), Int(11), Int(42)])
+"#
+            ),
             Value::Tuple(vec![
                 Value::Int(1.into()),
                 Value::Int(1.into()),
@@ -487,9 +541,46 @@ mod tests {
     #[test]
     fn recursive_matcher_preserves_aliases_across_literal_and_prefix_patterns() {
         assert_eq!(
-            crate::runtime::run_src(include_str!(
-                "../../../tests/fixtures/execution/control_flow/case/pattern_alias_families.gleam"
-            )),
+            crate::runtime::run_src(
+                r#"pub fn main() {
+  let bool_literal = case True {
+    True as alias -> alias
+    False -> False
+  }
+
+  let bool_variable = case True {
+    value as alias -> value && alias
+  }
+
+  let string_variable = case "one" {
+    value as alias -> value <> alias
+  }
+
+  let string_literal = case "one" {
+    "one" as alias -> alias
+    _ -> ""
+  }
+
+  let float_literal = case 1.5 {
+    1.5 as alias -> alias +. 0.5
+    _ -> 0.0
+  }
+
+  let float_variable = case 1.5 {
+    value as alias -> value +. alias
+  }
+
+  bool_literal
+  && bool_variable
+  && string_variable == "oneone"
+  && string_literal == "one"
+  && float_literal == 2.0
+  && float_variable == 3.0
+}
+
+// @geam:expect Bool(true)
+"#
+            ),
             Value::Bool(true),
         );
     }
@@ -512,9 +603,15 @@ pub fn main() {
     #[test]
     fn recursive_matcher_exports_list_tails() {
         assert_eq!(
-            crate::runtime::run_src(include_str!(
-                "../../../tests/fixtures/execution/bindings/let_assert_list_destructuring.gleam"
-            )),
+            crate::runtime::run_src(
+                r#"pub fn main() {
+  let assert [first, ..rest] = [1, 2]
+  first == 1 && rest == [2]
+}
+
+// @geam:expect Bool(true)
+"#
+            ),
             Value::Bool(true),
         );
     }
@@ -645,9 +742,73 @@ pub fn main() {
     #[test]
     fn source_matcher_evaluates_every_size_operator_and_boundary() {
         assert_eq!(
-            crate::runtime::run_src(include_str!(
-                "../../../tests/fixtures/execution/control_flow/case/bit_array_pattern_integers.gleam"
-            )),
+            crate::runtime::run_src(
+                r#"const base_pattern_size = 8
+const pattern_size = base_pattern_size
+
+pub fn main() {
+  let outer_size = 12
+  let negative_size = -1
+  let zero_size = 0
+  let huge_size = 184467440737095516160
+
+  #(
+    case <<-2:size(12)>> {
+      <<value:signed-size(12)>> -> value
+      _ -> 0
+    },
+    case <<-2:size(12)>> {
+      <<value:unsigned-size(12)>> -> value
+      _ -> 0
+    },
+    case <<0x234:little-size(12)>> {
+      <<value:little-size(12)>> -> value
+      _ -> 0
+    },
+    case <<0x234:size(12)>> {
+      <<value:size(outer_size)>> -> value
+      _ -> 0
+    },
+    case <<12, 0x234:size(12)>> {
+      <<size, value:size(size)>> -> value
+      _ -> 0
+    },
+    case <<>> {
+      <<_:bits-size(negative_size)>> -> 1
+      _ -> 0
+    },
+    case <<>> {
+      <<_:bits-size(huge_size)>> -> 1
+      _ -> 0
+    },
+    case <<1>> {
+      <<_:bits-size(16)>> -> 1
+      _ -> 0
+    },
+    case <<1>> {
+      <<_:size(16)>> -> 1
+      _ -> 0
+    },
+    case <<>> {
+      <<value:size(zero_size)>> if value == 0 -> 1
+      _ -> 0
+    },
+    case <<1, 2, 3, 4, 5>> {
+      <<
+        one:size(pattern_size),
+        two:size(outer_size - 4),
+        three:size(outer_size * 2 / 3),
+        four:size(outer_size % 5 + 6),
+        five:size({ outer_size - 4 }),
+      >> -> one + two + three + four + five
+      _ -> 0
+    },
+  )
+}
+
+// @geam:expect Tuple([Int(-2), Int(4094), Int(564), Int(564), Int(564), Int(0), Int(0), Int(0), Int(0), Int(0), Int(15)])
+"#
+            ),
             Value::Tuple(vec![
                 Value::Int((-2).into()),
                 Value::Int(4094.into()),
@@ -962,7 +1123,7 @@ pub fn main() {
     }
 
     fn exact_match_error(
-        result: Result<Option<super::MatchBindings<crate::runtime::LocalValues>>, InvariantError>,
+        result: Result<Option<super::MatchBindings>, InvariantError>,
     ) -> InvariantError {
         match result {
             Err(error) => error,

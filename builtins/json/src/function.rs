@@ -1,7 +1,6 @@
 mod decode;
 mod encode;
 
-pub(super) use provider::__GeamAsyncStores as TransferStores;
 pub(super) use provider::__GeamStores as Stores;
 
 use crate::{Component, GleamJsonHostProfile};
@@ -10,7 +9,6 @@ use crate::{Component, GleamJsonHostProfile};
     path = "gleam/json",
     crate_path = geam_core,
     profile = crate::GleamJsonHostProfile,
-    transfer_profile = crate::GleamJsonTransferProfile,
     component = crate::Component,
     stores = json,
 )]
@@ -18,27 +16,26 @@ pub(super) mod provider {
     use super::{decode, encode};
     use crate::BitArrayValue;
     use ecow::EcoString;
-    use geam_core::provider::advanced::LocalRetainedContext;
     use geam_core::provider::{ExternalPayload, HostResult};
-    use geam_stdlib::provider_support::{StorageContext, StoredStringTree};
+    use geam_stdlib::provider_support::StoredStringTree;
     use num_bigint::BigInt;
 
-    #[geam_macros::external(name = "Json", manual, context = Context)]
-    pub struct JsonPayload<Context: StorageContext = LocalRetainedContext> {
-        tree: StoredStringTree<Context>,
+    #[geam_macros::external(name = "Json", manual)]
+    pub struct JsonPayload {
+        tree: StoredStringTree,
     }
 
-    impl<Context: StorageContext> JsonPayload<Context> {
-        pub(crate) fn from_tree(tree: StoredStringTree<Context>) -> Self {
+    impl JsonPayload {
+        pub(crate) fn from_tree(tree: StoredStringTree) -> Self {
             Self { tree }
         }
 
-        pub(crate) fn tree(&self) -> &StoredStringTree<Context> {
+        pub(crate) fn tree(&self) -> &StoredStringTree {
             &self.tree
         }
     }
 
-    impl<Context: StorageContext> ExternalPayload for JsonPayload<Context> {
+    impl ExternalPayload for JsonPayload {
         fn source_equal(&self, other: &Self) -> bool {
             self.tree.structurally_equal(&other.tree)
         }
@@ -142,15 +139,6 @@ where
     provider::__geam_module::<Profile>()
 }
 
-pub(super) fn transfer_host_provider<Profile>()
--> Result<geam_core::TransferHostProviderModule<Profile>, crate::HostRegistrationError>
-where
-    Profile: crate::GleamJsonTransferProfile,
-    Profile::RunState: Send,
-{
-    provider::__geam_transfer_module::<Profile>()
-}
-
 #[cfg(test)]
 type Json = crate::HostExternalType<provider::__GeamExternalSchema0>;
 
@@ -190,7 +178,7 @@ fn json_source_hash<'call>(
         num_bigint::BigInt,
     >,
     json: crate::HostExternal<'call, Json>,
-) -> Result<crate::HostCallCompletion<'call, num_bigint::BigInt>, crate::HostCallError> {
+) -> Result<crate::HostCallCompletion<'call, num_bigint::BigInt>, geam_core::HostCallError> {
     let hash = num_bigint::BigInt::from(call.source_hash::<Json>(json));
     Ok(call.return_value(hash))
 }

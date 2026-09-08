@@ -4,7 +4,7 @@ use crate::host::HostExternalSchema;
 use crate::host::{HostFutureStore, HostProfile};
 use crate::plan::execution::{LibraryFunctionEntries, LibraryInputConstructions};
 use crate::runtime::work::driver::Driver;
-use crate::runtime::{EmbeddingOutput, TransferInputs, TransferValues};
+use crate::runtime::{EmbeddingOutput, RetainedInputs};
 use std::sync::Arc;
 
 pub(in crate::embedding) trait ScopedReturn<Schema: HostExternalSchema>:
@@ -19,18 +19,18 @@ pub(in crate::embedding) trait ScopedReturn<Schema: HostExternalSchema>:
         driver: &mut Driver<'_, Profile>,
         entries: &LibraryFunctionEntries,
         slot: usize,
-        inputs: TransferInputs,
+        inputs: RetainedInputs,
         brand: ScopeBrand<'scope>,
         store: &HostFutureStore,
         owner: &Arc<()>,
-    ) -> Result<Self::Value<'scope>, crate::AsyncExecutionError>;
+    ) -> Result<Self::Value<'scope>, crate::ExecutionError>;
 }
 
 pub(in crate::embedding) trait ScopedTake<Schema: HostExternalSchema>:
     ScopedOutput<Schema> + EmbeddingValue
 {
     fn take<'scope>(
-        output: &mut EmbeddingOutput<TransferValues>,
+        output: &mut EmbeddingOutput,
         brand: ScopeBrand<'scope>,
         store: &HostFutureStore,
         owner: &Arc<()>,
@@ -41,7 +41,7 @@ macro_rules! scalar {
     ($type:ty, $entries:ident, $run:ident, $take:ident) => {
         impl<Schema: HostExternalSchema> ScopedTake<Schema> for $type {
             fn take<'scope>(
-                output: &mut EmbeddingOutput<TransferValues>,
+                output: &mut EmbeddingOutput,
                 _: ScopeBrand<'scope>,
                 _: &HostFutureStore,
                 _: &Arc<()>,
@@ -60,11 +60,11 @@ macro_rules! scalar {
                 driver: &mut Driver<'_, Profile>,
                 entries: &LibraryFunctionEntries,
                 slot: usize,
-                inputs: TransferInputs,
+                inputs: RetainedInputs,
                 _: ScopeBrand<'scope>,
                 _: &HostFutureStore,
                 _: &Arc<()>,
-            ) -> Result<Self, crate::AsyncExecutionError> {
+            ) -> Result<Self, crate::ExecutionError> {
                 driver.$run(*entries.$entries[slot].function(), inputs)
             }
         }
@@ -93,7 +93,7 @@ macro_rules! compound_return {
     ($container:ty, $entries:ident, $run:ident, $($type:ident),+) => {
         impl<Schema: HostExternalSchema, $($type: ScopedTake<Schema>),+> ScopedReturn<Schema> for $container {
             fn input_constructions(entries: &LibraryFunctionEntries, slot: usize) -> &LibraryInputConstructions { entries.$entries[slot].inputs() }
-            fn call<'scope, Profile: HostProfile>(driver: &mut Driver<'_, Profile>, entries: &LibraryFunctionEntries, slot: usize, inputs: TransferInputs, brand: ScopeBrand<'scope>, store: &HostFutureStore, owner: &Arc<()>) -> Result<Self::Value<'scope>, crate::AsyncExecutionError> {
+            fn call<'scope, Profile: HostProfile>(driver: &mut Driver<'_, Profile>, entries: &LibraryFunctionEntries, slot: usize, inputs: RetainedInputs, brand: ScopeBrand<'scope>, store: &HostFutureStore, owner: &Arc<()>) -> Result<Self::Value<'scope>, crate::ExecutionError> {
                 driver.$run(*entries.$entries[slot].function(), inputs).map(|mut output| <Self as ScopedTake<Schema>>::take(&mut output, brand, store, owner))
             }
         }
@@ -103,7 +103,7 @@ macro_rules! compound_return {
 macro_rules! tuple {
     ($($type:ident),+) => {
         impl<Schema: HostExternalSchema, $($type: ScopedTake<Schema>),+> ScopedTake<Schema> for ($($type,)+) {
-            fn take<'scope>(output: &mut EmbeddingOutput<TransferValues>, brand: ScopeBrand<'scope>, store: &HostFutureStore, owner: &Arc<()>) -> Self::Value<'scope> {
+            fn take<'scope>(output: &mut EmbeddingOutput, brand: ScopeBrand<'scope>, store: &HostFutureStore, owner: &Arc<()>) -> Self::Value<'scope> {
                 ($($type::take(output, brand, store, owner),)+)
             }
         }
@@ -123,7 +123,7 @@ impl<Schema: HostExternalSchema, Success: ScopedTake<Schema>, Failure: ScopedTak
     ScopedTake<Schema> for Result<Success, Failure>
 {
     fn take<'scope>(
-        output: &mut EmbeddingOutput<TransferValues>,
+        output: &mut EmbeddingOutput,
         brand: ScopeBrand<'scope>,
         store: &HostFutureStore,
         owner: &Arc<()>,
@@ -140,7 +140,7 @@ compound_return!(Result<Success, Failure>, customs, run_custom, Success, Failure
 
 impl<Schema: HostExternalSchema, Value: ScopedTake<Schema>> ScopedTake<Schema> for Option<Value> {
     fn take<'scope>(
-        output: &mut EmbeddingOutput<TransferValues>,
+        output: &mut EmbeddingOutput,
         brand: ScopeBrand<'scope>,
         store: &HostFutureStore,
         owner: &Arc<()>,
@@ -159,7 +159,7 @@ impl<Schema: HostExternalSchema, Value: ScopedTake<Schema>> ScopedTake<Schema>
     for crate::embedding::List<Value>
 {
     fn take<'scope>(
-        output: &mut EmbeddingOutput<TransferValues>,
+        output: &mut EmbeddingOutput,
         brand: ScopeBrand<'scope>,
         store: &HostFutureStore,
         owner: &Arc<()>,
@@ -174,7 +174,7 @@ impl<Value: ScopedTake<Schema>, Schema: HostExternalSchema> ScopedTake<Schema>
     for FutureType<Value, Schema>
 {
     fn take<'scope>(
-        output: &mut EmbeddingOutput<TransferValues>,
+        output: &mut EmbeddingOutput,
         brand: ScopeBrand<'scope>,
         store: &HostFutureStore,
         owner: &Arc<()>,
@@ -196,11 +196,11 @@ impl<Value: ScopedTake<Schema>, Schema: HostExternalSchema> ScopedReturn<Schema>
         driver: &mut Driver<'_, Profile>,
         entries: &LibraryFunctionEntries,
         slot: usize,
-        inputs: TransferInputs,
+        inputs: RetainedInputs,
         brand: ScopeBrand<'scope>,
         store: &HostFutureStore,
         owner: &Arc<()>,
-    ) -> Result<Self::Value<'scope>, crate::AsyncExecutionError> {
+    ) -> Result<Self::Value<'scope>, crate::ExecutionError> {
         driver
             .run_external(*entries.externals[slot].function(), inputs)
             .map(|value| Future::new(value, Self::context(brand, store, owner)))

@@ -10,8 +10,7 @@ pub use host::{
 };
 pub(crate) use host::{
     HostImplementationBinding, HostedLibraryModulePlan, HostedLibraryModulePlanParts,
-    HostedModulePlanParts, HostedPlannedModuleParts, TransferHostImplementationBinding,
-    TransferHostedLibraryModulePlan, TransferHostedLibraryModulePlanParts,
+    HostedModulePlanParts, HostedPlannedModuleParts,
 };
 pub(crate) use module::ExternalValueShape;
 pub(crate) use module::{

@@ -1,7 +1,7 @@
 //! Statically typed Rust calls into plain or hosted Gleam code.
 //!
-//! Loading and binding happen once. [`ModuleBuilder`], [`HostedModuleBuilder`],
-//! and [`WorkModuleBuilder`] select the first function into non-empty
+//! Loading and binding happen once. [`ModuleBuilder`] and [`HostedModuleBuilder`]
+//! select the first function into non-empty
 //! binding owners, which validate any remaining names and signatures from the
 //! selected root before sealing one execution shared by every returned
 //! [`Function`] handle. Plain calls supply an echo sink; hosted calls also
@@ -15,9 +15,9 @@
 //! Result and Option map only to the exact prelude and stdlib types.
 //! A consumed `Vec` constructs a List; a borrowed same-owner List reuses its
 //! retained storage. The same List declaration returns a [`SharedList`] in
-//! transferable execution, preserving lazy reads and nested work lifetimes.
+//! an attached execution scope, preserving lazy reads and nested work lifetimes.
 //!
-//! [`Project`], [`HostedProject`], and [`TransferHostedProject`] retain one source
+//! [`Project`] and [`HostedProject`] retain one source
 //! selection until it is compiled into the corresponding typed program owner.
 //! Hosted compilation also performs the selected provider registration.
 
@@ -33,17 +33,16 @@ mod work;
 pub use crate::BitArrayValue;
 pub use binding::{BindingError, FunctionDeclaration, ModuleBindings, ModuleBuilder};
 pub use ecow::EcoString;
-pub use error::{AsyncCallError, CallError};
+pub use error::CallError;
 pub use hosted::{HostedModule, HostedModuleBindings, HostedModuleBuilder};
 #[doc(hidden)]
 pub use input::InputShape;
 pub use list::{Iter, List};
 pub use num_bigint::BigInt;
-pub use project::{HostedProject, HostedProjectError, Project, TransferHostedProject};
+pub use project::{HostedProject, HostedProjectError, Project};
 pub use work::{
     Completed, ExecutionGuard, ExecutionScope, Future, FutureType, ObservationError, ReadValue,
-    SharedExecutionError, SharedList, SourceType, WorkModule, WorkModuleBindings,
-    WorkModuleBuilder, with_execution_scope,
+    SharedExecutionError, SharedList, SourceType, with_execution_scope,
 };
 
 use self::input::ArgumentsInput;
@@ -56,8 +55,8 @@ use std::sync::Arc;
 /// A typed function handle created by an embedding module builder.
 ///
 /// The handle becomes callable only after its binding owner is sealed, and
-/// only the resulting [`Module`], [`HostedModule`], or attached [`WorkModule`]
-/// may call it.
+/// only the resulting [`Module`], [`HostedModule`], or its attached
+/// [`ExecutionScope`] may call it.
 pub struct Function<Arguments, Return, Shape = Arguments> {
     name: EcoString,
     slot: usize,

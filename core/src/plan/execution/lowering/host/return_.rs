@@ -1,18 +1,14 @@
 use super::super::LoweringContext;
 use super::super::function;
 use super::super::local;
-use super::super::specialization::{
-    SpecializationKey, SpecializedFunctionShape, StoredValueShape, ValueInhabitation,
-};
+use super::super::specialization::{SpecializationKey, SpecializedFunctionShape, StoredValueShape};
 use crate::plan::execution::function as execution_function;
 use crate::plan::execution::function::{
-    DirectHostedExecutionProfile, ExecutionFunction, ExecutionFunctionBody, ExecutionNeverFunction,
-    ExecutionProfile,
+    ExecutionFunction, ExecutionFunctionBody, ExecutionNeverFunction,
 };
 use crate::plan::execution::graph as execution_graph;
 use crate::plan::execution::host::{
     HostFunctionId, HostNeverFunctionId, HostedExecutionProfile, HostedFunctionTarget,
-    TransferHostedExecutionProfile,
 };
 
 #[derive(Clone, Copy)]
@@ -24,43 +20,7 @@ pub(super) enum HostTargetIndex {
 #[derive(Clone, Copy)]
 pub(super) struct HostNeverTargetIndex(pub(super) usize);
 
-pub(super) trait LowerHostTarget<Execution: ExecutionProfile> {
-    fn lower<Body>(
-        self,
-        key: &SpecializationKey,
-        return_: Body::Return,
-    ) -> function::LoweredSpecialization<ExecutionFunction<Execution, Body>>
-    where
-        Body: ExecutionFunctionBody;
-}
-
-pub(super) trait LowerNeverHostTarget<Execution: ExecutionProfile> {
-    fn lower_never(
-        self,
-        key: &SpecializationKey,
-    ) -> function::LoweredSpecialization<ExecutionNeverFunction<Execution>>;
-}
-
-impl LowerHostTarget<HostedExecutionProfile> for HostTargetIndex {
-    fn lower<Body>(
-        self,
-        key: &SpecializationKey,
-        return_: Body::Return,
-    ) -> function::LoweredSpecialization<ExecutionFunction<HostedExecutionProfile, Body>>
-    where
-        Body: ExecutionFunctionBody,
-    {
-        let target = match self {
-            Self::Value(index) => {
-                HostedFunctionTarget::value(HostFunctionId::<Body>::new(index, return_))
-            }
-            Self::Never(index) => HostedFunctionTarget::never(HostNeverFunctionId::new(index)),
-        };
-        function::lowered_host_function(key, target)
-    }
-}
-
-impl LowerNeverHostTarget<HostedExecutionProfile> for HostNeverTargetIndex {
+impl HostNeverTargetIndex {
     fn lower_never(
         self,
         key: &SpecializationKey,
@@ -69,64 +29,14 @@ impl LowerNeverHostTarget<HostedExecutionProfile> for HostNeverTargetIndex {
     }
 }
 
-impl LowerHostTarget<TransferHostedExecutionProfile> for HostTargetIndex {
-    fn lower<Body>(
-        self,
-        key: &SpecializationKey,
-        return_: Body::Return,
-    ) -> function::LoweredSpecialization<ExecutionFunction<TransferHostedExecutionProfile, Body>>
-    where
-        Body: ExecutionFunctionBody,
-    {
-        let target = match self {
-            Self::Value(index) => {
-                HostedFunctionTarget::value(HostFunctionId::<Body>::new(index, return_))
-            }
-            Self::Never(index) => HostedFunctionTarget::never(HostNeverFunctionId::new(index)),
-        };
-        function::lowered_host_function(key, target)
-    }
-}
-
-impl LowerNeverHostTarget<TransferHostedExecutionProfile> for HostNeverTargetIndex {
-    fn lower_never(
-        self,
-        key: &SpecializationKey,
-    ) -> function::LoweredSpecialization<ExecutionNeverFunction<TransferHostedExecutionProfile>>
-    {
-        function::lowered_host_function(key, HostNeverFunctionId::new(self.0))
-    }
-}
-
-pub(super) fn lower_direct_transfer_host_return(
+pub(super) fn lower_host_return(
     index: usize,
     key: &SpecializationKey,
     return_: StoredValueShape,
-    host_index: usize,
-    functions: &mut function::ProfiledFunctionEntries<TransferHostedExecutionProfile>,
+    specialization: HostTargetIndex,
+    functions: &mut function::ProfiledFunctionEntries<HostedExecutionProfile>,
     context: &mut LoweringContext,
 ) {
-    lower_host_return(
-        index,
-        key,
-        return_,
-        HostTargetIndex::Value(host_index),
-        functions,
-        context,
-    );
-}
-
-pub(super) fn lower_host_return<Execution, Target>(
-    index: usize,
-    key: &SpecializationKey,
-    return_: StoredValueShape,
-    specialization: Target,
-    functions: &mut function::ProfiledFunctionEntries<Execution>,
-    context: &mut LoweringContext,
-) where
-    Execution: DirectHostedExecutionProfile,
-    Target: LowerHostTarget<Execution> + Copy,
-{
     use execution_function::ListFunctionId as L;
     use execution_function::RuntimeListFunctionId as R;
 
@@ -135,7 +45,7 @@ pub(super) fn lower_host_return<Execution, Target>(
             let return_ = execution_graph::IntLocalId(0);
             functions.int.push((
                 index,
-                lowered_host_target::<execution_function::IntFunctionBody, _, _>(
+                lowered_host_target::<execution_function::IntFunctionBody>(
                     key,
                     specialization,
                     return_,
@@ -146,7 +56,7 @@ pub(super) fn lower_host_return<Execution, Target>(
             let return_ = execution_graph::FloatLocalId(0);
             functions.float.push((
                 index,
-                lowered_host_target::<execution_function::FloatFunctionBody, _, _>(
+                lowered_host_target::<execution_function::FloatFunctionBody>(
                     key,
                     specialization,
                     return_,
@@ -157,7 +67,7 @@ pub(super) fn lower_host_return<Execution, Target>(
             let return_ = execution_graph::StringLocalId(0);
             functions.string.push((
                 index,
-                lowered_host_target::<execution_function::StringFunctionBody, _, _>(
+                lowered_host_target::<execution_function::StringFunctionBody>(
                     key,
                     specialization,
                     return_,
@@ -168,7 +78,7 @@ pub(super) fn lower_host_return<Execution, Target>(
             let return_ = execution_graph::BitArrayLocalId(0);
             functions.bit_array.push((
                 index,
-                lowered_host_target::<execution_function::BitArrayFunctionBody, _, _>(
+                lowered_host_target::<execution_function::BitArrayFunctionBody>(
                     key,
                     specialization,
                     return_,
@@ -179,7 +89,7 @@ pub(super) fn lower_host_return<Execution, Target>(
             let return_ = execution_graph::UtfCodepointLocalId(0);
             functions.utf_codepoint.push((
                 index,
-                lowered_host_target::<execution_function::UtfCodepointFunctionBody, _, _>(
+                lowered_host_target::<execution_function::UtfCodepointFunctionBody>(
                     key,
                     specialization,
                     return_,
@@ -193,7 +103,7 @@ pub(super) fn lower_host_return<Execution, Target>(
             );
             functions.custom.push((
                 index,
-                lowered_host_target::<execution_function::CustomFunctionBody, _, _>(
+                lowered_host_target::<execution_function::CustomFunctionBody>(
                     key,
                     specialization,
                     return_,
@@ -207,7 +117,7 @@ pub(super) fn lower_host_return<Execution, Target>(
             );
             functions.external.push((
                 index,
-                lowered_host_target::<execution_function::ExternalFunctionBody, _, _>(
+                lowered_host_target::<execution_function::ExternalFunctionBody>(
                     key,
                     specialization,
                     return_,
@@ -218,7 +128,7 @@ pub(super) fn lower_host_return<Execution, Target>(
             let return_ = execution_graph::BoolLocalId(0);
             functions.bool.push((
                 index,
-                lowered_host_target::<execution_function::BoolFunctionBody, _, _>(
+                lowered_host_target::<execution_function::BoolFunctionBody>(
                     key,
                     specialization,
                     return_,
@@ -229,7 +139,7 @@ pub(super) fn lower_host_return<Execution, Target>(
             let return_ = execution_graph::NilLocalId(0);
             functions.nil.push((
                 index,
-                lowered_host_target::<execution_function::NilFunctionBody, _, _>(
+                lowered_host_target::<execution_function::NilFunctionBody>(
                     key,
                     specialization,
                     return_,
@@ -240,7 +150,7 @@ pub(super) fn lower_host_return<Execution, Target>(
             let return_ = execution_graph::TupleLocalId(0);
             functions.tuple.push((
                 index,
-                lowered_host_target::<execution_function::TupleFunctionBody, _, _>(
+                lowered_host_target::<execution_function::TupleFunctionBody>(
                     key,
                     specialization,
                     return_,
@@ -252,7 +162,7 @@ pub(super) fn lower_host_return<Execution, Target>(
                 R::Core(function) => match function {
                     L::Parameter(id) => functions.parameter_list.push((
                         id,
-                        lowered_host_target::<execution_function::ParameterListFunctionBody, _, _>(
+                        lowered_host_target::<execution_function::ParameterListFunctionBody>(
                             key,
                             specialization,
                             execution_graph::ParameterListLocalId(0),
@@ -260,11 +170,7 @@ pub(super) fn lower_host_return<Execution, Target>(
                     )),
                     L::ParameterList(id) => functions.parameter_list_list.push((
                         id,
-                        lowered_host_target::<
-                            execution_function::ParameterListListFunctionBody,
-                            _,
-                            _,
-                        >(
+                        lowered_host_target::<execution_function::ParameterListListFunctionBody>(
                             key,
                             specialization,
                             execution_graph::ParameterListListLocalId(0),
@@ -272,7 +178,7 @@ pub(super) fn lower_host_return<Execution, Target>(
                     )),
                     L::Int(id) => functions.int_list.push((
                         id,
-                        lowered_host_target::<execution_function::IntListFunctionBody, _, _>(
+                        lowered_host_target::<execution_function::IntListFunctionBody>(
                             key,
                             specialization,
                             execution_graph::IntListLocalId(0),
@@ -280,7 +186,7 @@ pub(super) fn lower_host_return<Execution, Target>(
                     )),
                     L::String(id) => functions.string_list.push((
                         id,
-                        lowered_host_target::<execution_function::StringListFunctionBody, _, _>(
+                        lowered_host_target::<execution_function::StringListFunctionBody>(
                             key,
                             specialization,
                             execution_graph::StringListLocalId(0),
@@ -288,29 +194,23 @@ pub(super) fn lower_host_return<Execution, Target>(
                     )),
                     L::BitArray(id) => functions.bit_array_list.push((
                         id,
-                        lowered_host_target::<execution_function::BitArrayListFunctionBody, _, _>(
+                        lowered_host_target::<execution_function::BitArrayListFunctionBody>(
                             key,
                             specialization,
                             execution_graph::BitArrayListLocalId(0),
                         ),
                     )),
-                    L::UtfCodepoint(id) => {
-                        functions.utf_codepoint_list.push((
-                            id,
-                            lowered_host_target::<
-                                execution_function::UtfCodepointListFunctionBody,
-                                _,
-                                _,
-                            >(
-                                key,
-                                specialization,
-                                execution_graph::UtfCodepointListLocalId(0),
-                            ),
-                        ))
-                    }
+                    L::UtfCodepoint(id) => functions.utf_codepoint_list.push((
+                        id,
+                        lowered_host_target::<execution_function::UtfCodepointListFunctionBody>(
+                            key,
+                            specialization,
+                            execution_graph::UtfCodepointListLocalId(0),
+                        ),
+                    )),
                     L::Custom(id) => functions.custom_list.push((
                         id,
-                        lowered_host_target::<execution_function::CustomListFunctionBody, _, _>(
+                        lowered_host_target::<execution_function::CustomListFunctionBody>(
                             key,
                             specialization,
                             execution_graph::CustomListLocalId(0),
@@ -318,7 +218,7 @@ pub(super) fn lower_host_return<Execution, Target>(
                     )),
                     L::Float(id) => functions.float_list.push((
                         id,
-                        lowered_host_target::<execution_function::FloatListFunctionBody, _, _>(
+                        lowered_host_target::<execution_function::FloatListFunctionBody>(
                             key,
                             specialization,
                             execution_graph::FloatListLocalId(0),
@@ -326,7 +226,7 @@ pub(super) fn lower_host_return<Execution, Target>(
                     )),
                     L::Bool(id) => functions.bool_list.push((
                         id,
-                        lowered_host_target::<execution_function::BoolListFunctionBody, _, _>(
+                        lowered_host_target::<execution_function::BoolListFunctionBody>(
                             key,
                             specialization,
                             execution_graph::BoolListLocalId(0),
@@ -334,7 +234,7 @@ pub(super) fn lower_host_return<Execution, Target>(
                     )),
                     L::Nil(id) => functions.nil_list.push((
                         id,
-                        lowered_host_target::<execution_function::NilListFunctionBody, _, _>(
+                        lowered_host_target::<execution_function::NilListFunctionBody>(
                             key,
                             specialization,
                             execution_graph::NilListLocalId(0),
@@ -342,7 +242,7 @@ pub(super) fn lower_host_return<Execution, Target>(
                     )),
                     L::Tuple(id) => functions.tuple_list.push((
                         id,
-                        lowered_host_target::<execution_function::TupleListFunctionBody, _, _>(
+                        lowered_host_target::<execution_function::TupleListFunctionBody>(
                             key,
                             specialization,
                             execution_graph::TupleListLocalId(0),
@@ -350,7 +250,7 @@ pub(super) fn lower_host_return<Execution, Target>(
                     )),
                     L::List(id) => functions.list_list.push((
                         id,
-                        lowered_host_target::<execution_function::ListListFunctionBody, _, _>(
+                        lowered_host_target::<execution_function::ListListFunctionBody>(
                             key,
                             specialization,
                             execution_graph::ListListLocalId(0),
@@ -358,7 +258,7 @@ pub(super) fn lower_host_return<Execution, Target>(
                     )),
                     L::Function(id) => functions.function_list.push((
                         id,
-                        lowered_host_target::<execution_function::FunctionListFunctionBody, _, _>(
+                        lowered_host_target::<execution_function::FunctionListFunctionBody>(
                             key,
                             specialization,
                             execution_graph::FunctionListLocalId(0),
@@ -367,7 +267,7 @@ pub(super) fn lower_host_return<Execution, Target>(
                 },
                 R::External(id) => functions.external_list.push((
                     id,
-                    lowered_host_target::<execution_function::ExternalListFunctionBody, _, _>(
+                    lowered_host_target::<execution_function::ExternalListFunctionBody>(
                         key,
                         specialization,
                         execution_graph::ExternalListLocalId(0),
@@ -381,23 +281,20 @@ pub(super) fn lower_host_return<Execution, Target>(
     }
 }
 
-fn lower_host_function_return<Execution, Target>(
+fn lower_host_function_return(
     index: usize,
     key: &SpecializationKey,
     function: &SpecializedFunctionShape,
-    specialization: Target,
-    functions: &mut function::ProfiledFunctionEntries<Execution>,
+    specialization: HostTargetIndex,
+    functions: &mut function::ProfiledFunctionEntries<HostedExecutionProfile>,
     context: &mut LoweringContext,
-) where
-    Execution: DirectHostedExecutionProfile,
-    Target: LowerHostTarget<Execution> + Copy,
-{
+) {
     use local::SpecializedFunctionLocal as F;
 
     match local::function_local_at(function, 0, context) {
         F::Generic(return_) => functions.generic_function_functions.push((
             index,
-            lowered_host_target::<execution_function::GenericFunctionFunctionBody, _, _>(
+            lowered_host_target::<execution_function::GenericFunctionFunctionBody>(
                 key,
                 specialization,
                 return_,
@@ -405,7 +302,7 @@ fn lower_host_function_return<Execution, Target>(
         )),
         F::Never(return_) => functions.never_function_functions.push((
             index,
-            lowered_host_target::<execution_function::NeverFunctionFunctionBody, _, _>(
+            lowered_host_target::<execution_function::NeverFunctionFunctionBody>(
                 key,
                 specialization,
                 return_,
@@ -413,7 +310,7 @@ fn lower_host_function_return<Execution, Target>(
         )),
         F::Int { local: return_, .. } => functions.int_function_functions.push((
             index,
-            lowered_host_target::<execution_function::IntFunctionFunctionBody, _, _>(
+            lowered_host_target::<execution_function::IntFunctionFunctionBody>(
                 key,
                 specialization,
                 return_,
@@ -421,7 +318,7 @@ fn lower_host_function_return<Execution, Target>(
         )),
         F::Float { local: return_, .. } => functions.float_function_functions.push((
             index,
-            lowered_host_target::<execution_function::FloatFunctionFunctionBody, _, _>(
+            lowered_host_target::<execution_function::FloatFunctionFunctionBody>(
                 key,
                 specialization,
                 return_,
@@ -429,7 +326,7 @@ fn lower_host_function_return<Execution, Target>(
         )),
         F::String { local: return_, .. } => functions.string_function_functions.push((
             index,
-            lowered_host_target::<execution_function::StringFunctionFunctionBody, _, _>(
+            lowered_host_target::<execution_function::StringFunctionFunctionBody>(
                 key,
                 specialization,
                 return_,
@@ -437,7 +334,7 @@ fn lower_host_function_return<Execution, Target>(
         )),
         F::BitArray { local: return_, .. } => functions.bit_array_function_functions.push((
             index,
-            lowered_host_target::<execution_function::BitArrayFunctionFunctionBody, _, _>(
+            lowered_host_target::<execution_function::BitArrayFunctionFunctionBody>(
                 key,
                 specialization,
                 return_,
@@ -446,7 +343,7 @@ fn lower_host_function_return<Execution, Target>(
         F::UtfCodepoint { local: return_, .. } => {
             functions.utf_codepoint_function_functions.push((
                 index,
-                lowered_host_target::<execution_function::UtfCodepointFunctionFunctionBody, _, _>(
+                lowered_host_target::<execution_function::UtfCodepointFunctionFunctionBody>(
                     key,
                     specialization,
                     return_,
@@ -455,7 +352,7 @@ fn lower_host_function_return<Execution, Target>(
         }
         F::Custom(return_) => functions.custom_function_functions.push((
             index,
-            lowered_host_target::<execution_function::CustomFunctionFunctionBody, _, _>(
+            lowered_host_target::<execution_function::CustomFunctionFunctionBody>(
                 key,
                 specialization,
                 return_,
@@ -463,7 +360,7 @@ fn lower_host_function_return<Execution, Target>(
         )),
         F::External(return_) => functions.external_function_functions.push((
             index,
-            lowered_host_target::<execution_function::ExternalFunctionFunctionBody, _, _>(
+            lowered_host_target::<execution_function::ExternalFunctionFunctionBody>(
                 key,
                 specialization,
                 return_,
@@ -471,7 +368,7 @@ fn lower_host_function_return<Execution, Target>(
         )),
         F::Bool { local: return_, .. } => functions.bool_function_functions.push((
             index,
-            lowered_host_target::<execution_function::BoolFunctionFunctionBody, _, _>(
+            lowered_host_target::<execution_function::BoolFunctionFunctionBody>(
                 key,
                 specialization,
                 return_,
@@ -479,7 +376,7 @@ fn lower_host_function_return<Execution, Target>(
         )),
         F::Nil { local: return_, .. } => functions.nil_function_functions.push((
             index,
-            lowered_host_target::<execution_function::NilFunctionFunctionBody, _, _>(
+            lowered_host_target::<execution_function::NilFunctionFunctionBody>(
                 key,
                 specialization,
                 return_,
@@ -487,7 +384,7 @@ fn lower_host_function_return<Execution, Target>(
         )),
         F::Tuple { local: return_, .. } => functions.tuple_function_functions.push((
             index,
-            lowered_host_target::<execution_function::TupleFunctionFunctionBody, _, _>(
+            lowered_host_target::<execution_function::TupleFunctionFunctionBody>(
                 key,
                 specialization,
                 return_,
@@ -500,7 +397,7 @@ fn lower_host_function_return<Execution, Target>(
                 return_ @ L::Parameter { .. } => {
                     functions.parameter_list_function_functions.push((
                         index,
-                        lowered_host_target::<execution_function::CoreListFunctionFunctionBody, _, _>(
+                        lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
                             key,
                             specialization,
                             return_,
@@ -510,7 +407,7 @@ fn lower_host_function_return<Execution, Target>(
                 return_ @ L::ParameterList { .. } => {
                     functions.parameter_list_list_function_functions.push((
                         index,
-                        lowered_host_target::<execution_function::CoreListFunctionFunctionBody, _, _>(
+                        lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
                             key,
                             specialization,
                             return_,
@@ -519,7 +416,7 @@ fn lower_host_function_return<Execution, Target>(
                 }
                 return_ @ L::Int { .. } => functions.int_list_function_functions.push((
                     index,
-                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody, _, _>(
+                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
                         key,
                         specialization,
                         return_,
@@ -527,7 +424,7 @@ fn lower_host_function_return<Execution, Target>(
                 )),
                 return_ @ L::String { .. } => functions.string_list_function_functions.push((
                     index,
-                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody, _, _>(
+                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
                         key,
                         specialization,
                         return_,
@@ -536,7 +433,7 @@ fn lower_host_function_return<Execution, Target>(
                 return_ @ L::BitArray { .. } => {
                     functions.bit_array_list_function_functions.push((
                         index,
-                        lowered_host_target::<execution_function::CoreListFunctionFunctionBody, _, _>(
+                        lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
                             key,
                             specialization,
                             return_,
@@ -546,7 +443,7 @@ fn lower_host_function_return<Execution, Target>(
                 return_ @ L::UtfCodepoint { .. } => {
                     functions.utf_codepoint_list_function_functions.push((
                         index,
-                        lowered_host_target::<execution_function::CoreListFunctionFunctionBody, _, _>(
+                        lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
                             key,
                             specialization,
                             return_,
@@ -555,7 +452,7 @@ fn lower_host_function_return<Execution, Target>(
                 }
                 return_ @ L::Custom { .. } => functions.custom_list_function_functions.push((
                     index,
-                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody, _, _>(
+                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
                         key,
                         specialization,
                         return_,
@@ -564,7 +461,7 @@ fn lower_host_function_return<Execution, Target>(
                 return_ @ L::External { .. } => {
                     functions.external_list_function_functions.push((
                         index,
-                        lowered_host_target::<execution_function::ExternalListFunctionFunctionBody, _, _>(
+                        lowered_host_target::<execution_function::ExternalListFunctionFunctionBody>(
                             key,
                             specialization,
                             return_,
@@ -573,7 +470,7 @@ fn lower_host_function_return<Execution, Target>(
                 }
                 return_ @ L::Float { .. } => functions.float_list_function_functions.push((
                     index,
-                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody, _, _>(
+                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
                         key,
                         specialization,
                         return_,
@@ -581,7 +478,7 @@ fn lower_host_function_return<Execution, Target>(
                 )),
                 return_ @ L::Bool { .. } => functions.bool_list_function_functions.push((
                     index,
-                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody, _, _>(
+                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
                         key,
                         specialization,
                         return_,
@@ -589,7 +486,7 @@ fn lower_host_function_return<Execution, Target>(
                 )),
                 return_ @ L::Nil { .. } => functions.nil_list_function_functions.push((
                     index,
-                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody, _, _>(
+                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
                         key,
                         specialization,
                         return_,
@@ -597,7 +494,7 @@ fn lower_host_function_return<Execution, Target>(
                 )),
                 return_ @ L::Tuple { .. } => functions.tuple_list_function_functions.push((
                     index,
-                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody, _, _>(
+                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
                         key,
                         specialization,
                         return_,
@@ -605,7 +502,7 @@ fn lower_host_function_return<Execution, Target>(
                 )),
                 return_ @ L::List { .. } => functions.list_list_function_functions.push((
                     index,
-                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody, _, _>(
+                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
                         key,
                         specialization,
                         return_,
@@ -614,7 +511,7 @@ fn lower_host_function_return<Execution, Target>(
                 return_ @ L::Function { .. } => {
                     functions.function_list_function_functions.push((
                         index,
-                        lowered_host_target::<execution_function::CoreListFunctionFunctionBody, _, _>(
+                        lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
                             key,
                             specialization,
                             return_,
@@ -625,7 +522,7 @@ fn lower_host_function_return<Execution, Target>(
         }
         F::Function(return_) => functions.function_function_functions.push((
             index,
-            lowered_host_target::<execution_function::FunctionFunctionFunctionBody, _, _>(
+            lowered_host_target::<execution_function::FunctionFunctionFunctionBody>(
                 key,
                 specialization,
                 return_,
@@ -634,48 +531,32 @@ fn lower_host_function_return<Execution, Target>(
     }
 }
 
-fn lowered_host_target<Body, Execution, Target>(
+fn lowered_host_target<Body>(
     key: &SpecializationKey,
-    specialization: Target,
+    specialization: HostTargetIndex,
     return_: Body::Return,
-) -> function::LoweredSpecialization<ExecutionFunction<Execution, Body>>
+) -> function::LoweredSpecialization<ExecutionFunction<HostedExecutionProfile, Body>>
 where
     Body: ExecutionFunctionBody,
-    Execution: DirectHostedExecutionProfile,
-    Target: LowerHostTarget<Execution>,
 {
-    specialization.lower::<Body>(key, return_)
+    let target = match specialization {
+        HostTargetIndex::Value(index) => {
+            HostedFunctionTarget::value(HostFunctionId::<Body>::new(index, return_))
+        }
+        HostTargetIndex::Never(index) => {
+            HostedFunctionTarget::never(HostNeverFunctionId::new(index))
+        }
+    };
+    function::lowered_host_function(key, target)
 }
 
-pub(super) fn lower_uninhabited_never_return<Execution, Target>(
+pub(super) fn lower_uninhabited_never_return(
     index: usize,
     key: &SpecializationKey,
-    target: Target,
-    functions: &mut function::ProfiledFunctionEntries<Execution>,
-) where
-    Execution: DirectHostedExecutionProfile,
-    Target: LowerNeverHostTarget<Execution>,
-{
-    functions.never.push((index, target.lower_never(key)));
-}
-
-pub(super) fn lower_direct_transfer_never_return(
-    index: usize,
-    key: &SpecializationKey,
-    return_: &ValueInhabitation,
-    host_index: usize,
-    functions: &mut function::ProfiledFunctionEntries<TransferHostedExecutionProfile>,
-    context: &mut LoweringContext,
+    target: HostNeverTargetIndex,
+    functions: &mut function::ProfiledFunctionEntries<HostedExecutionProfile>,
 ) {
-    let target = HostTargetIndex::Never(host_index);
-    match return_ {
-        ValueInhabitation::Inhabited(return_) => {
-            lower_host_return(index, key, return_.clone(), target, functions, context)
-        }
-        ValueInhabitation::Uninhabited(_) => {
-            lower_uninhabited_never_return(index, key, HostNeverTargetIndex(host_index), functions)
-        }
-    }
+    functions.never.push((index, target.lower_never(key)));
 }
 
 #[cfg(test)]
@@ -721,9 +602,17 @@ pub fn main() {
         let execution =
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         let graph: &ValueFunctionEntry<IntFunctionBody, HostedFunctionTarget<IntFunctionBody>> =
-            execution.program.functions.int_function(IntFunctionId(0));
+            execution
+                .execution
+                .program
+                .functions
+                .int_function(IntFunctionId(0));
         let host: &ValueFunctionEntry<IntFunctionBody, HostedFunctionTarget<IntFunctionBody>> =
-            execution.program.functions.int_function(IntFunctionId(2));
+            execution
+                .execution
+                .program
+                .functions
+                .int_function(IntFunctionId(2));
 
         assert_eq!(
             [graph, host].map(|function| match function {
@@ -777,13 +666,25 @@ pub fn main() {
         let execution =
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         let main: &ValueFunctionEntry<BoolFunctionBody, HostedFunctionTarget<BoolFunctionBody>> =
-            execution.program.functions.bool_function(BoolFunctionId(0));
+            execution
+                .execution
+                .program
+                .functions
+                .bool_function(BoolFunctionId(0));
         let host: &ValueFunctionEntry<BoolFunctionBody, HostedFunctionTarget<BoolFunctionBody>> =
-            execution.program.functions.bool_function(BoolFunctionId(1));
+            execution
+                .execution
+                .program
+                .functions
+                .bool_function(BoolFunctionId(1));
         let identity: &ValueFunctionEntry<
             BoolFunctionBody,
             HostedFunctionTarget<BoolFunctionBody>,
-        > = execution.program.functions.bool_function(BoolFunctionId(2));
+        > = execution
+            .execution
+            .program
+            .functions
+            .bool_function(BoolFunctionId(2));
 
         assert_eq!(
             [main, host, identity].map(|function| match function {

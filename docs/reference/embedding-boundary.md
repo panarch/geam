@@ -69,20 +69,19 @@ another load uses identical source and signatures.
 
 ## Explicit Future Execution
 
-An application selects `storage = "transferable"` under
-`[package.metadata.geam.embedding]` when its provider composition must support
-owned async work. Synchronization generates `TransferHostedProject`,
-`WorkModuleBuilder`, and one `Functions` aggregate. The default `local`
-composition retains the existing local-only value and provider contracts.
+Hosted synchronization generates `HostedProject`, `HostedModuleBuilder`, and
+one `Functions` aggregate. There is one `Send` execution and provider contract,
+with no local/transferable storage selection. Old `storage` metadata is rejected
+with an instruction to remove it and synchronize again.
 
-`WorkModule` owns the loaded execution; `ExecutionScope` attaches it to the
+`HostedModule` owns the loaded execution; `ExecutionScope` attaches it to the
 host's resources. The core embedding layer supplies the generic Future value
-adapters, while `geam-runtime-api` fixes their source identity to
+adapters, while `geam-builtin` fixes their source identity to
 `geam/future.Future`. Ordinary and work-valued functions share the same module.
 
-Both choices expose `project().compile()` and `bind(builder)`. Transferable
-storage does not infer hidden effects or generate separate sync/async entry
-sets. Source `Int` returns a value; source `Future(Int)` returns an operation.
+The same owner supports direct calls and scoped work. Generated bindings do not
+infer hidden effects or generate separate sync/async entry sets. Source `Int`
+returns a value; source `Future(Int)` returns an operation.
 
 The Rust host uses `with_execution_scope` and `module.attach` to borrow the
 sealed module, mutable provider state, and Echo sink for an execution scope.
@@ -167,10 +166,10 @@ Data = Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data) 
 | stdlib `Option(A)` | `Option<A>` |
 | `List(A)` input | consumed `Vec<A>` or retained `&List<A>` |
 | `List(A)` output | retained `List<A>` |
-| `geam/future.Future(A)` | `FutureType<A>` declaration; scoped `Future<A>` work in transferable execution |
+| `geam/future.Future(A)` | `FutureType<A>` declaration; scoped `Future<A>` work |
 
-The List input/output rows describe local storage. Transferable storage uses
-the same `List<A>` declaration with `SharedList<A>` values. Read shared list
+The List input/output rows describe direct module calls. An attached execution
+uses the same `List<A>` declaration with `SharedList<A>` values. Read shared list
 items through `read_item(index, |value| ...)`; `len` and `is_empty` remain
 constant-time. A borrowed shared List reuses its original storage.
 
@@ -201,7 +200,7 @@ let checked = module.call(
 assert_eq!(checked.get(0), Some(Err("invalid code".into())));
 ```
 
-## Local Retained Lists
+## Retained Lists in Direct Calls
 
 A consumed `Vec` constructs a new Gleam List. A borrowed List from the same
 loaded module reuses its retained handle without traversing or reconstructing
@@ -236,7 +235,8 @@ The read-only List API makes materialization explicit:
 
 Retained Lists own immutable storage needed for reading. They remain readable
 after the call, state, Echo, and module are dropped. They do not borrow or
-recreate mutable provider state and do not implement `Send` or `Sync`.
+recreate mutable provider state. Lists can move or be shared between threads
+when their Rust item type supports `Send` or `Sync`, respectively.
 
 Passing a retained List back is restricted to its original live module. A
 different load is a different owner. `CallError::ForeignValue` is returned

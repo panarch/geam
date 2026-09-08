@@ -15,10 +15,10 @@ proc-macro = true
 proc-macro-crate.workspace = true
 proc-macro2.workspace = true
 quote.workspace = true
-syn.workspace = true
+syn = { workspace = true, features = ["extra-traits"] }
 
 [dev-dependencies]
-geam-runtime-api.workspace = true
+geam-builtin.workspace = true
 ecow.workspace = true
 futures-channel.workspace = true
 geam-core.workspace = true

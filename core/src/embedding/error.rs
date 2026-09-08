@@ -3,7 +3,7 @@ use thiserror::Error;
 
 /// A failure while calling a previously bound function.
 #[derive(Debug, Error, Clone, PartialEq)]
-pub enum CallError<Subject = crate::Value> {
+pub enum CallError<Subject = crate::PanicValue> {
     #[error("the function belongs to a different embedding module")]
     ForeignFunction,
     #[error("the retained value belongs to a different embedding module")]
@@ -12,23 +12,20 @@ pub enum CallError<Subject = crate::Value> {
     Execution(#[from] ExecutionError<Subject>),
 }
 
-/// A bound-call failure that preserves worker-transferable assertion values.
-pub type AsyncCallError = CallError<crate::AsyncPanicValue>;
-
-impl AsyncCallError {
+impl CallError {
     /// Converts the diagnostic to the local error representation on request.
-    pub fn into_local(self) -> CallError {
+    pub fn into_materialized(self) -> CallError<crate::Value> {
         match self {
             Self::ForeignFunction => CallError::ForeignFunction,
             Self::ForeignValue => CallError::ForeignValue,
-            Self::Execution(error) => CallError::Execution(error.into_local()),
+            Self::Execution(error) => CallError::Execution(error.into_materialized()),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{AsyncCallError, CallError};
+    use super::CallError;
     use crate::{ExecutionError, PanicKind, PanicSite, SourceSpan};
 
     #[test]
@@ -66,10 +63,10 @@ mod tests {
     #[test]
     fn transferable_call_errors_keep_the_same_ownership_and_execution_failures() {
         for (error, expected) in [
-            (AsyncCallError::ForeignFunction, CallError::ForeignFunction),
-            (AsyncCallError::ForeignValue, CallError::ForeignValue),
+            (CallError::ForeignFunction, CallError::ForeignFunction),
+            (CallError::ForeignValue, CallError::ForeignValue),
             (
-                AsyncCallError::from(crate::AsyncExecutionError::source_panic(
+                CallError::from(crate::ExecutionError::source_panic(
                     None,
                     PanicKind::Panic,
                     Some("stopped".into()),
@@ -88,7 +85,7 @@ mod tests {
             let transferred = std::thread::spawn(move || error)
                 .join()
                 .expect("error worker");
-            assert_eq!(transferred.into_local(), expected);
+            assert_eq!(transferred.into_materialized(), expected);
         }
     }
 }

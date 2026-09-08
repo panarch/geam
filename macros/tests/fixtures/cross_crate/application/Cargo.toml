@@ -7,7 +7,7 @@ publish.workspace = true
 [dependencies]
 ecow.workspace = true
 geam-core.workspace = true
-geam-runtime-api.workspace = true
+geam-builtin.workspace = true
 geam-macro-cross-crate-consumer.workspace = true
 geam-macro-cross-crate-declarations.workspace = true
 num-bigint.workspace = true

@@ -1,15 +1,15 @@
 use super::context::NativeScope;
 use super::{HostFutureContext, HostFutureError, HostFutureType, HostWorkProfile};
 use crate::host::{
-    AsyncHostCallError, HostCallCompletion, HostConstructions, HostProfile, HostProvider, HostType,
-    HostTypeSequence, HostValueToken, TransferHostCall, TransferHostCallRuntime,
+    HostCall, HostCallCompletion, HostCallError, HostCallRuntime, HostConstructions, HostProfile,
+    HostProvider, HostType, HostTypeSequence, HostValueToken,
 };
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 
-type CompletionCodec<Profile> = dyn FnOnce(&mut dyn TransferHostCallRuntime<Profile>) -> Result<HostValueToken, AsyncHostCallError>
-    + Send;
+type CompletionCodec<Profile> =
+    dyn FnOnce(&mut dyn HostCallRuntime<Profile>) -> Result<HostValueToken, HostCallError> + Send;
 
 /// An owned result and its exact codec, waiting for the originating execution.
 ///
@@ -37,17 +37,16 @@ where
     /// Moves the native result into a codec for the registered output type.
     pub fn new(
         complete: impl for<'call> FnOnce(
-            TransferHostCall<'call, Profile, Provider, Output>,
+            HostCall<'call, Profile, Provider, Output>,
             HostConstructions<'call, Constructions>,
-        ) -> Result<
-            HostCallCompletion<'call, Output>,
-            AsyncHostCallError,
-        > + Send
+        )
+            -> Result<HostCallCompletion<'call, Output>, HostCallError>
+        + Send
         + 'static,
     ) -> Self {
         Self {
             codec: Box::new(move |runtime| {
-                complete(TransferHostCall::new(runtime), HostConstructions::new())
+                complete(HostCall::new(runtime), HostConstructions::new())
                     .map(|completion| completion.token)
             }),
             signature: PhantomData,
@@ -56,19 +55,14 @@ where
 
     pub(crate) fn complete(
         self,
-        runtime: &mut dyn TransferHostCallRuntime<Profile>,
-    ) -> Result<HostValueToken, AsyncHostCallError> {
+        runtime: &mut dyn HostCallRuntime<Profile>,
+    ) -> Result<HostValueToken, HostCallError> {
         (self.codec)(runtime)
     }
 }
 
 impl<'call, Profile, Provider, Output>
-    TransferHostCall<
-        'call,
-        Profile,
-        Provider,
-        HostFutureType<Output, crate::host::HostWorkSchema<Profile>>,
-    >
+    HostCall<'call, Profile, Provider, HostFutureType<Output, crate::host::HostWorkSchema<Profile>>>
 where
     Profile: HostWorkProfile,
     Provider: HostProvider<Profile>,

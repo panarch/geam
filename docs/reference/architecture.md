@@ -115,8 +115,9 @@ conventional nested `gleam/` project connection and checked-in typed bindings.
 Rust loads and seals the selected module, supplies capabilities and state, and
 calls generated function handles.
 
-Synchronous provider crates can serve both workflows. Explicit Future work
-currently uses Rust embedding, where the application supplies its executor.
+Synchronous and async provider crates can serve both workflows. The standalone
+runner owns a Tokio runtime and drives the outer Future returned by `main`.
+Rust embedding applications supply their own executor and observe work explicitly.
 
 ### Owned Work And Runtime APIs
 
@@ -127,7 +128,7 @@ component. Core tests this contract independently of a particular Gleam package.
 
 `builtins/geam` supplies the concrete `geam/future` representation and operations.
 Its `gleam/` directory is the ordinary `geam` package, and its Rust crate is
-`geam-runtime-api`. Source types remain visible to the official Gleam compiler
+`geam-builtin`. Source types remain visible to the official Gleam compiler
 and language server through the package dependency. Neither core nor the built-in
 creates an executor or implicitly awaits a returned source work value.
 

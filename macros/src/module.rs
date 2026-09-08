@@ -1,4 +1,4 @@
-mod async_function;
+mod adapter;
 mod custom_output;
 mod custom_value;
 mod declaration;
@@ -11,11 +11,10 @@ mod syntax;
 mod type_syntax;
 
 use crate::path::support_path;
-use async_function::generate_transfer_function;
+use adapter::generate_function_adapter;
 use custom_value::{CustomModel, collect_custom_declarations};
 use declaration::{generate_custom_declaration, generic_external_output_codec};
-use function::generate_function;
-use list::generate_list_decoder;
+use list::generate_list_decoders;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, quote_spanned};
 use signature::host_type_token_sequence;
@@ -27,9 +26,7 @@ use syn::{
 };
 use syntax::{
     FunctionValidationContext, apply_function_signature, build_external_model,
-    function_contains_future_input, host_type_index, retained_parameter_accessor,
-    rewrite_transfer_external_payload_paths, take_external_marker, take_function_marker,
-    transfer_function_model, validate_function,
+    resolve_function_value_forms, take_external_marker, take_function_marker, validate_function,
 };
 
 struct ModuleArguments {
@@ -44,18 +41,13 @@ struct PartialModuleArguments {
     path: Option<LitStr>,
     crate_path: Option<Path>,
     profile: Option<Path>,
-    transfer_profile: Option<Path>,
     component: Option<Type>,
     stores: Option<Ident>,
 }
 
 enum ModuleProfile {
     Component,
-    Explicit {
-        bound: Path,
-        transfer_bound: Path,
-        component: Box<Type>,
-    },
+    Explicit { bound: Path, component: Box<Type> },
 }
 
 #[derive(Clone, Default)]
@@ -70,7 +62,6 @@ struct ExternalArguments {
     parameters: Vec<Ident>,
     input: Option<Ident>,
     payload: Option<Type>,
-    context: Option<Ident>,
 }
 
 #[derive(Default)]
@@ -81,7 +72,6 @@ struct PartialExternalArguments {
     parameters: Option<Vec<Ident>>,
     input: Option<Ident>,
     payload: Option<Type>,
-    context: Option<Ident>,
 }
 
 enum ExternalSemantics {
@@ -92,10 +82,7 @@ enum ExternalSemantics {
 
 struct ExternalModel {
     ident: Ident,
-    generics: syn::Generics,
-    transfer_payload: Type,
-    transfer_payload_rewrite: Option<(Ident, PathArguments)>,
-    context: Option<Ident>,
+    payload: Type,
     name: LitStr,
     semantics: ExternalSemantics,
     schema: Ident,
@@ -115,13 +102,11 @@ struct GenericExternalModel {
 enum GenericExternalStorage {
     StoredFields {
         payload: Ident,
-        transfer_payload: Ident,
         owner: Ident,
         fields: Vec<StoredExternalField>,
     },
     ManualPayload {
         payload: Path,
-        transfer_payload: Path,
     },
 }
 
@@ -212,8 +197,7 @@ enum ProviderValueType {
         input: DeclaredInput,
     },
     External {
-        payload: Ident,
-        transfer_payload: Type,
+        payload: Type,
         schema: Ident,
     },
     Custom {
@@ -239,8 +223,7 @@ enum FunctionInputValueType {
         input: DeclaredInput,
     },
     External {
-        payload: Ident,
-        transfer_payload: Type,
+        payload: Type,
         schema: Ident,
     },
     Custom {
@@ -264,8 +247,8 @@ enum StaticValueType {
         type_: Type,
     },
     External {
-        payload: Ident,
-        transfer_payload: Type,
+        declaration: Ident,
+        payload: Type,
         schema: Ident,
         store_field: Ident,
     },
@@ -314,19 +297,9 @@ enum FunctionRootOutputValueType {
 #[derive(Clone)]
 enum FunctionOutputLeafType {
     Scalar(Type),
-    Declared {
-        type_: Type,
-        input: DeclaredInput,
-    },
-    External {
-        payload: Ident,
-        transfer_payload: Type,
-        schema: Ident,
-    },
-    Custom {
-        index: usize,
-        rust: Type,
-    },
+    Declared { type_: Type, input: DeclaredInput },
+    External { payload: Type, schema: Ident },
+    Custom { index: usize, rust: Type },
 }
 
 #[derive(Clone)]
@@ -362,7 +335,6 @@ enum DeclaredInput {
 #[derive(Clone)]
 struct CollectionType {
     source: Type,
-    item: Type,
     value: StaticValueType,
 }
 
@@ -439,46 +411,8 @@ impl FunctionCallAccess {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum FunctionFlavor {
-    Local,
-    TransferImmediate,
-    Async,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum TransferFlavor {
     Immediate,
     Async,
-}
-
-impl TransferFlavor {
-    fn function(self) -> FunctionFlavor {
-        match self {
-            Self::Immediate => FunctionFlavor::TransferImmediate,
-            Self::Async => FunctionFlavor::Async,
-        }
-    }
-}
-
-impl FunctionFlavor {
-    fn is_transfer(self) -> bool {
-        self.transfer().is_some()
-    }
-
-    fn transfer(self) -> Option<TransferFlavor> {
-        match self {
-            Self::Local => None,
-            Self::TransferImmediate => Some(TransferFlavor::Immediate),
-            Self::Async => Some(TransferFlavor::Async),
-        }
-    }
-
-    fn representation(self) -> ProviderRepresentation {
-        if self.is_transfer() {
-            ProviderRepresentation::Transfer
-        } else {
-            ProviderRepresentation::Local
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -523,15 +457,9 @@ struct ValidatedFunction {
     declared_generics: Vec<Ident>,
     host_result: Option<TypePath>,
     profile: Option<FunctionProfile>,
-    has_list: bool,
 }
 
-struct ImmediateFunction {
-    model: FunctionModel,
-    call: CallAccess,
-}
-
-enum TransferFunction {
+enum ProviderFunction {
     Immediate {
         model: FunctionModel,
         call: CallAccess,
@@ -549,8 +477,7 @@ struct ListDecoderModel {
 }
 
 struct ListExternalAccess {
-    payload: Ident,
-    transfer_payload: Type,
+    payload: Type,
     schema: Ident,
     field: Ident,
 }
@@ -561,13 +488,6 @@ struct ListDeclaredAccess {
 }
 
 struct GeneratedFunction {
-    callback_codecs: Vec<TokenStream>,
-    wrapper: TokenStream,
-    registration: TokenStream,
-    bounds: Vec<TokenStream>,
-}
-
-struct GeneratedTransferFunction {
     callback_codecs: Vec<TokenStream>,
     wrapper: TokenStream,
     registration: TokenStream,
@@ -602,7 +522,6 @@ struct OutputEnvironment<'model> {
     support: &'model TokenStream,
     provider: &'model TokenStream,
     return_type: &'model TokenStream,
-    representation: ProviderRepresentation,
 }
 
 struct OutputState<'output> {
@@ -623,12 +542,6 @@ struct InputEnvironment<'model> {
     function_generics: &'model [FunctionGeneric],
     generic_source: GenericInputSource,
     flavor: FunctionFlavor,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ProviderRepresentation {
-    Local,
-    Transfer,
 }
 
 #[derive(Default)]
@@ -745,30 +658,11 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             quote!(#component),
         ),
     };
-    let async_profile_bound = match &arguments.profile {
-        ModuleProfile::Component => {
-            quote!(#support::AsyncHostComponentProfile<super::Component>)
-        }
-        ModuleProfile::Explicit {
-            transfer_bound,
-            component,
-            ..
-        } => {
-            quote!(#transfer_bound + #support::AsyncHostComponentProfile<#component>)
-        }
-    };
-    let (local_trait_bound, transfer_trait_bound) = match &arguments.profile {
-        ModuleProfile::Component => (profile_bound.clone(), async_profile_bound.clone()),
-        ModuleProfile::Explicit {
-            bound,
-            transfer_bound,
-            component,
-        } => {
+    let trait_bound = match &arguments.profile {
+        ModuleProfile::Component => profile_bound.clone(),
+        ModuleProfile::Explicit { bound, component } => {
             let component = syntax::component_for_self(component);
-            (
-                quote!(#bound + #support::HostComponentProfile<#component>),
-                quote!(#transfer_bound + #support::AsyncHostComponentProfile<#component>),
-            )
+            quote!(#bound + #support::HostComponentProfile<#component>)
         }
     };
     let inline_module_error =
@@ -832,12 +726,6 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
         }
         externals.push(build_external_model(index, payload, external, &support)?);
     }
-    let transfer_enabled = externals.iter().all(|external| {
-        !matches!(
-            external.generic.as_ref().map(|generic| &generic.storage),
-            Some(GenericExternalStorage::ManualPayload { .. })
-        ) || external.context.is_some()
-    });
     match (&arguments.profile, &arguments.stores, externals.is_empty()) {
         (ModuleProfile::Explicit { .. }, None, false) => {
             return Err(syn::Error::new_spanned(
@@ -870,19 +758,16 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     )?;
     let customs = custom_declarations.models;
 
-    if transfer_enabled {
-        for item in items.iter_mut() {
-            if let Item::Enum(item) = item
-                && let Some(custom) = customs.iter().find(|custom| custom.ident == item.ident)
-            {
-                let fields = custom_output::fields(custom, &customs, &support);
-                custom_output::parameterize(item, &fields);
-            }
+    for item in items.iter_mut() {
+        if let Item::Enum(item) = item
+            && let Some(custom) = customs.iter().find(|custom| custom.ident == item.ident)
+        {
+            let fields = custom_output::fields(custom, &customs, &support);
+            custom_output::parameterize(item, &fields);
         }
     }
 
-    let mut functions = Vec::new();
-    let mut transfer_functions = Vec::new();
+    let mut provider_functions = Vec::new();
     let module_profile = match &arguments.profile {
         ModuleProfile::Component => None,
         ModuleProfile::Explicit { bound, .. } => Some(bound),
@@ -902,77 +787,29 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
         let flavor = if function.sig.asyncness.is_some() {
             FunctionFlavor::Async
         } else {
-            FunctionFlavor::Local
+            FunctionFlavor::Immediate
         };
-        let validated = validate_function(
+        let mut validated = validate_function(
             function,
             function_arguments,
             flavor,
             &mut list_decoders,
             &validation,
         )?;
+        resolve_function_value_forms(&mut validated.model, &support, flavor);
+        apply_function_signature(function, &validated, flavor, &customs, &support);
         match validated.call {
             FunctionCallAccess::Async(call) => {
-                if !transfer_enabled {
-                    return Err(syn::Error::new_spanned(
-                        &function.sig,
-                        "async functions require a transferable module; manual retained payloads must declare a `context`",
-                    ));
-                }
-                apply_function_signature(
-                    function,
-                    &validated,
-                    FunctionFlavor::Async,
-                    &customs,
-                    &support,
-                );
-                let model = transfer_function_model(&validated, &support, TransferFlavor::Async);
-                rewrite_transfer_external_payload_paths(&mut function.block, &externals);
-                transfer_functions
-                    .push((function.clone(), TransferFunction::Async { model, call }));
+                let model = validated.model;
+                provider_functions
+                    .push((function.clone(), ProviderFunction::Async { model, call }));
             }
             FunctionCallAccess::Immediate(call) => {
-                let requires_work = function_contains_future_input(&validated.model);
-                if requires_work && !transfer_enabled {
-                    return Err(syn::Error::new_spanned(
-                        &function.sig,
-                        "Future inputs require a transferable module; manual retained payloads must declare a `context`",
-                    ));
-                }
-                if transfer_enabled {
-                    let mut transfer_function = function.clone();
-                    apply_function_signature(
-                        &mut transfer_function,
-                        &validated,
-                        FunctionFlavor::TransferImmediate,
-                        &customs,
-                        &support,
-                    );
-                    let model =
-                        transfer_function_model(&validated, &support, TransferFlavor::Immediate);
-                    rewrite_transfer_external_payload_paths(
-                        &mut transfer_function.block,
-                        &externals,
-                    );
-                    transfer_functions.push((
-                        transfer_function,
-                        TransferFunction::Immediate { model, call },
-                    ));
-                }
-                if !requires_work {
-                    apply_function_signature(
-                        function,
-                        &validated,
-                        FunctionFlavor::Local,
-                        &customs,
-                        &support,
-                    );
-                    functions.push(ImmediateFunction {
-                        model: validated.model,
-                        call,
-                    });
-                    retained_items.push(item);
-                }
+                let model = validated.model;
+                provider_functions.push((
+                    function.clone(),
+                    ProviderFunction::Immediate { model, call },
+                ));
             }
         }
     }
@@ -1020,30 +857,9 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             #field: #support::HostExternalStore<#payload>,
         }
     });
-    let async_store_fields = externals.iter().map(|external| {
-        let payload = external
-            .generic
-            .as_ref()
-            .map(|generic| match &generic.storage {
-                GenericExternalStorage::StoredFields {
-                    transfer_payload, ..
-                } => quote!(#transfer_payload),
-                GenericExternalStorage::ManualPayload {
-                    transfer_payload, ..
-                } => quote!(#transfer_payload),
-            })
-            .unwrap_or_else(|| {
-                let payload = &external.transfer_payload;
-                quote!(#payload)
-            });
-        let field = &external.store_field;
-        quote! {
-            #field: #support::AsyncHostExternalStore<#payload>,
-        }
-    });
+
     let schemas = externals.iter().map(|external| {
-        let payload = &external.ident;
-        let transfer_payload = &external.transfer_payload;
+        let payload = &external.payload;
         let source_name = &external.name;
         let schema = &external.schema;
         let storage = &external.storage;
@@ -1053,11 +869,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                 stores,
             ).#store_member.#store_field
         };
-        let async_store = quote! {
-            &<Profile as #support::AsyncHostComponentProfile<#component>>::component_async_stores(
-                stores,
-            ).#store_member.#store_field
-        };
+
         let semantics = match external.semantics {
             ExternalSemantics::Default | ExternalSemantics::Manual => quote! {
                 fn source_equal(
@@ -1110,78 +922,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                 }
             },
         };
-        let async_semantics = match external.semantics {
-            ExternalSemantics::Default | ExternalSemantics::Manual => quote! {
-                fn source_equal(
-                    _context: &#support::AsyncHostExternalEquality<'_>,
-                    left: &Self::Payload,
-                    right: &Self::Payload,
-                ) -> bool {
-                    <#transfer_payload as #support::ExternalPayload>::source_equal(left, right)
-                }
 
-                fn source_hash(
-                    _context: &#support::AsyncHostExternalHashing<'_>,
-                    value: &Self::Payload,
-                ) -> u64 {
-                    <#transfer_payload as #support::ExternalPayload>::source_hash(value)
-                }
-
-                fn inspect(
-                    _context: &#support::AsyncHostExternalInspection<'_>,
-                    value: &Self::Payload,
-                ) -> #support::EcoString {
-                    <#transfer_payload as #support::ExternalPayload>::inspect(value)
-                }
-            },
-            ExternalSemantics::Retained => quote! {
-                fn source_equal(
-                    context: &#support::AsyncHostExternalEquality<'_>,
-                    left: &Self::Payload,
-                    right: &Self::Payload,
-                ) -> bool {
-                    <#transfer_payload as #support::RetainedExternalPayload<
-                        #support::ProviderTransferRetainedContext,
-                    >>::source_equal(left, context, right)
-                }
-
-                fn source_hash(
-                    context: &#support::AsyncHostExternalHashing<'_>,
-                    value: &Self::Payload,
-                ) -> u64 {
-                    <#transfer_payload as #support::RetainedExternalPayload<
-                        #support::ProviderTransferRetainedContext,
-                    >>::source_hash(value, context)
-                }
-
-                fn inspect(
-                    context: &#support::AsyncHostExternalInspection<'_>,
-                    value: &Self::Payload,
-                ) -> #support::EcoString {
-                    <#transfer_payload as #support::RetainedExternalPayload<
-                        #support::ProviderTransferRetainedContext,
-                    >>::inspect(value, context)
-                }
-            },
-        };
-        let async_storage = (transfer_enabled && external.generic.is_none()).then(|| {
-            quote! {
-                impl<Profile> #support::AsyncHostExternalStorage<Profile, #schema> for #storage
-                where
-                    Profile: __GeamAsyncModuleProfile,
-                {
-                    type Payload = #transfer_payload;
-
-                    fn store(
-                        stores: &Profile::ExternalStores,
-                    ) -> &#support::AsyncHostExternalStore<Self::Payload> {
-                        #async_store
-                    }
-
-                    #async_semantics
-                }
-            }
-        });
         if let Some(generic) = &external.generic {
             let parameter_count = generic.parameters.len();
             let parameters = &generic.parameters;
@@ -1196,7 +937,6 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             match &generic.storage {
                 GenericExternalStorage::StoredFields {
                     payload: generic_payload,
-                    transfer_payload: generic_transfer_payload,
                     owner,
                     fields,
                 } => {
@@ -1205,7 +945,6 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                         let index = &field.index;
                         quote! {
                             #support::ProviderStoredOutput<
-                                '__geam_output,
                                 #owner,
                                 #index,
                                 <#parameter as #support::ProviderValue>::Host,
@@ -1215,8 +954,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                     let output_type = quote! {
                         #output<#(#parameters,)* #(#output_contexts,)*>
                     };
-                    let output_impl_parameters = ::core::iter::once(quote!('__geam_output))
-                        .chain(parameters.iter().map(|parameter| quote!(#parameter)))
+                    let output_impl_parameters = parameters.iter().map(|parameter| quote!(#parameter))
                         .collect::<Vec<_>>();
                     let output_patterns = fields.iter().map(|field| {
                         let ident = &field.ident;
@@ -1224,12 +962,12 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                     });
                     let output_payload_fields = fields.iter().map(|field| {
                         let ident = &field.ident;
-                        quote!(#ident: #ident.into_host())
+                        quote!(#ident: #ident.into_retained())
                     });
                     let output_payload = quote! {
                         ::core::result::Result::<
                             #generic_payload,
-                            #support::ProviderExternalItem<#generic_payload>,
+                            #support::ProviderExternalReturn<#generic_payload>,
                         >::Ok({
                             let #output { #(#output_patterns,)* } = self;
                             #generic_payload { #(#output_payload_fields,)* }
@@ -1247,13 +985,9 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                     let payload_fields = fields.iter().map(|field| {
                         let ident = &field.ident;
                         let index = &field.index;
-                        quote!(#ident: #support::HostStoredValue<#support::HostStoredType<#index>>)
+                        quote!(#ident: #support::Retained<#owner, #index>)
                     });
-                    let transfer_payload_fields = fields.iter().map(|field| {
-                        let ident = &field.ident;
-                        let index = &field.index;
-                        quote!(#ident: #support::ProviderTransferRetained<#owner, #index>)
-                    });
+
                     let input_accessors = fields.iter().map(|field| {
                         let ident = &field.ident;
                         let parameter = &field.parameter;
@@ -1271,28 +1005,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                             where
                                 __GeamArguments: #support::HostTypeAt<#index>,
                             {
-                                #support::Stored::from_input(&self.__geam_context.payload().#ident)
-                            }
-                        }
-                    });
-                    let transfer_input_accessors = fields.iter().map(|field| {
-                        let ident = &field.ident;
-                        let parameter = &field.parameter;
-                        let index = &field.index;
-                        quote! {
-                            #visibility fn #ident(&self) -> #support::Stored<
-                                #parameter,
-                                #support::ProviderTransferStoredInput<
-                                    '_,
-                                    #owner,
-                                    #index,
-                                    <__GeamArguments as #support::HostTypeAt<#index>>::Type,
-                                >,
-                            >
-                            where
-                                __GeamArguments: #support::HostTypeAt<#index>,
-                            {
-                                #support::Stored::from_transfer_retained(
+                                #support::Stored::from_retained(
                                     &self.__geam_context.payload().#ident,
                                 )
                             }
@@ -1305,7 +1018,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                         quote! {
                             #visibility fn #ident(&self) -> #support::Stored<
                                 #parameter,
-                                #support::ProviderAsyncStoredInput<
+                                #support::ProviderOwnedStoredInput<
                                     #owner,
                                     #index,
                                     <__GeamArguments as #support::HostTypeAt<#index>>::Type,
@@ -1320,32 +1033,25 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                     });
                     let equal_fields = fields.iter().map(|field| {
                         let ident = &field.ident;
-                        quote!(context.stored_values_equal(&left.#ident, &right.#ident))
+                        quote!(left.#ident.source_equal(context, &right.#ident))
                     });
                     let hash_fields = fields.iter().map(|field| {
                         let ident = &field.ident;
-                        quote!(context.stored_value_hash(&value.#ident))
-                    });
-                    let transfer_equal_fields = fields.iter().map(|field| {
-                        let ident = &field.ident;
-                        quote!(left.#ident.source_equal(context, &right.#ident))
-                    });
-                    let transfer_hash_fields = fields.iter().map(|field| {
-                        let ident = &field.ident;
                         quote!(value.#ident.source_hash(context))
                     });
+
                     let contexts = fields
                         .iter()
                         .enumerate()
                         .map(|(index, _)| format_ident!("__GeamStoredContext{index}"))
                         .collect::<Vec<_>>();
-                    let transfer_declarations = transfer_enabled.then(|| {
+                    let declarations = {
                         quote! {
                             impl<#(#parameters,)* Profile, Provider, Return>
-                                #support::ProviderTransferDynamicInput<Profile, Provider, Return>
+                                #support::ProviderDynamicInput<Profile, Provider, Return>
                                 for #payload<#(#parameters,)*>
                             where
-                                Profile: __GeamAsyncModuleProfile,
+                                Profile: __GeamModuleProfile,
                                 Provider: #support::HostProvider<Profile>,
                                 Return: #support::HostType,
                                 #(#parameters: #support::ProviderValue,)*
@@ -1353,14 +1059,14 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                                 type Host = #support::HostExternalType<#schema, #host_arguments>;
                                 type View = #input<
                                     #(#parameters,)*
-                                    #support::ProviderTransferExternalInputContext<
-                                        #generic_transfer_payload,
+                                    #support::ProviderExternalInputContext<
+                                        #generic_payload,
                                         #host_arguments,
                                     >,
                                 >;
 
                                 fn from_host<'__geam_call>(
-                                    call: &mut #support::TransferHostCall<
+                                    call: &mut #support::HostCall<
                                         '__geam_call,
                                         Profile,
                                         Provider,
@@ -1368,36 +1074,31 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                                     >,
                                     value: <Self::Host as #support::HostType>::Value<'__geam_call>,
                                 ) -> Self::View {
-                                    let value = call.provider_transfer_external_view_with::<
-                                        __GeamAsyncProvider,
+                                    let value = call.provider_external_view_with::<
+                                        __GeamProvider,
                                         #schema,
                                         #host_arguments,
                                     >(value);
-                                    #input::__geam_from_transfer_host(
-                                        #support::ProviderTransferExternalInputContext::from_host(value),
+                                    #input::__geam_from_host(
+                                        #support::ProviderExternalInputContext::from_host(value),
                                     )
                                 }
-                            }
-
-                            #[doc(hidden)]
-                            pub struct #generic_transfer_payload {
-                                #(#transfer_payload_fields,)*
                             }
 
                             impl<#(#parameters,)* __GeamArguments>
                                 #input<
                                     #(#parameters,)*
-                                    #support::ProviderTransferExternalInputContext<
-                                        #generic_transfer_payload,
+                                    #support::ProviderExternalInputContext<
+                                        #generic_payload,
                                         __GeamArguments,
                                     >,
                                 >
                             where
                                 __GeamArguments: #support::HostTypeSequence,
                             {
-                                fn __geam_from_transfer_host(
-                                    context: #support::ProviderTransferExternalInputContext<
-                                        #generic_transfer_payload,
+                                fn __geam_from_host(
+                                    context: #support::ProviderExternalInputContext<
+                                        #generic_payload,
                                         __GeamArguments,
                                     >,
                                 ) -> Self {
@@ -1407,14 +1108,14 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                                     }
                                 }
 
-                                #(#transfer_input_accessors)*
+                                #(#input_accessors)*
                             }
 
                             impl<#(#parameters,)* __GeamArguments>
                                 #input<
                                     #(#parameters,)*
-                                    #support::ProviderAsyncExternalInputContext<
-                                        #generic_transfer_payload,
+                                    #support::ProviderOwnedExternalInputContext<
+                                        #generic_payload,
                                         __GeamArguments,
                                     >,
                                 >
@@ -1422,8 +1123,8 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                                 __GeamArguments: #support::HostTypeSequence,
                             {
                                 fn __geam_from_async_host(
-                                    context: #support::ProviderAsyncExternalInputContext<
-                                        #generic_transfer_payload,
+                                    context: #support::ProviderOwnedExternalInputContext<
+                                        #generic_payload,
                                         __GeamArguments,
                                     >,
                                 ) -> Self {
@@ -1436,43 +1137,8 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                                 #(#async_input_accessors)*
                             }
 
-                            impl<Profile> #support::AsyncHostExternalStorage<Profile, #schema>
-                                for #storage
-                            where
-                                Profile: __GeamAsyncModuleProfile,
-                            {
-                                type Payload = #generic_transfer_payload;
-
-                                fn store(
-                                    stores: &Profile::ExternalStores,
-                                ) -> &#support::AsyncHostExternalStore<Self::Payload> {
-                                    #async_store
-                                }
-
-                                fn source_equal(
-                                    context: &#support::AsyncHostExternalEquality<'_>,
-                                    left: &Self::Payload,
-                                    right: &Self::Payload,
-                                ) -> bool {
-                                    true #(&& #transfer_equal_fields)*
-                                }
-
-                                fn source_hash(
-                                    context: &#support::AsyncHostExternalHashing<'_>,
-                                    value: &Self::Payload,
-                                ) -> u64 {
-                                    #support::external_payload_hash(&(#(#transfer_hash_fields,)*))
-                                }
-
-                                fn inspect(
-                                    _context: &#support::AsyncHostExternalInspection<'_>,
-                                    _value: &Self::Payload,
-                                ) -> #support::EcoString {
-                                    #support::EcoString::from(::core::concat!(#source_name, "(<opaque>)"))
-                                }
-                            }
                         }
-                    });
+                    };
                     return quote! {
                         #[doc(hidden)]
                         pub struct #schema;
@@ -1490,45 +1156,6 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                             for #payload<#(#parameters,)* #(#contexts,)*>
                         {
                             type Schema = #schema;
-                        }
-
-                        impl<#(#parameters,)* Profile, Provider, Return>
-                            #support::ProviderDynamicInput<Profile, Provider, Return>
-                            for #payload<#(#parameters,)*>
-                        where
-                            Profile: __GeamModuleProfile,
-                            Provider: #support::HostProvider<Profile>,
-                            Return: #support::HostType,
-                            #(#parameters: #support::ProviderValue,)*
-                        {
-                            type Host = #support::HostExternalType<#schema, #host_arguments>;
-                            type View<'__geam_call> = #input<
-                                #(#parameters,)*
-                                #support::ProviderExternalInputContext<
-                                    '__geam_call,
-                                    #generic_payload,
-                                    #host_arguments,
-                                >,
-                            >;
-
-                            fn from_host<'__geam_call>(
-                                call: &mut #support::HostCall<
-                                    '__geam_call,
-                                    Profile,
-                                    Provider,
-                                    Return,
-                                >,
-                                value: <Self::Host as #support::HostType>::Value<'__geam_call>,
-                            ) -> Self::View<'__geam_call> {
-                                let value = call.provider_external_item_with::<
-                                    __GeamProvider,
-                                    #schema,
-                                    #host_arguments,
-                                >(value);
-                                #input::__geam_from_host(
-                                    #support::ProviderExternalInputContext::from_host(value),
-                                )
-                            }
                         }
 
                         #output_codec
@@ -1551,34 +1178,6 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                             __geam_parameters: ::core::marker::PhantomData<
                                 fn() -> (#(#parameters,)*)
                             >,
-                        }
-
-                        impl<'__geam_call, #(#parameters,)* __GeamArguments>
-                            #input<
-                                #(#parameters,)*
-                                #support::ProviderExternalInputContext<
-                                    '__geam_call,
-                                    #generic_payload,
-                                    __GeamArguments,
-                                >,
-                            >
-                        where
-                            __GeamArguments: #support::HostTypeSequence,
-                        {
-                            fn __geam_from_host(
-                                context: #support::ProviderExternalInputContext<
-                                    '__geam_call,
-                                    #generic_payload,
-                                    __GeamArguments,
-                                >,
-                            ) -> Self {
-                                Self {
-                                    __geam_context: context,
-                                    __geam_parameters: ::core::marker::PhantomData,
-                                }
-                            }
-
-                            #(#input_accessors)*
                         }
 
                         #[doc(hidden)]
@@ -1619,12 +1218,11 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                             }
                         }
 
-                        #transfer_declarations
+                        #declarations
                     };
                 }
                 GenericExternalStorage::ManualPayload {
                     payload: retained_payload,
-                    transfer_payload,
                 } => {
                     let output_type = quote! {
                         #output<
@@ -1645,37 +1243,11 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                         &host_arguments,
                         &support,
                     );
-                    let transfer = transfer_enabled.then(|| {
-                        manual_external::transfer_declaration(
-                            external, generic, retained_payload, transfer_payload, &async_store,
-                            &support,
-                        )
-                    });
-                    let retained_accessors = parameters.iter().enumerate().map(|(index, parameter)| {
-                        let method = retained_parameter_accessor(parameter);
-                        let index = host_type_index(index, &support);
-                        quote! {
-                            #visibility fn #method<'__geam_value>(
-                                &'__geam_value self,
-                                select: impl ::core::ops::FnOnce(
-                                    &'__geam_value #retained_payload,
-                                ) -> &'__geam_value #support::Retained<#retained_payload, #index>,
-                            ) -> #support::Stored<
-                                #parameter,
-                                #support::ProviderStoredInput<
-                                    '__geam_value,
-                                    #retained_payload,
-                                    #index,
-                                    <__GeamArguments as #support::HostTypeAt<#index>>::Type,
-                                >,
-                            >
-                            where
-                                __GeamArguments: #support::HostTypeAt<#index>,
-                            {
-                                #support::Stored::from_retained(select(self.__geam_context.payload()))
-                            }
-                        }
-                    });
+                    let declaration = manual_external::declaration(
+                        external, generic, retained_payload,
+                        &support,
+                    );
+
                     return quote! {
                         #[doc(hidden)]
                         pub struct #schema;
@@ -1695,56 +1267,15 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                             type Schema = #schema;
                         }
 
-                        impl<#(#parameters,)* Profile, Provider, Return>
-                            #support::ProviderDynamicInput<Profile, Provider, Return>
-                            for #output<#(#parameters,)*>
-                        where
-                            Profile: __GeamModuleProfile,
-                            Provider: #support::HostProvider<Profile>,
-                            Return: #support::HostType,
-                            #(#parameters: #support::ProviderValue,)*
-                        {
-                            type Host = #support::HostExternalType<#schema, #host_arguments>;
-                            type View<'__geam_call> = #input<
-                                #(#parameters,)*
-                                #support::ProviderExternalInputContext<
-                                    '__geam_call,
-                                    #retained_payload,
-                                    #host_arguments,
-                                >,
-                            >;
-
-                            fn from_host<'__geam_call>(
-                                call: &mut #support::HostCall<
-                                    '__geam_call,
-                                    Profile,
-                                    Provider,
-                                    Return,
-                                >,
-                                value: <Self::Host as #support::HostType>::Value<'__geam_call>,
-                            ) -> Self::View<'__geam_call> {
-                                let value = call.provider_external_item_with::<
-                                    __GeamProvider,
-                                    #schema,
-                                    #host_arguments,
-                                >(value);
-                                #input::__geam_from_host(
-                                    #support::ProviderExternalInputContext::from_host(value),
-                                )
-                            }
-                        }
-
                         #output_codec
 
                         impl<#(#parameters,)*> #output<#(#parameters,)*> {
-                            #visibility fn from_payload<__GeamPayload, __GeamContext>(
-                                payload: __GeamPayload,
+                            #visibility fn from_payload(
+                                payload: #retained_payload,
                             ) -> #output<
                                 #(#parameters,)*
-                                #support::ProviderExternalOutput<__GeamPayload, __GeamContext>,
+                                #support::ProviderExternalOutput<#retained_payload>,
                             >
-                            where
-                                __GeamContext: #support::ProviderExternalOutputContext<__GeamPayload>,
                             {
                                 #output {
                                     __geam_context: #support::ProviderExternalOutput::new(payload),
@@ -1761,50 +1292,6 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                             __geam_parameters: ::core::marker::PhantomData<
                                 fn() -> (#(#parameters,)*)
                             >,
-                        }
-
-                        impl<'__geam_call, #(#parameters,)* __GeamArguments>
-                            #input<
-                                #(#parameters,)*
-                                #support::ProviderExternalInputContext<
-                                    '__geam_call,
-                                    #retained_payload,
-                                    __GeamArguments,
-                                >,
-                            >
-                        where
-                            __GeamArguments: #support::HostTypeSequence,
-                        {
-                            fn __geam_from_host(
-                                context: #support::ProviderExternalInputContext<
-                                    '__geam_call,
-                                    #retained_payload,
-                                    __GeamArguments,
-                                >,
-                            ) -> Self {
-                                Self {
-                                    __geam_context: context,
-                                    __geam_parameters: ::core::marker::PhantomData,
-                                }
-                            }
-
-                            #visibility fn payload(&self) -> &#retained_payload {
-                                self.__geam_context.payload()
-                            }
-
-                            #visibility fn into_value(
-                                self,
-                            ) -> #output<
-                                #(#parameters,)*
-                                #support::ProviderExternalOutput<#retained_payload>,
-                            > {
-                                #output {
-                                    __geam_context: self.__geam_context.into_output(),
-                                    __geam_parameters: ::core::marker::PhantomData,
-                                }
-                            }
-
-                            #(#retained_accessors)*
                         }
 
                         #[doc(hidden)]
@@ -1855,192 +1342,152 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                             }
                         }
 
-                        #transfer
+                        #declaration
                     };
                 }
             }
         }
-        let declaration_and_owner = if let Some(context) = &external.context {
-            let mut generics = external.generics.clone();
-            generics.make_where_clause().predicates.push(syn::parse_quote!(
-                #context: #support::RetainedContext
-            ));
-            let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
-            quote! {
-                impl #impl_generics #support::ProviderExternalDeclaration for #payload #type_generics
-                #where_clause
-                {
-                    type Schema = #schema;
-                }
-
-                impl #impl_generics #support::ProviderStoredOwner for #payload #type_generics
-                #where_clause
-                {}
-            }
-        } else {
-            quote! {
+        let declaration_and_owner = quote! {
                 impl #support::ProviderExternalDeclaration for #payload {
                     type Schema = #schema;
                 }
 
                 impl #support::ProviderStoredOwner for #payload {}
+        };
+        let value_declarations = {
+            quote! {
+                impl #support::ProviderValueForms for #payload {
+                    type Output = Self;
+                    type ImmediateInput = #support::ProviderExternalView<Self>;
+                    type ImmediateListInput = #support::ProviderExternalView<Self>;
+                    type OwnedInput = #support::ProviderOwnedExternal<Self>;
+                    type OwnedListInput = #support::ProviderOwnedExternal<Self>;
+                }
             }
         };
-        let transfer_provider_value = external.context.as_ref().map(|_| {
+        let codec = {
             quote! {
-                impl #support::ProviderTransferValue for #payload {
-                    type Output = #transfer_payload;
-                    type ImmediateInput = #support::ProviderTransferExternalView<#transfer_payload>;
-                    type ImmediateListInput = #support::ProviderTransferExternalView<#transfer_payload>;
-                    type TransferInput = #support::ProviderTransferExternalItem<#transfer_payload>;
-                    type TransferListInput = #support::ProviderTransferExternalItem<#transfer_payload>;
-                }
-
-                impl #support::ProviderValue for #transfer_payload {
-                    type Host = #support::HostExternalType<#schema>;
-                    type Input = #support::ProviderExternalItem<Self>;
-                    type ListInput = Self;
-                    type OutputRequirements = #support::ProviderConstruction<Self::Host>;
-                    type RootRequirements = #support::ProviderNoConstructions;
-                }
-            }
-        });
-        let transfer_value_declarations = transfer_enabled.then(|| {
-            quote! {
-                #transfer_provider_value
-
-                impl #support::ProviderTransferValue for #transfer_payload {
-                    type Output = Self;
-                    type ImmediateInput = #support::ProviderTransferExternalView<Self>;
-                    type ImmediateListInput = #support::ProviderTransferExternalView<Self>;
-                    type TransferInput = #support::ProviderTransferExternalItem<Self>;
-                    type TransferListInput = #support::ProviderTransferExternalItem<Self>;
-                }
-            }
-        });
-        let transfer_codec = transfer_enabled.then(|| {
-            quote! {
-                impl<Profile> #support::ProviderTransferExternalCodec<Profile>
-                    for #transfer_payload
+                impl<Profile> #support::ProviderExternalCodec<Profile>
+                    for #payload
                 where
-                    Profile: __GeamAsyncModuleProfile,
-                    #storage: #support::AsyncHostExternalStorage<
+                    Profile: __GeamModuleProfile,
+                    #storage: #support::HostExternalStorage<
                         Profile,
                         #schema,
-                        Payload = #transfer_payload,
+                        Payload = #payload,
                     >,
-                    <#storage as #support::AsyncHostExternalStorage<Profile, #schema>>::Payload:
-                        #support::ProviderTransferPayload<Profile>,
-                    __GeamAsyncProvider: #support::AsyncHostExternalBinding<
+                    <#storage as #support::HostExternalStorage<Profile, #schema>>::Payload:
+                        ::core::marker::Send + 'static,
+                    __GeamProvider: #support::HostExternalBinding<
                         Profile,
                         #schema,
                         Storage = #storage,
                     >,
                 {
                     fn immediate_input<'__geam_call, Provider, Return>(
-                        call: &#support::TransferHostCall<
+                        call: &#support::HostCall<
                             '__geam_call,
                             Profile,
                             Provider,
                             Return,
                         >,
                         value: <Self::Host as #support::HostType>::Value<'__geam_call>,
-                    ) -> #support::ProviderTransferExternalView<Self>
+                    ) -> #support::ProviderExternalView<Self>
                     where
                         Provider: #support::HostProvider<Profile>,
                         Return: #support::HostType,
                     {
-                        call.provider_transfer_external_view_with::<
-                            __GeamAsyncProvider,
+                        call.provider_external_view_with::<
+                            __GeamProvider,
                             #schema,
                             #support::HostTypeListEnd,
                         >(value)
                     }
 
-                    fn transfer_input<'__geam_call, Provider, Return>(
-                        call: &#support::TransferHostCall<
+                    fn owned_input<'__geam_call, Provider, Return>(
+                        call: &#support::HostCall<
                             '__geam_call,
                             Profile,
                             Provider,
                             Return,
                         >,
                         value: <Self::Host as #support::HostType>::Value<'__geam_call>,
-                    ) -> #support::ProviderTransferExternalItem<Self>
+                    ) -> #support::ProviderOwnedExternal<Self>
                     where
                         Provider: #support::HostProvider<Profile>,
                         Return: #support::HostType,
                     {
-                        call.provider_transfer_external_item_with::<
-                            __GeamAsyncProvider,
+                        call.provider_external_item_with::<
+                            __GeamProvider,
                             #schema,
                             #support::HostTypeListEnd,
                         >(value)
                     }
 
                     fn immediate_list_decoder<Provider, Return>(
-                        call: &#support::TransferHostCall<'_, Profile, Provider, Return>,
-                    ) -> #support::ProviderTransferExternalViewListDecoder<Self>
+                        call: &#support::HostCall<'_, Profile, Provider, Return>,
+                    ) -> #support::ProviderExternalListDecoder<Self>
                     where
                         Provider: #support::HostProvider<Profile>,
                         Return: #support::HostType,
                     {
-                        #support::ProviderTransferExternalViewListDecoder::new(
-                            call.provider_transfer_external_payload_access_with::<
-                                __GeamAsyncProvider,
+                        #support::ProviderExternalListDecoder::new(
+                            call.provider_external_payload_access_with::<
+                                __GeamProvider,
                                 #schema,
                             >(),
                         )
                     }
 
-                    fn transfer_list_decoder<Provider, Return>(
-                        call: &#support::TransferHostCall<'_, Profile, Provider, Return>,
-                    ) -> #support::ProviderTransferExternalListDecoder<Self>
+                    fn owned_list_decoder<Provider, Return>(
+                        call: &#support::HostCall<'_, Profile, Provider, Return>,
+                    ) -> #support::ProviderOwnedExternalListDecoder<Self>
                     where
                         Provider: #support::HostProvider<Profile>,
                         Return: #support::HostType,
                     {
-                        #support::ProviderTransferExternalListDecoder::new(
-                            call.provider_transfer_external_payload_access_with::<
-                                __GeamAsyncProvider,
+                        #support::ProviderOwnedExternalListDecoder::new(
+                            call.provider_external_payload_access_with::<
+                                __GeamProvider,
                                 #schema,
                             >(),
                         )
                     }
 
                     fn immediate_output<'__geam_call, Provider, Return>(
-                        call: &mut #support::TransferHostCall<
+                        call: &mut #support::HostCall<
                             '__geam_call,
                             Profile,
                             Provider,
                             Return,
                         >,
-                        value: #support::ProviderTransferExternalView<Self>,
+                        value: #support::ProviderExternalView<Self>,
                     ) -> <Self::Host as #support::HostType>::Value<'__geam_call>
                     where
                         Provider: #support::HostProvider<Profile>,
                         Return: #support::HostType,
                     {
-                        call.provider_transfer_external_from_view::<
+                        call.provider_external_from_view::<
                             #schema,
                             #support::HostTypeListEnd,
                             _,
                         >(value)
                     }
 
-                    fn transfer_output<'__geam_call, Provider, Return>(
-                        call: &mut #support::TransferHostCall<
+                    fn owned_output<'__geam_call, Provider, Return>(
+                        call: &mut #support::HostCall<
                             '__geam_call,
                             Profile,
                             Provider,
                             Return,
                         >,
-                        value: #support::ProviderTransferExternalItem<Self>,
+                        value: #support::ProviderOwnedExternal<Self>,
                     ) -> <Self::Host as #support::HostType>::Value<'__geam_call>
                     where
                         Provider: #support::HostProvider<Profile>,
                         Return: #support::HostType,
                     {
-                        call.provider_transfer_external_from_item::<
+                        call.provider_external_from_item::<
                             #schema,
                             #support::HostTypeListEnd,
                             _,
@@ -2048,24 +1495,24 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                     }
                 }
             }
-        });
-        let transfer_outputs = transfer_enabled.then(|| {
+        };
+        let outputs = {
             quote! {
                 impl<Profile, Provider, Return>
-                    #support::ProviderTransferOutputValue<Profile, Provider, Return>
-                    for #transfer_payload
+                    #support::ProviderOutputValue<Profile, Provider, Return>
+                    for #payload
                 where
-                    Profile: __GeamAsyncModuleProfile,
+                    Profile: __GeamModuleProfile,
                     Provider: #support::HostProvider<Profile>,
                     Return: #support::HostType,
-                    #storage: #support::AsyncHostExternalStorage<
+                    #storage: #support::HostExternalStorage<
                         Profile,
                         #schema,
-                        Payload = #transfer_payload,
+                        Payload = #payload,
                     >,
-                    <#storage as #support::AsyncHostExternalStorage<Profile, #schema>>::Payload:
-                        #support::ProviderTransferPayload<Profile>,
-                    __GeamAsyncProvider: #support::AsyncHostExternalBinding<
+                    <#storage as #support::HostExternalStorage<Profile, #schema>>::Payload:
+                        ::core::marker::Send + 'static,
+                    __GeamProvider: #support::HostExternalBinding<
                         Profile,
                         #schema,
                         Storage = #storage,
@@ -2073,7 +1520,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                 {
                     fn into_host<'__geam_call>(
                         self,
-                        call: &mut #support::TransferHostCall<
+                        call: &mut #support::HostCall<
                             '__geam_call,
                             Profile,
                             Provider,
@@ -2085,7 +1532,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                         >,
                     ) -> <Self::Host as #support::HostType>::Value<'__geam_call> {
                         call.construct_external_with_binding::<
-                            __GeamAsyncProvider,
+                            __GeamProvider,
                             #schema,
                             #support::HostTypeListEnd,
                         >(construction.token(), self)
@@ -2093,19 +1540,19 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                 }
 
                 impl<Profile, Provider>
-                    #support::ProviderTransferRootOutputValue<Profile, Provider>
-                    for #transfer_payload
+                    #support::ProviderRootOutputValue<Profile, Provider>
+                    for #payload
                 where
-                    Profile: __GeamAsyncModuleProfile,
+                    Profile: __GeamModuleProfile,
                     Provider: #support::HostProvider<Profile>,
-                    #storage: #support::AsyncHostExternalStorage<
+                    #storage: #support::HostExternalStorage<
                         Profile,
                         #schema,
-                        Payload = #transfer_payload,
+                        Payload = #payload,
                     >,
-                    <#storage as #support::AsyncHostExternalStorage<Profile, #schema>>::Payload:
-                        #support::ProviderTransferPayload<Profile>,
-                    __GeamAsyncProvider: #support::AsyncHostExternalBinding<
+                    <#storage as #support::HostExternalStorage<Profile, #schema>>::Payload:
+                        ::core::marker::Send + 'static,
+                    __GeamProvider: #support::HostExternalBinding<
                         Profile,
                         #schema,
                         Storage = #storage,
@@ -2113,7 +1560,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                 {
                     fn complete<'__geam_call>(
                         self,
-                        mut call: #support::TransferHostCall<
+                        mut call: #support::HostCall<
                             '__geam_call,
                             Profile,
                             Provider,
@@ -2125,14 +1572,14 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                         >,
                     ) -> ::core::result::Result<
                         #support::HostCallCompletion<'__geam_call, Self::Host>,
-                        #support::AsyncHostCallError,
+                        #support::HostCallError,
                     > {
-                        let value = call.create_external_with_binding::<__GeamAsyncProvider>(self);
+                        let value = call.create_external_with_binding::<__GeamProvider>(self);
                         ::core::result::Result::Ok(call.return_value(value))
                     }
                 }
             }
-        });
+        };
         quote! {
             #[doc(hidden)]
             pub struct #schema;
@@ -2149,132 +1596,14 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
 
             impl #support::ProviderValue for #payload {
                 type Host = #support::HostExternalType<#schema>;
-                type Input = #support::ProviderExternalItem<Self>;
-                type ListInput = Self;
                 type OutputRequirements = #support::ProviderConstruction<Self::Host>;
                 type RootRequirements = #support::ProviderNoConstructions;
             }
 
-            #transfer_value_declarations
-            #transfer_codec
+            #value_declarations
+            #codec
 
-            impl<Profile> #support::ProviderExternalCodec<Profile> for #payload
-            where
-                Profile: __GeamModuleProfile,
-            {
-                fn input<'__geam_call, Provider, Return>(
-                    call: &#support::HostCall<'__geam_call, Profile, Provider, Return>,
-                    value: <Self::Host as #support::HostType>::Value<'__geam_call>,
-                ) -> #support::ProviderExternalItem<Self>
-                where
-                    Provider: #support::HostProvider<Profile>,
-                    Return: #support::HostType,
-                {
-                    call.provider_external_item_with::<
-                        __GeamProvider,
-                        #schema,
-                        #support::HostTypeListEnd,
-                    >(value)
-                }
-
-                fn output<'__geam_call, Provider, Return>(
-                    call: &mut #support::HostCall<
-                        '__geam_call,
-                        Profile,
-                        Provider,
-                        Return,
-                    >,
-                    value: #support::ProviderExternalItem<Self>,
-                ) -> <Self::Host as #support::HostType>::Value<'__geam_call>
-                where
-                    Provider: #support::HostProvider<Profile>,
-                    Return: #support::HostType,
-                {
-                    call.provider_external_from_item::<#schema, #support::HostTypeListEnd, _>(value)
-                }
-            }
-
-            impl #support::ProviderListInputValue for #payload {
-                type View = #support::ProviderExternalItem<Self>;
-                type Decoder = #support::ProviderExternalListDecoder<Self>;
-            }
-
-            impl<Profile> #support::ProviderListInputCodec<Profile> for #payload
-            where
-                Profile: __GeamModuleProfile,
-            {
-                fn decoder<'__geam_call, Provider, Return>(
-                    call: &#support::HostCall<'__geam_call, Profile, Provider, Return>,
-                ) -> Self::Decoder
-                where
-                    Provider: #support::HostProvider<Profile>,
-                    Return: #support::HostType,
-                {
-                    #support::ProviderExternalListDecoder::new(
-                        call.provider_external_payload_access_with::<
-                            __GeamProvider,
-                            #schema,
-                        >(),
-                    )
-                }
-            }
-
-            impl<Profile, Provider, Return>
-                #support::ProviderOutputValue<Profile, Provider, Return> for #payload
-            where
-                Profile: __GeamModuleProfile,
-                Provider: #support::HostProvider<Profile>,
-                Return: #support::HostType,
-            {
-                fn into_host<'__geam_call>(
-                    self,
-                    call: &mut #support::HostCall<
-                        '__geam_call,
-                        Profile,
-                        Provider,
-                        Return,
-                    >,
-                    construction: &#support::ProviderConstructions<
-                        '__geam_call,
-                        Self::OutputRequirements,
-                    >,
-                ) -> <Self::Host as #support::HostType>::Value<'__geam_call> {
-                    call.construct_external_with_binding::<
-                        __GeamProvider,
-                        #schema,
-                        #support::HostTypeListEnd,
-                    >(construction.token(), self)
-                }
-            }
-
-            impl<Profile, Provider> #support::ProviderRootOutputValue<Profile, Provider>
-                for #payload
-            where
-                Profile: __GeamModuleProfile,
-                Provider: #support::HostProvider<Profile>,
-            {
-                fn complete<'__geam_call>(
-                    self,
-                    mut call: #support::HostCall<
-                        '__geam_call,
-                        Profile,
-                        Provider,
-                        Self::Host,
-                    >,
-                    _constructions: &#support::ProviderConstructions<
-                        '__geam_call,
-                        Self::RootRequirements,
-                    >,
-                ) -> ::core::result::Result<
-                    #support::HostCallCompletion<'__geam_call, Self::Host>,
-                    #support::HostCallError,
-                > {
-                    let value = call.create_external_with_binding::<__GeamProvider>(self);
-                    ::core::result::Result::Ok(call.return_value(value))
-                }
-            }
-
-            #transfer_outputs
+            #outputs
 
             #[doc(hidden)]
             #storage_visibility struct #storage;
@@ -2294,11 +1623,9 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                 #semantics
             }
 
-            #async_storage
         }
     });
-    // An explicit payload type is also the retention owner. Multiple source
-    // declarations may intentionally share that domain while retaining their
+    // Manual payloads can share one retained domain while retaining their
     // own schemas and stores, as Dict and TransientDict do.
     let mut retained_owner_keys = BTreeSet::new();
     let retained_owners = externals
@@ -2317,32 +1644,17 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
         let schema = &external.schema;
         let storage = &external.storage;
         quote! {
-            impl<Profile> #support::HostExternalBinding<Profile, #schema> for __GeamProvider
+            impl<Profile> #support::HostExternalBinding<Profile, #schema>
+                for __GeamProvider
             where
                 Profile: __GeamModuleProfile,
+                #storage: #support::HostExternalStorage<Profile, #schema>,
+                <#storage as #support::HostExternalStorage<Profile, #schema>>::Payload:
+                    ::core::marker::Send + 'static,
             {
                 type Storage = #storage;
             }
         }
-    });
-    let async_bindings = externals.iter().filter_map(|external| {
-        if !transfer_enabled {
-            return None;
-        }
-        let schema = &external.schema;
-        let storage = &external.storage;
-        Some(quote! {
-            impl<Profile> #support::AsyncHostExternalBinding<Profile, #schema>
-                for __GeamAsyncProvider
-            where
-                Profile: __GeamAsyncModuleProfile,
-                #storage: #support::AsyncHostExternalStorage<Profile, #schema>,
-                <#storage as #support::AsyncHostExternalStorage<Profile, #schema>>::Payload:
-                    #support::ProviderTransferPayload<Profile>,
-            {
-                type Storage = #storage;
-            }
-        })
     });
     let custom_inputs = customs
         .iter()
@@ -2365,123 +1677,77 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                 &custom_inputs,
                 &support,
                 &module_path,
-                transfer_enabled,
             )
         })
         .collect::<Vec<_>>();
     let generated_list_decoders = list_decoders
         .iter()
-        .map(|decoder| {
-            generate_list_decoder(
-                decoder,
-                &customs,
-                &custom_inputs,
-                &support,
-                transfer_enabled,
-            )
-        })
-        .collect::<Vec<_>>();
-    let generated_functions = functions
-        .iter()
-        .map(|function| generate_function(&function.model, function.call, &customs, &support))
+        .map(|decoder| generate_list_decoders(decoder, &customs, &custom_inputs, &support))
         .collect::<Vec<_>>();
     let async_external_bounds = externals
         .iter()
         .map(|external| {
             let schema = &external.schema;
             let storage = &external.storage;
-            let transfer_payload = match external.generic.as_ref() {
+            let payload = match external.generic.as_ref() {
                 Some(generic) => match &generic.storage {
-                    GenericExternalStorage::StoredFields {
-                        transfer_payload, ..
-                    } => quote!(#transfer_payload),
-                    GenericExternalStorage::ManualPayload {
-                        transfer_payload, ..
-                    } => quote!(#transfer_payload),
+                    GenericExternalStorage::StoredFields { payload, .. } => quote!(#payload),
+                    GenericExternalStorage::ManualPayload { payload, .. } => quote!(#payload),
                 },
                 None => {
-                    let transfer_payload = &external.transfer_payload;
-                    quote!(#transfer_payload)
+                    let payload = &external.payload;
+                    quote!(#payload)
                 }
             };
             quote! {
-                #storage: #support::AsyncHostExternalStorage<
+                #storage: #support::HostExternalStorage<
                     Profile,
                     #schema,
-                    Payload = #transfer_payload,
+                    Payload = #payload,
                 >,
-                <#storage as #support::AsyncHostExternalStorage<Profile, #schema>>::Payload:
-                    #support::ProviderTransferPayload<Profile>
+                <#storage as #support::HostExternalStorage<Profile, #schema>>::Payload:
+                    ::core::marker::Send + 'static
             }
         })
         .collect::<Vec<_>>();
-    let generated_transfer_functions = transfer_functions
+    let generated_transfer_functions = provider_functions
         .iter()
         .map(|(source, function)| {
             (
                 source,
-                generate_transfer_function(function, &customs, &support, &async_external_bounds),
+                generate_function_adapter(function, &customs, &support, &async_external_bounds),
             )
         })
         .collect::<Vec<_>>();
-    let mut module_bound_keys = BTreeSet::new();
-    let module_bounds = generated_functions
-        .iter()
-        .flat_map(|function| function.bounds.iter().cloned())
-        .filter(|bound| module_bound_keys.insert(bound.to_string()))
-        .collect::<Vec<_>>();
-    let callback_codecs = generated_functions
-        .iter()
-        .flat_map(|function| function.callback_codecs.iter());
-    let wrappers = generated_functions.iter().map(|function| &function.wrapper);
-    let registrations = generated_functions
-        .iter()
-        .map(|function| &function.registration);
     let mut async_module_bound_keys = BTreeSet::new();
     let async_module_bounds = generated_transfer_functions
         .iter()
         .flat_map(|(_, function)| function.bounds.iter().cloned())
         .filter(|bound| async_module_bound_keys.insert(bound.to_string()))
         .collect::<Vec<_>>();
-    let transfer_wrappers = generated_transfer_functions
+    let wrappers = generated_transfer_functions
         .iter()
         .map(|(_, function)| &function.wrapper);
-    let transfer_registrations = generated_transfer_functions
+    let registrations = generated_transfer_functions
         .iter()
         .map(|(_, function)| &function.registration);
-    let transfer_callback_codecs = generated_transfer_functions
+    let callback_codecs = generated_transfer_functions
         .iter()
         .flat_map(|(_, function)| function.callback_codecs.iter());
-    let external_registrations = externals.iter().map(|external| {
+    let async_external_registrations = externals.iter().map(|external| {
         let schema = &external.schema;
         quote! {
             let provider = provider.with_external_type::<__GeamProvider, #schema>()?;
         }
     });
-    let async_external_registrations = externals.iter().map(|external| {
-        let schema = &external.schema;
-        quote! {
-            let provider = provider.with_external_type::<__GeamAsyncProvider, #schema>()?;
-        }
-    });
     items.push(Item::Verbatim(quote! {
-        #profile_visibility trait __GeamModuleProfile: #local_trait_bound {}
+            #profile_visibility trait __GeamModuleProfile: #trait_bound {}
 
-        impl<Profile> __GeamModuleProfile for Profile
-        where
-            Profile: #profile_bound,
-        {}
-    }));
-    if transfer_enabled {
-        items.push(Item::Verbatim(quote! {
-            #profile_visibility trait __GeamAsyncModuleProfile: #transfer_trait_bound {}
-
-            impl<Profile> __GeamAsyncModuleProfile for Profile
+            impl<Profile> __GeamModuleProfile for Profile
             where
-                Profile: #async_profile_bound,
+                Profile: #profile_bound,
             {}
-        }));
-    }
+    }));
     items.push(Item::Verbatim(quote! {
         #[doc(hidden)]
         #[derive(Default)]
@@ -2489,15 +1755,6 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             #(#store_fields)*
         }
     }));
-    if transfer_enabled || !has_explicit_profile {
-        items.push(Item::Verbatim(quote! {
-            #[doc(hidden)]
-            #[derive(Default)]
-            #stores_visibility struct __GeamAsyncStores {
-                #(#async_store_fields)*
-            }
-        }));
-    }
     for semantics in payload_semantics {
         items.push(Item::Verbatim(semantics));
     }
@@ -2511,42 +1768,22 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
         items.push(Item::Verbatim(declaration));
     }
     items.push(Item::Verbatim(quote! {
-        #profile_visibility struct __GeamProvider;
-    }));
-    if transfer_enabled {
-        items.push(Item::Verbatim(quote! {
-            #profile_visibility struct __GeamAsyncProvider;
+            #profile_visibility struct __GeamProvider;
 
-            impl<Profile> #support::HostProvider<Profile> for __GeamAsyncProvider
+            impl<Profile> #support::HostProvider<Profile> for __GeamProvider
             where
-                Profile: __GeamAsyncModuleProfile,
+                Profile: __GeamModuleProfile,
             {
                 type State = <#component as #support::HostProviderComponent>::RunState;
 
                 fn project(state: &mut Profile::RunState) -> &mut Self::State {
-                    <Profile as #support::AsyncHostComponentProfile<#component>>::component_state(
+                    <Profile as #support::HostComponentProfile<#component>>::component_state(
                         state,
                     )
                 }
             }
-        }));
-    }
-    items.push(Item::Verbatim(quote! {
-        impl<Profile> #support::HostProvider<Profile> for __GeamProvider
-        where
-            Profile: __GeamModuleProfile,
-        {
-            type State = <#component as #support::HostProviderComponent>::RunState;
-
-            fn project(state: &mut Profile::RunState) -> &mut Self::State {
-                <Profile as #support::HostComponentProfile<#component>>::component_state(state)
-            }
-        }
     }));
     for binding in bindings {
-        items.push(Item::Verbatim(binding));
-    }
-    for binding in async_bindings {
         items.push(Item::Verbatim(binding));
     }
     for decoder in generated_list_decoders {
@@ -2555,22 +1792,23 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     for codec in callback_codecs {
         items.push(Item::Verbatim(codec.clone()));
     }
-    for codec in transfer_callback_codecs {
-        items.push(Item::Verbatim(codec.clone()));
+    let module_span = module.ident.span();
+    let source_functions = generated_transfer_functions
+        .iter()
+        .map(|(function, _)| function);
+    for function in source_functions {
+        items.push(Item::Fn((*function).clone()));
     }
-    for wrapper in wrappers {
-        items.push(Item::Verbatim(wrapper.clone()));
-    }
-    let registration = quote! {
+    let async_registration = quote! {
+        #(#wrappers)*
         let provider = #support::HostProviderModule::<Profile>::new(
             <#component as #support::ProviderPackage>::PACKAGE,
             #module_path,
         )?;
-        #(#external_registrations)*
+        #(#async_external_registrations)*
         #(#registrations)*
         ::core::result::Result::Ok(provider)
     };
-    let module_span = module.ident.span();
     let registrar = if has_explicit_profile {
         quote_spanned! {module_span=>
             pub(super) fn __geam_module<Profile>() -> ::core::result::Result<
@@ -2579,81 +1817,34 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             >
             where
                 Profile: __GeamModuleProfile,
-                #(#module_bounds,)*
-            {
-                #registration
-            }
-        }
-    } else {
-        quote_spanned! {module_span=>
-            pub(super) struct __GeamModule;
-
-            impl<Profile> #support::ProviderModuleRegistration<Profile> for __GeamModule
-            where
-                Profile: __GeamModuleProfile,
-                #(#module_bounds,)*
-            {
-                fn module() -> ::core::result::Result<
-                    #support::HostProviderModule<Profile>,
-                    #support::HostRegistrationError,
-                > {
-                    #registration
-                }
-            }
-        }
-    };
-    items.push(Item::Verbatim(registrar));
-
-    if transfer_enabled {
-        let transfer_source_functions = generated_transfer_functions
-            .iter()
-            .map(|(function, _)| function);
-        let async_registration = quote! {
-            #(#transfer_source_functions)*
-            #(#transfer_wrappers)*
-            let provider = #support::TransferHostProviderModule::<Profile>::new_for_profile(
-                <#component as #support::ProviderPackage>::PACKAGE,
-                #module_path,
-            )?;
-            #(#async_external_registrations)*
-            #(#transfer_registrations)*
-            ::core::result::Result::Ok(provider)
-        };
-        let registrar = if has_explicit_profile {
-            quote_spanned! {module_span=>
-                pub(super) fn __geam_transfer_module<Profile>() -> ::core::result::Result<
-                    #support::TransferHostProviderModule<Profile>,
-                    #support::HostRegistrationError,
-                >
-                where
-                    Profile: __GeamAsyncModuleProfile,
-                    Profile::RunState: ::core::marker::Send,
-                    #(#async_external_bounds,)*
-                    #(#async_module_bounds,)*
-                {
-                    #async_registration
-                }
-            }
-        } else {
-            quote_spanned! {module_span=>
-            impl<Profile> #support::TransferProviderModuleRegistration<Profile> for __GeamModule
-            where
-                Profile: __GeamAsyncModuleProfile,
                 Profile::RunState: ::core::marker::Send,
                 #(#async_external_bounds,)*
                 #(#async_module_bounds,)*
             {
-                fn module() -> ::core::result::Result<
-                    #support::TransferHostProviderModule<Profile>,
-                    #support::HostRegistrationError,
-                > {
-                    #async_registration
-                }
+                #async_registration
             }
+        }
+    } else {
+        quote_spanned! {module_span=>
+        pub(super) struct __GeamModule;
+
+        impl<Profile> #support::ProviderModuleRegistration<Profile> for __GeamModule
+        where
+            Profile: __GeamModuleProfile,
+            Profile::RunState: ::core::marker::Send,
+            #(#async_external_bounds,)*
+            #(#async_module_bounds,)*
+        {
+            fn module() -> ::core::result::Result<
+                #support::HostProviderModule<Profile>,
+                #support::HostRegistrationError,
+            > {
+                #async_registration
             }
-        };
-        items.push(Item::Verbatim(registrar));
-    }
+        }
+        }
+    };
+    items.push(Item::Verbatim(registrar));
 
     Ok(quote!(#module))
 }
@@ -2719,13 +1910,12 @@ mod tests {
     }
 
     #[test]
-    fn explicit_transfer_profile_keeps_sibling_component_bounds_static() {
+    fn one_profile_keeps_sibling_component_bounds_static() {
         let expansion = expand(
             quote!(
                 path = "json",
                 crate_path = geam_core,
-                profile = crate::LocalProfile,
-                transfer_profile = crate::TransferProfile,
+                profile = crate::BuiltInProfile,
                 component = crate::Component
             ),
             quote!(
@@ -2737,28 +1927,33 @@ mod tests {
                 }
             ),
         )
-        .expect("separate transfer profile")
+        .expect("explicit shared profile")
         .to_string();
-        assert!(expansion.contains("trait __GeamModuleProfile : crate :: LocalProfile"));
-        assert!(expansion.contains("trait __GeamAsyncModuleProfile : crate :: TransferProfile"));
-        assert!(expansion.contains("pub (super) fn __geam_transfer_module < Profile >"));
+
+        assert_eq!(
+            expansion
+                .matches("trait __GeamModuleProfile : crate :: BuiltInProfile")
+                .count(),
+            1
+        );
+        assert!(expansion.contains("pub (super) fn __geam_module < Profile >"));
 
         for (arguments, expected) in [
             (
-                quote!(path = "json", transfer_profile = 42),
-                "expected identifier",
+                quote!(path = "json", provider_profile = 42),
+                "unknown module argument `provider_profile`",
             ),
             (
-                quote!(path = "json", transfer_profile = crate::TransferProfile),
-                "module `transfer_profile` requires `profile` and `component`",
+                quote!(path = "json", provider_profile = crate::TransferProfile),
+                "unknown module argument `provider_profile`",
             ),
             (
                 quote!(
                     path = "json",
-                    transfer_profile = First,
-                    transfer_profile = Second
+                    provider_profile = First,
+                    provider_profile = Second
                 ),
-                "duplicate module argument `transfer_profile`",
+                "unknown module argument `provider_profile`",
             ),
         ] {
             assert_eq!(
@@ -2776,15 +1971,13 @@ mod tests {
     }
 
     #[test]
-    fn context_dependent_custom_fields_keep_one_enum_and_original_derives() {
+    fn cross_module_custom_fields_keep_one_enum_and_original_derives() {
         let expanded = expand(
             quote!(path = "values", crate_path = geam_core),
             quote!(
                 mod values {
-                    #[geam::external(name = "Text", manual, context = Context)]
-                    struct Text<Context: Storage = LocalRetainedContext> {
-                        value: Context::Value,
-                    }
+                    #[geam::external(name = "Text", manual)]
+                    struct Text(EcoString);
 
                     #[geam::custom(input = TextsInput)]
                     enum Texts {
@@ -2812,7 +2005,7 @@ mod tests {
                 }
             ),
         )
-        .expect("context-dependent enum");
+        .expect("cross-module enum");
         let item: syn::ItemMod = syn::parse2(expanded.clone()).expect("expanded Rust syntax");
         let enums = item
             .content
@@ -2831,7 +2024,7 @@ mod tests {
             .iter()
             .find(|item| item.ident == "Envelope")
             .expect("original output name");
-        assert_eq!(output.generics.params.len(), 3);
+        assert_eq!(output.generics.params.len(), 1);
         assert!(
             output
                 .attrs
@@ -2851,12 +2044,12 @@ mod tests {
         assert!(
             expanded
                 .to_string()
-                .contains("ProviderTransferRetainedContext")
+                .contains("ProviderValueForms > :: Output")
         );
     }
 
     #[test]
-    fn local_manual_payloads_keep_custom_input_and_output_types_local() {
+    fn manual_payloads_keep_custom_inputs_under_one_profile() {
         for profile in [
             quote!(),
             quote!(, profile = crate::LocalProfile, component = crate::Component, stores = local),
@@ -2882,24 +2075,25 @@ mod tests {
             )
             .expect("local retained payload and custom types")
             .to_string();
+
             assert!(
                 expansion
-                    .contains("enum PacketInput { Values (geam_core :: __macro_support :: List <")
+                    .contains("enum PacketInput < __GeamContext : __GeamPacketInputShape = __GeamImmediatePacketInputShape >")
             );
             assert!(expansion.contains("Text (EcoString)"));
-            assert!(!expansion.contains("__GeamTransferHostProfile"));
+            assert!(!expansion.contains("__GeamOwnedHostProfile"));
         }
     }
 
     #[test]
-    fn manual_retained_callback_outputs_use_the_transfer_payload_context() {
+    fn manual_retained_callback_outputs_use_the_same_payload_owner() {
         let expansion = expand(
             quote!(path = "manual", crate_path = geam_core),
             quote! {
                 mod manual {
                     #[geam::external(
                         name = "Box", parameters = [Item], input = BoxInput,
-                        payload = Payload, manual, context = Context,
+                        payload = Payload, manual,
                     )]
                     struct BoxValue<Item>;
 
@@ -2914,12 +2108,10 @@ mod tests {
         )
         .expect("manual retained callback")
         .to_string();
-        assert!(expansion.contains("provider_transfer_external_from_return"));
-        assert!(expansion.contains(
-            "Payload < geam_core :: __macro_support :: ProviderTransferRetainedContext >"
-        ));
-        assert!(expansion.contains("fn __geam_host_send"));
-        assert!(expansion.contains("fn __geam_transfer_host_send"));
+
+        assert!(expansion.contains("provider_external_from_return"));
+        assert!(expansion.contains("ProviderExternalOutput < Payload >"));
+        assert_eq!(expansion.matches("fn __geam_host_send").count(), 1);
     }
 
     #[test]
@@ -2943,9 +2135,9 @@ mod tests {
         )
         .expect("explicit Future inputs")
         .to_string();
+
         assert!(!expansion.contains("ProviderScopedFutureContext"));
-        assert!(!expansion.contains("fn __geam_host_receive"));
-        assert!(expansion.contains("fn __geam_transfer_host_receive"));
+        assert_eq!(expansion.matches("fn __geam_host_receive").count(), 1);
         assert!(expansion.contains("ProviderFutureValueContext"));
         assert!(expansion.contains(
             "HostFutureType < BigInt , geam_core :: __macro_support :: HostWorkSchema < Profile >>"
@@ -2977,7 +2169,7 @@ mod tests {
     }
 
     #[test]
-    fn a_future_returning_callback_requires_only_its_function_to_use_transfer_storage() {
+    fn a_future_returning_callback_keeps_unrelated_calls_immediate() {
         let expansion = expand(
             quote!(path = "native", crate_path = geam_core),
             quote! {
@@ -2998,17 +2190,18 @@ mod tests {
         )
         .expect("immediate source work construction")
         .to_string();
-        assert!(expansion.contains("fn __geam_host_direct"));
-        assert!(expansion.contains("fn __geam_transfer_host_direct"));
-        assert!(!expansion.contains("fn __geam_host_construct"));
-        assert!(expansion.contains("fn __geam_transfer_host_construct"));
+
+        assert_eq!(expansion.matches("fn __geam_host_direct").count(), 1);
+        assert_eq!(expansion.matches("fn __geam_host_construct").count(), 1);
+        assert!(!expansion.contains("call . return_future"));
         assert!(!expansion.contains("ProviderScopedFutureContext"));
     }
 
     #[test]
-    fn local_manual_payloads_require_transfer_storage_for_future_inputs() {
-        assert_eq!(
-            expansion_error(quote! {
+    fn manual_payloads_compose_with_explicit_future_inputs() {
+        let expansion = expand(
+            quote!(path = "native", crate_path = geam_core),
+            quote! {
                 mod native {
                     #[geam::external(
                         name = "Box", parameters = [Item], input = BoxInput,
@@ -3019,15 +2212,20 @@ mod tests {
                     #[geam::function]
                     fn accept(work: Future<BigInt>) -> () { let _ = work; }
                 }
-            }),
-            "Future inputs require a transferable module; manual retained payloads must declare a `context`",
-        );
+            },
+        )
+        .expect("one provider contract")
+        .to_string();
+
+        assert!(expansion.contains("ProviderFutureValueContext"));
+        assert!(expansion.contains("HostExternalStore < Payload >"));
     }
 
     #[test]
-    fn local_manual_payloads_require_an_explicit_transfer_context_for_async_functions() {
-        assert_eq!(
-            expansion_error(quote! {
+    fn manual_payloads_supply_owned_inputs_to_async_functions() {
+        let expansion = expand(
+            quote!(path = "native", crate_path = geam_core),
+            quote! {
                 mod native {
                     #[geam::external(
                         name = "Box", parameters = [Item], input = BoxInput,
@@ -3040,9 +2238,13 @@ mod tests {
                         value.into_value()
                     }
                 }
-            }),
-            "async functions require a transferable module; manual retained payloads must declare a `context`",
-        );
+            },
+        )
+        .expect("owned provider inputs")
+        .to_string();
+
+        assert!(expansion.contains("ProviderOwnedExternalInputContext < Payload"));
+        assert!(expansion.contains("call . return_future"));
     }
 
     #[test]
@@ -3058,10 +2260,8 @@ mod tests {
                     #[geam::external(name = "Counter", manual)]
                     struct Counter;
 
-                    #[geam::external(name = "Session", retained, context = Context)]
-                    struct Session<Context = LocalRetainedContext> {
-                        marker: ::core::marker::PhantomData<Context>,
-                    }
+                    #[geam::external(name = "Session", retained)]
+                    struct Session;
 
                     #[geam::custom(input = EnvelopeInput)]
                     enum Envelope {
@@ -3280,9 +2480,7 @@ mod tests {
 
                     #[geam::function]
                     async fn contextual(value: &Session) -> Session {
-                        value.with(|_| Session {
-                            marker: ::core::marker::PhantomData,
-                        })
+                        value.with(|_| Session)
                     }
 
                     #[geam::function]
@@ -3311,19 +2509,19 @@ mod tests {
         .expect("async transfer generation should cover every supported value family")
         .to_string();
 
-        assert!(expansion.contains("fn __geam_transfer_host_no_arguments"));
+        assert!(expansion.contains("fn __geam_host_no_arguments"));
         assert!(expansion.contains("call . return_future"));
         assert!(expansion.contains("HostFutureCompletion ::"));
         assert!(expansion.contains("Call :: from_future_context"));
         assert!(expansion.contains("with_scoped_function_and_constructions"));
         assert!(!expansion.contains("AsyncHostFuture"));
         assert!(!expansion.contains("with_transfer_scoped_async_function"));
-        assert!(expansion.contains("ProviderAsyncExternalInputContext"));
-        assert!(expansion.contains("ProviderTransferExternalItem"));
-        assert!(expansion.contains("ProviderTransferRetainedContext"));
-        assert!(expansion.contains("ProviderTransferListContext"));
-        assert!(expansion.contains("ProviderTransferOutputValue"));
-        assert!(expansion.contains("__GeamTransferEnvelopeInput"));
+        assert!(expansion.contains("ProviderOwnedExternalInputContext"));
+        assert!(expansion.contains("ProviderOwnedExternal"));
+        assert!(expansion.contains("RetainedExternalPayload"));
+        assert!(expansion.contains("ProviderListContext"));
+        assert!(expansion.contains("ProviderOutputValue"));
+        assert!(expansion.contains("__GeamOwnedEnvelopeInput"));
     }
 
     #[test]
@@ -3419,6 +2617,7 @@ mod tests {
         )
         .expect("one explicit store projection should expand")
         .to_string();
+
         assert!(expansion.contains("component_stores (stores ,) . token . __geam_external_0"));
         assert!(
             expansion.contains("# [doc (hidden)] # [derive (Default)] pub struct __GeamStores")
@@ -3652,6 +2851,7 @@ mod tests {
         )
         .expect("non-call parameter attributes should be retained")
         .to_string();
+
         assert!(expansion.contains("# [allow (unused_variables)] call"));
         assert_eq!(
             expansion_error(quote!(
@@ -3859,7 +3059,7 @@ mod tests {
         .to_string();
 
         assert!(expansion.contains("struct __GeamCallbackCodec_around_0 < Item >"));
-        assert!(expansion.contains("ProviderCallbackCodec < '__geam_call"));
+        assert!(expansion.contains("ProviderCallbackCodec < Profile"));
         assert!(
             expansion.contains("type HostArguments = geam_core :: __macro_support :: HostTypeList")
         );
@@ -3870,7 +3070,7 @@ mod tests {
         assert!(!expansion.contains("HostOpaqueFunctionType < geam_core :: __macro_support :: HostTypeList < geam_core :: __macro_support :: HostExternalType"));
         assert!(expansion.contains("call . construct_external_with_binding"));
         assert!(expansion.contains("ProviderOutputValue"));
-        assert!(expansion.contains("__geam_callback_argument_0 . into_host ()"));
+        assert!(expansion.contains("__geam_callback_argument_0 . into_host (& mut call)"));
         assert!(
             expansion.contains(
                 "Callback :: < _ , geam_core :: __macro_support :: ProviderCallbackContext"
@@ -3923,13 +3123,14 @@ mod tests {
         .to_string();
 
         assert!(expansion.contains(
-            "type Arguments = (((String , Token ,) , other :: Payload ,) , :: core :: result :: Result < String , Status > , :: core :: option :: Option < String > , geam_core :: __macro_support :: List < Token"
+            "type Arguments = (((String , Token ,) , < other :: Payload as geam_core :: __macro_support :: ProviderValueForms > :: Output"
         ));
-        assert!(expansion.contains(":: std :: vec :: Vec < (Token , other :: Payload ,) >"));
-        assert!(expansion.contains("other :: Payload"));
-        assert!(expansion.contains("type Returned = geam_core :: __macro_support :: List < Token"));
-        assert!(expansion.contains("__geam_into_context () . into_host ()"));
-        assert!(expansion.contains("ProviderListInputCodec < Profile >"));
+        assert!(expansion.contains(":: std :: vec :: Vec < (Token , < other :: Payload as"));
+        assert!(expansion.contains(":: core :: result :: Result < String , < Status as"));
+        assert!(expansion.contains(":: core :: option :: Option < String >"));
+        assert!(expansion.contains("type Returned = geam_core :: __macro_support :: List < geam_core :: __macro_support :: ProviderExternalView < Token >"));
+        assert!(expansion.contains("call . provider_list_from_input"));
+        assert!(expansion.contains("call . provider_retained_list"));
         assert!(expansion.contains("type HostReturn = ()"));
     }
 
@@ -4102,12 +3303,16 @@ mod tests {
 
         assert!(expansion.contains("fn helper"));
         assert!(expansion.contains("const ENABLED"));
-        assert_eq!(expansion.matches("call . state ()").count(), 2);
+        assert_eq!(expansion.matches("call . state ()").count(), 1);
         assert!(expansion.contains("let __geam_state = & * call . state ()"));
         assert!(expansion.contains("Call :: from_shared_state (__geam_state)"));
         assert!(expansion.contains("shared (& __geam_provider_call , __geam_argument_0)"));
         assert!(expansion.contains("Call :: from_host_call (call)"));
-        assert!(expansion.contains("mutable (& mut __geam_provider_call , __geam_argument_0)"));
+        assert!(
+            expansion.contains(
+                "mutable :: < Profile > (& mut __geam_provider_call , __geam_argument_0)"
+            )
+        );
         assert!(expansion.contains("__geam_provider_call . into_host_call ()"));
         let first = expansion
             .find("\"first\"")
@@ -4233,6 +3438,7 @@ mod tests {
             },
         )
         .expect("generic source values should expand");
+
         let module = syn::parse2::<syn::ItemMod>(expansion.clone())
             .expect("expanded provider module should remain valid Rust syntax");
         let (_, items) = module.content.expect("expanded module must remain inline");
@@ -4251,9 +3457,10 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(generic_names, ["First", "Second"]);
-        assert_eq!(function.sig.generics.lifetimes().count(), 1);
+        assert_eq!(function.sig.generics.lifetimes().count(), 0);
 
         let expansion = expansion.to_string();
+
         assert!(expansion.contains(
             "select :: < geam_core :: __macro_support :: HostTypeParameter < 1usize > , geam_core :: __macro_support :: HostTypeParameter < 0usize > >"
         ));
@@ -4701,6 +3908,7 @@ mod tests {
         )
         .expect("generic values should compose inside source output shapes")
         .to_string();
+
         assert!(expansion.contains(
             "ProviderOption < geam_core :: __macro_support :: HostTypeParameter < 0usize > >"
         ));
@@ -5188,7 +4396,7 @@ mod tests {
         .expect("generic external inputs should not require mutable call access")
         .to_string();
 
-        assert!(expansion.contains("fn present < '__geam_call , Item >"));
+        assert!(expansion.contains("fn present < Item >"));
         assert!(expansion.contains("fn present_with_state < '__geam_call , Item >"));
         assert!(expansion.contains("Call :: from_shared_state"));
     }
@@ -5230,9 +4438,9 @@ mod tests {
         .expect("generic external callbacks should expand")
         .to_string();
 
-        assert!(expansion.contains("fn output_only < '__geam_call , Item >"));
+        assert!(expansion.contains("fn output_only < Item >"));
         assert!(expansion.contains("construct_external_with_binding"));
-        assert!(expansion.contains("ProviderExternalInputContext < '__geam_call"));
+        assert!(expansion.contains("ProviderExternalInputContext < __GeamExternalPayload0"));
         assert!(expansion.contains("fn send < '__geam_call"));
         assert!(expansion.contains("fn receive < '__geam_call"));
     }
@@ -5412,18 +4620,18 @@ mod tests {
         );
         assert!(expansion.contains("type Payload = __GeamExternalPayload0"));
         assert!(expansion.contains("ProviderStoredInput < '_ , __GeamExternalOwner0"));
-        assert!(expansion.contains("ProviderStoredOutput < '__geam_call , __GeamExternalOwner0"));
+        assert!(expansion.contains("ProviderStoredOutput < __GeamExternalOwner0"));
         assert!(expansion.contains(
-            "-> HostResult < BoxValue < New , geam_core :: __macro_support :: ProviderStoredOutput < '__geam_call"
+            "HostResult < BoxValue < New , geam_core :: __macro_support :: ProviderStoredOutput < __GeamExternalOwner0"
         ));
         assert!(expansion.contains("HostTypeParameter < 1usize >"));
         assert!(expansion.contains("HostTypeParameter < 0usize >"));
-        assert!(expansion.contains("context . stored_values_equal"));
-        assert!(expansion.contains("context . stored_value_hash"));
+        assert!(expansion.contains("left . value . source_equal (context , & right . value)"));
+        assert!(expansion.contains("value . value . source_hash (context)"));
         assert!(expansion.contains("concat ! (\"Box\" , \"(<opaque>)\")"));
         assert_eq!(
             expansion
-                .matches("call . provider_external_item_with")
+                .matches("call . provider_external_view_with")
                 .count(),
             3,
         );
@@ -5434,12 +4642,12 @@ mod tests {
         assert!(expansion.contains(
             "ProviderDynamicInput < Profile , Provider , Return > for BoxValue < Item , >"
         ));
-        assert!(expansion.contains("type View < '__geam_call > = BoxInput < Item ,"));
+        assert!(expansion.contains("type View = BoxInput < Item ,"));
         assert_eq!(
             expansion
                 .matches("call . create_external_with_binding :: < __GeamProvider >")
                 .count(),
-            3,
+            2,
         );
         assert!(!expansion.contains("HostExternalPayloadBuilder"));
         assert!(!expansion.contains("payload . clone"));
@@ -5609,7 +4817,7 @@ mod tests {
             expansion
                 .matches("HostExternalStore < QueuePayload >")
                 .count(),
-            4,
+            2,
         );
         assert_eq!(
             expansion
@@ -6635,6 +5843,7 @@ mod tests {
         )
         .expect("lazy Lists should compose inside ordinary input values")
         .to_string();
+
         assert!(expansion.contains(
             "HostTupleType < geam_core :: __macro_support :: HostTypeList < geam_core :: __macro_support :: HostListType < BigInt >"
         ));
@@ -6737,17 +5946,31 @@ mod tests {
         .expect("List pass-through and Vec construction should expand")
         .to_string();
 
-        assert_eq!(expansion.matches("struct __GeamListDecoder0").count(), 1);
+        assert_eq!(
+            expansion
+                .matches("struct __GeamImmediate__GeamListDecoder0")
+                .count(),
+            1
+        );
+        assert_eq!(
+            expansion
+                .matches("struct __GeamOwned__GeamListDecoder0")
+                .count(),
+            1
+        );
         assert!(!expansion.contains("__GeamListDecoder1"));
-        assert_eq!(expansion.matches("call . provider_list (").count(), 4);
+        assert_eq!(
+            expansion.matches("call . provider_retained_list (").count(),
+            2
+        );
         assert_eq!(
             expansion.matches("call . provider_list_from_input").count(),
             1
         );
-        assert_eq!(expansion.matches("call . return_list").count(), 2);
+        assert_eq!(expansion.matches("call . return_list").count(), 1);
         assert_eq!(
             expansion.matches("call . return_value (returned)").count(),
-            2
+            1
         );
         assert_eq!(
             expansion
@@ -6755,8 +5978,8 @@ mod tests {
                 .count(),
             0,
         );
-        assert_eq!(expansion.matches("with_scoped_function :: <").count(), 4);
-        assert!(expansion.contains("ProviderListContext < '__geam_list"));
+        assert_eq!(expansion.matches("with_scoped_function :: <").count(), 2);
+        assert!(expansion.contains("ProviderListContext < BigInt"));
         assert!(expansion.contains("__geam_value . into_scalar :: < BigInt > ()"));
     }
 
@@ -6789,13 +6012,13 @@ mod tests {
             expansion
                 .matches("call . provider_external_payload_access")
                 .count(),
-            2,
+            3,
         );
-        assert!(expansion.contains("ProviderExternalItem < Token >"));
-        assert!(expansion.contains("into_external (& self . __geam_external_0)"));
-        assert_eq!(expansion.matches("call . construct_external").count(), 4);
-        assert_eq!(expansion.matches("call . construct_tuple").count(), 2);
-        assert_eq!(expansion.matches("call . return_list").count(), 4);
+        assert!(expansion.contains("ProviderExternalView < Token >"));
+        assert!(expansion.contains("into_external_view (& self . __geam_external_0)"));
+        assert_eq!(expansion.matches("call . construct_external").count(), 2);
+        assert_eq!(expansion.matches("call . construct_tuple").count(), 1);
+        assert_eq!(expansion.matches("call . return_list").count(), 2);
     }
 
     #[test]
@@ -6860,7 +6083,8 @@ mod tests {
         .to_string();
 
         assert!(expansion.contains("call . tuple_values (__geam_argument_0)"));
-        assert!(expansion.contains("consume ((& * __geam_payload_"));
+        assert!(expansion.contains("consume ((__geam_payload_"));
+        assert!(expansion.contains("call . provider_external_view_with"));
         assert!(expansion.contains("call . return_tuple"));
         let external = expansion
             .find("call . construct_external")
@@ -6966,15 +6190,16 @@ mod tests {
                 "< Metrics as geam_core :: __macro_support :: ExternalPayload > :: inspect"
             )
         );
-        assert!(expansion.contains("let __geam_payload_0 = call . external_payload"));
-        assert_eq!(expansion.matches("call . state ()").count(), 2);
+        assert!(expansion.contains("let __geam_payload_0 = call . provider_external_view_with"));
+        assert_eq!(expansion.matches("call . state ()").count(), 1);
         assert!(expansion.contains("Call :: from_shared_state (__geam_state)"));
         assert!(
-            expansion.contains(
-                "copy (& __geam_provider_call , & * __geam_payload_0 , __geam_argument_1)"
-            )
+            expansion
+                .contains("copy (& __geam_provider_call , __geam_payload_0 , __geam_argument_1)")
         );
-        assert!(expansion.contains("let returned = call . create_external (returned)"));
+        assert!(expansion.contains(
+            "let returned = call . create_external_with_binding :: < __GeamProvider > (returned)"
+        ));
         assert!(expansion.contains(
             "< super :: Component as geam_core :: __macro_support :: ProviderPackage > :: PACKAGE"
         ));
@@ -7009,17 +6234,8 @@ mod tests {
     }
 
     #[test]
-    fn retained_external_context_diagnostics_are_exact() {
+    fn obsolete_context_and_generic_retained_flags_have_exact_diagnostics() {
         let cases = [
-            (
-                quote! {
-                    mod dynamic {
-                        #[geam::external(name = "Dynamic", context = Context)]
-                        struct Dynamic<Context = LocalContext>;
-                    }
-                },
-                "external argument `context` requires manual or retained semantics",
-            ),
             (
                 quote! {
                     mod dynamic {
@@ -7027,34 +6243,7 @@ mod tests {
                         struct Dynamic;
                     }
                 },
-                "retained external `context` requires one Rust type parameter",
-            ),
-            (
-                quote! {
-                    mod dynamic {
-                        #[geam::external(name = "Dynamic", retained, context = Context)]
-                        struct Dynamic<Other = LocalContext>;
-                    }
-                },
-                "retained external `context` must name its only Rust type parameter",
-            ),
-            (
-                quote! {
-                    mod dynamic {
-                        #[geam::external(name = "Dynamic", retained, context = Context)]
-                        struct Dynamic<Context = LocalContext, Other = ()>;
-                    }
-                },
-                "retained external `context` must name its only Rust type parameter",
-            ),
-            (
-                quote! {
-                    mod dynamic {
-                        #[geam::external(name = "Dynamic", retained, context = Context)]
-                        struct Dynamic<Context>;
-                    }
-                },
-                "retained external context parameters require a local default",
+                "unknown external argument `context`",
             ),
             (
                 quote! {
@@ -7064,9 +6253,8 @@ mod tests {
                             parameters = [Item],
                             input = BoxInput,
                             retained,
-                            context = Context,
                         )]
-                        struct BoxValue<Item, Context = LocalContext> {
+                        struct BoxValue<Item> {
                             #[geam::stored]
                             value: Stored<Item>,
                         }
@@ -7152,16 +6340,16 @@ mod tests {
         .to_string();
 
         assert!(expansion.contains(
-            "< declarations :: Token as geam_core :: __macro_support :: ProviderValue > :: Input"
+            "< declarations :: Token as geam_core :: __macro_support :: ProviderValueForms > :: ImmediateInput"
         ));
         assert!(expansion.contains(
-            "declarations :: Status : geam_core :: __macro_support :: ProviderOutputValue"
+            "< declarations :: Status as geam_core :: __macro_support :: ProviderValueForms > :: Output : geam_core :: __macro_support :: ProviderOutputValue"
         ));
         assert!(expansion.contains(
-            "< declarations :: Status as geam_core :: __macro_support :: ProviderValue > :: OutputRequirements"
+            "< < declarations :: Status as geam_core :: __macro_support :: ProviderValueForms > :: Output as geam_core :: __macro_support :: ProviderValue > :: OutputRequirements"
         ));
         assert!(expansion.contains(
-            "HostListType < < declarations :: Status as geam_core :: __macro_support :: ProviderValue > :: Host >"
+            "HostListType < < < declarations :: Status as geam_core :: __macro_support :: ProviderValueForms > :: Output as geam_core :: __macro_support :: ProviderValue > :: Host >"
         ));
     }
 
@@ -7252,24 +6440,24 @@ mod tests {
         assert!(!expansion.contains("unreachable"));
         assert!(
             expansion.contains(
-                "value : :: core :: result :: Result < :: core :: option :: Option < (BigInt , < Problem as geam_core :: __macro_support :: ProviderValue > :: Input ,) > , < Problem as geam_core :: __macro_support :: ProviderValue > :: Input >"
+                "value : :: core :: result :: Result < :: core :: option :: Option < (BigInt , < Problem as geam_core :: __macro_support :: ProviderValueForms > :: ImmediateInput ,) > , < Problem as geam_core :: __macro_support :: ProviderValueForms > :: ImmediateInput >"
             )
         );
         assert!(expansion.contains(
-            "value : :: core :: option :: Option < :: core :: result :: Result < < declarations :: Token as geam_core :: __macro_support :: ProviderValue > :: Input , < Problem as geam_core :: __macro_support :: ProviderValue > :: Input > >"
+            "value : :: core :: option :: Option < :: core :: result :: Result < < declarations :: Token as geam_core :: __macro_support :: ProviderValueForms > :: ImmediateInput , < Problem as geam_core :: __macro_support :: ProviderValueForms > :: ImmediateInput > >"
         ));
         assert!(
             expansion
-                .contains("value : :: core :: option :: Option < declarations :: ProblemInput >")
+                .contains("value : :: core :: option :: Option < < declarations :: ProblemInput as geam_core :: __macro_support :: ProviderValueForms > :: ImmediateInput >")
         );
         assert!(expansion.contains(
-            "value : :: core :: option :: Option < geam_core :: __macro_support :: ProviderExternalItem < LocalToken > >"
+            "value : :: core :: option :: Option < geam_core :: __macro_support :: ProviderExternalView < LocalToken > >"
         ));
         assert!(expansion.contains(
-            ":: core :: result :: Result < :: core :: option :: Option < BigInt > , ProblemInput >"
+            ":: core :: result :: Result < :: core :: option :: Option < BigInt > , __GeamImmediateProblemInput >"
         ));
         assert!(expansion.contains(
-            ":: core :: option :: Option < :: core :: result :: Result < BigInt , ProblemInput > >"
+            ":: core :: option :: Option < :: core :: result :: Result < BigInt , __GeamImmediateProblemInput > >"
         ));
         assert!(expansion.contains("ResultField"));
         assert!(expansion.contains("OptionField"));
@@ -7385,6 +6573,7 @@ mod tests {
         )
         .expect("lazy Lists should compose inside source Result input")
         .to_string();
+
         assert!(expansion.contains(
             "ProviderResult < geam_core :: __macro_support :: HostListType < BigInt > , EcoString >"
         ));
@@ -7577,6 +6766,7 @@ mod tests {
         )
         .expect("Vec output nested in source Result should expand")
         .to_string();
+
         assert!(
             expansion.contains("ProviderResult < geam_core :: __macro_support :: HostListType")
         );
@@ -7927,7 +7117,7 @@ mod tests {
         assert!(expansion.contains("ProviderResult <"));
         assert!(
             expansion.contains(
-                "HostResult < geam_core :: __macro_support :: List < BigInt , geam_core :: __macro_support :: ProviderListContext < '__geam_list"
+            "HostResult < geam_core :: __macro_support :: List < BigInt , geam_core :: __macro_support :: ProviderListContext < BigInt"
             )
         );
     }

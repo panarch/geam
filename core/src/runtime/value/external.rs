@@ -9,17 +9,7 @@ pub struct ExternalValue {
     type_: ExternalType,
     identity: ExternalValueIdentity,
     inspection: EcoString,
-    _lease: ExternalValueLease,
-}
-
-#[derive(Clone)]
-enum ExternalValueLease {
-    Local {
-        _lease: crate::host::ExternalPayloadLease,
-    },
-    Transfer {
-        _lease: crate::runtime::transfer::TransferExternalPayloadLease,
-    },
+    _lease: crate::host::ExternalPayloadLease,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -39,22 +29,9 @@ impl ExternalValue {
     ) -> Self {
         Self {
             type_,
-            identity: ExternalValueIdentity(lease.id()),
+            identity: ExternalValueIdentity(lease.identity()),
             inspection,
-            _lease: ExternalValueLease::Local { _lease: lease },
-        }
-    }
-
-    pub(in crate::runtime) fn from_transfer_evaluated(
-        type_: ExternalType,
-        lease: crate::runtime::transfer::TransferExternalPayloadLease,
-        inspection: EcoString,
-    ) -> Self {
-        Self {
-            type_,
-            identity: ExternalValueIdentity(crate::runtime::RuntimeExternalLease::identity(&lease)),
-            inspection,
-            _lease: ExternalValueLease::Transfer { _lease: lease },
+            _lease: lease,
         }
     }
 
@@ -94,9 +71,8 @@ mod tests {
     use crate::host::HostExternalStore;
     use crate::plan::{ExternalType, ExternalTypeName};
     use crate::runtime::EvaluatedValue;
-    use crate::runtime::transfer::{
-        TransferExternalEquality, TransferExternalHashing, TransferExternalInspection,
-        TransferExternalStore, TransferStoredRuntimeValue,
+    use crate::runtime::retained::{
+        RetainedValueEquality, RetainedValueHashing, RetainedValueInspection, RetainedValueRef,
     };
 
     #[test]
@@ -113,20 +89,20 @@ mod tests {
         let first = store.insert(7usize, |_, left, right| left == right, source_hash, inspect);
         let second = store.insert(7usize, |_, left, right| left == right, source_hash, inspect);
         let after = ExternalValueIdentity::allocate_id();
-        assert!(before < first.id());
-        assert!(first.id() < second.id());
-        assert!(second.id() < after);
+        assert!(before < first.identity());
+        assert!(first.identity() < second.identity());
+        assert!(second.identity() < after);
         let type_ = ExternalType::new(
             ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
             Vec::new(),
         );
         let stored_equal =
-            |_: &crate::runtime::StoredRuntimeValue, _: &crate::runtime::StoredRuntimeValue| false;
-        let equality = crate::host::HostExternalEquality::new(&stored_equal);
-        let stored_hash = |_: &crate::runtime::StoredRuntimeValue| 17;
-        let stored_inspect = |_: &crate::runtime::StoredRuntimeValue| "7".into();
-        let hashing = crate::host::HostExternalHashing::new(&stored_hash);
-        let inspection = crate::host::HostExternalInspection::new(&stored_inspect);
+            |_: &crate::runtime::RetainedValueRef, _: &crate::runtime::RetainedValueRef| false;
+        let equality = crate::host::RetainedValueEquality::new(&stored_equal);
+        let stored_hash = |_: &crate::runtime::RetainedValueRef| 17;
+        let stored_inspect = |_: &crate::runtime::RetainedValueRef| "7".into();
+        let hashing = crate::host::RetainedValueHashing::new(&stored_hash);
+        let inspection = crate::host::RetainedValueInspection::new(&stored_inspect);
         assert!(first.source_equal(&equality, &second));
         assert!(second.source_equal(&equality, &first));
         assert_eq!(first.source_hash(&hashing), 7);
@@ -149,37 +125,42 @@ mod tests {
 
     #[test]
     fn transferred_external_value_keeps_its_payload_lease_opaque_and_alive() {
-        fn equal(_: &TransferExternalEquality<'_>, left: &usize, right: &usize) -> bool {
+        fn equal(_: &crate::host::HostExternalEquality<'_>, left: &usize, right: &usize) -> bool {
             left == right
         }
 
-        fn hash(_: &TransferExternalHashing<'_>, value: &usize) -> u64 {
+        fn hash(_: &crate::host::HostExternalHashing<'_>, value: &usize) -> u64 {
             *value as u64
         }
 
-        fn inspect(context: &TransferExternalInspection<'_>, value: &usize) -> ecow::EcoString {
+        fn inspect(
+            context: &crate::host::HostExternalInspection<'_>,
+            value: &usize,
+        ) -> ecow::EcoString {
             format!(
                 "Resource({})",
-                context.inspect_stored_value(&TransferStoredRuntimeValue::new(
-                    EvaluatedValue::Int((*value).into())
-                ))
+                context
+                    .0
+                    .inspect_stored_value(&RetainedValueRef::new(&EvaluatedValue::Int(
+                        (*value).into()
+                    )))
             )
             .into()
         }
 
-        let store = TransferExternalStore::default();
+        let store = crate::host::HostExternalStore::default();
         let before = ExternalValueIdentity::allocate_id();
         let lease = store.insert(7usize, equal, hash, inspect);
-        let identity = crate::runtime::RuntimeExternalLease::identity(&lease);
+        let identity = lease.identity();
         let after = ExternalValueIdentity::allocate_id();
         assert!(before < identity);
         assert!(identity < after);
-        let stored_equal = |_: &TransferStoredRuntimeValue, _: &TransferStoredRuntimeValue| true;
-        let equality = TransferExternalEquality::new(&stored_equal);
-        let stored_hash = |_: &TransferStoredRuntimeValue| 0;
-        let hashing = TransferExternalHashing::new(&stored_hash);
-        let stored_inspect = |_: &TransferStoredRuntimeValue| "7".into();
-        let inspection = TransferExternalInspection::new(&stored_inspect);
+        let stored_equal = |_: &RetainedValueRef, _: &RetainedValueRef| true;
+        let equality = RetainedValueEquality::new(&stored_equal);
+        let stored_hash = |_: &RetainedValueRef| 0;
+        let hashing = RetainedValueHashing::new(&stored_hash);
+        let stored_inspect = |_: &RetainedValueRef| "7".into();
+        let inspection = RetainedValueInspection::new(&stored_inspect);
         assert!(lease.source_equal(&equality, &lease));
         assert_eq!(lease.source_hash(&hashing), 7);
         assert_eq!(lease.inspection(&inspection), "Resource(7)");
@@ -187,8 +168,7 @@ mod tests {
             ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
             Vec::new(),
         );
-        let value =
-            ExternalValue::from_transfer_evaluated(type_.clone(), lease, "Resource(7)".into());
+        let value = ExternalValue::from_evaluated(type_.clone(), lease, "Resource(7)".into());
         let clone = value.clone();
         drop(store);
 

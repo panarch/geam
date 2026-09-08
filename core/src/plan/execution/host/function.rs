@@ -211,16 +211,8 @@ impl<Implementation> HostedFunction<Implementation> {
         self.metadata.name()
     }
 
-    pub(crate) fn type_arguments(&self) -> &[crate::plan::ValueType] {
-        self.metadata.type_arguments()
-    }
-
     pub(crate) fn call_parameters(&self) -> &[HostCallParameter] {
         self.metadata.call_parameters()
-    }
-
-    pub(crate) fn constructions(&self) -> &HostConstructionTypes {
-        self.metadata.constructions()
     }
 
     pub(crate) fn type_(&self) -> &FunctionType {

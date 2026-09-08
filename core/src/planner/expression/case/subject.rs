@@ -1002,7 +1002,7 @@ pub fn main() {
                 condition: BoolExpr::value(true),
                 branch: Expr::int(IntExpr::value(1.into())),
                 is_total: true,
-                reachable: true,
+                reachable: true
             }]),
             Ok(Expr::int(IntExpr::value(1.into()))),
         );

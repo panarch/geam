@@ -1,11 +1,10 @@
 mod function;
 
-use super::GleamStdlibLocalProfile;
+use super::GleamStdlibProviderProfile;
 use crate::{BitArrayValue, HostProviderModule, HostRegistrationError};
 use bitvec::order::Msb0;
 use bitvec::vec::BitVec;
 use ecow::EcoString;
-use geam_core::provider::HostResult;
 use geam_core::provider_support::{bit_array_bits, bit_array_from_bits};
 use num_bigint::BigInt;
 
@@ -17,9 +16,10 @@ use num_bigint::BigInt;
 )]
 mod provider {
     use super::{
-        BigInt, BitArrayValue, BitVec, EcoString, HostResult, Msb0, bit_array_bits,
-        bit_array_from_bits, function,
+        BigInt, BitArrayValue, BitVec, EcoString, Msb0, bit_array_bits, bit_array_from_bits,
+        function,
     };
+    use geam_core::provider::HostResult;
 
     #[geam_macros::function]
     fn from_string(value: EcoString) -> BitArrayValue {
@@ -90,18 +90,9 @@ mod provider {
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
-    Profile: GleamStdlibLocalProfile,
+    Profile: GleamStdlibProviderProfile,
 {
     provider::__geam_module::<Profile>()
-}
-
-pub(super) fn transfer_host_provider<Profile>()
--> Result<geam_core::TransferHostProviderModule<Profile>, HostRegistrationError>
-where
-    Profile: crate::GleamStdlibTransferProfile,
-    Profile::RunState: Send,
-{
-    provider::__geam_transfer_module::<Profile>()
 }
 
 #[cfg(test)]

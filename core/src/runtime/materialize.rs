@@ -15,21 +15,12 @@ use super::{
     GenericFunctionValue, IntFunctionValue, ListFunctionValue, ListValue, NeverFunctionValue,
     NilFunctionValue, StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue, Value,
 };
-use super::{LocalValues, RuntimeListStorage, RuntimeValueProfile, TransferValues};
 use crate::plan::execution::runtime::RuntimeValueMetadata;
 
-pub(in crate::runtime) trait MaterializeProfile: RuntimeValueProfile {
-    fn materialize_external(
-        plan: RuntimeValueMetadata<'_>,
-        state: &Self::ListStorage,
-        value: EvaluatedExternalValue<Self>,
-    ) -> ExternalValue;
-}
-
-pub(super) fn value<Profile: MaterializeProfile>(
+pub(super) fn value(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: EvaluatedValue<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: EvaluatedValue,
 ) -> Value {
     match value {
         EvaluatedValue::Int(value) => Value::Int(value),
@@ -53,10 +44,10 @@ pub(super) fn value<Profile: MaterializeProfile>(
     }
 }
 
-fn custom<Profile: MaterializeProfile>(
+fn custom(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: EvaluatedCustomValue<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: EvaluatedCustomValue,
 ) -> CustomValue {
     let constructor = plan.custom_constructor(value.constructor());
     let fields = value
@@ -78,22 +69,32 @@ fn custom<Profile: MaterializeProfile>(
     )
 }
 
-fn external<Profile: MaterializeProfile>(
+fn external(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: EvaluatedExternalValue<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: EvaluatedExternalValue,
 ) -> ExternalValue {
-    Profile::materialize_external(plan, state, value)
+    let (type_id, lease) = value.into_parts();
+    let inspect = |value: &crate::runtime::RetainedValueRef| {
+        self::value(plan, state, value.value().clone())
+            .inspect()
+            .to_string()
+            .into()
+    };
+    let inspection = lease.inspection(&crate::runtime::retained::RetainedValueInspection::new(
+        &inspect,
+    ));
+    ExternalValue::from_evaluated(plan.external_value_type(type_id), lease, inspection)
 }
 
-fn parameter_list<Profile: RuntimeValueProfile>(value: ParameterListValueId<Profile>) -> ListValue {
+fn parameter_list(value: ParameterListValueId) -> ListValue {
     ListValue::empty(crate::plan::ValueType::Parameter(value.type_id().item()))
 }
 
-fn list<Profile: MaterializeProfile>(
+fn list(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: &StoredListValueId<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: &StoredListValueId,
 ) -> ListValue {
     match value {
         StoredListValueId::Int(value) => ListValue::int(state.int_values(value).to_vec()),
@@ -170,10 +171,10 @@ fn list<Profile: MaterializeProfile>(
     }
 }
 
-fn function<Profile: MaterializeProfile>(
+fn function(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: EvaluatedFunctionValue<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: EvaluatedFunctionValue,
 ) -> FunctionValue {
     let kind = match value.kind() {
         EvaluatedFunctionValueKind::Generic(value) => {
@@ -222,10 +223,10 @@ fn function<Profile: MaterializeProfile>(
     FunctionValue::from_kind(kind)
 }
 
-fn generic_function<Profile: MaterializeProfile>(
+fn generic_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: &EvaluatedGenericFunction<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: &EvaluatedGenericFunction,
 ) -> GenericFunctionValue {
     GenericFunctionValue::from_evaluated(
         value.runtime_id().clone(),
@@ -235,10 +236,10 @@ fn generic_function<Profile: MaterializeProfile>(
     )
 }
 
-fn never_function<Profile: MaterializeProfile>(
+fn never_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: &EvaluatedNeverFunction<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: &EvaluatedNeverFunction,
 ) -> NeverFunctionValue {
     NeverFunctionValue::from_evaluated(
         value.runtime_id(),
@@ -248,10 +249,10 @@ fn never_function<Profile: MaterializeProfile>(
     )
 }
 
-fn int_function<Profile: MaterializeProfile>(
+fn int_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: &EvaluatedIntFunction<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: &EvaluatedIntFunction,
 ) -> IntFunctionValue {
     IntFunctionValue::new_with_captures(
         value.runtime_id(),
@@ -261,10 +262,10 @@ fn int_function<Profile: MaterializeProfile>(
     )
 }
 
-fn float_function<Profile: MaterializeProfile>(
+fn float_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: &EvaluatedFloatFunction<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: &EvaluatedFloatFunction,
 ) -> FloatFunctionValue {
     FloatFunctionValue::new_with_captures(
         value.runtime_id(),
@@ -274,10 +275,10 @@ fn float_function<Profile: MaterializeProfile>(
     )
 }
 
-fn string_function<Profile: MaterializeProfile>(
+fn string_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: &EvaluatedStringFunction<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: &EvaluatedStringFunction,
 ) -> StringFunctionValue {
     StringFunctionValue::new_with_captures(
         value.runtime_id(),
@@ -287,10 +288,10 @@ fn string_function<Profile: MaterializeProfile>(
     )
 }
 
-fn bit_array_function<Profile: MaterializeProfile>(
+fn bit_array_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: &EvaluatedBitArrayFunction<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: &EvaluatedBitArrayFunction,
 ) -> BitArrayFunctionValue {
     BitArrayFunctionValue::new_with_captures(
         value.runtime_id(),
@@ -300,10 +301,10 @@ fn bit_array_function<Profile: MaterializeProfile>(
     )
 }
 
-fn utf_codepoint_function<Profile: MaterializeProfile>(
+fn utf_codepoint_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: &EvaluatedUtfCodepointFunction<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: &EvaluatedUtfCodepointFunction,
 ) -> UtfCodepointFunctionValue {
     UtfCodepointFunctionValue::new_with_captures(
         value.runtime_id(),
@@ -313,10 +314,10 @@ fn utf_codepoint_function<Profile: MaterializeProfile>(
     )
 }
 
-fn custom_function<Profile: MaterializeProfile>(
+fn custom_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: &EvaluatedCustomFunction<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: &EvaluatedCustomFunction,
 ) -> CustomFunctionValue {
     let target = match value {
         EvaluatedCustomFunction::Function(value) => {
@@ -334,10 +335,10 @@ fn custom_function<Profile: MaterializeProfile>(
     )
 }
 
-fn external_function<Profile: MaterializeProfile>(
+fn external_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: &EvaluatedExternalFunction<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: &EvaluatedExternalFunction,
 ) -> ExternalFunctionValue {
     ExternalFunctionValue::new_with_captures(
         value.runtime_id(),
@@ -347,10 +348,10 @@ fn external_function<Profile: MaterializeProfile>(
     )
 }
 
-fn bool_function<Profile: MaterializeProfile>(
+fn bool_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: &EvaluatedBoolFunction<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: &EvaluatedBoolFunction,
 ) -> BoolFunctionValue {
     BoolFunctionValue::new_with_captures(
         value.runtime_id(),
@@ -360,10 +361,10 @@ fn bool_function<Profile: MaterializeProfile>(
     )
 }
 
-fn nil_function<Profile: MaterializeProfile>(
+fn nil_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: &EvaluatedNilFunction<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: &EvaluatedNilFunction,
 ) -> NilFunctionValue {
     NilFunctionValue::new_with_captures(
         value.runtime_id(),
@@ -373,10 +374,10 @@ fn nil_function<Profile: MaterializeProfile>(
     )
 }
 
-fn tuple_function<Profile: MaterializeProfile>(
+fn tuple_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: &EvaluatedTupleFunction<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: &EvaluatedTupleFunction,
 ) -> TupleFunctionValue {
     TupleFunctionValue::from_evaluated(
         value.runtime_id(),
@@ -386,10 +387,10 @@ fn tuple_function<Profile: MaterializeProfile>(
     )
 }
 
-fn list_function<Profile: MaterializeProfile>(
+fn list_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: &EvaluatedListFunction<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: &EvaluatedListFunction,
 ) -> ListFunctionValue {
     ListFunctionValue::new_with_captures(
         value.runtime_id(),
@@ -399,10 +400,10 @@ fn list_function<Profile: MaterializeProfile>(
     )
 }
 
-fn function_function<Profile: MaterializeProfile>(
+fn function_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: &EvaluatedFunctionFunction<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: &EvaluatedFunctionFunction,
 ) -> FunctionFunctionValue {
     let runtime_id = match value {
         EvaluatedFunctionFunction::Core(value) => {
@@ -420,10 +421,10 @@ fn function_function<Profile: MaterializeProfile>(
     )
 }
 
-fn captures<Profile: MaterializeProfile>(
+fn captures(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    values: &[EvaluatedCapture<Profile>],
+    state: &crate::runtime::RuntimeListStorage,
+    values: &[EvaluatedCapture],
 ) -> Vec<CaptureValue> {
     values
         .iter()
@@ -431,10 +432,10 @@ fn captures<Profile: MaterializeProfile>(
         .collect()
 }
 
-fn capture<Profile: MaterializeProfile>(
+fn capture(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: &EvaluatedCapture<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: &EvaluatedCapture,
 ) -> CaptureValue {
     match value.kind() {
         EvaluatedCaptureKind::Int { local, value } => CaptureValue::int(*local, value.clone()),
@@ -510,10 +511,10 @@ fn capture<Profile: MaterializeProfile>(
     }
 }
 
-fn list_capture<Profile: MaterializeProfile>(
+fn list_capture(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: &EvaluatedListCapture<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: &EvaluatedListCapture,
 ) -> CaptureListValue {
     match value {
         EvaluatedListCapture::Parameter { local, value } => CaptureListValue::Parameter {
@@ -610,58 +611,16 @@ fn list_capture<Profile: MaterializeProfile>(
     }
 }
 
-fn nested_list_values<Profile: MaterializeProfile>(
+fn nested_list_values(
     plan: RuntimeValueMetadata<'_>,
-    state: &Profile::ListStorage,
-    value: &super::state::list::ListListValueId<Profile>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: &super::state::list::ListListValueId,
 ) -> Vec<ListValue> {
     state
         .list_values(value)
         .iter()
         .map(|value| list(plan, state, value))
         .collect()
-}
-
-impl MaterializeProfile for LocalValues {
-    fn materialize_external(
-        plan: RuntimeValueMetadata<'_>,
-        state: &Self::ListStorage,
-        value: EvaluatedExternalValue<Self>,
-    ) -> ExternalValue {
-        let (type_id, lease) = value.into_parts();
-        let inspect = |value: &crate::runtime::StoredRuntimeValue| {
-            self::value::<Self>(plan, state, value.value().clone())
-                .inspect()
-                .to_string()
-                .into()
-        };
-        let inspection = lease
-            .inspection(&crate::host::HostExternalInspection::new(&inspect))
-            .clone();
-        ExternalValue::from_evaluated(plan.external_value_type(type_id), lease, inspection)
-    }
-}
-
-impl MaterializeProfile for TransferValues {
-    fn materialize_external(
-        plan: RuntimeValueMetadata<'_>,
-        state: &Self::ListStorage,
-        value: EvaluatedExternalValue<Self>,
-    ) -> ExternalValue {
-        let (type_id, lease) = value.into_parts();
-        let inspect = |value: &crate::runtime::transfer::TransferStoredRuntimeValue| {
-            self::value::<Self>(plan, state, value.value().clone())
-                .inspect()
-                .to_string()
-                .into()
-        };
-        let inspection = lease
-            .inspection(&crate::runtime::transfer::TransferExternalInspection::new(
-                &inspect,
-            ))
-            .clone();
-        ExternalValue::from_transfer_evaluated(plan.external_value_type(type_id), lease, inspection)
-    }
 }
 
 #[cfg(test)]
@@ -693,16 +652,13 @@ mod tests {
         EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
     };
     use crate::runtime::profile::external_test::{RuntimeCounterProvider, RuntimeCounterSchema};
+    use crate::runtime::retained::{RetainedValueEquality, RetainedValueHashing, RetainedValueRef};
     use crate::runtime::state::RuntimeState;
     use crate::runtime::state::list::{CustomListAllocation, ExternalListAllocation, ListValueId};
-    use crate::runtime::transfer::{
-        TransferExternalEquality, TransferExternalHashing, TransferExternalInspection,
-        TransferExternalStore, TransferListStorage, TransferStoredRuntimeValue,
-    };
     use crate::runtime::{
         BitArrayValue, CaptureListValue, CaptureValue, CustomFieldValue, CustomFunctionValue,
         CustomFunctionValueTarget, CustomValue, EvaluatedExternalValue, FunctionValue, ListValue,
-        TransferValues, Value,
+        RuntimeListStorage, Value,
     };
     use crate::{
         HostModule, HostProviderModule, HostProviderSet, HostedExecution, ModuleSource,
@@ -712,30 +668,40 @@ mod tests {
     use ecow::EcoString;
 
     fn transfer_external_equal(
-        context: &TransferExternalEquality<'_>,
+        context: &crate::host::HostExternalEquality<'_>,
         left: &usize,
         right: &usize,
     ) -> bool {
-        let left = TransferStoredRuntimeValue::new(EvaluatedValue::Int((*left).into()));
-        let right = TransferStoredRuntimeValue::new(EvaluatedValue::Int((*right).into()));
-        context.stored_values_equal(&left, &right)
+        let left = EvaluatedValue::Int((*left).into());
+        let right = EvaluatedValue::Int((*right).into());
+        context.0.stored_values_equal(
+            &RetainedValueRef::new(&left),
+            &RetainedValueRef::new(&right),
+        )
     }
 
-    fn transfer_external_hash(context: &TransferExternalHashing<'_>, value: &usize) -> u64 {
-        context.stored_value_hash(&TransferStoredRuntimeValue::new(EvaluatedValue::Int(
-            (*value).into(),
-        )))
+    fn transfer_external_hash(
+        context: &crate::host::HostExternalHashing<'_>,
+        value: &usize,
+    ) -> u64 {
+        context
+            .0
+            .stored_value_hash(&RetainedValueRef::new(&EvaluatedValue::Int(
+                (*value).into(),
+            )))
     }
 
     fn transfer_external_inspect(
-        context: &TransferExternalInspection<'_>,
+        context: &crate::host::HostExternalInspection<'_>,
         value: &usize,
     ) -> EcoString {
         format!(
             "Counter({})",
-            context.inspect_stored_value(&TransferStoredRuntimeValue::new(EvaluatedValue::Int(
-                (*value).into()
-            )))
+            context
+                .0
+                .inspect_stored_value(&RetainedValueRef::new(&EvaluatedValue::Int(
+                    (*value).into()
+                )))
         )
         .into()
     }
@@ -847,35 +813,38 @@ pub fn main() -> List(Counter) {
             HostedExecution::try_from_module_plan(plan).expect("external list should seal");
         let list_type = execution.external_list_function_id(0).type_id();
         let item_type = list_type.item_type();
-        let store = TransferExternalStore::default();
+        let store = crate::host::HostExternalStore::default();
         let lease = store.insert(
             7usize,
             transfer_external_equal,
             transfer_external_hash,
             transfer_external_inspect,
         );
-        let external = EvaluatedExternalValue::<TransferValues>::new(item_type, lease);
+        let external = EvaluatedExternalValue::new(item_type, lease);
         drop(store);
-        let storage = TransferListStorage::default();
-        let stored_equal = |left: &TransferStoredRuntimeValue,
-                            right: &TransferStoredRuntimeValue| {
-            left.value() == right.value()
-        };
-        let equality = TransferExternalEquality::new(&stored_equal);
-        let stored_hash = |_: &TransferStoredRuntimeValue| 7;
-        let hashing = TransferExternalHashing::new(&stored_hash);
+        let storage = RuntimeListStorage::default();
+        let stored_equal =
+            |left: &RetainedValueRef, right: &RetainedValueRef| left.value() == right.value();
+        let equality = RetainedValueEquality::new(&stored_equal);
+        let stored_hash = |_: &RetainedValueRef| 7;
+        let hashing = RetainedValueHashing::new(&stored_hash);
         assert!(external.source_equal(&equality, &external));
         assert_eq!(external.source_hash(&hashing), 7);
 
         let materialized_external = value(
-            execution.value_metadata(),
+            execution.execution().value_metadata(),
             &storage,
             EvaluatedValue::External(external.clone()),
         );
         assert_eq!(materialized_external.inspect().to_string(), "Counter(7)");
         assert_eq!(
             materialized_external.value_type(),
-            ValueType::External(execution.value_metadata().external_value_type(item_type)),
+            ValueType::External(
+                execution
+                    .execution()
+                    .value_metadata()
+                    .external_value_type(item_type)
+            ),
         );
 
         let list = storage.external(ExternalListAllocation::new(
@@ -896,7 +865,7 @@ pub fn main() -> List(Counter) {
             None,
         );
         let materialized_list = value(
-            execution.value_metadata(),
+            execution.execution().value_metadata(),
             &storage,
             EvaluatedValue::from(ListValueId::External(list.clone())),
         );
@@ -1074,14 +1043,13 @@ pub fn main() -> List(Counter) {
             0,
             vec![CustomFieldValue::from_evaluated(None, Value::Int(1.into()))],
         );
-        let constructor_function: EvaluatedCustomFunction<crate::runtime::LocalValues> =
-            EvaluatedCustomFunction::constructor(
-                custom_value.constructor(),
-                crate::plan::execution::type_::FunctionType::new(
-                    vec![crate::plan::execution::type_::ValueType::Int],
-                    crate::plan::execution::type_::ValueType::Custom(custom_value.type_id()),
-                ),
-            );
+        let constructor_function: EvaluatedCustomFunction = EvaluatedCustomFunction::constructor(
+            custom_value.constructor(),
+            crate::plan::execution::type_::FunctionType::new(
+                vec![crate::plan::execution::type_::ValueType::Int],
+                crate::plan::execution::type_::ValueType::Custom(custom_value.type_id()),
+            ),
+        );
         assert_eq!(
             value(
                 plan.value_metadata(),
@@ -1557,15 +1525,14 @@ pub fn main() -> List(Counter) {
             vec![crate::plan::execution::type_::ValueType::Int],
             crate::plan::execution::type_::ValueType::Int,
         );
-        let function: EvaluatedIntFunction<crate::runtime::LocalValues> =
-            EvaluatedIntFunction::reference(
-                IntFunctionId(0),
-                vec![crate::plan::execution::graph::ParamLocal::Int(IntLocalId(
-                    0,
-                ))],
-                vec![EvaluatedCapture::int(IntLocalId(1), 42.into())],
-                function_type,
-            );
+        let function: EvaluatedIntFunction = EvaluatedIntFunction::reference(
+            IntFunctionId(0),
+            vec![crate::plan::execution::graph::ParamLocal::Int(IntLocalId(
+                0,
+            ))],
+            vec![EvaluatedCapture::int(IntLocalId(1), 42.into())],
+            function_type,
+        );
 
         assert_eq!(
             value(
@@ -1588,9 +1555,31 @@ pub fn main() -> List(Counter) {
 
     #[test]
     fn source_materialization_preserves_generic_and_never_function_types() {
-        let captured = crate::runtime::run_src(include_str!(
-            "../../tests/fixtures/execution/functions/generic_materialized_capture_families.gleam"
-        ));
+        let captured = crate::runtime::run_src(
+            r#"fn identity(value: value) {
+  value
+}
+
+fn diverge(_value: Int) -> value {
+  panic
+}
+
+fn capture_all() {
+  let empty = []
+  let nested = [[]]
+  let concrete = [[1]]
+  let generic = identity
+  let never = diverge
+  fn() { #(empty, nested, concrete, generic, never) }
+}
+
+pub fn main() {
+  capture_all()
+}
+
+// @geam:expect Function(fn() -> #(List(Parameter(0)), List(List(Parameter(1))), List(List(Int)), fn(Parameter(2)) -> Parameter(2), fn(Int) -> Parameter(3)))
+"#,
+        );
         assert_eq!(
             captured.value_type(),
             ValueType::Function(Box::new(FunctionType::new(
@@ -1613,9 +1602,31 @@ pub fn main() -> List(Counter) {
             ))),
         );
 
-        let generic = crate::runtime::run_src(include_str!(
-            "../../tests/fixtures/execution/functions/generic_function_main.gleam"
-        ));
+        let generic = crate::runtime::run_src(
+            r#"fn identity(value: value) {
+  value
+}
+
+const generic_function = identity
+const generic_function_alias = generic_function
+
+pub fn main() {
+  #(
+    generic_function_alias,
+    #(case 1.0 {
+      1.0 -> generic_function_alias
+      _ -> generic_function_alias
+    }).0,
+    #(case 0.0 {
+      1.0 -> generic_function_alias
+      _ -> generic_function_alias
+    }).0,
+  )
+}
+
+// @geam:expect Tuple([Function(fn(Parameter(0)) -> Parameter(0)), Function(fn(Parameter(1)) -> Parameter(1)), Function(fn(Parameter(2)) -> Parameter(2))])
+"#,
+        );
         assert_eq!(
             generic.value_type(),
             ValueType::Tuple(vec![
@@ -1634,9 +1645,23 @@ pub fn main() -> List(Counter) {
             ]),
         );
 
-        let never = crate::runtime::run_src(include_str!(
-            "../../tests/fixtures/execution/functions/generic_never_function_materialization.gleam"
-        ));
+        let never = crate::runtime::run_src(
+            r#"fn diverge(_value: Int) -> value {
+  panic as "unreached diverging function"
+}
+
+fn capture() {
+  let function = diverge
+  fn() { function }
+}
+
+pub fn main() {
+  #(diverge, capture())
+}
+
+// @geam:expect Tuple([Function(fn(Int) -> Parameter(0)), Function(fn() -> fn(Int) -> Parameter(1))])
+"#,
+        );
         assert_eq!(
             never.value_type(),
             ValueType::Tuple(vec![

@@ -1,11 +1,11 @@
 use super::ScriptedSource;
 use super::transfer_fixture::{ENTRY, TransferFixture, observed_project};
-use geam_core::host::{AsyncHostComponentProfile, HostFutureStore};
-use geam_core::{HostProfile, TransferHostProviderSet};
-use geam_runtime_api::FutureComponent;
+use geam_builtin::FutureComponent;
+use geam_core::host::{HostComponentProfile, HostFutureStore};
+use geam_core::{HostProfile, HostProviderSet};
 use geam_stdlib::{
-    Component as StdlibComponent, GleamStdlibHostProfile, GleamStdlibRunState,
-    GleamStdlibTransferStores, IoOutput,
+    Component as StdlibComponent, GleamStdlibHostProfile, GleamStdlibRunState, GleamStdlibStores,
+    IoOutput,
 };
 use geam_time::{Component as TimeComponent, GleamTimeHostProfile};
 
@@ -19,7 +19,7 @@ pub(super) struct RunState {
 
 #[derive(Default)]
 pub(super) struct Stores {
-    stdlib: GleamStdlibTransferStores,
+    stdlib: GleamStdlibStores,
     time: (),
     work: HostFutureStore,
 }
@@ -36,8 +36,8 @@ impl GleamTimeHostProfile for Profile {
     type Source = ScriptedSource;
 }
 
-impl AsyncHostComponentProfile<StdlibComponent> for Profile {
-    fn component_async_stores(stores: &Stores) -> &GleamStdlibTransferStores {
+impl HostComponentProfile<StdlibComponent> for Profile {
+    fn component_stores(stores: &Stores) -> &GleamStdlibStores {
         &stores.stdlib
     }
     fn component_state(state: &mut RunState) -> &mut GleamStdlibRunState {
@@ -45,8 +45,8 @@ impl AsyncHostComponentProfile<StdlibComponent> for Profile {
     }
 }
 
-impl AsyncHostComponentProfile<TimeComponent<ScriptedSource>> for Profile {
-    fn component_async_stores(stores: &Stores) -> &() {
+impl HostComponentProfile<TimeComponent<ScriptedSource>> for Profile {
+    fn component_stores(stores: &Stores) -> &() {
         &stores.time
     }
     fn component_state(state: &mut RunState) -> &mut ScriptedSource {
@@ -57,8 +57,8 @@ impl AsyncHostComponentProfile<TimeComponent<ScriptedSource>> for Profile {
 impl geam_core::host::HostWorkProfile for Profile {
     type Work = FutureComponent;
 }
-impl AsyncHostComponentProfile<FutureComponent> for Profile {
-    fn component_async_stores(stores: &Stores) -> &HostFutureStore {
+impl HostComponentProfile<FutureComponent> for Profile {
+    fn component_stores(stores: &Stores) -> &HostFutureStore {
         &stores.work
     }
     fn component_state(state: &mut RunState) -> &mut () {
@@ -68,15 +68,13 @@ impl AsyncHostComponentProfile<FutureComponent> for Profile {
 
 pub(super) fn fixture(root_module: &str) -> TransferFixture<Profile> {
     let mut providers =
-        geam_stdlib::transfer_host_providers::<Profile>().expect("stdlib transfer registration");
-    providers.extend(
-        geam_time::transfer_host_providers::<Profile>().expect("Time transfer registration"),
-    );
+        geam_stdlib::host_providers::<Profile>().expect("stdlib transfer registration");
+    providers.extend(geam_time::host_providers::<Profile>().expect("Time transfer registration"));
     TransferFixture::new(
         observed_project(
             &super::project_root(),
             root_module,
-            TransferHostProviderSet::new(providers).expect("Time provider set"),
+            HostProviderSet::from_providers(providers).expect("Time provider set"),
         ),
         ENTRY,
     )

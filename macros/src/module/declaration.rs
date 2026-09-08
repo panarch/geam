@@ -7,13 +7,12 @@ use super::function::{
     provider_requirement_sequence,
 };
 use super::list::{
-    custom_input_expression, list_declared_accesses, list_decoder_value,
-    transfer_custom_input_ident, transfer_list_decoder_ident, transfer_list_decoder_value,
+    custom_input_expression, custom_input_ident, list_declared_accesses, list_decoder_ident,
+    list_decoder_value,
 };
 use super::signature::{host_custom_field_type, host_static_value_type};
 use super::{
-    FunctionFlavor, GeneratedNames, GeneratedValue, OutputEnvironment, OutputState,
-    ProviderRepresentation, StaticValueType, TransferFlavor,
+    FunctionFlavor, GeneratedNames, GeneratedValue, OutputEnvironment, OutputState, StaticValueType,
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -25,7 +24,7 @@ pub(super) fn generic_external_output_codec(
     impl_parameters: &[TokenStream],
     parameters: &[Ident],
     output: TokenStream,
-    output_payload: TokenStream,
+    _output_payload: TokenStream,
     schema: &Ident,
     host_arguments: &TokenStream,
     support: &TokenStream,
@@ -36,73 +35,8 @@ pub(super) fn generic_external_output_codec(
             #(#parameters: #support::ProviderValue,)*
         {
             type Host = #support::HostExternalType<#schema, #host_arguments>;
-            type Input = Self;
-            type ListInput = Self;
             type OutputRequirements = #support::ProviderConstruction<Self::Host>;
             type RootRequirements = #support::ProviderNoConstructions;
-        }
-
-        impl<#(#impl_parameters,)* Profile, Provider, Return>
-            #support::ProviderOutputValue<Profile, Provider, Return>
-            for #output
-        where
-            Profile: __GeamModuleProfile,
-            Provider: #support::HostProvider<Profile>,
-            Return: #support::HostType,
-            #(#parameters: #support::ProviderValue,)*
-        {
-            fn into_host<'__geam_call>(
-                self,
-                call: &mut #support::HostCall<'__geam_call, Profile, Provider, Return>,
-                construction: &#support::ProviderConstructions<
-                    '__geam_call,
-                    Self::OutputRequirements,
-                >,
-            ) -> <Self::Host as #support::HostType>::Value<'__geam_call> {
-                match #output_payload {
-                    ::core::result::Result::Ok(payload) => {
-                        call.construct_external_with_binding::<
-                            __GeamProvider,
-                            #schema,
-                            #host_arguments,
-                        >(construction.token(), payload)
-                    }
-                    ::core::result::Result::Err(value) => {
-                        call.provider_external_from_item::<#schema, #host_arguments, _>(value)
-                    }
-                }
-            }
-        }
-
-        impl<#(#impl_parameters,)* Profile, Provider>
-            #support::ProviderRootOutputValue<Profile, Provider>
-            for #output
-        where
-            Profile: __GeamModuleProfile,
-            Provider: #support::HostProvider<Profile>,
-            #(#parameters: #support::ProviderValue,)*
-        {
-            fn complete<'__geam_call>(
-                self,
-                mut call: #support::HostCall<'__geam_call, Profile, Provider, Self::Host>,
-                _constructions: &#support::ProviderConstructions<
-                    '__geam_call,
-                    Self::RootRequirements,
-                >,
-            ) -> ::core::result::Result<
-                #support::HostCallCompletion<'__geam_call, Self::Host>,
-                #support::HostCallError,
-            > {
-                let value = match #output_payload {
-                    ::core::result::Result::Ok(payload) => {
-                        call.create_external_with_binding::<__GeamProvider>(payload)
-                    }
-                    ::core::result::Result::Err(value) => {
-                        call.provider_external_from_item::<#schema, #host_arguments, _>(value)
-                    }
-                };
-                ::core::result::Result::Ok(call.return_value(value))
-            }
         }
     }
 }
@@ -114,14 +48,9 @@ pub(super) fn generate_custom_declaration(
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
     module_path: &LitStr,
-    transfer_enabled: bool,
 ) -> TokenStream {
     let custom_ident = &custom.ident;
-    let output_fields = if transfer_enabled {
-        super::custom_output::fields(custom, customs, support)
-    } else {
-        Vec::new()
-    };
+    let output_fields = super::custom_output::fields(custom, customs, support);
     let output_parameters = output_fields
         .iter()
         .map(|field| &field.parameter)
@@ -129,10 +58,10 @@ pub(super) fn generate_custom_declaration(
     let output_generics =
         (!output_parameters.is_empty()).then(|| quote!(<#(#output_parameters,)*>));
     let output_type = quote!(#custom_ident #output_generics);
-    let transfer_output = if output_fields.is_empty() {
+    let owned_output = if output_fields.is_empty() {
         quote!(#custom_ident)
     } else {
-        let fields = output_fields.iter().map(|field| &field.transfer);
+        let fields = output_fields.iter().map(|field| &field.value_type);
         quote!(#custom_ident<#(#fields,)*>)
     };
     let schema = &custom.schema;
@@ -204,7 +133,6 @@ pub(super) fn generate_custom_declaration(
         &quote!(Provider),
         &quote!(Self::Host),
         &mut root_names,
-        ProviderRepresentation::Local,
     );
     let root_requirements = provider_requirement_sequence(&root.constructions, support);
     let mut root_requirement_bounds = Vec::new();
@@ -223,37 +151,6 @@ pub(super) fn generate_custom_declaration(
     let root_statements = root.statements;
     let root_completion = root.completion;
 
-    let mut transfer_root_names = GeneratedNames::default();
-    let transfer_root = generate_custom_return(
-        custom_index,
-        customs,
-        support,
-        &quote!(Provider),
-        &quote!(Self::Host),
-        &mut transfer_root_names,
-        ProviderRepresentation::Transfer,
-    );
-    let transfer_root_requirements =
-        provider_requirement_sequence(&transfer_root.constructions, support);
-    let mut transfer_root_requirement_bounds = Vec::new();
-    if !transfer_root.constructions.is_empty() {
-        transfer_root_requirement_bounds.push(quote! {
-            #transfer_root_requirements: #support::ProviderConstructionRequirements
-        });
-        transfer_root_requirement_bounds.extend(provider_requirement_selection_bounds(
-            &transfer_root_requirements,
-            &transfer_root.constructions,
-            support,
-        ));
-    }
-    let transfer_root_bindings = provider_construction_bindings(
-        &transfer_root.constructions,
-        quote!(&constructions),
-        support,
-    );
-    let transfer_root_statements = transfer_root.statements;
-    let transfer_root_completion = transfer_root.completion;
-
     let mut nested_names = GeneratedNames::default();
     let mut nested_constructions = Vec::new();
     let nested_provider = quote!(Provider);
@@ -263,7 +160,6 @@ pub(super) fn generate_custom_declaration(
         support,
         provider: &nested_provider,
         return_type: &nested_return_type,
-        representation: ProviderRepresentation::Local,
     };
     let mut nested_state = OutputState {
         names: &mut nested_names,
@@ -288,162 +184,63 @@ pub(super) fn generate_custom_declaration(
         provider_construction_bindings(&nested_constructions, quote!(&constructions), support);
     let nested_statements = nested.statements;
     let nested_value = nested.value;
-
-    let mut transfer_nested_names = GeneratedNames::default();
-    let mut transfer_nested_constructions = Vec::new();
-    let transfer_nested_provider = quote!(Provider);
-    let transfer_nested_return_type = quote!(Return);
-    let transfer_nested_environment = OutputEnvironment {
-        customs,
-        support,
-        provider: &transfer_nested_provider,
-        return_type: &transfer_nested_return_type,
-        representation: ProviderRepresentation::Transfer,
-    };
-    let mut transfer_nested_state = OutputState {
-        names: &mut transfer_nested_names,
-        constructions: &mut transfer_nested_constructions,
-    };
-    let transfer_nested = generate_custom_intermediate(
-        custom_index,
-        quote!(self),
-        &transfer_nested_environment,
-        &mut transfer_nested_state,
-    );
-    let transfer_nested_requirements =
-        provider_requirement_sequence(&transfer_nested_constructions, support);
-    let mut transfer_nested_requirement_bounds = vec![quote! {
-        #transfer_nested_requirements: #support::ProviderConstructionRequirements
-    }];
-    transfer_nested_requirement_bounds.extend(provider_requirement_selection_bounds(
-        &transfer_nested_requirements,
-        &transfer_nested_constructions,
-        support,
-    ));
-    let transfer_nested_bindings = provider_construction_bindings(
-        &transfer_nested_constructions,
-        quote!(&constructions),
-        support,
-    );
-    let transfer_nested_statements = transfer_nested.statements;
-    let transfer_nested_value = transfer_nested.value;
-    let nested_codec_bounds = custom_output_codec_bounds(
-        custom,
-        customs,
-        support,
-        &quote!(Provider),
-        &quote!(Return),
-        ProviderRepresentation::Local,
-    );
+    let nested_codec_bounds =
+        custom_output_codec_bounds(custom, customs, support, &quote!(Provider), &quote!(Return));
     let root_codec_bounds = custom_output_codec_bounds(
         custom,
         customs,
         support,
         &quote!(Provider),
         &quote!(Self::Host),
-        ProviderRepresentation::Local,
-    );
-    let transfer_nested_codec_bounds = custom_output_codec_bounds(
-        custom,
-        customs,
-        support,
-        &quote!(Provider),
-        &quote!(Return),
-        ProviderRepresentation::Transfer,
-    );
-    let transfer_root_codec_bounds = custom_output_codec_bounds(
-        custom,
-        customs,
-        support,
-        &quote!(Provider),
-        &quote!(Self::Host),
-        ProviderRepresentation::Transfer,
     );
     let input_declaration = if let Some(input_model) = &custom.input {
         let input = &input_model.ident;
-        let definition = generate_custom_input_definition(
-            custom,
-            input,
-            custom_inputs,
-            support,
-            transfer_enabled,
-        );
-        let input_codec_bounds = custom_input_codec_bounds(
-            custom,
-            customs,
-            custom_inputs,
-            support,
-            FunctionFlavor::Local,
-        );
-        let decoder_input_codec_bounds = input_codec_bounds.clone();
-        let list_codec_bounds =
-            custom_list_codec_bounds(custom_index, customs, support, FunctionFlavor::Local);
-        let decoder_definition = generate_custom_decoder(
-            custom,
-            input_model,
-            customs,
-            custom_inputs,
-            support,
-            &decoder_input_codec_bounds,
-            FunctionFlavor::Local,
-        );
-        let decoder_ident = &input_model.decoder;
-        let list_decoder = &input_model.list_decoder;
-        let list_decoder_value = list_decoder_value(
-            list_decoder,
-            &StaticValueType::Custom {
-                index: custom_index,
-            },
-            customs,
-            support,
-        );
-        let transfer_input_declaration = transfer_enabled.then(|| {
-            let immediate_input = transfer_custom_input_ident(input, TransferFlavor::Immediate);
-            let async_input = transfer_custom_input_ident(input, TransferFlavor::Async);
-            let immediate_declaration = generate_transfer_custom_input_declaration(
+        let definition = generate_custom_input_definition(custom, input, custom_inputs, support);
+        let input_declaration = {
+            let immediate_input = custom_input_ident(input, FunctionFlavor::Immediate);
+            let async_input = custom_input_ident(input, FunctionFlavor::Async);
+            let immediate_declaration = generate_custom_input_declaration(
                 custom_index,
                 custom,
                 input_model,
                 customs,
                 custom_inputs,
                 support,
-                TransferFlavor::Immediate,
+                FunctionFlavor::Immediate,
             );
             let async_declaration = custom
                 .constructors
                 .iter()
                 .any(|constructor| !custom_field_models(&constructor.fields).is_empty())
                 .then(|| {
-                    generate_transfer_custom_input_declaration(
+                    generate_custom_input_declaration(
                         custom_index,
                         custom,
                         input_model,
                         customs,
                         custom_inputs,
                         support,
-                        TransferFlavor::Async,
+                        FunctionFlavor::Async,
                     )
                 });
             quote! {
-                impl #support::ProviderTransferValue for #input {
-                    type Output = #transfer_output;
+                impl #support::ProviderValueForms for #input {
+                    type Output = #owned_output;
                     type ImmediateInput = #immediate_input;
                     type ImmediateListInput = #immediate_input;
-                    type TransferInput = #async_input;
-                    type TransferListInput = #async_input;
+                    type OwnedInput = #async_input;
+                    type OwnedListInput = #async_input;
                 }
 
                 #immediate_declaration
                 #async_declaration
             }
-        });
+        };
         quote! {
             #definition
 
             impl #support::ProviderValue for #input {
                 type Host = #support::HostCustomType<#schema>;
-                type Input = Self;
-                type ListInput = Self;
                 type OutputRequirements = #support::ProviderNoConstructions;
                 type RootRequirements = #support::ProviderNoConstructions;
             }
@@ -453,50 +250,7 @@ pub(super) fn generate_custom_declaration(
                 type Output = #custom_ident;
             }
 
-            impl<Profile, Provider, Return>
-                #support::ProviderInputValue<Profile, Provider, Return> for #input
-            where
-                Profile: __GeamModuleProfile,
-                Provider: #support::HostProvider<Profile>,
-                Return: #support::HostType,
-                #(#input_codec_bounds,)*
-            {
-                fn from_host<'__geam_call>(
-                    call: &mut #support::HostCall<
-                        '__geam_call,
-                        Profile,
-                        Provider,
-                        Return,
-                    >,
-                    value: <Self::Host as #support::HostType>::Value<'__geam_call>,
-                ) -> Self {
-                    #decoder_ident(call, value)
-                }
-            }
-
-            impl #support::ProviderListInputValue for #input {
-                type View = Self;
-                type Decoder = #list_decoder;
-            }
-
-            impl<Profile> #support::ProviderListInputCodec<Profile> for #input
-            where
-                Profile: __GeamModuleProfile,
-                #(#list_codec_bounds,)*
-            {
-                fn decoder<'__geam_call, Provider, Return>(
-                    call: &#support::HostCall<'__geam_call, Profile, Provider, Return>,
-                ) -> Self::Decoder
-                where
-                    Provider: #support::HostProvider<Profile>,
-                    Return: #support::HostType,
-                {
-                    #list_decoder_value
-                }
-            }
-
-            #decoder_definition
-            #transfer_input_declaration
+            #input_declaration
         }
     } else {
         TokenStream::new()
@@ -507,41 +261,41 @@ pub(super) fn generate_custom_declaration(
     } else {
         quote!(#support::NoCustomInput)
     };
-    let transfer_immediate_input = if let Some(input) = &custom.input {
-        let input = transfer_custom_input_ident(&input.ident, TransferFlavor::Immediate);
+    let immediate_input = if let Some(input) = &custom.input {
+        let input = custom_input_ident(&input.ident, FunctionFlavor::Immediate);
         quote!(#input)
     } else {
         quote!(#support::NoCustomInput)
     };
-    let transfer_async_input = if let Some(input) = &custom.input {
-        let input = transfer_custom_input_ident(&input.ident, TransferFlavor::Async);
+    let owned_input = if let Some(input) = &custom.input {
+        let input = custom_input_ident(&input.ident, FunctionFlavor::Async);
         quote!(#input)
     } else {
         quote!(#support::NoCustomInput)
     };
-    let transfer_value_declaration = transfer_enabled.then(|| {
+    let value_declaration = {
         quote! {
-            impl #output_generics #support::ProviderTransferValue for #output_type {
-                type Output = #transfer_output;
-                type ImmediateInput = #transfer_immediate_input;
-                type ImmediateListInput = #transfer_immediate_input;
-                type TransferInput = #transfer_async_input;
-                type TransferListInput = #transfer_async_input;
+            impl #output_generics #support::ProviderValueForms for #output_type {
+                type Output = #owned_output;
+                type ImmediateInput = #immediate_input;
+                type ImmediateListInput = #immediate_input;
+                type OwnedInput = #owned_input;
+                type OwnedListInput = #owned_input;
             }
 
             impl<Profile, Provider, Return>
-                #support::ProviderTransferOutputValue<Profile, Provider, Return>
-                for #transfer_output
+                #support::ProviderOutputValue<Profile, Provider, Return>
+                for #owned_output
             where
-                Profile: __GeamAsyncModuleProfile,
+                Profile: __GeamModuleProfile,
                 Provider: #support::HostProvider<Profile>,
                 Return: #support::HostType,
-                #(#transfer_nested_codec_bounds,)*
-                #(#transfer_nested_requirement_bounds,)*
+                #(#nested_codec_bounds,)*
+                #(#nested_requirement_bounds,)*
             {
                 fn into_host<'__geam_call>(
                     self,
-                    mut call: &mut #support::TransferHostCall<
+                    mut call: &mut #support::HostCall<
                         '__geam_call,
                         Profile,
                         Provider,
@@ -552,24 +306,24 @@ pub(super) fn generate_custom_declaration(
                         Self::OutputRequirements,
                     >,
                 ) -> <Self::Host as #support::HostType>::Value<'__geam_call> {
-                    #transfer_nested_bindings
-                    #transfer_nested_statements
-                    #transfer_nested_value
+                    #nested_bindings
+                    #nested_statements
+                    #nested_value
                 }
             }
 
             impl<Profile, Provider>
-                #support::ProviderTransferRootOutputValue<Profile, Provider>
-                for #transfer_output
+                #support::ProviderRootOutputValue<Profile, Provider>
+                for #owned_output
             where
-                Profile: __GeamAsyncModuleProfile,
+                Profile: __GeamModuleProfile,
                 Provider: #support::HostProvider<Profile>,
-                #(#transfer_root_codec_bounds,)*
-                #(#transfer_root_requirement_bounds,)*
+                #(#root_codec_bounds,)*
+                #(#root_requirement_bounds,)*
             {
                 fn complete<'__geam_call>(
                     self,
-                    mut call: #support::TransferHostCall<
+                    mut call: #support::HostCall<
                         '__geam_call,
                         Profile,
                         Provider,
@@ -581,16 +335,16 @@ pub(super) fn generate_custom_declaration(
                     >,
                 ) -> ::core::result::Result<
                     #support::HostCallCompletion<'__geam_call, Self::Host>,
-                    #support::AsyncHostCallError,
+                    #support::HostCallError,
                 > {
-                    #transfer_root_bindings
+                    #root_bindings
                     let returned = self;
-                    #transfer_root_statements
-                    #transfer_root_completion
+                    #root_statements
+                    #root_completion
                 }
             }
         }
-    });
+    };
 
     quote! {
         #(#field_definitions)*
@@ -615,62 +369,11 @@ pub(super) fn generate_custom_declaration(
 
         impl #output_generics #support::ProviderValue for #output_type {
             type Host = #support::HostCustomType<#schema>;
-            type Input = #input;
-            type ListInput = #input;
             type OutputRequirements = #nested_requirements;
             type RootRequirements = #root_requirements;
         }
 
-        impl<Profile, Provider, Return>
-            #support::ProviderOutputValue<Profile, Provider, Return> for #custom_ident
-        where
-            Profile: __GeamModuleProfile,
-            Provider: #support::HostProvider<Profile>,
-            Return: #support::HostType,
-            #(#nested_codec_bounds,)*
-            #(#nested_requirement_bounds,)*
-        {
-            fn into_host<'__geam_call>(
-                self,
-                mut call: &mut #support::HostCall<'__geam_call, Profile, Provider, Return>,
-                constructions: &#support::ProviderConstructions<
-                    '__geam_call,
-                    Self::OutputRequirements,
-                >,
-            ) -> <Self::Host as #support::HostType>::Value<'__geam_call> {
-                #nested_bindings
-                #nested_statements
-                #nested_value
-            }
-        }
-
-        impl<Profile, Provider> #support::ProviderRootOutputValue<Profile, Provider>
-            for #custom_ident
-        where
-            Profile: __GeamModuleProfile,
-            Provider: #support::HostProvider<Profile>,
-            #(#root_codec_bounds,)*
-            #(#root_requirement_bounds,)*
-        {
-            fn complete<'__geam_call>(
-                self,
-                mut call: #support::HostCall<'__geam_call, Profile, Provider, Self::Host>,
-                constructions: &#support::ProviderConstructions<
-                    '__geam_call,
-                    Self::RootRequirements,
-                >,
-            ) -> ::core::result::Result<
-                #support::HostCallCompletion<'__geam_call, Self::Host>,
-                #support::HostCallError,
-            > {
-                #root_bindings
-                let returned = self;
-                #root_statements
-                #root_completion
-            }
-        }
-
-        #transfer_value_declaration
+        #value_declaration
 
         #input_declaration
     }
@@ -681,7 +384,6 @@ fn generate_custom_input_definition(
     input: &Ident,
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
-    transferable: bool,
 ) -> TokenStream {
     let visibility = &custom.visibility;
     let fields = custom
@@ -689,9 +391,8 @@ fn generate_custom_input_definition(
         .iter()
         .flat_map(|constructor| custom_field_models(&constructor.fields))
         .collect::<Vec<_>>();
-    let has_context = transferable && !fields.is_empty();
+    let has_context = !fields.is_empty();
     let context_trait = format_ident!("__Geam{}Shape", input);
-    let local = format_ident!("__GeamLocal{}Shape", input);
     let immediate = format_ident!("__GeamImmediate{}Shape", input);
     let owned = format_ident!("__GeamOwned{}Shape", input);
     let names = (0..fields.len())
@@ -706,17 +407,8 @@ fn generate_custom_input_definition(
             let members = custom_field_models(&constructor.fields)
                 .iter()
                 .map(|field| {
-                    let type_ = if has_context {
-                        let name = &names[index];
-                        quote!(__GeamContext::#name)
-                    } else {
-                        custom_input_type(
-                            &field.value,
-                            custom_inputs,
-                            support,
-                            FunctionFlavor::Local,
-                        )
-                    };
+                    let name = &names[index];
+                    let type_ = quote!(__GeamContext::#name);
                     index += 1;
                     if field.named {
                         let ident = &field.ident;
@@ -733,11 +425,10 @@ fn generate_custom_input_definition(
             }
         })
         .collect::<Vec<_>>();
-    let parameters = has_context.then(|| quote!(<__GeamContext: #context_trait = #local>));
+    let parameters = has_context.then(|| quote!(<__GeamContext: #context_trait = #immediate>));
     let context_definition = has_context.then(|| {
         let implementations = [
-            (&local, FunctionFlavor::Local),
-            (&immediate, FunctionFlavor::TransferImmediate),
+            (&immediate, FunctionFlavor::Immediate),
             (&owned, FunctionFlavor::Async),
         ]
         .into_iter()
@@ -757,9 +448,9 @@ fn generate_custom_input_definition(
             #(#implementations)*
         }
     });
-    let transfer_aliases = transferable.then(|| {
-        let immediate_input = transfer_custom_input_ident(input, TransferFlavor::Immediate);
-        let owned_input = transfer_custom_input_ident(input, TransferFlavor::Async);
+    let aliases = {
+        let immediate_input = custom_input_ident(input, FunctionFlavor::Immediate);
+        let owned_input = custom_input_ident(input, FunctionFlavor::Async);
         let immediate_type = if has_context {
             quote!(#input<#immediate>)
         } else {
@@ -776,25 +467,25 @@ fn generate_custom_input_definition(
             #[doc(hidden)]
             #visibility type #owned_input = #owned_type;
         }
-    });
+    };
     quote! {
         #context_definition
         #visibility enum #input #parameters { #(#variants,)* }
-        #transfer_aliases
+        #aliases
     }
 }
 
-fn generate_transfer_custom_input_declaration(
+fn generate_custom_input_declaration(
     custom_index: usize,
     custom: &CustomModel,
     input_model: &CustomInputModel,
     customs: &[CustomModel],
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
-    flavor: TransferFlavor,
+    flavor: FunctionFlavor,
 ) -> TokenStream {
-    let input = transfer_custom_input_ident(&input_model.ident, flavor);
-    let function_flavor = flavor.function();
+    let input = custom_input_ident(&input_model.ident, flavor);
+    let function_flavor = flavor;
     let schema = &custom.schema;
     let input_codec_bounds =
         custom_input_codec_bounds(custom, customs, custom_inputs, support, function_flavor);
@@ -808,13 +499,13 @@ fn generate_transfer_custom_input_declaration(
         function_flavor,
     );
     let decoder = match flavor {
-        TransferFlavor::Immediate => {
-            format_ident!("__GeamTransferImmediate{}", input_model.decoder)
+        FunctionFlavor::Immediate => {
+            format_ident!("__GeamImmediate{}", input_model.decoder)
         }
-        TransferFlavor::Async => format_ident!("__GeamTransfer{}", input_model.decoder),
+        FunctionFlavor::Async => format_ident!("__GeamOwned{}", input_model.decoder),
     };
-    let list_decoder = transfer_list_decoder_ident(&input_model.list_decoder, flavor);
-    let list_decoder_value = transfer_list_decoder_value(
+    let list_decoder = list_decoder_ident(&input_model.list_decoder, flavor);
+    let list_decoder_value = list_decoder_value(
         &input_model.list_decoder,
         &StaticValueType::Custom {
             index: custom_index,
@@ -829,9 +520,9 @@ fn generate_transfer_custom_input_declaration(
         custom_list_codec_bounds(custom_index, customs, support, function_flavor);
     quote! {
         impl<Profile, Provider, Return>
-            #support::ProviderTransferInputValue<Profile, Provider, Return> for #input
+            #support::ProviderInputValue<Profile, Provider, Return> for #input
         where
-            Profile: __GeamAsyncModuleProfile,
+            Profile: __GeamModuleProfile,
             Provider: #support::HostProvider<Profile>,
             Return: #support::HostType,
             #(#input_codec_bounds,)*
@@ -839,7 +530,7 @@ fn generate_transfer_custom_input_declaration(
             type Host = #support::HostCustomType<#schema>;
 
             fn from_host<'__geam_call>(
-                call: &mut #support::TransferHostCall<
+                call: &mut #support::HostCall<
                     '__geam_call,
                     Profile,
                     Provider,
@@ -851,21 +542,21 @@ fn generate_transfer_custom_input_declaration(
             }
         }
 
-        impl #support::ProviderTransferListInputValue for #input {
+        impl #support::ProviderListInputValue for #input {
             type Host = #support::HostCustomType<#schema>;
             type View = Self;
             type Decoder = #list_decoder;
         }
 
-        impl<Profile, Provider> #support::ProviderTransferListInputCodec<Profile, Provider>
+        impl<Profile, Provider> #support::ProviderListInputCodec<Profile, Provider>
             for #input
         where
-            Profile: __GeamAsyncModuleProfile,
+            Profile: __GeamModuleProfile,
             Provider: #support::HostProvider<Profile>,
             #(#list_codec_bounds,)*
         {
             fn decoder<Return>(
-                call: &#support::TransferHostCall<'_, Profile, Provider, Return>,
+                call: &#support::HostCall<'_, Profile, Provider, Return>,
             ) -> Self::Decoder
             where
                 Return: #support::HostType,
@@ -888,21 +579,17 @@ fn generate_custom_decoder(
     flavor: FunctionFlavor,
 ) -> TokenStream {
     let decoder = match flavor {
-        FunctionFlavor::Local => input_model.decoder.clone(),
-        FunctionFlavor::TransferImmediate => {
-            format_ident!("__GeamTransferImmediate{}", input_model.decoder)
+        FunctionFlavor::Immediate => {
+            format_ident!("__GeamImmediate{}", input_model.decoder)
         }
-        FunctionFlavor::Async => format_ident!("__GeamTransfer{}", input_model.decoder),
+        FunctionFlavor::Async => format_ident!("__GeamOwned{}", input_model.decoder),
     };
     let schema = &custom.schema;
     let input = match flavor {
-        FunctionFlavor::Local => input_model.ident.clone(),
-        FunctionFlavor::TransferImmediate => {
-            transfer_custom_input_ident(&input_model.ident, TransferFlavor::Immediate)
+        FunctionFlavor::Immediate => {
+            custom_input_ident(&input_model.ident, FunctionFlavor::Immediate)
         }
-        FunctionFlavor::Async => {
-            transfer_custom_input_ident(&input_model.ident, TransferFlavor::Async)
-        }
+        FunctionFlavor::Async => custom_input_ident(&input_model.ident, FunctionFlavor::Async),
     };
     let mut names = GeneratedNames::default();
     let mut branches = Vec::with_capacity(custom.constructors.len());
@@ -962,18 +649,8 @@ fn generate_custom_decoder(
             });
         }
     }
-    let call = match flavor {
-        FunctionFlavor::Local => quote!(#support::HostCall),
-        FunctionFlavor::TransferImmediate | FunctionFlavor::Async => {
-            quote!(#support::TransferHostCall)
-        }
-    };
-    let profile = match flavor {
-        FunctionFlavor::Local => quote!(__GeamModuleProfile),
-        FunctionFlavor::TransferImmediate | FunctionFlavor::Async => {
-            quote!(__GeamAsyncModuleProfile)
-        }
-    };
+    let call = { quote!(#support::HostCall) };
+    let profile = { quote!(__GeamModuleProfile) };
     quote! {
         fn #decoder<'__geam_call, Profile, Provider, Return>(
             call: &mut #call<
@@ -1014,31 +691,29 @@ fn decode_custom_field_value(
         }
         CustomFieldValueType::List(list) => {
             let decoder = match flavor {
-                FunctionFlavor::Local => {
-                    list_decoder_value(&list.decoder, &list.collection.value, customs, support)
-                }
-                FunctionFlavor::TransferImmediate => transfer_list_decoder_value(
+                FunctionFlavor::Immediate => list_decoder_value(
                     &list.decoder,
                     &list.collection.value,
                     customs,
                     support,
-                    TransferFlavor::Immediate,
+                    FunctionFlavor::Immediate,
                     &quote!(Provider),
                     &quote!(&*call),
                 ),
-                FunctionFlavor::Async => transfer_list_decoder_value(
+                FunctionFlavor::Async => list_decoder_value(
                     &list.decoder,
                     &list.collection.value,
                     customs,
                     support,
-                    TransferFlavor::Async,
+                    FunctionFlavor::Async,
                     &quote!(Provider),
                     &quote!(&*call),
                 ),
             };
+            let build_list = { quote!(provider_retained_input_list) };
             GeneratedValue {
                 statements: TokenStream::new(),
-                value: quote!(call.provider_input_list(#input, #decoder)),
+                value: quote!(call.#build_list(#input, #decoder)),
             }
         }
     }
@@ -1060,23 +735,16 @@ fn decode_custom_input_value(
         },
         StaticValueType::Declared { type_, .. } => {
             let value = match flavor {
-                FunctionFlavor::Local => quote!(
-                    <<#type_ as #support::ProviderValue>::Input as
+                FunctionFlavor::Immediate => quote!(
+                    <<#type_ as #support::ProviderValueForms>::ImmediateInput as
                         #support::ProviderInputValue<Profile, Provider, Return>>::from_host(
                             call,
                             #input,
                         )
                 ),
-                FunctionFlavor::TransferImmediate => quote!(
-                    <<#type_ as #support::ProviderTransferValue>::ImmediateInput as
-                        #support::ProviderTransferInputValue<Profile, Provider, Return>>::from_host(
-                            call,
-                            #input,
-                        )
-                ),
                 FunctionFlavor::Async => quote!(
-                    <<#type_ as #support::ProviderTransferValue>::TransferInput as
-                        #support::ProviderTransferInputValue<Profile, Provider, Return>>::from_host(
+                    <<#type_ as #support::ProviderValueForms>::OwnedInput as
+                        #support::ProviderInputValue<Profile, Provider, Return>>::from_host(
                             call,
                             #input,
                         )
@@ -1088,26 +756,19 @@ fn decode_custom_input_value(
             }
         }
         StaticValueType::External {
-            payload, schema, ..
+            payload: _, schema, ..
         } => {
             let value = match flavor {
-                FunctionFlavor::Local => quote!(
-                    <#support::ProviderExternalItem<#payload> as
-                        #support::ProviderInputValue<Profile, Provider, Return>>::from_host(
-                            call,
-                            #input,
-                        )
-                ),
-                FunctionFlavor::TransferImmediate => quote!(
-                    call.provider_transfer_external_view_with::<
-                        __GeamAsyncProvider,
+                FunctionFlavor::Immediate => quote!(
+                    call.provider_external_view_with::<
+                        __GeamProvider,
                         #schema,
                         #support::HostTypeListEnd,
                     >(#input)
                 ),
                 FunctionFlavor::Async => quote!(
-                    call.provider_transfer_external_item_with::<
-                        __GeamAsyncProvider,
+                    call.provider_external_item_with::<
+                        __GeamProvider,
                         #schema,
                         #support::HostTypeListEnd,
                     >(#input)
@@ -1120,20 +781,14 @@ fn decode_custom_input_value(
         }
         StaticValueType::Custom { index, .. } => {
             let input_type = match flavor {
-                FunctionFlavor::Local => custom_inputs[index].clone(),
-                FunctionFlavor::TransferImmediate => {
-                    transfer_custom_input_ident(&custom_inputs[index], TransferFlavor::Immediate)
+                FunctionFlavor::Immediate => {
+                    custom_input_ident(&custom_inputs[index], FunctionFlavor::Immediate)
                 }
                 FunctionFlavor::Async => {
-                    transfer_custom_input_ident(&custom_inputs[index], TransferFlavor::Async)
+                    custom_input_ident(&custom_inputs[index], FunctionFlavor::Async)
                 }
             };
-            let input_trait = match flavor {
-                FunctionFlavor::Local => quote!(#support::ProviderInputValue),
-                FunctionFlavor::TransferImmediate | FunctionFlavor::Async => {
-                    quote!(#support::ProviderTransferInputValue)
-                }
-            };
+            let input_trait = { quote!(#support::ProviderInputValue) };
             GeneratedValue {
                 statements: TokenStream::new(),
                 value: quote!(
@@ -1272,20 +927,12 @@ fn custom_input_type(
                 flavor,
             );
             let decoder = match flavor {
-                FunctionFlavor::Local => list.decoder.clone(),
-                FunctionFlavor::TransferImmediate => {
-                    transfer_list_decoder_ident(&list.decoder, TransferFlavor::Immediate)
+                FunctionFlavor::Immediate => {
+                    list_decoder_ident(&list.decoder, FunctionFlavor::Immediate)
                 }
-                FunctionFlavor::Async => {
-                    transfer_list_decoder_ident(&list.decoder, TransferFlavor::Async)
-                }
+                FunctionFlavor::Async => list_decoder_ident(&list.decoder, FunctionFlavor::Async),
             };
-            let context = match flavor {
-                FunctionFlavor::Local => quote!(#support::ProviderInputListContext),
-                FunctionFlavor::TransferImmediate | FunctionFlavor::Async => {
-                    quote!(#support::ProviderTransferInputListContext)
-                }
-            };
+            let context = { quote!(#support::ProviderInputListContext) };
             quote! { #support::List<#item, #context<#decoder>> }
         }
     }
@@ -1300,35 +947,28 @@ fn custom_input_value_type(
     match type_ {
         StaticValueType::Scalar(type_) => quote!(#type_),
         StaticValueType::Declared { type_, .. } => match flavor {
-            FunctionFlavor::Local => quote!(<#type_ as #support::ProviderValue>::Input),
-            FunctionFlavor::TransferImmediate => {
-                quote!(<#type_ as #support::ProviderTransferValue>::ImmediateInput)
+            FunctionFlavor::Immediate => {
+                quote!(<#type_ as #support::ProviderValueForms>::ImmediateInput)
             }
             FunctionFlavor::Async => {
-                quote!(<#type_ as #support::ProviderTransferValue>::TransferInput)
+                quote!(<#type_ as #support::ProviderValueForms>::OwnedInput)
             }
         },
-        StaticValueType::External {
-            payload,
-            transfer_payload,
-            ..
-        } => match flavor {
-            FunctionFlavor::Local => quote!(#support::ProviderExternalItem<#payload>),
-            FunctionFlavor::TransferImmediate => {
-                quote!(#support::ProviderTransferExternalView<#transfer_payload>)
+        StaticValueType::External { payload, .. } => match flavor {
+            FunctionFlavor::Immediate => {
+                quote!(#support::ProviderExternalView<#payload>)
             }
             FunctionFlavor::Async => {
-                quote!(#support::ProviderTransferExternalItem<#transfer_payload>)
+                quote!(#support::ProviderOwnedExternal<#payload>)
             }
         },
         StaticValueType::Custom { index, .. } => {
             let input = match flavor {
-                FunctionFlavor::Local => custom_inputs[index].clone(),
-                FunctionFlavor::TransferImmediate => {
-                    transfer_custom_input_ident(&custom_inputs[index], TransferFlavor::Immediate)
+                FunctionFlavor::Immediate => {
+                    custom_input_ident(&custom_inputs[index], FunctionFlavor::Immediate)
                 }
                 FunctionFlavor::Async => {
-                    transfer_custom_input_ident(&custom_inputs[index], TransferFlavor::Async)
+                    custom_input_ident(&custom_inputs[index], FunctionFlavor::Async)
                 }
             };
             quote!(#input)
@@ -1361,37 +1001,28 @@ fn custom_list_input_value_type(
     match type_ {
         StaticValueType::Scalar(type_) => quote!(#type_),
         StaticValueType::Declared { type_, .. } => match flavor {
-            FunctionFlavor::Local => {
-                quote!(<#type_ as #support::ProviderValue>::ListInput)
-            }
-            FunctionFlavor::TransferImmediate => {
-                quote!(<#type_ as #support::ProviderTransferValue>::ImmediateListInput)
+            FunctionFlavor::Immediate => {
+                quote!(<#type_ as #support::ProviderValueForms>::ImmediateListInput)
             }
             FunctionFlavor::Async => {
-                quote!(<#type_ as #support::ProviderTransferValue>::TransferListInput)
+                quote!(<#type_ as #support::ProviderValueForms>::OwnedListInput)
             }
         },
-        StaticValueType::External {
-            payload,
-            transfer_payload,
-            ..
-        } => match flavor {
-            FunctionFlavor::Local => quote!(#payload),
-            FunctionFlavor::TransferImmediate => {
-                quote!(#support::ProviderTransferExternalView<#transfer_payload>)
+        StaticValueType::External { payload, .. } => match flavor {
+            FunctionFlavor::Immediate => {
+                quote!(#support::ProviderExternalView<#payload>)
             }
             FunctionFlavor::Async => {
-                quote!(#support::ProviderTransferExternalItem<#transfer_payload>)
+                quote!(#support::ProviderOwnedExternal<#payload>)
             }
         },
         StaticValueType::Custom { index, .. } => {
             let input = match flavor {
-                FunctionFlavor::Local => custom_inputs[index].clone(),
-                FunctionFlavor::TransferImmediate => {
-                    transfer_custom_input_ident(&custom_inputs[index], TransferFlavor::Immediate)
+                FunctionFlavor::Immediate => {
+                    custom_input_ident(&custom_inputs[index], FunctionFlavor::Immediate)
                 }
                 FunctionFlavor::Async => {
-                    transfer_custom_input_ident(&custom_inputs[index], TransferFlavor::Async)
+                    custom_input_ident(&custom_inputs[index], FunctionFlavor::Async)
                 }
             };
             quote!(#input)
@@ -1423,7 +1054,6 @@ fn custom_output_codec_bounds(
     support: &TokenStream,
     provider: &TokenStream,
     return_type: &TokenStream,
-    representation: ProviderRepresentation,
 ) -> Vec<TokenStream> {
     let mut bounds = Vec::new();
     for constructor in &custom.constructors {
@@ -1439,7 +1069,6 @@ fn custom_output_codec_bounds(
                 provider,
                 return_type,
                 &mut bounds,
-                representation,
             );
         }
     }
@@ -1453,20 +1082,11 @@ fn collect_custom_output_codec_bounds(
     provider: &TokenStream,
     return_type: &TokenStream,
     bounds: &mut Vec<TokenStream>,
-    representation: ProviderRepresentation,
 ) {
-    let output_trait = match representation {
-        ProviderRepresentation::Local => quote!(#support::ProviderOutputValue),
-        ProviderRepresentation::Transfer => quote!(#support::ProviderTransferOutputValue),
-    };
+    let output_trait = quote!(#support::ProviderOutputValue);
     match type_ {
         StaticValueType::Declared { type_, .. } => {
-            let type_ = match representation {
-                ProviderRepresentation::Local => quote!(#type_),
-                ProviderRepresentation::Transfer => {
-                    quote!(<#type_ as #support::ProviderTransferValue>::Output)
-                }
-            };
+            let type_ = { quote!(<#type_ as #support::ProviderValueForms>::Output) };
             bounds.push(quote! {
                 #type_: #output_trait<
                     Profile,
@@ -1477,12 +1097,7 @@ fn collect_custom_output_codec_bounds(
         }
         StaticValueType::Custom { index, .. } => {
             let type_ = &customs[*index].ident;
-            let type_ = match representation {
-                ProviderRepresentation::Local => quote!(#type_),
-                ProviderRepresentation::Transfer => {
-                    quote!(<#type_ as #support::ProviderTransferValue>::Output)
-                }
-            };
+            let type_ = { quote!(<#type_ as #support::ProviderValueForms>::Output) };
             bounds.push(quote! {
                 #type_: #output_trait<
                     Profile,
@@ -1500,7 +1115,6 @@ fn collect_custom_output_codec_bounds(
                     provider,
                     return_type,
                     bounds,
-                    representation,
                 );
             }
         }
@@ -1512,7 +1126,6 @@ fn collect_custom_output_codec_bounds(
                 provider,
                 return_type,
                 bounds,
-                representation,
             );
             collect_custom_output_codec_bounds(
                 failure,
@@ -1521,7 +1134,6 @@ fn collect_custom_output_codec_bounds(
                 provider,
                 return_type,
                 bounds,
-                representation,
             );
         }
         StaticValueType::Option { value } => collect_custom_output_codec_bounds(
@@ -1531,7 +1143,6 @@ fn collect_custom_output_codec_bounds(
             provider,
             return_type,
             bounds,
-            representation,
         ),
         StaticValueType::Scalar(_) | StaticValueType::External { .. } => {}
     }
@@ -1562,17 +1173,13 @@ fn custom_input_codec_bounds(
                     for access in list_declared_accesses(&list.collection.value, customs) {
                         let type_ = access.type_;
                         bounds.push(match flavor {
-                            FunctionFlavor::Local => quote! {
-                                <#type_ as #support::ProviderValue>::ListInput:
-                                    #support::ProviderListInputCodec<Profile>
-                            },
-                            FunctionFlavor::TransferImmediate => quote! {
-                                <#type_ as #support::ProviderTransferValue>::ImmediateListInput:
-                                    #support::ProviderTransferListInputCodec<Profile, Provider>
+                            FunctionFlavor::Immediate => quote! {
+                                <#type_ as #support::ProviderValueForms>::ImmediateListInput:
+                                    #support::ProviderListInputCodec<Profile, Provider>
                             },
                             FunctionFlavor::Async => quote! {
-                                <#type_ as #support::ProviderTransferValue>::TransferListInput:
-                                    #support::ProviderTransferListInputCodec<Profile, Provider>
+                                <#type_ as #support::ProviderValueForms>::OwnedListInput:
+                                    #support::ProviderListInputCodec<Profile, Provider>
                             },
                         });
                     }
@@ -1594,13 +1201,9 @@ fn collect_custom_input_codec_bounds(
     match type_ {
         StaticValueType::Declared { type_, .. } => {
             bounds.push(match flavor {
-                FunctionFlavor::Local => quote! {
-                    <#type_ as #support::ProviderValue>::Input:
-                        #support::ProviderInputValue<Profile, Provider, Return>
-                },
-                FunctionFlavor::TransferImmediate => quote! {
-                    <#type_ as #support::ProviderTransferValue>::ImmediateInput:
-                        #support::ProviderTransferInputValue<
+                FunctionFlavor::Immediate => quote! {
+                    <#type_ as #support::ProviderValueForms>::ImmediateInput:
+                        #support::ProviderInputValue<
                             Profile,
                             Provider,
                             Return,
@@ -1608,8 +1211,8 @@ fn collect_custom_input_codec_bounds(
                         >
                 },
                 FunctionFlavor::Async => quote! {
-                    <#type_ as #support::ProviderTransferValue>::TransferInput:
-                        #support::ProviderTransferInputValue<
+                    <#type_ as #support::ProviderValueForms>::OwnedInput:
+                        #support::ProviderInputValue<
                             Profile,
                             Provider,
                             Return,
@@ -1620,28 +1223,22 @@ fn collect_custom_input_codec_bounds(
         }
         StaticValueType::Custom { index, .. } => {
             let input = match flavor {
-                FunctionFlavor::Local => custom_inputs[index].clone(),
-                FunctionFlavor::TransferImmediate => {
-                    transfer_custom_input_ident(&custom_inputs[index], TransferFlavor::Immediate)
+                FunctionFlavor::Immediate => {
+                    custom_input_ident(&custom_inputs[index], FunctionFlavor::Immediate)
                 }
                 FunctionFlavor::Async => {
-                    transfer_custom_input_ident(&custom_inputs[index], TransferFlavor::Async)
+                    custom_input_ident(&custom_inputs[index], FunctionFlavor::Async)
                 }
             };
-            let input_trait = match flavor {
-                FunctionFlavor::Local => quote! {
-                    #support::ProviderInputValue<Profile, Provider, Return>
-                },
-                FunctionFlavor::TransferImmediate | FunctionFlavor::Async => {
-                    let schema = &customs[*index].schema;
-                    quote! {
-                        #support::ProviderTransferInputValue<
-                            Profile,
-                            Provider,
-                            Return,
-                            Host = #support::HostCustomType<#schema>,
-                        >
-                    }
+            let input_trait = {
+                let schema = &customs[*index].schema;
+                quote! {
+                    #support::ProviderInputValue<
+                        Profile,
+                        Provider,
+                        Return,
+                        Host = #support::HostCustomType<#schema>,
+                    >
                 }
             };
             bounds.push(quote! {
@@ -1707,17 +1304,13 @@ fn custom_list_codec_bounds(
     ) {
         let type_ = access.type_;
         bounds.push(match flavor {
-            FunctionFlavor::Local => quote! {
-                <#type_ as #support::ProviderValue>::ListInput:
-                    #support::ProviderListInputCodec<Profile>
-            },
-            FunctionFlavor::TransferImmediate => quote! {
-                <#type_ as #support::ProviderTransferValue>::ImmediateListInput:
-                    #support::ProviderTransferListInputCodec<Profile, Provider>
+            FunctionFlavor::Immediate => quote! {
+                <#type_ as #support::ProviderValueForms>::ImmediateListInput:
+                    #support::ProviderListInputCodec<Profile, Provider>
             },
             FunctionFlavor::Async => quote! {
-                <#type_ as #support::ProviderTransferValue>::TransferListInput:
-                    #support::ProviderTransferListInputCodec<Profile, Provider>
+                <#type_ as #support::ProviderValueForms>::OwnedListInput:
+                    #support::ProviderListInputCodec<Profile, Provider>
             },
         });
     }

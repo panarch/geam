@@ -63,6 +63,10 @@ jobs:
             (cd "cli/tests/fixtures/standalone_cli/project/packages/$package" && gleam export hex-tarball)
           done
 
+      - name: Verify standalone Future provider package
+        working-directory: cli/tests/fixtures/standalone_future/provider
+        run: cargo package --quiet --offline --allow-dirty --no-verify --locked
+
   rust-embedding:
     name: Rust embedding
     runs-on: ubuntu-latest
@@ -97,7 +101,7 @@ jobs:
           cargo tree --manifest-path examples/embedding/application/Cargo.toml --locked --package geam --edges normal --depth 1 --prefix none > "$RUNNER_TEMP/geam-embedding-graph"
           cat "$RUNNER_TEMP/geam-embedding-graph"
           test "$(grep -Ec '^geam v' "$RUNNER_TEMP/geam-embedding-graph")" -eq 1
-          for package in geam-core geam-macros geam-stdlib; do
+          for package in geam-core geam-macros geam-stdlib geam-builtin; do
             grep -Eq "^${package} v" "$RUNNER_TEMP/geam-embedding-graph"
           done
           if grep -Eq '^geam-(cli|json|time) v' "$RUNNER_TEMP/geam-embedding-graph"; then
@@ -140,7 +144,11 @@ jobs:
           CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding" cargo test --locked
           CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding" cargo clippy --all-targets --locked -- -D warnings
           cargo package --locked --no-verify
-          (cd ../project/packages/example_async_files && gleam format --check)
+          (cd ../project && gleam format --check)
+          (cd ../project/packages/example_async_files && gleam format --check && gleam build)
+
+      - name: Verify standalone async file reading
+        run: cargo test --package geam --test provider_examples --locked -- --exact runs_the_documented_async_files_provider_to_completion
 
       - name: Verify Geam Gleam package
         working-directory: builtins/geam/gleam

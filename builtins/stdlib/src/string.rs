@@ -1,9 +1,9 @@
 mod function;
 
-use super::{Component, GleamStdlibLocalProfile, GleamStdlibRunState};
+use super::{Component, GleamStdlibProviderProfile, GleamStdlibRunState};
 use crate::{HostProviderModule, HostRegistrationError};
 use ecow::EcoString;
-use geam_core::provider::{Call, HostResult, Value};
+use geam_core::provider::{Call, Value};
 use num_bigint::BigInt;
 
 #[geam_macros::module(
@@ -13,8 +13,9 @@ use num_bigint::BigInt;
     component = crate::Component<Profile::Io>,
 )]
 mod provider {
-    use super::{BigInt, Call, EcoString, GleamStdlibRunState, HostResult, Value, function};
+    use super::{BigInt, Call, EcoString, GleamStdlibRunState, Value, function};
     use crate::string_tree;
+    use geam_core::provider::HostResult;
 
     #[geam_macros::custom(input = DirectionInput)]
     #[allow(dead_code)]
@@ -143,18 +144,9 @@ mod provider {
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
-    Profile: GleamStdlibLocalProfile,
+    Profile: GleamStdlibProviderProfile,
 {
     provider::__geam_module::<Profile>()
-}
-
-pub(super) fn transfer_host_provider<Profile>()
--> Result<geam_core::TransferHostProviderModule<Profile>, HostRegistrationError>
-where
-    Profile: crate::GleamStdlibTransferProfile,
-    Profile::RunState: Send,
-{
-    provider::__geam_transfer_module::<Profile>()
 }
 
 #[cfg(test)]

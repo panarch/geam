@@ -1,18 +1,18 @@
 use camino::Utf8Path;
+use geam::builtin::FutureComponent;
 use geam::embedding::{
-    BigInt, FunctionDeclaration, FutureType, WorkModule, WorkModuleBuilder, with_execution_scope,
+    BigInt, FunctionDeclaration, FutureType, HostedModule, HostedModuleBuilder,
+    with_execution_scope,
 };
-use geam::gleam_json::{Component as JsonComponent, GleamJsonTransferStores};
+use geam::gleam_json::{Component as JsonComponent, GleamJsonStores};
 use geam::gleam_stdlib::{
-    Component as StdlibComponent, GleamStdlibHostProfile, GleamStdlibRunState,
-    GleamStdlibTransferStores, IoOutput, IoStream,
+    Component as StdlibComponent, GleamStdlibHostProfile, GleamStdlibRunState, GleamStdlibStores,
+    IoOutput, IoStream,
 };
 use geam::gleam_time::{Component as TimeComponent, GleamTimeHostProfile, TimeSource};
 use geam::host::{
-    AsyncHostComponentProfile, HostFutureStore, TransferHostProviderComponentRegistration,
-    TransferHostProviderSet,
+    HostComponentProfile, HostFutureStore, HostProviderComponentRegistration, HostProviderSet,
 };
-use geam::runtime_api::FutureComponent;
 use geam::{EchoOutput, EchoSink, HostFailure, HostProfile};
 use std::cell::Cell;
 use std::future::Future;
@@ -64,9 +64,9 @@ struct State {
 }
 #[derive(Default)]
 struct HostStores {
-    stdlib: GleamStdlibTransferStores,
-    json: GleamJsonTransferStores,
-    native: AsyncStores,
+    stdlib: GleamStdlibStores,
+    json: GleamJsonStores,
+    native: Stores,
     work: HostFutureStore,
     time: (),
 }
@@ -91,32 +91,32 @@ impl GleamStdlibHostProfile for Profile {
 impl GleamTimeHostProfile for Profile {
     type Source = Clock;
 }
-impl AsyncHostComponentProfile<StdlibComponent> for Profile {
-    fn component_async_stores(stores: &HostStores) -> &GleamStdlibTransferStores {
+impl HostComponentProfile<StdlibComponent> for Profile {
+    fn component_stores(stores: &HostStores) -> &GleamStdlibStores {
         &stores.stdlib
     }
     fn component_state(state: &mut State) -> &mut GleamStdlibRunState {
         &mut state.stdlib
     }
 }
-impl AsyncHostComponentProfile<JsonComponent> for Profile {
-    fn component_async_stores(stores: &HostStores) -> &GleamJsonTransferStores {
+impl HostComponentProfile<JsonComponent> for Profile {
+    fn component_stores(stores: &HostStores) -> &GleamJsonStores {
         &stores.json
     }
     fn component_state(state: &mut State) -> &mut () {
         &mut state.json
     }
 }
-impl AsyncHostComponentProfile<TimeComponent<Clock>> for Profile {
-    fn component_async_stores(stores: &HostStores) -> &() {
+impl HostComponentProfile<TimeComponent<Clock>> for Profile {
+    fn component_stores(stores: &HostStores) -> &() {
         &stores.time
     }
     fn component_state(state: &mut State) -> &mut Clock {
         &mut state.clock
     }
 }
-impl AsyncHostComponentProfile<Component> for Profile {
-    fn component_async_stores(stores: &HostStores) -> &AsyncStores {
+impl HostComponentProfile<Component> for Profile {
+    fn component_stores(stores: &HostStores) -> &Stores {
         &stores.native
     }
     fn component_state(state: &mut State) -> &mut NativeState {
@@ -126,8 +126,8 @@ impl AsyncHostComponentProfile<Component> for Profile {
 impl geam_core::host::HostWorkProfile for Profile {
     type Work = FutureComponent;
 }
-impl AsyncHostComponentProfile<FutureComponent> for Profile {
-    fn component_async_stores(stores: &HostStores) -> &HostFutureStore {
+impl HostComponentProfile<FutureComponent> for Profile {
+    fn component_stores(stores: &HostStores) -> &HostFutureStore {
         &stores.work
     }
     fn component_state(state: &mut State) -> &mut () {
@@ -144,7 +144,7 @@ impl EchoSink for Echo {
 }
 
 struct Fixture {
-    module: WorkModule<Profile>,
+    module: HostedModule<Profile>,
     work: geam::embedding::Function<(), FutureType<BigInt>>,
     later: geam::embedding::Function<(), BigInt>,
 }
@@ -160,21 +160,20 @@ fn fixture() -> Fixture {
         &["deps", "download"],
         "`gleam deps download`",
     );
-    let mut providers = geam::gleam_stdlib::transfer_host_providers::<Profile>().expect("stdlib");
-    providers.extend(geam::gleam_json::transfer_host_providers::<Profile>().expect("JSON"));
-    providers.extend(geam::gleam_time::transfer_host_providers::<Profile>().expect("Time"));
+    let mut providers = geam::gleam_stdlib::host_providers::<Profile>().expect("stdlib");
+    providers.extend(geam::gleam_json::host_providers::<Profile>().expect("JSON"));
+    providers.extend(geam::gleam_time::host_providers::<Profile>().expect("Time"));
     providers.extend(FutureComponent::providers::<Profile>().expect("Future"));
     providers.extend(
-        <Component as TransferHostProviderComponentRegistration<Profile>>::providers()
-            .expect("native"),
+        <Component as HostProviderComponentRegistration<Profile>>::providers().expect("native"),
     );
-    let program = geam::frontend::compile_typed_transfer_host_project(
+    let program = geam::frontend::compile_typed_host_project(
         root,
         "future_builtins",
-        TransferHostProviderSet::new(providers).expect("provider set"),
+        HostProviderSet::from_providers(providers).expect("provider set"),
     )
     .expect("official source with explicit Future package");
-    let (mut bindings, work) = WorkModuleBuilder::new(program)
+    let (mut bindings, work) = HostedModuleBuilder::new(program)
         .expect("plan")
         .function(FunctionDeclaration::<(), FutureType<BigInt>>::new("work"))
         .expect("work entry");

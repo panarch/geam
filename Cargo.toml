@@ -65,7 +65,7 @@ geam-core = { path = "core", version = "=0.2.3" }
 geam-cli = { path = "cli", version = "=0.2.3" }
 geam-json = { path = "builtins/json", version = "=0.2.3" }
 geam-macros = { path = "macros", version = "=0.2.3" }
-geam-runtime-api = { path = "builtins/geam", version = "=0.2.3" }
+geam-builtin = { path = "builtins/geam", version = "=0.2.3" }
 geam-stdlib = { path = "builtins/stdlib", version = "=0.2.3" }
 geam-time = { path = "builtins/time", version = "=0.2.3" }
 gleam-core = { package = "geam-gleam-core", version = "=1.18.1-geam.2" }
@@ -90,6 +90,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"
 thiserror = "2"
+tokio = { version = "1.53.1", default-features = false, features = ["rt-multi-thread", "net", "time", "io-util"] }
 toml = "0.9"
 toml_edit = "0.25"
 trybuild = "1"
@@ -103,8 +104,8 @@ full = ["cli", "embedding", "provider", "builtins"]
 cli = ["dep:geam-cli"]
 embedding = []
 provider = ["dep:geam-macros"]
-builtins = ["gleam-stdlib", "gleam-json", "gleam-time", "geam-runtime-api"]
-geam-runtime-api = ["dep:geam-runtime-api"]
+builtins = ["gleam-stdlib", "gleam-json", "gleam-time", "geam-builtin"]
+geam-builtin = ["dep:geam-builtin"]
 gleam-stdlib = ["dep:geam-stdlib"]
 gleam-json = ["dep:geam-json", "gleam-stdlib"]
 gleam-time = ["dep:geam-time", "gleam-stdlib"]
@@ -114,7 +115,7 @@ geam-cli = { workspace = true, optional = true }
 geam-core.workspace = true
 geam-json = { workspace = true, optional = true }
 geam-macros = { workspace = true, optional = true }
-geam-runtime-api = { workspace = true, optional = true }
+geam-builtin = { workspace = true, optional = true }
 geam-stdlib = { workspace = true, optional = true }
 geam-time = { workspace = true, optional = true }
 
@@ -154,7 +155,7 @@ path = "tests/standalone_distribution.rs"
 required-features = ["cli"]
 
 [dev-dependencies]
-geam-runtime-api.workspace = true
+geam-builtin.workspace = true
 camino.workspace = true
 ecow.workspace = true
 futures-channel.workspace = true
@@ -163,3 +164,4 @@ miette = { workspace = true, features = ["fancy-no-backtrace"] }
 num-bigint.workspace = true
 tempfile.workspace = true
 toml.workspace = true
+tokio.workspace = true

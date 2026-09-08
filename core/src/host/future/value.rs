@@ -1,7 +1,7 @@
 use super::{HostFutureContext, HostFutureError, HostFutureType, HostWorkProfile};
 use crate::host::{
-    AsyncHostCallError, HostExternal, HostProfile, HostProvider, HostType, HostTypeSequence,
-    TransferHostCall, TransferHostCodecScope,
+    HostCall, HostCallError, HostCodecScope, HostExternal, HostProfile, HostProvider, HostType,
+    HostTypeSequence,
 };
 use crate::runtime::HostCallOrigin;
 use crate::runtime::SharedExecutionError;
@@ -22,12 +22,12 @@ where
 {
     work: SourceWork,
     context: WorkContext<Profile>,
-    codec: TransferHostCodecScope,
+    codec: HostCodecScope,
     origin: HostCallOrigin,
     signature: PhantomData<fn(Provider) -> Value>,
 }
 
-impl<'call, Profile, Provider, Return> TransferHostCall<'call, Profile, Provider, Return>
+impl<'call, Profile, Provider, Return> HostCall<'call, Profile, Provider, Return>
 where
     Profile: HostWorkProfile,
     Provider: HostProvider<Profile>,
@@ -68,9 +68,9 @@ where
         Constructions: HostTypeSequence,
         Output: Send + 'static,
         Decode: for<'call> FnOnce(
-                TransferHostCall<'call, Profile, Provider, ()>,
+                HostCall<'call, Profile, Provider, ()>,
                 Value::Value<'call>,
-            ) -> Result<Output, AsyncHostCallError>
+            ) -> Result<Output, HostCallError>
             + Send
             + 'static,
     {
@@ -89,7 +89,7 @@ where
                     move |runtime, token| {
                         let value =
                             crate::host::type_::from_runtime_token::<Value, _>(runtime, token);
-                        decode(TransferHostCall::new(runtime), value)
+                        decode(HostCall::new(runtime), value)
                     },
                 )
                 .await

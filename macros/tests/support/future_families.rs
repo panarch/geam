@@ -30,8 +30,7 @@ mod native {
         BigInt, Call, Callback, ExternalPayload, Future, HostFailure, HostResult, Stored, Value,
     };
     use geam_core::provider::advanced::{
-        Equality, Hashing, Index0, Inspection, LocalRetainedContext, Retained, RetainedContext,
-        RetainedExternalPayload,
+        Equality, Hashing, Index0, Inspection, Retained, RetainedExternalPayload,
     };
     use std::cell::Cell;
     use std::future::poll_fn;
@@ -86,25 +85,25 @@ mod native {
         value: Stored<Item>,
     }
 
-    pub struct ManualPayload<Context: RetainedContext = LocalRetainedContext> {
-        value: Retained<ManualPayload, Index0, Context>,
+    pub struct ManualPayload {
+        value: Retained<ManualPayload, Index0>,
     }
 
-    impl<Context: RetainedContext> RetainedExternalPayload<Context> for ManualPayload<Context> {
-        fn source_equal(&self, context: &Equality<'_, Context>, other: &Self) -> bool {
+    impl RetainedExternalPayload for ManualPayload {
+        fn source_equal(&self, context: &Equality<'_>, other: &Self) -> bool {
             self.value.source_equal(context, &other.value)
         }
-        fn source_hash(&self, context: &Hashing<'_, Context>) -> u64 {
+        fn source_hash(&self, context: &Hashing<'_>) -> u64 {
             self.value.source_hash(context)
         }
-        fn inspect(&self, context: &Inspection<'_, Context>) -> EcoString {
+        fn inspect(&self, context: &Inspection<'_>) -> EcoString {
             format!("Manual({})", self.value.inspect(context)).into()
         }
     }
 
     #[geam_macros::external(
         name = "Manual", parameters = [Item], input = ManualInput,
-        payload = ManualPayload, manual, context = Context,
+        payload = ManualPayload, manual,
     )]
     pub struct ManualValue<Item>;
 

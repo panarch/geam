@@ -58,7 +58,7 @@ type LoweringCompletion<Execution> = (
 );
 type PlainLoweredExecution = LoweredExecution<Infallible>;
 
-pub(super) use host::{lower_hosted, lower_hosted_library, lower_transfer_hosted_library};
+pub(super) use host::{lower_hosted, lower_hosted_library};
 pub(super) use plain::{lower, lower_library};
 
 #[derive(Debug, PartialEq, Eq)]

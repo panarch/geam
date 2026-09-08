@@ -7,8 +7,8 @@ use crate::runtime::graph::{GraphValue, RetainedValues};
 use crate::runtime::state::RuntimeStateFor;
 
 pub(in crate::runtime) fn invoke_value<'run, Profile, Body>(
-    plan: &crate::plan::execution::HostedExecution<Profile>,
-    state: &mut RuntimeStateFor<'run, crate::plan::execution::HostedExecution<Profile>>,
+    plan: &crate::plan::execution::HostedProgram<Profile>,
+    state: &mut RuntimeStateFor<'run, crate::plan::execution::HostedProgram<Profile>>,
     origin: HostCallOrigin,
     target: &crate::plan::execution::host::HostFunctionId<Body>,
     inputs: RetainedValues,
@@ -17,38 +17,36 @@ where
     Profile: crate::HostProfile,
     Body: ExecutionFunctionBody,
     Body::Return: GraphValue,
-    crate::plan::execution::HostedExecution<Profile>: 'run,
+    crate::plan::execution::HostedProgram<Profile>: 'run,
 {
     let function = plan.host_value_function(target);
-    let mut call = RuntimeHostCall::new(plan, state, function, inputs);
+    let mut call = RuntimeHostCall::new(plan, state, function, inputs, origin.clone());
     match function.implementation().call(&mut call) {
         Ok(returned) => Ok(call.finish(returned, target.return_())),
         Err(error) => {
             drop(call);
-            state.lists_mut().drain_releases();
             Err(host_call_error(plan, origin, function.metadata(), error))
         }
     }
 }
 
 pub(in crate::runtime) fn invoke_never<'run, Profile>(
-    plan: &crate::plan::execution::HostedExecution<Profile>,
-    state: &mut RuntimeStateFor<'run, crate::plan::execution::HostedExecution<Profile>>,
+    plan: &crate::plan::execution::HostedProgram<Profile>,
+    state: &mut RuntimeStateFor<'run, crate::plan::execution::HostedProgram<Profile>>,
     origin: HostCallOrigin,
     target: crate::plan::execution::host::HostNeverFunctionId,
     inputs: RetainedValues,
 ) -> ExecutionResult<std::convert::Infallible>
 where
     Profile: crate::HostProfile,
-    crate::plan::execution::HostedExecution<Profile>: 'run,
+    crate::plan::execution::HostedProgram<Profile>: 'run,
 {
     let function = plan.host_never_function(target);
-    let mut call = RuntimeHostCall::new(plan, state, function, inputs);
+    let mut call = RuntimeHostCall::new(plan, state, function, inputs, origin.clone());
     match function.implementation().call(&mut call) {
         Ok(never) => match never {},
         Err(error) => {
             drop(call);
-            state.lists_mut().drain_releases();
             Err(host_call_error(plan, origin, function.metadata(), error))
         }
     }

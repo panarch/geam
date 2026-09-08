@@ -1,4 +1,4 @@
-//! Rust implementations of Geam's own Gleam runtime APIs.
+//! Built-in Rust implementations for the `geam` Gleam package.
 //!
 //! The `geam` Gleam package supplies ordinary source declarations. This crate
 //! supplies their native implementations; generic execution remains in geam-core.

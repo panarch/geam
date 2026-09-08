@@ -1,9 +1,9 @@
 use ecow::EcoString;
 use geam_core::host::{
-    AsyncHostComponentProfile, AsyncHostExternalBinding, AsyncHostExternalEquality,
-    AsyncHostExternalHashing, AsyncHostExternalInspection, AsyncHostExternalStorage,
-    AsyncHostExternalStore, AsyncHostProviderComponent, HostExternalSchema, HostFuturePayload,
-    HostFutureStore, HostProvider, HostProviderComponent, HostWorkRepresentation,
+    HostComponentProfile, HostExternalBinding, HostExternalEquality, HostExternalHashing,
+    HostExternalInspection, HostExternalSchema, HostExternalStorage, HostExternalStore,
+    HostFuturePayload, HostFutureStore, HostProvider, HostProviderComponent,
+    HostWorkRepresentation,
 };
 
 pub struct WorkComponent;
@@ -16,11 +16,7 @@ impl HostProviderComponent for WorkComponent {
     type RunState = ();
 }
 
-impl AsyncHostProviderComponent for WorkComponent {
-    type AsyncStores = HostFutureStore;
-}
-
-impl<Profile: AsyncHostComponentProfile<Self>> HostProvider<Profile> for WorkComponent {
+impl<Profile: HostComponentProfile<Self>> HostProvider<Profile> for WorkComponent {
     type State = ();
     fn project(state: &mut Profile::RunState) -> &mut () {
         Profile::component_state(state)
@@ -34,45 +30,45 @@ impl HostExternalSchema for WorkSchema {
     const PARAMETER_COUNT: usize = 1;
 }
 
-impl<Profile> AsyncHostExternalBinding<Profile, WorkSchema> for WorkComponent
+impl<Profile> HostExternalBinding<Profile, WorkSchema> for WorkComponent
 where
-    Profile: AsyncHostComponentProfile<Self>,
+    Profile: HostComponentProfile<Self>,
 {
     type Storage = WorkStorage;
 }
 
-impl<Profile: AsyncHostComponentProfile<WorkComponent>> HostWorkRepresentation<Profile>
+impl<Profile: HostComponentProfile<WorkComponent>> HostWorkRepresentation<Profile>
     for WorkComponent
 {
     type Schema = WorkSchema;
     type Storage = WorkStorage;
     fn store(stores: &Profile::ExternalStores) -> &HostFutureStore {
-        Profile::component_async_stores(stores)
+        Profile::component_stores(stores)
     }
 }
 
-impl<Profile: AsyncHostComponentProfile<WorkComponent>>
-    AsyncHostExternalStorage<Profile, WorkSchema> for WorkStorage
+impl<Profile: HostComponentProfile<WorkComponent>> HostExternalStorage<Profile, WorkSchema>
+    for WorkStorage
 {
     type Payload = HostFuturePayload;
 
-    fn store(stores: &Profile::ExternalStores) -> &AsyncHostExternalStore<Self::Payload> {
-        Profile::component_async_stores(stores).values()
+    fn store(stores: &Profile::ExternalStores) -> &HostExternalStore<Self::Payload> {
+        Profile::component_stores(stores).values()
     }
 
     fn source_equal(
-        _: &AsyncHostExternalEquality<'_>,
+        _: &HostExternalEquality<'_>,
         left: &Self::Payload,
         right: &Self::Payload,
     ) -> bool {
         left.same_operation(right)
     }
 
-    fn source_hash(_: &AsyncHostExternalHashing<'_>, value: &Self::Payload) -> u64 {
+    fn source_hash(_: &HostExternalHashing<'_>, value: &Self::Payload) -> u64 {
         value.operation_hash()
     }
 
-    fn inspect(_: &AsyncHostExternalInspection<'_>, _: &Self::Payload) -> EcoString {
+    fn inspect(_: &HostExternalInspection<'_>, _: &Self::Payload) -> EcoString {
         "Work(...)".into()
     }
 }

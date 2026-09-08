@@ -1,16 +1,14 @@
 use crate::dict::DictDeclaration;
-use geam_core::provider::advanced::{
-    DynamicKind, LocalRetainedContext, RetainedContext, StoredDynamic,
-};
+use geam_core::provider::advanced::{DynamicKind, StoredDynamic};
 
-pub(super) enum DynamicValue<Context: RetainedContext = LocalRetainedContext> {
+pub(super) enum DynamicValue {
     Stored {
         representation: DynamicRepresentation,
-        value: StoredDynamic<super::function::provider::DynamicPayload, Context>,
+        value: StoredDynamic<super::function::provider::DynamicPayload>,
     },
     Array {
-        value: StoredDynamic<super::function::provider::DynamicPayload, Context>,
-        elements: Box<[StoredDynamic<super::function::provider::DynamicPayload, Context>]>,
+        value: StoredDynamic<super::function::provider::DynamicPayload>,
+        elements: Box<[StoredDynamic<super::function::provider::DynamicPayload>]>,
     },
 }
 
@@ -32,8 +30,8 @@ pub enum DynamicRepresentation {
 }
 
 impl DynamicRepresentation {
-    pub(super) fn from_value<Context: RetainedContext>(
-        value: &StoredDynamic<super::function::provider::DynamicPayload, Context>,
+    pub(super) fn from_value(
+        value: &StoredDynamic<super::function::provider::DynamicPayload>,
     ) -> Self {
         if value.is_external::<DictDeclaration<(), ()>>() {
             return Self::Dict;
@@ -74,10 +72,8 @@ impl DynamicRepresentation {
     }
 }
 
-impl<Context: RetainedContext> DynamicValue<Context> {
-    pub(super) fn stored(
-        value: StoredDynamic<super::function::provider::DynamicPayload, Context>,
-    ) -> Self {
+impl DynamicValue {
+    pub(super) fn stored(value: StoredDynamic<super::function::provider::DynamicPayload>) -> Self {
         Self::Stored {
             representation: DynamicRepresentation::from_value(&value),
             value,
@@ -91,9 +87,7 @@ impl<Context: RetainedContext> DynamicValue<Context> {
         }
     }
 
-    pub(super) fn value(
-        &self,
-    ) -> &StoredDynamic<super::function::provider::DynamicPayload, Context> {
+    pub(super) fn value(&self) -> &StoredDynamic<super::function::provider::DynamicPayload> {
         match self {
             Self::Stored { value, .. } | Self::Array { value, .. } => value,
         }

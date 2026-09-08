@@ -1,6 +1,7 @@
 mod diagnostic;
 mod host;
 mod invariant;
+mod observation;
 mod panic;
 mod shared;
 mod subject;
@@ -13,15 +14,12 @@ pub(crate) use self::host::HostCallOrigin;
 pub use self::host::{HostError, HostLocation, HostOrigin};
 pub use self::invariant::InvariantError;
 pub use self::panic::{BitArraySegmentPanicReason, Panic, PanicDetails, PanicKind, PanicMessage};
+pub use observation::ObservationError;
 pub use shared::SharedExecutionError;
-pub use subject::AsyncPanicValue;
-pub(in crate::runtime) use subject::PanicSubjectProfile;
-
-/// An execution failure whose retained assertion value can move between workers.
-pub type AsyncExecutionError = ExecutionError<AsyncPanicValue>;
+pub use subject::PanicValue;
 
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
-pub enum ExecutionError<Subject = Value> {
+pub enum ExecutionError<Subject = PanicValue> {
     #[error("{0}")]
     Panic(Panic<Subject>),
     #[error("{0}")]
@@ -30,8 +28,7 @@ pub enum ExecutionError<Subject = Value> {
     Host(Box<HostError>),
 }
 
-pub(crate) type ExecutionResult<T, Values = crate::runtime::LocalValues> =
-    Result<T, ExecutionError<<Values as crate::runtime::RuntimeValueProfile>::PanicSubject>>;
+pub(crate) type ExecutionResult<T> = Result<T, ExecutionError<crate::PanicValue>>;
 
 impl<Subject> From<InvariantError> for ExecutionError<Subject> {
     fn from(error: InvariantError) -> Self {
@@ -121,21 +118,18 @@ impl<Subject> ExecutionError<Subject> {
     }
 }
 
-impl AsyncExecutionError {
-    /// Materializes a local diagnostic value when the caller needs the synchronous form.
+impl ExecutionError {
+    /// Materializes assertion values for callers that need a public diagnostic value.
     ///
-    /// The returned error preserves the source, provider and panic details, but
-    /// its general-purpose assertion value may no longer be `Send`.
-    pub fn into_local(self) -> ExecutionError {
+    /// The returned error preserves the source, provider, and panic details.
+    pub fn into_materialized(self) -> ExecutionError<Value> {
         match self {
-            Self::Panic(panic) => ExecutionError::Panic(panic.into_local()),
+            Self::Panic(panic) => ExecutionError::Panic(panic.into_materialized()),
             Self::Host(error) => ExecutionError::Host(error),
             Self::Invariant(error) => ExecutionError::Invariant(error),
         }
     }
-}
 
-impl AsyncExecutionError {
     pub(in crate::runtime) fn host_failure(
         plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
         origin: HostCallOrigin,

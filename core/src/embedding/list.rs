@@ -1,6 +1,6 @@
 use super::Module;
 use super::input::{
-    AsyncFreshInput, AsyncInputValue, FreshInput, InputConstructions, InputValue, ListFamily,
+    FreshInput, InputConstructions, InputValue, ListFamily, ScopedFreshInput, ScopedInputValue,
 };
 use super::value::{EmbeddingValue, OutputValue, ReturnValue};
 use crate::plan::execution::{
@@ -9,7 +9,7 @@ use crate::plan::execution::{
 use crate::plan::{LibraryValueType, StandardVariant};
 use crate::runtime::{
     EmbeddingInputStorage, EmbeddingInputValue, EmbeddingList, EmbeddingListInput, EmbeddingOutput,
-    RetainedValues, TransferValues,
+    RetainedValues,
 };
 use crate::{EchoSink, ExecutionError, HostProfile, HostedExecution};
 use std::marker::PhantomData;
@@ -28,18 +28,13 @@ use std::sync::Arc;
 /// List items still retain their own source handles and need explicit
 /// materialization before they can become fresh Vec inputs for another owner.
 ///
-/// Retained lists are not transferable between threads:
+/// Retained lists own immutable source storage and can be moved or shared
+/// between threads when their Rust item type permits it:
 ///
-/// ```compile_fail
-/// use geam_core::embedding::List;
-/// fn require_send<T: Send>() {}
-/// require_send::<List<bool>>();
 /// ```
-///
-/// ```compile_fail
 /// use geam_core::embedding::List;
-/// fn require_sync<T: Sync>() {}
-/// require_sync::<List<bool>>();
+/// fn require_send_and_sync<T: Send + Sync>() {}
+/// require_send_and_sync::<List<bool>>();
 /// ```
 ///
 /// A fresh outer Vec cannot contain retained child Lists. Materialize each
@@ -73,7 +68,7 @@ pub struct Iter<'a, T> {
 #[allow(private_bounds)]
 impl<T> List<T>
 where
-    T: OutputValue<crate::runtime::LocalValues>,
+    T: OutputValue,
 {
     /// Returns the number of items without decoding them.
     pub fn len(&self) -> usize {
@@ -108,7 +103,7 @@ where
 
 impl<T> Iterator for Iter<'_, T>
 where
-    T: OutputValue<crate::runtime::LocalValues>,
+    T: OutputValue,
 {
     type Item = T;
 
@@ -148,9 +143,9 @@ impl<T: EmbeddingValue> super::value::EmbeddingInputRuntime for List<T> {
     type Runtime = EmbeddingListInput;
 }
 
-impl<T> OutputValue<crate::runtime::LocalValues> for List<T>
+impl<T> OutputValue for List<T>
 where
-    T: OutputValue<crate::runtime::LocalValues>,
+    T: OutputValue,
 {
     fn plain_library_type() -> LibraryValueType<std::convert::Infallible> {
         LibraryValueType::List(Box::new(T::plain_library_type()))
@@ -216,11 +211,11 @@ impl<T: EmbeddingValue> InputValue<&List<T>> for List<T> {
     }
 }
 
-impl<Scope, T, Input> AsyncInputValue<Vec<Input>, Scope> for List<T>
+impl<Scope, T, Input> ScopedInputValue<Vec<Input>, Scope> for List<T>
 where
-    T: AsyncFreshInput<Input, Scope>,
+    T: ScopedFreshInput<Input, Scope>,
 {
-    type TransferRuntime = EmbeddingListInput<TransferValues>;
+    type ScopedRuntime = EmbeddingListInput;
 
     fn owners_match(_input: &Vec<Input>, _owner: &Arc<()>) -> bool {
         true
@@ -229,34 +224,34 @@ where
     fn into_runtime(
         input: Vec<Input>,
         constructions: &mut InputConstructions<'_>,
-        storage: &EmbeddingInputStorage<TransferValues>,
-    ) -> Self::TransferRuntime {
-        let type_ = constructions.take_async_list::<T, Input, Scope>();
+        storage: &EmbeddingInputStorage,
+    ) -> Self::ScopedRuntime {
+        let type_ = constructions.take_scoped_list::<T, Input, Scope>();
         let item_constructions = *constructions;
         constructions.skip::<T>();
         let values = input.into_iter().map(|value| {
             let mut constructions = item_constructions;
             T::into_runtime(value, &mut constructions, storage)
         });
-        <T as AsyncInputValue<Input, Scope>>::TransferRuntime::into_list(type_, values, storage)
+        <T as ScopedInputValue<Input, Scope>>::ScopedRuntime::into_list(type_, values, storage)
     }
 }
 
-impl<Scope, T, Input> AsyncFreshInput<Vec<Input>, Scope> for List<T>
+impl<Scope, T, Input> ScopedFreshInput<Vec<Input>, Scope> for List<T>
 where
-    T: AsyncFreshInput<Input, Scope>,
+    T: ScopedFreshInput<Input, Scope>,
 {
     fn list_id(
         lists: &LibraryListConstructions,
         index: usize,
-    ) -> <Self::TransferRuntime as EmbeddingInputValue<TransferValues>>::ListType {
+    ) -> <Self::ScopedRuntime as EmbeddingInputValue>::ListType {
         lists.lists[index]
     }
 }
 
 impl<T> ReturnValue for List<T>
 where
-    T: OutputValue<crate::runtime::LocalValues>,
+    T: OutputValue,
 {
     fn input_constructions<Graph: crate::plan::execution::function::ExecutionGraphProfile>(
         entries: &LibraryFunctionEntries<Graph>,

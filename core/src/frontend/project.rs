@@ -1,11 +1,8 @@
 use super::program::{
-    ParsedModule, compile_parsed_host_package_program, compile_parsed_package_program,
-    compile_parsed_transfer_host_package_program, parse_module,
+    ParsedModule, compile_parsed_host_package_program, compile_parsed_package_program, parse_module,
 };
-use super::{
-    FrontendError, HostedTypedProgram, ModuleSource, TransferHostedTypedProgram, TypedProgram,
-};
-use crate::host::{HostProfile, HostProviderSet, TransferHostProviderSet};
+use super::{FrontendError, HostedTypedProgram, ModuleSource, TypedProgram};
+use crate::host::{HostProfile, HostProviderSet};
 use camino::{Utf8Path, Utf8PathBuf};
 use ecow::EcoString;
 use gleam_compiler_core::build::Target;
@@ -119,32 +116,6 @@ pub fn compile_typed_host_project<Profile: HostProfile>(
         project.root_module,
         project.modules,
         hosts,
-        WarningEmitter::null(),
-    )
-    .map_err(ProjectError::from)
-}
-
-/// Compiles a resolved project's selected source closure with transferable providers.
-///
-/// Loading is read-only: it neither acquires dependencies nor executes native
-/// code. A provider returning a source Future only constructs work when called;
-/// observing that work remains an explicit Rust-host operation.
-pub fn compile_typed_transfer_host_project<Profile: HostProfile>(
-    project_root: impl Into<Utf8PathBuf>,
-    root_module: impl Into<EcoString>,
-    hosts: TransferHostProviderSet<Profile>,
-) -> Result<TransferHostedTypedProgram<Profile>, ProjectError> {
-    let project = load_project(project_root.into(), root_module.into())?;
-    let selected = project
-        .modules
-        .iter()
-        .map(|module| (module.package.clone(), module.module.name.clone()))
-        .collect();
-    compile_parsed_transfer_host_package_program(
-        project.root_package,
-        project.root_module,
-        project.modules,
-        hosts.select_source_providers(&selected),
         WarningEmitter::null(),
     )
     .map_err(ProjectError::from)
@@ -480,12 +451,9 @@ fn select_import_closure(
 mod tests {
     use super::{
         ProjectError, SourceDirectory, compile_typed_host_project, compile_typed_project,
-        compile_typed_transfer_host_project, source_paths_from,
+        source_paths_from,
     };
-    use crate::host::{
-        HostModule, HostProviderModule, HostProviderSet, StatelessHostProfile,
-        TransferHostProviderModule, TransferHostProviderSet,
-    };
+    use crate::host::{HostModule, HostProviderModule, HostProviderSet, StatelessHostProfile};
     use crate::planner::UnsupportedFunctionReason;
     use crate::{HostedExecution, PlanError, Value, plan_host_program, plan_program};
     use camino::{Utf8Path, Utf8PathBuf};
@@ -914,8 +882,8 @@ pub fn value() -> Int
             }
         }
         fn answer<'call>(
-            mut call: crate::host::TransferHostCall<'call, StatelessHostProfile, Provider, BigInt>,
-        ) -> Result<crate::HostCallCompletion<'call, BigInt>, crate::AsyncHostCallError> {
+            mut call: crate::host::HostCall<'call, StatelessHostProfile, Provider, BigInt>,
+        ) -> Result<crate::HostCallCompletion<'call, BigInt>, crate::HostCallError> {
             let () = *call.state();
             Ok(call.return_value(BigInt::from(42)))
         }
@@ -945,15 +913,15 @@ pub fn value() -> Int
             write_file(&root, path, source);
         }
         let hosts = || {
-            TransferHostProviderSet::new(["unused", "used"].map(|module| {
-                TransferHostProviderModule::new("application", module)
+            HostProviderSet::from_providers(["unused", "used"].map(|module| {
+                HostProviderModule::new("application", module)
                     .expect("transfer module")
                     .with_scoped_function::<Provider, (), BigInt, _>("value", answer)
                     .expect("typed immediate function")
             }))
             .expect("provider selection")
         };
-        let program = compile_typed_transfer_host_project(root.clone(), "main", hosts())
+        let program = compile_typed_host_project(root.clone(), "main", hosts())
             .expect("read-only selected source loading");
         assert_eq!(program.root_package(), "application");
         assert_eq!(program.root_module(), "main");
@@ -964,10 +932,9 @@ pub fn value() -> Int
         assert_eq!(providers[0].package, "application");
         assert_eq!(providers[0].module, "used");
         assert_eq!(providers[0].functions[0].schema().name(), "value");
-        let program = compile_typed_transfer_host_project(root.clone(), "main", hosts())
+        let program = compile_typed_host_project(root.clone(), "main", hosts())
             .expect("same read-only project");
-        let plan =
-            crate::planner::plan_transfer_host_library_program(program).expect("selected plan");
+        let plan = crate::planner::plan_host_library_program(program).expect("selected plan");
         let entry = plan
             .functions()
             .iter()
@@ -981,12 +948,9 @@ pub fn value() -> Int
             Vec::new(),
             Vec::new(),
         );
-        let (plan, entries) = crate::plan::execution::TransferHostedExecution::from_library_plan(
-            plan,
-            entry,
-            Vec::new(),
-        )
-        .expect("sealed project");
+        let (plan, entries) =
+            crate::plan::execution::HostedProgram::from_library_plan(plan, entry, Vec::new())
+                .expect("sealed project");
         let mut state = ();
         let mut stores = ();
         let mut echo = drop;
@@ -996,7 +960,7 @@ pub fn value() -> Int
             driver
                 .run_int(
                     *entries.ints[0].function(),
-                    crate::runtime::TransferInputs::empty()
+                    crate::runtime::RetainedInputs::empty()
                 )
                 .expect("selected provider executes"),
             BigInt::from(42)
@@ -1021,8 +985,8 @@ pub fn value() -> Int
         write_file(&root, "manifest.toml", "packages = []\n\n[requirements]\n");
         write_file(&root, "src/main.gleam", "pub fn main() { unknown() }");
         let hosts =
-            TransferHostProviderSet::<StatelessHostProfile>::new([]).expect("empty selection");
-        let error = compile_typed_transfer_host_project(root, "main", hosts)
+            HostProviderSet::<StatelessHostProfile>::from_providers([]).expect("empty selection");
+        let error = compile_typed_host_project(root, "main", hosts)
             .err()
             .expect("source analysis must fail");
         assert_eq!(error.to_string(), "failed to analyse Gleam module");
@@ -1416,10 +1380,10 @@ packages = [
             "failed to read Gleam package config {}",
             root.join("gleam.toml"),
         );
-        let transfer_error = compile_typed_transfer_host_project(
+        let transfer_error = compile_typed_host_project(
             root,
             "main",
-            TransferHostProviderSet::<StatelessHostProfile>::new([])
+            HostProviderSet::<StatelessHostProfile>::from_providers([])
                 .expect("empty transfer providers"),
         )
         .err()

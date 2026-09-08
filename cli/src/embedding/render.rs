@@ -1,5 +1,4 @@
 use super::boundary::{DataType, FunctionBinding, PlainBindings};
-use super::package::EmbeddingStorage;
 use super::profile::{ComponentBinding, HostedBindings, HostedCapabilities, HostedComponents};
 use camino::Utf8Path;
 use std::collections::BTreeSet;
@@ -56,29 +55,14 @@ pub(super) fn hosted(bindings: &HostedBindings, project_path: &Utf8Path) -> Stri
     let alias = boundary.geam_alias.as_str();
     let components = &bindings.components;
     let mut host_imports = BTreeSet::from([
-        components.storage.component_profile(),
+        "HostComponentProfile",
         "HostProfile",
         "HostProviderComponent",
-        components.storage.registration(),
-        components.storage.provider_set(),
+        "HostProviderComponentRegistration",
+        "HostProviderSet",
         "HostRegistrationError",
+        "HostWorkProfile",
     ]);
-    match components.storage {
-        EmbeddingStorage::Local => {
-            host_imports.insert("HostModule");
-        }
-        EmbeddingStorage::Transferable => {
-            host_imports.insert("AsyncHostProviderComponent");
-            host_imports.insert("HostWorkProfile");
-            if !components.future_source
-                && components
-                    .iter()
-                    .all(|component| component == &ComponentBinding::Future)
-            {
-                host_imports.remove("TransferHostProviderComponentRegistration");
-            }
-        }
-    }
     if components.has_external() {
         host_imports.extend([
             "HostProviderComponentInitialization",
@@ -87,8 +71,8 @@ pub(super) fn hosted(bindings: &HostedBindings, project_path: &Utf8Path) -> Stri
         ]);
     }
     for import in host_imports {
-        let import = if import == "TransferHostProviderComponentRegistration" {
-            "TransferHostProviderComponentRegistration as ComponentRegistration"
+        let import = if import == "HostProviderComponentRegistration" {
+            "HostProviderComponentRegistration as ComponentRegistration"
         } else {
             import
         };
@@ -99,9 +83,9 @@ pub(super) fn hosted(bindings: &HostedBindings, project_path: &Utf8Path) -> Stri
         "BindingError",
         "Function",
         "FunctionDeclaration",
-        components.storage.module_bindings(),
-        components.storage.module_builder(),
-        components.storage.project(),
+        "HostedModuleBindings",
+        "HostedModuleBuilder",
+        "HostedProject",
         "InputShape",
     ]);
     for function in boundary.functions() {
@@ -176,10 +160,10 @@ fn push_hosted_project(
     output.push_str(&format!(
         "pub fn project{}() -> {}<{profile}>",
         generics(components),
-        components.storage.project(),
+        "HostedProject",
     ));
     push_bounds_open(output, alias, components);
-    output.push_str(&format!("    {}::new(\n", components.storage.project()));
+    output.push_str(&format!("    {}::new(\n", "HostedProject"));
     push_project_root_argument(output, project_path, "        ");
     output.push_str("        ROOT_MODULE,\n");
     let registration = match generics(components) {
@@ -210,7 +194,7 @@ fn push_provider_set_alias(output: &mut String, components: &HostedComponents) {
     output.push_str(&format!(
         "pub type ProviderSet{} = {}<{}>;\n\n",
         generics(components),
-        components.storage.provider_set(),
+        "HostProviderSet",
         profile_type(components),
     ));
 }
@@ -234,13 +218,7 @@ fn push_stores(output: &mut String, alias: &str, components: &HostedComponents) 
     output.push_str(&format!("pub struct Stores{}", generics(components)));
     push_bounds_open(output, alias, components);
     for component in components.iter() {
-        push_component_field(
-            output,
-            alias,
-            component,
-            components.storage.stores_trait(),
-            components.storage.stores_type(),
-        );
+        push_component_field(output, alias, component, "HostProviderComponent", "Stores");
     }
     output.push_str("}\n\n");
 
@@ -370,16 +348,14 @@ fn push_host_profile(output: &mut String, alias: &str, components: &HostedCompon
         generics(components),
         generics(components),
     ));
-    if components.storage == EmbeddingStorage::Transferable {
-        output.push_str(&format!(
-            "impl{} HostWorkProfile for {profile}",
-            generics(components)
-        ));
-        push_bounds_open(output, alias, components);
-        output.push_str(&format!(
-            "    type Work = {alias}::FutureComponent;\n}}\n\n"
-        ));
-    }
+    output.push_str(&format!(
+        "impl{} HostWorkProfile for {profile}",
+        generics(components)
+    ));
+    push_bounds_open(output, alias, components);
+    output.push_str(&format!(
+        "    type Work = {alias}::FutureComponent;\n}}\n\n"
+    ));
 }
 
 fn push_component_profile(
@@ -393,18 +369,30 @@ fn push_component_profile(
     let implementation = format!(
         "impl{} {}<{component_type}> for {}",
         generics(components),
-        components.storage.component_profile(),
+        "HostComponentProfile",
         profile_type(components),
     );
     let needs_brace = components.capabilities() == HostedCapabilities::None;
     let inline = implementation.len() + if needs_brace { 2 } else { 0 } <= 100;
     if inline {
         output.push_str(&implementation);
-    } else {
+    } else if format!(
+        "impl{} HostComponentProfile<{component_type}>",
+        generics(components),
+    )
+    .len()
+        <= 100
+    {
         output.push_str(&format!(
             "impl{} {}<{component_type}>\n    for {}",
             generics(components),
-            components.storage.component_profile(),
+            "HostComponentProfile",
+            profile_type(components),
+        ));
+    } else {
+        output.push_str(&format!(
+            "impl{}\n    HostComponentProfile<\n        {component_type},\n    > for {}",
+            generics(components),
             profile_type(components),
         ));
     }
@@ -415,14 +403,13 @@ fn push_component_profile(
     }
     output.push_str(&format!(
         "    fn {}(\n        stores: &Self::ExternalStores,\n",
-        components.storage.stores_method()
+        "component_stores"
     ));
     push_method_open(
         output,
         &format!(
             "    ) -> &<{component_type} as {}>::{}",
-            components.storage.stores_trait(),
-            components.storage.stores_type()
+            "HostProviderComponent", "Stores"
         ),
     );
     output.push_str(&format!("        &stores.{field}\n    }}\n\n"));
@@ -465,70 +452,6 @@ fn push_time_profile(output: &mut String, alias: &str, components: &HostedCompon
 }
 
 fn push_host_providers(output: &mut String, alias: &str, components: &HostedComponents) {
-    if components.storage == EmbeddingStorage::Transferable {
-        push_transfer_providers(output, alias, components);
-        return;
-    }
-    let profile = profile_type(components);
-    output.push_str(&format!(
-        "pub fn host_providers{}() -> Result<ProviderSet{}, HostRegistrationError>",
-        generics(components),
-        generics(components),
-    ));
-    push_bounds_open(output, alias, components);
-    let mutability = if components.has_multiple() {
-        "mut "
-    } else {
-        ""
-    };
-    let first_type = component_type(alias, components.first());
-    let registration =
-        format!("<{first_type} as HostProviderComponentRegistration<{profile}>>::providers()?;");
-    let first_registration = format!("    let {mutability}providers = {registration}\n");
-    if first_registration.trim_end().len() <= 100 {
-        output.push_str(&first_registration);
-    } else if 8 + registration.len() <= 100 {
-        output.push_str(&format!(
-            "    let {mutability}providers =\n        {registration}\n"
-        ));
-    } else if components.capabilities() == HostedCapabilities::IoAndTime {
-        output.push_str(&format!(
-            "    let {mutability}providers =\n        <{first_type} as HostProviderComponentRegistration<\n            {profile},\n        >>::providers()?;\n"
-        ));
-    } else {
-        output.push_str(&format!(
-            "    let {mutability}providers = <{first_type} as HostProviderComponentRegistration<\n        {profile},\n    >>::providers()?;\n"
-        ));
-    }
-    for component in components.remaining() {
-        let component_type = component_type(alias, component);
-        let registration = format!(
-            "<{component_type} as HostProviderComponentRegistration<{profile}>>::providers()?"
-        );
-        let direct_opening = format!(
-            "    let additional_providers = <{component_type} as HostProviderComponentRegistration<"
-        );
-        if 8 + registration.len() <= 100 {
-            output.push_str(&format!(
-                "    let additional_providers =\n        {registration};\n"
-            ));
-        } else if direct_opening.len() < 100 {
-            output.push_str(&format!(
-                "    let additional_providers = <{component_type} as HostProviderComponentRegistration<\n        {profile},\n    >>::providers()?;\n"
-            ));
-        } else {
-            output.push_str(&format!(
-                "    let additional_providers =\n        <{component_type} as HostProviderComponentRegistration<\n            {profile},\n        >>::providers()?;\n"
-            ));
-        }
-        output.push_str("    providers.extend(additional_providers);\n");
-    }
-    output.push_str(&format!(
-        "    HostProviderSet::with_providers(Vec::<HostModule<{profile}>>::new(), providers)\n}}\n\n"
-    ));
-}
-
-fn push_transfer_providers(output: &mut String, alias: &str, components: &HostedComponents) {
     let profile = profile_type(components);
     output.push_str(&format!(
         "pub fn host_providers{}() -> Result<ProviderSet{}, HostRegistrationError>",
@@ -540,10 +463,6 @@ fn push_transfer_providers(output: &mut String, alias: &str, components: &Hosted
         .iter()
         .filter(|component| component != &&ComponentBinding::Future || components.future_source)
         .collect::<Vec<_>>();
-    if registered.is_empty() {
-        output.push_str("    TransferHostProviderSet::new([])\n}\n\n");
-        return;
-    }
     for (index, component) in registered.iter().enumerate() {
         let component = component_type(alias, component);
         let declaration = if index == 0 {
@@ -558,7 +477,7 @@ fn push_transfer_providers(output: &mut String, alias: &str, components: &Hosted
         let registration =
             format!("<{component} as ComponentRegistration<{profile}>>::providers()?;");
         let statement = format!("    {declaration} = {registration}");
-        if statement.len() <= 98 {
+        if statement.len() <= 100 {
             output.push_str(&format!("{statement}\n"));
         } else if 8 + registration.len() <= 100 {
             output.push_str(&format!("    {declaration} =\n        {registration}\n"));
@@ -580,7 +499,7 @@ fn push_transfer_providers(output: &mut String, alias: &str, components: &Hosted
             output.push_str("    providers.extend(additional_providers);\n");
         }
     }
-    output.push_str("    TransferHostProviderSet::new(providers)\n}\n\n");
+    output.push_str("    HostProviderSet::from_providers(providers)\n}\n\n");
 }
 
 fn push_hosted_bind(
@@ -593,8 +512,8 @@ fn push_hosted_bind(
     output.push_str(&format!(
         "pub fn bind{}(\n    builder: {}<{profile}>,\n) -> Result<({}<{profile}>, Functions), BindingError>",
         generics(components),
-        components.storage.module_builder(),
-        components.storage.module_bindings(),
+        "HostedModuleBuilder",
+        "HostedModuleBindings",
     ));
     push_bounds_open(output, alias, components);
     push_bind_body(output, boundary, "Functions", "function");
@@ -727,18 +646,12 @@ fn profile_type(components: &HostedComponents) -> String {
 }
 
 fn push_bounds(output: &mut String, alias: &str, components: &HostedComponents) {
-    let send = match components.storage {
-        EmbeddingStorage::Local => "",
-        EmbeddingStorage::Transferable => " + Send",
-    };
     output.push_str("where\n");
     output.push_str(&format!(
-        "    Io: {alias}::gleam_stdlib::IoSink{send} + 'static,\n"
+        "    Io: {alias}::gleam_stdlib::IoSink + 'static,\n"
     ));
     if components.has_time() {
-        output.push_str(&format!(
-            "    Source: {alias}::gleam_time::TimeSource{send},\n"
-        ));
+        output.push_str(&format!("    Source: {alias}::gleam_time::TimeSource,\n"));
     }
 }
 
@@ -771,71 +684,6 @@ fn push_binding(
             "    let {pattern} =\n        {owner}.{method}(FunctionDeclaration::new({:?}))?;\n",
             function.gleam_name
         ));
-    }
-}
-
-impl EmbeddingStorage {
-    fn component_profile(self) -> &'static str {
-        match self {
-            Self::Local => "HostComponentProfile",
-            Self::Transferable => "AsyncHostComponentProfile",
-        }
-    }
-
-    fn stores_trait(self) -> &'static str {
-        match self {
-            Self::Local => "HostProviderComponent",
-            Self::Transferable => "AsyncHostProviderComponent",
-        }
-    }
-
-    fn stores_type(self) -> &'static str {
-        match self {
-            Self::Local => "Stores",
-            Self::Transferable => "AsyncStores",
-        }
-    }
-
-    fn stores_method(self) -> &'static str {
-        match self {
-            Self::Local => "component_stores",
-            Self::Transferable => "component_async_stores",
-        }
-    }
-
-    fn registration(self) -> &'static str {
-        match self {
-            Self::Local => "HostProviderComponentRegistration",
-            Self::Transferable => "TransferHostProviderComponentRegistration",
-        }
-    }
-
-    fn provider_set(self) -> &'static str {
-        match self {
-            Self::Local => "HostProviderSet",
-            Self::Transferable => "TransferHostProviderSet",
-        }
-    }
-
-    fn project(self) -> &'static str {
-        match self {
-            Self::Local => "HostedProject",
-            Self::Transferable => "TransferHostedProject",
-        }
-    }
-
-    fn module_builder(self) -> &'static str {
-        match self {
-            Self::Local => "HostedModuleBuilder",
-            Self::Transferable => "WorkModuleBuilder",
-        }
-    }
-
-    fn module_bindings(self) -> &'static str {
-        match self {
-            Self::Local => "HostedModuleBindings",
-            Self::Transferable => "WorkModuleBindings",
-        }
     }
 }
 
@@ -1033,48 +881,71 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
     }
 
     #[test]
-    fn renders_explicit_transfer_storage_with_only_the_required_source_registration() {
+    fn renders_one_host_contract_with_only_the_required_source_registration() {
         for source_required in [false, true] {
-            let runtime = hosted_source(HostedComponents::transferable(source_required));
-            assert!(runtime.contains("pub fn project() -> TransferHostedProject<Profile>"));
-            assert!(runtime.contains("WorkModuleBuilder<Profile>"));
-            assert!(runtime.contains("WorkModuleBindings<Profile>"));
+            let components = if source_required {
+                HostedComponents::from_builtin(BuiltInProvider::Geam)
+            } else {
+                external_components()
+            };
+            let runtime = hosted_source(components);
+            assert!(runtime.contains("pub fn project() -> HostedProject<Profile>"));
+            assert!(runtime.contains("HostedModuleBuilder<Profile>"));
+            assert!(runtime.contains("HostedModuleBindings<Profile>"));
             assert!(!runtime.contains("AsyncFunctions"));
             assert!(!runtime.contains("bind_async"));
             assert_eq!(
-                runtime.contains("TransferHostProviderComponentRegistration"),
+                runtime.contains("FutureComponent as ComponentRegistration"),
                 source_required
             );
-            assert_eq!(runtime.contains("ProviderSet::new([])"), !source_required);
-            assert_rustfmt_stable("transfer runtime", &runtime);
+            assert!(runtime.contains("HostWorkProfile"));
+            assert_rustfmt_stable("host runtime", &runtime);
 
             for builtin in [
                 BuiltInProvider::Stdlib,
                 BuiltInProvider::Json,
                 BuiltInProvider::Time,
             ] {
-                let mut components = HostedComponents::transferable(source_required);
-                components.extend(HostedComponents::from_builtin(builtin));
+                let mut components = HostedComponents::from_builtin(builtin);
+                if source_required {
+                    components.extend(HostedComponents::from_builtin(BuiltInProvider::Geam));
+                }
                 components.extend(external_components());
                 let mixed = hosted_source(components);
-                assert!(mixed.contains("AsyncHostComponentProfile"));
-                assert!(mixed.contains("AsyncHostProviderComponent"));
-                assert!(mixed.contains("Io: runtime::gleam_stdlib::IoSink + Send"));
-                assert_rustfmt_stable("transfer built-in and external", &mixed);
+                assert!(mixed.contains("HostComponentProfile"));
+                assert!(mixed.contains("HostProviderComponent"));
+                assert!(mixed.contains("Io: runtime::gleam_stdlib::IoSink + 'static"));
+                assert_rustfmt_stable("built-in and external", &mixed);
             }
         }
-        let mut long = HostedComponents::transferable(false);
-        long.extend(HostedComponents::from_external(ExternalComponent {
+        let mut long = HostedComponents::from_external(ExternalComponent {
             package: "a".to_owned(),
             input_field: identifier("a"),
             state_field: identifier("provider_a"),
-            crate_alias: identifier("provider_with_a_deliberately_long_cargo_alias"),
-        }));
+            crate_alias: identifier("provider_with_a_deliberately_long_cargo_alias_for_calls"),
+        });
         long.extend(external_components());
-        assert_rustfmt_stable("transfer long external", &hosted_source(long));
+        let long = hosted_source(long);
+        assert!(long.contains(
+            "impl HostComponentProfile<provider_with_a_deliberately_long_cargo_alias_for_calls::Component>\n    for Profile\n{\n"
+        ));
+        assert_rustfmt_stable("long external component", &long);
 
-        let mut wrapped_call = HostedComponents::transferable(false);
-        wrapped_call.extend(external_components());
+        let very_long = HostedComponents::from_external(ExternalComponent {
+            package: "native".to_owned(),
+            input_field: identifier("native"),
+            state_field: identifier("provider_native"),
+            crate_alias: identifier(
+                "provider_with_a_deliberately_long_cargo_alias_that_requires_wrapping",
+            ),
+        });
+        let runtime = hosted_source(very_long);
+        assert!(runtime.contains(
+            "impl\n    HostComponentProfile<\n        provider_with_a_deliberately_long_cargo_alias_that_requires_wrapping::Component,\n    > for Profile\n{\n"
+        ));
+        assert_rustfmt_stable("wrapped component type", &runtime);
+
+        let mut wrapped_call = external_components();
         wrapped_call.extend(HostedComponents::from_external(ExternalComponent {
             package: "long_name".to_owned(),
             input_field: identifier("long_name"),
@@ -1131,7 +1002,10 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         assert!(stdlib.contains("pub struct RunStateInputs<Io>"));
         assert!(stdlib.contains("pub stdlib: runtime::gleam_stdlib::GleamStdlibRunState<Io>"));
         assert!(stdlib.contains("pub fn initialize(self) -> RunState<Io>"));
-        assert!(stdlib.contains("RunState {\n            stdlib: self.stdlib,"));
+        assert!(
+            stdlib
+                .contains("RunState {\n            future: (),\n            stdlib: self.stdlib,")
+        );
         assert!(!stdlib.contains("ProviderConfigurations"));
         assert!(stdlib.contains("gleam_stdlib::Component<Io>"));
         assert!(!stdlib.contains("gleam_json::Component"));

@@ -1,14 +1,14 @@
-use super::AsyncExecutionError;
+use super::ExecutionError;
 use crate::runtime::shared::Shared;
 use std::fmt;
 
 /// An original execution failure shared by observations of one operation.
 #[derive(Clone)]
-pub struct SharedExecutionError(pub(crate) Shared<AsyncExecutionError>);
+pub struct SharedExecutionError(pub(crate) Shared<ExecutionError>);
 
 impl SharedExecutionError {
     /// Borrows the actual failure without copying retained source values.
-    pub fn read<Output>(&self, read: impl FnOnce(&AsyncExecutionError) -> Output) -> Output {
+    pub fn read<Output>(&self, read: impl FnOnce(&ExecutionError) -> Output) -> Output {
         self.0.read(read)
     }
 }
@@ -29,13 +29,13 @@ impl std::error::Error for SharedExecutionError {}
 
 #[cfg(test)]
 mod tests {
-    use super::{AsyncExecutionError, Shared, SharedExecutionError};
+    use super::{ExecutionError, Shared, SharedExecutionError};
     use crate::{InvariantError, ValueType};
     use std::error::Error;
 
     #[test]
     fn shared_diagnostics_borrow_the_original_failure_and_keep_its_rendering() {
-        let error = SharedExecutionError(Shared::new(AsyncExecutionError::Invariant(
+        let error = SharedExecutionError(Shared::new(ExecutionError::Invariant(
             InvariantError::ListIndexOutOfBounds {
                 item_type: ValueType::Int,
                 index: 1,

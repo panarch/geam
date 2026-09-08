@@ -1,33 +1,23 @@
 mod function;
 mod storage;
 
-pub(super) use function::provider::__GeamAsyncStores as TransferStores;
+pub use function::create_value;
 pub(super) use function::provider::__GeamStores as Stores;
 pub(crate) use function::provider::DynamicPayload;
 pub use function::provider::{
     __GeamExternalSchema0 as DynamicSchema, __GeamExternalStorage0 as DynamicExternalStorage,
 };
-pub use function::{create_transfer_value, create_value};
 
 pub(crate) use self::storage::DynamicRepresentation;
-use super::GleamStdlibLocalProfile;
+use super::GleamStdlibProviderProfile;
 use crate::{HostExternalType, HostProviderModule, HostRegistrationError};
 
 pub type Dynamic = HostExternalType<DynamicSchema>;
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
-    Profile: GleamStdlibLocalProfile,
+    Profile: GleamStdlibProviderProfile,
 {
     function::host_provider::<Profile>()
-}
-
-pub(super) fn transfer_host_provider<Profile>()
--> Result<geam_core::TransferHostProviderModule<Profile>, HostRegistrationError>
-where
-    Profile: crate::GleamStdlibTransferProfile,
-    Profile::RunState: Send,
-{
-    function::transfer_host_provider::<Profile>()
 }
 
 #[cfg(test)]

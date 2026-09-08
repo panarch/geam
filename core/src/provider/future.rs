@@ -1,6 +1,6 @@
 use crate::host::{
-    HostExternal, HostFutureContext, HostFutureError, HostFutureType, HostFutureValue, HostProfile,
-    HostProvider, HostType, HostTypeListEnd, HostWorkProfile, TransferHostCall,
+    HostCall, HostExternal, HostFutureContext, HostFutureError, HostFutureType, HostFutureValue,
+    HostProfile, HostProvider, HostType, HostTypeListEnd, HostWorkProfile,
 };
 use std::marker::PhantomData;
 
@@ -17,7 +17,7 @@ pub struct Future<Value, Context = MissingFutureContext> {
 pub struct MissingFutureContext;
 
 type Decode<Profile, Provider, Host, Output> = for<'call> fn(
-    TransferHostCall<'call, Profile, Provider, ()>,
+    HostCall<'call, Profile, Provider, ()>,
     <Host as HostType>::Value<'call>,
 ) -> Output;
 
@@ -41,8 +41,8 @@ where
     Host: HostType,
 {
     #[doc(hidden)]
-    pub fn from_transfer_host<'call, Return: HostType>(
-        call: &TransferHostCall<'call, Profile, Provider, Return>,
+    pub fn from_host<'call, Return: HostType>(
+        call: &HostCall<'call, Profile, Provider, Return>,
         value: HostExternal<'call, HostFutureType<Host, crate::host::HostWorkSchema<Profile>>>,
         decode: Decode<Profile, Provider, Host, Output>,
     ) -> Self

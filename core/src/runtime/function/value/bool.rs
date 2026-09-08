@@ -2,7 +2,7 @@ use super::super::{EvaluatedFunctionExit, evaluate_entry};
 use crate::plan::execution::function::BoolFunctionId;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
-use crate::runtime::graph::ProfiledRetainedValues;
+use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::RuntimeStateFor;
 
 pub(in crate::runtime) fn run_bool<Plan: ExecutableRuntimePlan>(
@@ -10,8 +10,8 @@ pub(in crate::runtime) fn run_bool<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     mut function: BoolFunctionId,
     mut origin: HostCallOrigin,
-    mut inputs: ProfiledRetainedValues<Plan::Values>,
-) -> ExecutionResult<bool, Plan::Values> {
+    mut inputs: RetainedValues,
+) -> ExecutionResult<bool> {
     loop {
         let exit = evaluate_entry(plan, state, plan.bool_function(function), origin, inputs)?;
         match exit {
@@ -98,12 +98,14 @@ pub fn main() {
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         assert_eq!(
             execution
+                .execution()
                 .function_parameters()
                 .function(&FunctionTarget::Bool(BoolFunctionId(2))),
             [ParamLocal::Bool(BoolLocalId(0))],
         );
         assert_eq!(
             execution
+                .execution()
                 .function_parameters()
                 .function(&FunctionTarget::Bool(BoolFunctionId(1))),
             [ParamLocal::Int(IntLocalId(0))],

@@ -151,17 +151,21 @@ mod files {
 The macro maps the returned Rust Future to `Future(Result(String, String))`;
 it does not wait for the file read while returning an ordinary Gleam Result.
 No additional async metadata flag is needed. Gleam composes the work with
-`future.map`, `future.then`, or `future.all`, and a Rust embedding application
-explicitly drives it with its own executor.
+`future.map`, `future.then`, or `future.all`. `geam run` drives the Future returned
+by `main`; a Rust embedding application observes work with its own executor.
 
 Follow [Add the package](future.md#add-the-package) to include `geam`
 in the Gleam package. The Future guide also explains the composition functions
 and shared results.
 
-The [async files provider](../examples/provider/async_files) and its
-[embedding application](../examples/embedding/async_host) are the complete
-runnable pair. Async work currently requires the explicit Rust embedding
-scope; the standalone runner does not drive it.
+The [async files provider](../examples/provider/async_files) includes a runnable
+standalone project. Its [embedding application](../examples/embedding/async_host)
+uses the same provider from Rust.
+
+Provider state, retained payloads, and native Futures must be `Send`. They do not
+need to be `Sync`: an async `Call` gives bounded access to the original mutable
+state. A provider using Tokio can use the standalone runner's I/O and time
+drivers; an embedding application supplies the runtime its providers require.
 
 ## Declare which Gleam versions it supports
 
