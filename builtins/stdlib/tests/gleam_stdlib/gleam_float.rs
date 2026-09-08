@@ -88,7 +88,7 @@ fn runs_official_gleam_float_behavior() {
         "gleam_float",
         &["gleam/order", "gleam/float"],
         hosts,
-        &mut GleamStdlibRunState::from_seed([4; 32]),
+        || GleamStdlibRunState::from_seed([4; 32]),
     );
 
     assert_eq!(value, Value::Nil);

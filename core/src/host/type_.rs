@@ -98,6 +98,18 @@ pub(crate) fn from_token<'call, Type: HostType, Profile: crate::host::HostProfil
     runtime: &dyn crate::host::HostCallRuntime<Profile>,
     token: crate::host::HostValueToken,
 ) -> Type::Value<'call> {
+    let runtime = crate::host::HostCallTokenRuntime::new(runtime);
+    <Type as private::Abi>::from_token(&runtime, token)
+}
+
+pub(crate) fn from_runtime_token<'call, Type, Runtime>(
+    runtime: &Runtime,
+    token: crate::host::HostValueToken,
+) -> Type::Value<'call>
+where
+    Type: HostType,
+    Runtime: crate::host::HostTokenRuntime + ?Sized,
+{
     <Type as private::Abi>::from_token(runtime, token)
 }
 
@@ -112,6 +124,19 @@ pub(crate) fn from_tokens<'call, Types: HostTypeSequence, Profile: crate::host::
     runtime: &dyn crate::host::HostCallRuntime<Profile>,
     tokens: &[crate::host::HostValueToken],
 ) -> Types::Values<'call> {
+    let runtime = crate::host::HostCallTokenRuntime::new(runtime);
+    let mut index = 0;
+    <Types as private::Sequence>::from_tokens(&runtime, tokens, &mut index)
+}
+
+pub(crate) fn from_runtime_tokens<'call, Types, Runtime>(
+    runtime: &Runtime,
+    tokens: &[crate::host::HostValueToken],
+) -> Types::Values<'call>
+where
+    Types: HostTypeSequence,
+    Runtime: crate::host::HostTokenRuntime + ?Sized,
+{
     let mut index = 0;
     <Types as private::Sequence>::from_tokens(runtime, tokens, &mut index)
 }
@@ -447,8 +472,8 @@ mod private {
         fn into_scoped(value: <Self as super::HostType>::Value<'_>) -> super::HostScopedValue
         where
             Self: super::HostType;
-        fn from_token<'call, Profile: crate::host::HostProfile>(
-            runtime: &dyn crate::host::HostCallRuntime<Profile>,
+        fn from_token<'call, Runtime: crate::host::HostTokenRuntime + ?Sized>(
+            runtime: &Runtime,
             token: crate::host::HostValueToken,
         ) -> <Self as super::HostType>::Value<'call>
         where
@@ -467,8 +492,8 @@ mod private {
             output: &mut Vec<super::HostScopedValue>,
         ) where
             Self: super::HostTypeSequence;
-        fn from_tokens<'call, Profile: crate::host::HostProfile>(
-            runtime: &dyn crate::host::HostCallRuntime<Profile>,
+        fn from_tokens<'call, Runtime: crate::host::HostTokenRuntime + ?Sized>(
+            runtime: &Runtime,
             tokens: &[crate::host::HostValueToken],
             index: &mut usize,
         ) -> <Self as super::HostTypeSequence>::Values<'call>

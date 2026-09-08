@@ -38,7 +38,7 @@ use super::type_::{
     CustomConstructorId, CustomTypeId, FunctionListTypeId, FunctionType, ListListTypeId,
     ListTypeId, TupleListTypeId, ValueShapeId, ValueType,
 };
-use super::{AsyncHostedExecution, ExecutionPlan, ExecutionProgram, HostedExecution};
+use super::{ExecutionPlan, ExecutionProgram, HostedExecution, TransferHostedExecution};
 use crate::host::HostProfile;
 use crate::plan::SourceContext;
 use ecow::EcoString;
@@ -50,6 +50,10 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
     type Values;
 
     fn program(&self) -> &ExecutionProgram<Self::Profile>;
+
+    fn function_parameters(&self) -> &super::function::FunctionParameterCatalog {
+        &self.program().common.function_parameters
+    }
 
     fn value_metadata(&self) -> RuntimeValueMetadata<'_> {
         RuntimeValueMetadata::new(&self.program().common)
@@ -535,8 +539,8 @@ impl<Profile: HostProfile> RuntimeExecutionPlan for HostedExecution<Profile> {
     }
 }
 
-impl<Profile: HostProfile> RuntimeExecutionPlan for AsyncHostedExecution<Profile> {
-    type Profile = super::host::AsyncHostedExecutionProfile;
+impl<Profile: HostProfile> RuntimeExecutionPlan for TransferHostedExecution<Profile> {
+    type Profile = super::host::TransferHostedExecutionProfile;
     type RunState = Profile::RunState;
     type Values = crate::runtime::TransferValues;
 

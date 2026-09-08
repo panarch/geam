@@ -1,38 +1,38 @@
 mod geam_bindings;
-mod host;
 
 use futures::executor::block_on;
-use geam::embedding::AsyncHostedModuleBuilder;
-use geam::{EchoOutput, EchoSink};
-
-#[derive(Default)]
-struct TextEcho(Vec<String>);
-
-impl EchoSink for TextEcho {
-    fn emit(&mut self, output: EchoOutput) {
-        let message = output.message().map_or("echo", |message| message.as_str());
-        self.0
-            .push(format!("{message}: {}", output.value().inspect()));
-    }
-}
+use geam::HostProviderConfiguration;
+use geam::embedding::{WorkModuleBuilder, with_execution_scope};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let program = geam_bindings::project()
-        .with_async_hosts(host::async_hosts()?)
-        .compile()?;
-    let builder = AsyncHostedModuleBuilder::new(program)?;
-    let (bindings, functions) = geam_bindings::bind_async(builder)?;
-    let mut module = bindings.seal();
-    let mut state = host::RunState::new(2);
-    let mut echo = TextEcho::default();
-
-    let value =
-        block_on(module.call_async(&functions.calculate, (20.into(),), &mut state, &mut echo))?;
-
-    println!("value: {value}");
-    println!("completed: {}", state.completed());
-    for output in echo.0 {
-        println!("{output}");
+    let program = geam_bindings::project().compile()?;
+    let builder = WorkModuleBuilder::new(program)?;
+    let (bindings, functions) = geam_bindings::bind(builder)?;
+    let mut module = bindings.seal()?;
+    let mut state = geam_bindings::RunStateInputs {
+        example_async_files: HostProviderConfiguration::empty(),
     }
-    Ok(())
+    .initialize()?;
+    let mut echo = |output: geam::EchoOutput| eprintln!("{output}");
+
+    block_on(with_execution_scope(async |guard| {
+        let mut scope = module.attach(guard, &mut state, &mut echo);
+        let doubled = scope.call(&functions.double, (21.into(),))?;
+        println!("double: {doubled}");
+
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/message.txt");
+        let work = scope.call(&functions.greeting, (path.into(),))?;
+        println!("created");
+        let result = scope.observe(&work).await?;
+        result.read(|value| match value {
+            Ok(text) => println!("{}", text.trim_end()),
+            Err(error) => eprintln!("{error}"),
+        });
+        let same_result = scope.observe(&work).await?;
+        same_result.read(|value| match value {
+            Ok(text) => println!("again: {}", text.trim_end()),
+            Err(error) => eprintln!("{error}"),
+        });
+        Ok::<_, Box<dyn std::error::Error>>(())
+    }))
 }

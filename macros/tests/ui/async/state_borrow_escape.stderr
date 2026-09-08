@@ -1,0 +1,8 @@
+error: lifetime may not live long enough
+  --> tests/ui/async/state_borrow_escape.rs:19:45
+   |
+19 |         let state = call.with_state(|state| state).await?;
+   |                                      ------ ^^^^^ returning this value requires that `'1` must outlive `'2`
+   |                                      |    |
+   |                                      |    return type of closure is &'2 mut BigInt
+   |                                      has type `&'1 mut BigInt`

@@ -1,0 +1,17 @@
+error[E0277]: `Rc<()>` cannot be sent between threads safely
+ --> tests/ui/rejected/non_send.rs:5:36
+  |
+5 |     let _ = WorkModuleBuilder::new(program);
+  |             ---------------------- ^^^^^^^ `Rc<()>` cannot be sent between threads safely
+  |             |
+  |             required by a bound introduced by this call
+  |
+  = help: the trait `Send` is not implemented for `Rc<()>`
+note: required by a bound in `WorkModuleBuilder::<Profile>::new`
+ --> $WORKSPACE/core/src/embedding/work/execution.rs
+  |
+  |     pub fn new(
+  |            --- required by a bound in this associated function
+...
+  |         Profile::RunState: Send,
+  |                            ^^^^ required by this bound in `WorkModuleBuilder::<Profile>::new`

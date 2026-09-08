@@ -1,3 +1,4 @@
+mod borrowed;
 mod constant;
 mod echo;
 mod embedding;
@@ -9,13 +10,16 @@ mod host;
 mod list_storage;
 mod materialize;
 mod profile;
-mod resumable;
 mod retained_list;
+pub(crate) mod shared;
 mod state;
 mod transfer;
 mod value;
 mod value_profile;
+pub(crate) mod work;
 
+pub(crate) use borrowed::BorrowedValue;
+pub use echo::{EchoLocation, EchoOutput, EchoSink};
 pub(crate) use embedding::{
     EmbeddingCustomInput, EmbeddingInput, EmbeddingInputStorage, EmbeddingInputValue,
     EmbeddingList, EmbeddingListInput, EmbeddingOutput, EmbeddingTupleInput,
@@ -26,30 +30,12 @@ pub(crate) use embedding::{
     run_hosted_embedded_list, run_hosted_embedded_nil, run_hosted_embedded_string,
     run_hosted_embedded_tuple, run_hosted_embedded_utf_codepoint,
 };
+pub(crate) use error::AsyncExecutionError as TransferExecutionError;
 pub(crate) use error::HostCallOrigin;
-pub(crate) use graph::ProfiledRetainedValues;
-pub(crate) use host::{
-    StoredRuntimeList, StoredRuntimeListCustomFields, StoredRuntimeListItem,
-    StoredRuntimeListTupleItems, StoredRuntimeValue,
-};
-pub(crate) use resumable::{
-    AsyncHostCallbackRequest, ResumableCallback, TransferExecutionError,
-    run_embedded_bit_array as run_resumable_embedded_bit_array,
-    run_embedded_bool as run_resumable_embedded_bool,
-    run_embedded_custom as run_resumable_embedded_custom,
-    run_embedded_float as run_resumable_embedded_float,
-    run_embedded_int as run_resumable_embedded_int,
-    run_embedded_list as run_resumable_embedded_list,
-    run_embedded_nil as run_resumable_embedded_nil,
-    run_embedded_string as run_resumable_embedded_string,
-    run_embedded_tuple as run_resumable_embedded_tuple,
-    run_embedded_utf_codepoint as run_resumable_embedded_utf_codepoint,
-};
-
-pub use echo::{EchoLocation, EchoOutput, EchoSink};
 pub use error::{
     AsyncExecutionError, AsyncPanicValue, BitArraySegmentPanicReason, ExecutionError, HostError,
     HostLocation, HostOrigin, InvariantError, Panic, PanicDetails, PanicKind, PanicMessage,
+    SharedExecutionError,
 };
 pub(crate) use evaluated::EvaluatedExternalValue;
 pub(in crate::runtime) use evaluated::{
@@ -63,6 +49,10 @@ pub(in crate::runtime) use evaluated::{
 #[cfg(test)]
 pub(in crate::runtime) use evaluated::{EvaluatedFunctionValue, EvaluatedListCapture};
 pub(crate) use graph::RetainedValues;
+pub(crate) use host::{
+    StoredRuntimeList, StoredRuntimeListCustomFields, StoredRuntimeListItem,
+    StoredRuntimeListTupleItems, StoredRuntimeValue,
+};
 pub(crate) use value::{
     BitArrayFunctionValue, BoolFunctionValue, CaptureListValue, CaptureValue, CustomFunctionValue,
     CustomFunctionValueTarget, ExternalFunctionValue, FloatFunctionValue, FunctionFunctionValue,
@@ -77,12 +67,12 @@ pub use value::{
 };
 
 pub(in crate::runtime) use list_storage::RuntimeListStorage;
-pub(in crate::runtime) use profile::{ExecutableRuntimePlan, RuntimeGraph};
-pub(crate) use resumable::TransferInputs;
+pub(in crate::runtime) use profile::{ExecutableProgramPlan, ExecutableRuntimePlan, RuntimeGraph};
 pub(crate) use transfer::{
-    TransferExternalPayloadLease, TransferExternalStore, TransferListStorage,
-    TransferStoredRuntimeValue,
+    TransferCallable, TransferExternalPayloadLease, TransferExternalPayloadView,
+    TransferExternalStore, TransferListStorage, TransferStoredRuntimeValue,
 };
+pub(crate) use transfer::{TransferCallbackInputs, TransferInputs};
 pub(crate) use value_profile::{LocalValues, TransferValues};
 pub(crate) use value_profile::{RuntimeExternalLease, RuntimeValueProfile};
 
@@ -142,10 +132,10 @@ fn run_core_program<Plan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
     function: ProfiledCoreRuntimeFunctionId<RuntimeGraph<Plan>>,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedValue>
+    inputs: graph::ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedValue<Plan::Values>, Plan::Values>
 where
-    Plan: ExecutableRuntimePlan,
+    Plan: ExecutableProgramPlan,
 {
     match function {
         ProfiledCoreRuntimeFunctionId::Never(function) => {
@@ -202,8 +192,8 @@ where
 fn finish_program<Plan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    value: EvaluatedValue,
-) -> Result<Value, ExecutionError>
+    value: EvaluatedValue<Plan::Values>,
+) -> ExecutionResult<Value, Plan::Values>
 where
     Plan: ExecutableRuntimePlan,
 {

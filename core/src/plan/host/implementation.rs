@@ -10,8 +10,8 @@ pub(crate) struct ProfiledHostImplementationBinding<Implementation> {
 pub(crate) type HostImplementationBinding<Profile> =
     ProfiledHostImplementationBinding<crate::host::HostFunctionImplementation<Profile>>;
 
-pub(crate) type AsyncHostImplementationBinding<Profile> =
-    ProfiledHostImplementationBinding<crate::host::ResumableHostFunctionImplementation<Profile>>;
+pub(crate) type TransferHostImplementationBinding<Profile> =
+    ProfiledHostImplementationBinding<crate::host::TransferHostFunctionImplementation<Profile>>;
 
 impl<Implementation> ProfiledHostImplementationBinding<Implementation> {
     pub(crate) fn new(

@@ -106,7 +106,7 @@ fn runs_official_gleam_int_behavior() {
         "gleam_int",
         &["gleam/order", "gleam/float", "gleam/int"],
         hosts,
-        &mut GleamStdlibRunState::from_seed([6; 32]),
+        || GleamStdlibRunState::from_seed([6; 32]),
     );
 
     assert!(matches!(value, Value::Int(_)));

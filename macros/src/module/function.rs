@@ -1,7 +1,7 @@
 use super::custom_value::{
     CustomConstructorModel, CustomFieldValueType, CustomFields, CustomModel, custom_field_models,
 };
-use super::list::{list_declared_accesses, list_decoder_value};
+use super::list::{list_declared_accesses, list_decoder_value, transfer_list_decoder_value};
 use super::signature::{
     callback_codec_type, callback_host_arguments, callback_input_signature_type,
     callback_output_signature_type, function_output_from_root, function_output_host_type,
@@ -9,14 +9,16 @@ use super::signature::{
     generic_external_input_signature_type, generic_host_type, host_argument_type,
     host_custom_field_type, host_input_type, host_return_type, host_static_value_type,
     host_type_token_sequence, host_value_type, instantiated_generic_source_type,
-    provider_value_from_input_root, wrapper_argument_type,
+    provider_value_from_input_root, transfer_callback_output_signature_type,
+    transfer_generic_external_input_signature_type, wrapper_argument_type,
 };
 use super::{
-    CallAccess, CallbackType, DeclaredInput, FunctionArgumentType, FunctionGeneric,
+    CallAccess, CallbackType, DeclaredInput, FunctionArgumentType, FunctionFlavor, FunctionGeneric,
     FunctionInputType, FunctionModel, FunctionOutputLeafType, FunctionOutputValueType,
     FunctionReturnType, FunctionRootOutputValueType, GeneratedCallback, GeneratedConstruction,
-    GeneratedFunction, GeneratedNames, GeneratedReturn, GeneratedValue, GenericInputSource,
-    InputEnvironment, OutputEnvironment, OutputState, ProviderValueType, StaticValueType,
+    GeneratedFunction, GeneratedNames, GeneratedReturn, GeneratedValue, GenericExternalStorage,
+    GenericInputSource, InputEnvironment, OutputEnvironment, OutputState, ProviderRepresentation,
+    ProviderValueType, StaticValueType, TransferFlavor,
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -24,13 +26,21 @@ use std::collections::BTreeSet;
 use syn::Ident;
 use syn::ext::IdentExt;
 
-fn generate_callback_codec(
+pub(super) fn generate_callback_codec(
     callback: &CallbackType,
     generics: &[FunctionGeneric],
     customs: &[CustomModel],
     support: &TokenStream,
     outer_return: &TokenStream,
+    flavor: FunctionFlavor,
+    define_codec: bool,
 ) -> GeneratedCallback {
+    let representation = flavor.representation();
+    let transfer_flavor = match flavor {
+        FunctionFlavor::Local => None,
+        FunctionFlavor::TransferImmediate => Some(TransferFlavor::Immediate),
+        FunctionFlavor::Async => Some(TransferFlavor::Async),
+    };
     let codec = &callback.codec;
     let generic_idents = generics
         .iter()
@@ -41,23 +51,39 @@ fn generate_callback_codec(
         generic_idents.iter().map(|ident| quote!(#ident)).collect(),
     );
     let host_arguments = callback_host_arguments(callback, customs, support);
-    let host_return = host_input_type(&callback.return_, customs, support);
+    let host_return = host_input_type(&callback.return_, customs, support, &quote!(Profile));
     let rust_arguments = callback
         .arguments
         .iter()
-        .map(|argument| callback_output_signature_type(argument, customs, support))
+        .map(|argument| match transfer_flavor {
+            None => callback_output_signature_type(argument, customs, support),
+            Some(flavor) => {
+                transfer_callback_output_signature_type(argument, customs, support, flavor)
+            }
+        })
         .collect::<Vec<_>>();
-    let rust_return = callback_input_signature_type(&callback.return_, customs, support);
+    let rust_return = callback_input_signature_type(
+        &callback.return_,
+        customs,
+        support,
+        flavor,
+        &quote!(Profile),
+    );
     let argument_names = (0..callback.arguments.len())
         .map(|index| format_ident!("__geam_callback_argument_{index}"))
         .collect::<Vec<_>>();
     let mut names = GeneratedNames::default();
     let mut constructions = Vec::new();
+    let provider = match representation {
+        ProviderRepresentation::Local => quote!(__GeamProvider),
+        ProviderRepresentation::Transfer => quote!(__GeamAsyncProvider),
+    };
     let environment = OutputEnvironment {
         customs,
         support,
-        provider: &quote!(__GeamProvider),
+        provider: &provider,
         return_type: outer_return,
+        representation,
     };
     let encoded_arguments = callback
         .arguments
@@ -97,6 +123,7 @@ fn generate_callback_codec(
         return_type: outer_return,
         function_generics: &[],
         generic_source: GenericInputSource::Declared,
+        flavor,
     };
     let decoded_return = decode_input(
         &callback.return_,
@@ -108,16 +135,44 @@ fn generate_callback_codec(
     let returned = decoded_return.value;
 
     let mut bounds = Vec::new();
-    for argument in &callback.arguments {
-        collect_function_return_bounds(argument, customs, support, outer_return, &mut bounds);
+    match transfer_flavor {
+        None => {
+            for argument in &callback.arguments {
+                collect_function_return_bounds(
+                    argument,
+                    customs,
+                    support,
+                    outer_return,
+                    &mut bounds,
+                );
+            }
+            collect_function_input_type_bounds(
+                &callback.return_,
+                customs,
+                support,
+                outer_return,
+                &mut bounds,
+            );
+        }
+        Some(flavor) => {
+            for argument in &callback.arguments {
+                collect_transfer_callback_argument_bounds(
+                    argument,
+                    support,
+                    outer_return,
+                    &mut bounds,
+                );
+            }
+            collect_transfer_callback_return_bounds(
+                &callback.return_,
+                customs,
+                support,
+                outer_return,
+                flavor,
+                &mut bounds,
+            );
+        }
     }
-    collect_function_input_type_bounds(
-        &callback.return_,
-        customs,
-        support,
-        outer_return,
-        &mut bounds,
-    );
     if !constructions.is_empty() {
         bounds.push(quote! {
             #requirements: #support::ProviderConstructionRequirements
@@ -131,7 +186,9 @@ fn generate_callback_codec(
     let mut bound_keys = BTreeSet::new();
     bounds.retain(|bound| bound_keys.insert(bound.to_string()));
 
-    let codec_definition = if generic_idents.is_empty() {
+    let codec_definition = if !define_codec {
+        TokenStream::new()
+    } else if generic_idents.is_empty() {
         quote!(struct #codec;)
     } else {
         quote! {
@@ -140,61 +197,116 @@ fn generate_callback_codec(
             );
         }
     };
+    let codec_implementation = match representation {
+        ProviderRepresentation::Local => quote! {
+            impl<'__geam_call, #(#generic_idents,)* Profile>
+                #support::ProviderCallbackCodec<
+                    '__geam_call,
+                    Profile,
+                    __GeamProvider,
+                    #outer_return,
+                > for #codec_type
+            where
+                Profile: __GeamModuleProfile,
+                #(#bounds,)*
+            {
+                type HostArguments = #host_arguments;
+                type HostReturn = #host_return;
+                type Arguments = (#(#rust_arguments,)*);
+                type Returned = #rust_return;
+                type Requirements = #requirements;
+
+                #unused_unit
+                fn into_host_arguments(
+                    arguments: Self::Arguments,
+                    mut call: &mut #support::HostCall<
+                        '__geam_call,
+                        Profile,
+                        __GeamProvider,
+                        #outer_return,
+                    >,
+                    constructions: &#support::ProviderConstructions<
+                        '__geam_call,
+                        Self::Requirements,
+                    >,
+                ) -> <Self::HostArguments as #support::HostTypeSequence>::Values<'__geam_call> {
+                    let (#(#argument_names,)*) = arguments;
+                    #construction_setup
+                    #(#argument_statements)*
+                    #host_values
+                }
+
+                fn from_host_return(
+                    value: <Self::HostReturn as #support::HostType>::Value<'__geam_call>,
+                    mut call: &mut #support::HostCall<
+                        '__geam_call,
+                        Profile,
+                        __GeamProvider,
+                        #outer_return,
+                    >,
+                ) -> Self::Returned {
+                    #return_statements
+                    #returned
+                }
+            }
+        },
+        ProviderRepresentation::Transfer => quote! {
+            impl<#(#generic_idents,)* Profile>
+                #support::ProviderTransferCallbackCodec<
+                    Profile,
+                    __GeamAsyncProvider,
+                    #outer_return,
+                > for #codec_type
+            where
+                Profile: __GeamAsyncModuleProfile,
+                #(#bounds,)*
+            {
+                type HostArguments = #host_arguments;
+                type HostReturn = #host_return;
+                type Arguments = (#(#rust_arguments,)*);
+                type Returned = #rust_return;
+                type Requirements = #requirements;
+
+                #unused_unit
+                fn into_host_arguments<'__geam_callback>(
+                    arguments: Self::Arguments,
+                    mut call: &mut #support::TransferHostCall<
+                        '__geam_callback,
+                        Profile,
+                        __GeamAsyncProvider,
+                        #outer_return,
+                    >,
+                    constructions: &#support::ProviderConstructions<
+                        '__geam_callback,
+                        Self::Requirements,
+                    >,
+                ) -> <Self::HostArguments as #support::HostTypeSequence>::Values<'__geam_callback> {
+                    let (#(#argument_names,)*) = arguments;
+                    #construction_setup
+                    #(#argument_statements)*
+                    #host_values
+                }
+
+                fn from_host_return<'__geam_callback>(
+                    value: <Self::HostReturn as #support::HostType>::Value<'__geam_callback>,
+                    mut call: &mut #support::TransferHostCall<
+                        '__geam_callback,
+                        Profile,
+                        __GeamAsyncProvider,
+                        #outer_return,
+                    >,
+                ) -> Self::Returned {
+                    #return_statements
+                    #returned
+                }
+            }
+        },
+    };
     let definition = quote! {
         #[doc(hidden)]
         #[allow(non_camel_case_types)]
         #codec_definition
-
-        impl<'__geam_call, #(#generic_idents,)* Profile>
-            #support::ProviderCallbackCodec<
-                '__geam_call,
-                Profile,
-                __GeamProvider,
-                #outer_return,
-            > for #codec_type
-        where
-            Profile: __GeamModuleProfile,
-            #(#bounds,)*
-        {
-            type HostArguments = #host_arguments;
-            type HostReturn = #host_return;
-            type Arguments = (#(#rust_arguments,)*);
-            type Returned = #rust_return;
-            type Requirements = #requirements;
-
-            #unused_unit
-            fn into_host_arguments(
-                arguments: Self::Arguments,
-                mut call: &mut #support::HostCall<
-                    '__geam_call,
-                    Profile,
-                    __GeamProvider,
-                    #outer_return,
-                >,
-                constructions: &#support::ProviderConstructions<
-                    '__geam_call,
-                    Self::Requirements,
-                >,
-            ) -> <Self::HostArguments as #support::HostTypeSequence>::Values<'__geam_call> {
-                let (#(#argument_names,)*) = arguments;
-                #construction_setup
-                #(#argument_statements)*
-                #host_values
-            }
-
-            fn from_host_return(
-                value: <Self::HostReturn as #support::HostType>::Value<'__geam_call>,
-                mut call: &mut #support::HostCall<
-                    '__geam_call,
-                    Profile,
-                    __GeamProvider,
-                    #outer_return,
-                >,
-            ) -> Self::Returned {
-                #return_statements
-                #returned
-            }
-        }
+        #codec_implementation
     };
 
     GeneratedCallback {
@@ -205,8 +317,214 @@ fn generate_callback_codec(
     }
 }
 
+fn collect_transfer_callback_argument_bounds(
+    type_: &FunctionReturnType,
+    support: &TokenStream,
+    return_type: &TokenStream,
+    bounds: &mut Vec<TokenStream>,
+) {
+    if let FunctionReturnType::Value(value) = type_ {
+        collect_transfer_output_bounds(
+            &function_output_from_root(value),
+            support,
+            return_type,
+            bounds,
+        );
+    }
+}
+
+fn collect_transfer_output_bounds(
+    type_: &FunctionOutputValueType,
+    support: &TokenStream,
+    return_type: &TokenStream,
+    bounds: &mut Vec<TokenStream>,
+) {
+    match type_ {
+        FunctionOutputValueType::Value(value) => match value.as_ref() {
+            FunctionOutputLeafType::Declared { type_, .. } => {
+                bounds.push(quote! {
+                    #type_: #support::ProviderTransferOutputValue<
+                        Profile,
+                        __GeamAsyncProvider,
+                        #return_type,
+                    >
+                });
+            }
+            FunctionOutputLeafType::Custom { rust: type_, .. } => {
+                bounds.push(quote! {
+                    #type_: #support::ProviderTransferOutputValue<
+                        Profile,
+                        __GeamAsyncProvider,
+                        #return_type,
+                    >
+                });
+            }
+            FunctionOutputLeafType::Scalar(_) | FunctionOutputLeafType::External { .. } => {}
+        },
+        FunctionOutputValueType::Tuple(elements) => {
+            for element in elements {
+                collect_transfer_output_bounds(element, support, return_type, bounds);
+            }
+        }
+        FunctionOutputValueType::Result { success, failure } => {
+            collect_transfer_output_bounds(success, support, return_type, bounds);
+            collect_transfer_output_bounds(failure, support, return_type, bounds);
+        }
+        FunctionOutputValueType::Option { value } => {
+            collect_transfer_output_bounds(value, support, return_type, bounds)
+        }
+        FunctionOutputValueType::Vec(collection) => {
+            collect_transfer_output_bounds(&collection.value, support, return_type, bounds)
+        }
+        FunctionOutputValueType::Generic(_) => {}
+    }
+}
+
+fn collect_transfer_callback_return_bounds(
+    type_: &FunctionInputType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+    return_type: &TokenStream,
+    flavor: TransferFlavor,
+    bounds: &mut Vec<TokenStream>,
+) {
+    match type_ {
+        FunctionInputType::Future(value) => {
+            bounds.push(quote!(Profile: #support::HostWorkProfile));
+            collect_transfer_callback_return_bounds(
+                &value.value,
+                customs,
+                support,
+                &quote!(()),
+                TransferFlavor::Async,
+                bounds,
+            );
+        }
+        FunctionInputType::Value(value) => collect_transfer_callback_input_bounds(
+            &provider_value_from_input_root(value),
+            customs,
+            support,
+            return_type,
+            flavor,
+            bounds,
+        ),
+        FunctionInputType::List(list) => {
+            collect_transfer_callback_list_bounds(list, customs, support, flavor, bounds)
+        }
+        FunctionInputType::Generic(_) | FunctionInputType::External(_) => {}
+    }
+}
+
+fn collect_transfer_callback_input_bounds(
+    type_: &ProviderValueType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+    return_type: &TokenStream,
+    flavor: TransferFlavor,
+    bounds: &mut Vec<TokenStream>,
+) {
+    match type_ {
+        ProviderValueType::Declared { type_, .. } => {
+            let input = match flavor {
+                TransferFlavor::Immediate => quote!(ImmediateInput),
+                TransferFlavor::Async => quote!(TransferInput),
+            };
+            bounds.push(quote! {
+                <#type_ as #support::ProviderTransferValue>::#input:
+                    #support::ProviderTransferInputValue<
+                        Profile,
+                        __GeamAsyncProvider,
+                        #return_type,
+                        Host = <#type_ as #support::ProviderValue>::Host,
+                    >
+            });
+        }
+        ProviderValueType::Custom { index, .. } => {
+            let input = customs[*index]
+                .input
+                .as_ref()
+                .expect("accepted custom input must have a generated input type");
+            let input = super::list::transfer_custom_input_ident(&input.ident, flavor);
+            let host = host_value_type(type_, customs, support);
+            bounds.push(quote! {
+                #input: #support::ProviderTransferInputValue<
+                    Profile,
+                    __GeamAsyncProvider,
+                    #return_type,
+                    Host = #host,
+                >
+            });
+        }
+        ProviderValueType::List(list) => {
+            collect_transfer_callback_list_bounds(list, customs, support, flavor, bounds)
+        }
+        ProviderValueType::Tuple(elements) => {
+            for element in elements {
+                collect_transfer_callback_input_bounds(
+                    element,
+                    customs,
+                    support,
+                    return_type,
+                    flavor,
+                    bounds,
+                );
+            }
+        }
+        ProviderValueType::Result { success, failure } => {
+            collect_transfer_callback_input_bounds(
+                success,
+                customs,
+                support,
+                return_type,
+                flavor,
+                bounds,
+            );
+            collect_transfer_callback_input_bounds(
+                failure,
+                customs,
+                support,
+                return_type,
+                flavor,
+                bounds,
+            );
+        }
+        ProviderValueType::Option { value } => collect_transfer_callback_input_bounds(
+            value,
+            customs,
+            support,
+            return_type,
+            flavor,
+            bounds,
+        ),
+        ProviderValueType::Scalar(_)
+        | ProviderValueType::Generic(_)
+        | ProviderValueType::External { .. } => {}
+    }
+}
+
+fn collect_transfer_callback_list_bounds(
+    list: &super::ListType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+    flavor: TransferFlavor,
+    bounds: &mut Vec<TokenStream>,
+) {
+    let input = match flavor {
+        TransferFlavor::Immediate => quote!(ImmediateListInput),
+        TransferFlavor::Async => quote!(TransferListInput),
+    };
+    for access in list_declared_accesses(&list.collection.value, customs) {
+        let type_ = access.type_;
+        bounds.push(quote! {
+            <#type_ as #support::ProviderTransferValue>::#input:
+                #support::ProviderTransferListInputCodec<Profile, __GeamAsyncProvider>
+        });
+    }
+}
+
 pub(super) fn generate_function(
     function: &FunctionModel,
+    call_access: CallAccess,
     customs: &[CustomModel],
     support: &TokenStream,
 ) -> GeneratedFunction {
@@ -215,7 +533,6 @@ pub(super) fn generate_function(
         generics,
         arguments: function_arguments,
         return_,
-        call: call_access,
         host_result,
         profile,
     } = function;
@@ -239,6 +556,8 @@ pub(super) fn generate_function(
                 customs,
                 support,
                 &return_type,
+                FunctionFlavor::Local,
+                true,
             )),
             _ => None,
         })
@@ -253,6 +572,7 @@ pub(super) fn generate_function(
         &quote!(__GeamProvider),
         &return_type,
         &mut names,
+        ProviderRepresentation::Local,
     );
     let mut constructions = Vec::new();
     let mut callback_construction_bindings = Vec::with_capacity(function_arguments.len());
@@ -276,6 +596,7 @@ pub(super) fn generate_function(
         return_type: &return_type,
         function_generics: generics,
         generic_source: GenericInputSource::Instantiated,
+        flavor: FunctionFlavor::Local,
     };
     let decoded_arguments = function_arguments
         .iter()
@@ -373,12 +694,13 @@ pub(super) fn generate_function(
         quote! {
             let __geam_provider_constructions =
                 #support::ProviderConstructions::<#requirements>::new(
-                    __geam_constructions,
+                    &__geam_constructions,
                 );
             #bindings
         }
     });
     let wrapper_definition = quote! {
+        #[allow(clippy::too_many_arguments)]
         fn #wrapper<'__geam_call, Profile>(
             call: #support::HostCall<
                 '__geam_call,
@@ -482,6 +804,321 @@ fn function_codec_bounds(
         .collect()
 }
 
+pub(super) fn transfer_function_codec_bounds(
+    function: &FunctionModel,
+    customs: &[CustomModel],
+    support: &TokenStream,
+    return_type: &TokenStream,
+    input_return_type: &TokenStream,
+    flavor: TransferFlavor,
+) -> Vec<TokenStream> {
+    let mut bounds = Vec::new();
+    for argument in &function.arguments {
+        if let FunctionArgumentType::Input(input) = argument {
+            collect_transfer_function_input_type_bounds(
+                input,
+                customs,
+                support,
+                input_return_type,
+                flavor,
+                &mut bounds,
+            );
+        }
+    }
+    collect_transfer_function_return_bounds(
+        &function.return_,
+        customs,
+        support,
+        return_type,
+        &mut bounds,
+    );
+
+    let mut keys = BTreeSet::new();
+    bounds
+        .into_iter()
+        .filter(|bound| keys.insert(bound.to_string()))
+        .collect()
+}
+
+fn collect_transfer_function_input_type_bounds(
+    type_: &FunctionInputType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+    return_type: &TokenStream,
+    flavor: TransferFlavor,
+    bounds: &mut Vec<TokenStream>,
+) {
+    match type_ {
+        FunctionInputType::Future(value) => {
+            bounds.push(quote!(Profile: #support::HostWorkProfile));
+            collect_transfer_function_input_type_bounds(
+                &value.value,
+                customs,
+                support,
+                &quote!(()),
+                TransferFlavor::Async,
+                bounds,
+            );
+        }
+        FunctionInputType::Value(value) => collect_transfer_function_input_bounds(
+            &provider_value_from_input_root(value),
+            customs,
+            support,
+            return_type,
+            flavor,
+            bounds,
+        ),
+        FunctionInputType::List(list) => {
+            collect_transfer_function_list_input_bounds(
+                &list.collection.value,
+                customs,
+                support,
+                flavor,
+                bounds,
+            );
+        }
+        FunctionInputType::Generic(_) | FunctionInputType::External(_) => {}
+    }
+}
+
+fn collect_transfer_function_input_bounds(
+    type_: &ProviderValueType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+    return_type: &TokenStream,
+    flavor: TransferFlavor,
+    bounds: &mut Vec<TokenStream>,
+) {
+    match type_ {
+        ProviderValueType::Declared { type_, .. } => {
+            let input = match flavor {
+                TransferFlavor::Immediate => quote!(ImmediateInput),
+                TransferFlavor::Async => quote!(TransferInput),
+            };
+            bounds.push(quote! {
+                <#type_ as #support::ProviderTransferValue>::#input:
+                    #support::ProviderTransferInputValue<
+                        Profile,
+                        __GeamAsyncProvider,
+                        #return_type,
+                        Host = <#type_ as #support::ProviderValue>::Host,
+                    >
+            });
+        }
+        ProviderValueType::Custom { index, .. } => {
+            let input = customs[*index]
+                .input
+                .as_ref()
+                .expect("accepted custom input must have a generated input type");
+            let input = super::list::transfer_custom_input_ident(&input.ident, flavor);
+            let host = host_value_type(type_, customs, support);
+            bounds.push(quote! {
+                #input: #support::ProviderTransferInputValue<
+                    Profile,
+                    __GeamAsyncProvider,
+                    #return_type,
+                    Host = #host,
+                >
+            });
+        }
+        ProviderValueType::List(list) => collect_transfer_function_list_input_bounds(
+            &list.collection.value,
+            customs,
+            support,
+            flavor,
+            bounds,
+        ),
+        ProviderValueType::Tuple(elements) => {
+            for element in elements {
+                collect_transfer_function_input_bounds(
+                    element,
+                    customs,
+                    support,
+                    return_type,
+                    flavor,
+                    bounds,
+                );
+            }
+        }
+        ProviderValueType::Result { success, failure } => {
+            collect_transfer_function_input_bounds(
+                success,
+                customs,
+                support,
+                return_type,
+                flavor,
+                bounds,
+            );
+            collect_transfer_function_input_bounds(
+                failure,
+                customs,
+                support,
+                return_type,
+                flavor,
+                bounds,
+            );
+        }
+        ProviderValueType::Option { value } => collect_transfer_function_input_bounds(
+            value,
+            customs,
+            support,
+            return_type,
+            flavor,
+            bounds,
+        ),
+        ProviderValueType::Scalar(_)
+        | ProviderValueType::Generic(_)
+        | ProviderValueType::External { .. } => {}
+    }
+}
+
+fn collect_transfer_function_list_input_bounds(
+    type_: &StaticValueType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+    flavor: TransferFlavor,
+    bounds: &mut Vec<TokenStream>,
+) {
+    for access in list_declared_accesses(type_, customs) {
+        let type_ = access.type_;
+        let input = match flavor {
+            TransferFlavor::Immediate => quote!(ImmediateListInput),
+            TransferFlavor::Async => quote!(TransferListInput),
+        };
+        bounds.push(quote! {
+            <#type_ as #support::ProviderTransferValue>::#input:
+                #support::ProviderTransferListInputCodec<Profile, __GeamAsyncProvider>
+        });
+    }
+}
+
+fn collect_transfer_function_return_bounds(
+    type_: &FunctionReturnType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+    return_type: &TokenStream,
+    bounds: &mut Vec<TokenStream>,
+) {
+    match type_ {
+        FunctionReturnType::Value(value) => {
+            collect_transfer_function_root_output_bounds(value, support, return_type, bounds)
+        }
+        FunctionReturnType::List(list) => collect_transfer_function_static_output_bounds(
+            &list.collection.value,
+            customs,
+            support,
+            return_type,
+            bounds,
+        ),
+        FunctionReturnType::Generic(_) | FunctionReturnType::External(_) => {}
+    }
+}
+
+fn collect_transfer_function_root_output_bounds(
+    type_: &FunctionRootOutputValueType,
+    support: &TokenStream,
+    return_type: &TokenStream,
+    bounds: &mut Vec<TokenStream>,
+) {
+    match type_ {
+        FunctionRootOutputValueType::Value(value) => match value.as_ref() {
+            FunctionOutputLeafType::Declared { type_, .. } => bounds.push(quote! {
+                #type_: #support::ProviderTransferRootOutputValue<
+                    Profile,
+                    __GeamAsyncProvider,
+                >
+            }),
+            FunctionOutputLeafType::Custom { rust: type_, .. } => {
+                bounds.push(quote! {
+                    #type_: #support::ProviderTransferRootOutputValue<
+                        Profile,
+                        __GeamAsyncProvider,
+                    >
+                });
+            }
+            FunctionOutputLeafType::Scalar(_) | FunctionOutputLeafType::External { .. } => {}
+        },
+        FunctionRootOutputValueType::Tuple(elements) => {
+            for element in elements {
+                collect_transfer_output_bounds(element, support, return_type, bounds);
+            }
+        }
+        FunctionRootOutputValueType::Result { success, failure } => {
+            collect_transfer_output_bounds(success, support, return_type, bounds);
+            collect_transfer_output_bounds(failure, support, return_type, bounds);
+        }
+        FunctionRootOutputValueType::Option { value } => {
+            collect_transfer_output_bounds(value, support, return_type, bounds);
+        }
+        FunctionRootOutputValueType::Vec(collection) => {
+            collect_transfer_output_bounds(&collection.value, support, return_type, bounds);
+        }
+    }
+}
+
+fn collect_transfer_function_static_output_bounds(
+    type_: &StaticValueType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+    return_type: &TokenStream,
+    bounds: &mut Vec<TokenStream>,
+) {
+    match type_ {
+        StaticValueType::Declared { type_, .. } => bounds.push(quote! {
+            #type_: #support::ProviderTransferOutputValue<
+                Profile,
+                __GeamAsyncProvider,
+                #return_type,
+            >
+        }),
+        StaticValueType::Custom { index, .. } => {
+            let type_ = &customs[*index].ident;
+            bounds.push(quote! {
+                <#type_ as #support::ProviderTransferValue>::Output: #support::ProviderTransferOutputValue<
+                    Profile,
+                    __GeamAsyncProvider,
+                    #return_type,
+                >
+            });
+        }
+        StaticValueType::Tuple(elements) => {
+            for element in elements {
+                collect_transfer_function_static_output_bounds(
+                    element,
+                    customs,
+                    support,
+                    return_type,
+                    bounds,
+                );
+            }
+        }
+        StaticValueType::Result { success, failure } => {
+            collect_transfer_function_static_output_bounds(
+                success,
+                customs,
+                support,
+                return_type,
+                bounds,
+            );
+            collect_transfer_function_static_output_bounds(
+                failure,
+                customs,
+                support,
+                return_type,
+                bounds,
+            );
+        }
+        StaticValueType::Option { value } => collect_transfer_function_static_output_bounds(
+            value,
+            customs,
+            support,
+            return_type,
+            bounds,
+        ),
+        StaticValueType::Scalar(_) | StaticValueType::External { .. } => {}
+    }
+}
+
 fn collect_function_input_bounds(
     type_: &ProviderValueType,
     customs: &[CustomModel],
@@ -493,12 +1130,14 @@ fn collect_function_input_bounds(
         ProviderValueType::Declared {
             type_,
             input: DeclaredInput::Owned,
+            ..
         } => bounds.push(quote! {
             #type_: #support::ProviderInputValue<Profile, __GeamProvider, #return_type>
         }),
         ProviderValueType::Declared {
             type_,
             input: DeclaredInput::BorrowedExternal,
+            ..
         } => bounds.push(quote! {
             <#type_ as #support::ProviderValue>::Input:
                 #support::ProviderInputValue<Profile, __GeamProvider, #return_type>
@@ -551,8 +1190,9 @@ fn collect_function_input_type_bounds(
             let type_ = provider_value_from_input_root(type_);
             collect_function_input_bounds(&type_, customs, support, return_type, bounds);
         }
-        FunctionInputType::Generic(_) => {}
-        FunctionInputType::External(_) => {}
+        FunctionInputType::Future(_)
+        | FunctionInputType::Generic(_)
+        | FunctionInputType::External(_) => {}
         FunctionInputType::List(list) => {
             for access in list_declared_accesses(&list.collection.value, customs) {
                 let type_ = access.type_;
@@ -731,7 +1371,7 @@ fn collect_function_output_intermediate_bounds(
     }
 }
 
-fn decode_argument(
+pub(super) fn decode_argument(
     type_: &FunctionArgumentType,
     input: TokenStream,
     environment: &InputEnvironment<'_>,
@@ -745,6 +1385,7 @@ fn decode_argument(
                 support,
                 return_type,
                 function_generics,
+                flavor,
                 ..
             } = environment;
             let value = names.next("callback");
@@ -765,8 +1406,8 @@ fn decode_argument(
                     #support::ProviderNoConstructions,
                 >::none())
             };
-            GeneratedValue {
-                statements: quote! {
+            let statements = match flavor {
+                FunctionFlavor::Local => quote! {
                     let #value = #support::Callback::<
                         _,
                         #support::ProviderCallbackContext<
@@ -778,13 +1419,38 @@ fn decode_argument(
                         >,
                     >::from_host(#input, #constructions);
                 },
+                FunctionFlavor::TransferImmediate => quote! {
+                    let #value = #support::Callback::<
+                        _,
+                        #support::ProviderTransferCallbackContext<
+                            '__geam_call,
+                            Profile,
+                            __GeamAsyncProvider,
+                            #return_type,
+                            #codec,
+                        >,
+                    >::from_transfer_host(#input, #constructions);
+                },
+                FunctionFlavor::Async => quote! {
+                    let #value = #support::Callback::<
+                        _,
+                        #support::ProviderFutureCallbackContext<
+                            Profile,
+                            __GeamAsyncProvider,
+                            #codec,
+                        >,
+                    >::from_future_host(&call, #input, #constructions);
+                },
+            };
+            GeneratedValue {
+                statements,
                 value: quote!(#value),
             }
         }
     }
 }
 
-fn decode_input(
+pub(super) fn decode_input(
     type_: &FunctionInputType,
     input: TokenStream,
     environment: &InputEnvironment<'_>,
@@ -793,14 +1459,42 @@ fn decode_input(
     let InputEnvironment {
         customs,
         support,
-        return_type,
         generic_source,
+        flavor,
         ..
     } = environment;
     match type_ {
+        FunctionInputType::Future(value) => {
+            let host = host_input_type(&value.value, customs, support, &quote!(Profile));
+            let value_name = names.next("future_input");
+            let decoded = decode_input(
+                &value.value,
+                quote!(__geam_completed),
+                &InputEnvironment {
+                    return_type: &quote!(()),
+                    flavor: FunctionFlavor::Async,
+                    ..*environment
+                },
+                names,
+            );
+            let statements = decoded.statements;
+            let output = decoded.value;
+            let statements = quote! {
+                let #value_name = #support::ProviderFuture::<
+                    _, #support::ProviderFutureValueContext<Profile, __GeamAsyncProvider, #host, _>,
+                >::from_transfer_host(&call, #input, |mut call, __geam_completed| {
+                    #statements
+                    #output
+                });
+            };
+            GeneratedValue {
+                statements,
+                value: quote!(#value_name),
+            }
+        }
         FunctionInputType::Value(type_) => {
             let type_ = provider_value_from_input_root(type_);
-            decode_value_argument(&type_, input, customs, support, return_type, names, false)
+            decode_value_argument(&type_, input, environment, names, false)
         }
         FunctionInputType::Generic(value) => {
             let source = match generic_source {
@@ -809,21 +1503,52 @@ fn decode_input(
             };
             let host = generic_host_type(&value.host, customs, support);
             let value = names.next("generic_input");
-            GeneratedValue {
-                statements: quote! {
+            let statements = match flavor {
+                FunctionFlavor::Local => quote! {
                     let #value = #support::Value::<
                         #source,
                         #support::ProviderValueContext<'__geam_call, #host>,
                     >::from_host(#input);
                 },
+                FunctionFlavor::TransferImmediate | FunctionFlavor::Async => quote! {
+                    let #value = #support::Value::<
+                        #source,
+                        #support::ProviderTransferValueContext<#host>,
+                    >::from_transfer_host(&call, #input);
+                },
+            };
+            GeneratedValue {
+                statements,
                 value: quote!(#value),
             }
         }
         FunctionInputType::External(external) => {
             let value = names.next("external_input");
             let payload = names.next("external_payload");
-            let input_type =
-                generic_external_input_signature_type(external, customs, support, *generic_source);
+            let input_type = match flavor {
+                FunctionFlavor::Local => generic_external_input_signature_type(
+                    external,
+                    customs,
+                    support,
+                    *generic_source,
+                ),
+                FunctionFlavor::TransferImmediate => {
+                    transfer_generic_external_input_signature_type(
+                        external,
+                        customs,
+                        support,
+                        *generic_source,
+                        TransferFlavor::Immediate,
+                    )
+                }
+                FunctionFlavor::Async => transfer_generic_external_input_signature_type(
+                    external,
+                    customs,
+                    support,
+                    *generic_source,
+                    TransferFlavor::Async,
+                ),
+            };
             let schema = &external.schema;
             let arguments = external
                 .arguments
@@ -831,8 +1556,8 @@ fn decode_input(
                 .map(|argument| generic_host_type(&argument.host, customs, support))
                 .collect::<Vec<_>>();
             let arguments = host_type_token_sequence(&arguments, support);
-            GeneratedValue {
-                statements: quote! {
+            let statements = match flavor {
+                FunctionFlavor::Local => quote! {
                     let #payload = call.provider_external_item_with::<
                         __GeamProvider,
                         #schema,
@@ -842,12 +1567,56 @@ fn decode_input(
                         #support::ProviderExternalInputContext::from_host(#payload),
                     );
                 },
+                FunctionFlavor::TransferImmediate => quote! {
+                    let #payload = call.provider_transfer_external_view_with::<
+                        __GeamAsyncProvider,
+                        #schema,
+                        #arguments,
+                    >(#input);
+                    let #value: #input_type = <#input_type>::__geam_from_transfer_host(
+                        #support::ProviderTransferExternalInputContext::from_host(#payload),
+                    );
+                },
+                FunctionFlavor::Async => quote! {
+                    let #payload = call.provider_transfer_external_item_with::<
+                        __GeamAsyncProvider,
+                        #schema,
+                        #arguments,
+                    >(#input);
+                    let #value: #input_type = <#input_type>::__geam_from_async_host(
+                        #support::ProviderAsyncExternalInputContext::from_host(#payload),
+                    );
+                },
+            };
+            GeneratedValue {
+                statements,
                 value: quote!(#value),
             }
         }
         FunctionInputType::List(list) => {
-            let decoder_value =
-                list_decoder_value(&list.decoder, &list.collection.value, customs, support);
+            let decoder_value = match flavor {
+                FunctionFlavor::Local => {
+                    list_decoder_value(&list.decoder, &list.collection.value, customs, support)
+                }
+                FunctionFlavor::TransferImmediate => transfer_list_decoder_value(
+                    &list.decoder,
+                    &list.collection.value,
+                    customs,
+                    support,
+                    TransferFlavor::Immediate,
+                    &quote!(__GeamAsyncProvider),
+                    &quote!(&call),
+                ),
+                FunctionFlavor::Async => transfer_list_decoder_value(
+                    &list.decoder,
+                    &list.collection.value,
+                    customs,
+                    support,
+                    TransferFlavor::Async,
+                    &quote!(__GeamAsyncProvider),
+                    &quote!(&call),
+                ),
+            };
             let value = names.next("list");
             GeneratedValue {
                 statements: quote! {
@@ -862,12 +1631,17 @@ fn decode_input(
 fn decode_value_argument(
     type_: &ProviderValueType,
     input: TokenStream,
-    customs: &[CustomModel],
-    support: &TokenStream,
-    return_type: &TokenStream,
+    environment: &InputEnvironment<'_>,
     names: &mut GeneratedNames,
     nested: bool,
 ) -> GeneratedValue {
+    let InputEnvironment {
+        customs,
+        support,
+        return_type,
+        flavor,
+        ..
+    } = environment;
     match type_ {
         ProviderValueType::Scalar(_) => GeneratedValue {
             statements: TokenStream::new(),
@@ -877,58 +1651,117 @@ fn decode_value_argument(
             let source = &value.source;
             let host = generic_host_type(&value.host, customs, support);
             let value = names.next("generic_input");
-            GeneratedValue {
-                statements: quote! {
+            let statements = match flavor {
+                FunctionFlavor::Local => quote! {
                     let #value = #support::Value::<
                         #source,
                         #support::ProviderValueContext<'__geam_call, #host>,
                     >::from_host(#input);
                 },
+                FunctionFlavor::TransferImmediate | FunctionFlavor::Async => quote! {
+                    let #value = #support::Value::<
+                        #source,
+                        #support::ProviderTransferValueContext<#host>,
+                    >::from_transfer_host(&call, #input);
+                },
+            };
+            GeneratedValue {
+                statements,
                 value: quote!(#value),
             }
         }
         ProviderValueType::Declared {
             type_,
             input: DeclaredInput::Owned,
+            ..
         } => {
             let value = names.next("declared_input");
-            GeneratedValue {
-                statements: quote! {
+            let statements = match flavor {
+                FunctionFlavor::Local => quote! {
                     let #value: #type_ = <#type_ as #support::ProviderInputValue<
                         Profile,
                         __GeamProvider,
                         #return_type,
                     >>::from_host(&mut call, #input);
                 },
+                FunctionFlavor::TransferImmediate => quote! {
+                    let #value: <#type_ as #support::ProviderTransferValue>::ImmediateInput =
+                        <<#type_ as #support::ProviderTransferValue>::ImmediateInput as
+                            #support::ProviderTransferInputValue<
+                                Profile,
+                                __GeamAsyncProvider,
+                                #return_type,
+                            >>::from_host(&mut call, #input);
+                },
+                FunctionFlavor::Async => quote! {
+                    let #value: <#type_ as #support::ProviderTransferValue>::TransferInput =
+                        <<#type_ as #support::ProviderTransferValue>::TransferInput as
+                            #support::ProviderTransferInputValue<
+                                Profile,
+                                __GeamAsyncProvider,
+                                #return_type,
+                            >>::from_host(&mut call, #input);
+                },
+            };
+            GeneratedValue {
+                statements,
                 value: quote!(#value),
             }
         }
         ProviderValueType::Declared {
             type_,
             input: DeclaredInput::BorrowedExternal,
+            ..
         } => {
             let value = names.next("declared_external_input");
-            GeneratedValue {
-                statements: quote! {
-                    let #value: <#type_ as #support::ProviderValue>::Input =
-                        <<#type_ as #support::ProviderValue>::Input as
-                            #support::ProviderInputValue<
-                                Profile,
-                                __GeamProvider,
-                                #return_type,
-                            >>::from_host(&mut call, #input);
-                },
-                value: if nested {
-                    quote!(#value)
-                } else {
-                    quote!(&*#value)
-                },
-            }
+            let (statements, value) = match flavor {
+                FunctionFlavor::Local => (
+                    quote! {
+                        let #value: <#type_ as #support::ProviderValue>::Input =
+                            <<#type_ as #support::ProviderValue>::Input as
+                                #support::ProviderInputValue<
+                                    Profile,
+                                    __GeamProvider,
+                                    #return_type,
+                                >>::from_host(&mut call, #input);
+                    },
+                    if nested {
+                        quote!(#value)
+                    } else {
+                        quote!(&*#value)
+                    },
+                ),
+                FunctionFlavor::TransferImmediate => (
+                    quote! {
+                        let #value: <#type_ as #support::ProviderTransferValue>::ImmediateInput =
+                            <<#type_ as #support::ProviderTransferValue>::ImmediateInput as
+                                #support::ProviderTransferInputValue<
+                                    Profile,
+                                    __GeamAsyncProvider,
+                                    #return_type,
+                                >>::from_host(&mut call, #input);
+                    },
+                    quote!(#value),
+                ),
+                FunctionFlavor::Async => (
+                    quote! {
+                        let #value: <#type_ as #support::ProviderTransferValue>::TransferInput =
+                            <<#type_ as #support::ProviderTransferValue>::TransferInput as
+                                #support::ProviderTransferInputValue<
+                                    Profile,
+                                    __GeamAsyncProvider,
+                                    #return_type,
+                                >>::from_host(&mut call, #input);
+                    },
+                    quote!(#value),
+                ),
+            };
+            GeneratedValue { statements, value }
         }
         ProviderValueType::External { schema, .. } => {
             let view = names.next("payload");
-            if nested {
-                GeneratedValue {
+            match flavor {
+                FunctionFlavor::Local if nested => GeneratedValue {
                     statements: quote! {
                         let #view = call.provider_external_item_with::<
                             __GeamProvider,
@@ -937,25 +1770,82 @@ fn decode_value_argument(
                         >(#input);
                     },
                     value: quote!(#view),
-                }
-            } else {
-                GeneratedValue {
+                },
+                FunctionFlavor::Local => GeneratedValue {
                     statements: quote! {
                         let #view = call.external_payload(#input);
                     },
                     value: quote!(&*#view),
-                }
+                },
+                FunctionFlavor::TransferImmediate => GeneratedValue {
+                    statements: quote! {
+                        let #view = call.provider_transfer_external_view_with::<
+                            __GeamAsyncProvider,
+                            #schema,
+                            #support::HostTypeListEnd,
+                        >(#input);
+                    },
+                    value: quote!(#view),
+                },
+                FunctionFlavor::Async => GeneratedValue {
+                    statements: quote! {
+                        let #view = call.provider_transfer_external_item_with::<
+                            __GeamAsyncProvider,
+                            #schema,
+                            #support::HostTypeListEnd,
+                        >(#input);
+                    },
+                    value: quote!(#view),
+                },
             }
         }
         ProviderValueType::Custom {
-            rust: input_type, ..
+            index,
+            rust: input_type,
         } => {
             let value = names.next("custom_input");
+            let (input_type, input_trait, provider) = match flavor {
+                FunctionFlavor::Local => (
+                    quote!(#input_type),
+                    quote!(#support::ProviderInputValue),
+                    quote!(__GeamProvider),
+                ),
+                FunctionFlavor::TransferImmediate => {
+                    let input = customs[*index]
+                        .input
+                        .as_ref()
+                        .expect("accepted custom input must have a generated input type");
+                    let input = super::list::transfer_custom_input_ident(
+                        &input.ident,
+                        TransferFlavor::Immediate,
+                    );
+                    (
+                        quote!(#input),
+                        quote!(#support::ProviderTransferInputValue),
+                        quote!(__GeamAsyncProvider),
+                    )
+                }
+                FunctionFlavor::Async => {
+                    let input = customs[*index]
+                        .input
+                        .as_ref()
+                        .expect("accepted custom input must have a generated input type");
+                    let input = super::list::transfer_custom_input_ident(
+                        &input.ident,
+                        TransferFlavor::Async,
+                    );
+                    (
+                        quote!(#input),
+                        quote!(#support::ProviderTransferInputValue),
+                        quote!(__GeamAsyncProvider),
+                    )
+                }
+            };
             GeneratedValue {
                 statements: quote! {
-                    let #value = <#input_type as #support::ProviderInputValue<
+                    let #value = <#input_type as #input_trait<
                         Profile,
-                        __GeamProvider,
+                        #provider,
                         #return_type,
                     >>::from_host(&mut call, #input);
                 },
@@ -963,8 +1853,29 @@ fn decode_value_argument(
             }
         }
         ProviderValueType::List(list) => {
-            let decoder =
-                list_decoder_value(&list.decoder, &list.collection.value, customs, support);
+            let decoder = match flavor {
+                FunctionFlavor::Local => {
+                    list_decoder_value(&list.decoder, &list.collection.value, customs, support)
+                }
+                FunctionFlavor::TransferImmediate => transfer_list_decoder_value(
+                    &list.decoder,
+                    &list.collection.value,
+                    customs,
+                    support,
+                    TransferFlavor::Immediate,
+                    &quote!(__GeamAsyncProvider),
+                    &quote!(&call),
+                ),
+                FunctionFlavor::Async => transfer_list_decoder_value(
+                    &list.decoder,
+                    &list.collection.value,
+                    customs,
+                    support,
+                    TransferFlavor::Async,
+                    &quote!(__GeamAsyncProvider),
+                    &quote!(&call),
+                ),
+            };
             let value = names.next("nested_list");
             GeneratedValue {
                 statements: quote! {
@@ -990,15 +1901,7 @@ fn decode_value_argument(
                 .iter()
                 .zip(host_elements)
                 .map(|(element, value)| {
-                    decode_value_argument(
-                        element,
-                        quote!(#value),
-                        customs,
-                        support,
-                        return_type,
-                        names,
-                        nested,
-                    )
+                    decode_value_argument(element, quote!(#value), environment, names, nested)
                 })
                 .collect::<Vec<_>>();
             for element in &decoded {
@@ -1015,24 +1918,10 @@ fn decode_value_argument(
             let failure_host = host_value_type(failure, customs, support);
             let success_value = names.next("result_success_host");
             let failure_value = names.next("result_failure_host");
-            let decoded_success = decode_value_argument(
-                success,
-                quote!(#success_value),
-                customs,
-                support,
-                return_type,
-                names,
-                true,
-            );
-            let decoded_failure = decode_value_argument(
-                failure,
-                quote!(#failure_value),
-                customs,
-                support,
-                return_type,
-                names,
-                true,
-            );
+            let decoded_success =
+                decode_value_argument(success, quote!(#success_value), environment, names, true);
+            let decoded_failure =
+                decode_value_argument(failure, quote!(#failure_value), environment, names, true);
             let success_statements = decoded_success.statements;
             let success = decoded_success.value;
             let failure_statements = decoded_failure.statements;
@@ -1061,15 +1950,8 @@ fn decode_value_argument(
         ProviderValueType::Option { value } => {
             let host = host_value_type(value, customs, support);
             let some_host = names.next("option_some_host");
-            let decoded = decode_value_argument(
-                value,
-                quote!(#some_host),
-                customs,
-                support,
-                return_type,
-                names,
-                true,
-            );
+            let decoded =
+                decode_value_argument(value, quote!(#some_host), environment, names, true);
             let decoded_statements = decoded.statements;
             let decoded_value = decoded.value;
             let result = names.next("option_input");
@@ -1090,18 +1972,24 @@ fn decode_value_argument(
     }
 }
 
-fn generate_return(
+pub(super) fn generate_return(
     type_: &FunctionReturnType,
     customs: &[CustomModel],
     support: &TokenStream,
     provider: &TokenStream,
     return_type: &TokenStream,
     names: &mut GeneratedNames,
+    representation: ProviderRepresentation,
 ) -> GeneratedReturn {
     match type_ {
         FunctionReturnType::Generic(_) => GeneratedReturn {
-            statements: quote! {
-                let returned = returned.into_host();
+            statements: match representation {
+                ProviderRepresentation::Local => quote! {
+                    let returned = returned.into_host();
+                },
+                ProviderRepresentation::Transfer => quote! {
+                    let returned = returned.into_transfer_host(&mut call);
+                },
             },
             completion: quote! {
                 ::core::result::Result::Ok(call.return_value(returned))
@@ -1109,8 +1997,13 @@ fn generate_return(
             constructions: Vec::new(),
         },
         FunctionReturnType::External(external) => {
-            let generated =
-                generate_generic_external_payload(external, quote!(returned), support, names);
+            let generated = generate_generic_external_payload(
+                external,
+                quote!(returned),
+                support,
+                names,
+                representation,
+            );
             let statements = generated.statements;
             let payload = generated.value;
             let schema = &external.schema;
@@ -1120,8 +2013,16 @@ fn generate_return(
                 .map(|argument| generic_host_type(&argument.host, customs, support))
                 .collect::<Vec<_>>();
             let arguments = host_type_token_sequence(&arguments, support);
-            GeneratedReturn {
-                statements: quote! {
+            let from_transfer = match external.storage {
+                GenericExternalStorage::StoredFields { .. } => {
+                    quote!(provider_transfer_external_from_item)
+                }
+                GenericExternalStorage::ManualPayload { .. } => {
+                    quote!(provider_transfer_external_from_return)
+                }
+            };
+            let statements = match representation {
+                ProviderRepresentation::Local => quote! {
                     #statements
                     let returned = match #payload {
                         ::core::result::Result::Ok(payload) => {
@@ -1132,18 +2033,47 @@ fn generate_return(
                         }
                     };
                 },
+                ProviderRepresentation::Transfer => quote! {
+                    #statements
+                    let returned = match #payload {
+                        ::core::result::Result::Ok(payload) => {
+                            call.create_external_with_binding::<#provider>(payload)
+                        }
+                        ::core::result::Result::Err(value) => {
+                            call.#from_transfer::<
+                                #schema,
+                                #arguments,
+                                _,
+                            >(value)
+                        }
+                    };
+                },
+            };
+            GeneratedReturn {
+                statements,
                 completion: quote! {
                     ::core::result::Result::Ok(call.return_value(returned))
                 },
                 constructions: Vec::new(),
             }
         }
-        FunctionReturnType::Value(type_) => {
-            generate_function_value_return(type_, customs, support, provider, return_type, names)
-        }
+        FunctionReturnType::Value(type_) => generate_function_value_return(
+            type_,
+            customs,
+            support,
+            provider,
+            return_type,
+            names,
+            representation,
+        ),
         FunctionReturnType::List(_) => GeneratedReturn {
-            statements: quote! {
-                let returned = returned.__geam_into_context().into_host();
+            statements: match representation {
+                ProviderRepresentation::Local => quote! {
+                    let returned = returned.__geam_into_context().into_host();
+                },
+                ProviderRepresentation::Transfer => quote! {
+                    let returned = call.provider_list_from_input(returned);
+                },
             },
             completion: quote! {
                 ::core::result::Result::Ok(call.return_value(returned))
@@ -1153,13 +2083,14 @@ fn generate_return(
     }
 }
 
-fn generate_function_value_return(
+pub(super) fn generate_function_value_return(
     type_: &FunctionRootOutputValueType,
     customs: &[CustomModel],
     support: &TokenStream,
     provider: &TokenStream,
     return_type: &TokenStream,
     names: &mut GeneratedNames,
+    representation: ProviderRepresentation,
 ) -> GeneratedReturn {
     let mut constructions = Vec::new();
     let environment = OutputEnvironment {
@@ -1167,6 +2098,7 @@ fn generate_function_value_return(
         support,
         provider,
         return_type,
+        representation,
     };
     let mut state = OutputState {
         names,
@@ -1174,7 +2106,7 @@ fn generate_function_value_return(
     };
     match type_ {
         FunctionRootOutputValueType::Value(value) => {
-            generate_output_leaf_return(value, customs, support, provider, state.names)
+            generate_output_leaf_return(value, support, provider, state.names, representation)
         }
         FunctionRootOutputValueType::Tuple(elements) => {
             let generated = encode_function_output_tuple_elements(
@@ -1291,10 +2223,10 @@ fn generate_function_value_return(
 
 fn generate_output_leaf_return(
     type_: &FunctionOutputLeafType,
-    customs: &[CustomModel],
     support: &TokenStream,
     provider: &TokenStream,
     names: &mut GeneratedNames,
+    representation: ProviderRepresentation,
 ) -> GeneratedReturn {
     match type_ {
         FunctionOutputLeafType::Scalar(_) => GeneratedReturn {
@@ -1311,42 +2243,64 @@ fn generate_output_leaf_return(
             );
             let construction =
                 register_provider_requirement(requirement, names, &mut constructions);
-            GeneratedReturn {
-                statements: TokenStream::new(),
-                completion: quote! {
+            let completion = match representation {
+                ProviderRepresentation::Local => quote! {
                     <#type_ as #support::ProviderRootOutputValue<
                         Profile,
                         #provider,
                     >>::complete(returned, call, &#construction)
                 },
+                ProviderRepresentation::Transfer => quote! {
+                    #support::ProviderTransferRootOutputValue::<
+                        Profile,
+                        #provider,
+                    >::complete(returned, call, &#construction)
+                },
+            };
+            GeneratedReturn {
+                statements: TokenStream::new(),
+                completion,
                 constructions,
             }
         }
         FunctionOutputLeafType::External { .. } => GeneratedReturn {
-            statements: quote! {
-                let returned = call.create_external(returned);
+            statements: match representation {
+                ProviderRepresentation::Local => quote! {
+                    let returned = call.create_external(returned);
+                },
+                ProviderRepresentation::Transfer => quote! {
+                    let returned = call.create_external_with_binding::<#provider>(returned);
+                },
             },
             completion: quote! {
                 ::core::result::Result::Ok(call.return_value(returned))
             },
             constructions: Vec::new(),
         },
-        FunctionOutputLeafType::Custom { index, .. } => {
-            let type_ = &customs[*index].ident;
+        FunctionOutputLeafType::Custom { rust: type_, .. } => {
             let mut constructions = Vec::new();
             let requirement = quote!(
                 <#type_ as #support::ProviderValue>::RootRequirements
             );
             let construction =
                 register_provider_requirement(requirement, names, &mut constructions);
-            GeneratedReturn {
-                statements: TokenStream::new(),
-                completion: quote! {
+            let completion = match representation {
+                ProviderRepresentation::Local => quote! {
                     <#type_ as #support::ProviderRootOutputValue<
                         Profile,
                         #provider,
                     >>::complete(returned, call, &#construction)
                 },
+                ProviderRepresentation::Transfer => quote! {
+                    <#type_ as #support::ProviderTransferRootOutputValue<
+                        Profile,
+                        #provider,
+                    >>::complete(returned, call, &#construction)
+                },
+            };
+            GeneratedReturn {
+                statements: TokenStream::new(),
+                completion,
                 constructions,
             }
         }
@@ -1360,6 +2314,7 @@ pub(super) fn generate_custom_return(
     provider: &TokenStream,
     return_type: &TokenStream,
     names: &mut GeneratedNames,
+    representation: ProviderRepresentation,
 ) -> GeneratedReturn {
     let custom = &customs[custom_index];
     let custom_ident = &custom.ident;
@@ -1369,6 +2324,7 @@ pub(super) fn generate_custom_return(
         support,
         provider,
         return_type,
+        representation,
     };
     let mut state = OutputState {
         names,
@@ -1632,19 +2588,35 @@ fn encode_static_intermediate(
             let value = state.names.next("returned_declared");
             let provider = environment.provider;
             let return_type = environment.return_type;
-            GeneratedValue {
-                statements: quote! {
-                    let #value = <#type_ as #support::ProviderOutputValue<
+            let conversion = match environment.representation {
+                ProviderRepresentation::Local => quote! {
+                    <#type_ as #support::ProviderOutputValue<
                         Profile,
                         #provider,
                         #return_type,
-                    >>::into_host(#input, &mut call, &#construction);
+                    >>::into_host(#input, &mut call, &#construction)
+                },
+                ProviderRepresentation::Transfer => quote! {
+                    #support::ProviderTransferOutputValue::<
+                        Profile,
+                        #provider,
+                        #return_type,
+                    >::into_host(#input, &mut call, &#construction)
+                },
+            };
+            GeneratedValue {
+                statements: quote! {
+                    let #value = #conversion;
                 },
                 value: quote!(#value),
             }
         }
         StaticValueType::External { schema, .. } => {
             let support = environment.support;
+            let binding = match environment.representation {
+                ProviderRepresentation::Local => quote!(__GeamProvider),
+                ProviderRepresentation::Transfer => quote!(__GeamAsyncProvider),
+            };
             let construction = register_host_construction(
                 host_static_value_type(type_, environment.customs, support),
                 support,
@@ -1655,7 +2627,7 @@ fn encode_static_intermediate(
             GeneratedValue {
                 statements: quote! {
                     let #value = call.construct_external_with_binding::<
-                        __GeamProvider,
+                        #binding,
                         #schema,
                         #support::HostTypeListEnd,
                     >(
@@ -1677,13 +2649,25 @@ fn encode_static_intermediate(
             let value = state.names.next("returned_custom");
             let provider = environment.provider;
             let return_type = environment.return_type;
-            GeneratedValue {
-                statements: quote! {
-                    let #value = <#type_ as #support::ProviderOutputValue<
+            let conversion = match environment.representation {
+                ProviderRepresentation::Local => quote! {
+                    <#type_ as #support::ProviderOutputValue<
                         Profile,
                         #provider,
                         #return_type,
-                    >>::into_host(#input, &mut call, &#construction);
+                    >>::into_host(#input, &mut call, &#construction)
+                },
+                ProviderRepresentation::Transfer => quote! {
+                    #support::ProviderTransferOutputValue::<
+                        Profile,
+                        #provider,
+                        #return_type,
+                    >::into_host(#input, &mut call, &#construction)
+                },
+            };
+            GeneratedValue {
+                statements: quote! {
+                    let #value = #conversion;
                 },
                 value: quote!(#value),
             }
@@ -1798,10 +2782,21 @@ fn encode_function_output_intermediate(
         FunctionOutputValueType::Value(value) => {
             encode_function_output_leaf_intermediate(value, input, environment, state)
         }
-        FunctionOutputValueType::Generic(_) => GeneratedValue {
-            statements: TokenStream::new(),
-            value: quote!(#input.into_host()),
-        },
+        FunctionOutputValueType::Generic(_) => {
+            let value = state.names.next("returned_generic");
+            let conversion = match environment.representation {
+                ProviderRepresentation::Local => quote!(#input.into_host()),
+                ProviderRepresentation::Transfer => {
+                    quote!(#input.into_transfer_host(&mut call))
+                }
+            };
+            GeneratedValue {
+                statements: quote! {
+                    let #value = #conversion;
+                },
+                value: quote!(#value),
+            }
+        }
         FunctionOutputValueType::Tuple(elements) => {
             let mut generated =
                 encode_function_output_tuple_elements(elements, input, environment, state);
@@ -1966,19 +2961,35 @@ fn encode_function_output_leaf_intermediate(
             let value = state.names.next("returned_declared");
             let provider = environment.provider;
             let return_type = environment.return_type;
-            GeneratedValue {
-                statements: quote! {
-                    let #value = <#type_ as #support::ProviderOutputValue<
+            let conversion = match environment.representation {
+                ProviderRepresentation::Local => quote! {
+                    <#type_ as #support::ProviderOutputValue<
                         Profile,
                         #provider,
                         #return_type,
-                    >>::into_host(#input, &mut call, &#construction);
+                    >>::into_host(#input, &mut call, &#construction)
+                },
+                ProviderRepresentation::Transfer => quote! {
+                    #support::ProviderTransferOutputValue::<
+                        Profile,
+                        #provider,
+                        #return_type,
+                    >::into_host(#input, &mut call, &#construction)
+                },
+            };
+            GeneratedValue {
+                statements: quote! {
+                    let #value = #conversion;
                 },
                 value: quote!(#value),
             }
         }
         FunctionOutputLeafType::External { schema, .. } => {
             let support = environment.support;
+            let binding = match environment.representation {
+                ProviderRepresentation::Local => quote!(__GeamProvider),
+                ProviderRepresentation::Transfer => quote!(__GeamAsyncProvider),
+            };
             let host = quote!(#support::HostExternalType<#schema>);
             let construction =
                 register_host_construction(host, support, state.names, state.constructions);
@@ -1986,7 +2997,7 @@ fn encode_function_output_leaf_intermediate(
             GeneratedValue {
                 statements: quote! {
                     let #value = call.construct_external_with_binding::<
-                        __GeamProvider,
+                        #binding,
                         #schema,
                         #support::HostTypeListEnd,
                     >(
@@ -1997,8 +3008,7 @@ fn encode_function_output_leaf_intermediate(
                 value: quote!(#value),
             }
         }
-        FunctionOutputLeafType::Custom { index, .. } => {
-            let type_ = &environment.customs[*index].ident;
+        FunctionOutputLeafType::Custom { rust: type_, .. } => {
             let support = environment.support;
             let requirement = quote!(
                 <#type_ as #support::ProviderValue>::OutputRequirements
@@ -2008,9 +3018,15 @@ fn encode_function_output_leaf_intermediate(
             let value = state.names.next("returned_custom");
             let provider = environment.provider;
             let return_type = environment.return_type;
+            let output_trait = match environment.representation {
+                ProviderRepresentation::Local => quote!(#support::ProviderOutputValue),
+                ProviderRepresentation::Transfer => {
+                    quote!(#support::ProviderTransferOutputValue)
+                }
+            };
             GeneratedValue {
                 statements: quote! {
-                    let #value = <#type_ as #support::ProviderOutputValue<
+                    let #value = <#type_ as #output_trait<
                         Profile,
                         #provider,
                         #return_type,
@@ -2032,11 +3048,21 @@ fn encode_callback_argument(
     match type_ {
         FunctionReturnType::Generic(_) => GeneratedValue {
             statements: TokenStream::new(),
-            value: quote!(#input.into_host()),
+            value: match environment.representation {
+                ProviderRepresentation::Local => quote!(#input.into_host()),
+                ProviderRepresentation::Transfer => {
+                    quote!(#input.into_transfer_host(&mut call))
+                }
+            },
         },
         FunctionReturnType::External(external) => {
-            let generated =
-                generate_generic_external_payload(external, input, environment.support, names);
+            let generated = generate_generic_external_payload(
+                external,
+                input,
+                environment.support,
+                names,
+                environment.representation,
+            );
             let statements = generated.statements;
             let payload = generated.value;
             let host =
@@ -2054,6 +3080,17 @@ fn encode_callback_argument(
                 })
                 .collect::<Vec<_>>();
             let arguments = host_type_token_sequence(&arguments, environment.support);
+            let from_item = match environment.representation {
+                ProviderRepresentation::Local => quote!(provider_external_from_item),
+                ProviderRepresentation::Transfer => match external.storage {
+                    GenericExternalStorage::StoredFields { .. } => {
+                        quote!(provider_transfer_external_from_item)
+                    }
+                    GenericExternalStorage::ManualPayload { .. } => {
+                        quote!(provider_transfer_external_from_return)
+                    }
+                },
+            };
             GeneratedValue {
                 statements: quote! {
                     #statements
@@ -2066,7 +3103,7 @@ fn encode_callback_argument(
                             >(#construction.token(), payload)
                         }
                         ::core::result::Result::Err(value) => {
-                            call.provider_external_from_item::<#schema, #arguments, _>(value)
+                            call.#from_item::<#schema, #arguments, _>(value)
                         }
                     };
                 },
@@ -2075,7 +3112,12 @@ fn encode_callback_argument(
         }
         FunctionReturnType::List(_) => GeneratedValue {
             statements: TokenStream::new(),
-            value: quote!(#input.__geam_into_context().into_host()),
+            value: match environment.representation {
+                ProviderRepresentation::Local => quote!(#input.__geam_into_context().into_host()),
+                ProviderRepresentation::Transfer => {
+                    quote!(call.provider_list_from_input(#input))
+                }
+            },
         },
         FunctionReturnType::Value(value) => {
             let mut state = OutputState {

@@ -2,6 +2,7 @@ mod diagnostic;
 mod host;
 mod invariant;
 mod panic;
+mod shared;
 mod subject;
 
 use crate::plan::{PanicSite, SourceContext, SourceSpan};
@@ -12,7 +13,9 @@ pub(crate) use self::host::HostCallOrigin;
 pub use self::host::{HostError, HostLocation, HostOrigin};
 pub use self::invariant::InvariantError;
 pub use self::panic::{BitArraySegmentPanicReason, Panic, PanicDetails, PanicKind, PanicMessage};
+pub use shared::SharedExecutionError;
 pub use subject::AsyncPanicValue;
+pub(in crate::runtime) use subject::PanicSubjectProfile;
 
 /// An execution failure whose retained assertion value can move between workers.
 pub type AsyncExecutionError = ExecutionError<AsyncPanicValue>;
@@ -27,7 +30,8 @@ pub enum ExecutionError<Subject = Value> {
     Host(Box<HostError>),
 }
 
-pub(crate) type ExecutionResult<T> = Result<T, ExecutionError>;
+pub(crate) type ExecutionResult<T, Values = crate::runtime::LocalValues> =
+    Result<T, ExecutionError<<Values as crate::runtime::RuntimeValueProfile>::PanicSubject>>;
 
 impl<Subject> From<InvariantError> for ExecutionError<Subject> {
     fn from(error: InvariantError) -> Self {
@@ -127,6 +131,25 @@ impl AsyncExecutionError {
             Self::Panic(panic) => ExecutionError::Panic(panic.into_local()),
             Self::Host(error) => ExecutionError::Host(error),
             Self::Invariant(error) => ExecutionError::Invariant(error),
+        }
+    }
+}
+
+impl AsyncExecutionError {
+    pub(in crate::runtime) fn host_failure(
+        plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
+        origin: HostCallOrigin,
+        function: &crate::plan::execution::host::HostedFunctionMetadata,
+        failure: crate::HostFailure,
+    ) -> Self {
+        match origin.into_source_site(function.site()) {
+            Ok(site) => Self::from_host_call(
+                function,
+                site.clone(),
+                plan.source_context_for(site.module()),
+                failure,
+            ),
+            Err(caller) => Self::from_host_origin(function, caller, failure),
         }
     }
 }

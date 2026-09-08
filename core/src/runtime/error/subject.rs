@@ -1,5 +1,7 @@
 use crate::plan::execution::runtime::{OwnedRuntimeValueMetadata, RuntimeExecutionPlan};
-use crate::runtime::{EvaluatedValue, TransferListStorage, TransferValues, Value};
+use crate::runtime::{
+    EvaluatedValue, LocalValues, RuntimeValueProfile, TransferListStorage, TransferValues, Value,
+};
 use std::fmt;
 
 /// The retained failed value of an async `let assert`.
@@ -43,6 +45,34 @@ impl AsyncPanicValue {
     }
 }
 
+pub(in crate::runtime) trait PanicSubjectProfile: RuntimeValueProfile {
+    fn panic_subject(
+        plan: &impl RuntimeExecutionPlan,
+        lists: &Self::ListStorage,
+        value: EvaluatedValue<Self>,
+    ) -> Self::PanicSubject;
+}
+
+impl PanicSubjectProfile for LocalValues {
+    fn panic_subject(
+        plan: &impl RuntimeExecutionPlan,
+        lists: &Self::ListStorage,
+        value: EvaluatedValue<Self>,
+    ) -> Value {
+        crate::runtime::materialize::value(plan.value_metadata(), lists, value)
+    }
+}
+
+impl PanicSubjectProfile for TransferValues {
+    fn panic_subject(
+        plan: &impl RuntimeExecutionPlan,
+        lists: &Self::ListStorage,
+        value: EvaluatedValue<Self>,
+    ) -> AsyncPanicValue {
+        AsyncPanicValue::new(plan, lists, value)
+    }
+}
+
 impl fmt::Debug for AsyncPanicValue {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&self.to_value(), formatter)
@@ -57,9 +87,9 @@ impl PartialEq for AsyncPanicValue {
 
 #[cfg(test)]
 mod tests {
-    use super::AsyncPanicValue;
+    use super::{AsyncPanicValue, PanicSubjectProfile};
     use crate::plan::{FunctionType, ValueType};
-    use crate::runtime::{EvaluatedValue, TransferListStorage, Value};
+    use crate::runtime::{EvaluatedValue, TransferListStorage, TransferValues, Value};
     use crate::{
         AsyncExecutionError, BitArraySegmentPanicReason, ExecutionError, HostCallSite, HostError,
         HostFailure, InvariantError, PanicKind, PanicSite, SourceContext, SourceSpan,
@@ -68,7 +98,7 @@ mod tests {
 
     fn subject(value: i64) -> AsyncPanicValue {
         let plan = crate::runtime::plan_src("pub fn main() { Nil }");
-        AsyncPanicValue::new(
+        <TransferValues as PanicSubjectProfile>::panic_subject(
             &plan,
             &TransferListStorage::default(),
             EvaluatedValue::Int(value.into()),

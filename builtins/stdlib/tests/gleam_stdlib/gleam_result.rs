@@ -77,12 +77,9 @@ fn tracks_official_gleam_result_public_surface() {
 #[test]
 fn runs_official_gleam_result_basics() {
     assert_eq!(
-        run_hosted_fixture(
-            "gleam_result_basics",
-            DEPENDENCIES,
-            hosts(),
-            &mut GleamStdlibRunState::from_seed([0; 32]),
-        ),
+        run_hosted_fixture("gleam_result_basics", DEPENDENCIES, hosts(), || {
+            GleamStdlibRunState::from_seed([0; 32])
+        },),
         Value::Nil,
     );
 }
@@ -90,12 +87,9 @@ fn runs_official_gleam_result_basics() {
 #[test]
 fn runs_official_gleam_result_combinators() {
     assert_eq!(
-        run_hosted_fixture(
-            "gleam_result_combinators",
-            DEPENDENCIES,
-            hosts(),
-            &mut GleamStdlibRunState::from_seed([1; 32]),
-        ),
+        run_hosted_fixture("gleam_result_combinators", DEPENDENCIES, hosts(), || {
+            GleamStdlibRunState::from_seed([1; 32])
+        },),
         Value::Nil,
     );
 }

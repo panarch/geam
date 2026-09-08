@@ -18,7 +18,9 @@ quote.workspace = true
 syn.workspace = true
 
 [dev-dependencies]
+geam-runtime-api.workspace = true
 ecow.workspace = true
+futures-channel.workspace = true
 geam-core.workspace = true
 im.workspace = true
 num-bigint.workspace = true

@@ -1,4 +1,5 @@
-use geam_core::{HostModule, HostProviderSet, StatelessHostProfile, Value};
+use geam_core::{HostProviderSet, Value};
+use geam_stdlib::{GleamStdlibProfile, GleamStdlibRunState};
 
 use super::{ExpectedSurface, assert_surface, run_hosted_fixture};
 
@@ -47,10 +48,14 @@ fn tracks_official_gleam_option_public_surface() {
 
 #[test]
 fn runs_official_gleam_option_behavior() {
-    let hosts = HostProviderSet::<StatelessHostProfile>::new(Vec::<HostModule>::new())
-        .expect("the empty host set should be valid");
     assert_eq!(
-        run_hosted_fixture("gleam_option", &["gleam/option"], hosts, &mut ()),
+        run_hosted_fixture(
+            "gleam_option",
+            &["gleam/option"],
+            HostProviderSet::<GleamStdlibProfile>::new([])
+                .expect("empty hosts preserve source fallbacks"),
+            || GleamStdlibRunState::from_seed([0; 32])
+        ),
         Value::Nil,
     );
 }

@@ -1,0 +1,28 @@
+error[E0277]: the trait bound `FutureType<BigInt, Foreign>: geam_core::embedding::work::return_::ScopedTake<HostFutureSchema>` is not satisfied
+  --> tests/ui/rejected/foreign_schema.rs:14:30
+   |
+14 |     let _ = builder.function(FunctionDeclaration::<(), Nested>::new("wrong"));
+   |                     -------- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `geam_core::embedding::work::return_::ScopedTake<HostFutureSchema>` is not implemented for `FutureType<BigInt, Foreign>`
+   |                     |
+   |                     required by a bound introduced by this call
+   |
+help: the trait `ScopedTake<HostFutureSchema>` is not implemented for `FutureType<BigInt, Foreign>`
+      but trait `ScopedTake<Foreign>` is implemented for it
+  --> $WORKSPACE/core/src/embedding/work/return_.rs
+   |
+   | / impl<Value: ScopedTake<Schema>, Schema: HostExternalSchema> ScopedTake<Schema>
+   | |     for FutureType<Value, Schema>
+   | |_________________________________^
+   = help: for that trait implementation, expected `Foreign`, found `HostFutureSchema`
+   = note: required for `geam_core::embedding::List<FutureType<BigInt, Foreign>>` to implement `geam_core::embedding::work::return_::ScopedTake<HostFutureSchema>`
+   = note: 1 redundant requirement hidden
+   = note: required for `(geam_core::embedding::List<FutureType<BigInt, Foreign>>,)` to implement `geam_core::embedding::work::return_::ScopedTake<HostFutureSchema>`
+   = note: required for `Result<(geam_core::embedding::List<FutureType<BigInt, Foreign>>,), ()>` to implement `geam_core::embedding::work::return_::ScopedReturn<HostFutureSchema>`
+note: required by a bound in `WorkModuleBuilder::<Profile>::function`
+  --> $WORKSPACE/core/src/embedding/work/execution.rs
+   |
+   |     pub fn function<Args, Return>(
+   |            -------- required by a bound in this associated function
+...
+   |         Return: ScopedReturn<HostWorkSchema<Profile>>,
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `WorkModuleBuilder::<Profile>::function`

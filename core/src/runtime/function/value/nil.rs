@@ -1,9 +1,8 @@
-use super::super::{EvaluatedFunctionExit, evaluate_entry, parameter_locals};
+use super::super::{EvaluatedFunctionExit, evaluate_entry};
 use crate::plan::execution::function::NilFunctionId;
-use crate::plan::execution::graph::ParamLocal;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
-use crate::runtime::graph::RetainedValues;
+use crate::runtime::graph::ProfiledRetainedValues;
 use crate::runtime::state::RuntimeStateFor;
 
 pub(in crate::runtime) fn run_nil<Plan: ExecutableRuntimePlan>(
@@ -11,8 +10,8 @@ pub(in crate::runtime) fn run_nil<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     mut function: NilFunctionId,
     mut origin: HostCallOrigin,
-    mut inputs: RetainedValues,
-) -> ExecutionResult<()> {
+    mut inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<(), Plan::Values> {
     loop {
         let exit = evaluate_entry(plan, state, plan.nil_function(function), origin, inputs)?;
         match exit {
@@ -29,18 +28,12 @@ pub(in crate::runtime) fn run_nil<Plan: ExecutableRuntimePlan>(
     }
 }
 
-pub(in crate::runtime) fn nil_parameter_locals<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    function: NilFunctionId,
-) -> Vec<ParamLocal> {
-    parameter_locals(plan, plan.nil_function(function))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::nil_parameter_locals;
     use crate::plan::execution::function::NilFunctionId;
+    use crate::plan::execution::graph::FunctionTarget;
     use crate::plan::execution::graph::{NilLocalId, ParamLocal};
+    use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::{
         HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource, Value,
         compile_typed_host_program, compile_typed_module, plan_host_program, plan_module, run_main,
@@ -62,7 +55,9 @@ pub fn main() {
         let plan = plan_module(typed).expect("source should plan");
         let execution = crate::ExecutionPlan::from_module_plan(plan);
         assert_eq!(
-            nil_parameter_locals(&execution, NilFunctionId(1)),
+            execution
+                .function_parameters()
+                .function(&FunctionTarget::Nil(NilFunctionId(1))),
             [ParamLocal::Nil(NilLocalId(0))],
         );
         assert_eq!(run_main(&execution, &mut Vec::new()), Ok(Value::Nil),);
@@ -101,11 +96,15 @@ pub fn main() {
         let execution =
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         assert_eq!(
-            nil_parameter_locals(&execution, NilFunctionId(2)),
+            execution
+                .function_parameters()
+                .function(&FunctionTarget::Nil(NilFunctionId(2))),
             [ParamLocal::Nil(NilLocalId(0))],
         );
         assert_eq!(
-            nil_parameter_locals(&execution, NilFunctionId(1)),
+            execution
+                .function_parameters()
+                .function(&FunctionTarget::Nil(NilFunctionId(1))),
             [ParamLocal::Nil(NilLocalId(0))],
         );
         assert_eq!(execution.run_main(&mut (), &mut Vec::new()), Ok(Value::Nil),);

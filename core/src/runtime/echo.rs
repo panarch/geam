@@ -106,6 +106,12 @@ impl EchoSink for Vec<EchoOutput> {
     }
 }
 
+impl<Emit: FnMut(EchoOutput)> EchoSink for Emit {
+    fn emit(&mut self, output: EchoOutput) {
+        self(output);
+    }
+}
+
 impl Display for EchoOutput {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         let mut output = String::new();
@@ -214,6 +220,29 @@ mod tests {
         outputs.emit(output.clone());
 
         assert_eq!(outputs, vec![output]);
+    }
+
+    #[test]
+    fn closure_sink_borrows_the_callers_output_without_retaining_local_values() {
+        fn require_send<T: Send>(_: &T) {}
+        let mut outputs = Vec::new();
+        let mut emit = |output: EchoOutput| outputs.push(output.to_string());
+        require_send(&emit);
+        for value in [false, true] {
+            emit.emit(EchoOutput::new(
+                EchoLocation::resolved(
+                    EchoSite::new("main".into(), "run".into(), SourceSpan::new(0, 1)),
+                    "src/main.gleam",
+                    1,
+                ),
+                None,
+                Value::Bool(value),
+            ));
+        }
+        assert_eq!(
+            outputs,
+            ["src/main.gleam:1\nFalse", "src/main.gleam:1\nTrue"]
+        );
     }
 
     #[test]

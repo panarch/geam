@@ -7,7 +7,7 @@ use crate::error::CliError;
 use crate::progress::Progress;
 use camino::Utf8Path;
 use cargo_metadata::{DependencyKind, Metadata, Package, PackageId};
-pub(super) use project::EmbeddingProject;
+pub(super) use project::{EmbeddingProject, EmbeddingStorage};
 use std::collections::BTreeSet;
 
 #[derive(Debug)]
@@ -34,6 +34,10 @@ pub(super) struct ResolvedGeamDependency {
 }
 
 impl EmbeddingPackage {
+    pub(super) fn storage(&self) -> EmbeddingStorage {
+        self.project.storage
+    }
+
     pub(super) fn load(current_directory: &Utf8Path) -> Result<Self, CliError> {
         Self::load_with(current_directory, &SystemCargoMetadata)
     }

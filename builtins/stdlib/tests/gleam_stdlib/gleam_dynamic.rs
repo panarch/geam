@@ -54,7 +54,7 @@ fn runs_official_gleam_dynamic_behavior() {
         "gleam_dynamic",
         &["gleam/option", "gleam/dict", "gleam/dynamic"],
         hosts,
-        &mut GleamStdlibRunState::from_seed([0; 32]),
+        || GleamStdlibRunState::from_seed([0; 32]),
     );
 
     assert!(matches!(value, Value::Tuple(_)));

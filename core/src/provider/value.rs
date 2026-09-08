@@ -1,4 +1,6 @@
-use crate::HostType;
+use crate::host::TransferHostCall;
+use crate::runtime::{StoredRuntimeValue, TransferValues};
+use crate::{HostProfile, HostProvider, HostType};
 use std::marker::PhantomData;
 
 /// A call-scoped opaque handle for one statically declared source type.
@@ -24,6 +26,16 @@ where
     value: Host::Value<'call>,
 }
 
+/// Owned retained value used by a transferable provider invocation.
+#[doc(hidden)]
+pub struct ProviderTransferValueContext<Host>
+where
+    Host: HostType,
+{
+    value: StoredRuntimeValue<TransferValues>,
+    host: PhantomData<fn() -> Host>,
+}
+
 impl<'call, Type, Host> Value<Type, ProviderValueContext<'call, Host>>
 where
     Host: HostType,
@@ -46,6 +58,61 @@ where
         Host::Value<'call>: Clone,
     {
         self.context.value.clone()
+    }
+}
+
+impl<Type, Host> Value<Type, ProviderTransferValueContext<Host>>
+where
+    Host: HostType,
+{
+    #[doc(hidden)]
+    pub fn from_transfer_host<'call, Profile, Provider, Return>(
+        call: &TransferHostCall<'call, Profile, Provider, Return>,
+        value: Host::Value<'call>,
+    ) -> Self
+    where
+        Profile: HostProfile,
+        Provider: HostProvider<Profile>,
+        Return: HostType,
+    {
+        Self {
+            context: ProviderTransferValueContext {
+                value: call.retain_value::<Host>(value),
+                host: PhantomData,
+            },
+            type_: PhantomData,
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn into_transfer_host<'call, Profile, Provider, Return>(
+        self,
+        call: &mut TransferHostCall<'call, Profile, Provider, Return>,
+    ) -> Host::Value<'call>
+    where
+        Profile: HostProfile,
+        Provider: HostProvider<Profile>,
+        Return: HostType,
+    {
+        call.restore_value::<Host>(&self.context.value)
+    }
+
+    pub(crate) fn stored(&self) -> &StoredRuntimeValue<TransferValues> {
+        &self.context.value
+    }
+
+    pub(crate) fn from_stored(value: StoredRuntimeValue<TransferValues>) -> Self {
+        Self {
+            context: ProviderTransferValueContext {
+                value,
+                host: PhantomData,
+            },
+            type_: PhantomData,
+        }
+    }
+
+    pub(crate) fn into_stored(self) -> StoredRuntimeValue<TransferValues> {
+        self.context.value
     }
 }
 

@@ -1,0 +1,21 @@
+error: lifetime may not live long enough
+  --> tests/ui/async/borrowed_callback_escape.rs:22:9
+   |
+12 | #[geam_macros::module(path = "async_callback_escape/native", crate_path = geam_core)]
+   | ------------------------------------------------------------------------------------- lifetime `'__geam_call` defined here
+...
+22 |         require_static(callback);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^ requires that `'__geam_call` must outlive `'static`
+
+error: lifetime may not live long enough
+  --> tests/ui/async/borrowed_callback_escape.rs:22:9
+   |
+12 | #[geam_macros::module(path = "async_callback_escape/native", crate_path = geam_core)]
+   | ------------------------------------------------------------------------------------- lifetime `'__geam_call` defined here
+...
+22 |         require_static(callback);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^ argument requires that `'__geam_call` must outlive `'static`
+   |
+   = note: requirement occurs because of the type `geam_core::provider::ProviderTransferCallbackContext<'_, __GeamProfile, __GeamAsyncProvider, BigInt, __GeamCallbackCodec_escape_0>`, which makes the generic argument `'_` invariant
+   = note: the struct `geam_core::provider::ProviderTransferCallbackContext<'call, Profile, Provider, Return, Codec>` is invariant over the parameter `'call`
+   = help: see <https://doc.rust-lang.org/nomicon/subtyping.html> for more information about variance

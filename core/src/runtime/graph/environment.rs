@@ -695,9 +695,6 @@ impl<Profile: RuntimeValueProfile> BlockEnvironment<Profile> {
 }
 
 impl<Profile: RuntimeValueProfile> ProfiledRetainedValues<Profile> {
-    pub(crate) fn async_external(&self, index: usize) -> EvaluatedExternalValue<Profile> {
-        self.values.externals[index].clone()
-    }
     pub(crate) fn empty() -> Self {
         Self {
             values: Box::default(),
@@ -720,40 +717,6 @@ impl<Profile: RuntimeValueProfile> ProfiledRetainedValues<Profile> {
             EvaluatedValue::List(value) => self.push_list(value.into_value()),
             EvaluatedValue::Function(value) => self.push_function(value),
         }
-    }
-
-    pub(crate) fn async_int_function(&self, index: usize) -> EvaluatedIntFunction<Profile> {
-        self.values.int_functions[index].clone()
-    }
-
-    pub(crate) fn async_float_function(&self, index: usize) -> EvaluatedFloatFunction<Profile> {
-        self.values.float_functions[index].clone()
-    }
-
-    pub(crate) fn async_string_function(&self, index: usize) -> EvaluatedStringFunction<Profile> {
-        self.values.string_functions[index].clone()
-    }
-
-    pub(crate) fn async_bit_array_function(
-        &self,
-        index: usize,
-    ) -> EvaluatedBitArrayFunction<Profile> {
-        self.values.bit_array_functions[index].clone()
-    }
-
-    pub(crate) fn async_utf_codepoint_function(
-        &self,
-        index: usize,
-    ) -> EvaluatedUtfCodepointFunction<Profile> {
-        self.values.utf_codepoint_functions[index].clone()
-    }
-
-    pub(crate) fn async_bool_function(&self, index: usize) -> EvaluatedBoolFunction<Profile> {
-        self.values.bool_functions[index].clone()
-    }
-
-    pub(crate) fn async_nil_function(&self, index: usize) -> EvaluatedNilFunction<Profile> {
-        self.values.nil_functions[index].clone()
     }
 
     pub(in crate::runtime) fn push_int(&mut self, value: BigInt) {

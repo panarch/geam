@@ -37,7 +37,10 @@ pub(crate) enum HostParameter {
     Tuple(HostTupleArgumentSlot),
     Custom(HostCustomArgumentSlot),
     External(HostExternalArgumentSlot),
-    Function(HostFunctionArgumentSlot),
+    Function {
+        slot: HostFunctionArgumentSlot,
+        arity: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -153,16 +156,50 @@ impl HostParameterLayout {
         self.parameters.into_boxed_slice()
     }
 
-    pub(crate) fn register_function_parameter(&mut self) {
-        let slot = HostFunctionArgumentSlot(self.next_function);
-        self.next_function += 1;
-        self.parameters.push(HostParameter::Function(slot));
+    pub(crate) fn register_value_parameter(&mut self) -> HostValueArgumentSlot {
+        let slot = HostValueArgumentSlot(self.next_value);
+        self.next_value += 1;
+        self.parameters.push(HostParameter::Value(slot));
+        slot
     }
 
-    pub(crate) fn register_external_parameter(&mut self) {
+    pub(crate) fn register_list_parameter(&mut self) -> HostListArgumentSlot {
+        let slot = HostListArgumentSlot(self.next_list);
+        self.next_list += 1;
+        self.parameters.push(HostParameter::List(slot));
+        slot
+    }
+
+    pub(crate) fn register_tuple_parameter(&mut self) -> HostTupleArgumentSlot {
+        let slot = HostTupleArgumentSlot(self.next_tuple);
+        self.next_tuple += 1;
+        self.parameters.push(HostParameter::Tuple(slot));
+        slot
+    }
+
+    pub(crate) fn register_custom_parameter(&mut self) -> HostCustomArgumentSlot {
+        let slot = HostCustomArgumentSlot(self.next_custom);
+        self.next_custom += 1;
+        self.parameters.push(HostParameter::Custom(slot));
+        slot
+    }
+
+    pub(crate) fn register_external_parameter_slot(&mut self) -> HostExternalArgumentSlot {
         let slot = HostExternalArgumentSlot(self.next_external);
         self.next_external += 1;
         self.parameters.push(HostParameter::External(slot));
+        slot
+    }
+
+    pub(crate) fn register_function_parameter_slot(
+        &mut self,
+        arity: usize,
+    ) -> HostFunctionArgumentSlot {
+        let slot = HostFunctionArgumentSlot(self.next_function);
+        self.next_function += 1;
+        self.parameters
+            .push(HostParameter::Function { slot, arity });
+        slot
     }
 }
 
@@ -194,10 +231,7 @@ impl<const INDEX: usize> HostScopedArgument for HostTypeParameter<INDEX> {
     type Slot = HostValueArgumentSlot;
 
     fn register(layout: &mut HostParameterLayout) -> Self::Slot {
-        let slot = HostValueArgumentSlot(layout.next_value);
-        layout.next_value += 1;
-        layout.parameters.push(HostParameter::Value(slot));
-        slot
+        layout.register_value_parameter()
     }
 
     fn read<'call, Profile, Provider, Return>(
@@ -217,10 +251,7 @@ impl<Item: HostAbiType> HostScopedArgument for HostListType<Item> {
     type Slot = HostListArgumentSlot;
 
     fn register(layout: &mut HostParameterLayout) -> Self::Slot {
-        let slot = HostListArgumentSlot(layout.next_list);
-        layout.next_list += 1;
-        layout.parameters.push(HostParameter::List(slot));
-        slot
+        layout.register_list_parameter()
     }
 
     fn read<'call, Profile, Provider, Return>(
@@ -240,10 +271,7 @@ impl<Elements: HostAbiTypeSequence> HostScopedArgument for HostTupleType<Element
     type Slot = HostTupleArgumentSlot;
 
     fn register(layout: &mut HostParameterLayout) -> Self::Slot {
-        let slot = HostTupleArgumentSlot(layout.next_tuple);
-        layout.next_tuple += 1;
-        layout.parameters.push(HostParameter::Tuple(slot));
-        slot
+        layout.register_tuple_parameter()
     }
 
     fn read<'call, Profile, Provider, Return>(
@@ -267,10 +295,7 @@ where
     type Slot = HostCustomArgumentSlot;
 
     fn register(layout: &mut HostParameterLayout) -> Self::Slot {
-        let slot = HostCustomArgumentSlot(layout.next_custom);
-        layout.next_custom += 1;
-        layout.parameters.push(HostParameter::Custom(slot));
-        slot
+        layout.register_custom_parameter()
     }
 
     fn read<'call, Profile, Provider, Return>(
@@ -294,10 +319,7 @@ where
     type Slot = HostExternalArgumentSlot;
 
     fn register(layout: &mut HostParameterLayout) -> Self::Slot {
-        let slot = HostExternalArgumentSlot(layout.next_external);
-        layout.next_external += 1;
-        layout.parameters.push(HostParameter::External(slot));
-        slot
+        layout.register_external_parameter_slot()
     }
 
     fn read<'call, Profile, Provider, Return>(
@@ -321,9 +343,9 @@ where
     type Slot = HostFunctionArgumentSlot;
 
     fn register(layout: &mut HostParameterLayout) -> Self::Slot {
-        let slot = HostFunctionArgumentSlot(layout.next_function);
-        layout.register_function_parameter();
-        slot
+        layout.register_function_parameter_slot(
+            <Arguments as HostAbiTypeSequence>::descriptors().len(),
+        )
     }
 
     fn read<'call, Profile, Provider, CallReturn>(
@@ -347,10 +369,7 @@ where
     type Slot = HostValueArgumentSlot;
 
     fn register(layout: &mut HostParameterLayout) -> Self::Slot {
-        let slot = HostValueArgumentSlot(layout.next_value);
-        layout.next_value += 1;
-        layout.parameters.push(HostParameter::Value(slot));
-        slot
+        layout.register_value_parameter()
     }
 
     fn read<'call, Profile, Provider, CallReturn>(
@@ -585,7 +604,10 @@ mod tests {
                 HostParameter::Tuple(tuple_slot),
                 HostParameter::Custom(custom_slot),
                 HostParameter::External(external_slot),
-                HostParameter::Function(function_slot),
+                HostParameter::Function {
+                    slot: function_slot,
+                    arity: 1,
+                },
             ],
         );
 

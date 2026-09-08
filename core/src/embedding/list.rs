@@ -64,26 +64,9 @@ pub struct List<T> {
     marker: PhantomData<T>,
 }
 
-/// A read-only, worker-transferable Gleam List returned by async embedding.
-///
-/// Reading stays lazy and [`Self::len`] remains O(1). Passing a retained value
-/// back into `call_async` requires the same live async module owner; a consumed
-/// `Vec` creates a fresh transferable List instead.
-pub struct AsyncList<T> {
-    value: EmbeddingList<TransferValues>,
-    owner: Arc<()>,
-    marker: PhantomData<T>,
-}
-
 /// An iterator that decodes retained List items only as they are requested.
 pub struct Iter<'a, T> {
     list: &'a List<T>,
-    indices: std::ops::Range<usize>,
-}
-
-/// An iterator that lazily decodes items from an [`AsyncList`].
-pub struct AsyncIter<'a, T> {
-    list: &'a AsyncList<T>,
     indices: std::ops::Range<usize>,
 }
 
@@ -134,63 +117,9 @@ where
     }
 }
 
-#[allow(private_bounds)]
-impl<T> AsyncList<T>
-where
-    T: OutputValue<TransferValues>,
-{
-    /// Returns the number of items without decoding them.
-    pub fn len(&self) -> usize {
-        self.value.len()
-    }
-
-    /// Checks whether the list is empty without decoding items.
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Decodes one item, returning None for an out-of-range index.
-    pub fn get(&self, index: usize) -> Option<T> {
-        self.value
-            .item(index)
-            .map(|mut output| T::take(&mut output, &self.owner))
-    }
-
-    /// Iterates over owned Rust items without materializing the whole list.
-    pub fn iter(&self) -> AsyncIter<'_, T> {
-        AsyncIter {
-            list: self,
-            indices: 0..self.len(),
-        }
-    }
-
-    /// Explicitly decodes every item into a new Rust Vec.
-    pub fn to_vec(&self) -> Vec<T> {
-        self.iter().collect()
-    }
-
-    #[cfg(test)]
-    pub(super) fn item_reads(&self) -> usize {
-        self.value.item_reads()
-    }
-}
-
-impl<T> Iterator for AsyncIter<'_, T>
-where
-    T: OutputValue<TransferValues>,
-{
-    type Item = T;
-
-    fn next(&mut self) -> Option<T> {
-        self.indices.next().and_then(|index| self.list.get(index))
-    }
-}
-
 impl<T: EmbeddingValue> EmbeddingValue for List<T> {
-    type Runtime = EmbeddingListInput;
-
     const VARIANT_COUNT: usize = T::VARIANT_COUNT;
-    const LIST_COUNTS: [usize; 10] = {
+    const LIST_COUNTS: [usize; 11] = {
         let mut counts = T::LIST_COUNTS;
         counts[T::LIST_FAMILY as usize] += 1;
         counts
@@ -205,55 +134,29 @@ impl<T: EmbeddingValue> EmbeddingValue for List<T> {
         T::collect_variants(variants);
     }
 
+    fn collect_input_variants(variants: &mut Vec<StandardVariant>) {
+        T::collect_input_variants(variants);
+    }
+
     fn collect_lists(lists: &mut Vec<LibraryValueType>) {
         lists.push(T::library_type());
         T::collect_lists(lists);
     }
+}
+
+impl<T: EmbeddingValue> super::value::EmbeddingInputRuntime for List<T> {
+    type Runtime = EmbeddingListInput;
 }
 
 impl<T> OutputValue<crate::runtime::LocalValues> for List<T>
 where
     T: OutputValue<crate::runtime::LocalValues>,
 {
+    fn plain_library_type() -> LibraryValueType<std::convert::Infallible> {
+        LibraryValueType::List(Box::new(T::plain_library_type()))
+    }
+
     fn take(output: &mut EmbeddingOutput, owner: &Arc<()>) -> Self {
-        Self {
-            value: output.take_list(),
-            owner: Arc::clone(owner),
-            marker: PhantomData,
-        }
-    }
-}
-
-impl<T: EmbeddingValue> EmbeddingValue for AsyncList<T> {
-    type Runtime = EmbeddingListInput;
-
-    const VARIANT_COUNT: usize = T::VARIANT_COUNT;
-    const LIST_COUNTS: [usize; 10] = {
-        let mut counts = T::LIST_COUNTS;
-        counts[T::LIST_FAMILY as usize] += 1;
-        counts
-    };
-    const LIST_FAMILY: ListFamily = ListFamily::List;
-
-    fn library_type() -> LibraryValueType {
-        LibraryValueType::List(Box::new(T::library_type()))
-    }
-
-    fn collect_variants(variants: &mut Vec<StandardVariant>) {
-        T::collect_variants(variants);
-    }
-
-    fn collect_lists(lists: &mut Vec<LibraryValueType>) {
-        lists.push(T::library_type());
-        T::collect_lists(lists);
-    }
-}
-
-impl<T> OutputValue<TransferValues> for AsyncList<T>
-where
-    T: OutputValue<TransferValues>,
-{
-    fn take(output: &mut EmbeddingOutput<TransferValues>, owner: &Arc<()>) -> Self {
         Self {
             value: output.take_list(),
             owner: Arc::clone(owner),
@@ -313,9 +216,9 @@ impl<T: EmbeddingValue> InputValue<&List<T>> for List<T> {
     }
 }
 
-impl<T, Input> AsyncInputValue<Vec<Input>> for AsyncList<T>
+impl<Scope, T, Input> AsyncInputValue<Vec<Input>, Scope> for List<T>
 where
-    T: AsyncFreshInput<Input>,
+    T: AsyncFreshInput<Input, Scope>,
 {
     type TransferRuntime = EmbeddingListInput<TransferValues>;
 
@@ -328,20 +231,20 @@ where
         constructions: &mut InputConstructions<'_>,
         storage: &EmbeddingInputStorage<TransferValues>,
     ) -> Self::TransferRuntime {
-        let type_ = constructions.take_async_list::<T, Input>();
+        let type_ = constructions.take_async_list::<T, Input, Scope>();
         let item_constructions = *constructions;
         constructions.skip::<T>();
         let values = input.into_iter().map(|value| {
             let mut constructions = item_constructions;
             T::into_runtime(value, &mut constructions, storage)
         });
-        <T as AsyncInputValue<Input>>::TransferRuntime::into_list(type_, values, storage)
+        <T as AsyncInputValue<Input, Scope>>::TransferRuntime::into_list(type_, values, storage)
     }
 }
 
-impl<T, Input> AsyncFreshInput<Vec<Input>> for AsyncList<T>
+impl<Scope, T, Input> AsyncFreshInput<Vec<Input>, Scope> for List<T>
 where
-    T: AsyncFreshInput<Input>,
+    T: AsyncFreshInput<Input, Scope>,
 {
     fn list_id(
         lists: &LibraryListConstructions,
@@ -351,32 +254,12 @@ where
     }
 }
 
-impl<T> AsyncInputValue<&AsyncList<T>> for AsyncList<T>
-where
-    T: EmbeddingValue,
-{
-    type TransferRuntime = EmbeddingListInput<TransferValues>;
-
-    fn owners_match(input: &&AsyncList<T>, owner: &Arc<()>) -> bool {
-        Arc::ptr_eq(&input.owner, owner)
-    }
-
-    fn into_runtime(
-        input: &AsyncList<T>,
-        constructions: &mut InputConstructions<'_>,
-        _storage: &EmbeddingInputStorage<TransferValues>,
-    ) -> Self::TransferRuntime {
-        constructions.skip::<Self>();
-        input.value.input()
-    }
-}
-
 impl<T> ReturnValue for List<T>
 where
     T: OutputValue<crate::runtime::LocalValues>,
 {
-    fn input_constructions(
-        entries: &LibraryFunctionEntries,
+    fn input_constructions<Graph: crate::plan::execution::function::ExecutionGraphProfile>(
+        entries: &LibraryFunctionEntries<Graph>,
         slot: usize,
     ) -> &LibraryInputConstructions {
         entries.lists[slot].inputs()

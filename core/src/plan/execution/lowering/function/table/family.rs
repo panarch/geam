@@ -1,4 +1,5 @@
 use crate::plan::execution;
+pub(in crate::plan::execution::lowering) use crate::plan::execution::function::FunctionTableFamily;
 use crate::plan::execution::function::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
     BoolFunctionId, BoolListFunctionId, CoreRuntimeFunctionId, CustomListFunctionId,
@@ -16,62 +17,6 @@ use crate::plan::execution::graph::ExternalFunctionCallTarget;
 use crate::plan::execution::lowering::specialization::{
     FunctionRepresentation, SpecializedFunctionShape, SpecializedValueShape, StoredValueShape,
 };
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(in crate::plan::execution::lowering) enum FunctionTableFamily {
-    Never,
-    Int,
-    Float,
-    String,
-    BitArray,
-    UtfCodepoint,
-    Custom,
-    External,
-    Bool,
-    Nil,
-    Tuple,
-    ParameterList,
-    IntList,
-    StringList,
-    BitArrayList,
-    UtfCodepointList,
-    CustomList,
-    ExternalList,
-    FloatList,
-    BoolList,
-    NilList,
-    TupleList,
-    ParameterListList,
-    ListList,
-    FunctionList,
-    IntFunction,
-    FloatFunction,
-    StringFunction,
-    BitArrayFunction,
-    UtfCodepointFunction,
-    CustomFunction,
-    ExternalFunction,
-    BoolFunction,
-    NilFunction,
-    TupleFunction,
-    GenericFunction,
-    NeverFunction,
-    ParameterListFunction,
-    ParameterListListFunction,
-    IntListFunction,
-    StringListFunction,
-    BitArrayListFunction,
-    UtfCodepointListFunction,
-    CustomListFunction,
-    ExternalListFunction,
-    FloatListFunction,
-    BoolListFunction,
-    NilListFunction,
-    TupleListFunction,
-    ListListFunction,
-    FunctionListFunction,
-    FunctionFunction,
-}
 
 #[derive(Clone)]
 pub(in crate::plan::execution::lowering) enum ListFunctionFunctionSignature {

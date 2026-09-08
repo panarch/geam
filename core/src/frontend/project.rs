@@ -1,11 +1,11 @@
 use super::program::{
-    ParsedModule, compile_parsed_async_host_package_program, compile_parsed_host_package_program,
-    compile_parsed_package_program, parse_module,
+    ParsedModule, compile_parsed_host_package_program, compile_parsed_package_program,
+    compile_parsed_transfer_host_package_program, parse_module,
 };
 use super::{
-    AsyncHostedTypedProgram, FrontendError, HostedTypedProgram, ModuleSource, TypedProgram,
+    FrontendError, HostedTypedProgram, ModuleSource, TransferHostedTypedProgram, TypedProgram,
 };
-use crate::host::{AsyncHostProviderSet, HostProfile, HostProviderSet};
+use crate::host::{HostProfile, HostProviderSet, TransferHostProviderSet};
 use camino::{Utf8Path, Utf8PathBuf};
 use ecow::EcoString;
 use gleam_compiler_core::build::Target;
@@ -124,32 +124,30 @@ pub fn compile_typed_host_project<Profile: HostProfile>(
     .map_err(ProjectError::from)
 }
 
-/// Compiles the selected import closure of an already resolved Gleam project
-/// with explicit resumable Rust host modules and source providers.
+/// Compiles a resolved project's selected source closure with transferable providers.
 ///
-/// This loader is read-only. It does not invoke Gleam CLI, download packages,
-/// modify project files, or run an async executor.
-pub fn compile_typed_async_host_project<Profile: HostProfile>(
+/// Loading is read-only: it neither acquires dependencies nor executes native
+/// code. A provider returning a source Future only constructs work when called;
+/// observing that work remains an explicit Rust-host operation.
+pub fn compile_typed_transfer_host_project<Profile: HostProfile>(
     project_root: impl Into<Utf8PathBuf>,
     root_module: impl Into<EcoString>,
-    hosts: AsyncHostProviderSet<Profile>,
-) -> Result<AsyncHostedTypedProgram<Profile>, ProjectError> {
-    load_project(project_root.into(), root_module.into()).and_then(|project| {
-        let selected_source_modules = project
-            .modules
-            .iter()
-            .map(|module| (module.package.clone(), module.module.name.clone()))
-            .collect::<BTreeSet<_>>();
-        let hosts = hosts.select_source_providers(&selected_source_modules);
-        compile_parsed_async_host_package_program(
-            project.root_package,
-            project.root_module,
-            project.modules,
-            hosts,
-            WarningEmitter::null(),
-        )
-        .map_err(ProjectError::from)
-    })
+    hosts: TransferHostProviderSet<Profile>,
+) -> Result<TransferHostedTypedProgram<Profile>, ProjectError> {
+    let project = load_project(project_root.into(), root_module.into())?;
+    let selected = project
+        .modules
+        .iter()
+        .map(|module| (module.package.clone(), module.module.name.clone()))
+        .collect();
+    compile_parsed_transfer_host_package_program(
+        project.root_package,
+        project.root_module,
+        project.modules,
+        hosts.select_source_providers(&selected),
+        WarningEmitter::null(),
+    )
+    .map_err(ProjectError::from)
 }
 
 struct ParsedProject {
@@ -481,12 +479,12 @@ fn select_import_closure(
 #[cfg(test)]
 mod tests {
     use super::{
-        ProjectError, SourceDirectory, compile_typed_async_host_project,
-        compile_typed_host_project, compile_typed_project, source_paths_from,
+        ProjectError, SourceDirectory, compile_typed_host_project, compile_typed_project,
+        compile_typed_transfer_host_project, source_paths_from,
     };
     use crate::host::{
-        AsyncHostModule, AsyncHostProviderSet, HostModule, HostProviderModule, HostProviderSet,
-        StatelessHostProfile,
+        HostModule, HostProviderModule, HostProviderSet, StatelessHostProfile,
+        TransferHostProviderModule, TransferHostProviderSet,
     };
     use crate::planner::UnsupportedFunctionReason;
     use crate::{HostedExecution, PlanError, Value, plan_host_program, plan_program};
@@ -907,6 +905,130 @@ pub fn value() -> Int
     }
 
     #[test]
+    fn transferable_loading_selects_the_same_read_only_import_closure() {
+        struct Provider;
+        impl crate::HostProvider<StatelessHostProfile> for Provider {
+            type State = ();
+            fn project(state: &mut ()) -> &mut () {
+                state
+            }
+        }
+        fn answer<'call>(
+            mut call: crate::host::TransferHostCall<'call, StatelessHostProfile, Provider, BigInt>,
+        ) -> Result<crate::HostCallCompletion<'call, BigInt>, crate::AsyncHostCallError> {
+            let () = *call.state();
+            Ok(call.return_value(BigInt::from(42)))
+        }
+
+        let project = tempdir().expect("temporary resolved project");
+        let root = project_root(&project);
+        let files = [
+            (
+                "gleam.toml",
+                "name = \"application\"\nversion = \"1.0.0\"\n",
+            ),
+            ("manifest.toml", "packages = []\n\n[requirements]\n"),
+            (
+                "src/main.gleam",
+                "import used\npub fn main() { used.value() }",
+            ),
+            (
+                "src/used.gleam",
+                "@external(erlang, \"host\", \"value\")\npub fn value() -> Int",
+            ),
+            (
+                "src/unused.gleam",
+                "This unselected source is deliberately invalid.",
+            ),
+        ];
+        for (path, source) in files {
+            write_file(&root, path, source);
+        }
+        let hosts = || {
+            TransferHostProviderSet::new(["unused", "used"].map(|module| {
+                TransferHostProviderModule::new("application", module)
+                    .expect("transfer module")
+                    .with_scoped_function::<Provider, (), BigInt, _>("value", answer)
+                    .expect("typed immediate function")
+            }))
+            .expect("provider selection")
+        };
+        let program = compile_typed_transfer_host_project(root.clone(), "main", hosts())
+            .expect("read-only selected source loading");
+        assert_eq!(program.root_package(), "application");
+        assert_eq!(program.root_module(), "main");
+        let (root_index, modules, providers, _) = program.into_parts();
+        assert_eq!(root_index, 1);
+        assert_eq!(modules.len(), 2);
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].package, "application");
+        assert_eq!(providers[0].module, "used");
+        assert_eq!(providers[0].functions[0].schema().name(), "value");
+        let program = compile_typed_transfer_host_project(root.clone(), "main", hosts())
+            .expect("same read-only project");
+        let plan =
+            crate::planner::plan_transfer_host_library_program(program).expect("selected plan");
+        let entry = plan
+            .functions()
+            .iter()
+            .find(|function| function.name() == "main")
+            .expect("main entry")
+            .gleam_body()
+            .expect("source body");
+        let entry = crate::plan::LibraryEntry::new(
+            entry.id(),
+            crate::plan::LibraryValueType::Int,
+            Vec::new(),
+            Vec::new(),
+        );
+        let (plan, entries) = crate::plan::execution::TransferHostedExecution::from_library_plan(
+            plan,
+            entry,
+            Vec::new(),
+        )
+        .expect("sealed project");
+        let mut state = ();
+        let mut stores = ();
+        let mut echo = drop;
+        let mut driver =
+            crate::runtime::work::driver::Driver::new(&plan, &mut state, &mut stores, &mut echo);
+        assert_eq!(
+            driver
+                .run_int(
+                    *entries.ints[0].function(),
+                    crate::runtime::TransferInputs::empty()
+                )
+                .expect("selected provider executes"),
+            BigInt::from(42)
+        );
+        for (path, source) in files {
+            assert_eq!(
+                fs::read_to_string(root.join(path)).expect("unchanged project file"),
+                source
+            );
+        }
+    }
+
+    #[test]
+    fn transferable_loading_keeps_source_errors_at_the_frontend_boundary() {
+        let project = tempdir().expect("temporary project");
+        let root = project_root(&project);
+        write_file(
+            &root,
+            "gleam.toml",
+            "name = \"application\"\nversion = \"1.0.0\"\n",
+        );
+        write_file(&root, "manifest.toml", "packages = []\n\n[requirements]\n");
+        write_file(&root, "src/main.gleam", "pub fn main() { unknown() }");
+        let hosts =
+            TransferHostProviderSet::<StatelessHostProfile>::new([]).expect("empty selection");
+        let error = compile_typed_transfer_host_project(root, "main", hosts)
+            .err()
+            .expect("source analysis must fail");
+        assert_eq!(error.to_string(), "failed to analyse Gleam module");
+    }
+
+    #[test]
     fn preserves_hosted_frontend_errors_in_project_errors() {
         let project = tempdir().expect("temporary project should be created");
         let root = project_root(&project);
@@ -1290,22 +1412,22 @@ packages = [
         )
         .err()
         .expect("missing package config should fail before hosted compilation");
-        let async_hosted_error = compile_typed_async_host_project(
-            root.clone(),
-            "main",
-            AsyncHostProviderSet::new(Vec::<AsyncHostModule>::new())
-                .expect("empty async hosts should be valid"),
-        )
-        .err()
-        .expect("missing package config should fail before async hosted compilation");
         let expected = format!(
             "failed to read Gleam package config {}",
             root.join("gleam.toml"),
         );
+        let transfer_error = compile_typed_transfer_host_project(
+            root,
+            "main",
+            TransferHostProviderSet::<StatelessHostProfile>::new([])
+                .expect("empty transfer providers"),
+        )
+        .err()
+        .expect("missing config precedes transfer compilation");
 
         assert_eq!(plain_error.to_string(), expected);
         assert_eq!(hosted_error.to_string(), expected);
-        assert_eq!(async_hosted_error.to_string(), expected);
+        assert_eq!(transfer_error.to_string(), expected);
     }
 
     #[test]

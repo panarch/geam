@@ -110,12 +110,13 @@ pub(crate) enum ListFunctionId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LibraryListFunctionId {
+pub(crate) enum LibraryListFunctionId<Graph: ExecutionGraphProfile = HostedExecutionGraph> {
     Int(IntListFunctionId),
     String(StringListFunctionId),
     BitArray(BitArrayListFunctionId),
     UtfCodepoint(UtfCodepointListFunctionId),
     Custom(CustomListFunctionId),
+    External(Graph::ExternalListFunctionId),
     Float(FloatListFunctionId),
     Bool(BoolListFunctionId),
     Nil(NilListFunctionId),
@@ -131,19 +132,26 @@ pub(crate) enum ProfiledListFunctionId<Graph: ExecutionGraphProfile> {
 
 pub(crate) type RuntimeListFunctionId = ProfiledListFunctionId<HostedExecutionGraph>;
 
-impl LibraryListFunctionId {
-    pub(crate) fn core(self) -> ListFunctionId {
+impl<Graph: ExecutionGraphProfile> LibraryListFunctionId<Graph> {
+    pub(crate) fn runtime_id(&self) -> RuntimeListFunctionId {
+        Graph::list_function(&self.profiled_runtime_id())
+    }
+
+    pub(crate) fn profiled_runtime_id(&self) -> ProfiledListFunctionId<Graph> {
         match self {
-            Self::Int(id) => ListFunctionId::Int(id),
-            Self::String(id) => ListFunctionId::String(id),
-            Self::BitArray(id) => ListFunctionId::BitArray(id),
-            Self::UtfCodepoint(id) => ListFunctionId::UtfCodepoint(id),
-            Self::Custom(id) => ListFunctionId::Custom(id),
-            Self::Float(id) => ListFunctionId::Float(id),
-            Self::Bool(id) => ListFunctionId::Bool(id),
-            Self::Nil(id) => ListFunctionId::Nil(id),
-            Self::Tuple(id) => ListFunctionId::Tuple(id),
-            Self::List(id) => ListFunctionId::List(id),
+            Self::Int(id) => ProfiledListFunctionId::Core(ListFunctionId::Int(*id)),
+            Self::String(id) => ProfiledListFunctionId::Core(ListFunctionId::String(*id)),
+            Self::BitArray(id) => ProfiledListFunctionId::Core(ListFunctionId::BitArray(*id)),
+            Self::UtfCodepoint(id) => {
+                ProfiledListFunctionId::Core(ListFunctionId::UtfCodepoint(*id))
+            }
+            Self::Custom(id) => ProfiledListFunctionId::Core(ListFunctionId::Custom(*id)),
+            Self::External(id) => ProfiledListFunctionId::External(id.clone()),
+            Self::Float(id) => ProfiledListFunctionId::Core(ListFunctionId::Float(*id)),
+            Self::Bool(id) => ProfiledListFunctionId::Core(ListFunctionId::Bool(*id)),
+            Self::Nil(id) => ProfiledListFunctionId::Core(ListFunctionId::Nil(*id)),
+            Self::Tuple(id) => ProfiledListFunctionId::Core(ListFunctionId::Tuple(*id)),
+            Self::List(id) => ProfiledListFunctionId::Core(ListFunctionId::List(*id)),
         }
     }
 }

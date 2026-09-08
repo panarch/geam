@@ -63,6 +63,7 @@ mod tests {
         };
         let external = StaticValueType::External {
             payload: syn::parse_quote!(Payload),
+            transfer_payload: syn::parse_quote!(Payload),
             schema: syn::parse_quote!(Schema),
             store_field: syn::parse_quote!(store),
         };

@@ -1,10 +1,20 @@
 use super::{FunctionTableBuilder, LoweredFunction, LoweredSpecialization};
 use crate::plan::execution::function::FunctionTables;
 use crate::plan::execution::function::{
-    AsyncHostReturnTarget, DirectHostedExecutionProfile, ExecutableFunction,
-    ExecutionBitArrayFunctionBody, ExecutionBitArrayFunctionFunctionBody,
-    ExecutionBitArrayListFunctionBody, ExecutionBoolFunctionBody,
-    ExecutionBoolFunctionFunctionBody, ExecutionBoolListFunctionBody,
+    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
+    BoolFunctionId, BoolListFunctionId, CustomListFunctionId, ExternalListFunctionId,
+    FloatFunctionFunctionId, FloatFunctionId, FloatListFunctionId, FunctionListFunctionId,
+    GenericFunctionFunctionId, IntFunctionFunctionId, IntFunctionId, IntListFunctionId,
+    ListListFunctionId, NeverFunctionBody, NeverFunctionFunctionId, NeverFunctionId,
+    NilFunctionFunctionId, NilFunctionId, NilListFunctionId, ParameterListFunctionId,
+    ParameterListListFunctionId, StringFunctionFunctionId, StringFunctionId, StringListFunctionId,
+    TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionId,
+    UtfCodepointFunctionId, UtfCodepointListFunctionId,
+};
+use crate::plan::execution::function::{
+    DirectHostedExecutionProfile, ExecutableFunction, ExecutionBitArrayFunctionBody,
+    ExecutionBitArrayFunctionFunctionBody, ExecutionBitArrayListFunctionBody,
+    ExecutionBoolFunctionBody, ExecutionBoolFunctionFunctionBody, ExecutionBoolListFunctionBody,
     ExecutionCoreListFunctionFunctionBody, ExecutionCustomFunctionBody,
     ExecutionCustomFunctionFunctionBody, ExecutionCustomListFunctionBody,
     ExecutionExternalFunctionBody, ExecutionExternalFunctionFunctionBody,
@@ -24,17 +34,6 @@ use crate::plan::execution::function::{
     ListFunctionTables, ProfiledCustomFunctionBody, ProfiledCustomFunctionFunctionBody,
     ProfiledFunctionBody, ProfiledFunctionFunctionFunctionBody, ProfiledListFunctionFunctionId,
     TypedFunctionBody, ValueFunctionTables,
-};
-use crate::plan::execution::function::{
-    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
-    BoolFunctionId, BoolListFunctionId, CustomListFunctionId, ExternalListFunctionId,
-    FloatFunctionFunctionId, FloatFunctionId, FloatListFunctionId, FunctionListFunctionId,
-    GenericFunctionFunctionId, IntFunctionFunctionId, IntFunctionId, IntListFunctionId,
-    ListListFunctionId, NeverFunctionBody, NeverFunctionFunctionId, NeverFunctionId,
-    NilFunctionFunctionId, NilFunctionId, NilListFunctionId, ParameterListFunctionId,
-    ParameterListListFunctionId, StringFunctionFunctionId, StringFunctionId, StringListFunctionId,
-    TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionId,
-    UtfCodepointFunctionId, UtfCodepointListFunctionId,
 };
 use crate::plan::execution::lowering::SpecializationOutcome;
 use crate::plan::execution::lowering::specialization::{Representability, SpecializationKey};
@@ -268,6 +267,65 @@ pub(in crate::plan::execution::lowering) struct ProfiledFunctionEntries<Profile:
             Profile,
             ExecutionFunctionFunctionFunctionBody<Profile>,
         >,
+}
+
+impl<Profile: ExecutionProfile> Default for ProfiledFunctionEntries<Profile> {
+    fn default() -> Self {
+        Self {
+            never: Vec::new(),
+            custom: Vec::new(),
+            external: Vec::new(),
+            int: Vec::new(),
+            float: Vec::new(),
+            string: Vec::new(),
+            bit_array: Vec::new(),
+            utf_codepoint: Vec::new(),
+            bool: Vec::new(),
+            nil: Vec::new(),
+            tuple: Vec::new(),
+            parameter_list: Vec::new(),
+            int_list: Vec::new(),
+            string_list: Vec::new(),
+            bit_array_list: Vec::new(),
+            utf_codepoint_list: Vec::new(),
+            custom_list: Vec::new(),
+            external_list: Vec::new(),
+            float_list: Vec::new(),
+            bool_list: Vec::new(),
+            nil_list: Vec::new(),
+            tuple_list: Vec::new(),
+            parameter_list_list: Vec::new(),
+            list_list: Vec::new(),
+            function_list: Vec::new(),
+            int_function_functions: Vec::new(),
+            float_function_functions: Vec::new(),
+            string_function_functions: Vec::new(),
+            bit_array_function_functions: Vec::new(),
+            utf_codepoint_function_functions: Vec::new(),
+            custom_function_functions: Vec::new(),
+            external_function_functions: Vec::new(),
+            bool_function_functions: Vec::new(),
+            nil_function_functions: Vec::new(),
+            tuple_function_functions: Vec::new(),
+            generic_function_functions: Vec::new(),
+            never_function_functions: Vec::new(),
+            parameter_list_function_functions: Vec::new(),
+            parameter_list_list_function_functions: Vec::new(),
+            int_list_function_functions: Vec::new(),
+            string_list_function_functions: Vec::new(),
+            bit_array_list_function_functions: Vec::new(),
+            utf_codepoint_list_function_functions: Vec::new(),
+            custom_list_function_functions: Vec::new(),
+            external_list_function_functions: Vec::new(),
+            float_list_function_functions: Vec::new(),
+            bool_list_function_functions: Vec::new(),
+            nil_list_function_functions: Vec::new(),
+            tuple_list_function_functions: Vec::new(),
+            list_list_function_functions: Vec::new(),
+            function_list_function_functions: Vec::new(),
+            function_function_functions: Vec::new(),
+        }
+    }
 }
 
 impl<Profile: ExecutionProfile> ProfiledFunctionEntries<Profile> {
@@ -1055,7 +1113,6 @@ impl<Return, TailCall> SealFunctionBody<Infallible>
     for ProfiledFunctionBody<Return, TailCall, HostedExecutionGraph>
 where
     TailCall: ProfileIndependentTailCall,
-    Return: AsyncHostReturnTarget<ProfiledFunctionBody<Return, TailCall, Infallible>>,
 {
     type Sealed = ProfiledFunctionBody<Return, TailCall, Infallible>;
 
@@ -1077,8 +1134,6 @@ impl SealFunctionBody<Infallible> for ProfiledCustomFunctionBody<HostedExecution
 impl<Body> SealFunctionBody<Infallible> for TypedFunctionBody<Body>
 where
     Body: SealFunctionBody<Infallible>,
-    <Body::Sealed as crate::plan::execution::function::FunctionBodyOwner>::Return:
-        AsyncHostReturnTarget<TypedFunctionBody<Body::Sealed>>,
 {
     type Sealed = TypedFunctionBody<Body::Sealed>;
 

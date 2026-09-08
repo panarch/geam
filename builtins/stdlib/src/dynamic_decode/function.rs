@@ -227,9 +227,18 @@ pub(super) mod provider {
 pub(super) fn host_provider<Profile>()
 -> Result<crate::HostProviderModule<Profile>, crate::HostRegistrationError>
 where
-    Profile: crate::GleamStdlibHostProfile,
+    Profile: crate::GleamStdlibLocalProfile,
 {
     provider::__geam_module::<Profile>()
+}
+
+pub(super) fn transfer_host_provider<Profile>()
+-> Result<geam_core::TransferHostProviderModule<Profile>, crate::HostRegistrationError>
+where
+    Profile: crate::GleamStdlibTransferProfile,
+    Profile::RunState: Send,
+{
+    provider::__geam_transfer_module::<Profile>()
 }
 
 #[cfg(test)]

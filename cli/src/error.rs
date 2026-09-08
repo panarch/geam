@@ -95,6 +95,11 @@ pub(super) enum CliError {
     #[error("failed to write embedding progress")]
     EmbeddingProgressIo(#[source] io::Error),
 
+    #[error(
+        "geam/future requires an explicit Rust embedding execution scope; the standalone runner does not drive Future values"
+    )]
+    StandaloneFuture,
+
     #[error("failed to write preparation progress")]
     PreparationProgressIo(#[source] io::Error),
 

@@ -10,10 +10,8 @@ use crate::{EchoSink, ExecutionError, HostProfile, HostedExecution};
 use std::sync::Arc;
 
 pub(super) trait EmbeddingValue: Sized {
-    type Runtime: EmbeddingInputValue;
-
     const VARIANT_COUNT: usize;
-    const LIST_COUNTS: [usize; 10];
+    const LIST_COUNTS: [usize; 11];
     const LIST_FAMILY: ListFamily;
 
     fn library_type() -> LibraryValueType;
@@ -24,6 +22,10 @@ pub(super) trait EmbeddingValue: Sized {
 
     fn collect_variants(variants: &mut Vec<StandardVariant>);
 
+    fn collect_input_variants(variants: &mut Vec<StandardVariant>) {
+        Self::collect_variants(variants);
+    }
+
     fn collect_lists(lists: &mut Vec<LibraryValueType>);
 
     fn standard_variants() -> Vec<StandardVariant> {
@@ -33,12 +35,20 @@ pub(super) trait EmbeddingValue: Sized {
     }
 }
 
+pub(super) trait EmbeddingInputRuntime: EmbeddingValue {
+    type Runtime: EmbeddingInputValue;
+}
+
 pub(super) trait OutputValue<Profile: RuntimeValueProfile>: EmbeddingValue {
+    fn plain_library_type() -> LibraryValueType<std::convert::Infallible>;
+
     fn take(output: &mut EmbeddingOutput<Profile>, owner: &Arc<()>) -> Self;
 }
 
 pub(super) trait Arguments {
     fn value_types() -> Vec<ValueType>;
+
+    fn standard_variants() -> Vec<StandardVariant>;
 
     fn input_variants() -> Vec<StandardVariant>;
 
@@ -46,8 +56,8 @@ pub(super) trait Arguments {
 }
 
 pub(super) trait ReturnValue: OutputValue<LocalValues> {
-    fn input_constructions(
-        entries: &LibraryFunctionEntries,
+    fn input_constructions<Graph: crate::plan::execution::function::ExecutionGraphProfile>(
+        entries: &LibraryFunctionEntries<Graph>,
         slot: usize,
     ) -> &LibraryInputConstructions;
 
@@ -72,10 +82,8 @@ pub(super) trait ReturnValue: OutputValue<LocalValues> {
 macro_rules! scalar_value {
     ($type:ty, $value_type:ident, $take:ident) => {
         impl EmbeddingValue for $type {
-            type Runtime = Self;
-
             const VARIANT_COUNT: usize = 0;
-            const LIST_COUNTS: [usize; 10] = [0; 10];
+            const LIST_COUNTS: [usize; 11] = [0; 11];
             const LIST_FAMILY: ListFamily = ListFamily::$value_type;
 
             fn library_type() -> LibraryValueType {
@@ -87,7 +95,15 @@ macro_rules! scalar_value {
             fn collect_lists(_lists: &mut Vec<LibraryValueType>) {}
         }
 
+        impl EmbeddingInputRuntime for $type {
+            type Runtime = Self;
+        }
+
         impl<Profile: RuntimeValueProfile> OutputValue<Profile> for $type {
+            fn plain_library_type() -> LibraryValueType<std::convert::Infallible> {
+                LibraryValueType::$value_type
+            }
+
             fn take(output: &mut EmbeddingOutput<Profile>, _owner: &Arc<()>) -> Self {
                 output.$take()
             }
@@ -109,11 +125,10 @@ macro_rules! tuple_value {
         where
             $($type: EmbeddingValue,)+
         {
-            type Runtime = EmbeddingTupleInput;
 
             const VARIANT_COUNT: usize = 0 $(+ $type::VARIANT_COUNT)+;
-            const LIST_COUNTS: [usize; 10] = {
-                let counts = [0; 10];
+            const LIST_COUNTS: [usize; 11] = {
+                let counts = [0; 11];
                 $(let counts = add_list_counts(counts, $type::LIST_COUNTS);)+
                 counts
             };
@@ -127,10 +142,18 @@ macro_rules! tuple_value {
                 $($type::collect_variants(variants);)+
             }
 
+            fn collect_input_variants(variants: &mut Vec<StandardVariant>) {
+                $($type::collect_input_variants(variants);)+
+            }
+
             fn collect_lists(lists: &mut Vec<LibraryValueType>) {
                 $($type::collect_lists(lists);)+
             }
 
+        }
+
+        impl<$($type: EmbeddingValue),+> EmbeddingInputRuntime for ($($type,)+) {
+            type Runtime = EmbeddingTupleInput;
         }
 
         impl<Profile, $($type),+> OutputValue<Profile> for ($($type,)+)
@@ -138,6 +161,10 @@ macro_rules! tuple_value {
             Profile: RuntimeValueProfile,
             $($type: OutputValue<Profile>,)+
         {
+            fn plain_library_type() -> LibraryValueType<std::convert::Infallible> {
+                LibraryValueType::Tuple(vec![$($type::value_type()),+])
+            }
+
             fn take(output: &mut EmbeddingOutput<Profile>, owner: &Arc<()>) -> Self {
                 ($($type::take(output, owner),)+)
             }
@@ -154,10 +181,8 @@ tuple_value!(A, B, C, D, E, F);
 tuple_value!(A, B, C, D, E, F, G);
 
 impl<Success: EmbeddingValue, Failure: EmbeddingValue> EmbeddingValue for Result<Success, Failure> {
-    type Runtime = EmbeddingCustomInput;
-
     const VARIANT_COUNT: usize = 1 + Success::VARIANT_COUNT + Failure::VARIANT_COUNT;
-    const LIST_COUNTS: [usize; 10] = add_list_counts(Success::LIST_COUNTS, Failure::LIST_COUNTS);
+    const LIST_COUNTS: [usize; 11] = add_list_counts(Success::LIST_COUNTS, Failure::LIST_COUNTS);
     const LIST_FAMILY: ListFamily = ListFamily::Custom;
 
     fn library_type() -> LibraryValueType {
@@ -172,10 +197,22 @@ impl<Success: EmbeddingValue, Failure: EmbeddingValue> EmbeddingValue for Result
         Failure::collect_variants(variants);
     }
 
+    fn collect_input_variants(variants: &mut Vec<StandardVariant>) {
+        variants.push(StandardVariant::Result);
+        Success::collect_input_variants(variants);
+        Failure::collect_input_variants(variants);
+    }
+
     fn collect_lists(lists: &mut Vec<LibraryValueType>) {
         Success::collect_lists(lists);
         Failure::collect_lists(lists);
     }
+}
+
+impl<Success: EmbeddingValue, Failure: EmbeddingValue> EmbeddingInputRuntime
+    for Result<Success, Failure>
+{
+    type Runtime = EmbeddingCustomInput;
 }
 
 impl<Profile, Success, Failure> OutputValue<Profile> for Result<Success, Failure>
@@ -184,6 +221,12 @@ where
     Success: OutputValue<Profile>,
     Failure: OutputValue<Profile>,
 {
+    fn plain_library_type() -> LibraryValueType<std::convert::Infallible> {
+        LibraryValueType::Custom(
+            StandardVariant::Result.custom_type(vec![Success::value_type(), Failure::value_type()]),
+        )
+    }
+
     fn take(output: &mut EmbeddingOutput<Profile>, owner: &Arc<()>) -> Self {
         if output.take_variant() == 0 {
             Ok(Success::take(output, owner))
@@ -194,10 +237,8 @@ where
 }
 
 impl<Value: EmbeddingValue> EmbeddingValue for Option<Value> {
-    type Runtime = EmbeddingCustomInput;
-
     const VARIANT_COUNT: usize = 1 + Value::VARIANT_COUNT;
-    const LIST_COUNTS: [usize; 10] = Value::LIST_COUNTS;
+    const LIST_COUNTS: [usize; 11] = Value::LIST_COUNTS;
     const LIST_FAMILY: ListFamily = ListFamily::Custom;
 
     fn library_type() -> LibraryValueType {
@@ -209,9 +250,18 @@ impl<Value: EmbeddingValue> EmbeddingValue for Option<Value> {
         Value::collect_variants(variants);
     }
 
+    fn collect_input_variants(variants: &mut Vec<StandardVariant>) {
+        variants.push(StandardVariant::Option);
+        Value::collect_input_variants(variants);
+    }
+
     fn collect_lists(lists: &mut Vec<LibraryValueType>) {
         Value::collect_lists(lists);
     }
+}
+
+impl<Value: EmbeddingValue> EmbeddingInputRuntime for Option<Value> {
+    type Runtime = EmbeddingCustomInput;
 }
 
 impl<Profile, Value> OutputValue<Profile> for Option<Value>
@@ -219,6 +269,10 @@ where
     Profile: RuntimeValueProfile,
     Value: OutputValue<Profile>,
 {
+    fn plain_library_type() -> LibraryValueType<std::convert::Infallible> {
+        LibraryValueType::Custom(StandardVariant::Option.custom_type(vec![Value::value_type()]))
+    }
+
     fn take(output: &mut EmbeddingOutput<Profile>, owner: &Arc<()>) -> Self {
         if output.take_variant() == 0 {
             Some(Value::take(output, owner))
@@ -234,6 +288,10 @@ impl Arguments for () {
     }
 
     fn input_variants() -> Vec<StandardVariant> {
+        Vec::new()
+    }
+
+    fn standard_variants() -> Vec<StandardVariant> {
         Vec::new()
     }
 
@@ -254,6 +312,12 @@ macro_rules! arguments {
 
             fn input_variants() -> Vec<StandardVariant> {
                 let mut variants = Vec::with_capacity(0 $(+ $type::VARIANT_COUNT)+);
+                $($type::collect_input_variants(&mut variants);)+
+                variants
+            }
+
+            fn standard_variants() -> Vec<StandardVariant> {
+                let mut variants = Vec::new();
                 $($type::collect_variants(&mut variants);)+
                 variants
             }
@@ -278,8 +342,10 @@ arguments!(A, B, C, D, E, F, G);
 macro_rules! scalar_return {
     ($type:ty, $entries:ident, $run:ident, $run_hosted:ident) => {
         impl ReturnValue for $type {
-            fn input_constructions(
-                entries: &LibraryFunctionEntries,
+            fn input_constructions<
+                Graph: crate::plan::execution::function::ExecutionGraphProfile,
+            >(
+                entries: &LibraryFunctionEntries<Graph>,
                 slot: usize,
             ) -> &LibraryInputConstructions {
                 entries.$entries[slot].inputs()
@@ -345,8 +411,8 @@ macro_rules! tuple_return {
         where
             $($type: OutputValue<LocalValues>,)+
         {
-            fn input_constructions(
-                entries: &LibraryFunctionEntries,
+            fn input_constructions<Graph: crate::plan::execution::function::ExecutionGraphProfile>(
+                entries: &LibraryFunctionEntries<Graph>,
                 slot: usize,
             ) -> &LibraryInputConstructions {
                 entries.tuples[slot].inputs()
@@ -408,8 +474,10 @@ macro_rules! custom_return {
             Success: OutputValue<LocalValues>,
             Failure: OutputValue<LocalValues>,
         {
-            fn input_constructions(
-                entries: &LibraryFunctionEntries,
+            fn input_constructions<
+                Graph: crate::plan::execution::function::ExecutionGraphProfile,
+            >(
+                entries: &LibraryFunctionEntries<Graph>,
                 slot: usize,
             ) -> &LibraryInputConstructions {
                 entries.customs[slot].inputs()
@@ -462,8 +530,8 @@ impl<Value> ReturnValue for Option<Value>
 where
     Value: OutputValue<LocalValues>,
 {
-    fn input_constructions(
-        entries: &LibraryFunctionEntries,
+    fn input_constructions<Graph: crate::plan::execution::function::ExecutionGraphProfile>(
+        entries: &LibraryFunctionEntries<Graph>,
         slot: usize,
     ) -> &LibraryInputConstructions {
         entries.customs[slot].inputs()

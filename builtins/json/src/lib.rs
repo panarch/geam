@@ -3,9 +3,8 @@ mod schema;
 
 pub(crate) use geam_core::{
     BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostComponentProfile,
-    HostCustomType, HostExternal, HostList, HostListType, HostProfile, HostProvider,
-    HostProviderComponent, HostProviderComponentRegistration, HostProviderModule,
-    HostRegistrationError,
+    HostCustomType, HostExternal, HostListType, HostProfile, HostProvider, HostProviderComponent,
+    HostProviderComponentRegistration, HostProviderModule, HostRegistrationError,
 };
 #[cfg(test)]
 pub(crate) use geam_core::{
@@ -20,10 +19,25 @@ use geam_stdlib::{
 };
 
 /// A host profile that composes the official Gleam JSON and standard-library components.
-pub trait GleamJsonHostProfile: GleamStdlibHostProfile + HostComponentProfile<Component> {}
+pub trait GleamJsonHostProfile:
+    geam_stdlib::GleamStdlibLocalProfile + HostComponentProfile<Component>
+{
+}
 
 impl<Profile> GleamJsonHostProfile for Profile where
-    Profile: GleamStdlibHostProfile + HostComponentProfile<Component>
+    Profile: geam_stdlib::GleamStdlibLocalProfile + HostComponentProfile<Component>
+{
+}
+
+/// The JSON and standard-library projections for explicitly transferable composition.
+pub trait GleamJsonTransferProfile:
+    geam_stdlib::GleamStdlibTransferProfile + geam_core::AsyncHostComponentProfile<Component>
+{
+}
+
+impl<Profile> GleamJsonTransferProfile for Profile where
+    Profile:
+        geam_stdlib::GleamStdlibTransferProfile + geam_core::AsyncHostComponentProfile<Component>
 {
 }
 
@@ -31,6 +45,12 @@ impl<Profile> GleamJsonHostProfile for Profile where
 #[derive(Default)]
 pub struct GleamJsonStores {
     json: function::Stores,
+}
+
+/// JSON storage for explicitly transferable embedding composition.
+#[derive(Default)]
+pub struct GleamJsonTransferStores {
+    json: function::TransferStores,
 }
 
 /// The statically composed provider component for the official Gleam JSON package.
@@ -45,6 +65,10 @@ impl HostProviderComponent for Component {
 
 impl geam_core::__macro_support::ProviderPackage for Component {
     const PACKAGE: &'static str = "gleam_json";
+}
+
+impl geam_core::AsyncHostProviderComponent for Component {
+    type AsyncStores = GleamJsonTransferStores;
 }
 
 /// External stores for the default combined standard-library and JSON profile.
@@ -127,18 +151,25 @@ where
     }
 }
 
-pub(crate) fn json_stores<Profile>(stores: &Profile::ExternalStores) -> &GleamJsonStores
+/// Registers the official JSON package for explicitly transferable execution.
+pub fn transfer_host_providers<Profile>()
+-> Result<Vec<geam_core::TransferHostProviderModule<Profile>>, HostRegistrationError>
 where
-    Profile: GleamJsonHostProfile,
+    Profile: GleamJsonTransferProfile,
+    Profile::RunState: Send,
 {
-    <Profile as HostComponentProfile<Component>>::component_stores(stores)
+    <Component as geam_core::TransferHostProviderComponentRegistration<Profile>>::providers()
 }
 
-pub(crate) fn provider_stores<Profile>(stores: &Profile::ExternalStores) -> &function::Stores
+impl<Profile> geam_core::TransferHostProviderComponentRegistration<Profile> for Component
 where
-    Profile: GleamJsonHostProfile,
+    Profile: GleamJsonTransferProfile,
+    Profile::RunState: Send,
 {
-    &json_stores::<Profile>(stores).json
+    fn providers()
+    -> Result<Vec<geam_core::TransferHostProviderModule<Profile>>, HostRegistrationError> {
+        function::transfer_host_provider::<Profile>().map(|provider| vec![provider])
+    }
 }
 
 #[cfg(test)]
@@ -149,7 +180,6 @@ mod tests {
     use super::test_support::{CustomProfile, CustomRunState, CustomStores};
     use super::{
         Component, GleamJsonProfile, GleamJsonProfileStores, GleamJsonRunState, host_providers,
-        json_stores,
     };
     use crate::{HostComponentProfile, HostProviderComponent, HostProviderComponentRegistration};
     use geam_stdlib::{Component as GleamStdlibComponent, GleamStdlibRunState};
@@ -184,7 +214,7 @@ mod tests {
             &default.stdlib,
         ));
         assert!(std::ptr::eq(
-            json_stores::<GleamJsonProfile>(&default),
+            <GleamJsonProfile as HostComponentProfile<Component>>::component_stores(&default),
             &default.json,
         ));
         assert!(std::ptr::eq(
@@ -194,7 +224,7 @@ mod tests {
             &custom.stdlib,
         ));
         assert!(std::ptr::eq(
-            json_stores::<CustomProfile>(&custom),
+            <CustomProfile as HostComponentProfile<Component>>::component_stores(&custom),
             &custom.json,
         ));
 

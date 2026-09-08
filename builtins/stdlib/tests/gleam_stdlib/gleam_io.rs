@@ -13,6 +13,9 @@ use std::rc::Rc;
 
 use super::{ExpectedSurface, assert_surface, project_root};
 
+#[path = "gleam_io/transfer.rs"]
+mod transfer;
+
 const DEPENDENCIES: &[&str] = &["gleam/io"];
 
 const SURFACE: ExpectedSurface = ExpectedSurface {
@@ -86,6 +89,47 @@ fn runs_official_gleam_io_with_caller_owned_output() {
         independent_state.io_outputs(),
         EXPECTED_OUTPUTS.iter().copied(),
     );
+
+    let mut transferred = super::transfer::fixture("gleam_io");
+    let mut transfer_state = super::transfer_support::RunState {
+        stdlib: GleamStdlibRunState::from_seed([7; 32]),
+        work: (),
+    };
+    let mut transfer_echo = super::transfer_fixture::ObservedEcho::default();
+    for _ in 0..2 {
+        transferred
+            .run(&mut transfer_state, &mut transfer_echo)
+            .expect("transfer IO repeated execution");
+        std::mem::take(&mut transfer_echo).assert_result(&Value::Nil, &[]);
+    }
+    assert_outputs(
+        transfer_state.stdlib.io_outputs(),
+        EXPECTED_OUTPUTS
+            .iter()
+            .copied()
+            .chain(EXPECTED_OUTPUTS.iter().copied()),
+    );
+    let taken = transfer_state.stdlib.take_io_outputs();
+    assert_outputs(
+        &taken,
+        EXPECTED_OUTPUTS
+            .iter()
+            .copied()
+            .chain(EXPECTED_OUTPUTS.iter().copied()),
+    );
+    assert!(transfer_state.stdlib.io_outputs().is_empty());
+    let mut independent = super::transfer_support::RunState {
+        stdlib: GleamStdlibRunState::from_seed([8; 32]),
+        work: (),
+    };
+    transferred
+        .run(&mut independent, &mut transfer_echo)
+        .expect("transfer IO independent state");
+    transfer_echo.assert_result(&Value::Nil, &[]);
+    assert_outputs(
+        independent.stdlib.io_outputs(),
+        EXPECTED_OUTPUTS.iter().copied(),
+    );
 }
 
 #[test]
@@ -130,7 +174,7 @@ fn preserves_io_and_echo_order_before_a_later_panic() {
 
 fn execution<Profile>(root_module: &str) -> HostedExecution<Profile>
 where
-    Profile: GleamStdlibHostProfile,
+    Profile: geam_stdlib::GleamStdlibLocalProfile,
 {
     let providers = host_providers::<Profile>().expect("official stdlib providers should register");
     let hosts = HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), providers)

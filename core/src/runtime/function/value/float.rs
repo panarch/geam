@@ -1,9 +1,8 @@
-use super::super::{EvaluatedFunctionExit, evaluate_entry, parameter_locals};
+use super::super::{EvaluatedFunctionExit, evaluate_entry};
 use crate::plan::execution::function::FloatFunctionId;
-use crate::plan::execution::graph::ParamLocal;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
-use crate::runtime::graph::RetainedValues;
+use crate::runtime::graph::ProfiledRetainedValues;
 use crate::runtime::state::RuntimeStateFor;
 
 pub(in crate::runtime) fn run_float<Plan: ExecutableRuntimePlan>(
@@ -11,8 +10,8 @@ pub(in crate::runtime) fn run_float<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     mut function: FloatFunctionId,
     mut origin: HostCallOrigin,
-    mut inputs: RetainedValues,
-) -> ExecutionResult<f64> {
+    mut inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<f64, Plan::Values> {
     loop {
         let exit = evaluate_entry(plan, state, plan.float_function(function), origin, inputs)?;
         match exit {
@@ -29,18 +28,12 @@ pub(in crate::runtime) fn run_float<Plan: ExecutableRuntimePlan>(
     }
 }
 
-pub(in crate::runtime) fn float_parameter_locals<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    function: FloatFunctionId,
-) -> Vec<ParamLocal> {
-    parameter_locals(plan, plan.float_function(function))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::float_parameter_locals;
     use crate::plan::execution::function::FloatFunctionId;
+    use crate::plan::execution::graph::FunctionTarget;
     use crate::plan::execution::graph::{FloatLocalId, ParamLocal};
+    use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::{
         HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource, Value,
         compile_typed_host_program, compile_typed_module, plan_host_program, plan_module, run_main,
@@ -62,7 +55,9 @@ pub fn main() {
         let plan = plan_module(typed).expect("source should plan");
         let execution = crate::ExecutionPlan::from_module_plan(plan);
         assert_eq!(
-            float_parameter_locals(&execution, FloatFunctionId(1)),
+            execution
+                .function_parameters()
+                .function(&FunctionTarget::Float(FloatFunctionId(1))),
             [ParamLocal::Float(FloatLocalId(0))],
         );
         assert_eq!(run_main(&execution, &mut Vec::new()), Ok(Value::Float(1.5)),);
@@ -101,11 +96,15 @@ pub fn main() {
         let execution =
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         assert_eq!(
-            float_parameter_locals(&execution, FloatFunctionId(2)),
+            execution
+                .function_parameters()
+                .function(&FunctionTarget::Float(FloatFunctionId(2))),
             [ParamLocal::Float(FloatLocalId(0))],
         );
         assert_eq!(
-            float_parameter_locals(&execution, FloatFunctionId(1)),
+            execution
+                .function_parameters()
+                .function(&FunctionTarget::Float(FloatFunctionId(1))),
             [ParamLocal::Float(FloatLocalId(0))],
         );
         assert_eq!(

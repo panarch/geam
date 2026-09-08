@@ -21,6 +21,19 @@ fn generic_value_type_restrictions_are_compile_time_contracts() {
     cases.compile_fail("tests/ui/generic/*.rs");
 }
 
+#[test]
+fn async_provider_restrictions_are_compile_time_contracts() {
+    if std::env::var_os(CHILD).is_none() {
+        run_without_nested_cargo_instrumentation(
+            "async_provider_restrictions_are_compile_time_contracts",
+        );
+        return;
+    }
+
+    let cases = trybuild::TestCases::new();
+    cases.compile_fail("tests/ui/async/*.rs");
+}
+
 fn run_without_nested_cargo_instrumentation(test: &str) {
     let target = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()

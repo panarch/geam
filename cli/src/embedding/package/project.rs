@@ -6,10 +6,26 @@ use crate::error::CliError;
 use crate::project::read_package_config;
 use camino::{Utf8Path, Utf8PathBuf};
 use gleam_core::config::PackageConfig;
+use serde::Deserialize;
 use serde_json::json;
+
+#[derive(Debug, Default, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub(in crate::embedding) enum EmbeddingStorage {
+    #[default]
+    Local,
+    Transferable,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct EmbeddingConfiguration {
+    storage: EmbeddingStorage,
+}
 
 #[derive(Debug)]
 pub(in crate::embedding) struct EmbeddingProject {
+    pub(in crate::embedding) storage: EmbeddingStorage,
     pub(super) package_name: String,
     pub(super) manifest: Utf8PathBuf,
     pub(super) project_root: Utf8PathBuf,
@@ -57,18 +73,19 @@ impl EmbeddingProject {
         )?;
         let package = select_package(&metadata, &manifest)?;
         let package_name = package.name.to_string();
-        if package
+        let configuration = package
             .metadata
             .get("geam")
-            .and_then(|geam| geam.get("embedding"))
-            .is_some()
-        {
-            return Err(CliError::InvalidEmbeddingProject {
-                package: package_name,
-                manifest,
-                reason: "remove obsolete [package.metadata.geam.embedding]; embedding uses gleam/ and the Cargo package name".to_owned(),
-            });
-        }
+            .and_then(|geam| geam.get("embedding"));
+        let configuration = configuration
+            .map(|value| serde_json::from_value::<EmbeddingConfiguration>(value.clone()))
+            .transpose()
+            .map_err(|error| CliError::InvalidEmbeddingProject {
+                package: package_name.clone(),
+                manifest: manifest.clone(),
+                reason: format!("invalid [package.metadata.geam.embedding]: {error}; only storage = \"local\" or \"transferable\" is supported; embedding uses gleam/ and the Cargo package name"),
+            })?
+            .unwrap_or_default();
         let root_module = package_name.replace('-', "_");
         serde_json::from_value::<PackageConfig>(json!({ "name": root_module })).map_err(
             |error| CliError::InvalidEmbeddingProject {
@@ -81,6 +98,7 @@ impl EmbeddingProject {
         let output_directory = root.join("src");
         let output_path = output_directory.join("geam_bindings.rs");
         Ok(Self {
+            storage: configuration.storage,
             package_name,
             manifest,
             project_root: root.join("gleam"),
@@ -124,7 +142,7 @@ fn find_manifest(start: &Utf8Path) -> Result<Utf8PathBuf, CliError> {
 
 #[cfg(test)]
 mod tests {
-    use super::EmbeddingProject;
+    use super::{EmbeddingProject, EmbeddingStorage};
     use crate::cargo::SystemCargoMetadata;
     use crate::error::CliError;
     use camino::Utf8PathBuf;
@@ -150,6 +168,7 @@ geam-unresolved-embedding-fixture = "=99.0.0"
             EmbeddingProject::load_with(&fixture.root.join("src/nested"), &SystemCargoMetadata)
                 .expect("initial selection should not resolve dependencies");
         assert_eq!(project.package_name, "inventory-app");
+        assert_eq!(project.storage, EmbeddingStorage::Local);
         assert_eq!(project.root_module, "inventory_app");
         assert_eq!(project.project_root, fixture.root.join("gleam"));
         assert_eq!(project.output_directory, fixture.root.join("src"));
@@ -245,7 +264,7 @@ module = "another_module"
         assert_eq!(
             error.to_string(),
             format!(
-                "invalid Rust embedding project for package inventory at {}: remove obsolete [package.metadata.geam.embedding]; embedding uses gleam/ and the Cargo package name",
+                "invalid Rust embedding project for package inventory at {}: invalid [package.metadata.geam.embedding]: unknown field `module`, expected `storage`; only storage = \"local\" or \"transferable\" is supported; embedding uses gleam/ and the Cargo package name",
                 fixture.root.join("Cargo.toml"),
             )
         );
@@ -282,6 +301,50 @@ module = "another_module"
                 .expect("member directory should select its own package");
         assert_eq!(member.manifest, fixture.root.join("member/Cargo.toml"));
         assert_eq!(member.project_root, fixture.root.join("member/gleam"));
+    }
+
+    #[test]
+    fn selects_storage_explicitly_without_changing_paths_or_resolving_dependencies() {
+        for (metadata, expected) in [
+            (
+                "[package.metadata.geam.embedding]\n",
+                EmbeddingStorage::Local,
+            ),
+            (
+                "[package.metadata.geam.embedding]\nstorage = 'local'\n",
+                EmbeddingStorage::Local,
+            ),
+            (
+                "[package.metadata.geam.embedding]\nstorage = 'transferable'\n",
+                EmbeddingStorage::Transferable,
+            ),
+        ] {
+            let source = format!(
+                "[package]\nname = 'selected-host'\nversion = '0.1.0'\n{metadata}[workspace]\n"
+            );
+            let fixture = ProjectFixture::new(&source);
+            let selected = EmbeddingProject::load(&fixture.root).expect("explicit composition");
+            assert_eq!(selected.storage, expected);
+            assert_eq!(selected.root_module, "selected_host");
+            assert_eq!(selected.project_root, fixture.root.join("gleam"));
+            assert_eq!(
+                fs::read_to_string(selected.manifest).expect("unchanged manifest"),
+                source
+            );
+            assert!(!fixture.root.join("Cargo.lock").exists());
+        }
+        let fixture = ProjectFixture::new(
+            "[package]\nname = 'invalid'\nversion = '0.1.0'\n[package.metadata.geam.embedding]\nstorage = 'automatic'\n[workspace]\n",
+        );
+        let error = EmbeddingProject::load(&fixture.root).expect_err("no inferred storage mode");
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "invalid Rust embedding project for package invalid at {}: invalid [package.metadata.geam.embedding]: unknown variant `automatic`, expected `local` or `transferable`; only storage = \"local\" or \"transferable\" is supported; embedding uses gleam/ and the Cargo package name",
+                fixture.root.join("Cargo.toml")
+            )
+        );
+        assert!(!fixture.root.join("gleam").exists());
     }
 
     #[cfg(unix)]

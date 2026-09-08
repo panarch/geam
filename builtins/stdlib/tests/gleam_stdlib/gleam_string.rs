@@ -110,12 +110,9 @@ fn hosts() -> HostProviderSet<GleamStdlibProfile> {
 }
 
 fn run(root_module: &str) {
-    run_hosted_fixture(
-        root_module,
-        DEPENDENCIES,
-        hosts(),
-        &mut GleamStdlibRunState::from_seed([0; 32]),
-    );
+    run_hosted_fixture(root_module, DEPENDENCIES, hosts(), || {
+        GleamStdlibRunState::from_seed([0; 32])
+    });
 }
 
 #[test]

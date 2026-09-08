@@ -48,6 +48,7 @@ jobs:
         run: |
           cargo test --package geam --test binary --locked
           cargo test --package geam --test cross_crate_http --locked
+          cargo test --package geam --test future_builtins --locked
           cargo test --package geam --test standalone_distribution --locked
 
       - name: Verify standalone provider packages
@@ -131,6 +132,21 @@ jobs:
             )
             echo "::endgroup::"
           done
+
+      - name: Verify the independent async provider
+        working-directory: examples/provider/async_files/provider
+        run: |
+          cargo fmt --all --check
+          CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding" cargo test --locked
+          CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding" cargo clippy --all-targets --locked -- -D warnings
+          cargo package --locked --no-verify
+          (cd ../project/packages/example_async_files && gleam format --check)
+
+      - name: Verify Geam Gleam package
+        working-directory: builtins/geam/gleam
+        run: |
+          gleam format --check
+          gleam export hex-tarball
 
       - name: Check manual embedding formatting
         working-directory: examples/embedding/manual

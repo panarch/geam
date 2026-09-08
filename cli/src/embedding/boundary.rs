@@ -19,6 +19,7 @@ pub(super) enum DataType {
     Result(Box<DataType>, Box<DataType>),
     Option(Box<DataType>),
     List(Box<DataType>),
+    Future(Box<DataType>),
 }
 
 #[derive(Debug)]
@@ -211,6 +212,10 @@ impl DataType {
                         ("gleam_stdlib", "gleam/option", "Option", [item]) => {
                             Self::from_type(item, &format!("{position} -> Option value"))
                                 .map(|item| Self::Option(Box::new(item)))
+                        }
+                        ("geam", "geam/future", "Future", [item]) => {
+                            Self::from_type(item, &format!("{position} -> Future completion"))
+                                .map(|item| Self::Future(Box::new(item)))
                         }
                         ("", "gleam", "Result", [ok, error]) => {
                             let ok = Self::from_type(ok, &format!("{position} -> Result Ok"));
@@ -451,6 +456,93 @@ pub fn seven(value: #(Int, Float, String, BitArray, UtfCodepoint, Bool, Nil)) { 
                 DataType::Nil,
             ])
         );
+    }
+
+    #[test]
+    fn preserves_canonical_future_identity_and_recursive_source_positions() {
+        let program = compile_typed_package_program(
+            "application",
+            "boundary",
+            [
+                PackageSource::new(
+                    "geam",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "geam/future",
+                        "future.gleam",
+                        "pub type Future(value)",
+                    )],
+                ),
+                PackageSource::new(
+                    "application",
+                    ["geam"],
+                    [ModuleSource::new(
+                        "boundary",
+                        "boundary.gleam",
+                        r#"
+import geam/future.{type Future}
+pub type Nested = #(List(Future(Int)), Future(List(Result(String, Future(Bool)))))
+pub fn keep(value: Nested) { value }
+pub fn double(value: Int) { value * 2 }
+pub fn again(value: Future(Future(Int))) { value }
+"#,
+                    )],
+                ),
+            ],
+        )
+        .expect("ordinary nominal source");
+        let bindings =
+            PlainBindings::from_program(RustIdentifier::parse("runtime").expect("alias"), &program)
+                .expect("recursive Future boundary");
+        let expected = DataType::Tuple(vec![
+            DataType::List(Box::new(DataType::Future(Box::new(DataType::Int)))),
+            DataType::Future(Box::new(DataType::List(Box::new(DataType::Result(
+                Box::new(DataType::String),
+                Box::new(DataType::Future(Box::new(DataType::Bool))),
+            ))))),
+        ]);
+        assert_eq!(
+            bindings.first.arguments.as_slice(),
+            std::slice::from_ref(&expected)
+        );
+        assert_eq!(bindings.first.return_type, expected);
+        assert_eq!(bindings.remaining[0].arguments, [DataType::Int]);
+        assert_eq!(bindings.remaining[0].return_type, DataType::Int);
+        assert_eq!(
+            bindings.remaining[1].return_type,
+            DataType::Future(Box::new(DataType::Future(Box::new(DataType::Int))))
+        );
+    }
+
+    #[test]
+    fn rejects_lookalike_futures_and_unsupported_completion_shapes_early() {
+        for (package, reason) in [
+            (
+                "other",
+                "public function `work` argument 1 has an unsupported named type `other:geam/future.Future`",
+            ),
+            (
+                "geam",
+                "public function `work` argument 1 -> Future completion -> List item has an unsupported function type",
+            ),
+        ] {
+            let program = compile_typed_package_program("application", "boundary", [
+                PackageSource::new(package, Vec::<String>::new(), [ModuleSource::new(
+                    "geam/future", "future.gleam", "pub type Future(value)",
+                )]),
+                PackageSource::new("application", [package], [ModuleSource::new(
+                    "boundary", "boundary.gleam", "import geam/future.{type Future}\npub fn work(_value: Future(List(fn() -> Int))) { 42 }",
+                )]),
+            ]).expect("valid nominal source");
+            let error = PlainBindings::from_program(
+                RustIdentifier::parse("runtime").expect("alias"),
+                &program,
+            )
+            .expect_err("unsupported boundary");
+            assert!(
+                matches!(error, CliError::InvalidEmbeddingBoundary { module, reason: actual } if module == "boundary" && actual == reason)
+            );
+        }
     }
 
     #[test]

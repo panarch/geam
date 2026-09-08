@@ -11,8 +11,8 @@ use crate::plan::execution::function::{
 };
 use crate::plan::execution::graph as execution_graph;
 use crate::plan::execution::host::{
-    AsyncHostFunctionIndex, AsyncHostedExecutionProfile, HostFunctionId, HostNeverFunctionId,
-    HostedExecutionProfile, HostedFunctionTarget, ResumableHostedFunctionTarget,
+    HostFunctionId, HostNeverFunctionId, HostedExecutionProfile, HostedFunctionTarget,
+    TransferHostedExecutionProfile,
 };
 
 #[derive(Clone, Copy)]
@@ -20,9 +20,6 @@ pub(super) enum HostTargetIndex {
     Value(usize),
     Never(usize),
 }
-
-#[derive(Clone, Copy)]
-struct ResumableNeverTargetIndex(usize);
 
 #[derive(Clone, Copy)]
 pub(super) struct HostNeverTargetIndex(pub(super) usize);
@@ -72,107 +69,51 @@ impl LowerNeverHostTarget<HostedExecutionProfile> for HostNeverTargetIndex {
     }
 }
 
-impl LowerHostTarget<AsyncHostedExecutionProfile> for ResumableNeverTargetIndex {
+impl LowerHostTarget<TransferHostedExecutionProfile> for HostTargetIndex {
     fn lower<Body>(
         self,
         key: &SpecializationKey,
-        _return: Body::Return,
-    ) -> function::LoweredSpecialization<ExecutionFunction<AsyncHostedExecutionProfile, Body>>
+        return_: Body::Return,
+    ) -> function::LoweredSpecialization<ExecutionFunction<TransferHostedExecutionProfile, Body>>
     where
         Body: ExecutionFunctionBody,
     {
-        function::lowered_host_function(
-            key,
-            ResumableHostedFunctionTarget::never(HostNeverFunctionId::new(self.0)),
-        )
+        let target = match self {
+            Self::Value(index) => {
+                HostedFunctionTarget::value(HostFunctionId::<Body>::new(index, return_))
+            }
+            Self::Never(index) => HostedFunctionTarget::never(HostNeverFunctionId::new(index)),
+        };
+        function::lowered_host_function(key, target)
     }
 }
 
-impl LowerNeverHostTarget<AsyncHostedExecutionProfile> for ResumableNeverTargetIndex {
+impl LowerNeverHostTarget<TransferHostedExecutionProfile> for HostNeverTargetIndex {
     fn lower_never(
         self,
         key: &SpecializationKey,
-    ) -> function::LoweredSpecialization<ExecutionNeverFunction<AsyncHostedExecutionProfile>> {
+    ) -> function::LoweredSpecialization<ExecutionNeverFunction<TransferHostedExecutionProfile>>
+    {
         function::lowered_host_function(key, HostNeverFunctionId::new(self.0))
     }
 }
 
-pub(super) fn lower_async_host_return(
+pub(super) fn lower_direct_transfer_host_return(
     index: usize,
     key: &SpecializationKey,
-    target: AsyncHostFunctionIndex,
-    functions: &mut function::ProfiledFunctionEntries<AsyncHostedExecutionProfile>,
+    return_: StoredValueShape,
+    host_index: usize,
+    functions: &mut function::ProfiledFunctionEntries<TransferHostedExecutionProfile>,
+    context: &mut LoweringContext,
 ) {
-    macro_rules! push_target {
-        ($field:ident, $body:ty, $host_index:expr, $return_:expr) => {
-            functions.$field.push((
-                index,
-                function::lowered_host_function(
-                    key,
-                    ResumableHostedFunctionTarget::value(HostFunctionId::<$body>::new(
-                        $host_index,
-                        $return_,
-                    )),
-                ),
-            ))
-        };
-    }
-
-    match target {
-        AsyncHostFunctionIndex::Int(host_index) => push_target!(
-            int,
-            execution_function::IntFunctionBody,
-            host_index,
-            execution_graph::IntLocalId(0)
-        ),
-        AsyncHostFunctionIndex::Float(host_index) => push_target!(
-            float,
-            execution_function::FloatFunctionBody,
-            host_index,
-            execution_graph::FloatLocalId(0)
-        ),
-        AsyncHostFunctionIndex::String(host_index) => push_target!(
-            string,
-            execution_function::StringFunctionBody,
-            host_index,
-            execution_graph::StringLocalId(0)
-        ),
-        AsyncHostFunctionIndex::BitArray(host_index) => push_target!(
-            bit_array,
-            execution_function::BitArrayFunctionBody,
-            host_index,
-            execution_graph::BitArrayLocalId(0)
-        ),
-        AsyncHostFunctionIndex::UtfCodepoint(host_index) => push_target!(
-            utf_codepoint,
-            execution_function::UtfCodepointFunctionBody,
-            host_index,
-            execution_graph::UtfCodepointLocalId(0)
-        ),
-        AsyncHostFunctionIndex::Bool(host_index) => push_target!(
-            bool,
-            execution_function::BoolFunctionBody,
-            host_index,
-            execution_graph::BoolLocalId(0)
-        ),
-        AsyncHostFunctionIndex::Nil(host_index) => push_target!(
-            nil,
-            execution_function::NilFunctionBody,
-            host_index,
-            execution_graph::NilLocalId(0)
-        ),
-        AsyncHostFunctionIndex::External {
-            index: host_index,
-            type_,
-        } => {
-            push_target!(
-                external,
-                execution_function::ExternalFunctionBody,
-                host_index,
-                execution_graph::ExternalLocal::new(execution_graph::ExternalLocalId(0), type_,)
-            );
-        }
-    }
+    lower_host_return(
+        index,
+        key,
+        return_,
+        HostTargetIndex::Value(host_index),
+        functions,
+        context,
+    );
 }
 
 pub(super) fn lower_host_return<Execution, Target>(
@@ -718,21 +659,21 @@ pub(super) fn lower_uninhabited_never_return<Execution, Target>(
     functions.never.push((index, target.lower_never(key)));
 }
 
-pub(super) fn lower_resumable_never_return(
+pub(super) fn lower_direct_transfer_never_return(
     index: usize,
     key: &SpecializationKey,
-    return_: ValueInhabitation,
+    return_: &ValueInhabitation,
     host_index: usize,
-    functions: &mut function::ProfiledFunctionEntries<AsyncHostedExecutionProfile>,
+    functions: &mut function::ProfiledFunctionEntries<TransferHostedExecutionProfile>,
     context: &mut LoweringContext,
 ) {
-    let target = ResumableNeverTargetIndex(host_index);
+    let target = HostTargetIndex::Never(host_index);
     match return_ {
         ValueInhabitation::Inhabited(return_) => {
-            lower_host_return(index, key, return_, target, functions, context)
+            lower_host_return(index, key, return_.clone(), target, functions, context)
         }
         ValueInhabitation::Uninhabited(_) => {
-            lower_uninhabited_never_return(index, key, target, functions)
+            lower_uninhabited_never_return(index, key, HostNeverTargetIndex(host_index), functions)
         }
     }
 }

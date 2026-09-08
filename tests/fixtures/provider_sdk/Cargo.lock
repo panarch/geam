@@ -928,6 +928,8 @@ dependencies = [
  "bitvec",
  "camino",
  "ecow",
+ "futures-channel",
+ "futures-util",
  "geam-gleam-core",
  "half",
  "im",

@@ -1,0 +1,10 @@
+name = "geam"
+version = "0.2.3"
+description = "Core APIs for Gleam programs running on Geam, the Rust runtime for Gleam"
+licences = ["Apache-2.0"]
+target = "erlang"
+
+[repository]
+type = "github"
+user = "panarch"
+repo = "geam"

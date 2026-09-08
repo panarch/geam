@@ -1,6 +1,7 @@
 mod decode;
 mod encode;
 
+pub(super) use provider::__GeamAsyncStores as TransferStores;
 pub(super) use provider::__GeamStores as Stores;
 
 use crate::{Component, GleamJsonHostProfile};
@@ -9,33 +10,35 @@ use crate::{Component, GleamJsonHostProfile};
     path = "gleam/json",
     crate_path = geam_core,
     profile = crate::GleamJsonHostProfile,
+    transfer_profile = crate::GleamJsonTransferProfile,
     component = crate::Component,
-    stores = crate::provider_stores,
+    stores = json,
 )]
 pub(super) mod provider {
     use super::{decode, encode};
     use crate::BitArrayValue;
     use ecow::EcoString;
+    use geam_core::provider::advanced::LocalRetainedContext;
     use geam_core::provider::{ExternalPayload, HostResult};
-    use geam_stdlib::provider_support::StoredStringTree;
+    use geam_stdlib::provider_support::{StorageContext, StoredStringTree};
     use num_bigint::BigInt;
 
-    #[geam_macros::external(name = "Json", manual)]
-    pub struct JsonPayload {
-        tree: StoredStringTree,
+    #[geam_macros::external(name = "Json", manual, context = Context)]
+    pub struct JsonPayload<Context: StorageContext = LocalRetainedContext> {
+        tree: StoredStringTree<Context>,
     }
 
-    impl JsonPayload {
-        pub(crate) fn from_tree(tree: StoredStringTree) -> Self {
+    impl<Context: StorageContext> JsonPayload<Context> {
+        pub(crate) fn from_tree(tree: StoredStringTree<Context>) -> Self {
             Self { tree }
         }
 
-        pub(crate) fn tree(&self) -> &StoredStringTree {
+        pub(crate) fn tree(&self) -> &StoredStringTree<Context> {
             &self.tree
         }
     }
 
-    impl ExternalPayload for JsonPayload {
+    impl<Context: StorageContext> ExternalPayload for JsonPayload<Context> {
         fn source_equal(&self, other: &Self) -> bool {
             self.tree.structurally_equal(&other.tree)
         }
@@ -90,7 +93,7 @@ pub(super) mod provider {
 
     #[geam_macros::function]
     fn do_float(value: f64) -> HostResult<JsonPayload> {
-        encode::do_float(value)
+        Ok(encode::do_float(value)?)
     }
 
     #[geam_macros::function]
@@ -137,6 +140,15 @@ where
     Profile: GleamJsonHostProfile,
 {
     provider::__geam_module::<Profile>()
+}
+
+pub(super) fn transfer_host_provider<Profile>()
+-> Result<geam_core::TransferHostProviderModule<Profile>, crate::HostRegistrationError>
+where
+    Profile: crate::GleamJsonTransferProfile,
+    Profile::RunState: Send,
+{
+    provider::__geam_transfer_module::<Profile>()
 }
 
 #[cfg(test)]
@@ -240,7 +252,7 @@ mod tests {
 
     #[test]
     fn json_payload_owns_structural_source_semantics_and_canonical_inspection() {
-        let segmented = JsonPayload::from_tree(StoredStringTree::sequence([
+        let segmented: JsonPayload = JsonPayload::from_tree(StoredStringTree::sequence([
             StoredStringTree::text("[".into()),
             StoredStringTree::text("1".into()),
             StoredStringTree::text("]".into()),

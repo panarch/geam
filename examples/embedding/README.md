@@ -13,7 +13,7 @@ tests.
 | [`io`](io) | Route Gleam IO through Rust and capture Echo separately |
 | [`provider`](provider) | Call Gleam code backed by a configured Rust provider |
 | [`application`](application) | Combine packages, IO, a provider, structured data, and repeated calls |
-| [`async_host`](async_host) | Await Rust work on the application's executor, with state and a Gleam callback |
+| [`async_host`](async_host) | Return explicit Future values and drive them on the application's executor |
 
 Start with [`first_call`](first_call) and follow each README's next step through
 [`application`](application). Continue with [`async_host`](async_host) when a

@@ -1,0 +1,41 @@
+error[E0277]: `Rc<BigInt>` cannot be sent between threads safely
+  --> tests/ui/async/non_send_payload.rs:65:14
+   |
+65 |     let _ = <Component as TransferHostProviderComponentRegistration<Profile>>::providers();
+   |              ^^^^^^^^^ `Rc<BigInt>` cannot be sent between threads safely
+   |
+   = help: within `native::Value`, the trait `Send` is not implemented for `Rc<BigInt>`
+help: the trait `TransferHostProviderComponentRegistration<Profile>` is implemented for `Component`
+  --> tests/ui/async/non_send_payload.rs:9:1
+   |
+ 9 | / #[geam_macros::provider(
+10 | |     package = "non_send_payload",
+11 | |     modules = [native],
+12 | |     crate_path = geam_core,
+13 | | )]
+   | |__^
+note: required because it appears within the type `native::Value`
+  --> tests/ui/async/non_send_payload.rs:21:12
+   |
+21 |     struct Value(Rc<BigInt>);
+   |            ^^^^^
+   = note: required for `native::Value` to implement `geam_core::provider::ProviderTransferPayload<Profile>`
+note: required for `__GeamModule` to implement `geam_core::__macro_support::TransferProviderModuleRegistration<Profile>`
+  --> tests/ui/async/non_send_payload.rs:16:70
+   |
+16 |   #[geam_macros::module(path = "non_send_payload/native", crate_path = geam_core)]
+   |  _---------------------------------------------------------------------^----------
+   | | |
+   | | unsatisfied trait bound introduced here
+17 | | mod native {
+   | |_____^^^^^^
+note: required for `Component` to implement `TransferHostProviderComponentRegistration<Profile>`
+  --> tests/ui/async/non_send_payload.rs:9:1
+   |
+ 9 | / #[geam_macros::provider(
+10 | |     package = "non_send_payload",
+11 | |     modules = [native],
+12 | |     crate_path = geam_core,
+13 | | )]
+   | |__^
+   = note: this error originates in the attribute macro `geam_macros::provider` (in Nightly builds, run with -Z macro-backtrace for more info)

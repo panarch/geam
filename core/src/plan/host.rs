@@ -6,7 +6,7 @@ use super::{FunctionTemplateId, ModuleId};
 use crate::host::HostProfile;
 
 pub use function::HostFunctionTemplate;
-pub(crate) use implementation::{AsyncHostImplementationBinding, HostImplementationBinding};
+pub(crate) use implementation::{HostImplementationBinding, TransferHostImplementationBinding};
 pub(crate) use module::HostedPlannedModuleParts;
 pub use module::{HostedFunctionTemplate, HostedPlannedModule};
 
@@ -17,17 +17,16 @@ pub struct HostedModulePlan<Profile: HostProfile> {
     implementation_bindings: Vec<HostImplementationBinding<Profile>>,
 }
 
-pub(crate) struct HostedLibraryModulePlan<Profile: HostProfile> {
+pub(crate) struct ProfiledHostedLibraryModulePlan<Implementation> {
     root: ModuleId,
     modules: Vec<HostedPlannedModule>,
-    implementation_bindings: Vec<HostImplementationBinding<Profile>>,
+    implementation_bindings: Vec<implementation::ProfiledHostImplementationBinding<Implementation>>,
 }
 
-pub(crate) struct AsyncHostedLibraryModulePlan<Profile: HostProfile> {
-    root: ModuleId,
-    modules: Vec<HostedPlannedModule>,
-    implementation_bindings: Vec<AsyncHostImplementationBinding<Profile>>,
-}
+pub(crate) type HostedLibraryModulePlan<Profile> =
+    ProfiledHostedLibraryModulePlan<crate::host::HostFunctionImplementation<Profile>>;
+pub(crate) type TransferHostedLibraryModulePlan<Profile> =
+    ProfiledHostedLibraryModulePlan<crate::host::TransferHostFunctionImplementation<Profile>>;
 
 pub(crate) struct HostedModulePlanParts<Profile: HostProfile> {
     pub(crate) root: ModuleId,
@@ -36,17 +35,17 @@ pub(crate) struct HostedModulePlanParts<Profile: HostProfile> {
     pub(crate) implementation_bindings: Vec<HostImplementationBinding<Profile>>,
 }
 
-pub(crate) struct HostedLibraryModulePlanParts<Profile: HostProfile> {
+pub(crate) struct ProfiledHostedLibraryModulePlanParts<Implementation> {
     pub(crate) root: ModuleId,
     pub(crate) modules: Vec<HostedPlannedModule>,
-    pub(crate) implementation_bindings: Vec<HostImplementationBinding<Profile>>,
+    pub(crate) implementation_bindings:
+        Vec<implementation::ProfiledHostImplementationBinding<Implementation>>,
 }
 
-pub(crate) struct AsyncHostedLibraryModulePlanParts<Profile: HostProfile> {
-    pub(crate) root: ModuleId,
-    pub(crate) modules: Vec<HostedPlannedModule>,
-    pub(crate) implementation_bindings: Vec<AsyncHostImplementationBinding<Profile>>,
-}
+pub(crate) type HostedLibraryModulePlanParts<Profile> =
+    ProfiledHostedLibraryModulePlanParts<crate::host::HostFunctionImplementation<Profile>>;
+pub(crate) type TransferHostedLibraryModulePlanParts<Profile> =
+    ProfiledHostedLibraryModulePlanParts<crate::host::TransferHostFunctionImplementation<Profile>>;
 
 impl<Profile: HostProfile> HostedModulePlan<Profile> {
     pub(crate) fn new(
@@ -85,11 +84,13 @@ impl<Profile: HostProfile> HostedModulePlan<Profile> {
     }
 }
 
-impl<Profile: HostProfile> HostedLibraryModulePlan<Profile> {
+impl<Implementation> ProfiledHostedLibraryModulePlan<Implementation> {
     pub(crate) fn new(
         root: ModuleId,
         modules: Vec<HostedPlannedModule>,
-        implementation_bindings: Vec<HostImplementationBinding<Profile>>,
+        implementation_bindings: Vec<
+            implementation::ProfiledHostImplementationBinding<Implementation>,
+        >,
     ) -> Self {
         Self {
             root,
@@ -112,44 +113,8 @@ impl<Profile: HostProfile> HostedLibraryModulePlan<Profile> {
             .find(|definition| definition.name() == name)
     }
 
-    pub(crate) fn into_parts(self) -> HostedLibraryModulePlanParts<Profile> {
-        HostedLibraryModulePlanParts {
-            root: self.root,
-            modules: self.modules,
-            implementation_bindings: self.implementation_bindings,
-        }
-    }
-}
-
-impl<Profile: HostProfile> AsyncHostedLibraryModulePlan<Profile> {
-    pub(crate) fn new(
-        root: ModuleId,
-        modules: Vec<HostedPlannedModule>,
-        implementation_bindings: Vec<AsyncHostImplementationBinding<Profile>>,
-    ) -> Self {
-        Self {
-            root,
-            modules,
-            implementation_bindings,
-        }
-    }
-
-    pub(crate) fn functions(&self) -> &[HostedFunctionTemplate] {
-        self.modules[self.root.index()].functions()
-    }
-
-    pub(crate) fn custom_type(
-        &self,
-        name: &super::CustomTypeName,
-    ) -> Option<&super::CustomTypeDefinition> {
-        self.modules
-            .iter()
-            .flat_map(HostedPlannedModule::custom_types)
-            .find(|definition| definition.name() == name)
-    }
-
-    pub(crate) fn into_parts(self) -> AsyncHostedLibraryModulePlanParts<Profile> {
-        AsyncHostedLibraryModulePlanParts {
+    pub(crate) fn into_parts(self) -> ProfiledHostedLibraryModulePlanParts<Implementation> {
+        ProfiledHostedLibraryModulePlanParts {
             root: self.root,
             modules: self.modules,
             implementation_bindings: self.implementation_bindings,

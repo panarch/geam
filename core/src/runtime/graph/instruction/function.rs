@@ -5,18 +5,11 @@ use super::value::{
     tuple_projection,
 };
 use crate::plan::ValueType;
-use crate::plan::execution::AsyncHostedExecution;
-use crate::plan::execution::function::{
-    ExecutionFunctionBody, ExecutionFunctionEntry, ExecutionFunctionRef, ListFunctionId,
-    ProfiledFunctionFunctionId, RuntimeListFunctionId,
-};
+use crate::plan::execution::function::{ProfiledFunctionFunctionId, RuntimeListFunctionId};
 use crate::plan::execution::graph::{
     ExternalFunctionCallTarget, ExternalFunctionInstructionKind, ExternalFunctionInstructionView,
     ExternalFunctionTarget, FunctionCapture, FunctionInstruction, FunctionInstructionKind,
     FunctionLocal, FunctionTarget, ParamLocal,
-};
-use crate::plan::execution::host::{
-    HostFunctionId, HostNeverFunctionId, HostedExecutionProfile, ResumableHostedFunctionTarget,
 };
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::runtime::error::ExecutionResult;
@@ -153,10 +146,10 @@ where
 pub(super) fn evaluate<Plan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &BlockEnvironment,
+    environment: &BlockEnvironment<Plan::Values>,
     instruction: &FunctionInstruction,
     expected: &ValueType,
-) -> ExecutionResult<EvaluatedFunctionValue>
+) -> ExecutionResult<EvaluatedFunctionValue<Plan::Values>, Plan::Values>
 where
     Plan: ExecutableRuntimePlan,
 {
@@ -168,8 +161,8 @@ where
 fn resolve<Plan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    value: CoreFunctionInstructionValue<crate::runtime::LocalValues>,
-) -> ExecutionResult<EvaluatedFunctionValue>
+    value: CoreFunctionInstructionValue<Plan::Values>,
+) -> ExecutionResult<EvaluatedFunctionValue<Plan::Values>, Plan::Values>
 where
     Plan: ExecutableRuntimePlan,
 {
@@ -241,12 +234,12 @@ where
 pub(super) fn evaluate_external<Plan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &BlockEnvironment,
+    environment: &BlockEnvironment<Plan::Values>,
     instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
-) -> ExecutionResult<EvaluatedFunctionValue>
+) -> ExecutionResult<EvaluatedFunctionValue<Plan::Values>, Plan::Values>
 where
-    Plan: ExecutableRuntimePlan
-        + crate::plan::execution::runtime::RuntimeExecutionPlan<Profile = HostedExecutionProfile>,
+    Plan: ExecutableRuntimePlan,
+    Plan::Profile: crate::plan::execution::function::DirectHostedExecutionProfile,
 {
     let metadata = instruction.instruction();
     let value = match evaluate_external_action(plan, environment, instruction) {
@@ -262,18 +255,21 @@ where
     validate_return_family(value, metadata.family(), metadata.type_().clone())
 }
 
-fn validate_execution_return_family(
-    value: ExecutionResult<EvaluatedFunctionValue>,
+fn validate_execution_return_family<Values: RuntimeValueProfile>(
+    value: ExecutionResult<EvaluatedFunctionValue<Values>, Values>,
     expected: crate::plan::execution::function::FunctionReturnFamily,
     type_: crate::plan::execution::type_::FunctionType,
-) -> ExecutionResult<EvaluatedFunctionValue> {
+) -> ExecutionResult<EvaluatedFunctionValue<Values>, Values> {
     match value {
         Ok(value) => validate_return_family(value, expected, type_),
         Err(error) => Err(error),
     }
 }
 
-pub(super) fn push(environment: &mut BlockEnvironment, value: EvaluatedFunctionValue) {
+pub(super) fn push<Values: RuntimeValueProfile>(
+    environment: &mut BlockEnvironment<Values>,
+    value: EvaluatedFunctionValue<Values>,
+) {
     environment.push_function_value(value);
 }
 
@@ -432,448 +428,15 @@ where
     }
 }
 
-impl<Plan: ExecutableRuntimePlan> FunctionParameterPlan for Plan {
+impl<Plan: RuntimeExecutionPlan> FunctionParameterPlan for Plan {
     fn function_target_params(&self, target: &FunctionTarget) -> Vec<ParamLocal> {
-        target_params(self, target)
+        self.function_parameters().function(target).to_vec()
     }
 
     fn external_function_target_params(&self, target: &ExternalFunctionTarget) -> Vec<ParamLocal> {
-        external_target_params(self, target)
-    }
-}
-
-impl<Profile: crate::HostProfile> FunctionParameterPlan for AsyncHostedExecution<Profile> {
-    fn function_target_params(&self, target: &FunctionTarget) -> Vec<ParamLocal> {
-        async_target_params(self, target)
-    }
-
-    fn external_function_target_params(&self, target: &ExternalFunctionTarget) -> Vec<ParamLocal> {
-        async_external_target_params(self, target)
-    }
-}
-
-fn async_graph_parameter_locals<Profile, Body>(
-    plan: &AsyncHostedExecution<Profile>,
-    function: &crate::plan::execution::function::ValueFunctionEntry<
-        Body,
-        ResumableHostedFunctionTarget<Body>,
-    >,
-) -> Vec<ParamLocal>
-where
-    Profile: crate::HostProfile,
-    Body: ExecutionFunctionBody<AsyncHostTarget = Infallible>,
-{
-    match function.as_ref() {
-        ExecutionFunctionRef::Graph(function) => {
-            graph_parameter_locals(function.entry().params(function.body().function_body()))
-        }
-        ExecutionFunctionRef::Host(ResumableHostedFunctionTarget::Value(target)) => {
-            match *target {}
-        }
-        ExecutionFunctionRef::Host(ResumableHostedFunctionTarget::Never(target)) => {
-            plan.host_never_function(*target).parameters().to_vec()
-        }
-    }
-}
-
-fn async_value_parameter_locals<Profile, Body>(
-    plan: &AsyncHostedExecution<Profile>,
-    function: &crate::plan::execution::function::ValueFunctionEntry<
-        Body,
-        ResumableHostedFunctionTarget<Body>,
-    >,
-    host_parameters: impl FnOnce(&crate::plan::execution::host::HostFunctionId<Body>) -> Vec<ParamLocal>,
-) -> Vec<ParamLocal>
-where
-    Profile: crate::HostProfile,
-    Body: ExecutionFunctionBody<AsyncHostTarget = HostFunctionId<Body>>,
-{
-    match function.as_ref() {
-        ExecutionFunctionRef::Graph(function) => {
-            graph_parameter_locals(function.entry().params(function.body().function_body()))
-        }
-        ExecutionFunctionRef::Host(ResumableHostedFunctionTarget::Value(target)) => {
-            host_parameters(target)
-        }
-        ExecutionFunctionRef::Host(ResumableHostedFunctionTarget::Never(target)) => {
-            plan.host_never_function(*target).parameters().to_vec()
-        }
-    }
-}
-
-fn async_never_parameter_locals<Profile, Body>(
-    plan: &AsyncHostedExecution<Profile>,
-    function: &crate::plan::execution::function::ValueFunctionEntry<Body, HostNeverFunctionId>,
-) -> Vec<ParamLocal>
-where
-    Profile: crate::HostProfile,
-    Body: ExecutionFunctionBody,
-{
-    match function.as_ref() {
-        ExecutionFunctionRef::Graph(function) => {
-            graph_parameter_locals(function.entry().params(function.body().function_body()))
-        }
-        ExecutionFunctionRef::Host(target) => {
-            plan.host_never_function(*target).parameters().to_vec()
-        }
-    }
-}
-
-fn graph_parameter_locals(slots: &[crate::plan::execution::graph::ParamSlot]) -> Vec<ParamLocal> {
-    slots.iter().map(|slot| slot.local().clone()).collect()
-}
-
-fn async_target_params<Profile: crate::HostProfile>(
-    plan: &AsyncHostedExecution<Profile>,
-    target: &FunctionTarget,
-) -> Vec<ParamLocal> {
-    match target {
-        FunctionTarget::Generic(_) => Vec::new(),
-        FunctionTarget::Never(function) => {
-            async_never_parameter_locals(plan, plan.never_function(*function))
-        }
-        FunctionTarget::Int(function) => {
-            async_value_parameter_locals(plan, plan.int_function(*function), |target| {
-                plan.host_int_function(target).parameters().to_vec()
-            })
-        }
-        FunctionTarget::Float(function) => {
-            async_value_parameter_locals(plan, plan.float_function(*function), |target| {
-                plan.host_float_function(target).parameters().to_vec()
-            })
-        }
-        FunctionTarget::String(function) => {
-            async_value_parameter_locals(plan, plan.string_function(*function), |target| {
-                plan.host_string_function(target).parameters().to_vec()
-            })
-        }
-        FunctionTarget::BitArray(function) => {
-            async_value_parameter_locals(plan, plan.bit_array_function(*function), |target| {
-                plan.host_bit_array_function(target).parameters().to_vec()
-            })
-        }
-        FunctionTarget::UtfCodepoint(function) => {
-            async_value_parameter_locals(plan, plan.utf_codepoint_function(*function), |target| {
-                plan.host_utf_codepoint_function(target)
-                    .parameters()
-                    .to_vec()
-            })
-        }
-        FunctionTarget::Custom(function) => {
-            async_graph_parameter_locals(plan, plan.custom_function(*function))
-        }
-        FunctionTarget::Bool(function) => {
-            async_value_parameter_locals(plan, plan.bool_function(*function), |target| {
-                plan.host_bool_function(target).parameters().to_vec()
-            })
-        }
-        FunctionTarget::Nil(function) => {
-            async_value_parameter_locals(plan, plan.nil_function(*function), |target| {
-                plan.host_nil_function(target).parameters().to_vec()
-            })
-        }
-        FunctionTarget::Tuple(function) => {
-            async_graph_parameter_locals(plan, plan.tuple_function(*function))
-        }
-        FunctionTarget::List(function) => async_list_target_params(plan, function),
-        FunctionTarget::Function(function) => async_function_target_params(plan, function),
-    }
-}
-
-fn async_external_target_params<Profile: crate::HostProfile>(
-    plan: &AsyncHostedExecution<Profile>,
-    target: &ExternalFunctionTarget,
-) -> Vec<ParamLocal> {
-    match target {
-        ExternalFunctionTarget::Value(function) => {
-            async_value_parameter_locals(plan, plan.external_function(*function), |target| {
-                plan.host_external_function(target).parameters().to_vec()
-            })
-        }
-        ExternalFunctionTarget::List(function) => {
-            async_graph_parameter_locals(plan, plan.external_list_function(*function))
-        }
-        ExternalFunctionTarget::Function(function) => {
-            async_graph_parameter_locals(plan, plan.external_function_function(function))
-        }
-        ExternalFunctionTarget::ListFunction { id, .. } => {
-            async_graph_parameter_locals(plan, plan.external_list_function_function(*id))
-        }
-    }
-}
-
-fn async_list_target_params<Profile: crate::HostProfile>(
-    plan: &AsyncHostedExecution<Profile>,
-    function: &ListFunctionId,
-) -> Vec<ParamLocal> {
-    match function {
-        ListFunctionId::Parameter(function) => {
-            async_graph_parameter_locals(plan, plan.parameter_list_function(*function))
-        }
-        ListFunctionId::ParameterList(function) => {
-            async_graph_parameter_locals(plan, plan.parameter_list_list_function(*function))
-        }
-        ListFunctionId::Int(function) => {
-            async_graph_parameter_locals(plan, plan.int_list_function(*function))
-        }
-        ListFunctionId::String(function) => {
-            async_graph_parameter_locals(plan, plan.string_list_function(*function))
-        }
-        ListFunctionId::BitArray(function) => {
-            async_graph_parameter_locals(plan, plan.bit_array_list_function(*function))
-        }
-        ListFunctionId::UtfCodepoint(function) => {
-            async_graph_parameter_locals(plan, plan.utf_codepoint_list_function(*function))
-        }
-        ListFunctionId::Custom(function) => {
-            async_graph_parameter_locals(plan, plan.custom_list_function(*function))
-        }
-        ListFunctionId::Float(function) => {
-            async_graph_parameter_locals(plan, plan.float_list_function(*function))
-        }
-        ListFunctionId::Bool(function) => {
-            async_graph_parameter_locals(plan, plan.bool_list_function(*function))
-        }
-        ListFunctionId::Nil(function) => {
-            async_graph_parameter_locals(plan, plan.nil_list_function(*function))
-        }
-        ListFunctionId::Tuple(function) => {
-            async_graph_parameter_locals(plan, plan.tuple_list_function(*function))
-        }
-        ListFunctionId::List(function) => {
-            async_graph_parameter_locals(plan, plan.list_list_function(*function))
-        }
-        ListFunctionId::Function(function) => {
-            async_graph_parameter_locals(plan, plan.function_list_function(*function))
-        }
-    }
-}
-
-fn async_function_target_params<Profile: crate::HostProfile>(
-    plan: &AsyncHostedExecution<Profile>,
-    function: &ProfiledFunctionFunctionId<Infallible>,
-) -> Vec<ParamLocal> {
-    use ProfiledFunctionFunctionId as F;
-
-    match function {
-        F::Generic(function) => {
-            async_graph_parameter_locals(plan, plan.generic_function_function(function))
-        }
-        F::Never(function) => {
-            async_graph_parameter_locals(plan, plan.never_function_function(function))
-        }
-        F::Int(function) => {
-            async_graph_parameter_locals(plan, plan.int_function_function(*function))
-        }
-        F::Float(function) => {
-            async_graph_parameter_locals(plan, plan.float_function_function(*function))
-        }
-        F::String(function) => {
-            async_graph_parameter_locals(plan, plan.string_function_function(*function))
-        }
-        F::BitArray(function) => {
-            async_graph_parameter_locals(plan, plan.bit_array_function_function(*function))
-        }
-        F::UtfCodepoint(function) => {
-            async_graph_parameter_locals(plan, plan.utf_codepoint_function_function(*function))
-        }
-        F::Custom(function) => {
-            async_graph_parameter_locals(plan, plan.custom_function_function(function))
-        }
-        F::External(function) => match *function {},
-        F::Bool(function) => {
-            async_graph_parameter_locals(plan, plan.bool_function_function(*function))
-        }
-        F::Nil(function) => {
-            async_graph_parameter_locals(plan, plan.nil_function_function(*function))
-        }
-        F::Tuple(function) => {
-            async_graph_parameter_locals(plan, plan.tuple_function_function(*function))
-        }
-        F::List(function) => {
-            async_graph_parameter_locals(plan, plan.core_list_function_function(function))
-        }
-        F::Function(function) => {
-            async_graph_parameter_locals(plan, plan.function_function_function(function))
-        }
-    }
-}
-
-fn target_params<Plan>(plan: &Plan, target: &FunctionTarget) -> Vec<ParamLocal>
-where
-    Plan: ExecutableRuntimePlan,
-{
-    match target {
-        FunctionTarget::Generic(_) => Vec::new(),
-        FunctionTarget::Never(function) => {
-            crate::runtime::function::never_parameter_locals(plan, plan.never_function(*function))
-        }
-        FunctionTarget::Int(function) => {
-            crate::runtime::function::int_parameter_locals(plan, *function)
-        }
-        FunctionTarget::Float(function) => {
-            crate::runtime::function::float_parameter_locals(plan, *function)
-        }
-        FunctionTarget::String(function) => {
-            crate::runtime::function::string_parameter_locals(plan, *function)
-        }
-        FunctionTarget::BitArray(function) => {
-            crate::runtime::function::bit_array_parameter_locals(plan, *function)
-        }
-        FunctionTarget::UtfCodepoint(function) => {
-            crate::runtime::function::utf_codepoint_parameter_locals(plan, *function)
-        }
-        FunctionTarget::Custom(function) => {
-            crate::runtime::function::parameter_locals(plan, plan.custom_function(*function))
-        }
-        FunctionTarget::Bool(function) => {
-            crate::runtime::function::bool_parameter_locals(plan, *function)
-        }
-        FunctionTarget::Nil(function) => {
-            crate::runtime::function::nil_parameter_locals(plan, *function)
-        }
-        FunctionTarget::Tuple(function) => {
-            crate::runtime::function::parameter_locals(plan, plan.tuple_function(*function))
-        }
-        FunctionTarget::List(function) => list_target_params(plan, function),
-        FunctionTarget::Function(function) => function_target_params(plan, function),
-    }
-}
-
-fn external_target_params<Plan>(plan: &Plan, target: &ExternalFunctionTarget) -> Vec<ParamLocal>
-where
-    Plan: ExecutableRuntimePlan,
-{
-    match target {
-        ExternalFunctionTarget::Value(function) => {
-            crate::runtime::function::parameter_locals(plan, plan.external_function(*function))
-        }
-        ExternalFunctionTarget::List(function) => {
-            crate::runtime::function::parameter_locals(plan, plan.external_list_function(*function))
-        }
-        ExternalFunctionTarget::Function(function) => crate::runtime::function::parameter_locals(
-            plan,
-            plan.external_function_function(function),
-        ),
-        ExternalFunctionTarget::ListFunction { id, .. } => {
-            crate::runtime::function::parameter_locals(
-                plan,
-                plan.external_list_function_function(*id),
-            )
-        }
-    }
-}
-
-fn list_target_params<Plan>(plan: &Plan, function: &ListFunctionId) -> Vec<ParamLocal>
-where
-    Plan: ExecutableRuntimePlan,
-{
-    match function {
-        ListFunctionId::Parameter(function) => crate::runtime::function::parameter_locals(
-            plan,
-            plan.parameter_list_function(*function),
-        ),
-        ListFunctionId::ParameterList(function) => crate::runtime::function::parameter_locals(
-            plan,
-            plan.parameter_list_list_function(*function),
-        ),
-        ListFunctionId::Int(function) => {
-            crate::runtime::function::parameter_locals(plan, plan.int_list_function(*function))
-        }
-        ListFunctionId::String(function) => {
-            crate::runtime::function::parameter_locals(plan, plan.string_list_function(*function))
-        }
-        ListFunctionId::BitArray(function) => crate::runtime::function::parameter_locals(
-            plan,
-            plan.bit_array_list_function(*function),
-        ),
-        ListFunctionId::UtfCodepoint(function) => crate::runtime::function::parameter_locals(
-            plan,
-            plan.utf_codepoint_list_function(*function),
-        ),
-        ListFunctionId::Custom(function) => {
-            crate::runtime::function::parameter_locals(plan, plan.custom_list_function(*function))
-        }
-        ListFunctionId::Float(function) => {
-            crate::runtime::function::parameter_locals(plan, plan.float_list_function(*function))
-        }
-        ListFunctionId::Bool(function) => {
-            crate::runtime::function::parameter_locals(plan, plan.bool_list_function(*function))
-        }
-        ListFunctionId::Nil(function) => {
-            crate::runtime::function::parameter_locals(plan, plan.nil_list_function(*function))
-        }
-        ListFunctionId::Tuple(function) => {
-            crate::runtime::function::parameter_locals(plan, plan.tuple_list_function(*function))
-        }
-        ListFunctionId::List(function) => {
-            crate::runtime::function::parameter_locals(plan, plan.list_list_function(*function))
-        }
-        ListFunctionId::Function(function) => {
-            crate::runtime::function::parameter_locals(plan, plan.function_list_function(*function))
-        }
-    }
-}
-
-fn function_target_params<Plan>(
-    plan: &Plan,
-    function: &ProfiledFunctionFunctionId<Infallible>,
-) -> Vec<ParamLocal>
-where
-    Plan: ExecutableRuntimePlan,
-{
-    use ProfiledFunctionFunctionId as F;
-
-    match function {
-        F::Generic(function) => crate::runtime::function::parameter_locals(
-            plan,
-            plan.generic_function_function(function),
-        ),
-        F::Never(function) => {
-            crate::runtime::function::parameter_locals(plan, plan.never_function_function(function))
-        }
-        F::Int(function) => {
-            crate::runtime::function::parameter_locals(plan, plan.int_function_function(*function))
-        }
-        F::Float(function) => crate::runtime::function::parameter_locals(
-            plan,
-            plan.float_function_function(*function),
-        ),
-        F::String(function) => crate::runtime::function::parameter_locals(
-            plan,
-            plan.string_function_function(*function),
-        ),
-        F::BitArray(function) => crate::runtime::function::parameter_locals(
-            plan,
-            plan.bit_array_function_function(*function),
-        ),
-        F::UtfCodepoint(function) => crate::runtime::function::parameter_locals(
-            plan,
-            plan.utf_codepoint_function_function(*function),
-        ),
-        F::Custom(function) => crate::runtime::function::parameter_locals(
-            plan,
-            plan.custom_function_function(function),
-        ),
-        F::External(function) => match *function {},
-        F::Bool(function) => {
-            crate::runtime::function::parameter_locals(plan, plan.bool_function_function(*function))
-        }
-        F::Nil(function) => {
-            crate::runtime::function::parameter_locals(plan, plan.nil_function_function(*function))
-        }
-        F::Tuple(function) => crate::runtime::function::parameter_locals(
-            plan,
-            plan.tuple_function_function(*function),
-        ),
-        F::List(function) => crate::runtime::function::parameter_locals(
-            plan,
-            plan.core_list_function_function(function),
-        ),
-        F::Function(function) => crate::runtime::function::parameter_locals(
-            plan,
-            plan.function_function_function(function),
-        ),
+        self.function_parameters()
+            .external_function(target)
+            .to_vec()
     }
 }
 

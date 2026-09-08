@@ -1,20 +1,14 @@
-@external(erlang, "geam_rust_embedding_async_host", "pause")
-fn pause(value: Int) -> Int {
-  value
+import example_async_files as files
+import geam/future.{type Future}
+
+pub fn double(value: Int) -> Int {
+  value * 2
 }
 
-@external(erlang, "geam_rust_embedding_async_host", "around")
-fn around(callback: fn(Int) -> Int, value: Int) -> Int {
-  callback(value)
-}
-
-fn double_after_pause(value: Int) -> Int {
-  pause(value * 2)
-}
-
-pub fn calculate(value: Int) -> Int {
-  echo value as "input"
-  let value = around(double_after_pause, value)
-  echo value as "after host"
-  value + 1
+pub fn greeting(path: String) -> Future(Result(String, String)) {
+  use contents <- future.map(files.read(path))
+  case contents {
+    Ok(text) -> Ok("Hello " <> text)
+    Error(error) -> Error(error)
+  }
 }

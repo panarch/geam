@@ -67,6 +67,48 @@ The application should retain the sealed module and `Functions` for repeated
 calls. A handle or retained runtime value belongs to one loaded owner even when
 another load uses identical source and signatures.
 
+## Explicit Future Execution
+
+An application selects `storage = "transferable"` under
+`[package.metadata.geam.embedding]` when its provider composition must support
+owned async work. Synchronization generates `TransferHostedProject`,
+`WorkModuleBuilder`, and one `Functions` aggregate. The default `local`
+composition retains the existing local-only value and provider contracts.
+
+`WorkModule` owns the loaded execution; `ExecutionScope` attaches it to the
+host's resources. The core embedding layer supplies the generic Future value
+adapters, while `geam-runtime-api` fixes their source identity to
+`geam/future.Future`. Ordinary and work-valued functions share the same module.
+
+Both choices expose `project().compile()` and `bind(builder)`. Transferable
+storage does not infer hidden effects or generate separate sync/async entry
+sets. Source `Int` returns a value; source `Future(Int)` returns an operation.
+
+The Rust host uses `with_execution_scope` and `module.attach` to borrow the
+sealed module, mutable provider state, and Echo sink for an execution scope.
+The module retains its sealed code and function identity across scopes.
+`scope.call` evaluates the source function and returns its declared value;
+returning an existing Future preserves that work. `scope.observe(&work).await`
+drives it using the caller's executor and returns `Completed<T>`. Its `read`
+callback borrows the shared result without requiring arbitrary payloads to
+implement `Clone` or `Sync`.
+
+Work follows the [shared completion and cancellation
+semantics](runtime-semantics.md#explicit-work). `ObservationError::Cancelled`
+reports work cancellation separately from `ObservationError::Execution` and
+from a source `Result` value. Shared execution errors retain the original source
+or provider failure and expose it through `SharedExecutionError::read`.
+
+Work carries its execution scope through recursive inputs and outputs,
+including `List(Future(T))` and `Future(Future(T))`. Completed plain data may
+outlive the scope. A completion containing another work value does not extend
+that value's scope. State, stores and the Echo sink must support `Send` for
+this composition, without a blanket `Sync` requirement.
+
+See the [async-host example](../../examples/embedding/async_host) for the
+complete setup and the [embedding guide](../embedding.md#drive-explicit-future-values)
+for the user sequence.
+
 ## Hosted State
 
 When the source closure requires providers, generated `RunStateInputs` lists
@@ -108,7 +150,7 @@ combines stdlib IO and the text-pattern provider in one lifecycle.
 Generated public function arguments and returns support this recursive grammar:
 
 ```text
-Data = Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data)
+Data = Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data) | Future(Data)
 ```
 
 | Gleam | Rust |
@@ -125,6 +167,12 @@ Data = Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data)
 | stdlib `Option(A)` | `Option<A>` |
 | `List(A)` input | consumed `Vec<A>` or retained `&List<A>` |
 | `List(A)` output | retained `List<A>` |
+| `geam/future.Future(A)` | `FutureType<A>` declaration; scoped `Future<A>` work in transferable execution |
+
+The List input/output rows describe local storage. Transferable storage uses
+the same `List<A>` declaration with `SharedList<A>` values. Read shared list
+items through `read_item(index, |value| ...)`; `len` and `is_empty` remain
+constant-time. A borrowed shared List reuses its original storage.
 
 `BigInt`, `EcoString`, `BitArrayValue`, and embedding `List` are re-exported
 from `geam::embedding`. Tuple values have one through seven elements. `(T,)` is
@@ -153,7 +201,7 @@ let checked = module.call(
 assert_eq!(checked.get(0), Some(Err("invalid code".into())));
 ```
 
-## Retained Lists
+## Local Retained Lists
 
 A consumed `Vec` constructs a new Gleam List. A borrowed List from the same
 loaded module reuses its retained handle without traversing or reconstructing

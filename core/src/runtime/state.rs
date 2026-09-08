@@ -2,6 +2,12 @@ pub(in crate::runtime) mod list;
 
 use crate::runtime::{LocalValues, RuntimeValueProfile};
 
+pub(in crate::runtime) struct TransferRuntimeHost<'run, Profile: crate::HostProfile> {
+    state: &'run mut Profile::RunState,
+    stores: &'run Profile::ExternalStores,
+    work: crate::runtime::work::execution::WorkContext<Profile>,
+}
+
 pub(in crate::runtime) trait RuntimeHostState {
     type State;
 
@@ -21,6 +27,38 @@ impl<State> RuntimeHostState for &mut State {
 
     fn state(&mut self) -> &mut Self::State {
         self
+    }
+}
+
+impl<'run, Profile: crate::HostProfile> TransferRuntimeHost<'run, Profile> {
+    pub(in crate::runtime) fn new(
+        state: &'run mut Profile::RunState,
+        stores: &'run Profile::ExternalStores,
+        work: crate::runtime::work::execution::WorkContext<Profile>,
+    ) -> Self {
+        Self {
+            state,
+            stores,
+            work,
+        }
+    }
+
+    pub(in crate::runtime) fn stores(&self) -> &Profile::ExternalStores {
+        self.stores
+    }
+
+    pub(in crate::runtime) fn work(
+        &self,
+    ) -> &crate::runtime::work::execution::WorkContext<Profile> {
+        &self.work
+    }
+}
+
+impl<Profile: crate::HostProfile> RuntimeHostState for TransferRuntimeHost<'_, Profile> {
+    type State = Profile::RunState;
+
+    fn state(&mut self) -> &mut Self::State {
+        self.state
     }
 }
 
@@ -59,6 +97,18 @@ where
             host,
             lists: Default::default(),
         }
+    }
+
+    pub(super) fn with_host_and_lists(
+        echo: &'run mut dyn crate::runtime::EchoSink,
+        host: Host,
+        lists: Values::ListStorage,
+    ) -> Self {
+        Self { echo, host, lists }
+    }
+
+    pub(super) fn host(&self) -> &Host {
+        &self.host
     }
 
     pub(super) fn emit_echo(&mut self, output: crate::runtime::EchoOutput) {

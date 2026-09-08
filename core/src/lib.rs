@@ -1,5 +1,11 @@
 #![recursion_limit = "256"]
 
+#[cfg(test)]
+extern crate self as geam_core;
+#[cfg(test)]
+#[path = "../tests/support/work_fixture.rs"]
+mod work_fixture;
+
 #[cfg(not(target_pointer_width = "64"))]
 compile_error!("geam requires a 64-bit target");
 
@@ -17,25 +23,23 @@ pub mod __macro_support;
 pub mod provider_support;
 
 pub use frontend::{
-    AsyncHostedTypedProgram, FrontendError, HostedTypedProgram, ModuleSource, PackageSource,
-    ProjectError, TypedProgram, compile_typed_async_host_program, compile_typed_async_host_project,
+    FrontendError, HostedTypedProgram, ModuleSource, PackageSource, ProjectError, TypedProgram,
     compile_typed_host_program, compile_typed_host_project, compile_typed_module,
     compile_typed_package_program, compile_typed_program, compile_typed_project,
+    compile_typed_transfer_host_project,
 };
 pub use host::{
-    AsyncHostCall, AsyncHostCallError, AsyncHostCallable, AsyncHostExternal,
-    AsyncHostExternalBinding, AsyncHostExternalEquality, AsyncHostExternalHashing,
-    AsyncHostExternalInspection, AsyncHostExternalPayloadBuilder, AsyncHostExternalReturn,
-    AsyncHostExternalStorage, AsyncHostExternalStore, AsyncHostFunction, AsyncHostFuture,
-    AsyncHostModule, AsyncHostProviderModule, AsyncHostProviderSet, AsyncHostStoredValue,
-    FallibleAsyncHostFunction, FallibleHostFunction, FallibleScopedAsyncHostFunction, HostCall,
-    HostCallCompletion, HostCallError, HostCallable, HostComponentProfile, HostConstruction,
-    HostConstructions, HostCustom, HostCustomConstructor, HostCustomConstructorAt,
-    HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
-    HostCustomConstructorSchema, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
-    HostCustomFieldSchema, HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType,
-    HostCustomTypeArgument, HostCustomTypeSchema, HostExternal, HostExternalBinding,
-    HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalPayloadBuilder,
+    AsyncHostCallError, AsyncHostComponentProfile, AsyncHostExternalBinding,
+    AsyncHostExternalEquality, AsyncHostExternalHashing, AsyncHostExternalInspection,
+    AsyncHostExternalStorage, AsyncHostExternalStore, AsyncHostProviderComponent,
+    FallibleHostFunction, HostCall, HostCallCompletion, HostCallError, HostCallable,
+    HostComponentProfile, HostConstruction, HostConstructions, HostCustom, HostCustomConstructor,
+    HostCustomConstructorAt, HostCustomConstructorDefinition, HostCustomConstructorList,
+    HostCustomConstructorListEnd, HostCustomConstructorSchema, HostCustomField,
+    HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema, HostCustomIndex0,
+    HostCustomIndexNext, HostCustomSchema, HostCustomType, HostCustomTypeArgument,
+    HostCustomTypeSchema, HostExternal, HostExternalBinding, HostExternalEquality,
+    HostExternalHashing, HostExternalInspection, HostExternalPayloadBuilder,
     HostExternalPayloadView, HostExternalSchema, HostExternalStorage, HostExternalStore,
     HostExternalType, HostExternalTypeSchema, HostFailure, HostFunction, HostFunctionSchema,
     HostFunctionType, HostList, HostListType, HostModule, HostProfile, HostProvider,
@@ -44,8 +48,9 @@ pub use host::{
     HostProviderModule, HostProviderSet, HostRegistrationError, HostSchemaType, HostStoredDynamic,
     HostStoredType, HostStoredValue, HostTuple, HostTupleType, HostType, HostTypeAt,
     HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter,
-    HostTypeSequence, HostValue, ScopedAsyncHostFunction, ScopedConstructingHostFunction,
-    ScopedDivergingHostFunction, ScopedHostFunction, StatelessHostProfile,
+    HostTypeSequence, HostValue, ScopedConstructingHostFunction, ScopedDivergingHostFunction,
+    ScopedHostFunction, StatelessHostProfile, TransferHostProviderComponentRegistration,
+    TransferHostProviderModule, TransferHostProviderSet,
 };
 pub use plan::execution::{
     ExecutionPlan, ExecutionPlanExplanation, HostSpecializationError,

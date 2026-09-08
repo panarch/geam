@@ -1,6 +1,9 @@
-use geam_core::embedding::{AsyncHostedModuleBuilder, FunctionDeclaration};
+use geam_core::embedding::{FunctionDeclaration, WorkModuleBuilder, with_execution_scope};
+use geam_core::host::{
+    AsyncHostComponentProfile, HostFutureStore, HostProfile, TransferHostProviderSet,
+};
 use geam_core::planner::InvalidTypedAstReason;
-use geam_core::{AsyncHostModule, AsyncHostProviderSet, EchoOutput, EchoSink, PackageSource};
+use geam_core::{EchoOutput, EchoSink, PackageSource};
 use geam_core::{
     ExecutionError, FunctionType, ListValue, ModuleSource, PlanError, SourceContext, Value,
     ValueType, compile_typed_module, compile_typed_program, plan_module, plan_module_with_source,
@@ -11,6 +14,11 @@ use miette::{GraphicalReportHandler, GraphicalTheme};
 use std::future::Future;
 use std::pin::pin;
 use std::task::{Context, Poll, Waker};
+
+#[path = "support/fixture_observation.rs"]
+mod fixture_observation;
+#[path = "support/work_representation.rs"]
+mod work_fixture;
 
 macro_rules! fixture_cases {
     ($runner:path, $dir:literal; $($name:ident),+ $(,)?) => {
@@ -1122,7 +1130,7 @@ fn run_fixture(file_name: &str) {
         echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
         expected_echoes(&src),
     );
-    assert_resumable_fixture(vec![ModuleSource::new("main", path, src)]);
+    assert_transfer_fixture(vec![ModuleSource::new("main", path, src)]);
 }
 
 fn run_module_fixture(case: &str) {
@@ -1142,7 +1150,7 @@ fn run_module_fixture(case: &str) {
         echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
         expected_echoes(&main),
     );
-    assert_resumable_fixture(module_sources(&directory));
+    assert_transfer_fixture(module_sources(&directory));
 }
 
 fn run_error_fixture(file_name: &str) {
@@ -1168,7 +1176,7 @@ fn run_error_fixture(file_name: &str) {
         echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
         expected_echoes(&src),
     );
-    assert_resumable_fixture(vec![ModuleSource::new("main", path, src)]);
+    assert_transfer_fixture(vec![ModuleSource::new("main", path, src)]);
 }
 
 fn run_module_error_fixture(case: &str) {
@@ -1189,18 +1197,18 @@ fn run_module_error_fixture(case: &str) {
         echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
         expected_echoes(&main),
     );
-    assert_resumable_fixture(module_sources(&directory));
+    assert_transfer_fixture(module_sources(&directory));
 }
 
 #[derive(Default)]
-struct ResumableFixtureEcho {
+struct TransferFixtureEcho {
     effects: Vec<String>,
     result: Option<(ValueType, String)>,
 }
 
-impl EchoSink for ResumableFixtureEcho {
+impl EchoSink for TransferFixtureEcho {
     fn emit(&mut self, output: EchoOutput) {
-        if output.location().echo_site().function() == "geam_resumable_fixture_entry" {
+        if output.location().echo_site().function() == fixture_observation::ENTRY {
             self.result = Some((output.value().value_type(), render_value(output.value())));
         } else {
             self.effects.push(output.to_string());
@@ -1208,16 +1216,34 @@ impl EchoSink for ResumableFixtureEcho {
     }
 }
 
-fn assert_resumable_fixture(modules: Vec<ModuleSource>) {
+struct TransferFixtureProfile;
+
+impl HostProfile for TransferFixtureProfile {
+    type RunState = ();
+    type ExternalStores = HostFutureStore;
+}
+
+impl geam_core::host::HostWorkProfile for TransferFixtureProfile {
+    type Work = work_fixture::WorkComponent;
+}
+
+impl AsyncHostComponentProfile<work_fixture::WorkComponent> for TransferFixtureProfile {
+    fn component_async_stores(stores: &HostFutureStore) -> &HostFutureStore {
+        stores
+    }
+
+    fn component_state(state: &mut ()) -> &mut () {
+        state
+    }
+}
+
+fn assert_transfer_fixture(modules: Vec<ModuleSource>) {
     // Echo observes every return family through the public typed Nil entry.
     let modules = modules
         .into_iter()
         .map(|module| {
             let source = if module.module() == "main" {
-                format!(
-                    "{}\n\npub fn geam_resumable_fixture_entry() {{\n  echo main()\n  Nil\n}}\n",
-                    module.source()
-                )
+                fixture_observation::source(module.source())
             } else {
                 module.source().to_owned()
             };
@@ -1231,26 +1257,28 @@ fn assert_resumable_fixture(modules: Vec<ModuleSource>) {
     );
     let mut expected_echo = Vec::new();
     let expected = run_main(&plan, &mut expected_echo);
-    let hosts =
-        AsyncHostProviderSet::new(Vec::<AsyncHostModule>::new()).expect("empty async host set");
-    let program = geam_core::compile_typed_async_host_program(
+    let hosts = TransferHostProviderSet::<TransferFixtureProfile>::new([])
+        .expect("empty transferable provider set");
+    let program = geam_core::frontend::compile_typed_transfer_host_program(
         "geam",
         "main",
         [PackageSource::new("geam", Vec::<String>::new(), modules)],
         hosts,
     )
-    .expect("fixture should compile for async embedding");
-    let (bindings, entry) = AsyncHostedModuleBuilder::new(program)
-        .expect("fixture should plan for async embedding")
+    .expect("fixture should compile for transferable embedding");
+    let (bindings, entry) = WorkModuleBuilder::new(program)
+        .expect("fixture should plan for transferable embedding")
         .function(FunctionDeclaration::<(), ()>::new(
-            "geam_resumable_fixture_entry",
+            fixture_observation::ENTRY,
         ))
         .expect("fixture observation entry should bind");
-    let mut module = bindings.seal();
+    let mut module = bindings.seal().expect("transferable execution should seal");
     let mut state = ();
-    let mut echo = ResumableFixtureEcho::default();
+    let mut echo = TransferFixtureEcho::default();
     let result = {
-        let mut future = pin!(module.call_async(&entry, (), &mut state, &mut echo));
+        let mut future = pin!(with_execution_scope(async |guard| {
+            module.attach(guard, &mut state, &mut echo).call(&entry, ())
+        }));
         future
             .as_mut()
             .poll(&mut Context::from_waker(Waker::noop()))

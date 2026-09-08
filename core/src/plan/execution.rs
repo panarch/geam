@@ -73,23 +73,27 @@ pub(crate) struct LibraryListConstructions {
     pub(crate) bit_arrays: Vec<type_::BitArrayListTypeId>,
     pub(crate) utf_codepoints: Vec<type_::UtfCodepointListTypeId>,
     pub(crate) customs: Vec<type_::CustomListTypeId>,
+    pub(crate) externals: Vec<type_::ExternalListTypeId>,
     pub(crate) bools: Vec<type_::BoolListTypeId>,
     pub(crate) nils: Vec<type_::NilListTypeId>,
     pub(crate) tuples: Vec<type_::TupleListTypeId>,
     pub(crate) lists: Vec<type_::ListListTypeId>,
 }
 
-pub(crate) struct LibraryFunctionEntries {
+pub(crate) struct LibraryFunctionEntries<
+    Graph: ExecutionGraphProfile = function::HostedExecutionGraph,
+> {
     pub(crate) ints: Box<[LibraryFunctionEntry<function::IntFunctionId>]>,
     pub(crate) floats: Box<[LibraryFunctionEntry<function::FloatFunctionId>]>,
     pub(crate) strings: Box<[LibraryFunctionEntry<function::StringFunctionId>]>,
     pub(crate) bit_arrays: Box<[LibraryFunctionEntry<function::BitArrayFunctionId>]>,
     pub(crate) utf_codepoints: Box<[LibraryFunctionEntry<function::UtfCodepointFunctionId>]>,
     pub(crate) customs: Box<[LibraryFunctionEntry<function::CustomFunctionId>]>,
+    pub(crate) externals: Box<[LibraryFunctionEntry<Graph::ExternalFunctionId>]>,
     pub(crate) bools: Box<[LibraryFunctionEntry<function::BoolFunctionId>]>,
     pub(crate) nils: Box<[LibraryFunctionEntry<function::NilFunctionId>]>,
     pub(crate) tuples: Box<[LibraryFunctionEntry<function::TupleFunctionId>]>,
-    pub(crate) lists: Box<[LibraryFunctionEntry<function::LibraryListFunctionId>]>,
+    pub(crate) lists: Box<[LibraryFunctionEntry<function::LibraryListFunctionId<Graph>>]>,
 }
 
 impl<Function> LibraryFunctionEntry<Function> {
@@ -135,13 +139,13 @@ pub struct HostedExecution<Profile: HostProfile> {
     external_stores: Profile::ExternalStores,
 }
 
-pub(crate) struct AsyncHostedExecution<Profile: HostProfile> {
-    program: ExecutionProgram<host::AsyncHostedExecutionProfile>,
-    host_functions: host::AsyncHostFunctionTables<Profile>,
+pub(crate) struct TransferHostedExecution<Profile: HostProfile> {
+    program: ExecutionProgram<host::TransferHostedExecutionProfile>,
+    host_functions: host::TransferHostFunctionTables<Profile>,
 }
 
 pub(crate) struct ExecutionProgram<Profile: ExecutionProfile> {
-    common: ExecutionProgramCommon<Profile::Graph>,
+    common: std::sync::Arc<ExecutionProgramCommon<Profile::Graph>>,
     functions: FunctionTables<Profile>,
 }
 
@@ -150,6 +154,7 @@ struct ExecutionProgramCommon<Graph: ExecutionGraphProfile> {
     modules: Box<[ExecutionModuleContext]>,
     main: ProfiledRuntimeFunctionId<Graph>,
     constants: ProfiledConstantTable<Graph>,
+    function_parameters: std::sync::Arc<function::FunctionParameterCatalog>,
     list_types: ListTypeTable,
     custom_types: CustomTypeTable,
     external_types: ExternalTypeTable,
@@ -214,9 +219,9 @@ impl ExecutionPlan {
 
     pub(crate) fn from_library_plan(
         module_plan: crate::plan::LibraryModulePlan,
-        first: crate::plan::LibraryEntry,
-        remaining: Vec<crate::plan::LibraryEntry>,
-    ) -> (Self, LibraryFunctionEntries) {
+        first: crate::plan::LibraryEntry<Infallible>,
+        remaining: Vec<crate::plan::LibraryEntry<Infallible>>,
+    ) -> (Self, LibraryFunctionEntries<Infallible>) {
         let (program, entries) = lowering::lower_library(module_plan, first, remaining);
         (Self { program }, entries)
     }
@@ -307,106 +312,37 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
     }
 }
 
-impl<Profile: HostProfile> AsyncHostedExecution<Profile> {
-    pub(crate) fn host_external_function(
-        &self,
-        id: &host::HostFunctionId<
-            function::ExecutionExternalFunctionBody<host::AsyncHostedExecutionProfile>,
-        >,
-    ) -> &host::HostedFunction<
-        std::sync::Arc<
-            crate::host::ScopedAsyncHostCallback<
-                Profile,
-                crate::runtime::TransferExternalPayloadLease,
-            >,
-        >,
-    > {
-        self.host_functions.external(id)
-    }
+impl<Profile: HostProfile> TransferHostedExecution<Profile> {
     pub(crate) fn from_library_plan(
-        module_plan: crate::plan::AsyncHostedLibraryModulePlan<Profile>,
+        module_plan: crate::plan::TransferHostedLibraryModulePlan<Profile>,
         first: crate::plan::LibraryEntry,
         remaining: Vec<crate::plan::LibraryEntry>,
-    ) -> (Self, LibraryFunctionEntries) {
+    ) -> Result<(Self, LibraryFunctionEntries), HostSpecializationError> {
         let (program, host_functions, entries) =
-            lowering::lower_async_hosted_library(module_plan, first, remaining);
-        (
+            lowering::lower_transfer_hosted_library(module_plan, first, remaining)?;
+        Ok((
             Self {
                 program,
                 host_functions,
             },
             entries,
-        )
+        ))
     }
 
-    pub(crate) fn host_int_function(
+    pub(crate) fn host_value_function<Body>(
         &self,
-        id: &host::HostFunctionId<
-            function::ExecutionIntFunctionBody<host::AsyncHostedExecutionProfile>,
-        >,
-    ) -> &host::HostedFunction<host::ResumableHostCallback<Profile, num_bigint::BigInt>> {
-        self.host_functions.int(id)
-    }
-
-    pub(crate) fn host_float_function(
-        &self,
-        id: &host::HostFunctionId<
-            function::ExecutionFloatFunctionBody<host::AsyncHostedExecutionProfile>,
-        >,
-    ) -> &host::HostedFunction<host::ResumableHostCallback<Profile, f64>> {
-        self.host_functions.float(id)
-    }
-
-    pub(crate) fn host_string_function(
-        &self,
-        id: &host::HostFunctionId<
-            function::ExecutionStringFunctionBody<host::AsyncHostedExecutionProfile>,
-        >,
-    ) -> &host::HostedFunction<host::ResumableHostCallback<Profile, EcoString>> {
-        self.host_functions.string(id)
-    }
-
-    pub(crate) fn host_bit_array_function(
-        &self,
-        id: &host::HostFunctionId<
-            function::ExecutionBitArrayFunctionBody<host::AsyncHostedExecutionProfile>,
-        >,
-    ) -> &host::HostedFunction<host::ResumableHostCallback<Profile, crate::BitArrayValue>> {
-        self.host_functions.bit_array(id)
-    }
-
-    pub(crate) fn host_utf_codepoint_function(
-        &self,
-        id: &host::HostFunctionId<
-            function::ExecutionUtfCodepointFunctionBody<host::AsyncHostedExecutionProfile>,
-        >,
-    ) -> &host::HostedFunction<host::ResumableHostCallback<Profile, char>> {
-        self.host_functions.utf_codepoint(id)
-    }
-
-    pub(crate) fn host_bool_function(
-        &self,
-        id: &host::HostFunctionId<
-            function::ExecutionBoolFunctionBody<host::AsyncHostedExecutionProfile>,
-        >,
-    ) -> &host::HostedFunction<host::ResumableHostCallback<Profile, bool>> {
-        self.host_functions.bool_(id)
-    }
-
-    pub(crate) fn host_nil_function(
-        &self,
-        id: &host::HostFunctionId<
-            function::ExecutionNilFunctionBody<host::AsyncHostedExecutionProfile>,
-        >,
-    ) -> &host::HostedFunction<host::ResumableHostCallback<Profile, ()>> {
-        self.host_functions.nil(id)
+        id: &host::HostFunctionId<Body>,
+    ) -> &host::TransferHostedValueFunction<Profile>
+    where
+        Body: function::ExecutionFunctionBody,
+    {
+        self.host_functions.value(id)
     }
 
     pub(crate) fn host_never_function(
         &self,
         id: host::HostNeverFunctionId,
-    ) -> &host::HostedFunction<crate::host::OwnedHostCallback<Profile, std::convert::Infallible>>
-    {
+    ) -> &host::TransferHostedNeverFunction<Profile> {
         self.host_functions.never(id)
     }
 }

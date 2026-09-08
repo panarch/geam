@@ -1,6 +1,6 @@
 use super::boundary::PlainBindings;
 use super::identifier::RustIdentifier;
-use super::package::{DirectDependency, EmbeddingPackage};
+use super::package::{DirectDependency, EmbeddingPackage, EmbeddingStorage};
 use crate::builtin::BuiltInProvider;
 use crate::error::CliError;
 use crate::project::ResolvedProject;
@@ -16,6 +16,8 @@ pub(super) struct HostedBindings {
 
 #[derive(Debug)]
 pub(super) struct HostedComponents {
+    pub(super) storage: EmbeddingStorage,
+    pub(super) future_source: bool,
     first: ComponentBinding,
     remaining: Vec<ComponentBinding>,
 }
@@ -29,6 +31,7 @@ pub(super) enum HostedCapabilities {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum ComponentBinding {
+    Future,
     Stdlib,
     Json,
     Time,
@@ -63,6 +66,10 @@ impl HostedBindings {
                 components_for_package(package, &providers, required_package, resolved_project)?;
             components.extend(additional);
         }
+        if package.storage() == EmbeddingStorage::Transferable {
+            components.storage = EmbeddingStorage::Transferable;
+            components.insert(ComponentBinding::Future);
+        }
         components.require_geam_features(package)?;
         Ok(Self {
             boundary,
@@ -72,11 +79,21 @@ impl HostedBindings {
 }
 
 impl HostedComponents {
+    pub(super) fn transferable(future_source: bool) -> Self {
+        let mut components = Self::new(ComponentBinding::Future);
+        components.storage = EmbeddingStorage::Transferable;
+        components.future_source = future_source;
+        components
+    }
     pub(super) fn from_builtin(provider: BuiltInProvider) -> Self {
         let closure = provider.component_closure();
         let mut components = Self::new(ComponentBinding::from(closure.first()));
         for component in closure.remaining() {
             components.insert(ComponentBinding::from(component));
+        }
+        if provider == BuiltInProvider::Geam {
+            components.storage = EmbeddingStorage::Transferable;
+            components.future_source = true;
         }
         components
     }
@@ -87,6 +104,8 @@ impl HostedComponents {
 
     fn new(first: ComponentBinding) -> Self {
         let mut components = Self {
+            storage: EmbeddingStorage::Local,
+            future_source: false,
             first,
             remaining: Vec::new(),
         };
@@ -111,6 +130,7 @@ impl HostedComponents {
     }
 
     pub(super) fn extend(&mut self, components: Self) {
+        self.future_source |= components.future_source;
         self.insert(components.first);
         for component in components.remaining {
             self.insert(component);
@@ -160,13 +180,20 @@ impl HostedComponents {
 
     fn assign_external_fields(&mut self) {
         let mut used_inputs = BTreeSet::from(["stdlib".to_owned(), "time".to_owned()]);
-        let mut used_state =
-            BTreeSet::from(["stdlib".to_owned(), "json".to_owned(), "time".to_owned()]);
+        let mut used_state = BTreeSet::from([
+            "stdlib".to_owned(),
+            "json".to_owned(),
+            "time".to_owned(),
+            "future".to_owned(),
+        ]);
         let mut external = std::iter::once(&mut self.first)
             .chain(self.remaining.iter_mut())
             .filter_map(|component| match component {
                 ComponentBinding::External(component) => Some(component),
-                ComponentBinding::Stdlib | ComponentBinding::Json | ComponentBinding::Time => None,
+                ComponentBinding::Future
+                | ComponentBinding::Stdlib
+                | ComponentBinding::Json
+                | ComponentBinding::Time => None,
             })
             .collect::<Vec<_>>();
         // A reserved package keeps its stable escaped field when another
@@ -226,6 +253,14 @@ fn components_for_package(
     resolved_project: &ResolvedProject,
 ) -> Result<HostedComponents, CliError> {
     if let Some(built_in) = BuiltInProvider::from_package(required_package) {
+        if built_in == BuiltInProvider::Geam && package.storage() != EmbeddingStorage::Transferable
+        {
+            return Err(CliError::InvalidEmbeddingProject {
+                package: package.root_module().to_owned(),
+                manifest: package.manifest().to_path_buf(),
+                reason: "geam requires transferable execution; set storage = \"transferable\" in [package.metadata.geam.embedding] and run `geam embedding sync`".to_owned(),
+            });
+        }
         return Ok(HostedComponents::from_builtin(built_in));
     }
 
@@ -246,6 +281,7 @@ impl From<BuiltInProvider> for ComponentBinding {
             BuiltInProvider::Stdlib => Self::Stdlib,
             BuiltInProvider::Json => Self::Json,
             BuiltInProvider::Time => Self::Time,
+            BuiltInProvider::Geam => Self::Future,
         }
     }
 }
@@ -256,6 +292,7 @@ impl ComponentBinding {
             Self::Stdlib => Some(BuiltInProvider::Stdlib),
             Self::Json => Some(BuiltInProvider::Json),
             Self::Time => Some(BuiltInProvider::Time),
+            Self::Future => Some(BuiltInProvider::Geam),
             Self::External(_) => None,
         }
     }

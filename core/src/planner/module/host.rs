@@ -3,15 +3,12 @@ mod constant;
 mod declaration;
 mod link;
 
-use crate::frontend::{AsyncHostedTypedProgram, HostedTypedProgram, HostedTypedProgramModule};
+use crate::frontend::{HostedTypedProgram, HostedTypedProgramModule};
 use crate::host::{
-    HostProfile, RegisteredAsyncHostImplementations, RegisteredHostConstructions,
-    RegisteredHostImplementationId, RegisteredHostImplementations, RegisteredHostProviderModule,
+    HostProfile, RegisteredHostConstructions, RegisteredHostImplementationId,
+    RegisteredHostImplementations, RegisteredHostProviderModule,
 };
-use crate::plan::{
-    AsyncHostImplementationBinding, AsyncHostedLibraryModulePlan, HostImplementationBinding,
-    HostedLibraryModulePlan, HostedModulePlan, ModuleId,
-};
+use crate::plan::{HostImplementationBinding, HostedLibraryModulePlan, HostedModulePlan, ModuleId};
 use crate::planner::error::PlanError;
 
 pub fn plan_host_program<Profile: HostProfile>(
@@ -45,18 +42,27 @@ pub(crate) fn plan_host_library_program<Profile: HostProfile>(
     )
 }
 
-pub(crate) fn plan_async_host_library_program<Profile: HostProfile>(
-    program: AsyncHostedTypedProgram<Profile>,
-) -> Result<AsyncHostedLibraryModulePlan<Profile>, PlanError> {
+pub(crate) fn plan_transfer_host_library_program<Profile: HostProfile>(
+    program: crate::frontend::TransferHostedTypedProgram<Profile>,
+) -> Result<crate::plan::TransferHostedLibraryModulePlan<Profile>, PlanError> {
     let (root_index, modules, providers, implementations) = program.into_parts();
     plan_host_program_schema(root_index, modules, providers, super::ModuleRole::Library).map(
         |planned| {
-            let implementation_bindings =
-                bind_async_implementations(planned.implementations, &implementations);
-            AsyncHostedLibraryModulePlan::new(
+            let bindings = planned
+                .implementations
+                .into_iter()
+                .map(|(template, constructions, implementation)| {
+                    crate::plan::TransferHostImplementationBinding::new(
+                        template,
+                        constructions,
+                        implementations.implementation(implementation),
+                    )
+                })
+                .collect();
+            crate::plan::TransferHostedLibraryModulePlan::new(
                 planned.root,
                 planned.modules,
-                implementation_bindings,
+                bindings,
             )
         },
     )
@@ -74,26 +80,6 @@ fn bind_implementations<Profile: HostProfile>(
         .into_iter()
         .map(|(template, constructions, implementation)| {
             HostImplementationBinding::new(
-                template,
-                constructions,
-                implementations.implementation(implementation),
-            )
-        })
-        .collect()
-}
-
-fn bind_async_implementations<Profile: HostProfile>(
-    planned: Vec<(
-        crate::plan::FunctionTemplateId,
-        RegisteredHostConstructions,
-        RegisteredHostImplementationId,
-    )>,
-    implementations: &RegisteredAsyncHostImplementations<Profile>,
-) -> Vec<AsyncHostImplementationBinding<Profile>> {
-    planned
-        .into_iter()
-        .map(|(template, constructions, implementation)| {
-            AsyncHostImplementationBinding::new(
                 template,
                 constructions,
                 implementations.implementation(implementation),

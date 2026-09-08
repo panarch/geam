@@ -423,6 +423,7 @@ fn classify_custom_value(
     if let Some(external) = external_type(type_, externals) {
         return Ok(StaticValueType::External {
             payload: external.ident.clone(),
+            transfer_payload: external.transfer_payload.clone(),
             schema: external.schema.clone(),
             store_field: external.store_field.clone(),
         });

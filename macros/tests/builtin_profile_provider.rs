@@ -11,7 +11,7 @@ trait CounterSource: 'static {
     fn next(&mut self) -> Result<i64, HostFailure>;
 }
 
-trait CounterProfile: HostProfile + HostComponentProfile<Component<Self::Source>> {
+trait CounterProfile: HostProfile {
     type Source: CounterSource;
 }
 
@@ -24,6 +24,10 @@ where
     const ID: &'static str = "macro-builtin-profile";
     type Stores = ();
     type RunState = Source;
+}
+
+impl<Source: CounterSource> geam_core::AsyncHostProviderComponent for Component<Source> {
+    type AsyncStores = ();
 }
 
 impl<Source> geam_core::__macro_support::ProviderPackage for Component<Source>
@@ -132,4 +136,93 @@ fn builtin_profile_functions_compile_register_and_project_caller_state() {
         execution.run_main(&mut source, &mut Vec::new()),
         Ok(Value::Int(BigInt::from(5))),
     );
+}
+
+#[test]
+fn transferable_builtin_profile_keeps_the_same_caller_owned_source() {
+    use geam_core::AsyncHostComponentProfile;
+    use geam_core::embedding::{FunctionDeclaration, WorkModuleBuilder, with_execution_scope};
+    use geam_core::frontend::compile_typed_transfer_host_program;
+    use geam_core::host::{HostFutureStore, TransferHostProviderSet};
+    use geam_runtime_api::FutureComponent;
+    use std::future::Future;
+    use std::pin::pin;
+    use std::task::{Context, Poll, Waker};
+
+    #[derive(Default)]
+    struct Stores {
+        counter: (),
+        work: HostFutureStore,
+    }
+    struct TransferProfile;
+    impl HostProfile for TransferProfile {
+        type RunState = (ScriptedSource, ());
+        type ExternalStores = Stores;
+    }
+    impl CounterProfile for TransferProfile {
+        type Source = ScriptedSource;
+    }
+    impl AsyncHostComponentProfile<Component> for TransferProfile {
+        fn component_async_stores(stores: &Stores) -> &() {
+            &stores.counter
+        }
+        fn component_state(state: &mut (ScriptedSource, ())) -> &mut ScriptedSource {
+            &mut state.0
+        }
+    }
+    impl geam_core::host::HostWorkProfile for TransferProfile {
+        type Work = FutureComponent;
+    }
+    impl AsyncHostComponentProfile<FutureComponent> for TransferProfile {
+        fn component_async_stores(stores: &Stores) -> &HostFutureStore {
+            &stores.work
+        }
+        fn component_state(state: &mut (ScriptedSource, ())) -> &mut () {
+            &mut state.1
+        }
+    }
+
+    struct Echo;
+    impl geam_core::EchoSink for Echo {
+        fn emit(&mut self, _output: geam_core::EchoOutput) {
+            panic!("unexpected Echo")
+        }
+    }
+
+    let providers = TransferHostProviderSet::new([profile_provider::__geam_transfer_module::<
+        TransferProfile,
+    >()
+    .expect("transfer profile")])
+    .expect("unique module");
+    let typed = compile_typed_transfer_host_program(
+        "profile_provider",
+        "profile_provider",
+        [PackageSource::new(
+            "profile_provider",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "profile_provider",
+                "src/profile_provider.gleam",
+                SOURCE,
+            )],
+        )],
+        providers,
+    )
+    .expect("transfer source");
+    let (bindings, next) = WorkModuleBuilder::new(typed)
+        .expect("transfer builder")
+        .function(FunctionDeclaration::<(), BigInt>::new("main"))
+        .expect("main binding");
+    let mut module = bindings.seal().expect("transfer module");
+    let mut source = (ScriptedSource { next: 4 }, ());
+    let mut echo = Echo;
+    let mut run = pin!(with_execution_scope(async |guard| {
+        let mut scope = module.attach(guard, &mut source, &mut echo);
+        assert_eq!(scope.call(&next, ()).expect("first call"), BigInt::from(4));
+        assert_eq!(scope.call(&next, ()).expect("second call"), BigInt::from(5));
+    }));
+    assert!(matches!(
+        run.as_mut().poll(&mut Context::from_waker(Waker::noop())),
+        Poll::Ready(())
+    ));
 }

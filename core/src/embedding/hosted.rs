@@ -59,7 +59,7 @@ impl<Profile: HostProfile> HostedModuleBuilder<Profile> {
         Return: ReturnValue,
     {
         self.inner
-            .function(declaration)
+            .function(declaration, Return::library_type())
             .map(|(inner, function)| (HostedModuleBindings { inner }, function))
     }
 }
@@ -75,7 +75,7 @@ impl<Profile: HostProfile> HostedModuleBindings<Profile> {
         ArgumentsType: Arguments,
         Return: ReturnValue,
     {
-        self.inner.function(declaration)
+        self.inner.function(declaration, Return::library_type())
     }
 
     /// Seals every selected entry and its reachable provider specializations.

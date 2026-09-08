@@ -1,0 +1,485 @@
+use super::{PreparedHostCall, ScopedValues, StoredRuntimeList, StoredRuntimeValue};
+use crate::host::{
+    HostCallArguments, HostCustomArgumentSlot, HostCustomToken, HostExternalArgumentSlot,
+    HostExternalToken, HostFunctionArgumentSlot, HostFunctionToken, HostListArgumentSlot,
+    HostListToken, HostProfile, HostScopedValue, HostTokenRuntime, HostTupleArgumentSlot,
+    HostTupleToken, HostValueArgumentSlot, HostValueToken, TransferHostCallRuntime,
+    TransferHostCodecScope,
+};
+use crate::plan::execution::host::{HostedFunction, HostedFunctionMetadata};
+use crate::plan::execution::runtime::RuntimeExecutionPlan;
+use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedExternalValue};
+use crate::runtime::graph::{BlockEnvironment, ProfiledRetainedValues};
+use crate::runtime::state::RuntimeStateFor;
+use crate::runtime::{RuntimeListStorage as _, TransferValues};
+use ecow::EcoString;
+use num_bigint::BigInt;
+
+pub(in crate::runtime) struct RuntimeTransferHostCall<'call, 'run, Profile>
+where
+    Profile: HostProfile,
+    crate::plan::execution::TransferHostedExecution<Profile>: 'run,
+{
+    plan: &'call crate::plan::execution::TransferHostedExecution<Profile>,
+    state:
+        &'call mut RuntimeStateFor<'run, crate::plan::execution::TransferHostedExecution<Profile>>,
+    arguments: ProfiledRetainedValues<TransferValues>,
+    value_arguments: Vec<HostValueToken>,
+    list_arguments: Vec<HostListToken>,
+    tuple_arguments: Vec<HostTupleToken>,
+    custom_arguments: Vec<HostCustomToken>,
+    external_arguments: Vec<HostExternalToken>,
+    function_arguments: Vec<HostFunctionToken>,
+    scoped: ScopedValues<TransferValues>,
+    function: &'call std::sync::Arc<HostedFunctionMetadata>,
+    origin: crate::runtime::error::HostCallOrigin,
+    profile: std::marker::PhantomData<Profile>,
+}
+
+impl<'call, 'run, Profile> RuntimeTransferHostCall<'call, 'run, Profile>
+where
+    Profile: HostProfile,
+    crate::plan::execution::TransferHostedExecution<Profile>: 'run,
+{
+    pub(in crate::runtime) fn new(
+        plan: &'call crate::plan::execution::TransferHostedExecution<Profile>,
+        state: &'call mut RuntimeStateFor<
+            'run,
+            crate::plan::execution::TransferHostedExecution<Profile>,
+        >,
+        function: &'call HostedFunction<impl Sized>,
+        inputs: ProfiledRetainedValues<TransferValues>,
+        origin: crate::runtime::error::HostCallOrigin,
+    ) -> Self {
+        let PreparedHostCall {
+            arguments,
+            value_arguments,
+            list_arguments,
+            tuple_arguments,
+            custom_arguments,
+            external_arguments,
+            function_arguments,
+            scoped,
+        } = PreparedHostCall::new(function.call_parameters(), inputs);
+        state.lists_mut().drain_releases();
+
+        Self {
+            plan,
+            state,
+            arguments,
+            value_arguments,
+            list_arguments,
+            tuple_arguments,
+            custom_arguments,
+            external_arguments,
+            function_arguments,
+            scoped,
+            function: function.metadata_handle(),
+            origin,
+            profile: std::marker::PhantomData,
+        }
+    }
+
+    pub(in crate::runtime) fn new_codec(
+        plan: &'call crate::plan::execution::TransferHostedExecution<Profile>,
+        state: &'call mut RuntimeStateFor<
+            'run,
+            crate::plan::execution::TransferHostedExecution<Profile>,
+        >,
+        scope: &'call TransferHostCodecScope,
+        origin: crate::runtime::error::HostCallOrigin,
+    ) -> Self {
+        state.lists_mut().drain_releases();
+        Self {
+            plan,
+            state,
+            arguments: ProfiledRetainedValues::empty(),
+            value_arguments: Vec::new(),
+            list_arguments: Vec::new(),
+            tuple_arguments: Vec::new(),
+            custom_arguments: Vec::new(),
+            external_arguments: Vec::new(),
+            function_arguments: Vec::new(),
+            scoped: ScopedValues::default(),
+            function: scope.function(),
+            origin,
+            profile: std::marker::PhantomData,
+        }
+    }
+
+    pub(in crate::runtime) fn finish<Value>(
+        &self,
+        returned: HostValueToken,
+        local: &Value,
+    ) -> Value::Evaluated
+    where
+        Value: crate::runtime::graph::GraphValue<TransferValues>,
+    {
+        let mut retained = ProfiledRetainedValues::empty();
+        self.scoped.retain(returned, &mut retained);
+        local.read(&BlockEnvironment::from_retained(retained))
+    }
+}
+
+impl<Profile> HostTokenRuntime for RuntimeTransferHostCall<'_, '_, Profile>
+where
+    Profile: HostProfile,
+{
+    fn int(&self, value: HostValueToken) -> BigInt {
+        self.scoped.int(value)
+    }
+
+    fn float(&self, value: HostValueToken) -> f64 {
+        self.scoped.float(value)
+    }
+
+    fn string(&self, value: HostValueToken) -> EcoString {
+        self.scoped.string(value)
+    }
+
+    fn bit_array(&self, value: HostValueToken) -> crate::BitArrayValue {
+        self.scoped.bit_array(value)
+    }
+
+    fn utf_codepoint(&self, value: HostValueToken) -> char {
+        self.scoped.utf_codepoint(value)
+    }
+
+    fn bool(&self, value: HostValueToken) -> bool {
+        self.scoped.bool(value)
+    }
+
+    fn nil(&self, _value: HostValueToken) {}
+
+    fn list_token(&self, value: HostValueToken) -> HostListToken {
+        self.scoped.list_token(value)
+    }
+
+    fn tuple_token(&self, value: HostValueToken) -> HostTupleToken {
+        self.scoped.tuple_token(value)
+    }
+
+    fn custom_token(&self, value: HostValueToken) -> HostCustomToken {
+        self.scoped.custom_token(value)
+    }
+
+    fn external_token(&self, value: HostValueToken) -> HostExternalToken {
+        self.scoped.external_token(value)
+    }
+
+    fn function_token(&self, value: HostValueToken) -> HostFunctionToken {
+        self.scoped.function_token(value)
+    }
+}
+
+impl<'run, Profile> TransferHostCallRuntime<Profile> for RuntimeTransferHostCall<'_, 'run, Profile>
+where
+    Profile: HostProfile,
+    crate::plan::execution::TransferHostedExecution<Profile>: 'run,
+{
+    fn state(&mut self) -> &mut Profile::RunState {
+        self.state.host_state()
+    }
+
+    fn work(&self) -> crate::runtime::work::execution::WorkContext<Profile> {
+        self.state.host().work().clone()
+    }
+
+    fn origin(&self) -> crate::runtime::HostCallOrigin {
+        self.origin.clone()
+    }
+
+    fn external_stores(&self) -> &Profile::ExternalStores {
+        self.state.host().stores()
+    }
+
+    fn arguments(&self) -> &dyn HostCallArguments {
+        &self.arguments
+    }
+
+    fn value(&self, slot: HostValueArgumentSlot) -> HostValueToken {
+        self.value_arguments[slot.index()]
+    }
+
+    fn list(&self, slot: HostListArgumentSlot) -> HostListToken {
+        self.list_arguments[slot.index()]
+    }
+
+    fn tuple(&self, slot: HostTupleArgumentSlot) -> HostTupleToken {
+        self.tuple_arguments[slot.index()]
+    }
+
+    fn custom(&self, slot: HostCustomArgumentSlot) -> HostCustomToken {
+        self.custom_arguments[slot.index()]
+    }
+
+    fn external(&self, slot: HostExternalArgumentSlot) -> HostExternalToken {
+        self.external_arguments[slot.index()]
+    }
+
+    fn function(&self, slot: HostFunctionArgumentSlot) -> HostFunctionToken {
+        self.function_arguments[slot.index()]
+    }
+
+    fn callable(&self, function: HostFunctionToken) -> crate::runtime::TransferCallable {
+        self.scoped.function(function)
+    }
+
+    fn codec_scope(&self) -> TransferHostCodecScope {
+        TransferHostCodecScope::new(std::sync::Arc::clone(self.function))
+    }
+
+    fn list_len(&self, value: HostListToken) -> usize {
+        self.state.lists().list_len(&self.scoped.list_value(value))
+    }
+
+    fn list_item(&mut self, value: HostListToken, index: usize) -> Option<HostValueToken> {
+        let value = self.scoped.list_value(value);
+        self.state
+            .lists()
+            .evaluated_value_at(&value, index)
+            .map(|value| self.scoped.push(value))
+    }
+
+    fn tuple_len(&self, value: HostTupleToken) -> usize {
+        self.scoped.tuple_len(value)
+    }
+
+    fn tuple_values(&mut self, value: HostTupleToken) -> Box<[HostValueToken]> {
+        self.scoped
+            .tuple_values(value)
+            .into_iter()
+            .map(|value| self.scoped.push(value))
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+    }
+
+    fn custom_constructor(&self, value: HostCustomToken) -> usize {
+        self.scoped.custom_constructor(value)
+    }
+
+    fn custom_fields(&mut self, value: HostCustomToken) -> Box<[HostValueToken]> {
+        self.scoped
+            .custom_fields(value)
+            .into_iter()
+            .map(|value| self.scoped.push(value))
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+    }
+
+    fn take_custom_fields(&mut self, value: HostCustomToken) -> Box<[HostValueToken]> {
+        self.scoped
+            .take_custom_fields(value)
+            .into_vec()
+            .into_iter()
+            .map(|value| self.scoped.push(value))
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+    }
+
+    fn invoke(
+        &mut self,
+        function: HostFunctionToken,
+        arguments: Box<[HostScopedValue]>,
+    ) -> Result<HostValueToken, crate::AsyncHostCallError> {
+        let function = self.scoped.function(function);
+        let arguments = arguments
+            .into_vec()
+            .into_iter()
+            .map(|value| self.scoped.value_from_scoped(value))
+            .collect::<Vec<_>>();
+        function
+            .with_value(|function| {
+                crate::runtime::function::invoke_callable(
+                    self.plan,
+                    self.state,
+                    function,
+                    crate::runtime::error::HostCallOrigin::host(self.function),
+                    arguments.into_boxed_slice(),
+                )
+            })
+            .map(|value| self.scoped.push(value))
+            .map_err(crate::AsyncHostCallError::nested)
+    }
+
+    fn equal(&self, left: HostScopedValue, right: HostScopedValue) -> bool {
+        crate::runtime::evaluated::values_equal(
+            self.state.lists(),
+            &self.scoped.value_from_scoped(left),
+            &self.scoped.value_from_scoped(right),
+        )
+    }
+
+    fn source_hash(&self, value: HostScopedValue) -> u64 {
+        crate::runtime::evaluated::value_source_hash(
+            self.state.lists(),
+            &self.scoped.value_from_scoped(value),
+        )
+    }
+
+    fn inspect(&self, value: HostScopedValue) -> EcoString {
+        crate::runtime::materialize::value(
+            self.plan.value_metadata(),
+            self.state.lists(),
+            self.scoped.value_from_scoped(value),
+        )
+        .inspect()
+        .to_string()
+        .into()
+    }
+
+    fn stored_equal(
+        &self,
+        left: &StoredRuntimeValue<TransferValues>,
+        right: &StoredRuntimeValue<TransferValues>,
+    ) -> bool {
+        crate::runtime::evaluated::values_equal(self.state.lists(), left.value(), right.value())
+    }
+
+    fn stored_source_hash(&self, value: &StoredRuntimeValue<TransferValues>) -> u64 {
+        crate::runtime::evaluated::value_source_hash(self.state.lists(), value.value())
+    }
+
+    fn stored_inspect(&self, value: &StoredRuntimeValue<TransferValues>) -> EcoString {
+        crate::runtime::materialize::value(
+            self.plan.value_metadata(),
+            self.state.lists(),
+            value.value().clone(),
+        )
+        .inspect()
+        .to_string()
+        .into()
+    }
+
+    fn stored_list_len(&self, value: &StoredRuntimeValue<TransferValues>) -> usize {
+        self.state
+            .lists()
+            .list_len(&crate::runtime::BorrowedValue::from_stored(value).list())
+    }
+
+    fn stored_list_item(
+        &self,
+        value: &StoredRuntimeValue<TransferValues>,
+        index: usize,
+    ) -> Option<StoredRuntimeValue<TransferValues>> {
+        self.state
+            .lists()
+            .evaluated_value_at(
+                &crate::runtime::BorrowedValue::from_stored(value).list(),
+                index,
+            )
+            .map(|value| {
+                let type_ = value.value_type(self.plan.value_metadata());
+                StoredRuntimeValue::new(value, type_)
+            })
+    }
+
+    fn complete(&mut self, value: HostScopedValue) -> HostValueToken {
+        self.scoped.push_scoped(value)
+    }
+
+    fn build_list(
+        &mut self,
+        type_: &crate::host::HostTypeDescriptor,
+        values: Box<[HostScopedValue]>,
+    ) -> HostValueToken {
+        let values = values
+            .into_vec()
+            .into_iter()
+            .map(|value| self.scoped.push_scoped(value))
+            .collect::<Vec<_>>();
+        let type_ = type_.resolve_sealed(self.function.type_arguments());
+        let storage_type = self
+            .plan
+            .list_storage_type(self.function.constructions().list(&type_));
+        let list = self
+            .scoped
+            .allocate_list(storage_type, self.state.lists_mut(), &values);
+        self.scoped.push_list(list)
+    }
+
+    fn build_tuple(&mut self, values: Box<[HostScopedValue]>) -> HostValueToken {
+        let values = values
+            .into_vec()
+            .into_iter()
+            .map(|value| self.scoped.value_from_scoped(value))
+            .collect();
+        self.scoped.push_tuple(values)
+    }
+
+    fn build_custom(
+        &mut self,
+        type_: &crate::host::HostTypeDescriptor,
+        constructor: usize,
+        fields: Box<[HostScopedValue]>,
+    ) -> HostValueToken {
+        let fields = fields
+            .into_vec()
+            .into_iter()
+            .map(|value| self.scoped.value_from_scoped(value))
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        let type_ = type_.resolve_sealed(self.function.type_arguments());
+        let constructor = self
+            .plan
+            .custom_constructor_id(self.function.constructions().custom(&type_), constructor);
+        self.scoped
+            .push_custom(EvaluatedCustomValue::from_fields(constructor, fields))
+    }
+
+    fn build_external(
+        &mut self,
+        type_: &crate::host::HostTypeDescriptor,
+        value: crate::runtime::TransferExternalPayloadLease,
+    ) -> HostExternalToken {
+        let type_ = type_.resolve_sealed(self.function.type_arguments());
+        self.scoped.push_external(EvaluatedExternalValue::new(
+            self.function.constructions().external(&type_),
+            value,
+        ))
+    }
+
+    fn external_lease(
+        &self,
+        value: HostExternalToken,
+    ) -> crate::runtime::TransferExternalPayloadLease {
+        self.scoped.external(value).lease().clone()
+    }
+
+    fn resolve_host_type(
+        &self,
+        descriptor: &crate::host::HostTypeDescriptor,
+    ) -> Option<crate::plan::ValueType> {
+        descriptor.resolve(self.function.type_arguments())
+    }
+
+    fn retain_stored(&self, value: HostScopedValue) -> StoredRuntimeValue<TransferValues> {
+        let value = self.scoped.value_from_scoped(value);
+        let type_ = value.value_type(self.plan.value_metadata());
+        StoredRuntimeValue::new(value, type_)
+    }
+
+    fn retain_list(&self, value: HostListToken) -> StoredRuntimeList<TransferValues> {
+        StoredRuntimeList::new(self.scoped.list_value(value))
+    }
+
+    fn restore_list(&mut self, value: &StoredRuntimeList<TransferValues>) -> HostListToken {
+        let value = self.scoped.push_list(value.handle());
+        self.scoped.list_token(value)
+    }
+
+    fn restore_stored(&mut self, value: &StoredRuntimeValue<TransferValues>) -> HostValueToken {
+        self.scoped.push(value.value().clone())
+    }
+
+    fn callback_inputs(
+        &self,
+        values: Box<[HostScopedValue]>,
+    ) -> crate::runtime::TransferCallbackInputs {
+        let mut inputs = crate::runtime::TransferCallbackInputs::new();
+        for value in values {
+            inputs.push_value(self.scoped.value_from_scoped(value));
+        }
+        inputs
+    }
+}

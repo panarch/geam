@@ -57,11 +57,23 @@ Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data)
 ```
 
 Records, domain custom types, external values, callbacks, and generic types
-cannot currently appear in generated Rust function signatures. Gleam modules
+cannot currently appear in local generated Rust function signatures. Transferable
+bindings additionally support the `geam` package's nominal `geam/future.Future`
+recursively in that data grammar. Its Rust built-in requires the
+`geam-runtime-api` feature; other external types remain unsupported in generated
+signatures. Gleam modules
 may still use them internally. Rust can reach such logic through generated
 bindings only when the same-name root module exposes a public function with
 supported arguments and return values. See [Rust embedding](embedding-boundary.md)
 for the exact recursive type map.
+
+## Geam Runtime APIs
+
+The `geam` package provides `geam/future` as an ordinary Gleam dependency.
+Its types work with the official Gleam language server. Geam implements the
+operations as a built-in over core's owned-work execution; Rust embedding
+supplies the execution scope and executor. Erlang and JavaScript implementations
+are not currently available. See [Future](../future.md) for its API and lifecycle.
 
 ## Verified Package Integrations
 

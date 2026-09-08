@@ -1013,11 +1013,13 @@ version = "0.2.3"
 dependencies = [
  "camino",
  "ecow",
+ "futures-channel",
  "geam-cli",
  "geam-core",
  "geam-gleam-core",
  "geam-json",
  "geam-macros",
+ "geam-runtime-api",
  "geam-stdlib",
  "geam-time",
  "miette",
@@ -1055,6 +1057,8 @@ dependencies = [
  "bitvec",
  "camino",
  "ecow",
+ "futures-channel",
+ "futures-util",
  "geam-gleam-core",
  "half",
  "im",
@@ -1195,10 +1199,12 @@ dependencies = [
  "geam-core",
  "geam-gleam-core",
  "geam-macros",
+ "geam-runtime-api",
  "geam-stdlib",
  "jiter",
  "num-bigint",
  "ryu",
+ "tempfile",
 ]
 
 [[package]]
@@ -1206,7 +1212,9 @@ name = "geam-macros"
 version = "0.2.3"
 dependencies = [
  "ecow",
+ "futures-channel",
  "geam-core",
+ "geam-runtime-api",
  "im",
  "num-bigint",
  "proc-macro-crate",
@@ -1214,6 +1222,22 @@ dependencies = [
  "quote",
  "syn",
  "trybuild",
+]
+
+[[package]]
+name = "geam-runtime-api"
+version = "0.2.3"
+dependencies = [
+ "ecow",
+ "futures-channel",
+ "futures-util",
+ "geam-core",
+ "geam-gleam-core",
+ "num-bigint",
+ "serde_json",
+ "tempfile",
+ "trybuild",
+ "url",
 ]
 
 [[package]]
@@ -1227,11 +1251,13 @@ dependencies = [
  "geam-core",
  "geam-gleam-core",
  "geam-macros",
+ "geam-runtime-api",
  "hex",
  "im",
  "num-bigint",
  "num-traits",
  "rand 0.10.2",
+ "tempfile",
  "unicode-segmentation",
 ]
 
@@ -1244,9 +1270,11 @@ dependencies = [
  "geam-core",
  "geam-gleam-core",
  "geam-macros",
+ "geam-runtime-api",
  "geam-stdlib",
  "jiff",
  "num-bigint",
+ "tempfile",
 ]
 
 [[package]]

@@ -70,12 +70,9 @@ fn runs_official_gleam_dict_behavior() {
     let hosts =
         HostProviderSet::with_providers(Vec::<HostModule<GleamStdlibProfile>>::new(), providers)
             .expect("official stdlib provider modules should be unique");
-    let value = run_hosted_fixture(
-        "gleam_dict",
-        &["gleam/option", "gleam/dict"],
-        hosts,
-        &mut GleamStdlibRunState::from_seed([0; 32]),
-    );
+    let value = run_hosted_fixture("gleam_dict", &["gleam/option", "gleam/dict"], hosts, || {
+        GleamStdlibRunState::from_seed([0; 32])
+    });
 
     assert!(matches!(value, Value::External(_)));
     assert_eq!(

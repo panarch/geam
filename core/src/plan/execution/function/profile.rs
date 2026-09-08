@@ -6,21 +6,12 @@ use crate::plan::execution::function::{
     RuntimeFunctionFunctionTarget, RuntimeListFunctionId, TailCallLabelIndex,
 };
 use crate::plan::execution::graph::{
-    BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
-    BoolListLocalId, BoolLocalId, CustomFunctionLocal, CustomListLocalId, CustomLocal,
-    ExternalFunctionInstruction, ExternalFunctionInstructionView, ExternalFunctionLocal,
-    ExternalInstruction, ExternalInstructionView, ExternalListInstruction,
-    ExternalListInstructionView, ExternalListLocalId, ExternalLocal, FloatFunctionLocalId,
-    FloatListLocalId, FloatLocalId, FunctionFunctionLocal, FunctionListLocalId,
-    GenericFunctionLocal, IntFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
-    ListListLocalId, NeverFunctionLocal, NilFunctionLocalId, NilListLocalId, NilLocalId,
-    ParameterListListLocalId, ParameterListLocalId, StringFunctionLocalId, StringListLocalId,
-    StringLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
-    UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
+    ExternalFunctionInstruction, ExternalFunctionInstructionView, ExternalInstruction,
+    ExternalInstructionView, ExternalListInstruction, ExternalListInstructionView,
 };
 use crate::plan::execution::host::{
-    AsyncHostedExecutionProfile, HostFunctionId, HostNeverFunctionId, HostedExecutionProfile,
-    HostedFunctionTarget, ResumableHostedFunctionTarget,
+    HostNeverFunctionId, HostedExecutionProfile, HostedFunctionTarget,
+    TransferHostedExecutionProfile,
 };
 use std::convert::Infallible;
 use std::fmt::Debug;
@@ -71,82 +62,9 @@ pub(crate) trait ExecutionGraphProfile: Sized + Debug + Clone + PartialEq + Eq {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct HostedExecutionGraph;
 
-pub(crate) trait ExecutionFunctionBody: FunctionBodyOwner {
-    type AsyncHostTarget;
-}
+pub(crate) trait ExecutionFunctionBody: FunctionBodyOwner + Sized {}
 
-pub(crate) trait AsyncHostReturnTarget<Body: FunctionBodyOwner> {
-    type Target;
-}
-
-macro_rules! async_host_return_target {
-    ($($return_:ty),* $(,)?) => {
-        $(
-            impl<Body: FunctionBodyOwner<Return = $return_>> AsyncHostReturnTarget<Body>
-                for $return_
-            {
-                type Target = HostFunctionId<Body>;
-            }
-        )*
-    };
-}
-
-macro_rules! graph_only_return_target {
-    ($($return_:ty),* $(,)?) => {
-        $(
-            impl<Body: FunctionBodyOwner<Return = $return_>> AsyncHostReturnTarget<Body>
-                for $return_
-            {
-                type Target = Infallible;
-            }
-        )*
-    };
-}
-
-async_host_return_target!(
-    IntLocalId,
-    FloatLocalId,
-    StringLocalId,
-    BitArrayLocalId,
-    UtfCodepointLocalId,
-    BoolLocalId,
-    NilLocalId,
-    ExternalLocal,
-);
-
-graph_only_return_target!(
-    Infallible,
-    CustomLocal,
-    TupleLocalId,
-    ParameterListLocalId,
-    IntListLocalId,
-    FloatListLocalId,
-    StringListLocalId,
-    BitArrayListLocalId,
-    UtfCodepointListLocalId,
-    CustomListLocalId,
-    ExternalListLocalId,
-    BoolListLocalId,
-    NilListLocalId,
-    TupleListLocalId,
-    ParameterListListLocalId,
-    ListListLocalId,
-    FunctionListLocalId,
-    IntFunctionLocalId,
-    FloatFunctionLocalId,
-    StringFunctionLocalId,
-    BitArrayFunctionLocalId,
-    UtfCodepointFunctionLocalId,
-    GenericFunctionLocal,
-    NeverFunctionLocal,
-    CustomFunctionLocal,
-    ExternalFunctionLocal,
-    BoolFunctionLocalId,
-    NilFunctionLocalId,
-    TupleFunctionLocalId,
-    ListFunctionLocal,
-    FunctionFunctionLocal,
-);
+impl<Body: FunctionBodyOwner> ExecutionFunctionBody for Body {}
 
 pub(crate) trait ExecutionFunctionEntry<Body> {
     type HostTarget;
@@ -165,14 +83,6 @@ pub(crate) type ExecutionHostTarget<Profile, Body> =
     <Profile as ExecutionProfile>::HostTarget<Body>;
 pub(crate) type ExecutionNeverFunction<Profile> = <Profile as ExecutionProfile>::NeverFunction;
 pub(crate) type ExecutionNeverHostTarget<Profile> = <Profile as ExecutionProfile>::NeverHostTarget;
-
-impl<Body> ExecutionFunctionBody for Body
-where
-    Body: FunctionBodyOwner,
-    Body::Return: AsyncHostReturnTarget<Body>,
-{
-    type AsyncHostTarget = <Body::Return as AsyncHostReturnTarget<Body>>::Target;
-}
 
 impl ExecutionProfile for Infallible {
     type Graph = Infallible;
@@ -216,11 +126,11 @@ impl ExecutionProfile for HostedExecutionProfile {
     }
 }
 
-impl ExecutionProfile for AsyncHostedExecutionProfile {
+impl ExecutionProfile for TransferHostedExecutionProfile {
     type Graph = HostedExecutionGraph;
-    type HostTarget<Body: ExecutionFunctionBody> = ResumableHostedFunctionTarget<Body>;
+    type HostTarget<Body: ExecutionFunctionBody> = HostedFunctionTarget<Body>;
     type Function<Body: ExecutionFunctionBody> =
-        ValueFunctionEntry<Body, ResumableHostedFunctionTarget<Body>>;
+        ValueFunctionEntry<Body, HostedFunctionTarget<Body>>;
     type NeverHostTarget = HostNeverFunctionId;
     type NeverFunction =
         ValueFunctionEntry<super::ExecutionNeverFunctionBody<Self>, HostNeverFunctionId>;
@@ -244,7 +154,7 @@ pub(crate) trait DirectHostedExecutionProfile:
 }
 
 impl DirectHostedExecutionProfile for HostedExecutionProfile {}
-impl DirectHostedExecutionProfile for AsyncHostedExecutionProfile {}
+impl DirectHostedExecutionProfile for TransferHostedExecutionProfile {}
 
 impl ExecutionGraphProfile for Infallible {
     type ExternalFunctionId = Infallible;
@@ -504,8 +414,9 @@ pub(super) fn plain_core_runtime_function_id(
 #[cfg(test)]
 mod tests {
     use super::{
-        ExecutionFunction, ExecutionGraphProfile, ExecutionHostTarget, HostedExecutionGraph,
-        HostedExecutionProfile,
+        ExecutionFunction, ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionGraphProfile,
+        ExecutionHostTarget, ExecutionProfile, HostedExecutionGraph, HostedExecutionProfile,
+        TransferHostedExecutionProfile,
     };
     use crate::plan::execution::function::{
         BitArrayFunctionBody, BitArrayFunctionFunctionBody, BitArrayListFunctionBody,
@@ -515,16 +426,19 @@ mod tests {
         ExternalFunctionFunctionBody, ExternalFunctionFunctionId, ExternalFunctionId,
         ExternalListFunctionBody, ExternalListFunctionFunctionBody, ExternalListFunctionFunctionId,
         ExternalListFunctionId, FloatFunctionBody, FloatFunctionFunctionBody,
-        FloatListFunctionBody, FunctionFunctionFunctionBody, FunctionFunctionId,
+        FloatListFunctionBody, FunctionExit, FunctionFunctionFunctionBody, FunctionFunctionId,
         FunctionListFunctionBody, GenericFunctionFunctionBody, IntFunctionBody,
         IntFunctionFunctionBody, IntListFunctionBody, ListFunctionFunctionId, ListListFunctionBody,
         NeverFunctionBody, NeverFunctionFunctionBody, NilFunctionBody, NilFunctionFunctionBody,
         NilListFunctionBody, ParameterListFunctionBody, ParameterListListFunctionBody,
-        ProfiledFunctionFunctionId, ProfiledListFunctionFunctionId, ProfiledListFunctionId,
-        RuntimeListFunctionId, StringFunctionBody, StringFunctionFunctionBody,
-        StringListFunctionBody, TupleFunctionBody, TupleFunctionFunctionBody,
-        TupleListFunctionBody, UtfCodepointFunctionBody, UtfCodepointFunctionFunctionBody,
-        UtfCodepointListFunctionBody, ValueFunctionEntry,
+        ProfiledFunctionBody, ProfiledFunctionFunctionId, ProfiledListFunctionFunctionId,
+        ProfiledListFunctionId, RuntimeListFunctionId, StringFunctionBody,
+        StringFunctionFunctionBody, StringListFunctionBody, TupleFunctionBody,
+        TupleFunctionFunctionBody, TupleListFunctionBody, UtfCodepointFunctionBody,
+        UtfCodepointFunctionFunctionBody, UtfCodepointListFunctionBody, ValueFunctionEntry,
+    };
+    use crate::plan::execution::graph::{
+        BlockGraphExitId, BlockId, IntLocalId, ProfiledBlock, ProfiledBlockGraph, Terminator,
     };
     use crate::plan::execution::host::{HostNeverFunctionId, HostedFunctionTarget};
     use crate::plan::execution::type_::{
@@ -610,6 +524,34 @@ mod tests {
     }
 
     #[test]
+    fn transfer_profile_keeps_graph_entries() {
+        let transfer = <TransferHostedExecutionProfile as ExecutionProfile>::graph(int_graph());
+        let transfer_never =
+            <TransferHostedExecutionProfile as ExecutionProfile>::never_graph(never_graph());
+        for (entry, graph) in [
+            (transfer, true),
+            (
+                ValueFunctionEntry::host(HostedFunctionTarget::Never(HostNeverFunctionId::new(0))),
+                false,
+            ),
+        ] {
+            assert_eq!(
+                matches!(entry.as_ref(), ExecutionFunctionRef::Graph(_)),
+                graph
+            );
+        }
+        for (entry, graph) in [
+            (transfer_never, true),
+            (ValueFunctionEntry::host(HostNeverFunctionId::new(0)), false),
+        ] {
+            assert_eq!(
+                matches!(entry.as_ref(), ExecutionFunctionRef::Graph(_)),
+                graph
+            );
+        }
+    }
+
+    #[test]
     fn resolves_external_function_ids_through_the_hosted_graph_profile() {
         let external_type = ExternalTypeId::new(0);
         let list_type = ExternalListTypeId::new(ListTypeId::new(1), external_type);
@@ -663,5 +605,36 @@ mod tests {
 
     fn assert_same<Actual: 'static, Expected: 'static>() {
         assert_eq!(TypeId::of::<Actual>(), TypeId::of::<Expected>());
+    }
+
+    fn int_graph() -> ExecutableFunction<IntFunctionBody> {
+        ExecutableFunction::new(
+            0,
+            ProfiledFunctionBody::from_parts(
+                single_exit_graph(),
+                vec![FunctionExit::Return(IntLocalId(0))],
+            ),
+        )
+    }
+
+    fn never_graph() -> ExecutableFunction<NeverFunctionBody> {
+        ExecutableFunction::new(
+            0,
+            ProfiledFunctionBody::from_parts(
+                single_exit_graph(),
+                Vec::<FunctionExit<std::convert::Infallible, _>>::new(),
+            ),
+        )
+    }
+
+    fn single_exit_graph() -> ProfiledBlockGraph<HostedExecutionGraph> {
+        ProfiledBlockGraph::from_parts(
+            BlockId::new(0),
+            vec![ProfiledBlock::new(
+                Vec::new(),
+                Vec::new(),
+                Terminator::Exit(BlockGraphExitId::new(0)),
+            )],
+        )
     }
 }

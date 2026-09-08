@@ -17,7 +17,7 @@ use crate::runtime::evaluated::{
     EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
     EvaluatedUtfCodepointFunction,
 };
-use crate::runtime::graph::RetainedValues;
+use crate::runtime::graph::ProfiledRetainedValues;
 use crate::runtime::state::RuntimeStateFor;
 use std::convert::Infallible;
 
@@ -26,8 +26,8 @@ pub(in crate::runtime) fn run_core_function<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     function: ProfiledFunctionFunctionId<Infallible>,
     origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedFunctionValue> {
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedFunctionValue<Plan::Values>, Plan::Values> {
     use ProfiledFunctionFunctionId as F;
 
     match function {
@@ -75,8 +75,8 @@ pub(in crate::runtime) fn run_external_function_function<Plan: ExecutableRuntime
     state: &mut RuntimeStateFor<'_, Plan>,
     function: ExternalFunctionCallTarget,
     origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedFunctionValue> {
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedFunctionValue<Plan::Values>, Plan::Values> {
     match function {
         ExternalFunctionCallTarget::Function(function) => {
             run_external_function(plan, state, function, origin, inputs).map(Into::into)
@@ -92,8 +92,8 @@ pub(in crate::runtime) fn run_generic_function<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     function: GenericFunctionFunctionId,
     origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedGenericFunction> {
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedGenericFunction<Plan::Values>, Plan::Values> {
     run_tail(
         plan,
         state,
@@ -123,8 +123,8 @@ pub(in crate::runtime) fn run_never_function<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     function: NeverFunctionFunctionId,
     origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedNeverFunction> {
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedNeverFunction<Plan::Values>, Plan::Values> {
     run_tail(
         plan,
         state,
@@ -154,8 +154,8 @@ pub(in crate::runtime) fn run_int_function<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     function: IntFunctionFunctionId,
     origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedIntFunction> {
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedIntFunction<Plan::Values>, Plan::Values> {
     run_tail(
         plan,
         state,
@@ -185,8 +185,8 @@ pub(in crate::runtime) fn run_float_function<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     function: FloatFunctionFunctionId,
     origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedFloatFunction> {
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedFloatFunction<Plan::Values>, Plan::Values> {
     run_tail(
         plan,
         state,
@@ -216,8 +216,8 @@ pub(in crate::runtime) fn run_string_function<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     function: StringFunctionFunctionId,
     origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedStringFunction> {
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedStringFunction<Plan::Values>, Plan::Values> {
     run_tail(
         plan,
         state,
@@ -247,8 +247,8 @@ pub(in crate::runtime) fn run_bit_array_function<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     function: BitArrayFunctionFunctionId,
     origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedBitArrayFunction> {
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedBitArrayFunction<Plan::Values>, Plan::Values> {
     run_tail(
         plan,
         state,
@@ -278,8 +278,8 @@ pub(in crate::runtime) fn run_utf_codepoint_function<Plan: ExecutableRuntimePlan
     state: &mut RuntimeStateFor<'_, Plan>,
     function: UtfCodepointFunctionFunctionId,
     origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedUtfCodepointFunction> {
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedUtfCodepointFunction<Plan::Values>, Plan::Values> {
     run_tail(
         plan,
         state,
@@ -309,8 +309,8 @@ pub(in crate::runtime) fn run_custom_function<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     function: CustomFunctionFunctionId,
     origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedCustomFunction> {
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedCustomFunction<Plan::Values>, Plan::Values> {
     run_tail(
         plan,
         state,
@@ -340,8 +340,8 @@ pub(in crate::runtime) fn run_external_function<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     function: ExternalFunctionFunctionId,
     origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedExternalFunction> {
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedExternalFunction<Plan::Values>, Plan::Values> {
     run_tail(
         plan,
         state,
@@ -371,8 +371,8 @@ pub(in crate::runtime) fn run_bool_function<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     function: BoolFunctionFunctionId,
     origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedBoolFunction> {
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedBoolFunction<Plan::Values>, Plan::Values> {
     run_tail(
         plan,
         state,
@@ -402,8 +402,8 @@ pub(in crate::runtime) fn run_nil_function<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     function: NilFunctionFunctionId,
     origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedNilFunction> {
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedNilFunction<Plan::Values>, Plan::Values> {
     run_tail(
         plan,
         state,
@@ -433,8 +433,8 @@ pub(in crate::runtime) fn run_tuple_function<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     function: TupleFunctionFunctionId,
     origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedTupleFunction> {
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedTupleFunction<Plan::Values>, Plan::Values> {
     run_tail(
         plan,
         state,
@@ -464,8 +464,8 @@ fn run_core_list_function<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     function: ProfiledListFunctionFunctionId<Infallible>,
     origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedListFunction> {
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedListFunction<Plan::Values>, Plan::Values> {
     run_tail(
         plan,
         state,
@@ -495,8 +495,8 @@ fn run_external_list_function<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     function: ExternalListFunctionFunctionId,
     origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedListFunction> {
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedListFunction<Plan::Values>, Plan::Values> {
     run_tail(
         plan,
         state,
@@ -526,8 +526,8 @@ pub(in crate::runtime) fn run_function_function<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     function: FunctionFunctionFunctionId,
     origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedFunctionFunction> {
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedFunctionFunction<Plan::Values>, Plan::Values> {
     run_tail(
         plan,
         state,

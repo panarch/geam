@@ -106,12 +106,12 @@ application that can be run and tested on its own:
 | Gleam IO | Route Gleam IO through Rust and capture Echo separately | [`io`](../examples/embedding/io) |
 | External provider | Call Gleam code backed by a configured Rust provider | [`provider`](../examples/embedding/provider) |
 | Application | Combine packages, IO, a provider, structured data, and repeated calls | [`application`](../examples/embedding/application) |
-| Async Rust host | Await Rust work on the application's executor, with state and a Gleam callback | [`async_host`](../examples/embedding/async_host) |
+| Async Rust host | Return explicit work and drive it on the application's executor | [`async_host`](../examples/embedding/async_host) |
 
 Follow the stages in order when learning the API, or open the smallest example
 that contains the feature your application needs. The application example
-completes the immediate call path; the async-host example then shows the
-resumable path on its own.
+combines the preceding examples; the async-host example then adds explicit
+Future values.
 
 ## Keep Gleam and Rust in sync
 
@@ -251,55 +251,86 @@ provider](../examples/embedding/provider)
 separately. The [application example](../examples/embedding/application) then
 combines stdlib IO, an external provider, structured data, and repeated calls.
 
-## Await Rust work without blocking
+## Drive explicit Future values
 
-When a Rust capability returns a Future, use the resumable embedding path. Geam
-returns an ordinary Rust Future and leaves executor choice to the application:
+A Rust provider can expose an `async fn` as a Gleam function returning
+`Future(a)`. Gleam creates and composes that work; the Rust application decides
+when to drive it. The [Future guide](future.md) covers package setup and Gleam
+composition. Ordinary functions still return ordinary values:
 
-```rust
-let program = geam_bindings::project()
-    .with_async_hosts(host::async_hosts()?)
-    .compile()?;
-let builder = AsyncHostedModuleBuilder::new(program)?;
-let (bindings, functions) = geam_bindings::bind_async(builder)?;
-let mut module = bindings.seal();
+```gleam
+import example_async_files as files
+import geam/future.{type Future}
 
-let value = module
-    .call_async(&functions.calculate, (20.into(),), &mut state, &mut echo)
-    .await?;
+pub fn double(value: Int) -> Int {
+  value * 2
+}
+
+pub fn greeting(path: String) -> Future(Result(String, String)) {
+  use result <- future.map(files.read(path))
+  case result {
+    Ok(text) -> Ok("Hello " <> text)
+    Error(error) -> Error(error)
+  }
+}
 ```
 
-An async host function can be an ordinary Rust `async fn`. A scoped async host
-also receives `AsyncHostCall`: `with_state` runs one short operation against
-caller-owned provider state, while `invoke` calls a typed Gleam callback in the
-same execution. Neither operation keeps a mutable state or runtime borrow
-across `.await`. Use `call.invoke(&callback, arguments).await?` again to call the
-same callback with new arguments; each invocation starts a fresh execution and
-retains the callback's captured values for as long as it needs them.
+Select transferable storage once in the Rust application's Cargo manifest,
+then run `geam embedding sync`. Sync enables the required `geam-runtime-api`
+feature on the application's Geam dependency:
 
-External payload operations use the same driver: await `with_external` to read
-an owned result, or `return_external` to insert a newly built payload. The host
-Future does not borrow the module's stores. Run state, stores, and payloads need
-`Send`, not `Sync`.
+```toml
+[package.metadata.geam.embedding]
+storage = "transferable"
+```
 
-`call_async` borrows the module mutably, so one module has one active root call.
-Dropping the returned Future cancels that call and leaves the module ready for a
-later call. Geam does not start an executor or block a thread for pending work.
+This selects the storage used by the generated module, including its provider
+values and state. It does not change an ordinary function into an async
+function. The default local storage remains available for applications with
+local-only Rust values.
 
-The outer result uses `AsyncCallError`, with the same ownership checks and
-execution failure kinds as `CallError`. Both successful values and failures can
-move between executor workers. A failed `let assert` retains its subject as
-`AsyncPanicValue`; `to_value()` produces a local diagnostic view when requested.
-`AsyncCallError::into_local()` converts the complete error to `CallError` for
-code that uses the synchronous diagnostic representation.
+The generated project and bindings use the same loading sequence:
 
-This API currently belongs to application-owned Rust embedding. Use it with a
-generated plain project and register the async Rust implementations in the
-application. Packaged provider macros and `geam run` continue to use the
-immediate path. The complete [async-host
-example](../examples/embedding/async_host) includes registration, a real
-Pending transition, bounded state access, callback re-entry, and exact output
-tests.
+```rust
+let program = geam_bindings::project().compile()?;
+let builder = WorkModuleBuilder::new(program)?;
+let (bindings, functions) = geam_bindings::bind(builder)?;
+let mut module = bindings.seal()?;
+```
+
+After initializing the generated `RunStateInputs`, attach the module to an
+execution scope owned by the Rust application:
+
+```rust
+with_execution_scope(async |guard| {
+    let mut scope = module.attach(guard, &mut state, &mut echo);
+    let doubled = scope.call(&functions.double, (21.into(),))?;
+    let work = scope.call(&functions.greeting, (path.into(),))?;
+    let result = scope.observe(&work).await?;
+    result.read(|value| println!("{value:?}"));
+    Ok::<_, Box<dyn std::error::Error>>(())
+})
+.await?;
+```
+
+The application drives this enclosing Rust Future with its own executor.
+`scope.call` evaluates the Gleam function and returns its value. For a function
+returning `Future`, that value is work to observe, not its eventual result.
+`scope.observe` drives the work and returns shared access to its result.
+Observing the same work again reuses its completion rather than running its
+native effects again.
+
+The scope borrows the module, provider state, and Echo sink. Dropping one
+observation leaves separately retained work available for another observation
+in the same scope. Ending the scope cancels pending work; plain results already
+obtained with `observe` remain available. See the
+[embedding reference](reference/embedding-boundary.md#explicit-future-execution)
+for nested Future values and completion errors.
+
+The [async-host example](../examples/embedding/async_host) contains the complete
+Gleam package, independent async file provider, generated bindings, state
+initialization, and caller-owned executor. This workflow uses Rust embedding;
+`geam run` does not drive source Future values.
 
 ## Verify a prepared checkout
 
@@ -327,10 +358,12 @@ compilation and tests.
 Generated bindings currently support this recursive data grammar:
 
 ```text
-Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data)
+Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data) | Future(Data)
 ```
 
 This includes nested Lists and combinations of Tuple, Result, and Option.
+Transferable bindings also recognize the nominal `geam/future.Future` type in
+these positions.
 Records, arbitrary custom types, external values, callbacks, and generic types
 cannot currently be used in generated Rust function signatures. Gleam code may
 use them internally. Through generated bindings, Rust can call such code only
@@ -346,9 +379,10 @@ boundary](reference/embedding-boundary.md) for the complete type map, ownership
 rules, list transfer behavior, provider state, and lower-level manual binding
 API.
 
-Generated resumable bindings use `AsyncList<T>` for Gleam Lists. It has the same
-lazy `len`, `get`, `iter`, and `to_vec` operations as `List<T>`, while retaining
-storage that can move with the call Future between executor workers.
+Both storage choices use `List<T>` in declarations. Transferable calls expose
+shared, lazily inspected list values, so the same source type can move with
+the application's Future between executor workers. Nested Future values keep
+their execution scope; putting work inside a List does not erase its owner.
 
 ## Ship the Gleam sources with your application
 

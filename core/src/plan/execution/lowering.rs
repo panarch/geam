@@ -38,6 +38,7 @@ struct SpecializationState {
 struct LoweredExecution<Profile: ExecutionProfile> {
     constants: super::constant::ProfiledConstantTable<Profile::Graph>,
     functions: super::function::FunctionTables<Profile>,
+    function_parameters: super::function::FunctionParameterCatalog,
     list_types: ListTypeTable,
     custom_types: CustomTypeTable,
     external_types: ExternalTypeTable,
@@ -57,7 +58,7 @@ type LoweringCompletion<Execution> = (
 );
 type PlainLoweredExecution = LoweredExecution<Infallible>;
 
-pub(super) use host::{lower_async_hosted_library, lower_hosted, lower_hosted_library};
+pub(super) use host::{lower_hosted, lower_hosted_library, lower_transfer_hosted_library};
 pub(super) use plain::{lower, lower_library};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -69,6 +70,7 @@ enum FixedPointStep<State, Output> {
 #[derive(Clone)]
 struct ProvisionalSpecialization {
     index: usize,
+    family: function::FunctionTableFamily,
     parameters: Box<[specialization::StoredValueShape]>,
 }
 
@@ -551,7 +553,11 @@ impl LoweringContext {
             Some(specialization) => specialization.clone(),
             None => {
                 let index = self.next_function_index(family);
-                let specialization = ProvisionalSpecialization { index, parameters };
+                let specialization = ProvisionalSpecialization {
+                    index,
+                    family,
+                    parameters,
+                };
                 self.provisional_specializations
                     .insert(key.clone(), specialization.clone());
                 self.pending.push_back(key);
@@ -565,6 +571,37 @@ impl LoweringContext {
         key: &SpecializationKey,
     ) -> &[specialization::StoredValueShape] {
         &self.provisional_specializations[key].parameters
+    }
+
+    fn function_parameter_catalog(&mut self) -> super::function::FunctionParameterCatalog {
+        let specializations = self
+            .provisional_specializations
+            .values()
+            .map(|specialization| {
+                (
+                    specialization.family,
+                    specialization.index,
+                    specialization.parameters.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let entries = specializations
+            .into_iter()
+            .map(|(family, index, shapes)| {
+                let mut prefix = local::ParameterPrefix::default();
+                let parameters = shapes
+                    .iter()
+                    .map(|shape| {
+                        let (index, stored) =
+                            prefix.allocate_stored(shape.clone(), &self.representations);
+                        local::stored_value_local_at(&stored, index, self)
+                    })
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice();
+                (family, index, parameters)
+            })
+            .collect();
+        super::function::FunctionParameterCatalog::new(entries)
     }
 
     fn reserve_index_for(
@@ -1194,6 +1231,8 @@ impl LoweringContext {
     }
 
     fn finish(self) -> LoweringCompletion<PlainLoweredExecution> {
+        let mut this = self;
+        let function_parameters = this.function_parameter_catalog();
         let Self {
             constant_templates,
             constants,
@@ -1202,7 +1241,7 @@ impl LoweringContext {
             functions,
             erased_specializations,
             ..
-        } = self;
+        } = this;
         let outcome = functions
             .finish()
             .zip_with(constants.finish_plain(), |functions, constants| {
@@ -1210,6 +1249,7 @@ impl LoweringContext {
                 Box::new(LoweredExecution {
                     constants,
                     functions: *functions,
+                    function_parameters,
                     list_types,
                     custom_types,
                     external_types,

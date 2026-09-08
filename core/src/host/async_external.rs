@@ -7,13 +7,9 @@ pub(crate) use context::{
     TransferExternalEquality, TransferExternalHashing, TransferExternalInspection,
 };
 
-use super::{HostExternalSchema, HostExternalType, HostProfile, HostProvider, HostTypeListEnd};
-use crate::runtime::{
-    EvaluatedExternalValue, TransferExternalPayloadLease, TransferExternalStore,
-    TransferStoredRuntimeValue, TransferValues,
-};
+use super::{HostExternalSchema, HostProfile, HostProvider};
+use crate::runtime::{TransferExternalPayloadLease, TransferExternalStore};
 use ecow::EcoString;
-use std::marker::PhantomData;
 
 /// Module-owned storage for immutable external payloads used by async embedding.
 ///
@@ -23,7 +19,7 @@ pub struct AsyncHostExternalStore<Payload> {
     inner: TransferExternalStore<Payload>,
 }
 
-/// Source semantics and storage for an external type in resumable embedding.
+/// Source semantics and storage for an external type in transferable embedding.
 ///
 /// Equal payloads must have equal source hashes. These hashes are runtime
 /// indexes, not a stable serialization format.
@@ -32,7 +28,7 @@ where
     Profile: HostProfile,
     Schema: HostExternalSchema,
 {
-    type Payload: Send + 'static;
+    type Payload: 'static;
 
     fn store(stores: &Profile::ExternalStores) -> &AsyncHostExternalStore<Self::Payload>;
     fn source_equal(
@@ -53,52 +49,6 @@ where
     type Storage: AsyncHostExternalStorage<Profile, Schema>;
 }
 
-/// A typed external argument retained for the duration of one async host call.
-///
-/// The argument cannot escape its invocation:
-///
-/// ```compile_fail
-/// use geam_core::AsyncHostExternal;
-/// fn escape<'call, Schema>(
-///     value: AsyncHostExternal<'call, Schema>,
-/// ) -> AsyncHostExternal<'static, Schema> {
-///     value
-/// }
-/// ```
-pub struct AsyncHostExternal<'call, Schema, Arguments = HostTypeListEnd> {
-    value: EvaluatedExternalValue<TransferValues>,
-    lifetime: PhantomData<&'call mut ()>,
-    schema: PhantomData<fn() -> HostExternalType<Schema, Arguments>>,
-}
-
-/// An owned, typed source value kept inside an async external payload.
-///
-/// It retains its complete runtime graph after the originating call ends.
-/// Creation belongs to [`AsyncHostExternalPayloadBuilder`]; the value cannot
-/// be cloned out of a payload into provider state.
-///
-/// ```compile_fail
-/// use geam_core::AsyncHostStoredValue;
-/// fn require_clone<T: Clone>() {}
-/// require_clone::<AsyncHostStoredValue<bool>>();
-/// ```
-pub struct AsyncHostStoredValue<Type> {
-    value: TransferStoredRuntimeValue,
-    marker: PhantomData<fn() -> Type>,
-}
-
-/// The active-call builder for values retained by a new async external payload.
-pub struct AsyncHostExternalPayloadBuilder<'call> {
-    lifetime: PhantomData<&'call mut ()>,
-}
-
-/// An owned external return bound to the async host invocation that created it.
-pub struct AsyncHostExternalReturn<'call, Schema, Arguments = HostTypeListEnd> {
-    lease: TransferExternalPayloadLease,
-    lifetime: PhantomData<&'call mut ()>,
-    schema: PhantomData<fn() -> HostExternalType<Schema, Arguments>>,
-}
-
 impl<Payload> Default for AsyncHostExternalStore<Payload> {
     fn default() -> Self {
         Self {
@@ -108,7 +58,13 @@ impl<Payload> Default for AsyncHostExternalStore<Payload> {
 }
 
 impl<Payload: Send + 'static> AsyncHostExternalStore<Payload> {
-    pub(super) fn insert<Profile, Schema, Storage>(
+    pub(crate) fn clone_handle(&self) -> Self {
+        Self {
+            inner: self.inner.clone_handle(),
+        }
+    }
+
+    pub(crate) fn insert<Profile, Schema, Storage>(
         &self,
         payload: Payload,
     ) -> TransferExternalPayloadLease
@@ -127,81 +83,44 @@ impl<Payload: Send + 'static> AsyncHostExternalStore<Payload> {
         )
     }
 
-    pub(super) fn with_view<Output>(
+    pub(crate) fn with_view<Output>(
         &self,
         lease: &TransferExternalPayloadLease,
         view: impl FnOnce(&Payload) -> Output,
     ) -> Output {
         self.inner.with_view(lease, view)
     }
-}
 
-impl<'call, Schema, Arguments> AsyncHostExternal<'call, Schema, Arguments> {
-    pub(super) fn new(value: EvaluatedExternalValue<TransferValues>) -> Self {
-        Self {
-            value,
-            lifetime: PhantomData,
-            schema: PhantomData,
-        }
-    }
-
-    pub(super) fn lease(&self) -> &TransferExternalPayloadLease {
-        self.value.lease()
-    }
-
-    pub(super) fn source_hash(&self, lists: &crate::runtime::TransferListStorage) -> u64 {
-        use crate::runtime::RuntimeValueProfile;
-        TransferValues::external_value_source_hash(lists, &self.value)
-    }
-}
-
-impl<'call> AsyncHostExternalPayloadBuilder<'call> {
-    pub(super) fn new() -> Self {
-        Self {
-            lifetime: PhantomData,
-        }
-    }
-
-    /// Retains one external value in the payload being constructed.
-    pub fn store_external<Schema, Arguments>(
-        &mut self,
-        value: &AsyncHostExternal<'call, Schema, Arguments>,
-    ) -> AsyncHostStoredValue<HostExternalType<Schema, Arguments>> {
-        AsyncHostStoredValue {
-            value: TransferStoredRuntimeValue::external(value.value.clone()),
-            marker: PhantomData,
-        }
-    }
-}
-
-impl<'call, Schema, Arguments> AsyncHostExternalReturn<'call, Schema, Arguments> {
-    pub(super) fn new(lease: TransferExternalPayloadLease) -> Self {
-        Self {
-            lease,
-            lifetime: PhantomData,
-            schema: PhantomData,
-        }
-    }
-
-    pub(super) fn into_lease(self) -> TransferExternalPayloadLease {
-        self.lease
+    pub(crate) fn view(
+        &self,
+        lease: &TransferExternalPayloadLease,
+    ) -> crate::runtime::TransferExternalPayloadView<Payload> {
+        self.inner.view(lease)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        AsyncHostExternal, AsyncHostExternalBinding, AsyncHostExternalEquality,
-        AsyncHostExternalHashing, AsyncHostExternalInspection, AsyncHostExternalReturn,
-        AsyncHostExternalStorage, AsyncHostExternalStore, AsyncHostStoredValue, HostExternalSchema,
-        HostExternalType, HostProfile, HostProvider,
+        AsyncHostExternalBinding, AsyncHostExternalEquality, AsyncHostExternalHashing,
+        AsyncHostExternalInspection, AsyncHostExternalStorage, AsyncHostExternalStore,
+        HostExternalSchema, HostProfile, HostProvider,
     };
-    use crate::embedding::{AsyncHostedModuleBuilder, FunctionDeclaration};
+    use crate::embedding::{FunctionDeclaration, WorkModuleBuilder, with_execution_scope};
+    use crate::frontend::compile_typed_transfer_host_program;
+    use crate::host::{
+        AsyncHostComponentProfile, HostConstructions, HostFutureCompletion, HostFutureStore,
+        TransferHostCall, TransferHostProviderModule, TransferHostProviderSet,
+    };
+    use crate::runtime::{StoredRuntimeValue, TransferValues};
+    use crate::work_fixture::WorkType;
+    use crate::work_fixture::{WorkComponent, WorkHostType};
     use crate::{
-        AsyncHostCall, AsyncHostFuture, AsyncHostModule, AsyncHostProviderModule,
-        AsyncHostProviderSet, ModuleSource, PackageSource, compile_typed_async_host_program,
+        AsyncHostCallError, HostCallCompletion, HostExternal, HostExternalType, HostTypeListEnd,
+        ModuleSource, PackageSource,
     };
     use ecow::EcoString;
+    use futures_util::FutureExt;
     use num_bigint::BigInt;
     use std::cell::Cell;
     use std::future::{Future, poll_fn};
@@ -243,20 +162,33 @@ mod tests {
     #[derive(Default)]
     pub(super) struct Stores {
         counters: AsyncHostExternalStore<CounterPayload>,
-        envelopes: AsyncHostExternalStore<AsyncHostStoredValue<HostExternalType<Counter>>>,
+        envelopes: AsyncHostExternalStore<StoredRuntimeValue<TransferValues>>,
+        futures: HostFutureStore,
         // The aggregate, as well as its payload, must work without Sync.
         _exclusive: std::marker::PhantomData<Cell<()>>,
     }
 
     impl HostProfile for Profile {
-        type RunState = State;
+        type RunState = (State, ());
         type ExternalStores = Stores;
+    }
+
+    impl crate::host::HostWorkProfile for Profile {
+        type Work = crate::work_fixture::WorkComponent;
+    }
+    impl AsyncHostComponentProfile<WorkComponent> for Profile {
+        fn component_async_stores(stores: &Stores) -> &HostFutureStore {
+            &stores.futures
+        }
+        fn component_state(state: &mut (State, ())) -> &mut () {
+            &mut state.1
+        }
     }
 
     impl HostProvider<Profile> for Provider {
         type State = State;
-        fn project(state: &mut Self::State) -> &mut Self::State {
-            state
+        fn project(state: &mut (State, ())) -> &mut Self::State {
+            &mut state.0
         }
     }
 
@@ -302,7 +234,7 @@ mod tests {
     }
 
     impl AsyncHostExternalStorage<Profile, Envelope> for EnvelopeStorage {
-        type Payload = AsyncHostStoredValue<HostExternalType<Counter>>;
+        type Payload = StoredRuntimeValue<TransferValues>;
         fn store(stores: &Stores) -> &AsyncHostExternalStore<Self::Payload> {
             &stores.envelopes
         }
@@ -311,80 +243,95 @@ mod tests {
             left: &Self::Payload,
             right: &Self::Payload,
         ) -> bool {
-            context.stored_values_equal(left, right)
+            context.provider_stored_values_equal(left, right)
         }
         fn source_hash(context: &AsyncHostExternalHashing<'_>, value: &Self::Payload) -> u64 {
-            context.stored_value_hash(value)
+            context.provider_stored_value_hash(value)
         }
         fn inspect(context: &AsyncHostExternalInspection<'_>, value: &Self::Payload) -> EcoString {
-            format!("Envelope({})", context.inspect_stored_value(value)).into()
+            format!("Envelope({})", context.provider_inspect_stored_value(value)).into()
         }
     }
 
     pub(super) fn make_counter(
-        mut call: AsyncHostCall<'_, Profile, Provider, HostExternalType<Counter>>,
-    ) -> AsyncHostFuture<'_, AsyncHostExternalReturn<'_, Counter>> {
-        AsyncHostFuture::new(async move {
-            let drops = call.with_state(|state| Arc::clone(state)).await;
-            call.return_external(|_| CounterPayload {
-                value: Cell::new(41),
-                drops,
-            })
-            .await
-        })
+        mut call: TransferHostCall<'_, Profile, Provider, HostExternalType<Counter>>,
+    ) -> Result<HostCallCompletion<'_, HostExternalType<Counter>>, AsyncHostCallError> {
+        let drops = Arc::clone(call.state());
+        let value = call.create_external_with_binding::<Provider>(CounterPayload {
+            value: Cell::new(41),
+            drops,
+        });
+        Ok(call.return_value(value))
+    }
+
+    pub(super) fn program(
+        source: &str,
+        provider: TransferHostProviderModule<Profile>,
+    ) -> crate::frontend::TransferHostedTypedProgram<Profile> {
+        let mut providers = WorkComponent::providers().expect("Future registration");
+        providers.push(provider);
+        compile_typed_transfer_host_program(
+            "application",
+            "library",
+            [
+                PackageSource::new(
+                    "work_fixture",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "fixture/work",
+                        "src/fixture/work.gleam",
+                        crate::work_fixture::WorkComponent::SOURCE,
+                    )],
+                ),
+                PackageSource::new(
+                    "application",
+                    ["work_fixture"],
+                    [ModuleSource::new("library", "src/library.gleam", source)],
+                ),
+            ],
+            TransferHostProviderSet::new(providers).expect("provider set"),
+        )
+        .expect("external source")
     }
 
     #[test]
-    fn public_async_hosts_create_read_and_retain_send_only_external_payloads() {
+    fn direct_calls_create_read_and_retain_send_only_external_payloads() {
         fn read<'call>(
-            mut call: AsyncHostCall<'call, Profile, Provider, BigInt>,
-            value: AsyncHostExternal<'call, Counter>,
-        ) -> AsyncHostFuture<'call, BigInt> {
-            AsyncHostFuture::new(async move {
-                let mut pending = true;
-                poll_fn(|context| {
-                    if std::mem::take(&mut pending) {
-                        context.waker().wake_by_ref();
-                        Poll::Pending
-                    } else {
-                        Poll::Ready(())
-                    }
-                })
-                .await;
-                call.with_external(&value, |payload| BigInt::from(payload.value.get()))
-                    .await
-            })
+            call: TransferHostCall<'call, Profile, Provider, BigInt>,
+            value: HostExternal<'call, HostExternalType<Counter>>,
+        ) -> Result<HostCallCompletion<'call, BigInt>, AsyncHostCallError> {
+            let value = {
+                let payload = call.external_payload::<Counter, HostTypeListEnd>(value);
+                BigInt::from(payload.value.get())
+            };
+            Ok(call.return_value(value))
         }
-
         fn wrap<'call>(
-            mut call: AsyncHostCall<'call, Profile, Provider, HostExternalType<Envelope>>,
-            value: AsyncHostExternal<'call, Counter>,
-        ) -> AsyncHostFuture<'call, AsyncHostExternalReturn<'call, Envelope>> {
-            AsyncHostFuture::new(async move {
-                call.return_external(|payload| payload.store_external(&value))
-                    .await
-            })
+            mut call: TransferHostCall<'call, Profile, Provider, HostExternalType<Envelope>>,
+            value: HostExternal<'call, HostExternalType<Counter>>,
+        ) -> Result<HostCallCompletion<'call, HostExternalType<Envelope>>, AsyncHostCallError>
+        {
+            let payload = call.retain_value::<HostExternalType<Counter>>(value);
+            let value = call.create_external_with_binding::<Provider>(payload);
+            Ok(call.return_value(value))
         }
-
         fn hash<'call>(
-            mut call: AsyncHostCall<'call, Profile, Provider, BigInt>,
-            value: AsyncHostExternal<'call, Envelope>,
-        ) -> AsyncHostFuture<'call, BigInt> {
-            AsyncHostFuture::new(async move { call.source_hash(&value).into() })
+            call: TransferHostCall<'call, Profile, Provider, BigInt>,
+            value: HostExternal<'call, HostExternalType<Envelope>>,
+        ) -> Result<HostCallCompletion<'call, BigInt>, AsyncHostCallError> {
+            let hash = call.source_hash::<HostExternalType<Envelope>>(value);
+            Ok(call.return_value(hash.into()))
         }
-
-        let provider = AsyncHostProviderModule::<Profile>::new("application", "library")
-            .expect("provider identity")
+        let provider = TransferHostProviderModule::new_for_profile("application", "library")
+            .expect("identity")
             .with_external_type::<Provider, Counter>().expect("counter schema")
             .with_external_type::<Provider, Envelope>().expect("envelope schema")
-            .with_scoped_async_function::<Provider, (), HostExternalType<Counter>, _>("make", make_counter).expect("counter constructor")
-            .with_scoped_async_function::<Provider, (HostExternalType<Counter>,), BigInt, _>("read", read).expect("counter reader")
-            .with_scoped_async_function::<Provider, (HostExternalType<Counter>,), HostExternalType<Envelope>, _>("wrap", wrap).expect("envelope constructor")
-            .with_scoped_async_function::<Provider, (HostExternalType<Envelope>,), BigInt, _>("hash", hash).expect("source hashing");
+            .with_scoped_function::<Provider, (), HostExternalType<Counter>, _>("make", make_counter).expect("constructor")
+            .with_scoped_function::<Provider, (HostExternalType<Counter>,), BigInt, _>("read", read).expect("read")
+            .with_scoped_function::<Provider, (HostExternalType<Counter>,), HostExternalType<Envelope>, _>("wrap", wrap).expect("wrap")
+            .with_scoped_function::<Provider, (HostExternalType<Envelope>,), BigInt, _>("hash", hash).expect("hash");
         let source = r#"
-@external(erlang, "native", "Counter")
 pub type Counter
-@external(erlang, "native", "Envelope")
 pub type Envelope
 @external(erlang, "native", "make")
 fn make() -> Counter
@@ -394,14 +341,9 @@ fn read(value: Counter) -> Int
 fn wrap(value: Counter) -> Envelope
 @external(erlang, "native", "hash")
 fn hash(value: Envelope) -> Int
-
-fn make_graph() -> Counter {
-  let constructor = make
-  constructor()
-}
+fn make_graph() -> Counter { let constructor = make constructor() }
 fn make_tail() -> Counter { make_graph() }
 fn constructor() -> fn() -> Counter { make_tail }
-
 pub fn run() {
   let constructor = constructor()
   let first = constructor()
@@ -414,242 +356,197 @@ pub fn run() {
   #(result, values == [first, first] && wrapped == equal && hash(wrapped) == hash(equal))
 }
 "#;
-        let hosts = AsyncHostProviderSet::with_providers([], [provider]).expect("source provider");
-        let program = compile_typed_async_host_program(
-            "application",
-            "library",
-            [PackageSource::new(
-                "application",
-                Vec::<String>::new(),
-                [ModuleSource::new("library", "src/library.gleam", source)],
-            )],
-            hosts,
-        )
-        .expect("public external source");
-        let (bindings, function) = AsyncHostedModuleBuilder::new(program)
-            .expect("external plan")
+        let (bindings, run) = WorkModuleBuilder::new(program(source, provider))
+            .expect("plan")
             .function(FunctionDeclaration::<(), (BigInt, bool)>::new("run"))
-            .expect("run binding");
-        let mut module = bindings.seal();
+            .expect("entry");
+        let mut module = bindings.seal().expect("seal");
         let drops = Arc::new(AtomicUsize::new(0));
-        let mut state = Arc::clone(&drops);
+        let mut state = (Arc::clone(&drops), ());
+        assert!(std::ptr::eq(
+            <WorkComponent as HostProvider<Profile>>::project(&mut state),
+            &state.1,
+        ));
         let mut echo = Echo::default();
-        fn require_send<T: Send>(_: &T) {}
-        require_send(&module);
-        let mut call = Box::pin(module.call_async(&function, (), &mut state, &mut echo));
-        require_send(&call);
-        let mut context = Context::from_waker(Waker::noop());
-        assert!(call.as_mut().poll(&mut context).is_pending());
-        assert_eq!(drops.load(Ordering::SeqCst), 0);
-        drop(call);
-        assert_eq!(drops.load(Ordering::SeqCst), 1);
-        assert!(echo.0.is_empty());
-        let mut call = Box::pin(module.call_async(&function, (), &mut state, &mut echo));
-        assert!(call.as_mut().poll(&mut context).is_pending());
-        assert_eq!(
-            call.as_mut()
-                .poll(&mut context)
-                .map(|result| result.expect("external completion")),
-            Poll::Ready((41.into(), true))
-        );
-        drop(call);
+        with_execution_scope(async |guard| {
+            let mut scope = module.attach(guard, &mut state, &mut echo);
+            assert_eq!(
+                scope.call(&run, ()).expect("source call"),
+                (41.into(), true)
+            );
+        })
+        .now_or_never()
+        .expect("direct calls");
         assert!(echo.0[0].ends_with("Envelope(Counter(41))"));
-        assert_eq!(drops.load(Ordering::SeqCst), 3);
+        assert_eq!(drops.load(Ordering::SeqCst), 2);
         drop(module);
-        assert_eq!(drops.load(Ordering::SeqCst), 3);
-        drop(state);
-        drop(echo);
-        assert_eq!(drops.load(Ordering::SeqCst), 3);
+        assert_eq!(drops.load(Ordering::SeqCst), 2);
     }
 
     #[test]
-    fn discarding_an_unpolled_return_request_releases_its_payload_without_insertion() {
-        fn abandon<'call>(
-            mut call: AsyncHostCall<'call, Profile, Provider, HostExternalType<Counter>>,
-        ) -> AsyncHostFuture<'call, AsyncHostExternalReturn<'call, Counter>> {
-            AsyncHostFuture::new(async move {
-                let drops = call.with_state(|state| Arc::clone(state)).await;
-                let request = call.return_external(|_| CounterPayload {
-                    value: Cell::new(7),
-                    drops: Arc::clone(&drops),
-                });
-                drop(request);
-                let mut pending = true;
-                poll_fn(|context| {
-                    if std::mem::take(&mut pending) {
-                        context.waker().wake_by_ref();
-                        Poll::Pending
-                    } else {
-                        Poll::Ready(())
-                    }
+    fn owned_external_input_survives_pending_and_drops_with_the_work_not_its_waiter() {
+        fn read_later<'call>(
+            call: TransferHostCall<'call, Profile, Provider, WorkHostType<BigInt>>,
+            constructions: HostConstructions<'call, HostTypeListEnd>,
+            value: HostExternal<'call, HostExternalType<Counter>>,
+        ) -> Result<HostCallCompletion<'call, WorkHostType<BigInt>>, AsyncHostCallError> {
+            let value = call
+                .provider_transfer_external_item_with::<Provider, Counter, HostTypeListEnd>(value);
+            Ok(call.return_future(constructions, move |_| {
+                Box::pin(async move {
+                    let mut pending = true;
+                    poll_fn(|cx| {
+                        if std::mem::take(&mut pending) {
+                            cx.waker().wake_by_ref();
+                            Poll::Pending
+                        } else {
+                            Poll::Ready(())
+                        }
+                    })
+                    .await;
+                    let value = value.with(|payload| BigInt::from(payload.value.get()));
+                    Ok(HostFutureCompletion::new(move |call, _| {
+                        Ok(call.return_value(value))
+                    }))
                 })
-                .await;
-                call.return_external(|_| CounterPayload {
-                    value: Cell::new(7),
-                    drops,
-                })
-                .await
-            })
+            }))
         }
-
-        let provider = AsyncHostProviderModule::<Profile>::new("application", "library")
-            .expect("provider identity")
-            .with_external_type::<Provider, Counter>()
-            .expect("counter schema")
-            .with_scoped_async_function::<Provider, (), HostExternalType<Counter>, _>(
-                "make", abandon,
-            )
-            .expect("abandoned payload constructor");
-        let program = compile_typed_async_host_program(
-            "application",
-            "library",
-            [PackageSource::new(
-                "application",
-                Vec::<String>::new(),
-                [ModuleSource::new(
-                    "library",
-                    "src/library.gleam",
-                    r#"
+        let provider = TransferHostProviderModule::new_for_profile("application", "library").expect("identity")
+            .with_external_type::<Provider, Counter>().expect("counter schema")
+            .with_scoped_function::<Provider, (), HostExternalType<Counter>, _>("make", make_counter).expect("constructor")
+            .with_scoped_function_and_constructions::<Provider, (HostExternalType<Counter>,), WorkHostType<BigInt>, HostTypeListEnd, _>("read_later", read_later).expect("work");
+        let source = r#"
+import fixture/work as future
 pub type Counter
 @external(erlang, "native", "make")
 fn make() -> Counter
-pub fn run() -> Int {
-  let _value = make()
-  7
-}
-"#,
-                )],
-            )],
-            AsyncHostProviderSet::with_providers([], [provider]).expect("async host set"),
-        )
-        .expect("abandoned constructor source");
-        let (bindings, function) = AsyncHostedModuleBuilder::new(program)
-            .expect("abandoned constructor plan")
-            .function(FunctionDeclaration::<(), BigInt>::new("run"))
-            .expect("run binding");
-        let mut module = bindings.seal();
+@external(erlang, "native", "read_later")
+fn read_later(value: Counter) -> future.Work(Int)
+pub fn run() { read_later(make()) }
+"#;
+        let (bindings, run) = WorkModuleBuilder::new(program(source, provider))
+            .expect("plan")
+            .function(FunctionDeclaration::<(), WorkType<BigInt>>::new("run"))
+            .expect("entry");
+        let mut module = bindings.seal().expect("seal");
         let drops = Arc::new(AtomicUsize::new(0));
-        let mut state = Arc::clone(&drops);
+        let mut state = (Arc::clone(&drops), ());
         let mut echo = Echo::default();
-        let mut context = Context::from_waker(Waker::noop());
-
-        let mut call = Box::pin(module.call_async(&function, (), &mut state, &mut echo));
-        assert_eq!(call.as_mut().poll(&mut context), Poll::Pending);
-        assert_eq!(drops.load(Ordering::SeqCst), 1);
-        drop(call);
-        assert_eq!(drops.load(Ordering::SeqCst), 1);
-
-        let mut call = Box::pin(module.call_async(&function, (), &mut state, &mut echo));
-        assert_eq!(call.as_mut().poll(&mut context), Poll::Pending);
-        assert_eq!(drops.load(Ordering::SeqCst), 2);
-        assert_eq!(call.as_mut().poll(&mut context), Poll::Ready(Ok(7.into())));
-        drop(call);
-        assert_eq!(drops.load(Ordering::SeqCst), 3);
-        drop(module);
-        assert_eq!(drops.load(Ordering::SeqCst), 3);
+        let mut task = Box::pin(with_execution_scope(async |guard| {
+            let mut scope = module.attach(guard, &mut state, &mut echo);
+            let abandoned = scope.call(&run, ()).expect("unpolled work");
+            assert_eq!(drops.load(Ordering::SeqCst), 0);
+            drop(abandoned);
+            assert_eq!(drops.load(Ordering::SeqCst), 1);
+            let work = scope.call(&run, ()).expect("work");
+            {
+                let mut observer = Box::pin(scope.observe(&work));
+                assert!(
+                    observer
+                        .as_mut()
+                        .poll(&mut Context::from_waker(Waker::noop()))
+                        .is_pending()
+                );
+            }
+            assert_eq!(drops.load(Ordering::SeqCst), 1);
+            let result = scope
+                .observe(&work)
+                .await
+                .expect("redrive existing operation");
+            assert_eq!(result.read(Clone::clone), BigInt::from(41));
+            assert_eq!(drops.load(Ordering::SeqCst), 2);
+            let cancelled = scope.call(&run, ()).expect("cancelled work");
+            {
+                let mut observer = Box::pin(scope.observe(&cancelled));
+                assert!(
+                    observer
+                        .as_mut()
+                        .poll(&mut Context::from_waker(Waker::noop()))
+                        .is_pending()
+                );
+            }
+            drop(cancelled);
+            assert_eq!(drops.load(Ordering::SeqCst), 3);
+        }));
+        fn require_send<T: Send>(_: &T) {}
+        require_send(&task);
+        std::thread::scope(|threads| {
+            threads
+                .spawn(|| {
+                    assert!(
+                        task.as_mut()
+                            .poll(&mut Context::from_waker(Waker::noop()))
+                            .is_ready()
+                    );
+                })
+                .join()
+                .expect("work and non-Sync payload move together");
+        });
+        drop(task);
         assert!(echo.0.is_empty());
+        assert_eq!(drops.load(Ordering::SeqCst), 3);
     }
 
     #[test]
-    fn external_returns_compose_with_every_owned_and_scoped_scalar_family() {
-        fn identity<'call, Value: Send + 'static>(
-            _: AsyncHostCall<'call, Profile, Provider, Value>,
-            value: Value,
-        ) -> AsyncHostFuture<'call, Value> {
-            AsyncHostFuture::new(async move { value })
-        }
-
-        let provider = AsyncHostProviderModule::<Profile>::new("application", "library")
-            .expect("provider identity")
+    fn external_returns_compose_with_every_direct_scalar_family() {
+        let provider = TransferHostProviderModule::new_for_profile("application", "library")
+            .expect("identity")
             .with_external_type::<Provider, Counter>()
-            .expect("counter schema")
-            .with_scoped_async_function::<Provider, (), HostExternalType<Counter>, _>(
+            .expect("schema")
+            .with_scoped_function::<Provider, (), HostExternalType<Counter>, _>(
                 "make",
                 make_counter,
             )
-            .expect("counter constructor");
+            .expect("constructor");
         macro_rules! scalar {
-            ($provider:expr, $owned:literal, $scoped:literal, $type:ty) => {
+            ($provider:expr, $name:literal, $ty:ty) => {{
+                fn identity<'call>(
+                    call: TransferHostCall<'call, Profile, Provider, $ty>,
+                    value: $ty,
+                ) -> Result<HostCallCompletion<'call, $ty>, AsyncHostCallError> {
+                    Ok(call.return_value(value))
+                }
                 $provider
-                    .with_async_function($owned, std::future::ready::<$type>)
-                    .expect("owned scalar alongside an external return")
-                    .with_scoped_async_function::<Provider, ($type,), $type, _>(
-                        $scoped,
-                        identity::<$type>,
-                    )
-                    .expect("scoped scalar alongside an external return")
-            };
+                    .with_scoped_function::<Provider, ($ty,), $ty, _>($name, identity)
+                    .expect("scalar")
+            }};
         }
-        let provider = scalar!(provider, "owned_int", "scoped_int", BigInt);
-        let provider = scalar!(provider, "owned_float", "scoped_float", f64);
-        let provider = scalar!(provider, "owned_string", "scoped_string", EcoString);
-        let provider = scalar!(provider, "owned_bits", "scoped_bits", crate::BitArrayValue);
-        let provider = scalar!(provider, "owned_codepoint", "scoped_codepoint", char);
-        let provider = scalar!(provider, "owned_bool", "scoped_bool", bool);
-        let provider = scalar!(provider, "owned_nil", "scoped_nil", ());
+        let provider = scalar!(provider, "int", BigInt);
+        let provider = scalar!(provider, "float", f64);
+        let provider = scalar!(provider, "string", EcoString);
+        let provider = scalar!(provider, "bits", crate::BitArrayValue);
+        let provider = scalar!(provider, "codepoint", char);
+        let provider = scalar!(provider, "bool", bool);
+        let provider = scalar!(provider, "nil", ());
         let source = r#"
-@external(erlang, "native", "Counter")
 pub type Counter
 @external(erlang, "native", "make")
 fn make() -> Counter
-@external(erlang, "native", "owned_int")
-fn owned_int(value: Int) -> Int
-@external(erlang, "native", "scoped_int")
-fn scoped_int(value: Int) -> Int
-@external(erlang, "native", "owned_float")
-fn owned_float(value: Float) -> Float
-@external(erlang, "native", "scoped_float")
-fn scoped_float(value: Float) -> Float
-@external(erlang, "native", "owned_string")
-fn owned_string(value: String) -> String
-@external(erlang, "native", "scoped_string")
-fn scoped_string(value: String) -> String
-@external(erlang, "native", "owned_bits")
-fn owned_bits(value: BitArray) -> BitArray
-@external(erlang, "native", "scoped_bits")
-fn scoped_bits(value: BitArray) -> BitArray
-@external(erlang, "native", "owned_codepoint")
-fn owned_codepoint(value: UtfCodepoint) -> UtfCodepoint
-@external(erlang, "native", "scoped_codepoint")
-fn scoped_codepoint(value: UtfCodepoint) -> UtfCodepoint
-@external(erlang, "native", "owned_bool")
-fn owned_bool(value: Bool) -> Bool
-@external(erlang, "native", "scoped_bool")
-fn scoped_bool(value: Bool) -> Bool
-@external(erlang, "native", "owned_nil")
-fn owned_nil(value: Nil) -> Nil
-@external(erlang, "native", "scoped_nil")
-fn scoped_nil(value: Nil) -> Nil
-
+@external(erlang, "native", "int")
+fn int(value: Int) -> Int
+@external(erlang, "native", "float")
+fn float(value: Float) -> Float
+@external(erlang, "native", "string")
+fn string(value: String) -> String
+@external(erlang, "native", "bits")
+fn bits(value: BitArray) -> BitArray
+@external(erlang, "native", "codepoint")
+fn codepoint(value: UtfCodepoint) -> UtfCodepoint
+@external(erlang, "native", "bool")
+fn bool(value: Bool) -> Bool
+@external(erlang, "native", "nil")
+fn nil(value: Nil) -> Nil
 pub fn run(i: Int, f: Float, s: String, b: BitArray, c: UtfCodepoint, flag: Bool, n: Nil) {
   echo make()
-  #(
-    #(owned_int(i), owned_float(f), owned_string(s), owned_bits(b),
-      owned_codepoint(c), owned_bool(flag), owned_nil(n)),
-    #(scoped_int(i), scoped_float(f), scoped_string(s), scoped_bits(b),
-      scoped_codepoint(c), scoped_bool(flag), scoped_nil(n)),
-  )
+  #(int(i), float(f), string(s), bits(b), codepoint(c), bool(flag), nil(n))
 }
 "#;
-        let program = compile_typed_async_host_program(
-            "application",
-            "library",
-            [PackageSource::new(
-                "application",
-                Vec::<String>::new(),
-                [ModuleSource::new("library", "src/library.gleam", source)],
-            )],
-            AsyncHostProviderSet::with_providers([], [provider]).expect("mixed provider"),
-        )
-        .expect("mixed return source");
         type Scalars = (BigInt, f64, EcoString, crate::BitArrayValue, char, bool, ());
-        let (bindings, function) = AsyncHostedModuleBuilder::new(program)
-            .expect("mixed return plan")
-            .function(FunctionDeclaration::<Scalars, (Scalars, Scalars)>::new(
-                "run",
-            ))
-            .expect("mixed return binding");
-        let mut module = bindings.seal();
+        let (bindings, run) = WorkModuleBuilder::new(program(source, provider))
+            .expect("plan")
+            .function(FunctionDeclaration::<Scalars, Scalars>::new("run"))
+            .expect("entry");
+        let mut module = bindings.seal().expect("seal");
         let values: Scalars = (
             7.into(),
             2.5,
@@ -659,136 +556,133 @@ pub fn run(i: Int, f: Float, s: String, b: BitArray, c: UtfCodepoint, flag: Bool
             true,
             (),
         );
-        let mut state = Arc::new(AtomicUsize::new(0));
+        let mut state = (Arc::new(AtomicUsize::new(0)), ());
         let mut echo = Echo::default();
-        let mut call =
-            Box::pin(module.call_async(&function, values.clone(), &mut state, &mut echo));
-        let mut context = Context::from_waker(Waker::noop());
-        assert_eq!(
-            call.as_mut()
-                .poll(&mut context)
-                .map(|result| result.expect("mixed scalar returns")),
-            Poll::Ready((values.clone(), values)),
-        );
-        drop(call);
+        with_execution_scope(async |guard| {
+            let mut scope = module.attach(guard, &mut state, &mut echo);
+            assert_eq!(
+                scope.call(&run, values.clone()).expect("scalar returns"),
+                values
+            );
+        })
+        .now_or_never()
+        .expect("immediate scalar call");
         assert_eq!(echo.0.len(), 1);
         assert!(echo.0[0].ends_with("Counter(41)"));
-        assert_eq!(state.load(Ordering::SeqCst), 1);
+        assert_eq!(state.0.load(Ordering::SeqCst), 1);
     }
 
     #[test]
     fn external_returns_preserve_provider_failures_and_source_panics() {
-        fn stop() -> Result<std::convert::Infallible, crate::HostFailure> {
-            Err(crate::HostFailure::new("external construction stopped"))
+        fn bridge<'call>(
+            mut call: TransferHostCall<'call, Profile, Provider, HostExternalType<Counter>>,
+            callback: crate::HostCallable<'call, HostTypeListEnd, HostExternalType<Counter>>,
+        ) -> Result<HostCallCompletion<'call, HostExternalType<Counter>>, AsyncHostCallError>
+        {
+            let value = call.invoke(callback, ())?;
+            Ok(call.return_value(value))
         }
-
         fn fail(
-            _: AsyncHostCall<'_, Profile, Provider, HostExternalType<Counter>>,
-        ) -> AsyncHostFuture<
-            '_,
-            Result<AsyncHostExternalReturn<'_, Counter>, crate::AsyncHostCallError>,
-        > {
-            AsyncHostFuture::new(async {
-                Err(crate::HostFailure::new("counter unavailable").into())
-            })
+            _: TransferHostCall<'_, Profile, Provider, HostExternalType<Counter>>,
+        ) -> Result<HostCallCompletion<'_, HostExternalType<Counter>>, AsyncHostCallError> {
+            Err(crate::HostFailure::new("counter unavailable").into())
         }
-
-        let provider = AsyncHostProviderModule::<Profile>::new("application", "library")
-            .expect("provider identity")
+        fn stop(
+            _: TransferHostCall<'_, Profile, Provider, HostExternalType<Counter>>,
+        ) -> Result<std::convert::Infallible, AsyncHostCallError> {
+            Err(crate::HostFailure::new("external construction stopped").into())
+        }
+        let provider = TransferHostProviderModule::new_for_profile("application", "library")
+            .expect("identity")
             .with_external_type::<Provider, Counter>()
-            .expect("counter schema")
-            .with_fallible_scoped_async_function::<Provider, (), HostExternalType<Counter>, _>(
-                "fail", fail,
+            .expect("schema")
+            .with_scoped_function::<Provider, (), HostExternalType<Counter>, _>("make", make_counter)
+            .expect("constructor")
+            .with_scoped_function::<Provider, (crate::HostFunctionType<HostTypeListEnd, HostExternalType<Counter>>,), HostExternalType<Counter>, _>("bridge", bridge)
+            .expect("external callback")
+            .with_scoped_function::<Provider, (), HostExternalType<Counter>, _>("fail", fail)
+            .expect("fallible")
+            .with_scoped_diverging_function::<Provider, (), HostExternalType<Counter>, _>(
+                "stop", stop,
             )
-            .expect("fallible external constructor");
-        let control = AsyncHostModule::<Profile>::new_for_profile("host_support", "host/control")
-            .expect("control module")
-            .with_fallible_function("stop", stop)
-            .expect("non-returning external constructor");
+            .expect("diverging");
         let source = r#"
-import host/control
-
-@external(erlang, "native", "Counter")
 pub type Counter
 @external(erlang, "native", "fail")
 fn fail() -> Counter
-
-pub fn run() -> Nil {
-  echo fail()
-  Nil
-}
-
-fn panic_counter() -> Counter {
-  panic as "external graph stopped"
-}
-
-pub fn source_panic() -> Nil {
-  echo panic_counter()
-  Nil
-}
-
-fn stopping_constructor() -> fn() -> Counter { control.stop }
-
-pub fn stopped() -> Nil {
-  let constructor = stopping_constructor()
-  echo constructor()
+@external(erlang, "native", "stop")
+fn stop() -> Counter
+pub fn run() { echo fail() Nil }
+fn panic_counter() -> Counter { panic as "external graph stopped" }
+pub fn source_panic() { echo panic_counter() Nil }
+fn stopping_constructor() -> fn() -> Counter { stop }
+pub fn stopped() { let constructor = stopping_constructor() echo constructor() Nil }
+@external(erlang, "native", "make")
+fn make() -> Counter
+@external(erlang, "native", "bridge")
+fn bridge(callback: fn() -> Counter) -> Counter
+pub fn nested(fail: Bool) {
+  echo bridge(fn() {
+    case fail {
+      True -> panic as "external callback stopped"
+      False -> make()
+    }
+  })
   Nil
 }
 "#;
-        let program = compile_typed_async_host_program(
-            "application",
-            "library",
-            [PackageSource::new(
-                "application",
-                ["host_support"],
-                [ModuleSource::new("library", "src/library.gleam", source)],
-            )],
-            AsyncHostProviderSet::with_providers([control], [provider]).expect("source provider"),
-        )
-        .expect("fallible external source");
-        let (mut bindings, function) = AsyncHostedModuleBuilder::new(program)
-            .expect("external plan")
+        let (mut bindings, run) = WorkModuleBuilder::new(program(source, provider))
+            .expect("plan")
             .function(FunctionDeclaration::<(), ()>::new("run"))
-            .expect("run binding");
-        let source_panic = bindings
+            .expect("entry");
+        let panic = bindings
             .function(FunctionDeclaration::<(), ()>::new("source_panic"))
-            .expect("source panic binding");
-        let stopped = bindings
+            .expect("panic entry");
+        let stop = bindings
             .function(FunctionDeclaration::<(), ()>::new("stopped"))
-            .expect("stopped external binding");
-        let mut module = bindings.seal();
-        let mut state = Arc::new(AtomicUsize::new(0));
+            .expect("stop entry");
+        let nested = bindings
+            .function(FunctionDeclaration::<(bool,), ()>::new("nested"))
+            .expect("external callback entry");
+        let mut module = bindings.seal().expect("seal");
+        let mut state = (Arc::new(AtomicUsize::new(0)), ());
         let mut echo = Echo::default();
-        let mut call = Box::pin(module.call_async(&function, (), &mut state, &mut echo));
-        let mut context = Context::from_waker(Waker::noop());
-        assert_eq!(
-            call.as_mut()
-                .poll(&mut context)
-                .map(|result| result.map_err(|error| error.to_string())),
-            Poll::Ready(Err(
-                "host function application::library.fail failed: counter unavailable".to_owned()
-            )),
-        );
-        drop(call);
-        let mut call = Box::pin(module.call_async(&source_panic, (), &mut state, &mut echo));
-        assert_eq!(
-            call.as_mut()
-                .poll(&mut context)
-                .map(|result| result.map_err(|error| error.to_string())),
-            Poll::Ready(Err("panic: external graph stopped".to_owned())),
-        );
-        drop(call);
-        let mut call = Box::pin(module.call_async(&stopped, (), &mut state, &mut echo));
-        assert_eq!(
-            call.as_mut()
-                .poll(&mut context)
-                .map(|result| result.map_err(|error| error.to_string())),
-            Poll::Ready(Err(
-                "host function host_support::host/control.stop failed: external construction stopped".to_owned()
-            )),
-        );
-        drop(call);
-        assert!(echo.0.is_empty());
-        assert_eq!(state.load(Ordering::SeqCst), 0);
+        with_execution_scope(async |guard| {
+            let mut scope = module.attach(guard, &mut state, &mut echo);
+            for (entry, message) in [
+                (
+                    &run,
+                    "host function application::library.fail failed: counter unavailable",
+                ),
+                (&panic, "panic: external graph stopped"),
+                (
+                    &stop,
+                    "host function application::library.stop failed: external construction stopped",
+                ),
+            ] {
+                assert_eq!(
+                    scope
+                        .call(entry, ())
+                        .expect_err("original failure")
+                        .to_string(),
+                    message
+                );
+            }
+            assert_eq!(
+                scope
+                    .call(&nested, (true,))
+                    .expect_err("nested source failure")
+                    .to_string(),
+                "panic: external callback stopped"
+            );
+            scope
+                .call(&nested, (false,))
+                .expect("external callback success");
+        })
+        .now_or_never()
+        .expect("failures are direct");
+        assert_eq!(echo.0.len(), 1);
+        assert!(echo.0[0].ends_with("Counter(41)"));
+        assert_eq!(state.0.load(Ordering::SeqCst), 1);
     }
 }

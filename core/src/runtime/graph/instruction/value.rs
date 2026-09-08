@@ -862,10 +862,10 @@ pub(super) fn constant<Plan, Value>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
     id: ConstantId<Value>,
-) -> ExecutionResult<Value::Evaluated>
+) -> ExecutionResult<Value::Evaluated, Plan::Values>
 where
     Plan: ExecutableRuntimePlan,
-    Value: ConstantValue + GraphValue,
+    Value: ConstantValue + GraphValue<Plan::Values>,
 {
     evaluate_constant(plan, state, plan.constant(id))
 }

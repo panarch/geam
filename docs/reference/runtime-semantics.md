@@ -455,3 +455,39 @@ When a new value family or host/runtime feature reaches an implementation edge,
 record the decision here if it affects observable execution behavior. Keep
 review rules in [the review policy](../development/review-policy.md); keep
 runtime meaning decisions here.
+
+## Explicit Work
+
+The [Future guide](../future.md) introduces the Gleam API with examples.
+
+The ordinary `geam` source package defines one nominal `geam/future.Future(a)`
+type. A function returning this type returns a work value, not an implicitly
+awaited `a`. The Rust host drives work by observing it with its own executor.
+
+`ready` constructs a completed operation, `map` applies a captured source
+function to a completion, `then` continues with returned work, and `all`
+drives independent inputs while preserving their input order. This is not a
+Gleam process scheduler or an actor API.
+
+Each construction creates one logical operation with cached completion.
+Passing or returning an existing Future preserves that operation; it does not
+construct new work. Separate constructions have distinct identity even if they
+produce equal values. Equality, hashing and inspection use operation identity
+and do not change as work becomes pending, complete or cancelled.
+
+Work owns its inputs and captures. The execution scope bounds its access to the
+loaded program, caller-owned state, capabilities, and Echo. A waiter observes
+the operation; dropping it ends that observation, not separately retained work.
+Another observer can drive the same work within the original live scope.
+Without a driver, Geam makes no progress. Dropping the last work owner releases
+pending inputs and captures.
+
+Ending the scope cancels pending work while preserving completed success or
+failure. Pending work cannot restart with a later execution's state, including
+work retained inside external payloads. Preserving completion does not extend
+the execution lifetime of any work contained in that result.
+
+The [embedding boundary](embedding-boundary.md#explicit-future-execution)
+defines visible scope ownership and shared results. The
+[provider boundary](provider-boundary.md#explicit-async-functions) defines
+native construction, callback and state capabilities.

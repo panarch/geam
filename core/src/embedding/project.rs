@@ -1,8 +1,8 @@
 use crate::frontend::{
-    AsyncHostedTypedProgram, HostedTypedProgram, ProjectError, TypedProgram,
-    compile_typed_async_host_project, compile_typed_host_project, compile_typed_project,
+    HostedTypedProgram, ProjectError, TransferHostedTypedProgram, TypedProgram,
+    compile_typed_host_project, compile_typed_project, compile_typed_transfer_host_project,
 };
-use crate::host::{AsyncHostProviderSet, HostProfile, HostProviderSet, HostRegistrationError};
+use crate::host::{HostProfile, HostProviderSet, HostRegistrationError, TransferHostProviderSet};
 use camino::Utf8PathBuf;
 use ecow::EcoString;
 
@@ -15,11 +15,11 @@ pub struct Project {
     module: EcoString,
 }
 
-/// One resolved Gleam project selection and embedding-owned resumable hosts.
-pub struct AsyncHostedProject<Profile: HostProfile> {
+/// A resolved source selection with explicitly transferable provider storage.
+pub struct TransferHostedProject<Profile: HostProfile> {
     root: Utf8PathBuf,
     module: EcoString,
-    hosts: AsyncHostProviderSet<Profile>,
+    register_providers: fn() -> Result<TransferHostProviderSet<Profile>, HostRegistrationError>,
 }
 
 /// One resolved Gleam project selection and static provider registration for
@@ -43,30 +43,30 @@ impl Project {
     pub fn compile(self) -> Result<TypedProgram, ProjectError> {
         compile_typed_project(self.root, self.module)
     }
-
-    /// Adds embedding-owned async hosts and selects resumable compilation.
-    ///
-    /// This consumes the plain selection so immediate and resumable project
-    /// owners cannot be mixed after host registration.
-    pub fn with_async_hosts<Profile: HostProfile>(
-        self,
-        hosts: AsyncHostProviderSet<Profile>,
-    ) -> AsyncHostedProject<Profile> {
-        AsyncHostedProject {
-            root: self.root,
-            module: self.module,
-            hosts,
-        }
-    }
 }
 
-impl<Profile: HostProfile> AsyncHostedProject<Profile> {
-    /// Compiles the selected project with its resumable host registrations.
+impl<Profile: HostProfile> TransferHostedProject<Profile> {
+    /// Selects source and defers static registration until compilation.
+    pub fn new(
+        root: impl Into<Utf8PathBuf>,
+        module: impl Into<EcoString>,
+        register_providers: fn() -> Result<TransferHostProviderSet<Profile>, HostRegistrationError>,
+    ) -> Self {
+        Self {
+            root: root.into(),
+            module: module.into(),
+            register_providers,
+        }
+    }
+
+    /// Registers the selected providers and compiles ordinary source types.
     ///
     /// Compilation is synchronous and read-only; it does not poll host Futures
     /// or choose an executor.
-    pub fn compile(self) -> Result<AsyncHostedTypedProgram<Profile>, ProjectError> {
-        compile_typed_async_host_project(self.root, self.module, self.hosts)
+    pub fn compile(self) -> Result<TransferHostedTypedProgram<Profile>, HostedProjectError> {
+        let providers = (self.register_providers)()?;
+        compile_typed_transfer_host_project(self.root, self.module, providers)
+            .map_err(HostedProjectError::from)
     }
 }
 
@@ -96,20 +96,65 @@ impl<Profile: HostProfile> HostedProject<Profile> {
 
 #[cfg(test)]
 mod tests {
-    use super::{HostedProject, HostedProjectError, Project};
-    use crate::embedding::{AsyncHostedModuleBuilder, FunctionDeclaration, HostedModuleBuilder};
+    use super::{HostedProject, HostedProjectError, Project, TransferHostedProject};
+    use crate::embedding::{
+        FunctionDeclaration, HostedModuleBuilder, WorkModuleBuilder, with_execution_scope,
+    };
+    use crate::host::{
+        AsyncHostComponentProfile, HostCallCompletion, HostFutureStore, HostProfile, HostProvider,
+        TransferHostCall, TransferHostProviderModule, TransferHostProviderSet,
+    };
+    use crate::work_fixture::WorkComponent;
     use crate::{
-        AsyncHostModule, AsyncHostProviderModule, AsyncHostProviderSet, EchoOutput, EchoSink,
-        HostModule, HostProviderModule, HostProviderSet, HostRegistrationError, ProjectError,
-        StatelessHostProfile,
+        EchoOutput, EchoSink, HostModule, HostProviderModule, HostProviderSet,
+        HostRegistrationError, ProjectError, StatelessHostProfile,
     };
     use camino::{Utf8Path, Utf8PathBuf};
+    use futures_util::FutureExt;
     use num_bigint::BigInt;
     use std::fs;
-    use std::future::Future;
-    use std::pin::pin;
-    use std::task::{Context, Poll, Waker};
     use tempfile::{TempDir, tempdir};
+
+    struct TransferProfile;
+    struct TransferProvider;
+    impl HostProfile for TransferProfile {
+        type RunState = ();
+        type ExternalStores = HostFutureStore;
+    }
+    impl crate::host::HostWorkProfile for TransferProfile {
+        type Work = crate::work_fixture::WorkComponent;
+    }
+    impl AsyncHostComponentProfile<WorkComponent> for TransferProfile {
+        fn component_async_stores(stores: &HostFutureStore) -> &HostFutureStore {
+            stores
+        }
+        fn component_state(state: &mut ()) -> &mut () {
+            state
+        }
+    }
+    impl HostProvider<TransferProfile> for TransferProvider {
+        type State = ();
+        fn project(state: &mut ()) -> &mut () {
+            state
+        }
+    }
+    fn transfer_providers()
+    -> Result<TransferHostProviderSet<TransferProfile>, HostRegistrationError> {
+        fn adjust<'call>(
+            mut call: TransferHostCall<'call, TransferProfile, TransferProvider, BigInt>,
+            value: BigInt,
+        ) -> Result<HostCallCompletion<'call, BigInt>, crate::AsyncHostCallError> {
+            let () = *call.state();
+            Ok(call.return_value(value + 1))
+        }
+        TransferHostProviderSet::new([TransferHostProviderModule::new_for_profile(
+            "application",
+            "inventory_rules",
+        )
+        .expect("fixture module")
+        .with_scoped_function::<TransferProvider, (BigInt,), BigInt, _>("adjust", adjust)
+        .expect("fixture function")])
+    }
 
     #[derive(Default)]
     struct SendEcho {
@@ -187,7 +232,7 @@ pub fn quantity() -> Int
     }
 
     #[test]
-    fn adds_async_hosts_to_a_plain_project_selection() {
+    fn registers_transfer_providers_at_compile_without_changing_source_return_types() {
         let project = project();
         write_file(
             &project,
@@ -204,32 +249,32 @@ pub fn quantity(value: Int) -> Int {
 }
 "#,
         );
-        let provider = AsyncHostProviderModule::new("application", "inventory_rules")
-            .expect("async provider module should be valid")
-            .with_async_function("adjust", |value: BigInt| std::future::ready(value + 1))
-            .expect("async provider function should be valid");
-        let hosts = AsyncHostProviderSet::with_providers(Vec::<AsyncHostModule>::new(), [provider])
-            .expect("async provider set should be valid");
-        let program = Project::new(project_root(&project), "inventory_rules")
-            .with_async_hosts(hosts)
-            .compile()
-            .expect("async hosted project selection should compile");
+        let program = TransferHostedProject::new(
+            project_root(&project),
+            "inventory_rules",
+            transfer_providers,
+        )
+        .compile()
+        .expect("transfer project compilation");
         assert_eq!(program.root_package(), "application");
         assert_eq!(program.root_module(), "inventory_rules");
-        let (bindings, quantity) = AsyncHostedModuleBuilder::new(program)
-            .expect("async hosted project should plan")
+        let (bindings, quantity) = WorkModuleBuilder::new(program)
+            .expect("plan")
             .function(FunctionDeclaration::<(BigInt,), BigInt>::new("quantity"))
-            .expect("quantity should bind");
-        let mut module = bindings.seal();
+            .expect("binding");
+        let mut module = bindings.seal().expect("sealing");
         let mut state = ();
+        assert!(std::ptr::eq(
+            <WorkComponent as HostProvider<TransferProfile>>::project(&mut state),
+            &state,
+        ));
         let mut echo = SendEcho::default();
-        {
-            let mut call =
-                pin!(module.call_async(&quantity, (BigInt::from(41),), &mut state, &mut echo,));
-            let mut context = Context::from_waker(Waker::noop());
-
-            assert_eq!(call.as_mut().poll(&mut context), Poll::Ready(Ok(42.into())));
-        }
+        with_execution_scope(async |guard| {
+            let mut scope = module.attach(guard, &mut state, &mut echo);
+            assert_eq!(scope.call(&quantity, (41.into(),)), Ok(42.into()));
+        })
+        .now_or_never()
+        .expect("ordinary result stays immediate");
         assert_eq!(echo.outputs, 1);
     }
 
@@ -278,6 +323,33 @@ pub fn quantity(value: Int) -> Int {
             HostedProjectError::Project(ProjectError::ConfigIo { path, .. })
                 if path == root.join("gleam.toml")
         ));
+    }
+
+    #[test]
+    fn transfer_registration_is_deferred_and_preserves_error_identity() {
+        fn invalid() -> Result<TransferHostProviderSet<TransferProfile>, HostRegistrationError> {
+            Err(HostRegistrationError::InvalidModuleName {
+                module: "invalid module".into(),
+            })
+        }
+        let directory = tempdir().expect("directory");
+        let root = project_root(&directory).join("missing");
+        let selected = TransferHostedProject::new(root.clone(), "inventory_rules", invalid);
+        let error = selected
+            .compile()
+            .err()
+            .expect("registration precedes filesystem access");
+        assert!(matches!(error, HostedProjectError::HostRegistration(
+            HostRegistrationError::InvalidModuleName { module }
+        ) if module == "invalid module"));
+        let error = TransferHostedProject::new(root.clone(), "inventory_rules", transfer_providers)
+            .compile()
+            .err()
+            .expect("read failure after successful registration");
+        assert!(
+            matches!(error, HostedProjectError::Project(ProjectError::ConfigIo { path, .. })
+            if path == root.join("gleam.toml"))
+        );
     }
 
     fn inventory_providers() -> Result<HostProviderSet<StatelessHostProfile>, HostRegistrationError>

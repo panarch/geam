@@ -3,7 +3,7 @@ use crate::plan::execution::function::CustomFunctionId;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::evaluated::EvaluatedCustomValue;
-use crate::runtime::graph::RetainedValues;
+use crate::runtime::graph::ProfiledRetainedValues;
 use crate::runtime::state::RuntimeStateFor;
 
 pub(in crate::runtime) fn run_custom<Plan: ExecutableRuntimePlan>(
@@ -11,8 +11,8 @@ pub(in crate::runtime) fn run_custom<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     function: CustomFunctionId,
     origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedCustomValue> {
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedCustomValue<Plan::Values>, Plan::Values> {
     run_tail(
         plan,
         state,

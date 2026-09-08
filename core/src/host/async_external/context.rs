@@ -1,5 +1,4 @@
-use super::AsyncHostStoredValue;
-use crate::runtime::TransferStoredRuntimeValue;
+use crate::runtime::{StoredRuntimeValue, TransferStoredRuntimeValue, TransferValues};
 use ecow::EcoString;
 
 pub(crate) struct TransferExternalEquality<'context> {
@@ -66,137 +65,152 @@ impl<'context> TransferExternalInspection<'context> {
 }
 
 impl AsyncHostExternalEquality<'_> {
-    pub fn stored_values_equal<Type>(
+    pub(crate) fn provider_stored_values_equal(
         &self,
-        left: &AsyncHostStoredValue<Type>,
-        right: &AsyncHostStoredValue<Type>,
+        left: &StoredRuntimeValue<TransferValues>,
+        right: &StoredRuntimeValue<TransferValues>,
     ) -> bool {
-        self.0.stored_values_equal(&left.value, &right.value)
+        self.0.stored_values_equal(
+            &left.transfer_semantic_value(),
+            &right.transfer_semantic_value(),
+        )
     }
 }
 
 impl AsyncHostExternalHashing<'_> {
-    pub fn stored_value_hash<Type>(&self, value: &AsyncHostStoredValue<Type>) -> u64 {
-        self.0.stored_value_hash(&value.value)
+    pub(crate) fn provider_stored_value_hash(
+        &self,
+        value: &StoredRuntimeValue<TransferValues>,
+    ) -> u64 {
+        self.0.stored_value_hash(&value.transfer_semantic_value())
     }
 }
 
 impl AsyncHostExternalInspection<'_> {
-    pub fn inspect_stored_value<Type>(&self, value: &AsyncHostStoredValue<Type>) -> EcoString {
-        self.0.inspect_stored_value(&value.value)
+    pub(crate) fn provider_inspect_stored_value(
+        &self,
+        value: &StoredRuntimeValue<TransferValues>,
+    ) -> EcoString {
+        self.0
+            .inspect_stored_value(&value.transfer_semantic_value())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::tests::{Counter, Echo, Envelope, Profile, Provider, make_counter};
+    use super::super::tests::{Counter, Echo, Envelope, Profile, Provider, make_counter, program};
     use super::{
         AsyncHostExternalEquality, AsyncHostExternalHashing, AsyncHostExternalInspection,
         TransferExternalEquality, TransferExternalHashing, TransferExternalInspection,
         TransferStoredRuntimeValue,
     };
-    use crate::embedding::{AsyncHostedModuleBuilder, FunctionDeclaration};
-    use crate::{
-        AsyncHostCall, AsyncHostExternal, AsyncHostExternalReturn, AsyncHostFuture,
-        AsyncHostProviderModule, AsyncHostProviderSet, HostExternalType, ModuleSource,
-        PackageSource, compile_typed_async_host_program,
-    };
-    use std::future::Future;
+    use crate::embedding::{FunctionDeclaration, WorkModuleBuilder, with_execution_scope};
+    use crate::host::{TransferHostCall, TransferHostProviderModule};
+    use crate::{AsyncHostCallError, HostCallCompletion, HostExternal, HostExternalType};
+    use futures_util::FutureExt;
+    use std::cell::Cell;
     use std::sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     };
-    use std::task::{Context, Poll, Waker};
 
     #[test]
-    fn typed_contexts_forward_the_exact_retained_values() {
+    fn contexts_forward_retained_values_through_their_source_semantic_boundary() {
         fn verify<'call>(
-            mut call: AsyncHostCall<'call, Profile, Provider, HostExternalType<Envelope>>,
-            value: AsyncHostExternal<'call, Counter>,
-        ) -> AsyncHostFuture<'call, AsyncHostExternalReturn<'call, Envelope>> {
-            AsyncHostFuture::new(async move {
-                call.return_external(|payload| {
-                    let left = payload.store_external(&value);
-                    let right = payload.store_external(&value);
-                    let equal = |a: &TransferStoredRuntimeValue, b: &TransferStoredRuntimeValue| {
-                        assert!(std::ptr::eq(a, &left.value));
-                        assert!(std::ptr::eq(b, &right.value));
-                        false
-                    };
-                    let hash = |value: &TransferStoredRuntimeValue| {
-                        assert!(std::ptr::eq(value, &left.value));
-                        17
-                    };
-                    let inspect = |value: &TransferStoredRuntimeValue| {
-                        assert!(std::ptr::eq(value, &right.value));
-                        "retained counter".into()
-                    };
-                    let equal = TransferExternalEquality::new(&equal);
-                    let hash = TransferExternalHashing::new(&hash);
-                    let inspect = TransferExternalInspection::new(&inspect);
-                    assert!(!AsyncHostExternalEquality(&equal).stored_values_equal(&left, &right));
-                    assert_eq!(AsyncHostExternalHashing(&hash).stored_value_hash(&left), 17);
-                    assert_eq!(
-                        AsyncHostExternalInspection(&inspect).inspect_stored_value(&right),
-                        "retained counter",
-                    );
-                    left
-                })
-                .await
-            })
+            mut call: TransferHostCall<'call, Profile, Provider, HostExternalType<Envelope>>,
+            value: HostExternal<'call, HostExternalType<Counter>>,
+        ) -> Result<HostCallCompletion<'call, HostExternalType<Envelope>>, AsyncHostCallError>
+        {
+            let left = call.retain_value::<HostExternalType<Counter>>(value);
+            let right = call.retain_value::<HostExternalType<Counter>>(value);
+            let left_semantics = left.transfer_semantic_value();
+            let right_semantics = right.transfer_semantic_value();
+            let equal = |a: &TransferStoredRuntimeValue, b: &TransferStoredRuntimeValue| {
+                assert!(std::ptr::eq(a, &left_semantics));
+                assert!(std::ptr::eq(b, &right_semantics));
+                false
+            };
+            let hash = |value: &TransferStoredRuntimeValue| {
+                assert!(std::ptr::eq(value, &left_semantics));
+                17
+            };
+            let inspect = |value: &TransferStoredRuntimeValue| {
+                assert!(std::ptr::eq(value, &right_semantics));
+                "retained counter".into()
+            };
+            assert!(
+                !TransferExternalEquality::new(&equal)
+                    .stored_values_equal(&left_semantics, &right_semantics)
+            );
+            assert_eq!(
+                TransferExternalHashing::new(&hash).stored_value_hash(&left_semantics),
+                17
+            );
+            assert_eq!(
+                TransferExternalInspection::new(&inspect).inspect_stored_value(&right_semantics),
+                "retained counter"
+            );
+            let calls = Cell::new(0);
+            let equal = |_: &TransferStoredRuntimeValue, _: &TransferStoredRuntimeValue| {
+                calls.set(calls.get() + 1);
+                false
+            };
+            let hash = |_: &TransferStoredRuntimeValue| {
+                calls.set(calls.get() + 1);
+                17
+            };
+            let inspect = |_: &TransferStoredRuntimeValue| {
+                calls.set(calls.get() + 1);
+                "retained counter".into()
+            };
+            assert!(
+                !AsyncHostExternalEquality(&TransferExternalEquality::new(&equal))
+                    .provider_stored_values_equal(&left, &right)
+            );
+            assert_eq!(
+                AsyncHostExternalHashing(&TransferExternalHashing::new(&hash))
+                    .provider_stored_value_hash(&left),
+                17
+            );
+            assert_eq!(
+                AsyncHostExternalInspection(&TransferExternalInspection::new(&inspect))
+                    .provider_inspect_stored_value(&right),
+                "retained counter"
+            );
+            assert_eq!(calls.get(), 3);
+            let value = call.create_external_with_binding::<Provider>(left);
+            Ok(call.return_value(value))
         }
-
-        let provider = AsyncHostProviderModule::<Profile>::new("application", "library")
-            .expect("context fixture identity")
-            .with_external_type::<Provider, Counter>().expect("counter schema")
-            .with_external_type::<Provider, Envelope>().expect("envelope schema")
-            .with_scoped_async_function::<Provider, (), HostExternalType<Counter>, _>("make", make_counter)
-            .expect("counter constructor")
-            .with_scoped_async_function::<Provider, (HostExternalType<Counter>,), HostExternalType<Envelope>, _>("verify", verify)
-            .expect("context verification");
+        let provider = TransferHostProviderModule::new_for_profile("application", "library").expect("identity")
+            .with_external_type::<Provider, Counter>().expect("counter")
+            .with_external_type::<Provider, Envelope>().expect("envelope")
+            .with_scoped_function::<Provider, (), HostExternalType<Counter>, _>("make", make_counter).expect("make")
+            .with_scoped_function::<Provider, (HostExternalType<Counter>,), HostExternalType<Envelope>, _>("verify", verify).expect("verify");
         let source = r#"
-@external(erlang, "native", "Counter")
 pub type Counter
-@external(erlang, "native", "Envelope")
 pub type Envelope
 @external(erlang, "native", "make")
 fn make() -> Counter
 @external(erlang, "native", "verify")
 fn verify(value: Counter) -> Envelope
-
-pub fn run() {
-  let _ = verify(make())
-  Nil
-}
+pub fn run() { let _ = verify(make()) Nil }
 "#;
-        let program = compile_typed_async_host_program(
-            "application",
-            "library",
-            [PackageSource::new(
-                "application",
-                Vec::<String>::new(),
-                [ModuleSource::new("library", "src/library.gleam", source)],
-            )],
-            AsyncHostProviderSet::with_providers([], [provider]).expect("context fixture provider"),
-        )
-        .expect("context fixture source");
-        let (bindings, function) = AsyncHostedModuleBuilder::new(program)
-            .expect("context fixture plan")
+        let (bindings, run) = WorkModuleBuilder::new(program(source, provider))
+            .expect("plan")
             .function(FunctionDeclaration::<(), ()>::new("run"))
-            .expect("context fixture binding");
-        let mut module = bindings.seal();
-        let mut state = Arc::new(AtomicUsize::new(0));
+            .expect("entry");
+        let mut module = bindings.seal().expect("seal");
+        let mut state = (Arc::new(AtomicUsize::new(0)), ());
         let mut echo = Echo::default();
-        let mut call = Box::pin(module.call_async(&function, (), &mut state, &mut echo));
-        let mut context = Context::from_waker(Waker::noop());
-        assert_eq!(
-            call.as_mut()
-                .poll(&mut context)
-                .map(|result| result.expect("context verification")),
-            Poll::Ready(()),
-        );
-        drop(call);
-        assert_eq!(state.load(Ordering::SeqCst), 1);
+        with_execution_scope(async |guard| {
+            module
+                .attach(guard, &mut state, &mut echo)
+                .call(&run, ())
+                .expect("verify");
+        })
+        .now_or_never()
+        .expect("ordinary provider call");
+        assert_eq!(state.0.load(Ordering::SeqCst), 1);
         assert!(echo.0.is_empty());
     }
 }

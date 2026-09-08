@@ -1,9 +1,11 @@
 use crate::host::{
-    ExternalPayloadLease, ExternalPayloadView, HostExternalStore, HostList, HostType,
+    AsyncHostExternalStore, ExternalPayloadLease, ExternalPayloadView, HostExternalStore, HostList,
+    HostType,
 };
 use crate::runtime::{
     StoredRuntimeList, StoredRuntimeListCustomFields, StoredRuntimeListItem,
-    StoredRuntimeListTupleItems,
+    StoredRuntimeListTupleItems, TransferExternalPayloadLease, TransferExternalPayloadView,
+    TransferValues,
 };
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -37,6 +39,21 @@ pub struct ProviderInputListContext<Decoder> {
     decoder: Decoder,
 }
 
+/// Owned retained List used by a transferable provider invocation.
+#[doc(hidden)]
+pub struct ProviderTransferListContext<HostItem, Decoder> {
+    retained: StoredRuntimeList<TransferValues>,
+    decoder: Decoder,
+    host: PhantomData<fn() -> HostItem>,
+}
+
+/// An input-only transferable List nested inside another source value.
+#[doc(hidden)]
+pub struct ProviderTransferInputListContext<Decoder> {
+    retained: StoredRuntimeList<TransferValues>,
+    decoder: Decoder,
+}
+
 /// The statically generated decoder for one exact List item shape.
 #[doc(hidden)]
 pub trait ProviderListItemDecoder<Item> {
@@ -45,10 +62,24 @@ pub trait ProviderListItemDecoder<Item> {
     fn decode(&self, value: ProviderListItemValue<'_>) -> Self::View;
 }
 
+/// Transferable decoder for one exact List item shape.
+#[doc(hidden)]
+pub trait ProviderTransferListItemDecoder<Item> {
+    type View;
+
+    fn decode(&self, value: ProviderTransferListItemValue<'_>) -> Self::View;
+}
+
 /// One requested runtime List item passed to a generated typed decoder.
 #[doc(hidden)]
 pub struct ProviderListItemValue<'value> {
     value: StoredRuntimeListItem<'value>,
+}
+
+/// One requested transferable runtime List item.
+#[doc(hidden)]
+pub struct ProviderTransferListItemValue<'value> {
+    value: StoredRuntimeListItem<'value, TransferValues>,
 }
 
 /// Typed access to one provider-owned external payload store.
@@ -64,6 +95,29 @@ pub struct ProviderExternalItem<Payload> {
     lease: ExternalPayloadLease,
 }
 
+/// Cloneable access to one transferable external payload store.
+#[doc(hidden)]
+pub struct ProviderTransferExternalPayloadAccess<Payload> {
+    store: AsyncHostExternalStore<Payload>,
+}
+
+/// An owned external handle that may cross suspension points.
+///
+/// Payload access is deliberately bounded by [`Self::with`], so no reference
+/// or store guard can remain live across an `.await`.
+#[doc(hidden)]
+pub struct ProviderTransferExternalItem<Payload> {
+    access: ProviderTransferExternalPayloadAccess<Payload>,
+    lease: TransferExternalPayloadLease,
+}
+
+/// A direct-only view of one transferable external payload.
+#[doc(hidden)]
+pub struct ProviderTransferExternalView<Payload> {
+    value: TransferExternalPayloadView<Payload>,
+    lease: TransferExternalPayloadLease,
+}
+
 /// Profile-independent decoder for one scalar List item.
 #[doc(hidden)]
 #[derive(Clone, Copy)]
@@ -75,7 +129,35 @@ pub struct ProviderExternalListDecoder<Payload> {
     access: ProviderExternalPayloadAccess<Payload>,
 }
 
+/// Transferable decoder for one external List item.
+#[doc(hidden)]
+pub struct ProviderTransferExternalListDecoder<Payload> {
+    access: ProviderTransferExternalPayloadAccess<Payload>,
+}
+
+/// Direct-only transferable decoder for one external List item.
+#[doc(hidden)]
+pub struct ProviderTransferExternalViewListDecoder<Payload> {
+    access: ProviderTransferExternalPayloadAccess<Payload>,
+}
+
 impl<Payload: 'static> Clone for ProviderExternalListDecoder<Payload> {
+    fn clone(&self) -> Self {
+        Self {
+            access: self.access.clone(),
+        }
+    }
+}
+
+impl<Payload: Send + 'static> Clone for ProviderTransferExternalListDecoder<Payload> {
+    fn clone(&self) -> Self {
+        Self {
+            access: self.access.clone(),
+        }
+    }
+}
+
+impl<Payload: Send + 'static> Clone for ProviderTransferExternalViewListDecoder<Payload> {
     fn clone(&self) -> Self {
         Self {
             access: self.access.clone(),
@@ -93,6 +175,18 @@ pub struct ProviderListTupleItems<'value> {
 #[doc(hidden)]
 pub struct ProviderListCustomFields<'value> {
     fields: StoredRuntimeListCustomFields<'value>,
+}
+
+/// A consuming view over a tuple item in a transferable List.
+#[doc(hidden)]
+pub struct ProviderTransferListTupleItems<'value> {
+    values: StoredRuntimeListTupleItems<'value, TransferValues>,
+}
+
+/// A consuming view over a custom item in a transferable List.
+#[doc(hidden)]
+pub struct ProviderTransferListCustomFields<'value> {
+    fields: StoredRuntimeListCustomFields<'value, TransferValues>,
 }
 
 impl<'call, Item, HostItem, Decoder> List<Item, ProviderListContext<'call, HostItem, Decoder>>
@@ -143,6 +237,54 @@ where
     }
 }
 
+impl<Item, HostItem, Decoder> List<Item, ProviderTransferListContext<HostItem, Decoder>>
+where
+    HostItem: HostType,
+    Decoder: ProviderTransferListItemDecoder<Item>,
+{
+    #[expect(
+        clippy::len_without_is_empty,
+        reason = "the provider List slice intentionally exposes only len and get"
+    )]
+    pub fn len(&self) -> usize {
+        self.context.retained.len()
+    }
+
+    pub fn get(&self, index: usize) -> Option<Decoder::View> {
+        self.context.retained.decode_item(index, |value| {
+            self.context
+                .decoder
+                .decode(ProviderTransferListItemValue { value })
+        })
+    }
+
+    #[doc(hidden)]
+    pub fn __geam_into_transfer_context(self) -> ProviderTransferListContext<HostItem, Decoder> {
+        self.context
+    }
+}
+
+impl<Item, Decoder> List<Item, ProviderTransferInputListContext<Decoder>>
+where
+    Decoder: ProviderTransferListItemDecoder<Item>,
+{
+    #[expect(
+        clippy::len_without_is_empty,
+        reason = "the provider List slice intentionally exposes only len and get"
+    )]
+    pub fn len(&self) -> usize {
+        self.context.retained.len()
+    }
+
+    pub fn get(&self, index: usize) -> Option<Decoder::View> {
+        self.context.retained.decode_item(index, |value| {
+            self.context
+                .decoder
+                .decode(ProviderTransferListItemValue { value })
+        })
+    }
+}
+
 impl<'call, HostItem, Decoder> ProviderListContext<'call, HostItem, Decoder>
 where
     HostItem: HostType,
@@ -174,6 +316,41 @@ where
 
 impl<Decoder> ProviderInputListContext<Decoder> {
     pub(crate) fn new<Item>(retained: StoredRuntimeList, decoder: Decoder) -> List<Item, Self> {
+        List {
+            context: Self { retained, decoder },
+            item: PhantomData,
+        }
+    }
+}
+
+impl<HostItem, Decoder> ProviderTransferListContext<HostItem, Decoder>
+where
+    HostItem: HostType,
+{
+    pub(crate) fn new<Item>(
+        retained: StoredRuntimeList<TransferValues>,
+        decoder: Decoder,
+    ) -> List<Item, Self> {
+        List {
+            context: Self {
+                retained,
+                decoder,
+                host: PhantomData,
+            },
+            item: PhantomData,
+        }
+    }
+
+    pub(crate) fn retained(&self) -> &StoredRuntimeList<TransferValues> {
+        &self.retained
+    }
+}
+
+impl<Decoder> ProviderTransferInputListContext<Decoder> {
+    pub(crate) fn new<Item>(
+        retained: StoredRuntimeList<TransferValues>,
+        decoder: Decoder,
+    ) -> List<Item, Self> {
         List {
             context: Self { retained, decoder },
             item: PhantomData,
@@ -230,6 +407,66 @@ impl<'value> ProviderListItemValue<'value> {
     }
 }
 
+impl<'value> ProviderTransferListItemValue<'value> {
+    #[doc(hidden)]
+    #[allow(private_bounds)]
+    pub fn into_scalar<Scalar>(self) -> Scalar
+    where
+        Scalar: ProviderTransferListScalar,
+    {
+        Scalar::decode(self.value)
+    }
+
+    #[doc(hidden)]
+    pub fn into_external<Payload>(
+        self,
+        access: &ProviderTransferExternalPayloadAccess<Payload>,
+    ) -> ProviderTransferExternalItem<Payload>
+    where
+        Payload: Send + 'static,
+    {
+        ProviderTransferExternalItem::new(access.clone(), self.value.into_external_lease())
+    }
+
+    #[doc(hidden)]
+    pub fn into_external_view<Payload>(
+        self,
+        access: &ProviderTransferExternalPayloadAccess<Payload>,
+    ) -> ProviderTransferExternalView<Payload>
+    where
+        Payload: Send + 'static,
+    {
+        let lease = self.value.into_external_lease();
+        let value = access.store.view(&lease);
+        ProviderTransferExternalView::new(value, lease)
+    }
+
+    #[doc(hidden)]
+    pub fn into_tuple(self) -> ProviderTransferListTupleItems<'value> {
+        ProviderTransferListTupleItems {
+            values: self.value.into_tuple_items(),
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn into_custom(self) -> ProviderTransferListCustomFields<'value> {
+        ProviderTransferListCustomFields {
+            fields: self.value.into_custom_fields(),
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn into_list<Item, Decoder>(
+        self,
+        decoder: Decoder,
+    ) -> List<Item, ProviderTransferInputListContext<Decoder>>
+    where
+        Decoder: ProviderTransferListItemDecoder<Item>,
+    {
+        ProviderTransferInputListContext::new(self.value.into_list(), decoder)
+    }
+}
+
 impl ProviderListTupleItems<'_> {
     #[doc(hidden)]
     pub fn take_item(&mut self, index: usize) -> ProviderListItemValue<'_> {
@@ -248,6 +485,29 @@ impl ProviderListCustomFields<'_> {
     #[doc(hidden)]
     pub fn take_field(&mut self, index: usize) -> ProviderListItemValue<'_> {
         ProviderListItemValue {
+            value: self.fields.take_field(index),
+        }
+    }
+}
+
+impl ProviderTransferListTupleItems<'_> {
+    #[doc(hidden)]
+    pub fn take_item(&mut self, index: usize) -> ProviderTransferListItemValue<'_> {
+        ProviderTransferListItemValue {
+            value: self.values.take_item(index),
+        }
+    }
+}
+
+impl ProviderTransferListCustomFields<'_> {
+    #[doc(hidden)]
+    pub fn constructor(&self) -> usize {
+        self.fields.constructor()
+    }
+
+    #[doc(hidden)]
+    pub fn take_field(&mut self, index: usize) -> ProviderTransferListItemValue<'_> {
+        ProviderTransferListItemValue {
             value: self.fields.take_field(index),
         }
     }
@@ -287,6 +547,60 @@ impl<Payload> ProviderExternalItem<Payload> {
     }
 }
 
+impl<Payload: Send + 'static> ProviderTransferExternalPayloadAccess<Payload> {
+    pub(crate) fn new(store: &AsyncHostExternalStore<Payload>) -> Self {
+        Self {
+            store: store.clone_handle(),
+        }
+    }
+}
+
+impl<Payload: Send + 'static> Clone for ProviderTransferExternalPayloadAccess<Payload> {
+    fn clone(&self) -> Self {
+        Self {
+            store: self.store.clone_handle(),
+        }
+    }
+}
+
+impl<Payload: Send + 'static> ProviderTransferExternalItem<Payload> {
+    pub(crate) fn new(
+        access: ProviderTransferExternalPayloadAccess<Payload>,
+        lease: TransferExternalPayloadLease,
+    ) -> Self {
+        Self { access, lease }
+    }
+
+    pub fn with<Output>(&self, read: impl FnOnce(&Payload) -> Output) -> Output {
+        self.access.store.with_view(&self.lease, read)
+    }
+
+    pub(crate) fn into_lease(self) -> TransferExternalPayloadLease {
+        self.lease
+    }
+}
+
+impl<Payload> Deref for ProviderTransferExternalView<Payload> {
+    type Target = Payload;
+
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
+}
+
+impl<Payload> ProviderTransferExternalView<Payload> {
+    pub(crate) fn new(
+        value: TransferExternalPayloadView<Payload>,
+        lease: TransferExternalPayloadLease,
+    ) -> Self {
+        Self { value, lease }
+    }
+
+    pub(crate) fn into_lease(self) -> TransferExternalPayloadLease {
+        self.lease
+    }
+}
+
 impl<Scalar> ProviderScalarListDecoder<Scalar> {
     pub(crate) fn new() -> Self {
         Self(PhantomData)
@@ -304,8 +618,31 @@ where
     }
 }
 
+impl<Scalar> ProviderTransferListItemDecoder<Scalar> for ProviderScalarListDecoder<Scalar>
+where
+    Scalar: ProviderTransferListScalar,
+{
+    type View = Scalar;
+
+    fn decode(&self, value: ProviderTransferListItemValue<'_>) -> Self::View {
+        value.into_scalar()
+    }
+}
+
 impl<Payload: 'static> ProviderExternalListDecoder<Payload> {
     pub fn new(access: ProviderExternalPayloadAccess<Payload>) -> Self {
+        Self { access }
+    }
+}
+
+impl<Payload: Send + 'static> ProviderTransferExternalListDecoder<Payload> {
+    pub fn new(access: ProviderTransferExternalPayloadAccess<Payload>) -> Self {
+        Self { access }
+    }
+}
+
+impl<Payload: Send + 'static> ProviderTransferExternalViewListDecoder<Payload> {
+    pub fn new(access: ProviderTransferExternalPayloadAccess<Payload>) -> Self {
         Self { access }
     }
 }
@@ -318,14 +655,44 @@ impl<Payload: 'static> ProviderListItemDecoder<Payload> for ProviderExternalList
     }
 }
 
+impl<Payload: Send + 'static> ProviderTransferListItemDecoder<ProviderTransferExternalItem<Payload>>
+    for ProviderTransferExternalListDecoder<Payload>
+{
+    type View = ProviderTransferExternalItem<Payload>;
+
+    fn decode(&self, value: ProviderTransferListItemValue<'_>) -> Self::View {
+        value.into_external(&self.access)
+    }
+}
+
+impl<Payload: Send + 'static> ProviderTransferListItemDecoder<ProviderTransferExternalView<Payload>>
+    for ProviderTransferExternalViewListDecoder<Payload>
+{
+    type View = ProviderTransferExternalView<Payload>;
+
+    fn decode(&self, value: ProviderTransferListItemValue<'_>) -> Self::View {
+        value.into_external_view(&self.access)
+    }
+}
+
 trait ProviderListScalar: Sized {
     fn decode(value: StoredRuntimeListItem) -> Self;
+}
+
+trait ProviderTransferListScalar: Sized {
+    fn decode(value: StoredRuntimeListItem<'_, TransferValues>) -> Self;
 }
 
 macro_rules! provider_list_scalar {
     ($type:ty, $method:ident) => {
         impl ProviderListScalar for $type {
             fn decode(value: StoredRuntimeListItem) -> Self {
+                value.$method()
+            }
+        }
+
+        impl ProviderTransferListScalar for $type {
+            fn decode(value: StoredRuntimeListItem<'_, TransferValues>) -> Self {
                 value.$method()
             }
         }
@@ -342,10 +709,15 @@ provider_list_scalar!((), into_nil);
 
 #[cfg(test)]
 mod tests {
-    use super::{ProviderListContext, ProviderListItemDecoder, ProviderListItemValue};
-    use crate::host::{HostList, HostListToken};
+    use super::{
+        ProviderListContext, ProviderListItemDecoder, ProviderListItemValue,
+        ProviderTransferExternalListDecoder, ProviderTransferExternalPayloadAccess,
+        ProviderTransferExternalViewListDecoder,
+    };
+    use crate::host::{AsyncHostExternalStore, HostList, HostListToken};
     use crate::runtime::StoredRuntimeList;
     use num_bigint::BigInt;
+    use std::sync::mpsc::Receiver;
 
     struct IntDecoder;
 
@@ -370,5 +742,16 @@ mod tests {
         assert_eq!(list.context.retained.item_reads(), 1);
         assert_eq!(list.get(2), None);
         assert_eq!(list.context.retained.item_reads(), 2);
+    }
+
+    #[test]
+    fn transferable_external_decoders_clone_store_access_without_payload_bounds() {
+        let store = AsyncHostExternalStore::<Receiver<()>>::default();
+        let access = ProviderTransferExternalPayloadAccess::new(&store);
+        let owned = ProviderTransferExternalListDecoder::new(access.clone());
+        let direct = ProviderTransferExternalViewListDecoder::new(access);
+
+        let _owned_clone = owned.clone();
+        let _direct_clone = direct.clone();
     }
 }

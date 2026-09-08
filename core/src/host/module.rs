@@ -524,11 +524,6 @@ impl RegisteredExternalTypes {
         Ok(())
     }
 
-    #[cfg(test)]
-    pub(super) fn push_valid_for_test(&mut self, schema: HostExternalTypeSchema) {
-        self.types.push(schema);
-    }
-
     fn schemas(&self) -> impl ExactSizeIterator<Item = &HostExternalTypeSchema> {
         self.types.iter()
     }

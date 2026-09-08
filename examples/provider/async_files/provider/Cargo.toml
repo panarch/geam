@@ -1,0 +1,24 @@
+[package]
+name = "geam-example-async-files"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+publish = false
+description = "Async file reading for the Geam embedding example"
+license = "Apache-2.0"
+
+[package.metadata.geam.provider]
+schema = 1
+gleam-package = "example_async_files"
+gleam-version = ">= 1.0.0 and < 2.0.0"
+
+[dependencies]
+async-fs = "2.2.0"
+geam = { version = "=0.2.3", default-features = false, features = ["provider"] }
+
+[patch.crates-io]
+geam = { path = "../../../.." }
+
+
+[workspace]
+resolver = "3"

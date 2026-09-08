@@ -15,10 +15,10 @@ use crate::runtime::{
 pub(super) fn evaluate<Plan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &BlockEnvironment,
+    environment: &BlockEnvironment<Plan::Values>,
     instruction: &<RuntimeGraph<Plan> as ExecutionGraphProfile>::ExternalInstruction,
     expected: &ValueType,
-) -> ExecutionResult<EvaluatedExternalValue>
+) -> ExecutionResult<EvaluatedExternalValue<Plan::Values>, Plan::Values>
 where
     Plan: ExecutableRuntimePlan,
 {

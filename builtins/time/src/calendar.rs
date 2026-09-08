@@ -1,4 +1,4 @@
-use super::{Component, GleamTimeHostProfile, TimeSource};
+use super::{GleamTimeLocalProfile, TimeSource};
 use crate::{HostProviderModule, HostRegistrationError};
 use geam_core::provider::{Call, HostResult};
 use num_bigint::BigInt;
@@ -23,9 +23,18 @@ mod provider {
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
-    Profile: GleamTimeHostProfile,
+    Profile: GleamTimeLocalProfile,
 {
     provider::__geam_module::<Profile>()
+}
+
+pub(super) fn transfer_host_provider<Profile>()
+-> Result<geam_core::TransferHostProviderModule<Profile>, HostRegistrationError>
+where
+    Profile: crate::GleamTimeTransferProfile,
+    Profile::RunState: Send,
+{
+    provider::__geam_transfer_module::<Profile>()
 }
 
 #[cfg(test)]

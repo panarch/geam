@@ -4,6 +4,7 @@ pub mod advanced;
 mod call;
 mod callback;
 mod codec;
+mod future;
 mod list;
 mod prelude;
 mod stored;
@@ -12,19 +13,30 @@ mod value;
 pub use crate::{BitArrayValue, HostFailure};
 pub use call::{Call, HostResult};
 #[doc(hidden)]
-pub use call::{ProviderActiveCall, ProviderCallPlaceholder, ProviderSharedCall};
+pub use call::{
+    ProviderActiveCall, ProviderCallPlaceholder, ProviderFutureCall, ProviderSharedCall,
+    ProviderTransferActiveCall,
+};
 pub use callback::Callback;
 #[doc(hidden)]
-pub use callback::{MissingCallbackContext, ProviderCallbackCodec, ProviderCallbackContext};
+pub use callback::{
+    MissingCallbackContext, ProviderCallbackCodec, ProviderCallbackContext,
+    ProviderFutureCallbackContext, ProviderTransferCallbackCodec, ProviderTransferCallbackContext,
+};
 #[doc(hidden)]
 pub use codec::{
     ProviderConstruction, ProviderConstructionIndex0, ProviderConstructionIndexNext,
     ProviderConstructionList, ProviderConstructionRequirementAt, ProviderConstructionRequirements,
     ProviderConstructions, ProviderExternalCodec, ProviderInputValue, ProviderListInputCodec,
     ProviderListInputValue, ProviderNoConstructions, ProviderOutputValue, ProviderRootOutputValue,
-    ProviderValue,
+    ProviderTransferExternalCodec, ProviderTransferInputValue, ProviderTransferListInputCodec,
+    ProviderTransferListInputValue, ProviderTransferOutputValue, ProviderTransferPayload,
+    ProviderTransferRootOutputValue, ProviderTransferValue, ProviderValue,
 };
 pub use ecow::EcoString;
+pub use future::Future;
+#[doc(hidden)]
+pub use future::{MissingFutureContext, ProviderFutureValueContext};
 pub use num_bigint::BigInt;
 
 pub use list::List;
@@ -33,6 +45,11 @@ pub use list::{
     ProviderExternalItem, ProviderExternalListDecoder, ProviderExternalPayloadAccess,
     ProviderInputListContext, ProviderListContext, ProviderListCustomFields,
     ProviderListItemDecoder, ProviderListItemValue, ProviderScalarListDecoder,
+    ProviderTransferExternalItem, ProviderTransferExternalListDecoder,
+    ProviderTransferExternalPayloadAccess, ProviderTransferExternalView,
+    ProviderTransferExternalViewListDecoder, ProviderTransferInputListContext,
+    ProviderTransferListContext, ProviderTransferListCustomFields, ProviderTransferListItemDecoder,
+    ProviderTransferListItemValue, ProviderTransferListTupleItems,
 };
 #[doc(hidden)]
 pub use prelude::{
@@ -43,12 +60,16 @@ pub use stored::Stored;
 #[doc(hidden)]
 pub use stored::{
     MissingExternalInputContext, MissingExternalOutputContext, MissingStoredContext,
-    ProviderExternalInputContext, ProviderExternalOutput, ProviderStoredInput,
-    ProviderStoredOutput, ProviderStoredOwner, retain_argument, retain_dynamic,
+    ProviderAsyncExternalInputContext, ProviderAsyncStoredInput, ProviderExternalInputContext,
+    ProviderExternalOutput, ProviderExternalOutputContext, ProviderStoredInput,
+    ProviderStoredOutput, ProviderStoredOwner, ProviderTransferExternalInputContext,
+    ProviderTransferExternalOutput, ProviderTransferExternalReturn, ProviderTransferStoredInput,
+    ProviderTransferStoredOutput, retain_argument, retain_dynamic, retain_transfer_argument,
+    retain_transfer_dynamic,
 };
 pub use value::Value;
 #[doc(hidden)]
-pub use value::{MissingValueContext, ProviderValueContext};
+pub use value::{MissingValueContext, ProviderTransferValueContext, ProviderValueContext};
 
 pub type Configuration = crate::HostProviderConfiguration;
 

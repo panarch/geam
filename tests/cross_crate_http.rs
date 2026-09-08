@@ -15,6 +15,10 @@ mod request;
 mod response;
 #[path = "cross_crate_http/service.rs"]
 mod service;
+#[path = "support/stdlib_transfer.rs"]
+mod transfer;
+#[path = "support/transfer_fixture.rs"]
+mod transfer_fixture;
 #[path = "support/upstream_surface.rs"]
 mod upstream_surface;
 #[path = "support/workspace_dependencies.rs"]
@@ -86,14 +90,18 @@ fn run_fixture(root_module: &str) -> Value {
     let plan = plan_host_program(typed).expect("official HTTP fixture should plan");
     let execution =
         HostedExecution::try_from_module_plan(plan).expect("official HTTP fixture should seal");
+    let mut echo = Vec::new();
     let actual = execution
-        .run_main(
-            &mut GleamStdlibRunState::from_seed([0; 32]),
-            &mut Vec::new(),
-        )
+        .run_main(&mut GleamStdlibRunState::from_seed([0; 32]), &mut echo)
         .expect("official HTTP fixture should run");
 
     assert_eq!(actual.inspect().to_string(), expected);
+    transfer::assert_fixture(
+        root_module,
+        GleamStdlibRunState::from_seed([0; 32]),
+        &actual,
+        &echo,
+    );
     actual
 }
 

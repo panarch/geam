@@ -1,7 +1,7 @@
 mod function;
 mod parse;
 
-use super::{Component, GleamStdlibHostProfile};
+use super::GleamStdlibLocalProfile;
 use crate::{HostProviderModule, HostRegistrationError};
 use ecow::EcoString;
 use geam_core::provider::HostResult;
@@ -74,9 +74,18 @@ mod provider {
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
-    Profile: GleamStdlibHostProfile,
+    Profile: GleamStdlibLocalProfile,
 {
     provider::__geam_module::<Profile>()
+}
+
+pub(super) fn transfer_host_provider<Profile>()
+-> Result<geam_core::TransferHostProviderModule<Profile>, HostRegistrationError>
+where
+    Profile: crate::GleamStdlibTransferProfile,
+    Profile::RunState: Send,
+{
+    provider::__geam_transfer_module::<Profile>()
 }
 
 #[cfg(test)]

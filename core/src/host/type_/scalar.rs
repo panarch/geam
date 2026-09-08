@@ -23,8 +23,8 @@ impl private::Abi for BigInt {
         HostScopedValue::Int(value)
     }
 
-    fn from_token<'call, Profile: crate::host::HostProfile>(
-        runtime: &dyn crate::host::HostCallRuntime<Profile>,
+    fn from_token<'call, Runtime: crate::host::HostTokenRuntime + ?Sized>(
+        runtime: &Runtime,
         token: crate::host::HostValueToken,
     ) -> <Self as HostType>::Value<'call> {
         runtime.int(token)
@@ -50,8 +50,8 @@ impl private::Abi for f64 {
         HostScopedValue::Float(value)
     }
 
-    fn from_token<'call, Profile: crate::host::HostProfile>(
-        runtime: &dyn crate::host::HostCallRuntime<Profile>,
+    fn from_token<'call, Runtime: crate::host::HostTokenRuntime + ?Sized>(
+        runtime: &Runtime,
         token: crate::host::HostValueToken,
     ) -> <Self as HostType>::Value<'call> {
         runtime.float(token)
@@ -77,8 +77,8 @@ impl private::Abi for EcoString {
         HostScopedValue::String(value)
     }
 
-    fn from_token<'call, Profile: crate::host::HostProfile>(
-        runtime: &dyn crate::host::HostCallRuntime<Profile>,
+    fn from_token<'call, Runtime: crate::host::HostTokenRuntime + ?Sized>(
+        runtime: &Runtime,
         token: crate::host::HostValueToken,
     ) -> <Self as HostType>::Value<'call> {
         runtime.string(token)
@@ -104,8 +104,8 @@ impl private::Abi for BitArrayValue {
         HostScopedValue::BitArray(value)
     }
 
-    fn from_token<'call, Profile: crate::host::HostProfile>(
-        runtime: &dyn crate::host::HostCallRuntime<Profile>,
+    fn from_token<'call, Runtime: crate::host::HostTokenRuntime + ?Sized>(
+        runtime: &Runtime,
         token: crate::host::HostValueToken,
     ) -> <Self as HostType>::Value<'call> {
         runtime.bit_array(token)
@@ -131,8 +131,8 @@ impl private::Abi for char {
         HostScopedValue::UtfCodepoint(value)
     }
 
-    fn from_token<'call, Profile: crate::host::HostProfile>(
-        runtime: &dyn crate::host::HostCallRuntime<Profile>,
+    fn from_token<'call, Runtime: crate::host::HostTokenRuntime + ?Sized>(
+        runtime: &Runtime,
         token: crate::host::HostValueToken,
     ) -> <Self as HostType>::Value<'call> {
         runtime.utf_codepoint(token)
@@ -158,8 +158,8 @@ impl private::Abi for bool {
         HostScopedValue::Bool(value)
     }
 
-    fn from_token<'call, Profile: crate::host::HostProfile>(
-        runtime: &dyn crate::host::HostCallRuntime<Profile>,
+    fn from_token<'call, Runtime: crate::host::HostTokenRuntime + ?Sized>(
+        runtime: &Runtime,
         token: crate::host::HostValueToken,
     ) -> <Self as HostType>::Value<'call> {
         runtime.bool(token)
@@ -185,8 +185,8 @@ impl private::Abi for () {
         HostScopedValue::Nil
     }
 
-    fn from_token<'call, Profile: crate::host::HostProfile>(
-        runtime: &dyn crate::host::HostCallRuntime<Profile>,
+    fn from_token<'call, Runtime: crate::host::HostTokenRuntime + ?Sized>(
+        runtime: &Runtime,
         token: crate::host::HostValueToken,
     ) -> <Self as HostType>::Value<'call> {
         runtime.nil(token);

@@ -16,8 +16,8 @@ enum ComponentInitialization {
 }
 
 impl RunnerComponent {
-    fn built_in(provider: BuiltInProvider) -> Self {
-        match provider {
+    fn built_in(provider: BuiltInProvider) -> Option<Self> {
+        Some(match provider {
             BuiltInProvider::Stdlib => Self {
                 field: "stdlib".to_owned(),
                 type_path: "geam::gleam_stdlib::Component<CliIoSink>".to_owned(),
@@ -33,7 +33,8 @@ impl RunnerComponent {
                 type_path: "geam::gleam_time::Component".to_owned(),
                 initialization: ComponentInitialization::SystemTime,
             },
-        }
+            BuiltInProvider::Geam => return None,
+        })
     }
 
     fn external(alias: String) -> Self {
@@ -126,7 +127,7 @@ fn runner_components(provider_aliases: &[String]) -> Vec<RunnerComponent> {
 
     BuiltInProvider::ALL
         .into_iter()
-        .map(RunnerComponent::built_in)
+        .filter_map(RunnerComponent::built_in)
         .chain(provider_aliases.into_iter().map(RunnerComponent::external))
         .collect()
 }

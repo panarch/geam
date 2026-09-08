@@ -4,10 +4,14 @@ use super::custom_value::{
 use super::list::validate_list_return;
 use super::list_model::register_list_decoder;
 use super::signature::{
+    callback_codec_type, callback_input_signature_type, callback_output_signature_type,
     callback_signature_type, function_output_from_root, function_output_rust_type,
     generic_external_input_signature_type, generic_external_output_signature_type,
     generic_value_signature_type, host_return_type, list_signature_type,
     provider_input_signature_type, provider_value_from_input_root,
+    transfer_callback_output_signature_type, transfer_generic_external_input_signature_type,
+    transfer_generic_external_output_signature_type, transfer_generic_value_signature_type,
+    transfer_list_signature_type, transfer_provider_input_signature_type,
 };
 use super::type_syntax::{
     collection_item, collection_item_with_path, external_type, host_result_value,
@@ -15,14 +19,17 @@ use super::type_syntax::{
     is_qualified_type_path, is_type_application_named, source_wrapper,
 };
 use super::{
-    CallAccess, CallbackType, ClassifiedGenericHostType, CollectionType, DeclaredInput,
-    ExternalArguments, ExternalModel, ExternalSemantics, FunctionArgumentType, FunctionArguments,
+    AsyncCallAccess, CallAccess, CallbackType, ClassifiedGenericHostType, CollectionType,
+    DeclaredInput, ExternalArguments, ExternalModel, ExternalSemantics, FunctionArgumentType,
+    FunctionArguments, FunctionCallAccess, FunctionCallParameter, FunctionFlavor,
     FunctionInputType, FunctionInputValueType, FunctionModel, FunctionOutputCollectionType,
-    FunctionOutputLeafType, FunctionOutputValueType, FunctionReturnType,
-    FunctionRootOutputValueType, GenericExternalModel, GenericExternalStorage, GenericExternalType,
-    GenericHostType, GenericInputSource, GenericParameterScope, GenericValueType, ListDecoderModel,
-    ListType, ModuleArguments, ModuleProfile, PartialExternalArguments, PartialModuleArguments,
-    ProviderValueType, SourceWrapper, StaticValueType, StoredExternalField, is_marker,
+    FunctionOutputLeafType, FunctionOutputValueType, FunctionParameter, FunctionProfile,
+    FunctionReturnType, FunctionRootOutputValueType, FunctionSourceParameter, GenericExternalModel,
+    GenericExternalStorage, GenericExternalType, GenericHostType, GenericInputSource,
+    GenericParameterScope, GenericValueType, ListDecoderModel, ListType, ModuleArguments,
+    ModuleProfile, PartialExternalArguments, PartialModuleArguments, ProviderValueType,
+    SourceWrapper, StaticValueType, StoredExternalField, TransferFlavor, ValidatedFunction,
+    is_marker,
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -30,10 +37,57 @@ use std::collections::BTreeSet;
 use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
+use syn::visit_mut::VisitMut;
 use syn::{
-    Attribute, Fields, FnArg, GenericArgument, GenericParam, Ident, ItemFn, ItemStruct, Meta, Path,
-    PathArguments, ReturnType, Token, Type, TypePath,
+    Attribute, Block, Fields, FnArg, GenericArgument, GenericParam, Ident, ItemFn, ItemStruct,
+    Meta, Path, PathArguments, ReturnType, Token, Type, TypePath,
 };
+
+pub(super) fn component_for_self(component: &Type) -> Type {
+    struct Rewriter;
+    impl VisitMut for Rewriter {
+        fn visit_path_mut(&mut self, path: &mut Path) {
+            if let Some(first) = path.segments.first_mut()
+                && first.ident == "Profile"
+            {
+                first.ident = Ident::new("Self", first.ident.span());
+            }
+            syn::visit_mut::visit_path_mut(self, path);
+        }
+    }
+    let mut component = component.clone();
+    Rewriter.visit_type_mut(&mut component);
+    component
+}
+
+pub(super) fn rewrite_transfer_external_payload_paths(
+    block: &mut Block,
+    externals: &[ExternalModel],
+) {
+    struct Rewriter {
+        arguments: std::collections::BTreeMap<String, PathArguments>,
+    }
+
+    impl VisitMut for Rewriter {
+        fn visit_path_mut(&mut self, path: &mut Path) {
+            for segment in &mut path.segments {
+                if matches!(segment.arguments, PathArguments::None)
+                    && let Some(arguments) = self.arguments.get(&segment.ident.unraw().to_string())
+                {
+                    segment.arguments = arguments.clone();
+                }
+            }
+            syn::visit_mut::visit_path_mut(self, path);
+        }
+    }
+
+    let arguments = externals
+        .iter()
+        .filter_map(|external| external.transfer_payload_rewrite.as_ref())
+        .map(|(ident, arguments)| (ident.unraw().to_string(), arguments.clone()))
+        .collect();
+    Rewriter { arguments }.visit_block_mut(block);
+}
 
 impl Parse for ModuleArguments {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
@@ -60,6 +114,14 @@ impl Parse for ModuleArguments {
                 }
                 "profile" => {
                     if partial.profile.replace(input.parse()?).is_some() {
+                        return Err(syn::Error::new(
+                            field.span(),
+                            format!("duplicate module argument `{field}`"),
+                        ));
+                    }
+                }
+                "transfer_profile" => {
+                    if partial.transfer_profile.replace(input.parse()?).is_some() {
                         return Err(syn::Error::new(
                             field.span(),
                             format!("duplicate module argument `{field}`"),
@@ -102,7 +164,15 @@ impl Parse for ModuleArguments {
             ));
         };
         let profile = match (partial.profile, partial.component) {
-            (None, None) => ModuleProfile::Component,
+            (None, None) => {
+                if let Some(bound) = partial.transfer_profile {
+                    return Err(syn::Error::new_spanned(
+                        bound,
+                        "module `transfer_profile` requires `profile` and `component`",
+                    ));
+                }
+                ModuleProfile::Component
+            }
             (Some(bound), Some(component)) => {
                 if partial.crate_path.is_none() {
                     return Err(syn::Error::new_spanned(
@@ -111,6 +181,7 @@ impl Parse for ModuleArguments {
                     ));
                 }
                 ModuleProfile::Explicit {
+                    transfer_bound: partial.transfer_profile.unwrap_or_else(|| bound.clone()),
                     bound,
                     component: Box::new(component),
                 }
@@ -251,6 +322,15 @@ impl Parse for ExternalArguments {
                         ));
                     }
                 }
+                "context" => {
+                    input.parse::<Token![=]>()?;
+                    if partial.context.replace(input.parse()?).is_some() {
+                        return Err(syn::Error::new(
+                            field.span(),
+                            "duplicate external argument `context`",
+                        ));
+                    }
+                }
                 _ => {
                     return Err(syn::Error::new(
                         field.span(),
@@ -283,6 +363,7 @@ impl Parse for ExternalArguments {
             parameters: partial.parameters.unwrap_or_default(),
             input: partial.input,
             payload: partial.payload,
+            context: partial.context,
         })
     }
 }
@@ -388,6 +469,17 @@ pub(super) fn build_external_model(
     arguments: ExternalArguments,
     support: &TokenStream,
 ) -> syn::Result<ExternalModel> {
+    let retained_context = arguments.context.clone();
+    let mut transfer_payload_rewrite = None;
+    if let Some(context) = &retained_context
+        && !arguments.retained
+        && !arguments.manual
+    {
+        return Err(syn::Error::new_spanned(
+            context,
+            "external argument `context` requires manual or retained semantics",
+        ));
+    }
     let generic = if arguments.parameters.is_empty() {
         if arguments.input.is_some() {
             return Err(syn::Error::new_spanned(
@@ -401,7 +493,33 @@ pub(super) fn build_external_model(
                 "external argument `payload` requires non-empty `parameters`",
             ));
         }
-        if !payload.generics.params.is_empty() || payload.generics.where_clause.is_some() {
+        if let Some(context) = &retained_context {
+            let mut parameters = payload.generics.params.iter();
+            let Some(GenericParam::Type(parameter)) = parameters.next() else {
+                return Err(syn::Error::new_spanned(
+                    &payload.generics,
+                    "retained external `context` requires one Rust type parameter",
+                ));
+            };
+            if parameters.next().is_some() || parameter.ident != *context {
+                return Err(syn::Error::new_spanned(
+                    &payload.generics,
+                    "retained external `context` must name its only Rust type parameter",
+                ));
+            }
+            if parameter.default.is_none() {
+                return Err(syn::Error::new_spanned(
+                    parameter,
+                    "retained external context parameters require a local default",
+                ));
+            }
+            transfer_payload_rewrite = Some((
+                payload.ident.clone(),
+                PathArguments::AngleBracketed(
+                    syn::parse_quote!(<#support::ProviderTransferRetainedContext>),
+                ),
+            ));
+        } else if !payload.generics.params.is_empty() || payload.generics.where_clause.is_some() {
             return Err(syn::Error::new_spanned(
                 &payload.generics,
                 "external payload structs must not have generics; declare `parameters = [...]` for retained generic externals",
@@ -522,12 +640,27 @@ pub(super) fn build_external_model(
                 __geam_parameters: ::core::marker::PhantomData<fn() -> (#(#parameters,)*)>,
             }));
             payload.semi_token = None;
+            if retained_context.is_some() {
+                for segment in payload_path.segments.iter().rev().take(1) {
+                    transfer_payload_rewrite = Some((
+                        segment.ident.clone(),
+                        PathArguments::AngleBracketed(
+                            syn::parse_quote!(<#support::ProviderTransferRetainedContext>),
+                        ),
+                    ));
+                }
+            }
             Some(GenericExternalModel {
                 parameters: arguments.parameters.clone(),
                 input,
                 visibility: payload.vis.clone(),
                 storage: GenericExternalStorage::ManualPayload {
-                    payload: explicit_payload,
+                    transfer_payload: if retained_context.is_some() {
+                        syn::parse_quote!(#explicit_payload<#support::ProviderTransferRetainedContext>)
+                    } else {
+                        payload_path.clone()
+                    },
+                    payload: payload_path.clone(),
                 },
             })
         } else {
@@ -625,6 +758,7 @@ pub(super) fn build_external_model(
                 }
             }
             let generated_payload = format_ident!("__GeamExternalPayload{index}");
+            let generated_transfer_payload = format_ident!("__GeamTransferExternalPayload{index}");
             let generated_owner = format_ident!("__GeamExternalOwner{index}");
             Some(GenericExternalModel {
                 parameters: arguments.parameters.clone(),
@@ -632,6 +766,7 @@ pub(super) fn build_external_model(
                 visibility: payload.vis.clone(),
                 storage: GenericExternalStorage::StoredFields {
                     payload: generated_payload,
+                    transfer_payload: generated_transfer_payload,
                     owner: generated_owner,
                     fields: stored_fields,
                 },
@@ -639,8 +774,18 @@ pub(super) fn build_external_model(
         }
     };
 
+    let ident = payload.ident.clone();
+    let transfer_payload = if retained_context.is_some() {
+        syn::parse_quote!(#ident<#support::ProviderTransferRetainedContext>)
+    } else {
+        syn::parse_quote!(#ident)
+    };
     Ok(ExternalModel {
-        ident: payload.ident.clone(),
+        ident,
+        generics: payload.generics.clone(),
+        transfer_payload,
+        transfer_payload_rewrite,
+        context: retained_context,
         name: arguments.name,
         semantics: if arguments.retained {
             ExternalSemantics::Retained
@@ -688,25 +833,51 @@ pub(super) fn retained_parameter_accessor(parameter: &Ident) -> Ident {
     format_ident!("stored_{}", suffix, span = span,)
 }
 
+pub(super) struct FunctionValidationContext<'a> {
+    module_profile: Option<&'a Path>,
+    externals: &'a [ExternalModel],
+    customs: &'a [CustomModel],
+    support: &'a TokenStream,
+}
+
+impl<'a> FunctionValidationContext<'a> {
+    pub(super) fn new(
+        module_profile: Option<&'a Path>,
+        externals: &'a [ExternalModel],
+        customs: &'a [CustomModel],
+        support: &'a TokenStream,
+    ) -> Self {
+        Self {
+            module_profile,
+            externals,
+            customs,
+            support,
+        }
+    }
+}
+
 pub(super) fn validate_function(
     function: &mut ItemFn,
     arguments: FunctionArguments,
-    module_profile: Option<&Path>,
-    externals: &[ExternalModel],
-    customs: &[CustomModel],
+    flavor: FunctionFlavor,
     list_decoders: &mut Vec<ListDecoderModel>,
-    support: &TokenStream,
-) -> syn::Result<FunctionModel> {
+    context: &FunctionValidationContext<'_>,
+) -> syn::Result<ValidatedFunction> {
+    let module_profile = context.module_profile;
+    let externals = context.externals;
+    let customs = context.customs;
+    let support = context.support;
     if function.sig.constness.is_some() {
         return Err(syn::Error::new_spanned(
             function.sig.constness,
             "provider functions must not be const",
         ));
     }
-    if function.sig.asyncness.is_some() {
+    let async_ = matches!(flavor, FunctionFlavor::Async);
+    if async_ && module_profile.is_some() {
         return Err(syn::Error::new_spanned(
-            function.sig.asyncness,
-            "provider functions must not be async",
+            &function.sig,
+            "async provider functions currently require component module composition",
         ));
     }
     if function.sig.unsafety.is_some() {
@@ -724,7 +895,7 @@ pub(super) fn validate_function(
     let mut generic_scope = GenericParameterScope::new(&function.sig.generics)?;
     let profile = match (arguments.profile, module_profile) {
         (None, _) => None,
-        (Some(profile), Some(bound)) => Some((profile, bound)),
+        (Some(ident), Some(_)) => Some(FunctionProfile { ident }),
         (Some(profile), None) => {
             return Err(syn::Error::new_spanned(
                 profile,
@@ -759,14 +930,14 @@ pub(super) fn validate_function(
         support,
     )?;
 
-    let mut call = CallAccess::None;
+    let mut call = if async_ {
+        FunctionCallAccess::Async(AsyncCallAccess::None)
+    } else {
+        FunctionCallAccess::Immediate(CallAccess::None)
+    };
+    let mut parameters = Vec::new();
     let mut arguments = Vec::new();
     let mut has_list = false;
-    let host_return = host_return_type(&return_, customs, support);
-    let active_profile = profile
-        .as_ref()
-        .map(|(profile, _)| quote!(#profile))
-        .unwrap_or_else(|| quote!(__GeamProfile));
     for (index, argument) in function.sig.inputs.iter_mut().enumerate() {
         let FnArg::Typed(argument) = argument else {
             return Err(syn::Error::new_spanned(
@@ -783,35 +954,26 @@ pub(super) fn validate_function(
                 ));
             }
             let (mutable, state, call_type) = call_parameter(&argument.ty)?;
+            parameters.push(FunctionParameter::Call(Box::new(FunctionCallParameter {
+                syntax: argument.clone(),
+                state,
+                call_type,
+                mutable,
+            })));
             if mutable {
-                let call_type = call_context_type(
-                    &call_type,
-                    &state,
-                    syn::parse_quote! {
-                        #support::ProviderActiveCall<
-                            '__geam_call,
-                            #active_profile,
-                            __GeamProvider,
-                            #host_return,
-                        >
-                    },
-                );
-                *argument.ty = syn::parse_quote! {
-                    &mut #call_type
+                call = if async_ {
+                    FunctionCallAccess::Async(AsyncCallAccess::Mutable)
+                } else {
+                    FunctionCallAccess::Immediate(CallAccess::Mutable)
                 };
-                call = CallAccess::Mutable;
             } else {
-                let call_type = call_context_type(
-                    &call_type,
-                    &state,
-                    syn::parse_quote! {
-                        #support::ProviderSharedCall<'__geam_call, #state>
-                    },
-                );
-                *argument.ty = syn::parse_quote! {
-                    &#call_type
-                };
-                call = CallAccess::Shared;
+                if async_ {
+                    return Err(syn::Error::new_spanned(
+                        argument,
+                        "async provider functions require `&mut Call<State>` for bounded state access",
+                    ));
+                }
+                call = FunctionCallAccess::Immediate(CallAccess::Shared);
             }
         } else {
             if is_call_type(&argument.ty) {
@@ -844,39 +1006,16 @@ pub(super) fn validate_function(
                     false,
                 )?)
             };
-            match &type_ {
-                FunctionArgumentType::Input(FunctionInputType::List(list)) => {
-                    *argument.ty = list_signature_type(list, customs, support);
-                    has_list = true;
-                }
-                FunctionArgumentType::Input(FunctionInputType::Generic(value)) => {
-                    *argument.ty = generic_value_signature_type(value, customs, support);
-                }
-                FunctionArgumentType::Input(FunctionInputType::External(external)) => {
-                    *argument.ty = generic_external_input_signature_type(
-                        external,
-                        customs,
-                        support,
-                        GenericInputSource::Declared,
-                    );
-                }
-                FunctionArgumentType::Callback(callback) => {
-                    *argument.ty = callback_signature_type(
-                        callback,
-                        &generic_scope.declared,
-                        &active_profile,
-                        &host_return,
-                        support,
-                    );
-                }
-                FunctionArgumentType::Input(FunctionInputType::Value(value))
-                    if function_input_contains_source_wrapper(value) =>
-                {
-                    let value = provider_value_from_input_root(value);
-                    *argument.ty = provider_input_signature_type(&value, customs, support);
-                }
-                FunctionArgumentType::Input(FunctionInputType::Value(_)) => {}
+            if matches!(
+                type_,
+                FunctionArgumentType::Input(FunctionInputType::List(_))
+            ) {
+                has_list = true;
             }
+            parameters.push(FunctionParameter::Source(FunctionSourceParameter {
+                syntax: argument.clone(),
+                value: type_.clone(),
+            }));
             arguments.push(type_);
         }
     }
@@ -887,60 +1026,264 @@ pub(super) fn validate_function(
         ));
     }
 
+    if matches!(return_, FunctionReturnType::List(_)) {
+        has_list = true;
+    }
+    let declared_generics = generic_scope.declared.clone();
     let generics = generic_scope.finish()?;
     let model = FunctionModel {
         ident: function.sig.ident.clone(),
         generics,
         arguments,
         return_,
-        call,
         host_result: host_result.is_some(),
         profile: profile.is_some(),
     };
-    if function_contains_callback(&model) && !matches!(model.call, CallAccess::Mutable) {
+    if function_contains_callback(&model) && !call.is_mutable() {
         return Err(syn::Error::new_spanned(
             &function.sig.inputs,
             "Callback arguments require a first `#[geam::call]` parameter using `&mut Call<State>`",
         ));
     }
     validate_list_return(&model)?;
+
+    Ok(ValidatedFunction {
+        model,
+        call,
+        parameters,
+        declared_generics,
+        host_result: host_result.map(|(_, path)| path),
+        profile,
+        has_list,
+    })
+}
+
+pub(super) fn apply_function_signature(
+    function: &mut ItemFn,
+    validated: &ValidatedFunction,
+    flavor: FunctionFlavor,
+    customs: &[CustomModel],
+    support: &TokenStream,
+) {
+    let model = &validated.model;
+    let call = validated.call;
+    let transfer_flavor = flavor.transfer();
+    let host_return = host_return_type(&model.return_, customs, support);
+    let active_profile = validated
+        .profile
+        .as_ref()
+        .map(|profile| {
+            let ident = &profile.ident;
+            quote!(#ident)
+        })
+        .unwrap_or_else(|| quote!(__GeamProfile));
+
+    function.sig.inputs = validated
+        .parameters
+        .iter()
+        .map(|parameter| {
+            let mut argument = match parameter {
+                FunctionParameter::Call(call) => {
+                    let mut argument = call.syntax.clone();
+                    let state = &call.state;
+                    let context = if call.mutable {
+                        match flavor {
+                            FunctionFlavor::Local => syn::parse_quote! {
+                                #support::ProviderActiveCall<
+                                    '__geam_call,
+                                    #active_profile,
+                                    __GeamProvider,
+                                    #host_return,
+                                >
+                            },
+                            FunctionFlavor::TransferImmediate => syn::parse_quote! {
+                                #support::ProviderTransferActiveCall<
+                                    '__geam_call,
+                                    #active_profile,
+                                    __GeamAsyncProvider,
+                                    #host_return,
+                                >
+                            },
+                            FunctionFlavor::Async => syn::parse_quote! {
+                                #support::ProviderFutureCall<
+                                    '__geam_call,
+                                    #active_profile,
+                                    __GeamAsyncProvider,
+                                >
+                            },
+                        }
+                    } else {
+                        syn::parse_quote! {
+                            #support::ProviderSharedCall<'__geam_call, #state>
+                        }
+                    };
+                    let call_type = call_context_type(&call.call_type, &call.state, context);
+                    argument.ty = if call.mutable {
+                        Box::new(syn::parse_quote!(&mut #call_type))
+                    } else {
+                        Box::new(syn::parse_quote!(&#call_type))
+                    };
+                    argument
+                }
+                FunctionParameter::Source(source) => {
+                    let mut argument = source.syntax.clone();
+                    match &source.value {
+                        FunctionArgumentType::Input(FunctionInputType::List(list)) => {
+                            argument.ty =
+                                Box::new(if let Some(transfer_flavor) = transfer_flavor {
+                                    transfer_list_signature_type(
+                                        list,
+                                        customs,
+                                        support,
+                                        transfer_flavor,
+                                    )
+                                } else {
+                                    list_signature_type(list, customs, support)
+                                });
+                        }
+                        FunctionArgumentType::Input(FunctionInputType::Generic(value)) => {
+                            argument.ty = Box::new(if transfer_flavor.is_some() {
+                                transfer_generic_value_signature_type(value, customs, support)
+                            } else {
+                                generic_value_signature_type(value, customs, support)
+                            });
+                        }
+                        FunctionArgumentType::Input(FunctionInputType::Future(value)) => {
+                            argument.ty = Box::new(super::signature::future_input_signature_type(
+                                value,
+                                customs,
+                                support,
+                                &active_profile,
+                            ));
+                        }
+                        FunctionArgumentType::Input(FunctionInputType::External(external)) => {
+                            argument.ty =
+                                Box::new(if let Some(transfer_flavor) = transfer_flavor {
+                                    transfer_generic_external_input_signature_type(
+                                        external,
+                                        customs,
+                                        support,
+                                        GenericInputSource::Declared,
+                                        transfer_flavor,
+                                    )
+                                } else {
+                                    generic_external_input_signature_type(
+                                        external,
+                                        customs,
+                                        support,
+                                        GenericInputSource::Declared,
+                                    )
+                                });
+                        }
+                        FunctionArgumentType::Callback(callback) => {
+                            argument.ty = Box::new(callback_signature_type(
+                                callback,
+                                &validated.declared_generics,
+                                &active_profile,
+                                &host_return,
+                                support,
+                                flavor,
+                            ));
+                        }
+                        FunctionArgumentType::Input(FunctionInputType::Value(value))
+                            if transfer_flavor.is_some()
+                                || function_input_contains_source_wrapper(value) =>
+                        {
+                            let value = provider_value_from_input_root(value);
+                            argument.ty =
+                                Box::new(if let Some(transfer_flavor) = transfer_flavor {
+                                    transfer_provider_input_signature_type(
+                                        &value,
+                                        customs,
+                                        support,
+                                        transfer_flavor,
+                                    )
+                                } else {
+                                    provider_input_signature_type(&value, customs, support)
+                                });
+                        }
+                        FunctionArgumentType::Input(FunctionInputType::Value(_)) => {}
+                    }
+                    argument
+                }
+            };
+            argument
+                .attrs
+                .retain(|attribute| !is_marker(attribute, "call"));
+            FnArg::Typed(argument)
+        })
+        .collect();
+
     if let FunctionReturnType::List(list) = &model.return_ {
-        let list = list_signature_type(list, customs, support);
-        let output = wrap_host_result_type(list, host_result.as_ref().map(|(_, path)| path));
+        let list = if let Some(transfer_flavor) = transfer_flavor {
+            transfer_list_signature_type(list, customs, support, transfer_flavor)
+        } else {
+            list_signature_type(list, customs, support)
+        };
+        let output = wrap_host_result_type(list, validated.host_result.as_ref(), flavor, support);
         function.sig.output =
             ReturnType::Type(Token![->](proc_macro2::Span::call_site()), Box::new(output));
-        has_list = true;
     } else if let FunctionReturnType::Generic(value) = &model.return_ {
-        let output = generic_value_signature_type(value, customs, support);
-        let output = wrap_host_result_type(output, host_result.as_ref().map(|(_, path)| path));
+        let output = if transfer_flavor.is_some() {
+            transfer_generic_value_signature_type(value, customs, support)
+        } else {
+            generic_value_signature_type(value, customs, support)
+        };
+        let output = wrap_host_result_type(output, validated.host_result.as_ref(), flavor, support);
         function.sig.output =
             ReturnType::Type(Token![->](proc_macro2::Span::call_site()), Box::new(output));
     } else if let FunctionReturnType::External(external) = &model.return_ {
-        let output = generic_external_output_signature_type(external, customs, support);
-        let output = wrap_host_result_type(output, host_result.as_ref().map(|(_, path)| path));
+        let output = if transfer_flavor.is_some() {
+            transfer_generic_external_output_signature_type(external, customs, support)
+        } else {
+            generic_external_output_signature_type(external, customs, support)
+        };
+        let output = wrap_host_result_type(output, validated.host_result.as_ref(), flavor, support);
         function.sig.output =
             ReturnType::Type(Token![->](proc_macro2::Span::call_site()), Box::new(output));
     } else if let FunctionReturnType::Value(value) = &model.return_
-        && function_root_output_contains_generic(value)
+        && (function_root_output_contains_generic(value) || transfer_flavor.is_some())
     {
         let value = function_output_from_root(value);
-        let output = function_output_rust_type(&value, customs, support);
-        let output = wrap_host_result_type(output, host_result.as_ref().map(|(_, path)| path));
+        let output = if let Some(transfer_flavor) = transfer_flavor {
+            super::signature::transfer_function_output_rust_type(
+                &value,
+                customs,
+                support,
+                transfer_flavor,
+            )
+        } else {
+            function_output_rust_type(&value, customs, support)
+        };
+        let output = wrap_host_result_type(output, validated.host_result.as_ref(), flavor, support);
         function.sig.output =
             ReturnType::Type(Token![->](proc_macro2::Span::call_site()), Box::new(output));
     }
-    if !matches!(model.call, CallAccess::None)
-        || function_contains_generic_value(&model)
-        || function_contains_nested_list(&model)
-        || function_contains_call_scoped_generic_external(&model)
-        || function_contains_callback(&model)
+    if !call.is_none()
+        || function_contains_callback(model)
+        || (!flavor.is_transfer()
+            && (function_contains_generic_value(model)
+                || function_contains_nested_list(model)
+                || function_contains_future_input(model)
+                || function_contains_call_scoped_generic_external(model)))
     {
         prepend_function_lifetime(&mut function.sig.generics, syn::parse_quote!('__geam_call));
     }
-    if has_list {
+    if matches!(flavor, FunctionFlavor::Async) && function_contains_callback(model) {
+        for generic in &model.generics {
+            let ident = &generic.ident;
+            function
+                .sig
+                .generics
+                .make_where_clause()
+                .predicates
+                .push(syn::parse_quote!(#ident: 'static));
+        }
+    }
+    if validated.has_list && !flavor.is_transfer() {
         prepend_function_lifetime(&mut function.sig.generics, syn::parse_quote!('__geam_list));
     }
-    if has_list && !matches!(model.call, CallAccess::None) {
+    if validated.has_list && !flavor.is_transfer() && !call.is_none() {
         function
             .sig
             .generics
@@ -948,20 +1291,28 @@ pub(super) fn validate_function(
             .predicates
             .push(syn::parse_quote!('__geam_list: '__geam_call));
     }
-    if let Some((profile, bound)) = &profile {
+    if let Some(profile) = &validated.profile {
+        let ident = &profile.ident;
+        let bound = if flavor.is_transfer() {
+            quote!(__GeamAsyncModuleProfile)
+        } else {
+            quote!(__GeamModuleProfile)
+        };
         function
             .sig
             .generics
             .params
-            .push(GenericParam::Type(syn::parse_quote!(#profile)));
+            .push(GenericParam::Type(syn::parse_quote!(#ident)));
         function
             .sig
             .generics
             .make_where_clause()
             .predicates
-            .push(syn::parse_quote!(#profile: #bound));
+            .push(syn::parse_quote!(#ident: #bound));
     }
-    if matches!(model.call, CallAccess::Mutable) && profile.is_none() {
+    if (call.is_mutable() || (flavor.is_transfer() && function_contains_future_input(model)))
+        && validated.profile.is_none()
+    {
         function
             .sig
             .generics
@@ -972,11 +1323,290 @@ pub(super) fn validate_function(
             .generics
             .make_where_clause()
             .predicates
-            .push(syn::parse_quote! {
-                __GeamProfile: __GeamModuleProfile
+            .push(if flavor.is_transfer() {
+                syn::parse_quote! {
+                    __GeamProfile: __GeamAsyncModuleProfile
+                }
+            } else {
+                syn::parse_quote! {
+                    __GeamProfile: __GeamModuleProfile
+                }
             });
+        if matches!(flavor, FunctionFlavor::Async) {
+            function
+                .sig
+                .generics
+                .make_where_clause()
+                .predicates
+                .push(syn::parse_quote! {
+                    <__GeamProfile as #support::HostProfile>::RunState: ::core::marker::Send
+                });
+            if function_contains_callback(model) {
+                function
+                    .sig
+                    .generics
+                    .make_where_clause()
+                    .predicates
+                    .push(syn::parse_quote! {
+                        <__GeamProfile as #support::HostProfile>::ExternalStores:
+                            ::core::marker::Send
+                    });
+            }
+        }
     }
-    Ok(model)
+    if flavor.is_transfer() && function_contains_future_input(model) {
+        function
+            .sig
+            .generics
+            .make_where_clause()
+            .predicates
+            .push(syn::parse_quote!(#active_profile: #support::HostWorkProfile));
+    }
+    if function_contains_callback(model) {
+        for callback in model
+            .arguments
+            .iter()
+            .filter_map(|argument| match argument {
+                FunctionArgumentType::Callback(callback) => Some(callback.as_ref()),
+                FunctionArgumentType::Input(_) => None,
+            })
+        {
+            let codec = callback_codec_type(
+                &callback.codec,
+                model
+                    .generics
+                    .iter()
+                    .map(|generic| {
+                        let ident = &generic.ident;
+                        quote!(#ident)
+                    })
+                    .collect(),
+            );
+            let callback_arguments = callback
+                .arguments
+                .iter()
+                .map(|argument| match flavor {
+                    FunctionFlavor::Local => {
+                        callback_output_signature_type(argument, customs, support)
+                    }
+                    FunctionFlavor::TransferImmediate => transfer_callback_output_signature_type(
+                        argument,
+                        customs,
+                        support,
+                        TransferFlavor::Immediate,
+                    ),
+                    FunctionFlavor::Async => transfer_callback_output_signature_type(
+                        argument,
+                        customs,
+                        support,
+                        TransferFlavor::Async,
+                    ),
+                })
+                .collect::<Vec<_>>();
+            let callback_return = callback_input_signature_type(
+                &callback.return_,
+                customs,
+                support,
+                flavor,
+                &active_profile,
+            );
+            let predicate = match flavor {
+                FunctionFlavor::Local => syn::parse_quote! {
+                    #codec: #support::ProviderCallbackCodec<
+                        '__geam_call,
+                        #active_profile,
+                        __GeamProvider,
+                        #host_return,
+                        Arguments = (#(#callback_arguments,)*),
+                        Returned = #callback_return,
+                    >
+                },
+                FunctionFlavor::TransferImmediate => syn::parse_quote! {
+                    #codec: #support::ProviderTransferCallbackCodec<
+                        #active_profile,
+                        __GeamAsyncProvider,
+                        #host_return,
+                        Arguments = (#(#callback_arguments,)*),
+                        Returned = #callback_return,
+                    >
+                },
+                FunctionFlavor::Async => syn::parse_quote! {
+                    #codec: #support::ProviderTransferCallbackCodec<
+                        #active_profile,
+                        __GeamAsyncProvider,
+                        (),
+                        Arguments = (#(#callback_arguments,)*),
+                        Returned = #callback_return,
+                    >
+                },
+            };
+            function
+                .sig
+                .generics
+                .make_where_clause()
+                .predicates
+                .push(predicate);
+        }
+    }
+}
+
+pub(super) fn transfer_function_model(
+    validated: &ValidatedFunction,
+    support: &TokenStream,
+    flavor: TransferFlavor,
+) -> FunctionModel {
+    let mut model = validated.model.clone();
+    rewrite_transfer_output_types(&mut model, support, flavor);
+    model
+}
+
+fn rewrite_transfer_output_types(
+    function: &mut FunctionModel,
+    support: &TokenStream,
+    flavor: TransferFlavor,
+) {
+    for argument in &mut function.arguments {
+        let FunctionArgumentType::Callback(callback) = argument else {
+            continue;
+        };
+        for argument in &mut callback.arguments {
+            rewrite_transfer_function_return_type(argument, support, flavor);
+        }
+    }
+    rewrite_transfer_function_return_type(&mut function.return_, support, flavor);
+}
+
+fn rewrite_transfer_function_return_type(
+    type_: &mut FunctionReturnType,
+    support: &TokenStream,
+    flavor: TransferFlavor,
+) {
+    match type_ {
+        FunctionReturnType::Value(value) => {
+            rewrite_transfer_root_output_value_type(value, support, flavor);
+        }
+        FunctionReturnType::List(list) => {
+            rewrite_transfer_static_output_type(&mut list.collection.value, support, flavor);
+        }
+        FunctionReturnType::Generic(_) | FunctionReturnType::External(_) => {}
+    }
+}
+
+fn rewrite_transfer_root_output_value_type(
+    type_: &mut FunctionRootOutputValueType,
+    support: &TokenStream,
+    flavor: TransferFlavor,
+) {
+    match type_ {
+        FunctionRootOutputValueType::Value(value) => {
+            rewrite_transfer_output_leaf_type(value, support, flavor);
+        }
+        FunctionRootOutputValueType::Tuple(elements) => {
+            for element in elements {
+                rewrite_transfer_output_value_type(element, support, flavor);
+            }
+        }
+        FunctionRootOutputValueType::Result { success, failure } => {
+            rewrite_transfer_output_value_type(success, support, flavor);
+            rewrite_transfer_output_value_type(failure, support, flavor);
+        }
+        FunctionRootOutputValueType::Option { value } => {
+            rewrite_transfer_output_value_type(value, support, flavor);
+        }
+        FunctionRootOutputValueType::Vec(collection) => {
+            rewrite_transfer_output_value_type(&mut collection.value, support, flavor);
+        }
+    }
+}
+
+fn rewrite_transfer_output_value_type(
+    type_: &mut FunctionOutputValueType,
+    support: &TokenStream,
+    flavor: TransferFlavor,
+) {
+    match type_ {
+        FunctionOutputValueType::Value(value) => {
+            rewrite_transfer_output_leaf_type(value, support, flavor);
+        }
+        FunctionOutputValueType::Tuple(elements) => {
+            for element in elements {
+                rewrite_transfer_output_value_type(element, support, flavor);
+            }
+        }
+        FunctionOutputValueType::Result { success, failure } => {
+            rewrite_transfer_output_value_type(success, support, flavor);
+            rewrite_transfer_output_value_type(failure, support, flavor);
+        }
+        FunctionOutputValueType::Option { value } => {
+            rewrite_transfer_output_value_type(value, support, flavor);
+        }
+        FunctionOutputValueType::Vec(collection) => {
+            rewrite_transfer_output_value_type(&mut collection.value, support, flavor);
+        }
+        FunctionOutputValueType::Generic(_) => {}
+    }
+}
+
+fn rewrite_transfer_output_leaf_type(
+    type_: &mut FunctionOutputLeafType,
+    support: &TokenStream,
+    flavor: TransferFlavor,
+) {
+    match type_ {
+        FunctionOutputLeafType::Declared { type_, .. }
+        | FunctionOutputLeafType::Custom { rust: type_, .. } => {
+            rewrite_transfer_declared_output_type(type_, support, flavor);
+        }
+        FunctionOutputLeafType::Scalar(_) | FunctionOutputLeafType::External { .. } => {}
+    };
+}
+
+fn rewrite_transfer_static_output_type(
+    type_: &mut StaticValueType,
+    support: &TokenStream,
+    flavor: TransferFlavor,
+) {
+    match type_ {
+        StaticValueType::Declared { type_, .. } => {
+            rewrite_transfer_declared_output_type(type_, support, flavor);
+        }
+        StaticValueType::Tuple(elements) => {
+            for element in elements {
+                rewrite_transfer_static_output_type(element, support, flavor);
+            }
+        }
+        StaticValueType::Result { success, failure } => {
+            rewrite_transfer_static_output_type(success, support, flavor);
+            rewrite_transfer_static_output_type(failure, support, flavor);
+        }
+        StaticValueType::Option { value } => {
+            rewrite_transfer_static_output_type(value, support, flavor);
+        }
+        StaticValueType::Scalar(_)
+        | StaticValueType::External { .. }
+        | StaticValueType::Custom { .. } => {}
+    }
+}
+
+fn rewrite_transfer_declared_output_type(
+    type_: &mut Type,
+    support: &TokenStream,
+    flavor: TransferFlavor,
+) {
+    if !is_type_application_named(type_, "External") {
+        let source = type_.clone();
+        *type_ = syn::parse_quote!(<#source as #support::ProviderTransferValue>::Output);
+        return;
+    }
+    let source = type_.clone();
+    *type_ = match flavor {
+        TransferFlavor::Immediate => syn::parse_quote! {
+            <#source as #support::ProviderTransferValue>::ImmediateInput
+        },
+        TransferFlavor::Async => syn::parse_quote! {
+            <#source as #support::ProviderTransferValue>::TransferInput
+        },
+    };
 }
 
 fn prepend_function_lifetime(generics: &mut syn::Generics, lifetime: syn::LifetimeParam) {
@@ -1161,6 +1791,16 @@ fn function_contains_call_scoped_generic_external(function: &FunctionModel) -> b
     })
 }
 
+pub(super) fn function_contains_future_input(function: &FunctionModel) -> bool {
+    function.arguments.iter().any(|argument| match argument {
+        FunctionArgumentType::Input(FunctionInputType::Future(_)) => true,
+        FunctionArgumentType::Callback(callback) => {
+            matches!(&*callback.return_, FunctionInputType::Future(_))
+        }
+        _ => false,
+    })
+}
+
 fn function_contains_callback(function: &FunctionModel) -> bool {
     function
         .arguments
@@ -1200,9 +1840,22 @@ fn collection_type_with_item(collection: &TypePath, item: &Type) -> TypePath {
     collection
 }
 
-fn wrap_host_result_type(output: Type, host_result: Option<&TypePath>) -> Type {
+fn wrap_host_result_type(
+    output: Type,
+    host_result: Option<&TypePath>,
+    flavor: FunctionFlavor,
+    support: &TokenStream,
+) -> Type {
     if let Some(host_result) = host_result {
-        Type::Path(collection_type_with_item(host_result, &output))
+        match flavor {
+            FunctionFlavor::Local => Type::Path(collection_type_with_item(host_result, &output)),
+            FunctionFlavor::TransferImmediate => {
+                syn::parse_quote!(::core::result::Result<#output, #support::AsyncHostCallError>)
+            }
+            FunctionFlavor::Async => {
+                syn::parse_quote!(::core::result::Result<#output, #support::HostFutureError>)
+            }
+        }
     } else {
         output
     }
@@ -1647,6 +2300,24 @@ fn classify_input(
     support: &TokenStream,
     allow_nested_generic: bool,
 ) -> syn::Result<FunctionInputType> {
+    if let Some((source, path)) = collection_item_with_path(type_, "Future")? {
+        let value = classify_input(
+            &source,
+            externals,
+            customs,
+            list_decoders,
+            generics,
+            support,
+            true,
+        )?;
+        return Ok(FunctionInputType::Future(Box::new(
+            super::FutureInputType {
+                source,
+                path,
+                value: Box::new(value),
+            },
+        )));
+    }
     if let Some(external) =
         generic_external_type(type_, true, externals, generics, customs, support)?
     {
@@ -1695,6 +2366,7 @@ fn classify_input(
             return Ok(FunctionInputType::Value(Box::new(
                 FunctionInputValueType::External {
                     payload: external.ident.clone(),
+                    transfer_payload: external.transfer_payload.clone(),
                     schema: external.schema.clone(),
                 },
             )));
@@ -1875,6 +2547,7 @@ fn classify_argument_value(
             }
             return Ok(ProviderValueType::External {
                 payload: external.ident.clone(),
+                transfer_payload: external.transfer_payload.clone(),
                 schema: external.schema.clone(),
             });
         }
@@ -2214,6 +2887,7 @@ fn classify_function_output_leaf(
     if let Some(external) = external_type(type_, externals) {
         return Ok(FunctionOutputLeafType::External {
             payload: external.ident.clone(),
+            transfer_payload: external.transfer_payload.clone(),
             schema: external.schema.clone(),
         });
     }
@@ -2307,6 +2981,7 @@ fn classify_collection_input_item(
     if let Some(external) = external_type(type_, externals) {
         return Ok(StaticValueType::External {
             payload: external.ident.clone(),
+            transfer_payload: external.transfer_payload.clone(),
             schema: external.schema.clone(),
             store_field: external.store_field.clone(),
         });
@@ -2464,13 +3139,10 @@ mod tests {
             "module `profile` requires `component`",
         );
         assert_eq!(
-            syn::parse2::<ModuleArguments>(quote!(
-                path = "counter",
-                stores = crate::counter_stores
-            ))
-            .err()
-            .expect("stores without a built-in profile should fail")
-            .to_string(),
+            syn::parse2::<ModuleArguments>(quote!(path = "counter", stores = counter))
+                .err()
+                .expect("stores without a built-in profile should fail")
+                .to_string(),
             "module `stores` requires `profile` and `component`",
         );
         assert_eq!(
@@ -2508,8 +3180,8 @@ mod tests {
         assert_eq!(
             syn::parse2::<ModuleArguments>(quote!(
                 path = "counter",
-                stores = crate::first_stores,
-                stores = crate::second_stores
+                stores = first,
+                stores = second
             ))
             .err()
             .expect("duplicate stores projection should fail")
@@ -2532,7 +3204,7 @@ mod tests {
             crate_path = geam_core,
             profile = crate::Profile,
             component = crate::Component<Profile::Io>,
-            stores = crate::counter_stores
+            stores = counter
         ))
         .expect("explicit built-in profile, component, and stores should parse together");
     }
@@ -2698,6 +3370,10 @@ mod tests {
                 "duplicate external argument `payload`",
             ),
             (
+                quote!(name = "Dynamic", context = First, context = Second),
+                "duplicate external argument `context`",
+            ),
+            (
                 quote!(other = "Metrics"),
                 "unknown external argument `other`",
             ),
@@ -2722,6 +3398,11 @@ mod tests {
             (
                 quote!(name = "Box", payload = const),
                 "expected one of: `for`, parentheses, `fn`, `unsafe`, `extern`, identifier, `::`, `<`, `dyn`, square brackets, `*`, `&`, `!`, `impl`, `_`, lifetime",
+            ),
+            (quote!(name = "Dynamic", context Context), "expected `=`"),
+            (
+                quote!(name = "Dynamic", context = "Context"),
+                "expected identifier",
             ),
             (quote!(name = "Metrics" other = "Value"), "expected `,`"),
         ];

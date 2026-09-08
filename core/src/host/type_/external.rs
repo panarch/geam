@@ -48,8 +48,8 @@ where
         HostScopedValue::External(value.token)
     }
 
-    fn from_token<'call, Profile: crate::host::HostProfile>(
-        runtime: &dyn crate::host::HostCallRuntime<Profile>,
+    fn from_token<'call, Runtime: crate::host::HostTokenRuntime + ?Sized>(
+        runtime: &Runtime,
         token: crate::host::HostValueToken,
     ) -> <Self as HostType>::Value<'call> {
         HostExternal::new(runtime.external_token(token))

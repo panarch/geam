@@ -7,28 +7,57 @@ use crate::runtime::evaluated::{
     EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
     EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
-use crate::runtime::graph::RetainedValues;
+use crate::runtime::graph::ProfiledRetainedValues;
 use crate::runtime::state::RuntimeStateFor;
+use crate::runtime::{LocalValues, RuntimeValueProfile};
 
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::runtime) enum InvocableFunctionValue {
-    Never(EvaluatedNeverFunction),
-    Int(EvaluatedIntFunction),
-    Float(EvaluatedFloatFunction),
-    String(EvaluatedStringFunction),
-    BitArray(EvaluatedBitArrayFunction),
-    UtfCodepoint(EvaluatedUtfCodepointFunction),
-    Custom(EvaluatedCustomFunction),
-    External(EvaluatedExternalFunction),
-    Bool(EvaluatedBoolFunction),
-    Nil(EvaluatedNilFunction),
-    Tuple(EvaluatedTupleFunction),
-    List(EvaluatedListFunction),
-    Function(EvaluatedFunctionFunction),
+pub(in crate::runtime) enum InvocableFunctionValue<Values: RuntimeValueProfile = LocalValues> {
+    Never(EvaluatedNeverFunction<Values>),
+    Int(EvaluatedIntFunction<Values>),
+    Float(EvaluatedFloatFunction<Values>),
+    String(EvaluatedStringFunction<Values>),
+    BitArray(EvaluatedBitArrayFunction<Values>),
+    UtfCodepoint(EvaluatedUtfCodepointFunction<Values>),
+    Custom(EvaluatedCustomFunction<Values>),
+    External(EvaluatedExternalFunction<Values>),
+    Bool(EvaluatedBoolFunction<Values>),
+    Nil(EvaluatedNilFunction<Values>),
+    Tuple(EvaluatedTupleFunction<Values>),
+    List(EvaluatedListFunction<Values>),
+    Function(EvaluatedFunctionFunction<Values>),
 }
 
-impl InvocableFunctionValue {
-    pub(in crate::runtime) fn into_evaluated(self) -> EvaluatedFunctionValue {
+pub(in crate::runtime) trait StoredCallable<Values: RuntimeValueProfile>:
+    Clone
+{
+    fn from_callable(value: InvocableFunctionValue<Values>) -> Self;
+    fn into_evaluated(self) -> EvaluatedFunctionValue<Values>;
+}
+
+#[derive(Clone)]
+pub(crate) struct LocalCallable(InvocableFunctionValue);
+
+impl StoredCallable<LocalValues> for LocalCallable {
+    fn from_callable(value: InvocableFunctionValue) -> Self {
+        Self(value)
+    }
+    fn into_evaluated(self) -> EvaluatedFunctionValue {
+        self.0.into_evaluated()
+    }
+}
+
+impl LocalCallable {
+    pub(in crate::runtime) fn with_value<Output>(
+        &self,
+        read: impl FnOnce(&InvocableFunctionValue) -> Output,
+    ) -> Output {
+        read(&self.0)
+    }
+}
+
+impl<Values: RuntimeValueProfile> InvocableFunctionValue<Values> {
+    pub(in crate::runtime) fn into_evaluated(self) -> EvaluatedFunctionValue<Values> {
         match self {
             Self::Never(function) => function.into(),
             Self::Int(function) => function.into(),
@@ -50,45 +79,44 @@ impl InvocableFunctionValue {
 pub(in crate::runtime) fn invoke_callable<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    function: InvocableFunctionValue,
+    function: &InvocableFunctionValue<Plan::Values>,
     origin: HostCallOrigin,
-    mut inputs: RetainedValues,
-    arguments: Box<[EvaluatedValue]>,
-) -> ExecutionResult<EvaluatedValue> {
+    arguments: Box<[EvaluatedValue<Plan::Values>]>,
+) -> ExecutionResult<EvaluatedValue<Plan::Values>, Plan::Values> {
     match function {
         InvocableFunctionValue::Never(function) => {
-            inputs.append_captures(function.captures());
+            let inputs = callable_inputs(arguments, function.captures());
             super::run_never(plan, state, function.runtime_id(), origin, inputs)
                 .map(|never| match never {})
         }
         InvocableFunctionValue::Int(function) => {
-            inputs.append_captures(function.captures());
+            let inputs = callable_inputs(arguments, function.captures());
             super::run_int(plan, state, function.runtime_id(), origin, inputs)
                 .map(EvaluatedValue::Int)
         }
         InvocableFunctionValue::Float(function) => {
-            inputs.append_captures(function.captures());
+            let inputs = callable_inputs(arguments, function.captures());
             super::run_float(plan, state, function.runtime_id(), origin, inputs)
                 .map(EvaluatedValue::Float)
         }
         InvocableFunctionValue::String(function) => {
-            inputs.append_captures(function.captures());
+            let inputs = callable_inputs(arguments, function.captures());
             super::run_string(plan, state, function.runtime_id(), origin, inputs)
                 .map(EvaluatedValue::String)
         }
         InvocableFunctionValue::BitArray(function) => {
-            inputs.append_captures(function.captures());
+            let inputs = callable_inputs(arguments, function.captures());
             super::run_bit_array(plan, state, function.runtime_id(), origin, inputs)
                 .map(EvaluatedValue::BitArray)
         }
         InvocableFunctionValue::UtfCodepoint(function) => {
-            inputs.append_captures(function.captures());
+            let inputs = callable_inputs(arguments, function.captures());
             super::run_utf_codepoint(plan, state, function.runtime_id(), origin, inputs)
                 .map(EvaluatedValue::UtfCodepoint)
         }
         InvocableFunctionValue::Custom(function) => match function {
             EvaluatedCustomFunction::Function(function) => {
-                inputs.append_captures(function.captures());
+                let inputs = callable_inputs(arguments, function.captures());
                 super::run_custom(plan, state, function.runtime_id(), origin, inputs)
                     .map(EvaluatedValue::Custom)
             }
@@ -97,38 +125,38 @@ pub(in crate::runtime) fn invoke_callable<Plan: ExecutableRuntimePlan>(
             )),
         },
         InvocableFunctionValue::External(function) => {
-            inputs.append_captures(function.captures());
+            let inputs = callable_inputs(arguments, function.captures());
             super::run_external(plan, state, function.runtime_id(), origin, inputs)
                 .map(EvaluatedValue::External)
         }
         InvocableFunctionValue::Bool(function) => {
-            inputs.append_captures(function.captures());
+            let inputs = callable_inputs(arguments, function.captures());
             super::run_bool(plan, state, function.runtime_id(), origin, inputs)
                 .map(EvaluatedValue::Bool)
         }
         InvocableFunctionValue::Nil(function) => {
-            inputs.append_captures(function.captures());
+            let inputs = callable_inputs(arguments, function.captures());
             super::run_nil(plan, state, function.runtime_id(), origin, inputs)
                 .map(|()| EvaluatedValue::Nil)
         }
         InvocableFunctionValue::Tuple(function) => {
-            inputs.append_captures(function.captures());
+            let inputs = callable_inputs(arguments, function.captures());
             super::run_tuple(plan, state, function.runtime_id(), origin, inputs)
                 .map(EvaluatedValue::Tuple)
         }
         InvocableFunctionValue::List(function) => {
-            inputs.append_captures(function.captures());
+            let inputs = callable_inputs(arguments, function.captures());
             super::run_list(plan, state, function.runtime_id(), origin, inputs)
                 .map(EvaluatedValue::from)
         }
         InvocableFunctionValue::Function(function) => match function {
             EvaluatedFunctionFunction::Core(function) => {
-                inputs.append_captures(function.captures());
+                let inputs = callable_inputs(arguments, function.captures());
                 super::run_core_function(plan, state, function.runtime_id(), origin, inputs)
                     .map(EvaluatedValue::Function)
             }
             EvaluatedFunctionFunction::External(function) => {
-                inputs.append_captures(function.captures());
+                let inputs = callable_inputs(arguments, function.captures());
                 super::run_external_function_function(
                     plan,
                     state,
@@ -140,4 +168,16 @@ pub(in crate::runtime) fn invoke_callable<Plan: ExecutableRuntimePlan>(
             }
         },
     }
+}
+
+pub(in crate::runtime) fn callable_inputs<Values: RuntimeValueProfile>(
+    arguments: Box<[EvaluatedValue<Values>]>,
+    captures: &[crate::runtime::evaluated::EvaluatedCapture<Values>],
+) -> ProfiledRetainedValues<Values> {
+    let mut inputs = ProfiledRetainedValues::empty();
+    for value in arguments {
+        inputs.push_evaluated(value);
+    }
+    inputs.append_captures(captures);
+    inputs
 }

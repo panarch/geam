@@ -122,10 +122,10 @@ pub(crate) fn run_hosted_embedded_list<Profile: HostProfile>(
     echo: &mut dyn EchoSink,
 ) -> Result<EmbeddingOutput, ExecutionError> {
     let mut state = RuntimeState::with_host(echo, host);
-    function::run_core_list(
+    function::run_list(
         plan,
         &mut state,
-        function.core(),
+        function.runtime_id(),
         HostCallOrigin::Entry,
         inputs,
     )

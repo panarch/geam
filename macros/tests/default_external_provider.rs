@@ -6,6 +6,7 @@ use geam_core::{
     HostedExecution, ModuleSource, PackageSource, Value, ValueType, compile_typed_host_program,
     plan_host_program,
 };
+use std::rc::Rc;
 
 #[geam_macros::provider(
     package = "tags",
@@ -16,20 +17,20 @@ pub struct Component;
 
 #[geam_macros::module(path = "tags", crate_path = geam_core)]
 mod tags {
-    use super::EcoString;
+    use super::{EcoString, Rc};
 
     #[geam_macros::external(name = "Tag")]
     #[derive(Clone, PartialEq, Eq, Hash)]
-    pub(super) struct Tag(EcoString);
+    pub(super) struct Tag(Rc<EcoString>);
 
     #[geam_macros::function]
     pub(super) fn new(value: EcoString) -> Tag {
-        Tag(value)
+        Tag(Rc::new(value))
     }
 
     #[geam_macros::function]
     fn append(tag: &Tag, suffix: EcoString) -> Tag {
-        Tag(format!("{}{suffix}", tag.0).into())
+        Tag(Rc::new(format!("{}{suffix}", tag.0).into()))
     }
 }
 

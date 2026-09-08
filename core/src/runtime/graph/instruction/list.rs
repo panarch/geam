@@ -245,10 +245,10 @@ where
 pub(super) fn execute<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &mut BlockEnvironment,
+    environment: &mut BlockEnvironment<Plan::Values>,
     instruction: &ListInstruction,
     expected: &ValueType,
-) -> ExecutionResult<()> {
+) -> ExecutionResult<(), Plan::Values> {
     evaluate(plan, state, environment, instruction, expected)
         .and_then(|value| resolve(plan, state, environment, value))
 }
@@ -256,10 +256,10 @@ pub(super) fn execute<Plan: ExecutableRuntimePlan>(
 pub(super) fn execute_external<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &mut BlockEnvironment,
+    environment: &mut BlockEnvironment<Plan::Values>,
     instruction: &ExternalListInstruction,
     expected: &ValueType,
-) -> ExecutionResult<()> {
+) -> ExecutionResult<(), Plan::Values> {
     evaluate_external(plan, state, environment, instruction, expected)
         .and_then(|value| match value {
             InstructionValue::Ready(value) => Ok(value),
@@ -276,9 +276,9 @@ pub(super) fn execute_external<Plan: ExecutableRuntimePlan>(
 fn resolve<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &mut BlockEnvironment,
-    value: ListInstructionValue<crate::runtime::LocalValues>,
-) -> ExecutionResult<()> {
+    environment: &mut BlockEnvironment<Plan::Values>,
+    value: ListInstructionValue<Plan::Values>,
+) -> ExecutionResult<(), Plan::Values> {
     macro_rules! resolve_value {
         ($value:expr, $run:ident, $push:ident) => {{
             match $value {
@@ -1229,8 +1229,9 @@ mod tests {
         IntFamily, ListFamily, NilFamily, ParameterListFamily, RuntimeTypedList, StringFamily,
         TupleFamily, UtfCodepointFamily, execute, list_function_mismatch, parameter, typed,
     };
+    use crate::frontend::compile_typed_transfer_host_program;
     use crate::host::{
-        AsyncHostModule, AsyncHostProviderModule, AsyncHostProviderSet, HostExternalSchema,
+        AsyncHostComponentProfile, HostFutureStore, HostProfile, TransferHostProviderSet,
     };
     use crate::plan::execution::function::{
         ExecutionFunctionEntry, ExecutionFunctionRef, ExternalListFunctionId, FunctionBodyOwner,
@@ -1248,16 +1249,15 @@ mod tests {
         CustomType, CustomTypeName, FunctionType, LibraryEntry, LibraryValueType, TypeParameterId,
         ValueType,
     };
-    use crate::runtime::resumable::{RecordedEcho, ResumableFuture, ResumableState, run_custom};
+    use crate::runtime::function::run_custom;
     use crate::runtime::state::RuntimeState;
     use crate::runtime::state::list::ListValueId;
     use crate::runtime::{
         EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedListFunction, EvaluatedValue,
-        ExecutionError, InvariantError, RuntimeValueProfile, TransferExecutionError,
-        TransferValues,
+        ExecutionError, InvariantError, RuntimeValueProfile, TransferValues,
     };
-    use crate::{ModuleSource, PackageSource, compile_typed_async_host_program};
-    use std::task::{Context, Poll, Waker};
+    use crate::work_fixture::WorkComponent;
+    use crate::{ModuleSource, PackageSource};
 
     const LIST_FUNCTION_FAMILY_SOURCE: &str = r#"
 pub type Boxed { Boxed(Int) }
@@ -1738,34 +1738,46 @@ pub fn main() {
         assert_parameter_list_projection_mismatches(&context);
     }
 
-    struct ProjectionCounterSchema;
-
-    impl HostExternalSchema for ProjectionCounterSchema {
-        const PACKAGE: &'static str = "application";
-        const MODULE: &'static str = "library";
-        const NAME: &'static str = "Counter";
-        const PARAMETER_COUNT: usize = 0;
+    struct ProjectionProfile;
+    impl HostProfile for ProjectionProfile {
+        type RunState = ();
+        type ExternalStores = HostFutureStore;
     }
-
+    impl crate::host::HostWorkProfile for ProjectionProfile {
+        type Work = crate::work_fixture::WorkComponent;
+    }
+    impl AsyncHostComponentProfile<WorkComponent> for ProjectionProfile {
+        fn component_async_stores(stores: &HostFutureStore) -> &HostFutureStore {
+            stores
+        }
+        fn component_state(state: &mut ()) -> &mut () {
+            state
+        }
+    }
     #[test]
-    fn resumable_external_list_projections_reject_corrupted_field_families() {
-        let provider = AsyncHostProviderModule::new("application", "library")
-            .expect("async provider module")
-            .with_external_type_for_test::<ProjectionCounterSchema>();
-        let hosts = AsyncHostProviderSet::with_providers(Vec::<AsyncHostModule>::new(), [provider])
-            .expect("async host set");
-        let program = compile_typed_async_host_program(
+    fn transfer_external_list_projections_reject_corrupted_field_families() {
+        let program = compile_typed_transfer_host_program(
             "application",
             "library",
-            [PackageSource::new(
-                "application",
-                Vec::<String>::new(),
-                [ModuleSource::new(
-                    "library",
-                    "src/library.gleam",
-                    r#"
-@external(erlang, "native", "Counter")
-pub type Counter
+            [
+                PackageSource::new(
+                    "work_fixture",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "fixture/work",
+                        "src/fixture/work.gleam",
+                        crate::work_fixture::WorkComponent::SOURCE,
+                    )],
+                ),
+                PackageSource::new(
+                    "application",
+                    ["work_fixture"],
+                    [ModuleSource::new(
+                        "library",
+                        "src/library.gleam",
+                        r#"
+import fixture/work as future
+pub type Counter = future.Work(Int)
 
 pub type CounterListBox {
   CounterListBox(values: List(Counter))
@@ -1775,12 +1787,16 @@ pub fn boxed() -> CounterListBox {
   CounterListBox([])
 }
 "#,
-                )],
-            )],
-            hosts,
+                    )],
+                ),
+            ],
+            TransferHostProviderSet::<ProjectionProfile>::new(
+                WorkComponent::providers().expect("Future providers"),
+            )
+            .expect("providers"),
         )
         .expect("external List projection source");
-        let plan = crate::planner::plan_async_host_library_program(program)
+        let plan = crate::planner::plan_transfer_host_library_program(program)
             .expect("external List projection plan");
         let template = plan
             .functions()
@@ -1803,117 +1819,118 @@ pub fn boxed() -> CounterListBox {
             Vec::new(),
             Vec::new(),
         );
-        let (execution, entries) = crate::plan::execution::AsyncHostedExecution::from_library_plan(
-            plan,
-            entry,
-            Vec::new(),
-        );
+        let (execution, entries) =
+            crate::plan::execution::TransferHostedExecution::from_library_plan(
+                plan,
+                entry,
+                Vec::new(),
+            )
+            .expect("transferable list entry qualification");
         let function = *entries.customs[0].function();
         let custom_local = direct_custom_return_local(execution.custom_function(function).as_ref());
         let mut host = ();
-        let mut echo = RecordedEcho::default();
-        let mut stores = ();
-        let mut state =
-            ResumableState::<crate::StatelessHostProfile>::new(&mut host, &mut stores, &mut echo);
-        let custom = poll_ready_custom_fixture(run_custom(
+        assert!(std::ptr::eq(
+            <WorkComponent as crate::HostProvider<ProjectionProfile>>::project(&mut host),
+            &host,
+        ));
+        let mut echo = drop;
+        let mut stores = HostFutureStore::default();
+        assert!(std::ptr::eq(
+            ProjectionProfile::component_async_stores(&stores),
+            &stores,
+        ));
+        let mut driver = crate::runtime::work::driver::Driver::new(
             &execution,
-            &mut state,
-            function,
-            crate::runtime::error::HostCallOrigin::Entry,
-            ProfiledRetainedValues::empty(),
-        ))
-        .expect("boxed external List should evaluate");
-        let constructor = custom.constructor();
-        assert_eq!(custom.fields().len(), 1);
-        let mut fields = ProfiledRetainedValues::empty();
-        fields.push_evaluated(custom.fields()[0].clone());
-        let fields = BlockEnvironment::from_retained(fields);
-        let list_type = fields.external_list(ExternalListLocalId(0)).type_id();
-        let expected = execution
-            .value_metadata()
-            .list_value_type(list_type.list_type());
-
-        type Instruction = TypedListInstruction<
-            ExternalLocal,
-            ExternalListLocalId,
-            ExternalListFunctionId,
-            ExternalListFunctionLocalId,
-        >;
-
-        let mut tuple_values = ProfiledRetainedValues::empty();
-        tuple_values.push_evaluated(EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]));
-        let tuple_environment = BlockEnvironment::from_retained(tuple_values);
-        let tuple_instruction = Instruction::TupleIndex {
-            tuple: TupleLocalId(0),
-            index: 0,
-        };
-        assert_eq!(
-            execution_error(
-                typed::<ExternalFamily, _, _, _>(
-                    &execution,
-                    &mut state,
-                    &tuple_environment,
-                    list_type,
-                    &tuple_instruction,
-                    &expected,
-                ),
-                "corrupted external List tuple projection should fail"
+            &mut host,
+            &mut stores,
+            &mut echo,
+        );
+        driver.call(|_, state| {
+            let custom = run_custom(
+                &execution,
+                state,
+                function,
+                crate::runtime::error::HostCallOrigin::Entry,
+                ProfiledRetainedValues::empty(),
             )
-            .into_local(),
-            ExecutionError::Invariant(InvariantError::TupleIndexFamilyMismatch {
-                expected: expected.clone(),
-                actual: ValueType::Int,
-            }),
-        );
+            .expect("boxed external List should evaluate");
+            let constructor = custom.constructor();
+            assert_eq!(custom.fields().len(), 1);
+            let mut fields = ProfiledRetainedValues::empty();
+            fields.push_evaluated(custom.fields()[0].clone());
+            let fields = BlockEnvironment::from_retained(fields);
+            let list_type = fields.external_list(ExternalListLocalId(0)).type_id();
+            let expected = execution
+                .value_metadata()
+                .list_value_type(list_type.list_type());
 
-        let malformed = EvaluatedCustomValue::from_fields(
-            constructor,
-            vec![EvaluatedValue::Int(1.into())].into_boxed_slice(),
-        );
-        let mut custom_values = ProfiledRetainedValues::empty();
-        custom_values.push_evaluated(EvaluatedValue::Custom(malformed));
-        let custom_environment = BlockEnvironment::from_retained(custom_values);
-        let custom_instruction = Instruction::CustomField {
-            source: custom_local,
-            index: 0,
-        };
-        assert_eq!(
-            execution_error(
-                typed::<ExternalFamily, _, _, _>(
-                    &execution,
-                    &mut state,
-                    &custom_environment,
-                    list_type,
-                    &custom_instruction,
-                    &expected,
-                ),
-                "corrupted external List custom projection should fail"
-            )
-            .into_local(),
-            ExecutionError::Invariant(InvariantError::CustomFieldFamilyMismatch {
-                custom_type,
-                constructor: "CounterListBox".into(),
-                field_index: 0,
-                expected,
-                actual: ValueType::Int,
-            }),
-        );
-    }
+            type Instruction = TypedListInstruction<
+                ExternalLocal,
+                ExternalListLocalId,
+                ExternalListFunctionId,
+                ExternalListFunctionLocalId,
+            >;
 
-    fn poll_ready_custom_fixture(
-        mut future: ResumableFuture<'_, EvaluatedCustomValue<TransferValues>>,
-    ) -> Result<EvaluatedCustomValue<TransferValues>, TransferExecutionError> {
-        let mut context = Context::from_waker(Waker::noop());
-        match future.as_mut().poll(&mut context) {
-            Poll::Ready(output) => output,
-            Poll::Pending => panic!("fixture without async calls should complete immediately"),
-        }
-    }
+            let mut tuple_values = ProfiledRetainedValues::empty();
+            tuple_values.push_evaluated(EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]));
+            let tuple_environment = BlockEnvironment::from_retained(tuple_values);
+            let tuple_instruction = Instruction::TupleIndex {
+                tuple: TupleLocalId(0),
+                index: 0,
+            };
+            assert_eq!(
+                execution_error(
+                    typed::<ExternalFamily, _, _, _>(
+                        &execution,
+                        state,
+                        &tuple_environment,
+                        list_type,
+                        &tuple_instruction,
+                        &expected,
+                    ),
+                    "corrupted external List tuple projection should fail"
+                )
+                .into_local(),
+                ExecutionError::Invariant(InvariantError::TupleIndexFamilyMismatch {
+                    expected: expected.clone(),
+                    actual: ValueType::Int,
+                }),
+            );
 
-    #[test]
-    #[should_panic(expected = "fixture without async calls should complete immediately")]
-    fn ready_fixture_guard_rejects_a_pending_future() {
-        let _ = poll_ready_custom_fixture(Box::pin(std::future::pending()));
+            let malformed = EvaluatedCustomValue::from_fields(
+                constructor,
+                vec![EvaluatedValue::Int(1.into())].into_boxed_slice(),
+            );
+            let mut custom_values = ProfiledRetainedValues::empty();
+            custom_values.push_evaluated(EvaluatedValue::Custom(malformed));
+            let custom_environment = BlockEnvironment::from_retained(custom_values);
+            let custom_instruction = Instruction::CustomField {
+                source: custom_local,
+                index: 0,
+            };
+            assert_eq!(
+                execution_error(
+                    typed::<ExternalFamily, _, _, _>(
+                        &execution,
+                        state,
+                        &custom_environment,
+                        list_type,
+                        &custom_instruction,
+                        &expected,
+                    ),
+                    "corrupted external List custom projection should fail"
+                )
+                .into_local(),
+                ExecutionError::Invariant(InvariantError::CustomFieldFamilyMismatch {
+                    custom_type,
+                    constructor: "CounterListBox".into(),
+                    field_index: 0,
+                    expected,
+                    actual: ValueType::Int,
+                }),
+            );
+        });
+        drop(driver);
     }
 
     struct ProjectionContext<'a> {

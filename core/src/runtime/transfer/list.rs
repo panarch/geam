@@ -371,6 +371,12 @@ macro_rules! value_storage {
 }
 
 impl TransferListStorage {
+    pub(in crate::runtime) fn from_handle(handle: &TransferListHandleCore) -> Self {
+        Self {
+            storage: Arc::clone(&handle.lease.storage),
+        }
+    }
+
     value_storage!(
         int,
         int_values,

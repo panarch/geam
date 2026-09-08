@@ -1,0 +1,5 @@
+error: async provider functions require `&mut Call<State>` for bounded state access
+  --> tests/ui/async/shared_call.rs:17:30
+   |
+17 |         #[geam_macros::call] call: &geam_core::provider::Call<BigInt>,
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

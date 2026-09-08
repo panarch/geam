@@ -1,4 +1,4 @@
-use super::value::{Arguments, EmbeddingValue};
+use super::value::{Arguments, EmbeddingInputRuntime, EmbeddingValue};
 use crate::plan::execution::type_::CustomConstructorId;
 use crate::plan::execution::{LibraryInputConstructions, LibraryListConstructions};
 use crate::runtime::{
@@ -32,13 +32,13 @@ pub(super) trait ArgumentsInput<Input>: Arguments {
     fn into_inputs(input: Input, constructions: &LibraryInputConstructions) -> RetainedValues;
 }
 
-pub(super) trait AsyncArgumentsInput<Input>: Arguments {
+pub(super) trait AsyncArgumentsInput<Input, Scope = ()>: Arguments {
     fn owners_match(input: &Input, owner: &Arc<()>) -> bool;
 
     fn into_inputs(input: Input, constructions: &LibraryInputConstructions) -> TransferInputs;
 }
 
-pub(super) trait AsyncInputValue<Input>: EmbeddingValue {
+pub(super) trait AsyncInputValue<Input, Scope = ()>: EmbeddingValue {
     type TransferRuntime: EmbeddingInputValue<TransferValues>;
 
     fn owners_match(input: &Input, owner: &Arc<()>) -> bool;
@@ -50,14 +50,14 @@ pub(super) trait AsyncInputValue<Input>: EmbeddingValue {
     ) -> Self::TransferRuntime;
 }
 
-pub(super) trait AsyncFreshInput<Input>: AsyncInputValue<Input> {
+pub(super) trait AsyncFreshInput<Input, Scope = ()>: AsyncInputValue<Input, Scope> {
     fn list_id(
         lists: &LibraryListConstructions,
         index: usize,
     ) -> <Self::TransferRuntime as EmbeddingInputValue<TransferValues>>::ListType;
 }
 
-pub(super) trait InputValue<Input>: EmbeddingValue {
+pub(super) trait InputValue<Input>: EmbeddingInputRuntime {
     fn owners_match(input: &Input, owner: &Arc<()>) -> bool;
 
     fn into_runtime(
@@ -79,7 +79,7 @@ pub(super) struct InputConstructions<'a> {
     variants: &'a [[CustomConstructorId; 2]],
     lists: &'a LibraryListConstructions,
     next_variant: usize,
-    next_lists: [usize; 10],
+    next_lists: [usize; 11],
 }
 
 pub(super) enum ListFamily {
@@ -93,6 +93,7 @@ pub(super) enum ListFamily {
     Nil,
     Tuple,
     List,
+    External,
 }
 
 impl InputConstructions<'_> {
@@ -101,7 +102,7 @@ impl InputConstructions<'_> {
             variants: constructions.variants(),
             lists: constructions.lists(),
             next_variant: 0,
-            next_lists: [0; 10],
+            next_lists: [0; 11],
         }
     }
 
@@ -123,14 +124,16 @@ impl InputConstructions<'_> {
         type_
     }
 
-    pub(super) fn take_async_list<Value, Input>(
+    pub(super) fn take_async_list<Value, Input, Scope>(
         &mut self,
-    ) -> <<Value as AsyncInputValue<Input>>::TransferRuntime as EmbeddingInputValue<TransferValues>>::ListType
+    ) -> <<Value as AsyncInputValue<Input, Scope>>::TransferRuntime as EmbeddingInputValue<
+        TransferValues,
+    >>::ListType
     where
-        Value: AsyncFreshInput<Input>,
+        Value: AsyncFreshInput<Input, Scope>,
     {
         let next = &mut self.next_lists[Value::LIST_FAMILY as usize];
-        let type_ = <Value as AsyncFreshInput<Input>>::list_id(self.lists, *next);
+        let type_ = <Value as AsyncFreshInput<Input, Scope>>::list_id(self.lists, *next);
         *next += 1;
         type_
     }
@@ -141,7 +144,7 @@ impl InputConstructions<'_> {
     }
 }
 
-pub(super) const fn add_list_counts(left: [usize; 10], right: [usize; 10]) -> [usize; 10] {
+pub(super) const fn add_list_counts(left: [usize; 11], right: [usize; 11]) -> [usize; 11] {
     let mut counts = left;
     let mut index = 0;
     while index < counts.len() {
@@ -188,7 +191,7 @@ scalar_input!((), nils);
 
 macro_rules! async_scalar_input {
     ($type:ty, $lists:ident) => {
-        impl AsyncInputValue<$type> for $type {
+        impl<Scope> AsyncInputValue<$type, Scope> for $type {
             type TransferRuntime = Self;
 
             fn owners_match(_input: &$type, _owner: &Arc<()>) -> bool {
@@ -204,7 +207,7 @@ macro_rules! async_scalar_input {
             }
         }
 
-        impl AsyncFreshInput<$type> for $type {
+        impl<Scope> AsyncFreshInput<$type, Scope> for $type {
             fn list_id(
                 lists: &LibraryListConstructions,
                 index: usize,
@@ -222,7 +225,7 @@ async_scalar_input!(super::BitArrayValue, bit_arrays);
 async_scalar_input!(char, utf_codepoints);
 async_scalar_input!(bool, bools);
 
-impl AsyncInputValue<()> for () {
+impl<Scope> AsyncInputValue<(), Scope> for () {
     type TransferRuntime = Self;
 
     fn owners_match(_input: &(), _owner: &Arc<()>) -> bool {
@@ -237,7 +240,7 @@ impl AsyncInputValue<()> for () {
     }
 }
 
-impl AsyncFreshInput<()> for () {
+impl<Scope> AsyncFreshInput<(), Scope> for () {
     fn list_id(
         lists: &LibraryListConstructions,
         index: usize,
@@ -281,9 +284,9 @@ macro_rules! tuple_input {
             }
         }
 
-        impl<$($type, $input),+> AsyncInputValue<($($input,)+)> for ($($type,)+)
+        impl<Scope, $($type, $input),+> AsyncInputValue<($($input,)+), Scope> for ($($type,)+)
         where
-            $($type: AsyncInputValue<$input>,)+
+            $($type: AsyncInputValue<$input, Scope>,)+
         {
             type TransferRuntime = EmbeddingTupleInput<TransferValues>;
 
@@ -305,9 +308,9 @@ macro_rules! tuple_input {
         }
 
 
-        impl<$($type, $input),+> AsyncFreshInput<($($input,)+)> for ($($type,)+)
+        impl<Scope, $($type, $input),+> AsyncFreshInput<($($input,)+), Scope> for ($($type,)+)
         where
-            $($type: AsyncFreshInput<$input>,)+
+            $($type: AsyncFreshInput<$input, Scope>,)+
         {
             fn list_id(
                 lists: &LibraryListConstructions,
@@ -348,9 +351,9 @@ tuple_input!(A => IA => a, B => IB => b, C => IC => c, D => ID => d, E => IE => 
 
 macro_rules! async_arguments {
     ($($type:ident => $input:ident => $value:ident),+) => {
-        impl<$($type, $input),+> AsyncArgumentsInput<($($input,)+)> for ($($type,)+)
+        impl<Scope, $($type, $input),+> AsyncArgumentsInput<($($input,)+), Scope> for ($($type,)+)
         where
-            $($type: AsyncInputValue<$input>,)+
+            $($type: AsyncInputValue<$input, Scope>,)+
         {
             fn owners_match(input: &($($input,)+), owner: &Arc<()>) -> bool {
                 let ($($value,)+) = input;
@@ -392,7 +395,7 @@ impl ArgumentsInput<()> for () {
     }
 }
 
-impl AsyncArgumentsInput<()> for () {
+impl<Scope> AsyncArgumentsInput<(), Scope> for () {
     fn owners_match(_input: &(), _owner: &Arc<()>) -> bool {
         true
     }
@@ -450,11 +453,11 @@ where
     }
 }
 
-impl<Success, Failure, SuccessInput, FailureInput>
-    AsyncInputValue<Result<SuccessInput, FailureInput>> for Result<Success, Failure>
+impl<Scope, Success, Failure, SuccessInput, FailureInput>
+    AsyncInputValue<Result<SuccessInput, FailureInput>, Scope> for Result<Success, Failure>
 where
-    Success: AsyncInputValue<SuccessInput>,
-    Failure: AsyncInputValue<FailureInput>,
+    Success: AsyncInputValue<SuccessInput, Scope>,
+    Failure: AsyncInputValue<FailureInput, Scope>,
 {
     type TransferRuntime = EmbeddingCustomInput<TransferValues>;
 
@@ -486,11 +489,11 @@ where
     }
 }
 
-impl<Success, Failure, SuccessInput, FailureInput>
-    AsyncFreshInput<Result<SuccessInput, FailureInput>> for Result<Success, Failure>
+impl<Scope, Success, Failure, SuccessInput, FailureInput>
+    AsyncFreshInput<Result<SuccessInput, FailureInput>, Scope> for Result<Success, Failure>
 where
-    Success: AsyncFreshInput<SuccessInput>,
-    Failure: AsyncFreshInput<FailureInput>,
+    Success: AsyncFreshInput<SuccessInput, Scope>,
+    Failure: AsyncFreshInput<FailureInput, Scope>,
 {
     fn list_id(
         lists: &LibraryListConstructions,
@@ -542,9 +545,9 @@ where
     }
 }
 
-impl<Value, Input> AsyncInputValue<Option<Input>> for Option<Value>
+impl<Scope, Value, Input> AsyncInputValue<Option<Input>, Scope> for Option<Value>
 where
-    Value: AsyncInputValue<Input>,
+    Value: AsyncInputValue<Input, Scope>,
 {
     type TransferRuntime = EmbeddingCustomInput<TransferValues>;
 
@@ -574,9 +577,9 @@ where
     }
 }
 
-impl<Value, Input> AsyncFreshInput<Option<Input>> for Option<Value>
+impl<Scope, Value, Input> AsyncFreshInput<Option<Input>, Scope> for Option<Value>
 where
-    Value: AsyncFreshInput<Input>,
+    Value: AsyncFreshInput<Input, Scope>,
 {
     fn list_id(
         lists: &LibraryListConstructions,

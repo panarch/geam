@@ -1,9 +1,15 @@
 use crate::host::{
-    HostExternalPayloadBuilder, HostProfile, HostStoredType, HostStoredValue, HostType, HostTypeAt,
-    HostTypeSequence,
+    HostConstruction, HostExternalPayloadBuilder, HostExternalSchema, HostExternalType,
+    HostProfile, HostProvider, HostStoredType, HostStoredValue, HostType, HostTypeAt,
+    HostTypeSequence, TransferHostCall,
 };
-use crate::provider::ProviderExternalItem;
-use crate::provider::advanced::{Retained, StoredDynamic};
+use crate::provider::advanced::{
+    LocalRetainedContext, ProviderTransferRetained, ProviderTransferRetainedContext, Retained,
+    StoredDynamic,
+};
+use crate::provider::{
+    ProviderExternalItem, ProviderTransferExternalItem, ProviderTransferExternalView,
+};
 use std::marker::PhantomData;
 
 /// Generated identity for one external declaration that may own retained values.
@@ -24,7 +30,7 @@ where
     Arguments: HostTypeSequence + HostTypeAt<Index>,
     Owner: ProviderStoredOwner,
 {
-    Retained::new(builder.store_argument::<Index>(value))
+    Retained::new_local(builder.store_argument::<Index>(value))
 }
 
 /// Retains one low-level value with its exact specialized type.
@@ -39,7 +45,44 @@ where
     Owner: ProviderStoredOwner,
     Type: HostType,
 {
-    StoredDynamic::new(builder.store_dynamic::<Type>(value))
+    StoredDynamic::new_local(builder.store_dynamic::<Type>(value))
+}
+
+/// Retains a transferable payload argument at its construction-sealed type position.
+#[doc(hidden)]
+pub fn retain_transfer_argument<'call, Profile, Provider, Return, Schema, Arguments, Owner, Index>(
+    call: &TransferHostCall<'call, Profile, Provider, Return>,
+    _construction: &HostConstruction<'call, HostExternalType<Schema, Arguments>>,
+    value: <<Arguments as HostTypeAt<Index>>::Type as HostType>::Value<'call>,
+) -> ProviderTransferRetained<Owner, Index>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Schema: HostExternalSchema,
+    Arguments: HostTypeSequence + HostTypeAt<Index>,
+    Owner: ProviderStoredOwner,
+{
+    Retained::new_transfer(call.retain_value::<<Arguments as HostTypeAt<Index>>::Type>(value))
+}
+
+/// Retains an existential transferable value under an external construction owner.
+#[doc(hidden)]
+pub fn retain_transfer_dynamic<'call, Profile, Provider, Return, Schema, Arguments, Owner, Type>(
+    call: &TransferHostCall<'call, Profile, Provider, Return>,
+    _construction: &HostConstruction<'call, HostExternalType<Schema, Arguments>>,
+    value: Type::Value<'call>,
+) -> crate::provider::advanced::ProviderTransferStoredDynamic<Owner>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Schema: HostExternalSchema,
+    Arguments: HostTypeSequence,
+    Owner: ProviderStoredOwner,
+    Type: HostType,
+{
+    StoredDynamic::new_transfer(call.retain_value::<Type>(value))
 }
 
 /// One generic Gleam value retained by a macro-authored external payload.
@@ -71,6 +114,27 @@ pub struct ProviderStoredInput<'value, Owner, Index, Host> {
     context: PhantomData<fn() -> (Owner, Host)>,
 }
 
+/// A transferable retained value being assembled into one generated payload.
+#[doc(hidden)]
+pub struct ProviderTransferStoredOutput<Owner, Index, Host> {
+    value: ProviderTransferRetained<Owner, Index>,
+    host: PhantomData<fn() -> Host>,
+}
+
+/// A borrowed transferable retained field selected from one generated input.
+#[doc(hidden)]
+pub struct ProviderTransferStoredInput<'value, Owner, Index, Host> {
+    value: &'value ProviderTransferRetained<Owner, Index>,
+    host: PhantomData<fn() -> Host>,
+}
+
+/// An owned retained field selected before an async provider body runs.
+#[doc(hidden)]
+pub struct ProviderAsyncStoredInput<Owner, Index, Host> {
+    value: ProviderTransferRetained<Owner, Index>,
+    host: PhantomData<fn() -> Host>,
+}
+
 /// The exact retained payload view inserted into one generated external input.
 #[doc(hidden)]
 pub struct ProviderExternalInputContext<'call, Payload, Arguments>
@@ -81,13 +145,67 @@ where
     context: PhantomData<&'call Arguments>,
 }
 
+/// A short transferable payload view used by an immediate provider function.
+#[doc(hidden)]
+pub struct ProviderTransferExternalInputContext<Payload, Arguments>
+where
+    Arguments: HostTypeSequence,
+{
+    value: ProviderTransferExternalView<Payload>,
+    arguments: PhantomData<fn() -> Arguments>,
+}
+
+/// An owned payload handle used by an async provider function.
+#[doc(hidden)]
+pub struct ProviderAsyncExternalInputContext<Payload, Arguments>
+where
+    Arguments: HostTypeSequence,
+{
+    value: ProviderTransferExternalItem<Payload>,
+    arguments: PhantomData<fn() -> Arguments>,
+}
+
 #[doc(hidden)]
 pub struct MissingExternalInputContext;
 
 #[doc(hidden)]
-pub struct ProviderExternalOutput<Payload> {
-    value: Result<Payload, ProviderExternalItem<Payload>>,
+pub struct ProviderExternalOutput<Payload, Context = LocalRetainedContext>
+where
+    Context: ProviderExternalOutputContext<Payload>,
+{
+    value: Result<Payload, Context::Existing>,
 }
+
+mod output_context_sealed {
+    pub trait Sealed {}
+    impl Sealed for super::LocalRetainedContext {}
+    impl Sealed for super::ProviderTransferRetainedContext {}
+}
+
+/// The exact existing-value representation for a generated external output.
+#[doc(hidden)]
+pub trait ProviderExternalOutputContext<Payload>: output_context_sealed::Sealed {
+    type Existing;
+}
+
+impl<Payload> ProviderExternalOutputContext<Payload> for LocalRetainedContext {
+    type Existing = ProviderExternalItem<Payload>;
+}
+
+impl<Payload> ProviderExternalOutputContext<Payload> for ProviderTransferRetainedContext {
+    type Existing = ProviderTransferExternalReturn<Payload>;
+}
+
+/// A typed external identity returned without retaining a payload borrow.
+#[doc(hidden)]
+pub struct ProviderTransferExternalReturn<Payload> {
+    lease: crate::runtime::TransferExternalPayloadLease,
+    payload: PhantomData<fn() -> Payload>,
+}
+
+#[doc(hidden)]
+pub type ProviderTransferExternalOutput<Payload> =
+    ProviderExternalOutput<Payload, ProviderTransferRetainedContext>;
 
 #[doc(hidden)]
 pub struct MissingExternalOutputContext;
@@ -115,7 +233,7 @@ where
 
     /// Moves this newly stored value into an advanced persistent payload.
     pub fn into_retained(self) -> Retained<Owner, Index> {
-        Retained::new(self.context.value)
+        Retained::new_local(self.context.value)
     }
 }
 
@@ -144,20 +262,90 @@ where
     }
 }
 
-impl<Payload> ProviderExternalOutput<Payload> {
+impl<Type, Owner, Index, Host> Stored<Type, ProviderTransferStoredOutput<Owner, Index, Host>>
+where
+    Owner: ProviderStoredOwner,
+{
+    #[doc(hidden)]
+    pub fn from_transfer_output(value: ProviderTransferRetained<Owner, Index>) -> Self {
+        Self {
+            context: ProviderTransferStoredOutput {
+                value,
+                host: PhantomData,
+            },
+            type_: PhantomData,
+        }
+    }
+
+    /// Moves this newly stored value into a transferable persistent payload.
+    pub fn into_retained(self) -> ProviderTransferRetained<Owner, Index> {
+        self.context.value
+    }
+}
+
+impl<'value, Type, Owner, Index, Host>
+    Stored<Type, ProviderTransferStoredInput<'value, Owner, Index, Host>>
+where
+    Owner: ProviderStoredOwner,
+{
+    #[doc(hidden)]
+    pub fn from_transfer_retained(value: &'value ProviderTransferRetained<Owner, Index>) -> Self {
+        Self {
+            context: ProviderTransferStoredInput {
+                value,
+                host: PhantomData,
+            },
+            type_: PhantomData,
+        }
+    }
+
+    pub(crate) fn transfer_stored(&self) -> &'value ProviderTransferRetained<Owner, Index> {
+        self.context.value
+    }
+}
+
+impl<Type, Owner, Index, Host> Stored<Type, ProviderAsyncStoredInput<Owner, Index, Host>>
+where
+    Owner: ProviderStoredOwner,
+{
+    #[doc(hidden)]
+    pub fn from_async_retained(value: ProviderTransferRetained<Owner, Index>) -> Self {
+        Self {
+            context: ProviderAsyncStoredInput {
+                value,
+                host: PhantomData,
+            },
+            type_: PhantomData,
+        }
+    }
+
+    pub(crate) fn into_async_stored(self) -> ProviderTransferRetained<Owner, Index> {
+        self.context.value
+    }
+}
+
+impl<Payload, Context: ProviderExternalOutputContext<Payload>>
+    ProviderExternalOutput<Payload, Context>
+{
     #[doc(hidden)]
     pub fn new(payload: Payload) -> Self {
         Self { value: Ok(payload) }
     }
 
     #[doc(hidden)]
-    pub fn from_input(value: ProviderExternalItem<Payload>) -> Self {
+    pub fn from_input(value: Context::Existing) -> Self {
         Self { value: Err(value) }
     }
 
     #[doc(hidden)]
-    pub fn into_value(self) -> Result<Payload, ProviderExternalItem<Payload>> {
+    pub fn into_value(self) -> Result<Payload, Context::Existing> {
         self.value
+    }
+}
+
+impl<Payload> ProviderTransferExternalReturn<Payload> {
+    pub(crate) fn into_lease(self) -> crate::runtime::TransferExternalPayloadLease {
+        self.lease
     }
 }
 
@@ -184,9 +372,80 @@ where
     }
 }
 
+impl<Payload, Arguments> ProviderTransferExternalInputContext<Payload, Arguments>
+where
+    Payload: Send + 'static,
+    Arguments: HostTypeSequence,
+{
+    #[doc(hidden)]
+    pub fn from_host(value: ProviderTransferExternalView<Payload>) -> Self {
+        Self {
+            value,
+            arguments: PhantomData,
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn payload(&self) -> &Payload {
+        &self.value
+    }
+
+    #[doc(hidden)]
+    pub fn into_output(self) -> ProviderTransferExternalOutput<Payload> {
+        ProviderExternalOutput::from_input(ProviderTransferExternalReturn {
+            lease: self.value.into_lease(),
+            payload: PhantomData,
+        })
+    }
+}
+
+impl<Payload, Arguments> ProviderAsyncExternalInputContext<Payload, Arguments>
+where
+    Payload: Send + 'static,
+    Arguments: HostTypeSequence,
+{
+    #[doc(hidden)]
+    pub fn from_host(value: ProviderTransferExternalItem<Payload>) -> Self {
+        Self {
+            value,
+            arguments: PhantomData,
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn with_payload<Output>(&self, read: impl FnOnce(&Payload) -> Output) -> Output {
+        self.value.with(read)
+    }
+
+    #[doc(hidden)]
+    pub fn into_output(self) -> ProviderTransferExternalOutput<Payload> {
+        ProviderExternalOutput::from_input(ProviderTransferExternalReturn {
+            lease: self.value.into_lease(),
+            payload: PhantomData,
+        })
+    }
+
+    #[doc(hidden)]
+    pub fn stored<Type, Owner, Index, Host>(
+        &self,
+        select: impl for<'payload> FnOnce(
+            &'payload Payload,
+        ) -> &'payload ProviderTransferRetained<Owner, Index>,
+    ) -> Stored<Type, ProviderAsyncStoredInput<Owner, Index, Host>>
+    where
+        Owner: ProviderStoredOwner,
+    {
+        self.value
+            .with(|payload| Stored::from_async_retained(select(payload).clone_transfer()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ProviderStoredOwner, retain_argument, retain_dynamic};
+    use super::{
+        ProviderExternalOutput, ProviderStoredOwner, ProviderTransferExternalInputContext,
+        ProviderTransferExternalOutput, retain_argument, retain_dynamic,
+    };
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
         CallArguments, HostExternalPayloadBuilder, HostTypeIndex0, HostTypeList, HostTypeListEnd,
@@ -194,6 +453,11 @@ mod tests {
     use crate::plan::ValueType;
     use crate::provider::advanced::{DynamicKind, Retained, StoredDynamic};
     use num_bigint::BigInt;
+    use std::cell::Cell;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     struct Payload;
 
@@ -216,5 +480,383 @@ mod tests {
 
         assert_eq!(retained.host().value.type_(), &ValueType::Int);
         assert_eq!(dynamic.kind(), DynamicKind::Int);
+    }
+
+    #[test]
+    fn transfer_retention_bridges_keep_exact_values_in_a_source_visible_payload() {
+        use crate::host::{
+            AsyncHostExternalBinding, AsyncHostExternalEquality, AsyncHostExternalHashing,
+            AsyncHostExternalInspection, AsyncHostExternalStorage, AsyncHostExternalStore,
+            HostCallCompletion, HostConstructions, HostExternal, HostExternalSchema,
+            HostExternalType, HostProfile, HostProvider, TransferHostCall,
+            TransferHostProviderModule, TransferHostProviderSet,
+        };
+        use crate::plan::execution::TransferHostedExecution;
+        use crate::plan::{LibraryEntry, LibraryValueType};
+        use crate::provider::advanced::{ProviderTransferRetained, ProviderTransferStoredDynamic};
+        use crate::runtime::TransferInputs;
+        use crate::runtime::work::driver::Driver;
+        struct Profile;
+        struct Provider;
+        struct Schema;
+        struct Storage;
+        struct BridgePayload {
+            argument: ProviderTransferRetained<Payload, HostTypeIndex0>,
+            dynamic: ProviderTransferStoredDynamic<Payload>,
+        }
+        impl HostProfile for Profile {
+            type RunState = ();
+            type ExternalStores = AsyncHostExternalStore<BridgePayload>;
+        }
+        impl HostProvider<Profile> for Provider {
+            type State = ();
+            fn project(state: &mut ()) -> &mut () {
+                state
+            }
+        }
+        impl HostExternalSchema for Schema {
+            const PACKAGE: &'static str = "application";
+            const MODULE: &'static str = "library";
+            const NAME: &'static str = "Box";
+            const PARAMETER_COUNT: usize = 1;
+        }
+        impl AsyncHostExternalBinding<Profile, Schema> for Provider {
+            type Storage = Storage;
+        }
+        impl AsyncHostExternalStorage<Profile, Schema> for Storage {
+            type Payload = BridgePayload;
+            fn store(
+                stores: &AsyncHostExternalStore<BridgePayload>,
+            ) -> &AsyncHostExternalStore<BridgePayload> {
+                stores
+            }
+            fn source_equal(
+                context: &AsyncHostExternalEquality<'_>,
+                left: &BridgePayload,
+                right: &BridgePayload,
+            ) -> bool {
+                left.argument.source_equal(context, &right.argument)
+                    && left.dynamic.source_equal(context, &right.dynamic)
+            }
+            fn source_hash(context: &AsyncHostExternalHashing<'_>, value: &BridgePayload) -> u64 {
+                value.argument.source_hash(context) ^ value.dynamic.source_hash(context)
+            }
+            fn inspect(
+                context: &AsyncHostExternalInspection<'_>,
+                value: &BridgePayload,
+            ) -> ecow::EcoString {
+                format!(
+                    "Box({}, {})",
+                    value.argument.inspect(context),
+                    value.dynamic.inspect(context)
+                )
+                .into()
+            }
+        }
+        type BoxType = HostExternalType<Schema, HostTypeList<BigInt, HostTypeListEnd>>;
+        type Constructions = HostTypeList<BoxType, HostTypeListEnd>;
+        fn pack<'call>(
+            mut call: TransferHostCall<'call, Profile, Provider, BoxType>,
+            constructions: HostConstructions<'call, Constructions>,
+            value: BigInt,
+            other: BigInt,
+        ) -> Result<HostCallCompletion<'call, BoxType>, crate::AsyncHostCallError> {
+            let () = *call.state();
+            let construction = constructions.at::<HostTypeIndex0>();
+            let argument = super::retain_transfer_argument::<_, _, _, _, _, Payload, HostTypeIndex0>(
+                &call,
+                &construction,
+                value,
+            );
+            let dynamic = super::retain_transfer_dynamic::<_, _, _, _, _, Payload, BigInt>(
+                &call,
+                &construction,
+                other,
+            );
+            assert_eq!(argument.stored().type_(), &ValueType::Int);
+            assert_eq!(dynamic.kind(), DynamicKind::Int);
+            let value = call.construct_external_with_binding::<Provider, Schema, HostTypeList<BigInt, HostTypeListEnd>>(
+                construction, BridgePayload { argument, dynamic });
+            Ok(call.return_value(value))
+        }
+        fn hash<'call>(
+            call: TransferHostCall<'call, Profile, Provider, BigInt>,
+            value: HostExternal<'call, BoxType>,
+        ) -> Result<HostCallCompletion<'call, BigInt>, crate::AsyncHostCallError> {
+            let value = call.source_hash::<BoxType>(value);
+            Ok(call.return_value(value.into()))
+        }
+        let provider = TransferHostProviderModule::new_for_profile("application", "library")
+            .expect("provider")
+            .with_external_type::<Provider, Schema>().expect("schema")
+            .with_scoped_function_and_constructions::<Provider, (BigInt, BigInt), BoxType, Constructions, _>("pack", pack).expect("pack")
+            .with_scoped_function::<Provider, (BoxType,), BigInt, _>("hash", hash).expect("hash");
+        let source = r#"pub type Box(value)
+@external(erlang, "native", "pack")
+fn pack(value: Int, other: Int) -> Box(Int)
+@external(erlang, "native", "hash")
+fn hash(value: Box(Int)) -> Int
+pub fn run() {
+  let first = pack(7, 8)
+  let equal = pack(7, 8)
+  echo first
+  first == equal && first != pack(6, 8) && first != pack(7, 9) && hash(first) == hash(equal)
+}
+"#;
+        let program = crate::frontend::compile_typed_transfer_host_program(
+            "application",
+            "library",
+            [crate::PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [crate::ModuleSource::new(
+                    "library",
+                    "src/library.gleam",
+                    source,
+                )],
+            )],
+            TransferHostProviderSet::new([provider]).expect("providers"),
+        )
+        .expect("source");
+        let plan = crate::planner::plan_transfer_host_library_program(program).expect("plan");
+        let function = plan
+            .functions()
+            .iter()
+            .find(|function| function.name() == "run")
+            .expect("entry")
+            .gleam_body()
+            .expect("source body");
+        let entry = LibraryEntry::new(
+            function.id(),
+            LibraryValueType::Bool,
+            Vec::new(),
+            Vec::new(),
+        );
+        let (plan, entries) = TransferHostedExecution::from_library_plan(plan, entry, Vec::new())
+            .expect("sealed execution");
+        let mut state = ();
+        let mut stores = AsyncHostExternalStore::default();
+        let mut output = Vec::new();
+        let mut echo = |value: crate::EchoOutput| output.push(value.to_string());
+        let mut driver = Driver::new(&plan, &mut state, &mut stores, &mut echo);
+        assert!(
+            driver
+                .run_bool(*entries.bools[0].function(), TransferInputs::empty())
+                .expect("retained payload semantics")
+        );
+        drop(driver);
+        assert_eq!(output, ["src/library.gleam:9\nBox(7, 8)"]);
+    }
+
+    struct OwnedPayload {
+        value: Cell<usize>,
+        drops: Arc<AtomicUsize>,
+    }
+
+    impl Drop for OwnedPayload {
+        fn drop(&mut self) {
+            self.drops.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    #[test]
+    fn fresh_external_outputs_own_non_clone_payloads_in_each_representation() {
+        let drops = Arc::new(AtomicUsize::new(0));
+        let local = ProviderExternalOutput::<OwnedPayload>::new(OwnedPayload {
+            value: Cell::new(41),
+            drops: Arc::clone(&drops),
+        })
+        .into_value();
+        assert!(local.is_ok());
+        assert_eq!(drops.load(Ordering::Relaxed), 0);
+        drop(local);
+        assert_eq!(drops.load(Ordering::Relaxed), 1);
+
+        let transferable = ProviderTransferExternalOutput::new(OwnedPayload {
+            value: Cell::new(42),
+            drops: Arc::clone(&drops),
+        });
+        std::thread::spawn(move || {
+            let value = transferable.into_value();
+            assert!(value.is_ok());
+            drop(value);
+        })
+        .join()
+        .expect("owned output should transfer");
+        assert_eq!(drops.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn returning_a_transfer_view_releases_the_borrow_but_keeps_exact_payload_ownership() {
+        use crate::frontend::compile_typed_transfer_host_program;
+        use crate::host::{
+            AsyncHostExternalBinding, AsyncHostExternalEquality, AsyncHostExternalHashing,
+            AsyncHostExternalInspection, AsyncHostExternalStorage, AsyncHostExternalStore,
+            HostExternal, HostExternalSchema, HostExternalType, HostProfile, HostProvider,
+            TransferHostCall, TransferHostProviderModule, TransferHostProviderSet,
+        };
+        use crate::{HostCallCompletion, ModuleSource, PackageSource};
+        use num_bigint::BigInt;
+
+        struct Profile;
+        struct Provider;
+        struct Schema;
+        struct Storage;
+        impl HostProfile for Profile {
+            type RunState = Arc<AtomicUsize>;
+            type ExternalStores = AsyncHostExternalStore<OwnedPayload>;
+        }
+        impl HostProvider<Profile> for Provider {
+            type State = Arc<AtomicUsize>;
+            fn project(state: &mut Self::State) -> &mut Self::State {
+                state
+            }
+        }
+        impl HostExternalSchema for Schema {
+            const PACKAGE: &'static str = "application";
+            const MODULE: &'static str = "library";
+            const NAME: &'static str = "Owned";
+            const PARAMETER_COUNT: usize = 0;
+        }
+        impl AsyncHostExternalBinding<Profile, Schema> for Provider {
+            type Storage = Storage;
+        }
+        impl AsyncHostExternalStorage<Profile, Schema> for Storage {
+            type Payload = OwnedPayload;
+            fn store(
+                stores: &AsyncHostExternalStore<OwnedPayload>,
+            ) -> &AsyncHostExternalStore<OwnedPayload> {
+                stores
+            }
+            fn source_equal(
+                _: &AsyncHostExternalEquality<'_>,
+                a: &OwnedPayload,
+                b: &OwnedPayload,
+            ) -> bool {
+                a.value.get() == b.value.get()
+            }
+            fn source_hash(_: &AsyncHostExternalHashing<'_>, value: &OwnedPayload) -> u64 {
+                value.value.get() as u64
+            }
+            fn inspect(
+                _: &AsyncHostExternalInspection<'_>,
+                value: &OwnedPayload,
+            ) -> ecow::EcoString {
+                format!("Owned({})", value.value.get()).into()
+            }
+        }
+        fn make<'call>(
+            mut call: TransferHostCall<'call, Profile, Provider, HostExternalType<Schema>>,
+        ) -> Result<HostCallCompletion<'call, HostExternalType<Schema>>, crate::AsyncHostCallError>
+        {
+            let drops = Arc::clone(call.state());
+            let value = call.create_external_with_binding::<Provider>(OwnedPayload {
+                value: Cell::new(42),
+                drops,
+            });
+            Ok(call.return_value(value))
+        }
+        fn keep<'call>(
+            mut call: TransferHostCall<'call, Profile, Provider, HostExternalType<Schema>>,
+            value: HostExternal<'call, HostExternalType<Schema>>,
+        ) -> Result<HostCallCompletion<'call, HostExternalType<Schema>>, crate::AsyncHostCallError>
+        {
+            let original = call.external_payload(value);
+            let address = std::ptr::from_ref(&*original).addr();
+            drop(original);
+            let view = call
+                .provider_transfer_external_view_with::<Provider, Schema, HostTypeListEnd>(value);
+            let context =
+                ProviderTransferExternalInputContext::<_, HostTypeListEnd>::from_host(view);
+            assert_eq!(context.payload().value.get(), 42);
+            let output = context
+                .into_output()
+                .into_value()
+                .err()
+                .expect("pass-through retains the original payload");
+            let returned =
+                call.provider_transfer_external_from_return::<Schema, HostTypeListEnd, _>(output);
+            let payload = call.external_payload(returned);
+            assert_eq!(std::ptr::from_ref(&*payload).addr(), address);
+            drop(payload);
+            assert_eq!(call.state().load(Ordering::Relaxed), 0);
+            Ok(call.return_value(returned))
+        }
+        fn hash<'call>(
+            call: TransferHostCall<'call, Profile, Provider, BigInt>,
+            value: HostExternal<'call, HostExternalType<Schema>>,
+        ) -> Result<HostCallCompletion<'call, BigInt>, crate::AsyncHostCallError> {
+            let hash = call.source_hash::<HostExternalType<Schema>>(value);
+            Ok(call.return_value(hash.into()))
+        }
+        let provider = TransferHostProviderModule::new_for_profile("application", "library")
+            .expect("module")
+            .with_external_type::<Provider, Schema>().expect("schema")
+            .with_scoped_function::<Provider, (), HostExternalType<Schema>, _>("make", make).expect("make")
+            .with_scoped_function::<Provider, (HostExternalType<Schema>,), HostExternalType<Schema>, _>("keep", keep).expect("keep")
+            .with_scoped_function::<Provider, (HostExternalType<Schema>,), BigInt, _>("hash", hash).expect("hash");
+        let source = r#"pub type Owned
+@external(erlang, "native", "make")
+fn make() -> Owned
+@external(erlang, "native", "keep")
+fn keep(value: Owned) -> Owned
+@external(erlang, "native", "hash")
+fn hash(value: Owned) -> Int
+pub fn run() {
+  let original = make()
+  let returned = keep(original)
+  let equal = make()
+  echo returned
+  original == returned && returned == equal && hash(returned) == hash(equal)
+}
+"#;
+        let program = compile_typed_transfer_host_program(
+            "application",
+            "library",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new("library", "src/library.gleam", source)],
+            )],
+            TransferHostProviderSet::<Profile>::new([provider]).expect("providers"),
+        )
+        .expect("source");
+        let library = crate::planner::plan_transfer_host_library_program(program).expect("plan");
+        let template = library
+            .functions()
+            .iter()
+            .find(|function| function.name() == "run")
+            .expect("run")
+            .signature()
+            .id();
+        let entry = crate::plan::LibraryEntry::new(
+            template,
+            crate::plan::LibraryValueType::Bool,
+            Vec::new(),
+            Vec::new(),
+        );
+        let (plan, entries) = crate::plan::execution::TransferHostedExecution::from_library_plan(
+            library,
+            entry,
+            Vec::new(),
+        )
+        .expect("seal");
+        let mut drops = Arc::new(AtomicUsize::new(0));
+        let mut stores = AsyncHostExternalStore::default();
+        let mut output = Vec::new();
+        let mut echo = |value: crate::EchoOutput| output.push(value.to_string());
+        let mut driver =
+            crate::runtime::work::driver::Driver::new(&plan, &mut drops, &mut stores, &mut echo);
+        assert!(
+            driver
+                .run_bool(
+                    *entries.bools[0].function(),
+                    crate::runtime::TransferInputs::empty()
+                )
+                .expect("source call")
+        );
+        drop(driver);
+        assert_eq!(output, ["src/library.gleam:12\nOwned(42)"]);
+        assert_eq!(drops.load(Ordering::Relaxed), 2);
     }
 }

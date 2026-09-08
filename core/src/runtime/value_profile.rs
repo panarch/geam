@@ -7,6 +7,8 @@ pub(crate) trait RuntimeValueProfile:
     type ListHandle: Clone + fmt::Debug + PartialEq + 'static;
     type ListStorage: crate::runtime::RuntimeListStorage<Self>;
     type ExternalLease: RuntimeExternalLease;
+    type PanicSubject: fmt::Debug;
+    type Callable: crate::runtime::function::StoredCallable<Self>;
 
     fn external_values_equal(
         storage: &Self::ListStorage,
@@ -34,6 +36,8 @@ impl RuntimeValueProfile for LocalValues {
     type ListHandle = crate::runtime::state::list::ListHandleCore;
     type ListStorage = crate::runtime::state::list::RuntimeListStorage;
     type ExternalLease = crate::host::ExternalPayloadLease;
+    type PanicSubject = crate::Value;
+    type Callable = crate::runtime::function::LocalCallable;
 
     fn external_values_equal(
         storage: &Self::ListStorage,
@@ -62,6 +66,8 @@ impl RuntimeValueProfile for TransferValues {
     type ListHandle = crate::runtime::transfer::TransferListHandleCore;
     type ListStorage = crate::runtime::transfer::TransferListStorage;
     type ExternalLease = crate::runtime::transfer::TransferExternalPayloadLease;
+    type PanicSubject = crate::AsyncPanicValue;
+    type Callable = crate::runtime::TransferCallable;
 
     fn external_values_equal(
         storage: &Self::ListStorage,

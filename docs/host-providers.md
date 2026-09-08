@@ -118,6 +118,51 @@ before provider state is initialized or application code runs.
 Geam re-exports its author-facing value types from `geam::provider`, so this
 single dependency supplies types such as `EcoString`, `BigInt`, and `List`.
 
+## Return async Rust work
+
+An async provider function returns explicit work to Gleam. Its source
+declaration uses the ordinary `geam` package:
+
+```gleam
+import geam/future.{type Future}
+
+@external(erlang, "example_async_files", "read")
+pub fn read(path: String) -> Future(Result(String, String))
+```
+
+The same function macro accepts an ordinary Rust `async fn`. Here the
+provider uses the `async-fs` crate to read a file:
+
+```rust
+#[geam::module(path = "example_async_files")]
+mod files {
+    use geam::provider::EcoString;
+
+    #[geam::function]
+    async fn read(path: EcoString) -> Result<EcoString, EcoString> {
+        async_fs::read_to_string(path.as_str())
+            .await
+            .map(EcoString::from)
+            .map_err(|error| EcoString::from(error.to_string()))
+    }
+}
+```
+
+The macro maps the returned Rust Future to `Future(Result(String, String))`;
+it does not wait for the file read while returning an ordinary Gleam Result.
+No additional async metadata flag is needed. Gleam composes the work with
+`future.map`, `future.then`, or `future.all`, and a Rust embedding application
+explicitly drives it with its own executor.
+
+Follow [Add the package](future.md#add-the-package) to include `geam`
+in the Gleam package. The Future guide also explains the composition functions
+and shared results.
+
+The [async files provider](../examples/provider/async_files) and its
+[embedding application](../examples/embedding/async_host) are the complete
+runnable pair. Async work currently requires the explicit Rust embedding
+scope; the standalone runner does not drive it.
+
 ## Declare which Gleam versions it supports
 
 Cargo metadata connects the crate to its Gleam package and states the package

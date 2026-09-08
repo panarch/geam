@@ -1,25 +1,18 @@
 use crate::embedding::boundary::{DataType, FunctionBinding, PlainBindings};
 
 pub(super) fn push_function_field(output: &mut String, index: usize, function: &FunctionBinding) {
-    push_function_field_with(output, index, function, DataType::rust_type);
-}
-
-pub(super) fn push_async_function_field(
-    output: &mut String,
-    index: usize,
-    function: &FunctionBinding,
-) {
-    push_function_field_with(output, index, function, DataType::async_rust_type);
+    push_function_field_with(output, index, function, "Function", DataType::rust_type);
 }
 
 fn push_function_field_with(
     output: &mut String,
     index: usize,
     function: &FunctionBinding,
+    function_type: &'static str,
     rust_type: fn(&DataType) -> TypeExpression,
 ) {
     let type_ = TypeExpression::Apply(
-        "Function",
+        function_type,
         vec![
             TypeExpression::Tuple(function.arguments.iter().map(rust_type).collect()),
             rust_type(&function.return_type),
@@ -33,7 +26,7 @@ fn push_function_field_with(
         output.push_str(&format!("{prefix} {inline},\n"));
     } else if can_inline && 8 + inline.len() < 100 {
         output.push_str(&format!("{prefix}\n        {inline},\n"));
-    } else if prefix.len() + " Function<".len() <= 100 {
+    } else if prefix.len() + 1 + function_type.len() < 100 {
         output.push_str(&format!("{prefix} "));
         type_.push(output, 4, prefix.len() + 1, 100);
         output.push_str(",\n");
@@ -89,14 +82,6 @@ pub(super) fn push_input_shapes(output: &mut String, bindings: &PlainBindings) {
 
 impl DataType {
     fn rust_type(&self) -> TypeExpression {
-        self.rust_type_with_list("List")
-    }
-
-    fn async_rust_type(&self) -> TypeExpression {
-        self.rust_type_with_list("AsyncList")
-    }
-
-    fn rust_type_with_list(&self, list: &'static str) -> TypeExpression {
         match self {
             Self::Int => TypeExpression::Name("BigInt".to_owned()),
             Self::Float => TypeExpression::Name("f64".to_owned()),
@@ -105,29 +90,21 @@ impl DataType {
             Self::UtfCodepoint => TypeExpression::Name("char".to_owned()),
             Self::Bool => TypeExpression::Name("bool".to_owned()),
             Self::Nil => TypeExpression::Name("()".to_owned()),
-            Self::Tuple(elements) => TypeExpression::Tuple(
-                elements
-                    .iter()
-                    .map(|element| element.rust_type_with_list(list))
-                    .collect(),
-            ),
-            Self::Result(ok, error) => TypeExpression::Apply(
-                "Result",
-                vec![
-                    ok.rust_type_with_list(list),
-                    error.rust_type_with_list(list),
-                ],
-            ),
-            Self::Option(item) => {
-                TypeExpression::Apply("Option", vec![item.rust_type_with_list(list)])
+            Self::Tuple(elements) => {
+                TypeExpression::Tuple(elements.iter().map(|element| element.rust_type()).collect())
             }
-            Self::List(item) => TypeExpression::Apply(list, vec![item.rust_type_with_list(list)]),
+            Self::Result(ok, error) => {
+                TypeExpression::Apply("Result", vec![ok.rust_type(), error.rust_type()])
+            }
+            Self::Option(item) => TypeExpression::Apply("Option", vec![item.rust_type()]),
+            Self::List(item) => TypeExpression::Apply("List", vec![item.rust_type()]),
+            Self::Future(item) => TypeExpression::Apply("FutureType", vec![item.rust_type()]),
         }
     }
 
     fn input_type(&self, parameters: &mut Vec<String>) -> TypeExpression {
         match self {
-            Self::List(_) => {
+            Self::List(_) | Self::Future(_) => {
                 let name = format!("Input{}", parameters.len());
                 parameters.push(name.clone());
                 TypeExpression::Name(name)
@@ -232,9 +209,7 @@ impl TypeExpression {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        TypeExpression, push_async_function_field, push_function_field, push_input_shapes,
-    };
+    use super::{TypeExpression, push_function_field, push_input_shapes};
     use crate::embedding::boundary::{DataType, FunctionBinding, PlainBindings};
     use crate::embedding::identifier::RustIdentifier;
     use std::fs;
@@ -256,8 +231,10 @@ mod tests {
             "(Result<List<List<BigInt>>, EcoString>, Option<List<bool>>, (BitArrayValue,))"
         );
         assert_eq!(
-            data.async_rust_type().inline(),
-            "(Result<AsyncList<AsyncList<BigInt>>, EcoString>, Option<AsyncList<bool>>, (BitArrayValue,))"
+            DataType::Future(Box::new(data.clone()))
+                .rust_type()
+                .inline(),
+            "FutureType<(Result<List<List<BigInt>>, EcoString>, Option<List<bool>>, (BitArrayValue,))>"
         );
         let mut parameters = Vec::new();
         assert_eq!(
@@ -364,7 +341,7 @@ mod tests {
     }
 
     #[test]
-    fn keeps_a_single_nested_async_tuple_argument_inline() {
+    fn keeps_a_single_nested_tuple_argument_inline() {
         let data = DataType::Tuple(vec![
             DataType::List(Box::new(DataType::Int)),
             DataType::Option(Box::new(DataType::List(Box::new(DataType::String)))),
@@ -376,15 +353,15 @@ mod tests {
             arguments: vec![data.clone()],
             return_type: data,
         };
-        let mut source = "pub struct AsyncFunctions {\n".to_owned();
-        push_async_function_field(&mut source, 0, &function);
+        let mut source = "pub struct Functions {\n".to_owned();
+        push_function_field(&mut source, 0, &function);
         source.push_str("}\n");
         assert_eq!(
             source,
-            r#"pub struct AsyncFunctions {
+            r#"pub struct Functions {
     pub mixed_data: Function<
-        ((AsyncList<BigInt>, Option<AsyncList<EcoString>>, EcoString),),
-        (AsyncList<BigInt>, Option<AsyncList<EcoString>>, EcoString),
+        ((List<BigInt>, Option<List<EcoString>>, EcoString),),
+        (List<BigInt>, Option<List<EcoString>>, EcoString),
         Function0Input,
     >,
 }

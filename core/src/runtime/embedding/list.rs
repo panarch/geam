@@ -9,6 +9,10 @@ pub(crate) struct EmbeddingList<Profile: RuntimeValueProfile = LocalValues> {
 }
 
 impl<Profile: RuntimeValueProfile> EmbeddingList<Profile> {
+    pub(crate) fn from_borrowed(value: crate::runtime::BorrowedValue<'_, Profile>) -> Self {
+        Self::new(value.stored_list().clone())
+    }
+
     pub(super) fn new(value: StoredListValueId<Profile>) -> Self {
         Self {
             retained: RetainedList::new(value),
@@ -30,6 +34,21 @@ impl<Profile: RuntimeValueProfile> EmbeddingList<Profile> {
     #[cfg(test)]
     pub(crate) fn item_reads(&self) -> usize {
         self.retained.item_reads()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn same_allocation(&self, other: &Self) -> bool {
+        self.retained.handle() == other.retained.handle()
+    }
+}
+
+impl EmbeddingList<crate::runtime::TransferValues> {
+    pub(crate) fn read_item<Output>(
+        &self,
+        index: usize,
+        read: impl FnOnce(crate::runtime::BorrowedValue<'_, crate::runtime::TransferValues>) -> Output,
+    ) -> Option<Output> {
+        crate::runtime::BorrowedValue::read_list_item(self.retained.handle(), index, read)
     }
 }
 

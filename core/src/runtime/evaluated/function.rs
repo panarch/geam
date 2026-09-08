@@ -637,6 +637,10 @@ impl<Profile: RuntimeValueProfile> EvaluatedFunctionValue<Profile> {
         &self.kind
     }
 
+    pub(in crate::runtime) fn into_kind(self) -> EvaluatedFunctionValueKind<Profile> {
+        self.kind
+    }
+
     pub(in crate::runtime) fn type_(&self) -> &FunctionType {
         match &self.kind {
             EvaluatedFunctionValueKind::Generic(value) => value.type_(),

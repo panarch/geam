@@ -2,7 +2,6 @@ mod bit_array;
 mod environment;
 mod instruction;
 mod pattern;
-mod resumable;
 mod terminator;
 mod value;
 
@@ -11,7 +10,6 @@ pub(crate) use environment::RetainedValues;
 pub(super) use value::GraphValue;
 
 pub(in crate::runtime) use self::environment::BlockEnvironment;
-pub(in crate::runtime) use self::resumable::execute as execute_resumable;
 pub(in crate::runtime) use self::terminator::RuntimeGraphState;
 use self::terminator::{GraphAction, NeverCall, terminator_action};
 use crate::plan::execution::graph::{BlockGraphExitId, ParamLocal, ProfiledBlockGraph};
@@ -21,8 +19,8 @@ pub(super) fn execute<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
     graph: &ProfiledBlockGraph<RuntimeGraph<Plan>>,
-    inputs: RetainedValues,
-) -> ExecutionResult<CompletedGraph> {
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<CompletedGraph<Plan::Values>, Plan::Values> {
     let mut block_id = graph.entry();
     let mut environment = BlockEnvironment::from_retained(inputs);
 
@@ -73,13 +71,6 @@ pub(in crate::runtime) struct CompletedGraph<
 }
 
 impl<Profile: crate::runtime::RuntimeValueProfile> CompletedGraph<Profile> {
-    pub(in crate::runtime) fn new(
-        exit: BlockGraphExitId,
-        environment: BlockEnvironment<Profile>,
-    ) -> Self {
-        Self { exit, environment }
-    }
-
     pub(in crate::runtime) fn exit(&self) -> BlockGraphExitId {
         self.exit
     }
@@ -117,15 +108,13 @@ impl<Profile: crate::runtime::RuntimeValueProfile> CompletedGraph<Profile> {
 pub(in crate::runtime) fn execute_external_list_instruction<Plan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &mut BlockEnvironment,
+    environment: &mut BlockEnvironment<Plan::Values>,
     instruction: &crate::plan::execution::graph::ExternalListInstruction,
     expected: &crate::plan::ValueType,
-) -> ExecutionResult<()>
+) -> ExecutionResult<(), Plan::Values>
 where
-    Plan: ExecutableRuntimePlan
-        + crate::plan::execution::runtime::RuntimeExecutionPlan<
-            Profile = crate::plan::execution::host::HostedExecutionProfile,
-        >,
+    Plan: ExecutableRuntimePlan,
+    Plan::Profile: crate::plan::execution::function::DirectHostedExecutionProfile,
 {
     instruction::execute_external_list(plan, state, environment, instruction, expected)
 }
@@ -133,14 +122,12 @@ where
 pub(in crate::runtime) fn execute_external_function_instruction<Plan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &mut BlockEnvironment,
+    environment: &mut BlockEnvironment<Plan::Values>,
     instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
-) -> ExecutionResult<()>
+) -> ExecutionResult<(), Plan::Values>
 where
-    Plan: ExecutableRuntimePlan
-        + crate::plan::execution::runtime::RuntimeExecutionPlan<
-            Profile = crate::plan::execution::host::HostedExecutionProfile,
-        >,
+    Plan: ExecutableRuntimePlan,
+    Plan::Profile: crate::plan::execution::function::DirectHostedExecutionProfile,
 {
     instruction::execute_external_function(plan, state, environment, instruction)
 }

@@ -5,6 +5,81 @@ use crate::host::{
     HostTupleToken, HostValueArgumentSlot, HostValueToken,
 };
 
+pub(crate) trait HostTokenRuntime {
+    fn int(&self, value: HostValueToken) -> num_bigint::BigInt;
+    fn float(&self, value: HostValueToken) -> f64;
+    fn string(&self, value: HostValueToken) -> ecow::EcoString;
+    fn bit_array(&self, value: HostValueToken) -> crate::BitArrayValue;
+    fn utf_codepoint(&self, value: HostValueToken) -> char;
+    fn bool(&self, value: HostValueToken) -> bool;
+    fn nil(&self, value: HostValueToken);
+    fn list_token(&self, value: HostValueToken) -> HostListToken;
+    fn tuple_token(&self, value: HostValueToken) -> HostTupleToken;
+    fn custom_token(&self, value: HostValueToken) -> HostCustomToken;
+    fn external_token(&self, value: HostValueToken) -> HostExternalToken;
+    fn function_token(&self, value: HostValueToken) -> HostFunctionToken;
+}
+
+pub(crate) struct HostCallTokenRuntime<'call, Profile: HostProfile> {
+    runtime: &'call dyn HostCallRuntime<Profile>,
+}
+
+impl<'call, Profile: HostProfile> HostCallTokenRuntime<'call, Profile> {
+    pub(crate) fn new(runtime: &'call dyn HostCallRuntime<Profile>) -> Self {
+        Self { runtime }
+    }
+}
+
+impl<Profile: HostProfile> HostTokenRuntime for HostCallTokenRuntime<'_, Profile> {
+    fn int(&self, value: HostValueToken) -> num_bigint::BigInt {
+        self.runtime.int(value)
+    }
+
+    fn float(&self, value: HostValueToken) -> f64 {
+        self.runtime.float(value)
+    }
+
+    fn string(&self, value: HostValueToken) -> ecow::EcoString {
+        self.runtime.string(value)
+    }
+
+    fn bit_array(&self, value: HostValueToken) -> crate::BitArrayValue {
+        self.runtime.bit_array(value)
+    }
+
+    fn utf_codepoint(&self, value: HostValueToken) -> char {
+        self.runtime.utf_codepoint(value)
+    }
+
+    fn bool(&self, value: HostValueToken) -> bool {
+        self.runtime.bool(value)
+    }
+
+    fn nil(&self, value: HostValueToken) {
+        self.runtime.nil(value);
+    }
+
+    fn list_token(&self, value: HostValueToken) -> HostListToken {
+        self.runtime.list_token(value)
+    }
+
+    fn tuple_token(&self, value: HostValueToken) -> HostTupleToken {
+        self.runtime.tuple_token(value)
+    }
+
+    fn custom_token(&self, value: HostValueToken) -> HostCustomToken {
+        self.runtime.custom_token(value)
+    }
+
+    fn external_token(&self, value: HostValueToken) -> HostExternalToken {
+        self.runtime.external_token(value)
+    }
+
+    fn function_token(&self, value: HostValueToken) -> HostFunctionToken {
+        self.runtime.function_token(value)
+    }
+}
+
 pub(crate) trait HostCallRuntime<Profile: HostProfile> {
     fn state(&mut self) -> &mut Profile::RunState;
     fn external_stores(&self) -> &Profile::ExternalStores;

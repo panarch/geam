@@ -5,8 +5,8 @@ pub use error::BindingError;
 use super::{Arguments, EmbeddingValue, Function, Module, ReturnValue};
 use crate::HostProfile;
 use crate::plan::{
-    AsyncHostedLibraryModulePlan, FunctionTemplateId, FunctionTemplateSignature, FunctionType,
-    HostedLibraryModulePlan, LibraryEntry, LibraryModulePlan, LibraryValueType,
+    FunctionTemplateId, FunctionTemplateSignature, FunctionType, HostedLibraryModulePlan,
+    LibraryEntry, LibraryModulePlan, LibraryValueType,
 };
 use crate::{ExecutionPlan, PlanError, TypedProgram};
 use ecow::EcoString;
@@ -42,19 +42,19 @@ pub(super) struct BindingBuilder<Plan> {
     owner: Arc<()>,
 }
 
-pub(super) struct Bindings<Plan> {
+pub(super) struct Bindings<Plan: BindingPlan> {
     source: BindingSource<Plan>,
     selected_names: HashSet<EcoString>,
-    first: LibraryEntry,
-    remaining: Vec<LibraryEntry>,
+    first: LibraryEntry<Plan::External>,
+    remaining: Vec<LibraryEntry<Plan::External>>,
     counts: LibraryEntryCounts,
     owner: Arc<()>,
 }
 
-pub(super) struct BindingParts<Plan> {
+pub(super) struct BindingParts<Plan: BindingPlan> {
     pub(super) plan: Plan,
-    pub(super) first: LibraryEntry,
-    pub(super) remaining: Vec<LibraryEntry>,
+    pub(super) first: LibraryEntry<Plan::External>,
+    pub(super) remaining: Vec<LibraryEntry<Plan::External>>,
     pub(super) owner: Arc<()>,
 }
 
@@ -64,9 +64,9 @@ pub(super) struct BindingParts<Plan> {
 /// values are [`super::BigInt`], `f64`, [`super::EcoString`],
 /// [`super::BitArrayValue`], `char`, `bool`, `()`, Rust tuples with arity
 /// `1..=7`, `Result`, `Option`, and lists. Compound values may contain one
-/// another. Use [`super::List`] for immediate calls and [`super::AsyncList`]
-/// for resumable calls. Both accept a consumed Vec or a borrowed list from the
-/// same module, and return a retained list.
+/// another. [`super::List`] describes a source List in either composition;
+/// transferable calls return [`super::SharedList`]. [`super::FutureType`]
+/// describes explicit source work, including nested work values.
 ///
 /// Unsupported Rust values and argument arities are rejected by Rust type
 /// checking:
@@ -99,6 +99,8 @@ struct BindingSource<Plan> {
 }
 
 pub(super) trait BindingPlan {
+    type External;
+
     fn function_signature(&self, name: &EcoString) -> Option<&FunctionTemplateSignature>;
 
     fn custom_type(
@@ -115,6 +117,7 @@ struct LibraryEntryCounts {
     bit_arrays: usize,
     utf_codepoints: usize,
     customs: usize,
+    externals: usize,
     bools: usize,
     nils: usize,
     tuples: usize,
@@ -154,7 +157,7 @@ impl ModuleBuilder {
         Return: ReturnValue,
     {
         self.inner
-            .function(declaration)
+            .function(declaration, Return::plain_library_type())
             .map(|(inner, function)| (ModuleBindings { inner }, function))
     }
 }
@@ -170,7 +173,8 @@ impl ModuleBindings {
         ArgumentsType: Arguments,
         Return: ReturnValue,
     {
-        self.inner.function(declaration)
+        self.inner
+            .function(declaration, Return::plain_library_type())
     }
 
     /// Seals every selected function into one immutable execution.
@@ -254,6 +258,7 @@ impl<Plan: BindingPlan> BindingBuilder<Plan> {
     pub(super) fn function<ArgumentsType, Return>(
         self,
         declaration: FunctionDeclaration<ArgumentsType, Return>,
+        return_: LibraryValueType<Plan::External>,
     ) -> Result<(Bindings<Plan>, Function<ArgumentsType, Return>), BindingError>
     where
         ArgumentsType: Arguments,
@@ -261,7 +266,7 @@ impl<Plan: BindingPlan> BindingBuilder<Plan> {
     {
         let expected = FunctionType::new(ArgumentsType::value_types(), Return::value_type());
         let input_variants = ArgumentsType::input_variants();
-        let mut standard_variants = input_variants.clone();
+        let mut standard_variants = ArgumentsType::standard_variants();
         standard_variants.extend(Return::standard_variants());
         let (name, template) =
             self.source
@@ -269,7 +274,7 @@ impl<Plan: BindingPlan> BindingBuilder<Plan> {
         let mut counts = LibraryEntryCounts::default();
         let entry = LibraryEntry::new(
             template,
-            Return::library_type(),
+            return_,
             input_variants,
             ArgumentsType::input_lists(),
         );
@@ -296,6 +301,7 @@ impl<Plan: BindingPlan> Bindings<Plan> {
     pub(super) fn function<ArgumentsType, Return>(
         &mut self,
         declaration: FunctionDeclaration<ArgumentsType, Return>,
+        return_: LibraryValueType<Plan::External>,
     ) -> Result<Function<ArgumentsType, Return>, BindingError>
     where
         ArgumentsType: Arguments,
@@ -307,12 +313,12 @@ impl<Plan: BindingPlan> Bindings<Plan> {
         }
         let expected = FunctionType::new(ArgumentsType::value_types(), Return::value_type());
         let input_variants = ArgumentsType::input_variants();
-        let mut standard_variants = input_variants.clone();
+        let mut standard_variants = ArgumentsType::standard_variants();
         standard_variants.extend(Return::standard_variants());
         let (name, template) = self.source.validate(name, expected, &standard_variants)?;
         let entry = LibraryEntry::new(
             template,
-            Return::library_type(),
+            return_,
             input_variants,
             ArgumentsType::input_lists(),
         );
@@ -334,6 +340,8 @@ impl<Plan: BindingPlan> Bindings<Plan> {
 }
 
 impl BindingPlan for LibraryModulePlan {
+    type External = std::convert::Infallible;
+
     fn function_signature(&self, name: &EcoString) -> Option<&FunctionTemplateSignature> {
         self.functions()
             .iter()
@@ -350,6 +358,8 @@ impl BindingPlan for LibraryModulePlan {
 }
 
 impl<Profile: HostProfile> BindingPlan for HostedLibraryModulePlan<Profile> {
+    type External = crate::plan::ExternalType;
+
     fn function_signature(&self, name: &EcoString) -> Option<&FunctionTemplateSignature> {
         self.functions()
             .iter()
@@ -365,7 +375,9 @@ impl<Profile: HostProfile> BindingPlan for HostedLibraryModulePlan<Profile> {
     }
 }
 
-impl<Profile: HostProfile> BindingPlan for AsyncHostedLibraryModulePlan<Profile> {
+impl<Profile: HostProfile> BindingPlan for crate::plan::TransferHostedLibraryModulePlan<Profile> {
+    type External = crate::plan::ExternalType;
+
     fn function_signature(&self, name: &EcoString) -> Option<&FunctionTemplateSignature> {
         self.functions()
             .iter()
@@ -392,7 +404,10 @@ fn public_function_names(module: &TypedModule) -> HashSet<EcoString> {
 }
 
 impl LibraryEntryCounts {
-    fn reserve(&mut self, entry: LibraryEntry) -> (usize, LibraryEntry) {
+    fn reserve<External>(
+        &mut self,
+        entry: LibraryEntry<External>,
+    ) -> (usize, LibraryEntry<External>) {
         let count = match entry.return_() {
             LibraryValueType::Int => &mut self.ints,
             LibraryValueType::Float => &mut self.floats,
@@ -400,6 +415,7 @@ impl LibraryEntryCounts {
             LibraryValueType::BitArray => &mut self.bit_arrays,
             LibraryValueType::UtfCodepoint => &mut self.utf_codepoints,
             LibraryValueType::Custom(_) => &mut self.customs,
+            LibraryValueType::External(_) => &mut self.externals,
             LibraryValueType::Bool => &mut self.bools,
             LibraryValueType::Nil => &mut self.nils,
             LibraryValueType::Tuple(_) => &mut self.tuples,

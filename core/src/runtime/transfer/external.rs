@@ -19,9 +19,17 @@ pub(crate) struct TransferExternalPayloadLease {
     value: Arc<dyn TransferExternalPayload + Send + Sync>,
 }
 
+pub(crate) struct TransferExternalPayloadView<Payload> {
+    guard: parking_lot::ArcReentrantMutexGuard<
+        parking_lot::RawMutex,
+        parking_lot::RawThreadId,
+        Payload,
+    >,
+}
+
 struct StoredTransferExternalPayload<Payload> {
     id: u64,
-    value: ReentrantMutex<Payload>,
+    value: Arc<ReentrantMutex<Payload>>,
     values: Arc<Mutex<HashMap<u64, Arc<StoredTransferExternalPayload<Payload>>>>>,
     source_equal: for<'context> fn(&TransferExternalEquality<'context>, &Payload, &Payload) -> bool,
     source_hash: for<'context> fn(&TransferExternalHashing<'context>, &Payload) -> u64,
@@ -60,6 +68,12 @@ impl<Payload> TransferExternalStore<Payload>
 where
     Payload: Send + 'static,
 {
+    pub(crate) fn clone_handle(&self) -> Self {
+        Self {
+            values: Arc::clone(&self.values),
+        }
+    }
+
     pub(crate) fn insert(
         &self,
         value: Payload,
@@ -74,7 +88,7 @@ where
         let id = crate::runtime::ExternalValueIdentity::allocate_id();
         let value = Arc::new(StoredTransferExternalPayload {
             id,
-            value: ReentrantMutex::new(value),
+            value: Arc::new(ReentrantMutex::new(value)),
             values: Arc::clone(&self.values),
             source_equal,
             source_hash,
@@ -99,6 +113,24 @@ where
     ) -> Output {
         let value = Arc::clone(&lock(&self.values)[&lease.identity()]);
         view(&value.value.lock())
+    }
+
+    pub(crate) fn view(
+        &self,
+        lease: &TransferExternalPayloadLease,
+    ) -> TransferExternalPayloadView<Payload> {
+        let value = Arc::clone(&lock(&self.values)[&lease.identity()]);
+        TransferExternalPayloadView {
+            guard: value.value.lock_arc(),
+        }
+    }
+}
+
+impl<Payload> std::ops::Deref for TransferExternalPayloadView<Payload> {
+    type Target = Payload;
+
+    fn deref(&self) -> &Self::Target {
+        &self.guard
     }
 }
 

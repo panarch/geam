@@ -13,9 +13,9 @@ use std::marker::PhantomData;
 
 mod runtime;
 
-pub(crate) use runtime::HostCallRuntime;
 #[cfg(test)]
 pub(crate) use runtime::test;
+pub(crate) use runtime::{HostCallRuntime, HostCallTokenRuntime, HostTokenRuntime};
 
 pub trait HostProfile: Send + Sync + 'static {
     type RunState;

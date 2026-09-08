@@ -1,9 +1,9 @@
 # Publishing
 
-Each Geam release publishes nine artifacts at one version: seven workspace
-crates, the `geam-example-text-pattern` reference provider on crates.io, and the
+Each Geam release publishes the workspace crates, the
+`geam-example-text-pattern` reference provider on crates.io, and the
 `example_text_pattern` package on Hex. The workspace crates are `geam-core`,
-`geam-macros`, `geam-stdlib`, `geam-json`, `geam-time`, `geam-cli`, and the root
+`geam-macros`, `geam-stdlib`, `geam-json`, `geam-time`, `geam-runtime-api`, `geam-cli`, and the root
 `geam` facade. The root owns the installable `geam` binary.
 
 `Cargo.toml` owns the release version; this guide does not repeat the current
@@ -61,7 +61,7 @@ Run **Geam: Publish release** from `main` and select an `operation`:
 
 | Operation | `crates` | Work performed |
 | --- | --- | --- |
-| `Publish release` | Empty | Publish all seven workspace crates, call the reference-example workflow, then create the GitHub Release. |
+| `Publish release` | Empty | Publish all workspace crates, call the reference-example workflow, then create the GitHub Release. |
 | `Retry workspace crates` | Remaining workspace crate names, space-separated | Publish those crates, call the reference-example workflow, then create the GitHub Release. |
 | `Create GitHub Release` | Empty | Verify the workspace and reference example, then create only the GitHub Release. |
 
@@ -96,7 +96,7 @@ dry-run creates tags, uploads, or GitHub Releases. A successful dry-run does not
 prove actual OIDC or Hex credentials, nor upload availability.
 
 For a new release, run `Publish release` again with **dry-run** disabled and the
-**same full commit SHA**. The workspace job publishes its seven crates through
+**same full commit SHA**. The workspace job publishes its crates through
 Trusted Publishing. The reference workflow publishes the provider against the
 released workspace, waits until crates.io serves it, then runs
 `gleam publish --yes` with the Hex API key stored in the release environment.
@@ -162,9 +162,26 @@ custom registry client, missing-package inference, or automatic recovery loop.
 Publication attempts are serialized. There is no upload retry loop, personal
 token fallback, or publication from a non-main workflow ref.
 
+## Geam Runtime API Package
+
+The `geam` Gleam package lives in `builtins/geam/gleam`. Release preparation
+updates its version and the checkout consumers together. Its Hex publication
+is separate from the reference-example workflow:
+
+```sh
+cd builtins/geam/gleam
+gleam export hex-tarball
+gleam publish
+```
+
+Publish from the reviewed release checkout after the corresponding Rust crates
+are available. The first release also needs the `geam-runtime-api` crate's
+Trusted Publisher registration, just like the other workspace crates. Local
+tests and tarball generation do not verify registry ownership or credentials.
+
 ## Authentication
 
-The seven workspace crates use this Trusted Publisher configuration:
+The workspace crates use this Trusted Publisher configuration:
 
 - repository owner: `panarch`
 - repository: `geam`

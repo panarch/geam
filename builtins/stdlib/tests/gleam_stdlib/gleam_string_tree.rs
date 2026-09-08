@@ -78,12 +78,9 @@ fn tracks_official_gleam_string_tree_public_surface() {
 
 #[test]
 fn runs_official_gleam_string_tree() {
-    let value = run_hosted_fixture(
-        "gleam_string_tree",
-        DEPENDENCIES,
-        hosts(),
-        &mut GleamStdlibRunState::from_seed([0; 32]),
-    );
+    let value = run_hosted_fixture("gleam_string_tree", DEPENDENCIES, hosts(), || {
+        GleamStdlibRunState::from_seed([0; 32])
+    });
 
     assert_eq!(
         value.inspect().to_string(),

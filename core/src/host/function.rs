@@ -1,6 +1,7 @@
 mod adapter;
 mod argument;
 mod return_;
+mod transfer;
 
 use crate::host::{HostProfile, HostProvider};
 use crate::plan::{FunctionType, TypeScheme};
@@ -10,7 +11,8 @@ use std::fmt;
 
 #[cfg(test)]
 pub(crate) use argument::CallArguments;
-pub(crate) use argument::{HostArgument, HostParameterLayout};
+#[cfg(test)]
+pub(crate) use argument::HostParameterLayout;
 pub(crate) use argument::{
     HostBitArrayArgumentSlot, HostBoolArgumentSlot, HostCallArguments, HostCustomArgumentSlot,
     HostExternalArgumentSlot, HostFloatArgumentSlot, HostFunctionArgumentSlot, HostIntArgumentSlot,
@@ -18,12 +20,18 @@ pub(crate) use argument::{
     HostTupleArgumentSlot, HostUtfCodepointArgumentSlot, HostValueArgumentSlot,
 };
 pub(crate) use return_::HostNeverFunction;
-pub(crate) use return_::{
-    HostFunctionImplementation, HostValueFunction, OwnedHostCallback,
-    OwnedHostFunctionImplementation,
-};
+pub(crate) use return_::{HostFunctionImplementation, HostValueFunction};
 #[cfg(test)]
 pub(crate) use return_::{expect_never_implementation, expect_value_implementation};
+pub(crate) use transfer::{
+    TransferHostFunctionDefinition, TransferHostFunctionImplementation, TransferHostNeverFunction,
+    TransferHostValueFunction,
+};
+#[doc(hidden)]
+pub use transfer::{
+    TransferScopedConstructingHostFunction, TransferScopedDivergingHostFunction,
+    TransferScopedHostFunction,
+};
 
 /// A Rust function that can be registered as a Geam host function.
 ///
@@ -190,11 +198,6 @@ pub(crate) struct HostFunctionDefinition<Profile: HostProfile> {
     implementation: HostFunctionImplementation<Profile>,
 }
 
-pub(crate) struct OwnedHostFunctionDefinition<Profile: HostProfile> {
-    schema: HostFunctionSchema,
-    implementation: OwnedHostFunctionImplementation<Profile>,
-}
-
 pub(crate) struct RegisteredHostConstructions {
     types: Box<[crate::host::HostTypeDescriptor]>,
     custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
@@ -280,7 +283,7 @@ impl HostFunctionSchema {
 }
 
 impl RegisteredHostConstructions {
-    fn new(
+    pub(crate) fn new(
         types: Box<[crate::host::HostTypeDescriptor]>,
         custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
     ) -> Self {
@@ -324,7 +327,7 @@ impl RegisteredHostConstructions {
             .into_boxed_slice()
     }
 
-    fn validate_for(
+    pub(crate) fn validate_for(
         &self,
         schema: &HostFunctionSchema,
     ) -> Result<(), crate::HostRegistrationError> {
@@ -503,78 +506,9 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
     }
 }
 
-impl<Profile: HostProfile> OwnedHostFunctionDefinition<Profile> {
-    pub(crate) fn new<Arguments, Return, Function>(
-        name: EcoString,
-        function: Function,
-    ) -> Result<Self, crate::HostRegistrationError>
-    where
-        Function: HostFunction<Arguments, Return>,
-    {
-        let registration = <Function as adapter::HostFunctionAdapter<Arguments, Return>>::register::<
-            Profile,
-        >(function);
-        Self::from_registration(name, registration)
-    }
-
-    pub(crate) fn new_fallible<Arguments, Return, Function>(
-        name: EcoString,
-        function: Function,
-    ) -> Result<Self, crate::HostRegistrationError>
-    where
-        Function: FallibleHostFunction<Arguments, Return>,
-    {
-        let registration =
-            <Function as adapter::FallibleHostFunctionAdapter<Arguments, Return>>::register::<
-                Profile,
-            >(function);
-        Self::from_registration(name, registration)
-    }
-
-    fn from_registration(
-        name: EcoString,
-        registration: adapter::HostFunctionRegistration<Profile>,
-    ) -> Result<Self, crate::HostRegistrationError> {
-        HostFunctionSchema::from_registration(
-            name,
-            HostFunctionSchemaRegistration {
-                layout: registration.parameters,
-                parameters: registration.parameter_types,
-                return_: registration.return_type,
-                custom_schemas: registration.custom_schemas,
-            },
-        )
-        .map(|schema| Self {
-            schema,
-            implementation: registration.implementation,
-        })
-    }
-
-    pub(crate) fn schema(&self) -> &HostFunctionSchema {
-        &self.schema
-    }
-
-    pub(crate) fn into_parts(
-        self,
-    ) -> (
-        HostFunctionSchema,
-        RegisteredHostConstructions,
-        OwnedHostFunctionImplementation<Profile>,
-    ) {
-        (
-            self.schema,
-            RegisteredHostConstructions::empty(),
-            self.implementation,
-        )
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{
-        HostFunctionDefinition, HostFunctionSchema, OwnedHostFunctionDefinition,
-        RegisteredHostConstructions,
-    };
+    use super::{HostFunctionDefinition, HostFunctionSchema, RegisteredHostConstructions};
     use crate::BitArrayValue;
     use crate::host::function::argument::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
@@ -897,25 +831,6 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "host function identity uses type parameter indices [2]; indices must be contiguous from zero",
-        );
-    }
-
-    #[test]
-    fn owned_definition_rejects_non_contiguous_type_parameter_indices() {
-        let mut registration = <_ as super::adapter::HostFunctionAdapter<(), bool>>::register::<
-            TestHostProfile,
-        >(|| true);
-        registration.return_type = HostTypeDescriptor::Parameter(2);
-        let error = OwnedHostFunctionDefinition::from_registration("identity".into(), registration)
-            .err()
-            .expect("sparse type parameters should be rejected");
-
-        assert_eq!(
-            error,
-            HostRegistrationError::NonContiguousTypeParameters {
-                function: "identity".into(),
-                parameters: vec![2].into_boxed_slice(),
-            },
         );
     }
 }

@@ -1,72 +1,96 @@
 use crate::host::{
-    ExternalPayloadLease, HostCustomToken, HostExternalToken, HostFunctionToken, HostListToken,
-    HostScopedValue, HostStoredValueFamily, HostTupleToken, HostValueFamily, HostValueToken,
+    HostCustomToken, HostExternalToken, HostFunctionToken, HostListToken, HostScopedValue,
+    HostStoredValueFamily, HostTupleToken, HostValueFamily, HostValueToken,
 };
 use crate::plan::execution::type_::ListStorageTypeId;
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedFunctionValue,
     EvaluatedFunctionValueKind, EvaluatedGenericFunction, EvaluatedValue,
 };
-use crate::runtime::function::InvocableFunctionValue;
-use crate::runtime::graph::RetainedValues;
+use crate::runtime::function::{InvocableFunctionValue, StoredCallable};
+use crate::runtime::graph::ProfiledRetainedValues;
 use crate::runtime::retained_list::RetainedList;
 use crate::runtime::state::list::{
     CustomListAllocation, ExternalListAllocation, ListValueId, ParameterListValueId,
-    RuntimeListStorage, StoredListValueId,
+    StoredListValueId,
 };
+use crate::runtime::{LocalValues, RuntimeListStorage as _, RuntimeValueProfile};
 use ecow::EcoString;
 use num_bigint::BigInt;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-#[derive(Default)]
-pub(super) struct ScopedValues {
+pub(super) struct ScopedValues<Values: RuntimeValueProfile = LocalValues> {
     ints: Vec<BigInt>,
     floats: Vec<f64>,
     strings: Vec<EcoString>,
     bit_arrays: Vec<EvaluatedBitArray>,
     utf_codepoints: Vec<char>,
     bools: Vec<bool>,
-    parameter_lists: Vec<ParameterListValueId>,
-    lists: Vec<StoredListValueId>,
+    parameter_lists: Vec<ParameterListValueId<Values>>,
+    lists: Vec<StoredListValueId<Values>>,
     list_tokens: Vec<HostListToken>,
-    stored_list_values: HashMap<HostValueToken, StoredListValueId>,
-    tuples: Vec<Vec<EvaluatedValue>>,
-    customs: Vec<EvaluatedCustomValue>,
-    externals: Vec<EvaluatedExternalValue>,
-    functions: Vec<InvocableFunctionValue>,
-    symbolic_functions: Vec<EvaluatedGenericFunction>,
-    function_values: HashMap<HostValueToken, EvaluatedFunctionValue>,
+    stored_list_values: HashMap<HostValueToken, StoredListValueId<Values>>,
+    tuples: Vec<Vec<EvaluatedValue<Values>>>,
+    customs: Vec<EvaluatedCustomValue<Values>>,
+    externals: Vec<EvaluatedExternalValue<Values>>,
+    functions: Vec<Values::Callable>,
+    symbolic_functions: Vec<EvaluatedGenericFunction<Values>>,
+    function_indices: HashMap<HostValueToken, FunctionIndex>,
 }
 
-pub(crate) struct StoredRuntimeValue {
-    value: EvaluatedValue,
+#[derive(Clone, Copy)]
+enum FunctionIndex {
+    Invocable(usize),
+    Symbolic(usize),
+}
+
+impl FunctionIndex {
+    fn token(self) -> HostValueToken {
+        match self {
+            Self::Invocable(index) => HostValueToken {
+                family: HostValueFamily::Function,
+                index,
+            },
+            Self::Symbolic(index) => HostValueToken {
+                family: HostValueFamily::SymbolicFunction,
+                index,
+            },
+        }
+    }
+}
+
+pub(crate) struct StoredRuntimeValue<Values: RuntimeValueProfile = LocalValues> {
+    value: EvaluatedValue<Values>,
     type_: crate::plan::ValueType,
 }
 
-pub(crate) struct StoredRuntimeList {
-    retained: RetainedList<ListValueId>,
-    item_values: RefCell<ScopedValues>,
+pub(crate) struct StoredRuntimeList<Values: RuntimeValueProfile = LocalValues> {
+    retained: RetainedList<ListValueId<Values>, Values>,
+    item_values: RefCell<ScopedValues<Values>>,
 }
 
-pub(crate) struct StoredRuntimeListItem<'value> {
-    values: &'value mut ScopedValues,
+pub(crate) struct StoredRuntimeListItem<'value, Values: RuntimeValueProfile = LocalValues> {
+    values: &'value mut ScopedValues<Values>,
     token: HostValueToken,
 }
 
-pub(crate) struct StoredRuntimeListTupleItems<'value> {
-    item_values: &'value mut ScopedValues,
-    values: Vec<EvaluatedValue>,
+pub(crate) struct StoredRuntimeListTupleItems<'value, Values: RuntimeValueProfile = LocalValues> {
+    item_values: &'value mut ScopedValues<Values>,
+    values: Vec<EvaluatedValue<Values>>,
 }
 
-pub(crate) struct StoredRuntimeListCustomFields<'value> {
+pub(crate) struct StoredRuntimeListCustomFields<'value, Values: RuntimeValueProfile = LocalValues> {
     constructor: usize,
-    item_values: &'value mut ScopedValues,
-    values: Vec<EvaluatedValue>,
+    item_values: &'value mut ScopedValues<Values>,
+    values: Vec<EvaluatedValue<Values>>,
 }
 
-impl StoredRuntimeValue {
-    pub(in crate::runtime) fn new(value: EvaluatedValue, type_: crate::plan::ValueType) -> Self {
+impl<Values: RuntimeValueProfile> StoredRuntimeValue<Values> {
+    pub(in crate::runtime) fn new(
+        value: EvaluatedValue<Values>,
+        type_: crate::plan::ValueType,
+    ) -> Self {
         Self { value, type_ }
     }
 
@@ -75,12 +99,26 @@ impl StoredRuntimeValue {
         Self::new(EvaluatedValue::Int(value), crate::plan::ValueType::Int)
     }
 
-    pub(in crate::runtime) fn value(&self) -> &EvaluatedValue {
+    pub(in crate::runtime) fn value(&self) -> &EvaluatedValue<Values> {
         &self.value
     }
 
     pub(crate) fn type_(&self) -> &crate::plan::ValueType {
         &self.type_
+    }
+
+    pub(crate) fn has_external_schema<Schema>(&self) -> bool
+    where
+        Schema: crate::host::HostExternalSchema,
+    {
+        let crate::plan::ValueType::External(type_) = &self.type_ else {
+            return false;
+        };
+        let name = type_.type_name();
+        name.package() == Schema::PACKAGE
+            && name.module() == Schema::MODULE
+            && name.name() == Schema::NAME
+            && type_.arguments().len() == Schema::PARAMETER_COUNT
     }
 
     pub(crate) fn family(&self) -> HostStoredValueFamily {
@@ -122,8 +160,18 @@ impl StoredRuntimeValue {
     }
 }
 
-impl StoredRuntimeList {
-    pub(in crate::runtime) fn new(value: ListValueId) -> Self {
+impl StoredRuntimeValue<crate::runtime::TransferValues> {
+    pub(crate) fn clone_transfer(&self) -> Self {
+        Self::new(self.value.clone(), self.type_.clone())
+    }
+
+    pub(crate) fn transfer_semantic_value(&self) -> crate::runtime::TransferStoredRuntimeValue {
+        crate::runtime::TransferStoredRuntimeValue::new(self.value.clone())
+    }
+}
+
+impl<Values: RuntimeValueProfile> StoredRuntimeList<Values> {
+    pub(in crate::runtime) fn new(value: ListValueId<Values>) -> Self {
         Self {
             retained: RetainedList::new(value),
             item_values: RefCell::new(ScopedValues::default()),
@@ -137,7 +185,7 @@ impl StoredRuntimeList {
     pub(crate) fn decode_item<Output>(
         &self,
         index: usize,
-        decode: impl FnOnce(StoredRuntimeListItem<'_>) -> Output,
+        decode: impl FnOnce(StoredRuntimeListItem<'_, Values>) -> Output,
     ) -> Option<Output> {
         let value = self.retained.item(index)?;
         let mut item_values = self.item_values.borrow_mut();
@@ -145,11 +193,17 @@ impl StoredRuntimeList {
         Some(decode(item))
     }
 
+    pub(in crate::runtime) fn handle(&self) -> ListValueId<Values> {
+        self.retained.handle().clone()
+    }
+}
+
+impl StoredRuntimeList<LocalValues> {
     #[cfg(test)]
     pub(crate) fn test_ints(values: Vec<BigInt>) -> Self {
         let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [1] }");
         let type_id = plan.int_list_function_id(0).type_id();
-        let mut storage = RuntimeListStorage::default();
+        let mut storage = crate::runtime::state::list::RuntimeListStorage::default();
         let value = storage.int(type_id, values);
         Self::new(value.into())
     }
@@ -160,8 +214,8 @@ impl StoredRuntimeList {
     }
 }
 
-impl<'value> StoredRuntimeListItem<'value> {
-    fn new(values: &'value mut ScopedValues, value: EvaluatedValue) -> Self {
+impl<'value, Values: RuntimeValueProfile> StoredRuntimeListItem<'value, Values> {
+    fn new(values: &'value mut ScopedValues<Values>, value: EvaluatedValue<Values>) -> Self {
         let token = values.push(value);
         Self { values, token }
     }
@@ -194,25 +248,25 @@ impl<'value> StoredRuntimeListItem<'value> {
         self.values.take_nil(self.token);
     }
 
-    pub(crate) fn into_external_lease(self) -> ExternalPayloadLease {
+    pub(crate) fn into_external_lease(self) -> Values::ExternalLease {
         self.values.take_external(self.token).into_parts().1
     }
 
-    pub(crate) fn into_tuple_items(self) -> StoredRuntimeListTupleItems<'value> {
+    pub(crate) fn into_tuple_items(self) -> StoredRuntimeListTupleItems<'value, Values> {
         StoredRuntimeListTupleItems {
             values: self.values.take_tuple(self.token),
             item_values: self.values,
         }
     }
 
-    pub(crate) fn into_list(self) -> StoredRuntimeList {
+    pub(crate) fn into_list(self) -> StoredRuntimeList<Values> {
         let value = self
             .values
             .list_value(self.values.list_tokens[self.token.index]);
         StoredRuntimeList::new(value)
     }
 
-    pub(crate) fn into_custom_fields(self) -> StoredRuntimeListCustomFields<'value> {
+    pub(crate) fn into_custom_fields(self) -> StoredRuntimeListCustomFields<'value, Values> {
         let custom = self.values.take_custom(self.token);
         let (constructor, fields) = custom.into_fields();
         StoredRuntimeListCustomFields {
@@ -223,24 +277,51 @@ impl<'value> StoredRuntimeListItem<'value> {
     }
 }
 
-impl<'value> StoredRuntimeListTupleItems<'value> {
-    pub(crate) fn take_item(&mut self, index: usize) -> StoredRuntimeListItem<'_> {
+impl<'value, Values: RuntimeValueProfile> StoredRuntimeListTupleItems<'value, Values> {
+    pub(crate) fn take_item(&mut self, index: usize) -> StoredRuntimeListItem<'_, Values> {
         StoredRuntimeListItem::new(self.item_values, self.values.swap_remove(index))
     }
 }
 
-impl<'value> StoredRuntimeListCustomFields<'value> {
+impl<'value, Values: RuntimeValueProfile> StoredRuntimeListCustomFields<'value, Values> {
     pub(crate) fn constructor(&self) -> usize {
         self.constructor
     }
 
-    pub(crate) fn take_field(&mut self, index: usize) -> StoredRuntimeListItem<'_> {
+    pub(crate) fn take_field(&mut self, index: usize) -> StoredRuntimeListItem<'_, Values> {
         StoredRuntimeListItem::new(self.item_values, self.values.swap_remove(index))
     }
 }
 
-impl ScopedValues {
-    pub(super) fn retain(&self, token: HostValueToken, retained: &mut RetainedValues) {
+impl<Values: RuntimeValueProfile> Default for ScopedValues<Values> {
+    fn default() -> Self {
+        Self {
+            ints: Vec::new(),
+            floats: Vec::new(),
+            strings: Vec::new(),
+            bit_arrays: Vec::new(),
+            utf_codepoints: Vec::new(),
+            bools: Vec::new(),
+            parameter_lists: Vec::new(),
+            lists: Vec::new(),
+            list_tokens: Vec::new(),
+            stored_list_values: HashMap::new(),
+            tuples: Vec::new(),
+            customs: Vec::new(),
+            externals: Vec::new(),
+            functions: Vec::new(),
+            symbolic_functions: Vec::new(),
+            function_indices: HashMap::new(),
+        }
+    }
+}
+
+impl<Values: RuntimeValueProfile> ScopedValues<Values> {
+    pub(super) fn retain(
+        &self,
+        token: HostValueToken,
+        retained: &mut ProfiledRetainedValues<Values>,
+    ) {
         match token.family {
             HostValueFamily::Int => retained.push_int(self.ints[token.index].clone()),
             HostValueFamily::Float => retained.push_float(self.floats[token.index]),
@@ -265,12 +346,14 @@ impl ScopedValues {
                 retained.push_function(self.functions[token.index].clone().into_evaluated())
             }
             HostValueFamily::SymbolicFunction => {
-                retained.push_function(self.symbolic_functions[token.index].clone().into())
+                retained.push_function(EvaluatedFunctionValue::<Values>::from(
+                    self.symbolic_functions[token.index].clone(),
+                ))
             }
         }
     }
 
-    pub(super) fn push(&mut self, value: EvaluatedValue) -> HostValueToken {
+    pub(super) fn push(&mut self, value: EvaluatedValue<Values>) -> HostValueToken {
         match value {
             EvaluatedValue::Int(value) => {
                 let index = self.ints.len();
@@ -357,7 +440,7 @@ impl ScopedValues {
         }
     }
 
-    pub(super) fn push_list(&mut self, value: ListValueId) -> HostValueToken {
+    pub(super) fn push_list(&mut self, value: ListValueId<Values>) -> HostValueToken {
         let token = match value {
             ListValueId::Parameter(value) => {
                 let index = self.parameter_lists.len();
@@ -381,7 +464,7 @@ impl ScopedValues {
         self.value_for_list(token)
     }
 
-    fn push_stored(&mut self, value: StoredListValueId) -> HostListToken {
+    fn push_stored(&mut self, value: StoredListValueId<Values>) -> HostListToken {
         let index = self.lists.len();
         self.lists.push(value);
         HostListToken::Stored(index)
@@ -433,7 +516,7 @@ impl ScopedValues {
         }
     }
 
-    pub(super) fn value(&self, token: HostValueToken) -> EvaluatedValue {
+    pub(super) fn value(&self, token: HostValueToken) -> EvaluatedValue<Values> {
         match token.family {
             HostValueFamily::Int => EvaluatedValue::Int(self.ints[token.index].clone()),
             HostValueFamily::Float => EvaluatedValue::Float(self.floats[token.index]),
@@ -463,112 +546,125 @@ impl ScopedValues {
         }
     }
 
-    pub(super) fn list_value(&self, token: HostListToken) -> ListValueId {
+    pub(super) fn list_value(&self, token: HostListToken) -> ListValueId<Values> {
         match token {
             HostListToken::Parameter(index) => ListValueId::Parameter(self.parameter_lists[index]),
             HostListToken::Stored(index) => self.lists[index].clone().into_value(),
         }
     }
 
-    fn push_function(&mut self, value: EvaluatedFunctionValue) -> HostValueToken {
-        let (family, index) = match value.kind() {
+    fn push_function(&mut self, value: EvaluatedFunctionValue<Values>) -> HostValueToken {
+        let index = match value.into_kind() {
             EvaluatedFunctionValueKind::Generic(function) => {
                 let index = self.symbolic_functions.len();
-                self.symbolic_functions.push(function.clone());
-                (HostValueFamily::SymbolicFunction, index)
+                self.symbolic_functions.push(function);
+                FunctionIndex::Symbolic(index)
             }
             EvaluatedFunctionValueKind::Never(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::Never(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(Values::Callable::from_callable(
+                    InvocableFunctionValue::Never(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::Int(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::Int(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(Values::Callable::from_callable(
+                    InvocableFunctionValue::Int(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::Float(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::Float(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(Values::Callable::from_callable(
+                    InvocableFunctionValue::Float(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::String(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::String(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(Values::Callable::from_callable(
+                    InvocableFunctionValue::String(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::BitArray(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::BitArray(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(Values::Callable::from_callable(
+                    InvocableFunctionValue::BitArray(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::UtfCodepoint(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::UtfCodepoint(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(Values::Callable::from_callable(
+                    InvocableFunctionValue::UtfCodepoint(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::Custom(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::Custom(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(Values::Callable::from_callable(
+                    InvocableFunctionValue::Custom(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::External(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::External(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(Values::Callable::from_callable(
+                    InvocableFunctionValue::External(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::Bool(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::Bool(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(Values::Callable::from_callable(
+                    InvocableFunctionValue::Bool(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::Nil(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::Nil(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(Values::Callable::from_callable(
+                    InvocableFunctionValue::Nil(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::Tuple(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::Tuple(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(Values::Callable::from_callable(
+                    InvocableFunctionValue::Tuple(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::List(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::List(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(Values::Callable::from_callable(
+                    InvocableFunctionValue::List(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::Function(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::Function(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(Values::Callable::from_callable(
+                    InvocableFunctionValue::Function(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
         };
-        let token = HostValueToken { family, index };
-        self.function_values.insert(token, value);
+        let token = index.token();
+        self.function_indices.insert(token, index);
         token
     }
 }
 
-impl ScopedValues {
+impl<Values: RuntimeValueProfile> ScopedValues<Values> {
     pub(super) fn allocate_list(
         &self,
         storage_type: ListStorageTypeId,
-        storage: &mut RuntimeListStorage,
+        storage: &mut Values::ListStorage,
         values: &[HostValueToken],
-    ) -> ListValueId {
+    ) -> ListValueId<Values> {
         match storage_type {
             ListStorageTypeId::Parameter(type_id) => ParameterListValueId::new(type_id).into(),
             ListStorageTypeId::Int(type_id) => storage
@@ -667,14 +763,21 @@ impl ScopedValues {
                     type_id,
                     values
                         .iter()
-                        .map(|token| self.function_values[token].clone())
+                        .map(|token| match self.function_indices[token] {
+                            FunctionIndex::Invocable(index) => {
+                                self.functions[index].clone().into_evaluated()
+                            }
+                            FunctionIndex::Symbolic(index) => {
+                                self.symbolic_functions[index].clone().into()
+                            }
+                        })
                         .collect(),
                 )
                 .into(),
         }
     }
 
-    pub(super) fn value_from_scoped(&self, value: HostScopedValue) -> EvaluatedValue {
+    pub(super) fn value_from_scoped(&self, value: HostScopedValue) -> EvaluatedValue<Values> {
         match value {
             HostScopedValue::Int(value) => EvaluatedValue::Int(value),
             HostScopedValue::Float(value) => EvaluatedValue::Float(value),
@@ -777,15 +880,18 @@ impl ScopedValues {
 
     fn take_nil(&mut self, _value: HostValueToken) {}
 
-    fn take_external(&mut self, value: HostValueToken) -> crate::runtime::EvaluatedExternalValue {
+    fn take_external(
+        &mut self,
+        value: HostValueToken,
+    ) -> crate::runtime::EvaluatedExternalValue<Values> {
         self.externals.swap_remove(value.index)
     }
 
-    fn take_tuple(&mut self, value: HostValueToken) -> Vec<EvaluatedValue> {
+    fn take_tuple(&mut self, value: HostValueToken) -> Vec<EvaluatedValue<Values>> {
         self.tuples.swap_remove(value.index)
     }
 
-    fn take_custom(&mut self, value: HostValueToken) -> EvaluatedCustomValue {
+    fn take_custom(&mut self, value: HostValueToken) -> EvaluatedCustomValue<Values> {
         self.customs.swap_remove(value.index)
     }
 
@@ -793,7 +899,7 @@ impl ScopedValues {
         self.tuples[value.0].len()
     }
 
-    pub(super) fn tuple_values(&self, value: HostTupleToken) -> Vec<EvaluatedValue> {
+    pub(super) fn tuple_values(&self, value: HostTupleToken) -> Vec<EvaluatedValue<Values>> {
         self.tuples[value.0].clone()
     }
 
@@ -801,19 +907,22 @@ impl ScopedValues {
         self.customs[value.0].constructor().index()
     }
 
-    pub(super) fn custom_fields(&self, value: HostCustomToken) -> Vec<EvaluatedValue> {
+    pub(super) fn custom_fields(&self, value: HostCustomToken) -> Vec<EvaluatedValue<Values>> {
         self.customs[value.0].fields().to_vec()
     }
 
-    pub(super) fn take_custom_fields(&mut self, value: HostCustomToken) -> Box<[EvaluatedValue]> {
+    pub(super) fn take_custom_fields(
+        &mut self,
+        value: HostCustomToken,
+    ) -> Box<[EvaluatedValue<Values>]> {
         self.customs[value.0].take_fields()
     }
 
-    pub(super) fn function(&self, value: HostFunctionToken) -> InvocableFunctionValue {
+    pub(super) fn function(&self, value: HostFunctionToken) -> Values::Callable {
         self.functions[value.0].clone()
     }
 
-    pub(super) fn push_tuple(&mut self, values: Vec<EvaluatedValue>) -> HostValueToken {
+    pub(super) fn push_tuple(&mut self, values: Vec<EvaluatedValue<Values>>) -> HostValueToken {
         let index = self.tuples.len();
         self.tuples.push(values);
         HostValueToken {
@@ -822,7 +931,7 @@ impl ScopedValues {
         }
     }
 
-    pub(super) fn push_custom(&mut self, value: EvaluatedCustomValue) -> HostValueToken {
+    pub(super) fn push_custom(&mut self, value: EvaluatedCustomValue<Values>) -> HostValueToken {
         let index = self.customs.len();
         self.customs.push(value);
         HostValueToken {
@@ -831,24 +940,71 @@ impl ScopedValues {
         }
     }
 
-    pub(super) fn push_external(&mut self, value: EvaluatedExternalValue) -> HostExternalToken {
+    pub(super) fn push_external(
+        &mut self,
+        value: EvaluatedExternalValue<Values>,
+    ) -> HostExternalToken {
         let index = self.externals.len();
         self.externals.push(value);
         HostExternalToken(index)
     }
 
-    pub(super) fn external(&self, value: HostExternalToken) -> &EvaluatedExternalValue {
+    pub(super) fn external(&self, value: HostExternalToken) -> &EvaluatedExternalValue<Values> {
         &self.externals[value.0]
     }
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn retaining_transfer_callable_shares_the_scoped_target_and_capture_allocation() {
+        use crate::plan::execution::function::IntFunctionId;
+        use crate::plan::execution::graph::IntLocalId;
+        use crate::plan::execution::type_::{FunctionType, ValueType};
+        use crate::runtime::TransferValues;
+        use crate::runtime::evaluated::{EvaluatedCapture, EvaluatedIntFunction};
+
+        let captured = num_bigint::BigInt::from(1u8) << 1024usize;
+        let function = EvaluatedIntFunction::<TransferValues>::closure(
+            IntFunctionId(0),
+            Vec::new(),
+            vec![EvaluatedCapture::int(IntLocalId(0), captured.clone())],
+            FunctionType::new(Vec::new(), ValueType::Int),
+        );
+        let original_captures = function.captures().as_ptr();
+        let mut scoped = super::ScopedValues::<TransferValues>::default();
+        let token = scoped.push_function(function.into());
+        let callable = scoped.function(crate::host::HostFunctionToken(token.index));
+        let retained = callable.clone();
+        callable.with_value(|first| {
+            retained.with_value(|second| {
+                assert!(std::ptr::eq(first, second));
+                let first = int_target(first);
+                let second = int_target(second);
+                assert_eq!(first.captures().as_ptr(), original_captures);
+                assert!(std::ptr::eq(first.captures(), second.captures()));
+            })
+        });
+        drop(scoped);
+        drop(callable);
+        std::thread::spawn(move || {
+            retained.with_value(|value| {
+                let value = int_target(value);
+                assert_eq!(
+                    value.captures(),
+                    &[EvaluatedCapture::int(IntLocalId(0), captured)]
+                );
+            });
+        })
+        .join()
+        .expect("retained callback is transferable");
+    }
+
     use super::{ScopedValues, StoredRuntimeListItem, StoredRuntimeValue};
     use crate::host::HostCustomToken;
     use crate::host::test::{StatelessTestProvider, TestTypeParameter, stateless_identity};
-    use crate::runtime::state::list::RuntimeListStorage;
-    use crate::runtime::{EvaluatedBitArray, EvaluatedCustomValue, EvaluatedValue};
+    use crate::runtime::state::list::{ListValueId, ParameterListValueId, RuntimeListStorage};
+    use crate::runtime::{EvaluatedBitArray, EvaluatedCustomValue, EvaluatedValue, LocalValues};
     use crate::{
         BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostList, HostListType,
         HostModule, HostProviderModule, HostProviderSet, HostTupleType, HostTypeList,
@@ -860,9 +1016,11 @@ mod tests {
 
     #[test]
     fn stored_runtime_value_preserves_its_exact_type_and_restores_its_value() {
-        let stored =
-            StoredRuntimeValue::new(EvaluatedValue::Int(7.into()), crate::plan::ValueType::Int);
-        let mut scoped = ScopedValues::default();
+        let stored = StoredRuntimeValue::<LocalValues>::new(
+            EvaluatedValue::Int(7.into()),
+            crate::plan::ValueType::Int,
+        );
+        let mut scoped = ScopedValues::<LocalValues>::default();
 
         let restored = scoped.push(stored.value().clone());
 
@@ -871,9 +1029,31 @@ mod tests {
     }
 
     #[test]
+    fn stored_generic_lists_preserve_their_runtime_handle_and_item_type() {
+        let plan = crate::runtime::plan_src(
+            "fn values(items: List(value)) { items } pub fn main() { values([]) }",
+        );
+        let list = ParameterListValueId::new(plan.parameter_list_function_id(0).type_id());
+        let item = crate::plan::TypeParameterId(0);
+        let stored = StoredRuntimeValue::<LocalValues>::new(
+            EvaluatedValue::ParameterList(list),
+            crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Parameter(item))),
+        );
+
+        assert_eq!(
+            crate::runtime::BorrowedValue::from_stored(&stored).list(),
+            ListValueId::Parameter(list)
+        );
+        assert_eq!(
+            stored.type_(),
+            &crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Parameter(item))),
+        );
+    }
+
+    #[test]
     fn stored_list_items_decode_every_supported_scalar_family() {
         let bits = BitArrayValue::from_bytes(vec![1]);
-        let mut values = ScopedValues::default();
+        let mut values = ScopedValues::<LocalValues>::default();
 
         assert_eq!(
             StoredRuntimeListItem::new(&mut values, EvaluatedValue::Int(7.into())).into_int(),
@@ -924,7 +1104,7 @@ mod tests {
             lease.clone(),
         );
 
-        let mut values = ScopedValues::default();
+        let mut values = ScopedValues::<LocalValues>::default();
         let retained = StoredRuntimeListItem::new(&mut values, EvaluatedValue::External(external))
             .into_external_lease();
         assert_eq!(retained.id(), lease.id());
@@ -967,7 +1147,7 @@ mod tests {
             ]
             .into_boxed_slice(),
         );
-        let mut values = ScopedValues::default();
+        let mut values = ScopedValues::<LocalValues>::default();
 
         let mut fields = StoredRuntimeListItem::new(&mut values, EvaluatedValue::Custom(custom))
             .into_custom_fields();
@@ -995,7 +1175,7 @@ mod tests {
             plan.custom_constructor_id(0, 1),
             vec![EvaluatedValue::String("kept".into())].into_boxed_slice(),
         );
-        let mut values = ScopedValues::default();
+        let mut values = ScopedValues::<LocalValues>::default();
         values.push_custom(first);
         values.push_custom(second);
 
@@ -1090,5 +1270,90 @@ pub fn main() {
         let expected = Value::Bool(true);
 
         assert_eq!(execution.run_main(&mut (), &mut Vec::new()), Ok(expected),);
+    }
+    fn int_target(
+        value: &crate::runtime::function::InvocableFunctionValue<crate::runtime::TransferValues>,
+    ) -> &crate::runtime::evaluated::EvaluatedIntFunction<crate::runtime::TransferValues> {
+        match value {
+            crate::runtime::function::InvocableFunctionValue::Int(value) => value,
+            _ => panic!("fixture requires an Int callback"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture requires an Int callback")]
+    fn int_target_rejects_a_nil_callback_fixture() {
+        let function = crate::runtime::evaluated::EvaluatedNilFunction::reference(
+            crate::plan::execution::function::NilFunctionId(0),
+            Vec::new(),
+            Vec::new(),
+            crate::plan::execution::type_::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::type_::ValueType::Nil,
+            ),
+        );
+        int_target(&crate::runtime::function::InvocableFunctionValue::Nil(
+            function,
+        ));
+    }
+    #[test]
+    fn generic_list_reconstruction_preserves_symbolic_and_invocable_function_values() {
+        fn copy<'call>(
+            mut call: HostCall<
+                'call,
+                StatelessHostProfile,
+                StatelessTestProvider,
+                HostListType<TestTypeParameter>,
+            >,
+            values: HostList<'call, TestTypeParameter>,
+        ) -> Result<HostCallCompletion<'call, HostListType<TestTypeParameter>>, HostCallError>
+        {
+            let mut copied = Vec::new();
+            for index in 0..call.list_len(values) {
+                copied.push(
+                    call.list_item(values, index)
+                        .expect("index below list length"),
+                );
+            }
+            Ok(call.return_list(copied))
+        }
+        let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
+            .expect("provider")
+            .with_scoped_function::<StatelessTestProvider, (HostListType<TestTypeParameter>,), HostListType<TestTypeParameter>, _>(
+                "copy", copy,
+            ).expect("generic List reconstruction");
+        let source = r#"pub type Never
+fn identity(value: value) -> value { value }
+@external(erlang, "native", "copy")
+fn copy(values: List(value)) -> List(value)
+pub fn main() {
+  let values: List(fn(Never) -> Never) = [identity]
+  let restored = copy(values)
+  let callable_values = [fn(value: Int) { value + 1 }]
+  let assert [callback] = copy(callable_values)
+  restored == values && copy(restored) == values && copy([]) == []
+    && callback(41) == 42
+}
+"#;
+        let program = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new("main", "src/main.gleam", source)],
+            )],
+            HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
+                .expect("providers"),
+        )
+        .expect("source");
+        let plan = HostedExecution::try_from_module_plan(plan_host_program(program).expect("plan"))
+            .expect("symbolic functions are stored, not invoked");
+        let mut echo = Vec::new();
+        assert_eq!(
+            plan.run_main(&mut (), &mut echo).expect("source execution"),
+            Value::Bool(true)
+        );
+        assert!(echo.is_empty());
     }
 }

@@ -23,8 +23,8 @@ pub use error::{
 };
 pub use host_requirement::{RequiredHostFunction, required_host_functions};
 pub(crate) use module::{
-    plan_async_host_library_program, plan_host_library_program, plan_library_module,
-    plan_library_program,
+    plan_host_library_program, plan_library_module, plan_library_program,
+    plan_transfer_host_library_program,
 };
 pub use module::{plan_host_program, plan_module, plan_module_with_source, plan_program};
 

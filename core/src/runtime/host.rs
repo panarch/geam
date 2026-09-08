@@ -1,7 +1,9 @@
 mod invoke;
 mod scoped;
+mod transfer;
 
 pub(super) use self::invoke::{invoke_never, invoke_value};
+pub(in crate::runtime) use self::transfer::RuntimeTransferHostCall;
 
 use self::scoped::ScopedValues;
 pub(crate) use self::scoped::{
@@ -17,8 +19,9 @@ use crate::host::{
 use crate::plan::execution::host::{HostCallParameter, HostedFunction};
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::runtime::evaluated::EvaluatedCustomValue;
-use crate::runtime::graph::{BlockEnvironment, RetainedValues};
+use crate::runtime::graph::{BlockEnvironment, ProfiledRetainedValues, RetainedValues};
 use crate::runtime::state::RuntimeStateFor;
+use crate::runtime::{LocalValues, RuntimeValueProfile};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -43,15 +46,15 @@ where
     profile: std::marker::PhantomData<Profile>,
 }
 
-struct PreparedHostCall {
-    arguments: RetainedValues,
+struct PreparedHostCall<Values: RuntimeValueProfile = LocalValues> {
+    arguments: ProfiledRetainedValues<Values>,
     value_arguments: Vec<HostValueToken>,
     list_arguments: Vec<HostListToken>,
     tuple_arguments: Vec<HostTupleToken>,
     custom_arguments: Vec<HostCustomToken>,
     external_arguments: Vec<HostExternalToken>,
     function_arguments: Vec<HostFunctionToken>,
-    scoped: ScopedValues,
+    scoped: ScopedValues<Values>,
 }
 
 impl<'call, 'run, Profile> RuntimeHostCall<'call, 'run, Profile>
@@ -106,10 +109,10 @@ where
     }
 }
 
-impl PreparedHostCall {
-    fn new(parameters: &[HostCallParameter], inputs: RetainedValues) -> Self {
+impl<Values: RuntimeValueProfile> PreparedHostCall<Values> {
+    fn new(parameters: &[HostCallParameter], inputs: ProfiledRetainedValues<Values>) -> Self {
         let environment = BlockEnvironment::from_retained(inputs);
-        let mut arguments = RetainedValues::empty();
+        let mut arguments = ProfiledRetainedValues::empty();
         let mut scoped = ScopedValues::default();
         let mut value_arguments = Vec::new();
         let mut list_arguments = Vec::new();
@@ -148,7 +151,7 @@ impl PreparedHostCall {
                     let token = scoped.push(environment.value(&parameter.local()));
                     external_arguments.push(scoped.external_token(token));
                 }
-                HostCallParameter::Function(_) => {
+                HostCallParameter::Function { .. } => {
                     let token = scoped.push(environment.value(&parameter.local()));
                     function_arguments.push(scoped.function_token(token));
                 }
@@ -318,20 +321,18 @@ where
             .into_iter()
             .map(|value| self.scoped.value_from_scoped(value))
             .collect::<Vec<_>>();
-        let mut inputs = RetainedValues::empty();
-        for value in &arguments {
-            inputs.push_evaluated(value.clone());
-        }
-        crate::runtime::function::invoke_callable(
-            self.plan,
-            self.state,
-            function,
-            self.origin.clone(),
-            inputs,
-            arguments.into_boxed_slice(),
-        )
-        .map(|value| self.scoped.push(value))
-        .map_err(crate::HostCallError::nested)
+        function
+            .with_value(|function| {
+                crate::runtime::function::invoke_callable(
+                    self.plan,
+                    self.state,
+                    function,
+                    self.origin.clone(),
+                    arguments.into_boxed_slice(),
+                )
+            })
+            .map(|value| self.scoped.push(value))
+            .map_err(crate::HostCallError::nested)
     }
 
     fn equal(&self, left: HostScopedValue, right: HostScopedValue) -> bool {

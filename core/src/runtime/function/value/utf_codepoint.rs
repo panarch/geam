@@ -1,9 +1,8 @@
-use super::super::{EvaluatedFunctionExit, evaluate_entry, parameter_locals};
+use super::super::{EvaluatedFunctionExit, evaluate_entry};
 use crate::plan::execution::function::UtfCodepointFunctionId;
-use crate::plan::execution::graph::ParamLocal;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
-use crate::runtime::graph::RetainedValues;
+use crate::runtime::graph::ProfiledRetainedValues;
 use crate::runtime::state::RuntimeStateFor;
 
 pub(in crate::runtime) fn run_utf_codepoint<Plan: ExecutableRuntimePlan>(
@@ -11,8 +10,8 @@ pub(in crate::runtime) fn run_utf_codepoint<Plan: ExecutableRuntimePlan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     mut function: UtfCodepointFunctionId,
     mut origin: HostCallOrigin,
-    mut inputs: RetainedValues,
-) -> ExecutionResult<char> {
+    mut inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<char, Plan::Values> {
     loop {
         let exit = evaluate_entry(
             plan,
@@ -35,18 +34,12 @@ pub(in crate::runtime) fn run_utf_codepoint<Plan: ExecutableRuntimePlan>(
     }
 }
 
-pub(in crate::runtime) fn utf_codepoint_parameter_locals<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    function: UtfCodepointFunctionId,
-) -> Vec<ParamLocal> {
-    parameter_locals(plan, plan.utf_codepoint_function(function))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::utf_codepoint_parameter_locals;
     use crate::plan::execution::function::UtfCodepointFunctionId;
+    use crate::plan::execution::graph::FunctionTarget;
     use crate::plan::execution::graph::{ParamLocal, UtfCodepointLocalId};
+    use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::{
         HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource, Value,
         compile_typed_host_program, compile_typed_module, plan_host_program, plan_module, run_main,
@@ -69,7 +62,9 @@ pub fn main() {
         let plan = plan_module(typed).expect("source should plan");
         let execution = crate::ExecutionPlan::from_module_plan(plan);
         assert_eq!(
-            utf_codepoint_parameter_locals(&execution, UtfCodepointFunctionId(1)),
+            execution
+                .function_parameters()
+                .function(&FunctionTarget::UtfCodepoint(UtfCodepointFunctionId(1))),
             [ParamLocal::UtfCodepoint(UtfCodepointLocalId(0))],
         );
         assert_eq!(
@@ -112,11 +107,15 @@ pub fn main() {
         let execution =
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         assert_eq!(
-            utf_codepoint_parameter_locals(&execution, UtfCodepointFunctionId(2)),
+            execution
+                .function_parameters()
+                .function(&FunctionTarget::UtfCodepoint(UtfCodepointFunctionId(2))),
             [ParamLocal::UtfCodepoint(UtfCodepointLocalId(0))],
         );
         assert_eq!(
-            utf_codepoint_parameter_locals(&execution, UtfCodepointFunctionId(1)),
+            execution
+                .function_parameters()
+                .function(&FunctionTarget::UtfCodepoint(UtfCodepointFunctionId(1))),
             [ParamLocal::UtfCodepoint(UtfCodepointLocalId(0))],
         );
         assert_eq!(

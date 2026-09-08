@@ -16,13 +16,10 @@ pub(super) fn lower_host_parameters(
         .enumerate()
         .map(|(position, shape)| {
             let (index, stored) = prefix.allocate_stored(shape.clone(), &context.representations);
-            let entry = local::stored_value_local_at(&stored, index, context);
-            let call = host_call_parameter(&stored, index, &layout[position], context);
-            (entry, call)
+            host_call_parameter(&stored, index, &layout[position], context)
         })
         .collect::<Vec<_>>();
-    let (entry, call) = parameters.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
-    HostedFunctionParameters::new(entry.into_boxed_slice(), call.into_boxed_slice())
+    HostedFunctionParameters::new(parameters.into_boxed_slice())
 }
 
 fn host_call_parameter(
@@ -60,9 +57,10 @@ fn host_call_parameter(
         HostParameter::External(_) => {
             HostCallParameter::External(local::stored_value_local_at(shape, index, context))
         }
-        HostParameter::Function(_) => {
-            HostCallParameter::Function(local::stored_value_local_at(shape, index, context))
-        }
+        HostParameter::Function { arity, .. } => HostCallParameter::Function {
+            local: local::stored_value_local_at(shape, index, context),
+            arity: *arity,
+        },
     }
 }
 

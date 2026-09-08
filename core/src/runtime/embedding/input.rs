@@ -1,11 +1,13 @@
 use crate::plan::execution::type_::{
-    BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomListTypeId, FloatListTypeId,
-    IntListTypeId, ListListTypeId, NilListTypeId, StringListTypeId, TupleListTypeId,
-    UtfCodepointListTypeId,
+    BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomListTypeId, ExternalListTypeId,
+    FloatListTypeId, IntListTypeId, ListListTypeId, NilListTypeId, StringListTypeId,
+    TupleListTypeId, UtfCodepointListTypeId,
 };
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedCustomValue, EvaluatedValue};
 use crate::runtime::graph::ProfiledRetainedValues;
-use crate::runtime::state::list::{CustomListAllocation, StoredListValueId};
+use crate::runtime::state::list::{
+    CustomListAllocation, ExternalListAllocation, StoredListValueId,
+};
 use crate::runtime::{LocalValues, RuntimeListStorage, RuntimeValueProfile};
 
 pub(crate) struct EmbeddingInput<Profile: RuntimeValueProfile = LocalValues>(
@@ -185,8 +187,31 @@ impl<Profile: RuntimeValueProfile> EmbeddingInputValue<Profile> for EmbeddingLis
     }
 }
 
+impl<Profile: RuntimeValueProfile> EmbeddingInputValue<Profile>
+    for crate::runtime::EvaluatedExternalValue<Profile>
+{
+    type ListType = ExternalListTypeId;
+
+    fn into_input(self) -> EmbeddingInput<Profile> {
+        EmbeddingInput(EvaluatedValue::External(self))
+    }
+
+    fn into_list(
+        type_: Self::ListType,
+        values: impl ExactSizeIterator<Item = Self>,
+        storage: &EmbeddingInputStorage<Profile>,
+    ) -> EmbeddingListInput<Profile> {
+        let allocation = ExternalListAllocation::<Profile>::new(type_, values.collect());
+        EmbeddingListInput(storage.lists().external(allocation).into())
+    }
+}
+
 impl<Profile: RuntimeValueProfile> EmbeddingInput<Profile> {
     pub(crate) fn retain(self, values: &mut ProfiledRetainedValues<Profile>) {
         values.push_evaluated(self.0);
+    }
+
+    pub(in crate::runtime) fn into_value(self) -> EvaluatedValue<Profile> {
+        self.0
     }
 }

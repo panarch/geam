@@ -18,6 +18,16 @@ pub trait HostProviderComponent: Send + Sync + 'static {
     type RunState: 'static;
 }
 
+/// Transferable storage owned by one statically composed provider component.
+///
+/// This is separate from [`HostProviderComponent::Stores`] so an ordinary
+/// local-only composition does not pay for synchronization or transferable
+/// payload bounds that it does not use.
+pub trait AsyncHostProviderComponent: HostProviderComponent {
+    /// External stores used when the component participates in async embedding.
+    type AsyncStores: Default + 'static;
+}
+
 /// Initializes one provider component from explicit read-only configuration.
 pub trait HostProviderComponentInitialization: HostProviderComponent {
     /// Initializes caller-owned run state from explicit component configuration.
@@ -36,6 +46,16 @@ where
     fn component_state(state: &mut Self::RunState) -> &mut Component::RunState;
 }
 
+/// Projects one provider component from a transferable host profile.
+pub trait AsyncHostComponentProfile<Component>: HostProfile
+where
+    Component: AsyncHostProviderComponent,
+{
+    fn component_async_stores(stores: &Self::ExternalStores) -> &Component::AsyncStores;
+
+    fn component_state(state: &mut Self::RunState) -> &mut Component::RunState;
+}
+
 /// Registers the source-backed provider modules exported by one component.
 pub trait HostProviderComponentRegistration<Profile>: HostProviderComponent
 where
@@ -43,6 +63,16 @@ where
     Self: Sized,
 {
     fn providers() -> Result<Vec<HostProviderModule<Profile>>, HostRegistrationError>;
+}
+
+/// Registers immediate calls and explicit work constructors for transferable execution.
+pub trait TransferHostProviderComponentRegistration<Profile>: AsyncHostProviderComponent
+where
+    Profile: AsyncHostComponentProfile<Self>,
+    Self: Sized,
+{
+    fn providers()
+    -> Result<Vec<crate::host::TransferHostProviderModule<Profile>>, HostRegistrationError>;
 }
 
 /// Failure to initialize one statically selected provider component.
@@ -88,8 +118,9 @@ impl std::error::Error for HostProviderInitializationError {}
 #[cfg(test)]
 mod tests {
     use super::{
-        HostComponentProfile, HostProviderComponent, HostProviderComponentInitialization,
-        HostProviderConfiguration, HostProviderInitializationError,
+        AsyncHostComponentProfile, AsyncHostProviderComponent, HostComponentProfile,
+        HostProviderComponent, HostProviderComponentInitialization, HostProviderConfiguration,
+        HostProviderInitializationError,
     };
     use crate::host::HostProfile;
 
@@ -98,9 +129,21 @@ mod tests {
     struct AggregateProfile;
 
     #[derive(Default)]
+    struct FirstAsyncStores(Vec<u32>);
+
+    #[derive(Default)]
+    struct SecondAsyncStores(Vec<u64>);
+
+    #[derive(Default)]
     struct AggregateStores {
         first: Vec<u8>,
         second: Vec<u16>,
+    }
+
+    #[derive(Default)]
+    struct AggregateAsyncStores {
+        first: FirstAsyncStores,
+        second: SecondAsyncStores,
     }
 
     struct AggregateState {
@@ -112,6 +155,10 @@ mod tests {
         const ID: &'static str = "first";
         type Stores = Vec<u8>;
         type RunState = String;
+    }
+
+    impl AsyncHostProviderComponent for FirstComponent {
+        type AsyncStores = FirstAsyncStores;
     }
 
     impl HostProviderComponentInitialization for FirstComponent {
@@ -126,6 +173,10 @@ mod tests {
         const ID: &'static str = "second";
         type Stores = Vec<u16>;
         type RunState = usize;
+    }
+
+    impl AsyncHostProviderComponent for SecondComponent {
+        type AsyncStores = SecondAsyncStores;
     }
 
     impl HostProviderComponentInitialization for SecondComponent {
@@ -143,6 +194,13 @@ mod tests {
         type ExternalStores = AggregateStores;
     }
 
+    struct AggregateAsyncProfile;
+
+    impl HostProfile for AggregateAsyncProfile {
+        type RunState = AggregateState;
+        type ExternalStores = AggregateAsyncStores;
+    }
+
     impl HostComponentProfile<FirstComponent> for AggregateProfile {
         fn component_stores(stores: &Self::ExternalStores) -> &Vec<u8> {
             &stores.first
@@ -155,6 +213,26 @@ mod tests {
 
     impl HostComponentProfile<SecondComponent> for AggregateProfile {
         fn component_stores(stores: &Self::ExternalStores) -> &Vec<u16> {
+            &stores.second
+        }
+
+        fn component_state(state: &mut Self::RunState) -> &mut usize {
+            &mut state.second
+        }
+    }
+
+    impl AsyncHostComponentProfile<FirstComponent> for AggregateAsyncProfile {
+        fn component_async_stores(stores: &Self::ExternalStores) -> &FirstAsyncStores {
+            &stores.first
+        }
+
+        fn component_state(state: &mut Self::RunState) -> &mut String {
+            &mut state.first
+        }
+    }
+
+    impl AsyncHostComponentProfile<SecondComponent> for AggregateAsyncProfile {
+        fn component_async_stores(stores: &Self::ExternalStores) -> &SecondAsyncStores {
             &stores.second
         }
 
@@ -187,6 +265,42 @@ mod tests {
 
         assert_eq!(state.first, "initial first");
         assert_eq!(state.second, 8);
+    }
+
+    #[test]
+    fn transferable_profiles_project_separate_component_stores_and_the_same_state() {
+        let mut stores = AggregateAsyncStores::default();
+        stores.first.0.push(3);
+        stores.second.0.push(5);
+        let mut state = AggregateState {
+            first: "initial".into(),
+            second: 7,
+        };
+
+        assert_eq!(
+            <AggregateAsyncProfile as AsyncHostComponentProfile<FirstComponent>>::component_async_stores(
+                &stores,
+            )
+            .0,
+            [3]
+        );
+        assert_eq!(
+            <AggregateAsyncProfile as AsyncHostComponentProfile<SecondComponent>>::component_async_stores(
+                &stores,
+            )
+            .0,
+            [5]
+        );
+        <AggregateAsyncProfile as AsyncHostComponentProfile<FirstComponent>>::component_state(
+            &mut state,
+        )
+        .push_str(" async");
+        *<AggregateAsyncProfile as AsyncHostComponentProfile<SecondComponent>>::component_state(
+            &mut state,
+        ) += 2;
+
+        assert_eq!(state.first, "initial async");
+        assert_eq!(state.second, 9);
     }
 
     #[test]

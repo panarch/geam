@@ -20,13 +20,6 @@ impl<Profile> RetainedHostProfile for Profile where
 {
 }
 
-fn retained_stores<Profile>(stores: &Profile::ExternalStores) -> &retained_queue::__GeamStores
-where
-    Profile: RetainedHostProfile,
-{
-    &<Profile as HostComponentProfile<Component>>::component_stores(stores).retained_queue
-}
-
 pub struct Component;
 
 #[derive(Default)]
@@ -58,7 +51,7 @@ where
     crate_path = geam_core,
     profile = crate::RetainedHostProfile,
     component = crate::Component,
-    stores = crate::retained_stores,
+    stores = retained_queue,
 )]
 mod retained_queue {
     use super::{

@@ -3,57 +3,61 @@ mod list;
 mod returning_function;
 mod value;
 
-pub(in crate::runtime) use callable::{InvocableFunctionValue, invoke_callable};
+pub(crate) use callable::LocalCallable;
+pub(in crate::runtime) use callable::{InvocableFunctionValue, StoredCallable, invoke_callable};
 pub(in crate::runtime) use list::{
-    run_bit_array_list, run_bool_list, run_core_list, run_custom_list, run_external_list,
-    run_float_list, run_function_list, run_int_list, run_list, run_list_list, run_nil_list,
-    run_parameter_list, run_parameter_list_list, run_string_list, run_tuple_list,
-    run_utf_codepoint_list,
+    run_bit_array_list, run_bool_list, run_custom_list, run_external_list, run_float_list,
+    run_function_list, run_int_list, run_list, run_list_list, run_nil_list, run_parameter_list,
+    run_parameter_list_list, run_string_list, run_tuple_list, run_utf_codepoint_list,
 };
 pub(in crate::runtime) use returning_function::{
     run_core_function, run_external_function_function,
 };
 pub(in crate::runtime) use value::{
-    bit_array_parameter_locals, bool_parameter_locals, float_parameter_locals,
-    int_parameter_locals, nil_parameter_locals, run_bit_array, run_bool, run_custom, run_external,
-    run_float, run_int, run_never, run_never_value, run_nil, run_string, run_tuple,
-    run_utf_codepoint, string_parameter_locals, utf_codepoint_parameter_locals,
+    run_bit_array, run_bool, run_custom, run_external, run_float, run_int, run_never,
+    run_never_value, run_nil, run_string, run_tuple, run_utf_codepoint,
 };
 
+use crate::plan::execution::function::ExecutionFunctionEntry;
 use crate::plan::execution::function::{
-    ExecutionFunction, ExecutionFunctionBody, ExecutionFunctionEntry, ExecutionFunctionRef,
-    ExecutionNeverFunction, FunctionBodyOwner, FunctionExit, ProfiledFunctionBody,
+    ExecutionFunction, ExecutionFunctionBody, ExecutionFunctionRef, ExecutionNeverFunction,
+    FunctionBodyOwner, FunctionExit, ProfiledFunctionBody,
 };
-use crate::plan::execution::graph::ParamLocal;
+use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
-use crate::runtime::graph::{self, GraphValue, RetainedValues};
+use crate::runtime::graph::{self, GraphValue, ProfiledRetainedValues};
 use crate::runtime::state::RuntimeStateFor;
 use crate::runtime::{ExecutableRuntimePlan, RuntimeGraph};
 
-pub(super) enum EvaluatedFunctionExit<Return, TailCall> {
+pub(super) enum EvaluatedFunctionExit<Return, TailCall, Values: crate::runtime::RuntimeValueProfile>
+{
     Return(Return),
     TailCall {
         function: TailCall,
-        args: RetainedValues,
+        args: ProfiledRetainedValues<Values>,
     },
 }
+
+type EvaluatedEntryReturn<Plan, Body> = <<Body as FunctionBodyOwner>::Return as GraphValue<
+    <Plan as RuntimeExecutionPlan>::Values,
+>>::Evaluated;
+type EvaluatedEntry<Plan, Body> = EvaluatedFunctionExit<
+    EvaluatedEntryReturn<Plan, Body>,
+    <Body as FunctionBodyOwner>::TailCall,
+    <Plan as RuntimeExecutionPlan>::Values,
+>;
 
 pub(super) fn evaluate_entry<Plan, Body>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
     function: &ExecutionFunction<Plan::Profile, Body>,
     origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<
-    EvaluatedFunctionExit<
-        <Body::Return as GraphValue>::Evaluated,
-        <Body as FunctionBodyOwner>::TailCall,
-    >,
->
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedEntry<Plan, Body>, <Plan as RuntimeExecutionPlan>::Values>
 where
     Plan: ExecutableRuntimePlan,
     Body: ExecutionFunctionBody<Graph = RuntimeGraph<Plan>>,
-    Body::Return: GraphValue,
+    Body::Return: GraphValue<Plan::Values>,
     Body::TailCall: Clone,
 {
     match function.as_ref() {
@@ -71,12 +75,14 @@ pub(super) fn evaluate_never_entry<Plan>(
     state: &mut RuntimeStateFor<'_, Plan>,
     function: &ExecutionNeverFunction<Plan::Profile>,
     origin: HostCallOrigin,
-    inputs: RetainedValues,
+    inputs: ProfiledRetainedValues<Plan::Values>,
 ) -> ExecutionResult<
     EvaluatedFunctionExit<
         std::convert::Infallible,
         crate::plan::FunctionCallTarget<crate::plan::execution::function::NeverFunctionId>,
+        Plan::Values,
     >,
+    Plan::Values,
 >
 where
     Plan: ExecutableRuntimePlan,
@@ -95,11 +101,11 @@ pub(super) fn evaluate<Plan, Return, TailCall>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
     function: &ProfiledFunctionBody<Return, TailCall, RuntimeGraph<Plan>>,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedFunctionExit<Return::Evaluated, TailCall>>
+    inputs: ProfiledRetainedValues<Plan::Values>,
+) -> ExecutionResult<EvaluatedFunctionExit<Return::Evaluated, TailCall, Plan::Values>, Plan::Values>
 where
     Plan: ExecutableRuntimePlan,
-    Return: GraphValue,
+    Return: GraphValue<Plan::Values>,
     TailCall: Clone,
 {
     graph::execute(plan, state, function.block_graph(), inputs).map(|completed| {
@@ -117,58 +123,24 @@ where
     })
 }
 
-pub(super) fn parameter_locals<Plan, Body>(
-    plan: &Plan,
-    function: &ExecutionFunction<Plan::Profile, Body>,
-) -> Vec<ParamLocal>
-where
-    Plan: ExecutableRuntimePlan,
-    Body: ExecutionFunctionBody,
-{
-    match function.as_ref() {
-        ExecutionFunctionRef::Graph(function) => function
-            .entry()
-            .params(function.body().function_body())
-            .iter()
-            .map(|slot| slot.local().clone())
-            .collect(),
-        ExecutionFunctionRef::Host(target) => plan.host_parameters(target).to_vec(),
-    }
-}
-
-pub(super) fn never_parameter_locals<Plan>(
-    plan: &Plan,
-    function: &ExecutionNeverFunction<Plan::Profile>,
-) -> Vec<ParamLocal>
-where
-    Plan: ExecutableRuntimePlan,
-{
-    match function.as_ref() {
-        ExecutionFunctionRef::Graph(function) => function
-            .entry()
-            .params(function.body().function_body())
-            .iter()
-            .map(|slot| slot.local().clone())
-            .collect(),
-        ExecutionFunctionRef::Host(target) => plan.host_never_parameters(target).to_vec(),
-    }
-}
-
 fn run_tail<Plan, Id, Return, TailCall>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
     mut function: Id,
     mut origin: HostCallOrigin,
-    mut inputs: RetainedValues,
+    mut inputs: ProfiledRetainedValues<Plan::Values>,
     execute: impl Fn(
         &Plan,
         &mut RuntimeStateFor<'_, Plan>,
         &Id,
         HostCallOrigin,
-        RetainedValues,
-    ) -> ExecutionResult<EvaluatedFunctionExit<Return, TailCall>>,
+        ProfiledRetainedValues<Plan::Values>,
+    ) -> ExecutionResult<
+        EvaluatedFunctionExit<Return, TailCall, Plan::Values>,
+        Plan::Values,
+    >,
     next: impl Fn(&Plan, &Id, TailCall) -> (Id, HostCallOrigin),
-) -> ExecutionResult<Return>
+) -> ExecutionResult<Return, Plan::Values>
 where
     Plan: ExecutableRuntimePlan,
 {

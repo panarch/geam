@@ -11,10 +11,10 @@ pub struct HostCallError {
     kind: HostCallErrorKind,
 }
 
-/// A failure returned by a scoped async host function.
+/// A failure returned by a transferable host function.
 ///
 /// It represents either an explicit [`HostFailure`] or an error from a nested
-/// Gleam callback invoked through [`crate::AsyncHostCall::invoke`].
+/// Gleam callback invoked through [`crate::host::TransferHostCall::invoke`].
 pub struct AsyncHostCallError {
     kind: AsyncHostCallErrorKind,
 }

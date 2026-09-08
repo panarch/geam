@@ -65,6 +65,10 @@ impl<Profile: RuntimeValueProfile> EmbeddingOutput<Profile> {
         take_last(&mut self.variants)
     }
 
+    pub(crate) fn take_external(&mut self) -> EvaluatedExternalValue<Profile> {
+        take_last(&mut self._externals)
+    }
+
     pub(crate) fn take_bool(&mut self) -> bool {
         take_last(&mut self.bools)
     }

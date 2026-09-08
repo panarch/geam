@@ -2,14 +2,23 @@ mod function;
 
 pub use function::provider::DecodeError as DynamicDecodeErrorValue;
 
-use super::GleamStdlibHostProfile;
+use super::GleamStdlibLocalProfile;
 use crate::{HostProviderModule, HostRegistrationError};
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
-    Profile: GleamStdlibHostProfile,
+    Profile: GleamStdlibLocalProfile,
 {
     function::host_provider::<Profile>()
+}
+
+pub(super) fn transfer_host_provider<Profile>()
+-> Result<geam_core::TransferHostProviderModule<Profile>, crate::HostRegistrationError>
+where
+    Profile: crate::GleamStdlibTransferProfile,
+    Profile::RunState: Send,
+{
+    function::transfer_host_provider::<Profile>()
 }
 
 #[cfg(test)]

@@ -3,29 +3,29 @@ mod return_;
 mod sealing;
 mod table;
 mod template;
+mod transfer;
 
 use super::function;
 use super::library;
 use super::specialization::{RepresentationContext, SpecializationKey, SpecializedValueShape};
 use super::{
-    LoweringContext, ProgramConstantTemplates, SpecializationOutcome, SpecializationState,
-    try_resolve_specialization_fixed_point,
+    LoweredExecution, LoweringCompletion, LoweringContext, ProgramConstantTemplates,
+    SpecializationOutcome, SpecializationState, try_resolve_specialization_fixed_point,
 };
 use crate::host::HostProfile;
 use crate::plan::execution::LibraryFunctionEntries;
-use crate::plan::execution::function::{HostedExecutionGraph, RuntimeFunctionId};
+use crate::plan::execution::function::RuntimeFunctionId;
 use crate::plan::execution::host::{
-    AsyncHostFunctionTables, AsyncHostedExecutionProfile, HostFunctionTables,
-    HostSpecializationError, HostedExecutionProfile,
+    HostFunctionTables, HostSpecializationError, HostedExecutionProfile,
+    TransferHostFunctionTables, TransferHostedExecutionProfile,
 };
 use crate::plan::execution::{ExecutionModuleContext, ExecutionProgram, ExecutionProgramCommon};
 use crate::plan::{
-    AsyncHostedLibraryModulePlan, AsyncHostedLibraryModulePlanParts, HostedLibraryModulePlan,
-    HostedLibraryModulePlanParts, HostedModulePlan, HostedModulePlanParts, HostedPlannedModule,
-    LibraryEntry, ModuleId,
+    HostedLibraryModulePlan, HostedLibraryModulePlanParts, HostedModulePlan, HostedModulePlanParts,
+    HostedPlannedModule, LibraryEntry, ModuleId,
 };
 use std::collections::HashSet;
-use table::{AsyncHostFunctionRegistry, HostFunctionRegistry};
+use table::HostFunctionRegistry;
 use template::{HostLoweringTemplate, HostTemplateCatalog};
 
 pub(in crate::plan::execution) fn lower_hosted<Profile: HostProfile>(
@@ -77,28 +77,69 @@ pub(in crate::plan::execution) fn lower_hosted_library<Profile: HostProfile>(
     )
 }
 
-pub(in crate::plan::execution) fn lower_async_hosted_library<Profile: HostProfile>(
-    module_plan: AsyncHostedLibraryModulePlan<Profile>,
+pub(in crate::plan::execution) fn lower_transfer_hosted_library<Profile: HostProfile>(
+    module_plan: crate::plan::TransferHostedLibraryModulePlan<Profile>,
     first: LibraryEntry,
     remaining: Vec<LibraryEntry>,
-) -> (
-    ExecutionProgram<AsyncHostedExecutionProfile>,
-    AsyncHostFunctionTables<Profile>,
-    LibraryFunctionEntries,
-) {
-    let AsyncHostedLibraryModulePlanParts {
+) -> Result<
+    (
+        ExecutionProgram<TransferHostedExecutionProfile>,
+        TransferHostFunctionTables<Profile>,
+        LibraryFunctionEntries,
+    ),
+    HostSpecializationError,
+> {
+    let crate::plan::TransferHostedLibraryModulePlanParts {
         root,
         modules,
         implementation_bindings,
     } = module_plan.into_parts();
-    let implementations = AsyncHostFunctionRegistry::new(implementation_bindings);
-    match lower_hosted_entries(
+    lower_hosted_entries(
         HostedLoweringInput { root, modules },
         library::Entries::new(first, remaining),
-        implementations,
-    ) {
-        Ok(output) => output,
-        Err(error) => match error {},
+        transfer::TransferHostFunctionRegistry::new(implementation_bindings),
+    )
+}
+
+impl LoweringContext {
+    fn finish_hosted<Execution>(
+        self,
+        additional: function::ProfiledFunctionEntries<Execution>,
+    ) -> LoweringCompletion<LoweredExecution<Execution>>
+    where
+        Execution: crate::plan::execution::function::DirectHostedExecutionProfile,
+    {
+        let mut this = self;
+        let function_parameters = this.function_parameter_catalog();
+        let Self {
+            constant_templates,
+            constants,
+            types,
+            representations,
+            functions,
+            erased_specializations,
+            ..
+        } = this;
+        let outcome = functions
+            .finish_hosted(additional)
+            .zip_with(
+                SpecializationOutcome::Complete(constants.finish_hosted()),
+                |functions, constants| {
+                    let (list_types, custom_types, external_types, value_shapes) =
+                        types.into_tables();
+                    Box::new(LoweredExecution {
+                        constants,
+                        functions: *functions,
+                        function_parameters,
+                        list_types,
+                        custom_types,
+                        external_types,
+                        value_shapes,
+                    })
+                },
+            )
+            .include_prior_erasure(erased_specializations);
+        (constant_templates, representations, outcome)
     }
 }
 
@@ -114,21 +155,33 @@ struct MainEntry {
 trait SealedHostFunctionRegistry {
     type Execution: crate::plan::execution::function::DirectHostedExecutionProfile;
     type Tables;
+    type Programs;
+    type Lowered;
     type Error;
     type Lowering<'registry>: SealedHostFunctionLowering<
             Execution = Self::Execution,
             Tables = Self::Tables,
+            Lowered = Self::Lowered,
             Error = Self::Error,
         >
     where
         Self: 'registry;
 
     fn lowering(&self) -> Self::Lowering<'_>;
+
+    fn assemble(
+        &self,
+        root: ModuleId,
+        modules: Box<[ExecutionModuleContext]>,
+        main: RuntimeFunctionId,
+        lowered: Box<Self::Lowered>,
+    ) -> Self::Programs;
 }
 
 trait SealedHostFunctionLowering {
     type Execution: crate::plan::execution::function::DirectHostedExecutionProfile;
     type Tables;
+    type Lowered;
     type Error;
 
     fn lower_specialized(
@@ -141,10 +194,7 @@ trait SealedHostFunctionLowering {
     fn finish(
         self,
         context: LoweringContext,
-    ) -> (
-        super::LoweringCompletion<super::LoweredExecution<Self::Execution>>,
-        Self::Tables,
-    );
+    ) -> (super::LoweringCompletion<Self::Lowered>, Self::Tables);
 }
 
 trait HostedEntries {
@@ -163,7 +213,7 @@ trait HostedEntries {
 }
 
 type LoweredHostedEntries<Entries, Registry> = (
-    ExecutionProgram<<Registry as SealedHostFunctionRegistry>::Execution>,
+    <Registry as SealedHostFunctionRegistry>::Programs,
     <Registry as SealedHostFunctionRegistry>::Tables,
     <Entries as HostedEntries>::Output,
 );
@@ -245,28 +295,16 @@ where
             }))
         })?;
 
-    Ok((
-        ExecutionProgram {
-            common: ExecutionProgramCommon {
-                root,
-                modules: module_contexts.into_boxed_slice(),
-                main,
-                constants: lowered.constants,
-                list_types: lowered.list_types,
-                custom_types: lowered.custom_types,
-                external_types: lowered.external_types,
-                value_shapes: lowered.value_shapes,
-            },
-            functions: lowered.functions,
-        },
-        host_functions,
-        entry_output,
-    ))
+    let programs =
+        implementations.assemble(root, module_contexts.into_boxed_slice(), main, lowered);
+    Ok((programs, host_functions, entry_output))
 }
 
 impl<Profile: HostProfile> SealedHostFunctionRegistry for HostFunctionRegistry<Profile> {
     type Execution = HostedExecutionProfile;
     type Tables = HostFunctionTables<Profile>;
+    type Programs = ExecutionProgram<HostedExecutionProfile>;
+    type Lowered = super::LoweredExecution<HostedExecutionProfile>;
     type Error = HostSpecializationError;
     type Lowering<'registry>
         = table::HostFunctionLowering<'registry, Profile>
@@ -276,25 +314,44 @@ impl<Profile: HostProfile> SealedHostFunctionRegistry for HostFunctionRegistry<P
     fn lowering(&self) -> Self::Lowering<'_> {
         HostFunctionRegistry::lowering(self)
     }
-}
 
-impl<Profile: HostProfile> SealedHostFunctionRegistry for AsyncHostFunctionRegistry<Profile> {
-    type Execution = AsyncHostedExecutionProfile;
-    type Tables = AsyncHostFunctionTables<Profile>;
-    type Error = std::convert::Infallible;
-    type Lowering<'registry>
-        = table::AsyncHostFunctionLowering<'registry, Profile>
-    where
-        Self: 'registry;
-
-    fn lowering(&self) -> Self::Lowering<'_> {
-        AsyncHostFunctionRegistry::lowering(self)
+    fn assemble(
+        &self,
+        root: ModuleId,
+        modules: Box<[ExecutionModuleContext]>,
+        main: RuntimeFunctionId,
+        lowered: Box<Self::Lowered>,
+    ) -> Self::Programs {
+        let super::LoweredExecution {
+            constants,
+            functions,
+            function_parameters,
+            list_types,
+            custom_types,
+            external_types,
+            value_shapes,
+        } = *lowered;
+        ExecutionProgram {
+            common: std::sync::Arc::new(ExecutionProgramCommon {
+                root,
+                modules,
+                main,
+                constants,
+                function_parameters: std::sync::Arc::new(function_parameters),
+                list_types,
+                custom_types,
+                external_types,
+                value_shapes,
+            }),
+            functions,
+        }
     }
 }
 
 impl<Profile: HostProfile> SealedHostFunctionLowering for table::HostFunctionLowering<'_, Profile> {
     type Execution = HostedExecutionProfile;
     type Tables = HostFunctionTables<Profile>;
+    type Lowered = super::LoweredExecution<HostedExecutionProfile>;
     type Error = HostSpecializationError;
 
     fn lower_specialized(
@@ -314,33 +371,6 @@ impl<Profile: HostProfile> SealedHostFunctionLowering for table::HostFunctionLow
         Self::Tables,
     ) {
         table::HostFunctionLowering::finish(self, context)
-    }
-}
-
-impl<Profile: HostProfile> SealedHostFunctionLowering
-    for table::AsyncHostFunctionLowering<'_, Profile>
-{
-    type Execution = AsyncHostedExecutionProfile;
-    type Tables = AsyncHostFunctionTables<Profile>;
-    type Error = std::convert::Infallible;
-
-    fn lower_specialized(
-        &mut self,
-        template: &crate::plan::HostFunctionTemplate,
-        key: &SpecializationKey,
-        context: &mut LoweringContext,
-    ) -> Result<(), Self::Error> {
-        table::AsyncHostFunctionLowering::lower_specialized(self, template, key, context)
-    }
-
-    fn finish(
-        self,
-        context: LoweringContext,
-    ) -> (
-        super::LoweringCompletion<super::LoweredExecution<AsyncHostedExecutionProfile>>,
-        Self::Tables,
-    ) {
-        table::AsyncHostFunctionLowering::finish(self, context)
     }
 }
 
@@ -390,9 +420,7 @@ impl HostedEntries for library::Entries {
     }
 
     fn seal(reserved: Self::Reserved) -> SpecializationOutcome<(RuntimeFunctionId, Self::Output)> {
-        reserved
-            .seal()
-            .map(|entries| entries.finish::<HostedExecutionGraph>())
+        reserved.seal().map(library::SealedEntries::finish)
     }
 }
 
@@ -404,6 +432,154 @@ mod tests {
         HostModule, HostProviderSet, ModuleSource, PackageSource, compile_typed_host_program,
     };
     use num_bigint::BigInt;
+
+    #[test]
+    fn every_hosted_library_family_can_own_the_first_entry() {
+        use crate::plan::{ExternalType, ExternalTypeName, StandardVariant, ValueType};
+        struct Profile;
+        impl crate::HostProfile for Profile {
+            type RunState = ();
+            type ExternalStores = crate::host::HostFutureStore;
+        }
+        impl crate::host::HostWorkProfile for Profile {
+            type Work = crate::work_fixture::WorkComponent;
+        }
+        impl crate::host::AsyncHostComponentProfile<crate::work_fixture::WorkComponent> for Profile {
+            fn component_async_stores(stores: &Self::ExternalStores) -> &Self::ExternalStores {
+                stores
+            }
+            fn component_state(state: &mut ()) -> &mut () {
+                state
+            }
+        }
+        let mut state = ();
+        let stores = crate::host::HostFutureStore::default();
+        assert!(std::ptr::eq(
+            <Profile as crate::host::AsyncHostComponentProfile<
+                crate::work_fixture::WorkComponent,
+            >>::component_async_stores(&stores),
+            &stores,
+        ));
+        assert_eq!(
+            <crate::work_fixture::WorkComponent as crate::HostProvider<Profile>>::project(
+                &mut state
+            ),
+            &()
+        );
+        let cases = [
+            ("Int", LibraryValueType::Int, Vec::new(), Vec::new()),
+            ("Float", LibraryValueType::Float, Vec::new(), Vec::new()),
+            ("String", LibraryValueType::String, Vec::new(), Vec::new()),
+            (
+                "BitArray",
+                LibraryValueType::BitArray,
+                Vec::new(),
+                Vec::new(),
+            ),
+            (
+                "UtfCodepoint",
+                LibraryValueType::UtfCodepoint,
+                Vec::new(),
+                Vec::new(),
+            ),
+            (
+                "Result(Int, String)",
+                LibraryValueType::Custom(
+                    StandardVariant::Result.custom_type(vec![ValueType::Int, ValueType::String]),
+                ),
+                vec![StandardVariant::Result],
+                Vec::new(),
+            ),
+            (
+                "future.Work(Int)",
+                LibraryValueType::External(ExternalType::new(
+                    ExternalTypeName::new(
+                        "work_fixture".into(),
+                        "fixture/work".into(),
+                        "Work".into(),
+                    ),
+                    vec![ValueType::Int],
+                )),
+                Vec::new(),
+                Vec::new(),
+            ),
+            ("Bool", LibraryValueType::Bool, Vec::new(), Vec::new()),
+            ("Nil", LibraryValueType::Nil, Vec::new(), Vec::new()),
+            (
+                "List(Int)",
+                LibraryValueType::List(Box::new(LibraryValueType::Int)),
+                Vec::new(),
+                vec![LibraryValueType::Int],
+            ),
+            (
+                "#(Int, Bool)",
+                LibraryValueType::Tuple(vec![ValueType::Int, ValueType::Bool]),
+                Vec::new(),
+                Vec::new(),
+            ),
+        ];
+        for (index, (source_type, return_type, variants, lists)) in cases.into_iter().enumerate() {
+            let source = format!(
+                "import fixture/work as future\npub fn identity(value: {source_type}) -> {source_type} {{ value }}"
+            );
+            let program = crate::frontend::compile_typed_transfer_host_program(
+                "application",
+                "library",
+                [
+                    PackageSource::new(
+                        "work_fixture",
+                        Vec::<String>::new(),
+                        [ModuleSource::new(
+                            "fixture/work",
+                            "src/fixture/work.gleam",
+                            crate::work_fixture::WorkComponent::SOURCE,
+                        )],
+                    ),
+                    PackageSource::new(
+                        "application",
+                        ["work_fixture"],
+                        [ModuleSource::new("library", "src/library.gleam", source)],
+                    ),
+                ],
+                crate::host::TransferHostProviderSet::new(
+                    crate::work_fixture::WorkComponent::providers::<Profile>()
+                        .expect("Future provider"),
+                )
+                .expect("providers"),
+            )
+            .expect("source identity");
+            let plan =
+                crate::planner::plan_transfer_host_library_program(program).expect("typed library");
+            let template = plan
+                .functions()
+                .iter()
+                .find(|function| function.name() == "identity")
+                .expect("identity")
+                .signature()
+                .id();
+            let (_, _, entries) = super::lower_transfer_hosted_library(
+                plan,
+                LibraryEntry::new(template, return_type, variants, lists),
+                Vec::new(),
+            )
+            .expect("first family seals");
+            let counts = [
+                entries.ints.len(),
+                entries.floats.len(),
+                entries.strings.len(),
+                entries.bit_arrays.len(),
+                entries.utf_codepoints.len(),
+                entries.customs.len(),
+                entries.externals.len(),
+                entries.bools.len(),
+                entries.nils.len(),
+                entries.lists.len(),
+                entries.tuples.len(),
+            ];
+            assert_eq!(counts[index], 1, "{source_type}");
+            assert_eq!(counts.into_iter().sum::<usize>(), 1);
+        }
+    }
 
     #[test]
     fn shares_reachable_host_specializations_and_prunes_unused_providers() {

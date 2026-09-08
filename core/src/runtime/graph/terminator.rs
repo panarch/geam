@@ -6,11 +6,11 @@ use crate::plan::execution::graph::{
     Terminator,
 };
 use crate::runtime::ExecutionError;
-use crate::runtime::error::PanicKind;
+use crate::runtime::RuntimeValueProfile;
+use crate::runtime::error::{PanicKind, PanicSubjectProfile};
 use crate::runtime::evaluated::EvaluatedNeverFunction;
 use crate::runtime::materialize::MaterializeProfile;
 use crate::runtime::state::RuntimeState;
-use crate::runtime::{LocalValues, RuntimeValueProfile};
 
 pub(in crate::runtime) enum GraphAction<Profile: RuntimeValueProfile> {
     Continue {
@@ -65,14 +65,16 @@ pub(in crate::runtime) trait RuntimeGraphState<Profile: RuntimeValueProfile> {
     ) -> Self::Error;
 }
 
-impl<Host> RuntimeGraphState<LocalValues> for RuntimeState<'_, Host, LocalValues> {
-    type Error = ExecutionError;
+impl<Host, Values: PanicSubjectProfile> RuntimeGraphState<Values>
+    for RuntimeState<'_, Host, Values>
+{
+    type Error = ExecutionError<Values::PanicSubject>;
 
-    fn lists(&self) -> &<LocalValues as RuntimeValueProfile>::ListStorage {
+    fn lists(&self) -> &Values::ListStorage {
         self.lists()
     }
 
-    fn lists_mut(&mut self) -> &mut <LocalValues as RuntimeValueProfile>::ListStorage {
+    fn lists_mut(&mut self) -> &mut Values::ListStorage {
         self.lists_mut()
     }
 
@@ -96,14 +98,13 @@ impl<Host> RuntimeGraphState<LocalValues> for RuntimeState<'_, Host, LocalValues
         source: Option<&crate::plan::SourceContext>,
         message: Option<ecow::EcoString>,
         site: crate::plan::PanicSite,
-        subject: crate::runtime::EvaluatedValue<LocalValues>,
+        subject: crate::runtime::EvaluatedValue<Values>,
         pattern_span: crate::plan::SourceSpan,
     ) -> Self::Error
     where
         Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
     {
-        let subject =
-            crate::runtime::materialize::value(plan.value_metadata(), self.lists(), subject);
+        let subject = Values::panic_subject(plan, self.lists(), subject);
         ExecutionError::let_assert_panic(source, message, site, subject, pattern_span)
     }
 

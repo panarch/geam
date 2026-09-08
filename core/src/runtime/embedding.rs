@@ -1,3 +1,4 @@
+mod attached;
 mod hosted;
 mod input;
 mod list;
@@ -10,13 +11,6 @@ pub(crate) use input::{
 pub(crate) use list::EmbeddingList;
 pub(crate) use output::EmbeddingOutput;
 
-pub(crate) use hosted::{
-    run_hosted_embedded_bit_array, run_hosted_embedded_bool, run_hosted_embedded_custom,
-    run_hosted_embedded_float, run_hosted_embedded_int, run_hosted_embedded_list,
-    run_hosted_embedded_nil, run_hosted_embedded_string, run_hosted_embedded_tuple,
-    run_hosted_embedded_utf_codepoint,
-};
-
 use super::error::HostCallOrigin;
 use super::function;
 use super::graph::RetainedValues;
@@ -27,6 +21,12 @@ use crate::plan::execution::function::{
     BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, IntFunctionId,
     LibraryListFunctionId, NilFunctionId, StringFunctionId, TupleFunctionId,
     UtfCodepointFunctionId,
+};
+pub(crate) use hosted::{
+    run_hosted_embedded_bit_array, run_hosted_embedded_bool, run_hosted_embedded_custom,
+    run_hosted_embedded_float, run_hosted_embedded_int, run_hosted_embedded_list,
+    run_hosted_embedded_nil, run_hosted_embedded_string, run_hosted_embedded_tuple,
+    run_hosted_embedded_utf_codepoint,
 };
 
 pub(crate) fn run_embedded_int(
@@ -124,15 +124,15 @@ pub(crate) fn run_embedded_tuple(
 
 pub(crate) fn run_embedded_list(
     plan: &ExecutionPlan,
-    function: &LibraryListFunctionId,
+    function: &LibraryListFunctionId<std::convert::Infallible>,
     inputs: RetainedValues,
     echo: &mut dyn EchoSink,
 ) -> Result<EmbeddingOutput, ExecutionError> {
     let mut state = RuntimeState::new(echo);
-    function::run_core_list(
+    function::run_list(
         plan,
         &mut state,
-        function.core(),
+        function.runtime_id(),
         HostCallOrigin::Entry,
         inputs,
     )

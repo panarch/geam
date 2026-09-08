@@ -1,6 +1,7 @@
 use crate::host::{
-    HostCall, HostCallCompletion, HostCallError, HostConstruction, HostConstructions, HostProfile,
-    HostProvider, HostType, HostTypeList, HostTypeListEnd, HostTypeSequence,
+    AsyncHostCallError, HostCall, HostCallCompletion, HostCallError, HostConstruction,
+    HostConstructions, HostProfile, HostProvider, HostType, HostTypeList, HostTypeListEnd,
+    HostTypeSequence, TransferHostCall,
 };
 use std::marker::PhantomData;
 
@@ -12,6 +13,93 @@ pub trait ProviderValue {
     type ListInput;
     type OutputRequirements: ProviderConstructionRequirements;
     type RootRequirements: ProviderConstructionRequirements;
+}
+
+/// Transferable input forms selected beside one ordinary provider value.
+#[doc(hidden)]
+pub trait ProviderTransferValue: ProviderValue {
+    type Output: ProviderTransferValue<Host = Self::Host, Output = Self::Output> + 'static;
+    type ImmediateInput;
+    type ImmediateListInput;
+    type TransferInput;
+    type TransferListInput;
+}
+
+/// Defers one payload's transfer requirement until a transferable profile is
+/// actually selected.
+///
+/// The profile parameter keeps macro-generated local-only providers valid even
+/// when their payload is not `Send`; selecting an async composition requires
+/// this bound and therefore rejects that payload statically.
+#[doc(hidden)]
+pub trait ProviderTransferPayload<Profile>: Send + 'static {}
+
+impl<Profile, Payload> ProviderTransferPayload<Profile> for Payload where Payload: Send + 'static {}
+
+/// Owned conversion from one transferable host value into a provider input.
+#[doc(hidden)]
+pub trait ProviderTransferInputValue<Profile, Provider, Return>: Sized
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+{
+    type Host: HostType;
+
+    fn from_host<'call>(
+        call: &mut TransferHostCall<'call, Profile, Provider, Return>,
+        value: <Self::Host as HostType>::Value<'call>,
+    ) -> Self;
+}
+
+/// Conversion from an owned provider value into transferable execution.
+#[doc(hidden)]
+pub trait ProviderTransferOutputValue<Profile, Provider, Return>: ProviderValue
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+{
+    fn into_host<'call>(
+        self,
+        call: &mut TransferHostCall<'call, Profile, Provider, Return>,
+        constructions: &ProviderConstructions<'call, Self::OutputRequirements>,
+    ) -> <Self::Host as HostType>::Value<'call>;
+}
+
+/// Root completion for an owned provider value in transferable execution.
+#[doc(hidden)]
+pub trait ProviderTransferRootOutputValue<Profile, Provider>: ProviderValue
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+{
+    fn complete<'call>(
+        self,
+        call: TransferHostCall<'call, Profile, Provider, Self::Host>,
+        constructions: &ProviderConstructions<'call, Self::RootRequirements>,
+    ) -> Result<HostCallCompletion<'call, Self::Host>, AsyncHostCallError>;
+}
+
+/// Transferable List item view and decoder selected by one declaration.
+#[doc(hidden)]
+pub trait ProviderTransferListInputValue: Sized {
+    type Host: HostType;
+    type View;
+    type Decoder: super::ProviderTransferListItemDecoder<Self, View = Self::View> + Clone;
+}
+
+/// Construction of one transferable List item decoder.
+#[doc(hidden)]
+pub trait ProviderTransferListInputCodec<Profile, Provider>:
+    ProviderTransferListInputValue
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+{
+    fn decoder<Return>(call: &TransferHostCall<'_, Profile, Provider, Return>) -> Self::Decoder
+    where
+        Return: HostType;
 }
 
 /// Call-scoped conversion from one host value into its Rust input representation.
@@ -74,6 +162,59 @@ where
     fn output<'call, Provider, Return>(
         call: &mut HostCall<'call, Profile, Provider, Return>,
         value: super::ProviderExternalItem<Self>,
+    ) -> <Self::Host as HostType>::Value<'call>
+    where
+        Provider: HostProvider<Profile>,
+        Return: HostType;
+}
+
+/// Profile-specific transferable external access generated beside one declaration.
+#[doc(hidden)]
+pub trait ProviderTransferExternalCodec<Profile>: ProviderValue + Sized + Send + 'static
+where
+    Profile: HostProfile,
+{
+    fn immediate_input<'call, Provider, Return>(
+        call: &TransferHostCall<'call, Profile, Provider, Return>,
+        value: <Self::Host as HostType>::Value<'call>,
+    ) -> super::ProviderTransferExternalView<Self>
+    where
+        Provider: HostProvider<Profile>,
+        Return: HostType;
+
+    fn transfer_input<'call, Provider, Return>(
+        call: &TransferHostCall<'call, Profile, Provider, Return>,
+        value: <Self::Host as HostType>::Value<'call>,
+    ) -> super::ProviderTransferExternalItem<Self>
+    where
+        Provider: HostProvider<Profile>,
+        Return: HostType;
+
+    fn immediate_list_decoder<Provider, Return>(
+        call: &TransferHostCall<'_, Profile, Provider, Return>,
+    ) -> super::ProviderTransferExternalViewListDecoder<Self>
+    where
+        Provider: HostProvider<Profile>,
+        Return: HostType;
+
+    fn transfer_list_decoder<Provider, Return>(
+        call: &TransferHostCall<'_, Profile, Provider, Return>,
+    ) -> super::ProviderTransferExternalListDecoder<Self>
+    where
+        Provider: HostProvider<Profile>,
+        Return: HostType;
+
+    fn immediate_output<'call, Provider, Return>(
+        call: &mut TransferHostCall<'call, Profile, Provider, Return>,
+        value: super::ProviderTransferExternalView<Self>,
+    ) -> <Self::Host as HostType>::Value<'call>
+    where
+        Provider: HostProvider<Profile>,
+        Return: HostType;
+
+    fn transfer_output<'call, Provider, Return>(
+        call: &mut TransferHostCall<'call, Profile, Provider, Return>,
+        value: super::ProviderTransferExternalItem<Self>,
     ) -> <Self::Host as HostType>::Value<'call>
     where
         Provider: HostProvider<Profile>,
@@ -180,11 +321,15 @@ where
     Requirements: ProviderConstructionRequirements,
 {
     pub fn new(
-        _constructions: HostConstructions<'call, Requirements::Types<HostTypeListEnd>>,
+        _constructions: &HostConstructions<'call, Requirements::Types<HostTypeListEnd>>,
     ) -> Self {
         Self {
             marker: PhantomData,
         }
+    }
+
+    pub(crate) fn host(&self) -> HostConstructions<'call, Requirements::Types<HostTypeListEnd>> {
+        HostConstructions::new()
     }
 
     pub fn select<Index>(
@@ -247,6 +392,82 @@ macro_rules! provider_scalar {
             type ListInput = Self;
             type OutputRequirements = ProviderNoConstructions;
             type RootRequirements = ProviderNoConstructions;
+        }
+
+        impl ProviderTransferValue for $type {
+            type Output = Self;
+            type ImmediateInput = Self;
+            type ImmediateListInput = Self;
+            type TransferInput = Self;
+            type TransferListInput = Self;
+        }
+
+        impl<Profile, Provider, Return> ProviderTransferInputValue<Profile, Provider, Return>
+            for $type
+        where
+            Profile: HostProfile,
+            Provider: HostProvider<Profile>,
+            Return: HostType,
+        {
+            type Host = Self;
+
+            fn from_host<'call>(
+                _call: &mut TransferHostCall<'call, Profile, Provider, Return>,
+                value: <Self::Host as HostType>::Value<'call>,
+            ) -> Self {
+                value
+            }
+        }
+
+        impl<Profile, Provider, Return> ProviderTransferOutputValue<Profile, Provider, Return>
+            for $type
+        where
+            Profile: HostProfile,
+            Provider: HostProvider<Profile>,
+            Return: HostType,
+        {
+            fn into_host<'call>(
+                self,
+                _call: &mut TransferHostCall<'call, Profile, Provider, Return>,
+                _constructions: &ProviderConstructions<'call, Self::OutputRequirements>,
+            ) -> <Self::Host as HostType>::Value<'call> {
+                self
+            }
+        }
+
+        impl<Profile, Provider> ProviderTransferRootOutputValue<Profile, Provider> for $type
+        where
+            Profile: HostProfile,
+            Provider: HostProvider<Profile>,
+        {
+            fn complete<'call>(
+                self,
+                call: TransferHostCall<'call, Profile, Provider, Self::Host>,
+                _constructions: &ProviderConstructions<'call, Self::RootRequirements>,
+            ) -> Result<HostCallCompletion<'call, Self::Host>, AsyncHostCallError> {
+                Ok(call.return_value(self))
+            }
+        }
+
+        impl ProviderTransferListInputValue for $type {
+            type Host = Self;
+            type View = Self;
+            type Decoder = super::ProviderScalarListDecoder<Self>;
+        }
+
+        impl<Profile, Provider> ProviderTransferListInputCodec<Profile, Provider> for $type
+        where
+            Profile: HostProfile,
+            Provider: HostProvider<Profile>,
+        {
+            fn decoder<Return>(
+                _call: &TransferHostCall<'_, Profile, Provider, Return>,
+            ) -> Self::Decoder
+            where
+                Return: HostType,
+            {
+                super::ProviderScalarListDecoder::new()
+            }
         }
 
         impl<Profile, Provider, Return> ProviderInputValue<Profile, Provider, Return> for $type
@@ -331,6 +552,213 @@ where
     type ListInput = Self;
     type OutputRequirements = ProviderNoConstructions;
     type RootRequirements = ProviderNoConstructions;
+}
+
+impl<Payload> ProviderTransferValue for super::ProviderExternalItem<Payload>
+where
+    Payload: ProviderTransferValue + 'static,
+{
+    type Output = super::ProviderTransferExternalItem<Payload::Output>;
+    type ImmediateInput = super::ProviderTransferExternalView<Payload::Output>;
+    type ImmediateListInput = super::ProviderTransferExternalView<Payload::Output>;
+    type TransferInput = super::ProviderTransferExternalItem<Payload::Output>;
+    type TransferListInput = super::ProviderTransferExternalItem<Payload::Output>;
+}
+
+impl<Payload> ProviderValue for super::ProviderTransferExternalView<Payload>
+where
+    Payload: ProviderValue + 'static,
+{
+    type Host = Payload::Host;
+    type Input = Self;
+    type ListInput = Self;
+    type OutputRequirements = ProviderNoConstructions;
+    type RootRequirements = ProviderNoConstructions;
+}
+
+impl<Payload> ProviderValue for super::ProviderTransferExternalItem<Payload>
+where
+    Payload: ProviderValue + 'static,
+{
+    type Host = Payload::Host;
+    type Input = Self;
+    type ListInput = Self;
+    type OutputRequirements = ProviderNoConstructions;
+    type RootRequirements = ProviderNoConstructions;
+}
+
+impl<Payload> ProviderTransferValue for super::ProviderTransferExternalView<Payload>
+where
+    Payload: ProviderValue + 'static,
+{
+    type Output = Self;
+    type ImmediateInput = Self;
+    type ImmediateListInput = Self;
+    type TransferInput = super::ProviderTransferExternalItem<Payload>;
+    type TransferListInput = Self::TransferInput;
+}
+
+impl<Payload> ProviderTransferValue for super::ProviderTransferExternalItem<Payload>
+where
+    Payload: ProviderValue + 'static,
+{
+    type Output = Self;
+    type ImmediateInput = super::ProviderTransferExternalView<Payload>;
+    type ImmediateListInput = Self::ImmediateInput;
+    type TransferInput = Self;
+    type TransferListInput = Self;
+}
+
+impl<Profile, Provider, Return, Payload> ProviderTransferInputValue<Profile, Provider, Return>
+    for super::ProviderTransferExternalView<Payload>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Payload: ProviderTransferExternalCodec<Profile>,
+{
+    type Host = Payload::Host;
+
+    fn from_host<'call>(
+        call: &mut TransferHostCall<'call, Profile, Provider, Return>,
+        value: <Self::Host as HostType>::Value<'call>,
+    ) -> Self {
+        Payload::immediate_input(call, value)
+    }
+}
+
+impl<Profile, Provider, Return, Payload> ProviderTransferInputValue<Profile, Provider, Return>
+    for super::ProviderTransferExternalItem<Payload>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Payload: ProviderTransferExternalCodec<Profile>,
+{
+    type Host = Payload::Host;
+
+    fn from_host<'call>(
+        call: &mut TransferHostCall<'call, Profile, Provider, Return>,
+        value: <Self::Host as HostType>::Value<'call>,
+    ) -> Self {
+        Payload::transfer_input(call, value)
+    }
+}
+
+impl<Payload> ProviderTransferListInputValue for super::ProviderTransferExternalView<Payload>
+where
+    Payload: ProviderValue + Send + 'static,
+{
+    type Host = Payload::Host;
+    type View = Self;
+    type Decoder = super::ProviderTransferExternalViewListDecoder<Payload>;
+}
+
+impl<Payload> ProviderTransferListInputValue for super::ProviderTransferExternalItem<Payload>
+where
+    Payload: ProviderValue + Send + 'static,
+{
+    type Host = Payload::Host;
+    type View = Self;
+    type Decoder = super::ProviderTransferExternalListDecoder<Payload>;
+}
+
+impl<Profile, Provider, Payload> ProviderTransferListInputCodec<Profile, Provider>
+    for super::ProviderTransferExternalView<Payload>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Payload: ProviderTransferExternalCodec<Profile>,
+{
+    fn decoder<Return>(call: &TransferHostCall<'_, Profile, Provider, Return>) -> Self::Decoder
+    where
+        Return: HostType,
+    {
+        Payload::immediate_list_decoder(call)
+    }
+}
+
+impl<Profile, Provider, Payload> ProviderTransferListInputCodec<Profile, Provider>
+    for super::ProviderTransferExternalItem<Payload>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Payload: ProviderTransferExternalCodec<Profile>,
+{
+    fn decoder<Return>(call: &TransferHostCall<'_, Profile, Provider, Return>) -> Self::Decoder
+    where
+        Return: HostType,
+    {
+        Payload::transfer_list_decoder(call)
+    }
+}
+
+impl<Profile, Provider, Return, Payload> ProviderTransferOutputValue<Profile, Provider, Return>
+    for super::ProviderTransferExternalView<Payload>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Payload: ProviderTransferExternalCodec<Profile>,
+{
+    fn into_host<'call>(
+        self,
+        call: &mut TransferHostCall<'call, Profile, Provider, Return>,
+        _constructions: &ProviderConstructions<'call, Self::OutputRequirements>,
+    ) -> <Self::Host as HostType>::Value<'call> {
+        Payload::immediate_output(call, self)
+    }
+}
+
+impl<Profile, Provider, Return, Payload> ProviderTransferOutputValue<Profile, Provider, Return>
+    for super::ProviderTransferExternalItem<Payload>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Payload: ProviderTransferExternalCodec<Profile>,
+{
+    fn into_host<'call>(
+        self,
+        call: &mut TransferHostCall<'call, Profile, Provider, Return>,
+        _constructions: &ProviderConstructions<'call, Self::OutputRequirements>,
+    ) -> <Self::Host as HostType>::Value<'call> {
+        Payload::transfer_output(call, self)
+    }
+}
+
+impl<Profile, Provider, Payload> ProviderTransferRootOutputValue<Profile, Provider>
+    for super::ProviderTransferExternalView<Payload>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Payload: ProviderTransferExternalCodec<Profile>,
+{
+    fn complete<'call>(
+        self,
+        mut call: TransferHostCall<'call, Profile, Provider, Self::Host>,
+        _constructions: &ProviderConstructions<'call, Self::RootRequirements>,
+    ) -> Result<HostCallCompletion<'call, Self::Host>, AsyncHostCallError> {
+        let value = Payload::immediate_output(&mut call, self);
+        Ok(call.return_value(value))
+    }
+}
+
+impl<Profile, Provider, Payload> ProviderTransferRootOutputValue<Profile, Provider>
+    for super::ProviderTransferExternalItem<Payload>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Payload: ProviderTransferExternalCodec<Profile>,
+{
+    fn complete<'call>(
+        self,
+        mut call: TransferHostCall<'call, Profile, Provider, Self::Host>,
+        _constructions: &ProviderConstructions<'call, Self::RootRequirements>,
+    ) -> Result<HostCallCompletion<'call, Self::Host>, AsyncHostCallError> {
+        let value = Payload::transfer_output(&mut call, self);
+        Ok(call.return_value(value))
+    }
 }
 
 impl<Profile, Provider, Return, Payload> ProviderOutputValue<Profile, Provider, Return>
