@@ -98,6 +98,9 @@ jobs:
             . -> target
             examples/embedding/application -> target
 
+      - name: Fetch workspace dependencies for offline fixtures
+        run: cargo fetch --locked
+
       - name: Verify application dependency graph
         run: |
           cargo tree --manifest-path examples/embedding/application/Cargo.toml --locked --package geam --edges normal --depth 1 --prefix none > "$RUNNER_TEMP/geam-embedding-graph"
