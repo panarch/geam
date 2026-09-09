@@ -8,30 +8,23 @@ pub use provider::{
 };
 pub use storage::StringTree as StoredStringTree;
 
-use super::{Component, GleamStdlibHostProfile};
-use crate::{HostExternalType, HostProviderModule, HostRegistrationError, stdlib_stores};
+use super::{Component, GleamStdlibProviderProfile};
+use crate::{HostExternalType, HostProviderModule, HostRegistrationError};
 use ecow::EcoString;
-use geam_core::provider::ExternalPayload;
 use num_bigint::BigInt;
 
 pub type StringTree = HostExternalType<StringTreeSchema>;
-
-fn stores<Profile>(stores: &Profile::ExternalStores) -> &Stores
-where
-    Profile: GleamStdlibHostProfile,
-{
-    &stdlib_stores::<Profile>(stores).string_tree
-}
 
 #[geam_macros::module(
     path = "gleam/string_tree",
     crate_path = geam_core,
     profile = crate::GleamStdlibHostProfile,
     component = crate::Component<Profile::Io>,
-    stores = super::stores,
+    stores = string_tree,
 )]
 mod provider {
-    use super::{BigInt, EcoString, ExternalPayload, StoredStringTree, function};
+    use super::{BigInt, EcoString, StoredStringTree, function};
+    use geam_core::provider::ExternalPayload;
 
     #[geam_macros::external(name = "StringTree", manual)]
     pub struct StringTreePayload {
@@ -156,7 +149,7 @@ mod provider {
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
-    Profile: GleamStdlibHostProfile,
+    Profile: GleamStdlibProviderProfile,
 {
     provider::__geam_module::<Profile>()
 }
@@ -218,10 +211,11 @@ mod tests {
 
     #[test]
     fn delegates_payload_semantics_to_the_persistent_string_tree() {
-        let segmented = StringTreePayload::from_stored(StoredStringTree::sequence([
-            StoredStringTree::text("a".into()),
-            StoredStringTree::text("b".into()),
-        ]));
+        let segmented: StringTreePayload =
+            StringTreePayload::from_stored(StoredStringTree::sequence([
+                StoredStringTree::text("a".into()),
+                StoredStringTree::text("b".into()),
+            ]));
         let same = StringTreePayload::from_stored(StoredStringTree::sequence([
             StoredStringTree::text("a".into()),
             StoredStringTree::text("b".into()),

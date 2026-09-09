@@ -60,6 +60,39 @@ code. `run` continues by starting the application. Normal Gleam IO keeps its
 selected output stream, while Gleam's `echo` output is written to stderr. A
 value returned by `main` is not printed automatically.
 
+## Run async Rust work
+
+A provider can return a `geam/future.Future` from a Rust async function. Return
+the composed Future from `main`, and `geam run` drives it to completion:
+
+```gleam
+import example_async_files as files
+import geam/future.{type Future}
+import gleam/io
+
+pub fn main() -> Future(Nil) {
+  use result <- future.map(files.read("message.txt"))
+  case result {
+    Ok(text) -> io.print(text)
+    Error(reason) -> io.println(reason)
+  }
+}
+```
+
+The [async files example](../examples/provider/async_files) includes the package
+and provider setup. The runner supplies Tokio with I/O and time support; no
+executor option or Rust entry point is needed.
+
+Only the outer Future returned by `main` is driven. Use `future.all` to combine
+several operations or `future.then` when a callback returns more work. Futures
+inside an ordinary List, Tuple, or Result are not started automatically.
+See [Future](future.md) for composition and shared results.
+
+`prepare` still stops before provider initialization and application execution.
+When execution ends, pending Geam work is released before the runtime shuts
+down. Native blocking tasks already started by a provider must finish; shutdown
+does not interrupt them.
+
 ## Keep working in Gleam
 
 Edit the Gleam project as usual, then run:

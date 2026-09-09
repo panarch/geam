@@ -1,0 +1,43 @@
+error: lifetime may not live long enough
+ --> tests/ui/rejected/foreign_scope.rs:7:24
+  |
+5 | pub fn foreign<'a, 'b, P>(scope: &mut ExecutionScope<'a, '_, P>, work: Future<'b, BigInt>)
+  |                --  -- lifetime `'b` defined here
+  |                |
+  |                lifetime `'a` defined here
+6 | where P: HostWorkProfile<Work = FutureComponent> {
+7 |     let _observation = scope.observe(&work);
+  |                        ^^^^^^^^^^^^^^^^^^^^ argument requires that `'a` must outlive `'b`
+  |
+  = help: consider adding the following bound: `'a: 'b`
+  = note: requirement occurs because of the type `geam_core::embedding::Future<'_, BigInt, HostFutureSchema>`, which makes the generic argument `'_` invariant
+  = note: the struct `geam_core::embedding::Future<'scope, Value, Schema>` is invariant over the parameter `'scope`
+  = help: see <https://doc.rust-lang.org/nomicon/subtyping.html> for more information about variance
+help: consider reusing a named lifetime parameter
+  |
+5 - pub fn foreign<'a, 'b, P>(scope: &mut ExecutionScope<'a, '_, P>, work: Future<'b, BigInt>)
+5 + pub fn foreign<'a, 'b, P>(scope: &mut ExecutionScope<'a, 'a, P>, work: Future<'b, BigInt>)
+  |
+
+error: lifetime may not live long enough
+ --> tests/ui/rejected/foreign_scope.rs:7:24
+  |
+5 | pub fn foreign<'a, 'b, P>(scope: &mut ExecutionScope<'a, '_, P>, work: Future<'b, BigInt>)
+  |                --  -- lifetime `'b` defined here
+  |                |
+  |                lifetime `'a` defined here
+6 | where P: HostWorkProfile<Work = FutureComponent> {
+7 |     let _observation = scope.observe(&work);
+  |                        ^^^^^^^^^^^^^^^^^^^^ argument requires that `'b` must outlive `'a`
+  |
+  = help: consider adding the following bound: `'b: 'a`
+  = note: requirement occurs because of the type `ExecutionScope<'_, '_, P>`, which makes the generic argument `'_` invariant
+  = note: the struct `ExecutionScope<'scope, 'host, Profile>` is invariant over the parameter `'scope`
+  = help: see <https://doc.rust-lang.org/nomicon/subtyping.html> for more information about variance
+help: consider reusing a named lifetime parameter
+  |
+5 - pub fn foreign<'a, 'b, P>(scope: &mut ExecutionScope<'a, '_, P>, work: Future<'b, BigInt>)
+5 + pub fn foreign<'a, 'b, P>(scope: &mut ExecutionScope<'a, 'a, P>, work: Future<'b, BigInt>)
+  |
+
+help: `'a` and `'b` must be the same: replace one with the other

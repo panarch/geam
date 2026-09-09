@@ -1,5 +1,5 @@
 use super::evaluated::EvaluatedValue;
-use super::state::list::{ListValueId, RuntimeListReader};
+use super::state::list::ListValueId;
 
 pub(in crate::runtime) struct RetainedList<Handle> {
     value: Handle,
@@ -7,7 +7,10 @@ pub(in crate::runtime) struct RetainedList<Handle> {
     item_reads: std::cell::Cell<usize>,
 }
 
-impl<Handle: Clone + Into<ListValueId>> RetainedList<Handle> {
+impl<Handle> RetainedList<Handle>
+where
+    Handle: Clone + Into<ListValueId>,
+{
     pub(in crate::runtime) fn new(value: Handle) -> Self {
         Self {
             value,
@@ -17,13 +20,14 @@ impl<Handle: Clone + Into<ListValueId>> RetainedList<Handle> {
     }
 
     pub(in crate::runtime) fn len(&self) -> usize {
-        RuntimeListReader.list_len(&self.value.clone().into())
+        crate::runtime::RuntimeListStorage::default().list_len(&self.value.clone().into())
     }
 
     pub(in crate::runtime) fn item(&self, index: usize) -> Option<EvaluatedValue> {
         #[cfg(test)]
         self.item_reads.set(self.item_reads.get() + 1);
-        RuntimeListReader.evaluated_value_at(&self.value.clone().into(), index)
+        crate::runtime::RuntimeListStorage::default()
+            .evaluated_value_at(&self.value.clone().into(), index)
     }
 
     pub(in crate::runtime) fn handle(&self) -> &Handle {

@@ -568,8 +568,8 @@ where
         HostScopedValue::Custom(value.token)
     }
 
-    fn from_token<'call, Profile: crate::host::HostProfile>(
-        runtime: &dyn crate::host::HostCallRuntime<Profile>,
+    fn from_token<'call, Runtime: crate::host::HostTokenRuntime + ?Sized>(
+        runtime: &Runtime,
         token: crate::host::HostValueToken,
     ) -> <Self as HostType>::Value<'call> {
         HostCustom::new(runtime.custom_token(token))

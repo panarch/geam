@@ -6,8 +6,10 @@ use crate::host::{
 use crate::provider::{
     List, ProviderConstructions, ProviderExternalDeclaration, ProviderInputValue,
     ProviderListContext, ProviderListInputCodec, ProviderListInputValue, ProviderNoConstructions,
-    ProviderOutputValue, ProviderStoredOwner, ProviderValue, ProviderValueContext, Value,
+    ProviderOutputValue, ProviderStoredOwner, ProviderValue, ProviderValueContext,
+    ProviderValueForms, Value,
 };
+use crate::runtime::StoredRuntimeValue;
 use ecow::EcoString;
 use std::marker::PhantomData;
 
@@ -45,81 +47,7 @@ pub struct StoredDynamic<Owner> {
 /// This advanced input is useful when a provider must pass an external value
 /// to a callback or return it unchanged. Dereferencing it borrows the ordinary
 /// Rust payload; consuming it preserves the original source handle.
-pub type External<Payload> = crate::provider::ProviderExternalItem<Payload>;
-
-/// Static pass-through into existential retention without materialization.
-#[doc(hidden)]
-pub trait ProviderDynamicValue<'call, Profile, Provider, Return>
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-{
-    type Host: HostType;
-
-    fn into_host(
-        self,
-        call: &mut HostCall<'call, Profile, Provider, Return>,
-    ) -> <Self::Host as HostType>::Value<'call>;
-}
-
-impl<'call, Profile, Provider, Return, Type, Host>
-    ProviderDynamicValue<'call, Profile, Provider, Return>
-    for Value<Type, ProviderValueContext<'call, Host>>
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-    Host: HostType,
-{
-    type Host = Host;
-
-    fn into_host(
-        self,
-        _call: &mut HostCall<'call, Profile, Provider, Return>,
-    ) -> <Self::Host as HostType>::Value<'call> {
-        self.into_host()
-    }
-}
-
-impl<'call, Profile, Provider, Return, Type> ProviderDynamicValue<'call, Profile, Provider, Return>
-    for Type
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-    Type: ProviderValue<OutputRequirements = ProviderNoConstructions>
-        + ProviderOutputValue<Profile, Provider, Return>,
-{
-    type Host = Type::Host;
-
-    fn into_host(
-        self,
-        call: &mut HostCall<'call, Profile, Provider, Return>,
-    ) -> <Self::Host as HostType>::Value<'call> {
-        self.into_host(call, &ProviderConstructions::none())
-    }
-}
-
-impl<'call, Profile, Provider, Return, Item, HostItem, Decoder>
-    ProviderDynamicValue<'call, Profile, Provider, Return>
-    for List<Item, ProviderListContext<'call, HostItem, Decoder>>
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-    HostItem: HostType,
-    Decoder: crate::provider::ProviderListItemDecoder<Item>,
-{
-    type Host = HostListType<HostItem>;
-
-    fn into_host(
-        self,
-        _call: &mut HostCall<'call, Profile, Provider, Return>,
-    ) -> <Self::Host as HostType>::Value<'call> {
-        self.__geam_into_context().into_host()
-    }
-}
+pub type External<Payload> = crate::provider::ProviderExternalView<Payload>;
 
 /// Broad runtime family of one existentially retained source value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -157,7 +85,94 @@ impl DynamicKind {
     }
 }
 
-/// Static input conversion used by exact existential restores.
+/// Static pass-through into transferable existential retention.
+#[doc(hidden)]
+pub trait ProviderDynamicValue<'call, Profile, Provider, Return>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+{
+    type Host: HostType;
+
+    fn into_stored<Owner>(
+        self,
+        call: &mut HostCall<'call, Profile, Provider, Return>,
+    ) -> StoredDynamic<Owner>
+    where
+        Owner: ProviderStoredOwner;
+}
+
+impl<'call, Profile, Provider, Return, Type, Host>
+    ProviderDynamicValue<'call, Profile, Provider, Return>
+    for Value<Type, ProviderValueContext<Host>>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Host: HostType,
+{
+    type Host = Host;
+
+    fn into_stored<Owner>(
+        self,
+        _call: &mut HostCall<'call, Profile, Provider, Return>,
+    ) -> StoredDynamic<Owner>
+    where
+        Owner: ProviderStoredOwner,
+    {
+        StoredDynamic::from_runtime_value(self.into_stored())
+    }
+}
+
+impl<'call, Profile, Provider, Return, Type> ProviderDynamicValue<'call, Profile, Provider, Return>
+    for Type
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Type: ProviderValue<OutputRequirements = ProviderNoConstructions>
+        + ProviderOutputValue<Profile, Provider, Return>,
+{
+    type Host = Type::Host;
+
+    fn into_stored<Owner>(
+        self,
+        call: &mut HostCall<'call, Profile, Provider, Return>,
+    ) -> StoredDynamic<Owner>
+    where
+        Owner: ProviderStoredOwner,
+    {
+        let value = self.into_host(call, &ProviderConstructions::none());
+        StoredDynamic::from_runtime_value(call.retain_value::<Self::Host>(value))
+    }
+}
+
+impl<'call, Profile, Provider, Return, Item, HostItem, Decoder>
+    ProviderDynamicValue<'call, Profile, Provider, Return>
+    for List<Item, ProviderListContext<HostItem, Decoder>>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    HostItem: HostType,
+    Decoder: crate::provider::ProviderListItemDecoder<Item>,
+{
+    type Host = HostListType<HostItem>;
+
+    fn into_stored<Owner>(
+        self,
+        call: &mut HostCall<'call, Profile, Provider, Return>,
+    ) -> StoredDynamic<Owner>
+    where
+        Owner: ProviderStoredOwner,
+    {
+        let value = call.provider_list_from_input(self);
+        StoredDynamic::from_runtime_value(call.retain_value::<Self::Host>(value))
+    }
+}
+
+/// Static input conversion used by transferable existential restores.
 #[doc(hidden)]
 pub trait ProviderDynamicInput<Profile, Provider, Return>
 where
@@ -166,12 +181,12 @@ where
     Return: HostType,
 {
     type Host: HostType;
-    type View<'call>;
+    type View;
 
     fn from_host<'call>(
         call: &mut HostCall<'call, Profile, Provider, Return>,
         value: <Self::Host as HostType>::Value<'call>,
-    ) -> Self::View<'call>;
+    ) -> Self::View;
 }
 
 impl<Profile, Provider, Return, Type> ProviderDynamicInput<Profile, Provider, Return> for Type
@@ -179,17 +194,17 @@ where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
-    Type: ProviderValue,
-    Type::Input: ProviderInputValue<Profile, Provider, Return> + ProviderValue<Host = Type::Host>,
+    Type: ProviderValueForms,
+    Type::ImmediateInput: ProviderInputValue<Profile, Provider, Return, Host = Type::Host>,
 {
     type Host = Type::Host;
-    type View<'call> = Type::Input;
+    type View = Type::ImmediateInput;
 
     fn from_host<'call>(
         call: &mut HostCall<'call, Profile, Provider, Return>,
         value: <Self::Host as HostType>::Value<'call>,
-    ) -> Self::View<'call> {
-        Type::Input::from_host(call, value)
+    ) -> Self::View {
+        Type::ImmediateInput::from_host(call, value)
     }
 }
 
@@ -198,25 +213,26 @@ where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
-    Item: ProviderValue<ListInput = Item>,
-    Item::ListInput: ProviderListInputCodec<Profile>,
+    Item: ProviderValueForms,
+    Item::ImmediateListInput:
+        ProviderListInputCodec<Profile, Provider> + ProviderListInputValue<Host = Item::Host>,
 {
     type Host = HostListType<Item::Host>;
-    type View<'call> = List<
-        Item,
+    type View = List<
+        Item::ImmediateListInput,
         ProviderListContext<
-            'call,
             Item::Host,
-            <Item::ListInput as ProviderListInputValue>::Decoder,
+            <Item::ImmediateListInput as ProviderListInputValue>::Decoder,
         >,
     >;
 
     fn from_host<'call>(
         call: &mut HostCall<'call, Profile, Provider, Return>,
         value: <Self::Host as HostType>::Value<'call>,
-    ) -> Self::View<'call> {
-        let decoder = <Item::ListInput as ProviderListInputCodec<Profile>>::decoder(call);
-        call.provider_list(value, decoder)
+    ) -> Self::View {
+        let decoder =
+            <Item::ImmediateListInput as ProviderListInputCodec<Profile, Provider>>::decoder(call);
+        call.provider_retained_list(value, decoder)
     }
 }
 
@@ -240,17 +256,6 @@ impl<Owner, Index> Retained<Owner, Index>
 where
     Owner: ProviderStoredOwner,
 {
-    pub(crate) fn new(value: HostStoredValue<HostStoredType<Index>>) -> Self {
-        Self {
-            value,
-            owner: PhantomData,
-        }
-    }
-
-    pub(crate) fn host(&self) -> &HostStoredValue<HostStoredType<Index>> {
-        &self.value
-    }
-
     /// Compares two retained values with Gleam source equality.
     pub fn source_equal(&self, context: &Equality<'_>, other: &Self) -> bool {
         context.stored_values_equal(&self.value, &other.value)
@@ -265,23 +270,34 @@ where
     pub fn inspect(&self, context: &Inspection<'_>) -> EcoString {
         context.inspect_stored_value(&self.value)
     }
-}
 
-impl<Owner> StoredDynamic<Owner>
-where
-    Owner: ProviderStoredOwner,
-{
-    pub(crate) fn new(value: HostStoredDynamic) -> Self {
+    pub(crate) fn from_host_value(value: HostStoredValue<HostStoredType<Index>>) -> Self {
         Self {
             value,
             owner: PhantomData,
         }
     }
 
-    pub(crate) fn host(&self) -> &HostStoredDynamic {
-        &self.value
+    pub(crate) fn from_runtime_value(value: StoredRuntimeValue) -> Self {
+        Self {
+            value: HostStoredValue::new(value),
+            owner: PhantomData,
+        }
     }
 
+    pub(crate) fn stored(&self) -> &StoredRuntimeValue {
+        &self.value.value
+    }
+
+    pub(crate) fn clone_retained(&self) -> Self {
+        Self::from_runtime_value(self.value.value.clone_retained())
+    }
+}
+
+impl<Owner> StoredDynamic<Owner>
+where
+    Owner: ProviderStoredOwner,
+{
     /// Returns the broad source family without exposing its runtime type.
     pub fn kind(&self) -> DynamicKind {
         DynamicKind::from_family(self.value.value_family())
@@ -303,7 +319,22 @@ where
         reason = "non-tuples retain the original value without another heap allocation"
     )]
     pub fn into_tuple_items(self) -> Result<Box<[Self]>, Self> {
-        self.value.map_tuple_items(Self::new).map_err(Self::new)
+        self.value
+            .map_tuple_items(|value| value)
+            .map(|items| {
+                items
+                    .into_vec()
+                    .into_iter()
+                    .map(|value| Self {
+                        value,
+                        owner: PhantomData,
+                    })
+                    .collect()
+            })
+            .map_err(|value| Self {
+                value,
+                owner: PhantomData,
+            })
     }
 
     /// Compares two existential values with Gleam source equality.
@@ -320,15 +351,30 @@ where
     pub fn inspect(&self, context: &Inspection<'_>) -> EcoString {
         context.inspect_dynamic_value(&self.value)
     }
+
+    pub(crate) fn from_host_value(value: HostStoredDynamic) -> Self {
+        Self {
+            value,
+            owner: PhantomData,
+        }
+    }
+
+    pub(crate) fn from_runtime_value(value: StoredRuntimeValue) -> Self {
+        Self {
+            value: HostStoredDynamic::new(value),
+            owner: PhantomData,
+        }
+    }
+
+    pub(crate) fn stored(&self) -> &StoredRuntimeValue {
+        self.value.runtime_value()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{DynamicKind, Index0, Retained};
-    use crate::host::{
-        HostExternalEquality, HostExternalHashing, HostExternalInspection, HostStoredType,
-        HostStoredValue,
-    };
+    use crate::host::{HostStoredType, HostStoredValue};
     use crate::runtime::StoredRuntimeValue;
 
     struct Payload;
@@ -336,7 +382,7 @@ mod tests {
     impl crate::provider::ProviderStoredOwner for Payload {}
 
     fn retained(value: i64) -> Retained<Payload, Index0> {
-        Retained::new(HostStoredValue::<HostStoredType<Index0>>::new(
+        Retained::from_host_value(HostStoredValue::<HostStoredType<Index0>>::new(
             StoredRuntimeValue::test_int(value.into()),
         ))
     }
@@ -399,16 +445,25 @@ mod tests {
     fn retained_values_delegate_each_source_operation_to_its_narrow_context() {
         let first = retained(7);
         let different = retained(8);
-        let stored_equal =
-            |left: &StoredRuntimeValue, right: &StoredRuntimeValue| std::ptr::eq(left, right);
-        let stored_hash = |_: &StoredRuntimeValue| 17;
-        let stored_inspect = |_: &StoredRuntimeValue| "Int(7)".into();
-        let equality = HostExternalEquality::new(&stored_equal);
-        let hashing = HostExternalHashing::new(&stored_hash);
-        let inspection = HostExternalInspection::new(&stored_inspect);
+        let comparisons = std::cell::Cell::new(0);
+        let stored_equal = |_: &crate::runtime::RetainedValueRef,
+                            _: &crate::runtime::RetainedValueRef| {
+            let comparison = comparisons.get();
+            comparisons.set(comparison + 1);
+            comparison == 0
+        };
+        let stored_hash = |_: &crate::runtime::RetainedValueRef| 17;
+        let stored_inspect = |_: &crate::runtime::RetainedValueRef| "Int(7)".into();
+        let raw_equality = crate::host::RetainedValueEquality::new(&stored_equal);
+        let equality = crate::host::HostExternalEquality(&raw_equality);
+        let raw_hashing = crate::host::RetainedValueHashing::new(&stored_hash);
+        let hashing = crate::host::HostExternalHashing(&raw_hashing);
+        let raw_inspection = crate::host::RetainedValueInspection::new(&stored_inspect);
+        let inspection = crate::host::HostExternalInspection(&raw_inspection);
 
         assert!(first.source_equal(&equality, &first));
         assert!(!first.source_equal(&equality, &different));
+        assert_eq!(comparisons.get(), 2);
         assert_eq!(first.source_hash(&hashing), 17);
         assert_eq!(first.inspect(&inspection), "Int(7)");
     }

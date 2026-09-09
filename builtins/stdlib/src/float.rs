@@ -3,10 +3,10 @@ mod parse;
 
 pub(super) use self::function::do_to_float;
 
-use super::{Component, GleamStdlibHostProfile, GleamStdlibRunState};
+use super::{GleamStdlibProviderProfile, GleamStdlibRunState};
 use crate::{HostProviderModule, HostRegistrationError};
 use ecow::EcoString;
-use geam_core::provider::{Call, HostResult};
+use geam_core::provider::Call;
 use num_bigint::BigInt;
 
 #[geam_macros::module(
@@ -16,7 +16,8 @@ use num_bigint::BigInt;
     component = crate::Component<Profile::Io>,
 )]
 mod provider {
-    use super::{BigInt, Call, EcoString, GleamStdlibRunState, HostResult, function};
+    use super::{BigInt, Call, EcoString, GleamStdlibRunState, function};
+    use geam_core::provider::HostResult;
 
     #[geam_macros::function]
     fn parse(source: EcoString) -> Result<f64, ()> {
@@ -76,7 +77,7 @@ mod provider {
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
-    Profile: GleamStdlibHostProfile,
+    Profile: GleamStdlibProviderProfile,
 {
     provider::__geam_module::<Profile>()
 }

@@ -1,14 +1,24 @@
 use ecow::EcoString;
+use geam_builtin::FutureComponent;
+use geam_builtin::embedding::FutureType;
+use geam_core::embedding::{
+    BigInt as EmbeddingInt, FunctionDeclaration, HostedModuleBuilder, with_execution_scope,
+};
+use geam_core::host::HostFutureStore;
 use geam_core::provider::advanced::{
-    DynamicKind, Equality, Hashing, Inspection, RetainedExternalPayload, StoredDynamic,
+    DynamicKind, Equality, Hashing, Index0, Inspection, Retained, RetainedExternalPayload,
+    StoredDynamic,
 };
 use geam_core::provider::{Call, List, Stored, Value};
 use geam_core::{
-    HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
+    EchoOutput, EchoSink, HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
     HostProviderComponentRegistration, HostProviderSet, HostedExecution, ModuleSource,
     PackageSource, compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
+use std::future::Future;
+use std::pin::pin;
+use std::task::{Context, Poll, Waker};
 
 #[geam_macros::provider(
     package = "dynamic_provider",
@@ -40,19 +50,51 @@ mod declarations {
     fn identity_token_pair(value: External<Token>) -> (External<Token>, bool) {
         (value, true)
     }
+
+    #[geam_macros::function]
+    async fn identity_token_async(value: External<Token>) -> External<Token> {
+        std::future::ready(()).await;
+        value
+    }
+
+    #[geam_macros::function]
+    async fn identity_token_pair_async(value: External<Token>) -> (External<Token>, bool) {
+        std::future::ready(()).await;
+        (value, true)
+    }
+
+    #[geam_macros::function]
+    fn first_token(values: geam_core::List<Token>) -> External<Token> {
+        values
+            .get(0)
+            .expect("the test List contains an external token")
+    }
+
+    #[geam_macros::function]
+    async fn first_token_async(values: geam_core::List<Token>) -> External<Token> {
+        std::future::ready(()).await;
+        values
+            .get(0)
+            .expect("the test List contains an external token")
+    }
 }
 
 #[geam_macros::module(path = "dynamic_provider", crate_path = geam_core)]
 mod dynamic_provider {
     use super::declarations::Token;
     use super::{
-        BigInt, Call, DynamicKind, EcoString, Equality, Hashing, Inspection, List,
-        RetainedExternalPayload, Stored, StoredDynamic, Value,
+        BigInt, Call, DynamicKind, EcoString, Equality, Hashing, Index0, Inspection, List,
+        Retained, RetainedExternalPayload, Stored, StoredDynamic, Value,
     };
 
     #[geam_macros::external(name = "Dynamic", retained)]
     struct Dynamic {
         value: StoredDynamic<Dynamic>,
+    }
+
+    #[geam_macros::external(name = "Snapshot", retained)]
+    struct Snapshot {
+        value: Retained<Snapshot, Index0>,
     }
 
     #[geam_macros::external(name = "Box", parameters = [Item], input = BoxInput)]
@@ -72,6 +114,20 @@ mod dynamic_provider {
 
         fn inspect(&self, context: &Inspection<'_>) -> EcoString {
             self.value.inspect(context)
+        }
+    }
+
+    impl RetainedExternalPayload for Snapshot {
+        fn source_equal(&self, context: &Equality<'_>, other: &Self) -> bool {
+            self.value.source_equal(context, &other.value)
+        }
+
+        fn source_hash(&self, context: &Hashing<'_>) -> u64 {
+            self.value.source_hash(context)
+        }
+
+        fn inspect(&self, context: &Inspection<'_>) -> EcoString {
+            format!("Snapshot({})", self.value.inspect(context)).into()
         }
     }
 
@@ -107,8 +163,25 @@ mod dynamic_provider {
     }
 
     #[geam_macros::function]
+    fn snapshot<Item>(#[geam_macros::call] call: &mut Call<()>, value: Value<Item>) -> Snapshot {
+        Snapshot {
+            value: call.store(value).into_retained(),
+        }
+    }
+
+    #[geam_macros::function]
     fn kind(value: &Dynamic) -> EcoString {
-        match value.value.kind() {
+        kind_name(value.value.kind())
+    }
+
+    #[geam_macros::function]
+    async fn kind_async(value: &Dynamic) -> EcoString {
+        std::future::ready(()).await;
+        value.with(|value| kind_name(value.value.kind()))
+    }
+
+    fn kind_name(kind: DynamicKind) -> EcoString {
+        match kind {
             DynamicKind::Int => "Int",
             DynamicKind::Float => "Float",
             DynamicKind::String => "String",
@@ -191,7 +264,7 @@ mod dynamic_provider {
 
     #[geam_macros::function]
     fn tuple_size<Item>(#[geam_macros::call] call: &mut Call<()>, value: Value<Item>) -> BigInt {
-        let value: StoredDynamic<Dynamic> = call.store_dynamic(value);
+        let value = call.store_dynamic::<_, Dynamic>(value);
         value
             .into_tuple_items()
             .map(|items| BigInt::from(items.len()))
@@ -203,7 +276,7 @@ mod dynamic_provider {
         #[geam_macros::call] call: &mut Call<()>,
         value: Value<Item>,
     ) -> BigInt {
-        let value: StoredDynamic<Dynamic> = call.store_dynamic(value);
+        let value = call.store_dynamic::<_, Dynamic>(value);
         let Ok(items) = value.into_tuple_items() else {
             return BigInt::default();
         };
@@ -226,6 +299,14 @@ mod dynamic_provider {
     }
 
     #[geam_macros::function]
+    fn inspect_value<Item>(
+        #[geam_macros::call] call: &mut Call<()>,
+        value: Value<Item>,
+    ) -> EcoString {
+        call.inspect(&value)
+    }
+
+    #[geam_macros::function]
     fn has_exact_type<Item>(
         #[geam_macros::call] call: &mut Call<()>,
         stored: &Dynamic,
@@ -233,6 +314,14 @@ mod dynamic_provider {
     ) -> bool {
         call.restore_dynamic_value(&stored.value, &witness)
             .is_some()
+    }
+
+    #[geam_macros::function]
+    fn list_length<Item>(
+        #[geam_macros::call] call: &mut Call<()>,
+        values: Value<geam_core::List<Item>>,
+    ) -> BigInt {
+        call.list_len(&values).into()
     }
 
     #[geam_macros::function]
@@ -253,15 +342,31 @@ struct Profile;
 #[derive(Default)]
 struct ProfileStores {
     component: <Component as HostProviderComponent>::Stores,
+    future: HostFutureStore,
 }
 
 struct ProfileState {
     component: <Component as HostProviderComponent>::RunState,
+    future: (),
 }
 
 impl HostProfile for Profile {
     type RunState = ProfileState;
     type ExternalStores = ProfileStores;
+}
+
+impl geam_core::host::HostWorkProfile for Profile {
+    type Work = FutureComponent;
+}
+
+impl HostComponentProfile<FutureComponent> for Profile {
+    fn component_stores(stores: &ProfileStores) -> &HostFutureStore {
+        &stores.future
+    }
+
+    fn component_state(state: &mut ProfileState) -> &mut () {
+        &mut state.future
+    }
 }
 
 impl HostComponentProfile<Component> for Profile {
@@ -278,167 +383,129 @@ impl HostComponentProfile<Component> for Profile {
     }
 }
 
-const SOURCE: &str = r#"
-import dynamic_provider/declarations
+struct AsyncProfile;
 
-@external(erlang, "dynamic_provider", "Dynamic")
-pub type Dynamic
-
-@external(erlang, "dynamic_provider", "Box")
-pub type Box(item)
-
-@external(erlang, "dynamic_provider", "box_value")
-fn box_value(value: item) -> Box(item)
-
-@external(erlang, "dynamic_provider", "cast")
-fn cast(value: value) -> Dynamic
-
-@external(erlang, "dynamic_provider", "cast_int")
-fn cast_int(value: Int) -> Dynamic
-
-@external(erlang, "dynamic_provider", "cast_int_list")
-fn cast_int_list(values: List(Int)) -> Dynamic
-
-@external(erlang, "dynamic_provider", "kind")
-fn kind(value: Dynamic) -> String
-
-@external(erlang, "dynamic_provider", "restore_int")
-fn restore_int(value: Dynamic) -> Result(Int, Nil)
-
-@external(erlang, "dynamic_provider", "restore_int_list_length")
-fn restore_int_list_length(value: Dynamic) -> Result(Int, Nil)
-
-@external(erlang, "dynamic_provider", "is_token")
-fn is_token(value: Dynamic) -> Bool
-
-@external(erlang, "dynamic_provider", "is_box")
-fn is_box(value: Dynamic) -> Bool
-
-@external(erlang, "dynamic_provider", "token_text")
-fn token_text(value: Dynamic) -> Result(String, Nil)
-
-@external(erlang, "dynamic_provider", "box_contains_nine")
-fn box_contains_nine(value: Dynamic) -> Result(Bool, Nil)
-
-@external(erlang, "dynamic_provider", "boxed_token_text")
-fn boxed_token_text(value: Dynamic) -> Result(String, Nil)
-
-@external(erlang, "dynamic_provider", "tuple_size")
-fn tuple_size(value: value) -> Int
-
-@external(erlang, "dynamic_provider", "nested_tuple_size")
-fn nested_tuple_size(value: value) -> Int
-
-@external(erlang, "dynamic_provider", "same_hash")
-fn same_hash(first: value, second: value) -> Bool
-
-@external(erlang, "dynamic_provider", "has_exact_type")
-fn has_exact_type(stored: Dynamic, witness: value) -> Bool
-
-@external(erlang, "dynamic_provider", "list_summary")
-fn list_summary(values: List(item), expected: item) -> #(Int, Bool)
-
-pub type Marker {
-  Marker
+#[derive(Default)]
+struct FutureStores {
+    provider: <Component as HostProviderComponent>::Stores,
+    future: HostFutureStore,
 }
 
-fn increment(value: Int) -> Int {
-  value + 1
+#[derive(Default)]
+struct AsyncEcho(Vec<String>);
+
+impl EchoSink for AsyncEcho {
+    fn emit(&mut self, output: EchoOutput) {
+        self.0.push(output.value().inspect().to_string());
+    }
 }
 
-pub fn main() {
-  let assert <<codepoint:utf8_codepoint>> = <<"A":utf8>>
-  let first = cast(7)
-  let equal = cast(7)
-  let text = cast("seven")
-  let token = declarations.token("opaque")
-  let identity_token = declarations.identity_token(token)
-  let #(paired_token, pair_flag) = declarations.identity_token_pair(token)
-  let token_value = cast(token)
-  let boxed = cast(box_value(9))
-  let boxed_token = cast(box_value(token))
-  let typed_int = cast_int(8)
-  let typed_list = cast_int_list([1, 2])
-  #(
-    kind(first),
-    kind(text),
-    kind(token_value),
-    kind(cast(1.5)),
-    kind(cast(<<1>>)),
-    kind(cast(codepoint)),
-    kind(cast(True)),
-    kind(cast(Nil)),
-    kind(cast([1])),
-    kind(cast(#(1, True))),
-    kind(cast(Marker)),
-    kind(cast(increment)),
-    kind(typed_int),
-    kind(typed_list),
-    restore_int(first),
-    restore_int(text),
-    restore_int_list_length(typed_list),
-    is_token(token_value),
-    !is_token(first),
-    is_box(boxed),
-    !is_box(token_value),
-    token_text(token_value),
-    token_text(first),
-    box_contains_nine(boxed),
-    box_contains_nine(first),
-    boxed_token_text(boxed_token),
-    pair_flag,
-    paired_token == token,
-    tuple_size(#(1, "two", True)),
-    tuple_size(1),
-    nested_tuple_size(#(1, #("two", True))),
-    same_hash(first, equal),
-    has_exact_type(first, 0),
-    !has_exact_type(first, "zero"),
-    list_summary([1, 2, 3], 1),
-    list_summary([], 1),
-    first == equal,
-    first,
-    token,
-    identity_token,
-  )
+impl HostProfile for AsyncProfile {
+    type RunState = <Component as HostProviderComponent>::RunState;
+    type ExternalStores = FutureStores;
 }
-"#;
 
-const DECLARATIONS_SOURCE: &str = r#"
-@external(erlang, "dynamic_provider", "Token")
-pub type Token
+impl HostComponentProfile<Component> for AsyncProfile {
+    fn component_stores(
+        stores: &Self::ExternalStores,
+    ) -> &<Component as HostProviderComponent>::Stores {
+        &stores.provider
+    }
 
-@external(erlang, "dynamic_provider", "token")
-pub fn token(value: String) -> Token
+    fn component_state(
+        state: &mut Self::RunState,
+    ) -> &mut <Component as HostProviderComponent>::RunState {
+        state
+    }
+}
 
-@external(erlang, "dynamic_provider", "identity_token")
-pub fn identity_token(value: Token) -> Token
+impl geam_core::host::HostWorkProfile for AsyncProfile {
+    type Work = FutureComponent;
+}
+impl HostComponentProfile<FutureComponent> for AsyncProfile {
+    fn component_stores(stores: &FutureStores) -> &HostFutureStore {
+        &stores.future
+    }
+    fn component_state(state: &mut ()) -> &mut () {
+        state
+    }
+}
 
-@external(erlang, "dynamic_provider", "identity_token_pair")
-pub fn identity_token_pair(value: Token) -> #(Token, Bool)
-"#;
+const FUTURE_SOURCE: &str = concat!(
+    "import geam/future\n",
+    include_str!("fixtures/future_dynamic/values.gleam"),
+    r#"
+@external(erlang, "dynamic_provider", "kind_async")
+fn kind_async(value: Dynamic) -> future.Future(String)
+
+pub fn async_flow(value: Int) {
+  let dynamic = cast(value)
+  let before = kind(dynamic)
+  use during <- future.then(kind_async(dynamic))
+  let after = restore_int(dynamic)
+  let token = declarations.token("async")
+  use identity <- future.then(declarations.identity_token_async(token))
+  let assert True = identity == token
+  use #(paired, pair_flag) <- future.then(declarations.identity_token_pair_async(token))
+  let assert True = pair_flag && paired == token
+  use first <- future.map(declarations.first_token_async([token]))
+  let assert True = first == token
+  #(before, during, after)
+}
+"#,
+);
+const FUTURE_DECLARATIONS: &str = concat!(
+    "import geam/future\n",
+    include_str!("fixtures/future_dynamic/declarations.gleam"),
+    r#"
+@external(erlang, "dynamic_provider", "identity_token_async")
+pub fn identity_token_async(value: Token) -> future.Future(Token)
+@external(erlang, "dynamic_provider", "identity_token_pair_async")
+pub fn identity_token_pair_async(value: Token) -> future.Future(#(Token, Bool))
+@external(erlang, "dynamic_provider", "first_token_async")
+pub fn first_token_async(values: List(Token)) -> future.Future(Token)
+"#,
+);
 
 #[test]
 fn existential_values_restore_exact_types_and_preserve_source_semantics() {
-    let providers = <Component as HostProviderComponentRegistration<Profile>>::providers()
-        .expect("dynamic provider should register");
+    let mut providers = FutureComponent::providers().expect("Future component");
+    providers.extend(
+        <Component as HostProviderComponentRegistration<Profile>>::providers()
+            .expect("dynamic provider should register"),
+    );
     let hosts = HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), providers)
         .expect("dynamic provider module should be unique");
     let typed = compile_typed_host_program(
         "dynamic_provider",
         "dynamic_provider",
-        [PackageSource::new(
-            "dynamic_provider",
-            Vec::<&str>::new(),
-            [
-                ModuleSource::new(
-                    "dynamic_provider/declarations",
-                    "src/dynamic_provider/declarations.gleam",
-                    DECLARATIONS_SOURCE,
-                ),
-                ModuleSource::new("dynamic_provider", "src/dynamic_provider.gleam", SOURCE),
-            ],
-        )],
+        [
+            PackageSource::new(
+                "geam",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "geam/future",
+                    "src/geam/future.gleam",
+                    include_str!("../../builtins/geam/gleam/src/geam/future.gleam"),
+                )],
+            ),
+            PackageSource::new(
+                "dynamic_provider",
+                ["geam"],
+                [
+                    ModuleSource::new(
+                        "dynamic_provider/declarations",
+                        "src/dynamic_provider/declarations.gleam",
+                        FUTURE_DECLARATIONS,
+                    ),
+                    ModuleSource::new(
+                        "dynamic_provider",
+                        "src/dynamic_provider.gleam",
+                        FUTURE_SOURCE,
+                    ),
+                ],
+            ),
+        ],
         hosts,
     )
     .expect("complete dynamic source should compile");
@@ -446,7 +513,13 @@ fn existential_values_restore_exact_types_and_preserve_source_semantics() {
     let execution = HostedExecution::try_from_module_plan(plan)
         .expect("dynamic provider execution should seal");
     let returned = execution
-        .run_main(&mut ProfileState { component: () }, &mut Vec::new())
+        .run_main(
+            &mut ProfileState {
+                component: (),
+                future: (),
+            },
+            &mut Vec::new(),
+        )
         .expect("dynamic provider should execute");
 
     assert_eq!(
@@ -465,4 +538,121 @@ fn existential_values_restore_exact_types_and_preserve_source_semantics() {
         panic!("dynamic main should preserve both Token values");
     };
     assert_eq!(original.identity(), identity.identity());
+}
+
+#[test]
+fn retained_dynamic_values_cross_pending_execution_without_changing_identity() {
+    const APPLICATION: &str = r#"
+import dynamic_provider
+
+pub fn flow(value: Int) { dynamic_provider.async_flow(value) }
+pub fn direct() { dynamic_provider.transfer_flow() }
+"#;
+
+    let mut providers = FutureComponent::providers().expect("Future component");
+    providers.extend(
+        <Component as HostProviderComponentRegistration<AsyncProfile>>::providers()
+            .expect("dynamic provider should register for transferable execution"),
+    );
+    let hosts = HostProviderSet::from_providers(providers)
+        .expect("dynamic provider module should be unique");
+    let typed = compile_typed_host_program(
+        "application",
+        "main",
+        [
+            PackageSource::new(
+                "geam",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "geam/future",
+                    "src/geam/future.gleam",
+                    include_str!("../../builtins/geam/gleam/src/geam/future.gleam"),
+                )],
+            ),
+            PackageSource::new(
+                "dynamic_provider",
+                ["geam"],
+                [
+                    ModuleSource::new(
+                        "dynamic_provider/declarations",
+                        "src/dynamic_provider/declarations.gleam",
+                        FUTURE_DECLARATIONS,
+                    ),
+                    ModuleSource::new(
+                        "dynamic_provider",
+                        "src/dynamic_provider.gleam",
+                        FUTURE_SOURCE,
+                    ),
+                ],
+            ),
+            PackageSource::new(
+                "application",
+                ["dynamic_provider"],
+                [ModuleSource::new("main", "src/main.gleam", APPLICATION)],
+            ),
+        ],
+        hosts,
+    )
+    .expect("dynamic async source should compile");
+    let (mut bindings, direct) = HostedModuleBuilder::new(typed)
+        .expect("dynamic async source should plan")
+        .function(FunctionDeclaration::<
+            (),
+            (
+                bool,
+                bool,
+                bool,
+                bool,
+                bool,
+                bool,
+                (bool, bool, bool, bool, bool, bool, bool),
+            ),
+        >::new("direct"))
+        .expect("dynamic direct flow should bind");
+    let flow = bindings
+        .function(FunctionDeclaration::<
+            (EmbeddingInt,),
+            FutureType<(EcoString, EcoString, Result<EmbeddingInt, ()>)>,
+        >::new("flow"))
+        .expect("dynamic flow should bind");
+    let mut module = bindings.seal().expect("dynamic flow should seal");
+    let mut echo = AsyncEcho::default();
+    let mut state = ();
+    let returned = poll_ready(with_execution_scope(async |guard| {
+        let mut scope = module.attach(guard, &mut state, &mut echo);
+        assert_eq!(
+            scope.call(&direct, ()).expect("direct retained values"),
+            (
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                (true, true, true, true, true, true, true)
+            )
+        );
+        let work = scope
+            .call(&flow, (7.into(),))
+            .expect("construct retained work");
+        scope.observe(&work).await.expect("dynamic completion")
+    }));
+    returned.read(|(before, during, result)| {
+        assert_eq!(before, "Int");
+        assert_eq!(during, "Int");
+        assert_eq!(result, Ok(&EmbeddingInt::from(7)));
+    });
+    assert_eq!(echo.0, ["Snapshot(11)"]);
+}
+
+fn poll_ready<Output>(future: impl Future<Output = Output>) -> Output {
+    let mut future = pin!(future);
+    let waker = Waker::noop();
+    let mut context = Context::from_waker(waker);
+    for _ in 0..16 {
+        if let Poll::Ready(value) = future.as_mut().poll(&mut context) {
+            return value;
+        }
+    }
+    panic!("future did not become ready")
 }

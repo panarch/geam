@@ -6,24 +6,25 @@ use crate::host::{
     HostListArgumentSlot, HostListType, HostStoredValue, HostTuple, HostTupleArgumentSlot,
     HostTupleType, HostType, HostTypeSequence, HostValue, HostValueArgumentSlot,
 };
-use crate::provider::{
-    List, ProviderExternalPayloadAccess, ProviderListContext, ProviderListItemDecoder,
-};
+use crate::runtime::{StoredRuntimeList, StoredRuntimeValue};
 use std::marker::PhantomData;
 
+mod codec;
 mod runtime;
 
-pub(crate) use runtime::HostCallRuntime;
+pub(crate) use codec::HostCodecScope;
+
 #[cfg(test)]
 pub(crate) use runtime::test;
+pub(crate) use runtime::{HostCallRuntime, HostTokenRuntime};
 
 pub trait HostProfile: Send + Sync + 'static {
-    type RunState;
-    type ExternalStores: Default + 'static;
+    type RunState: Send;
+    type ExternalStores: Default + Send + 'static;
 }
 
 pub trait HostProvider<Profile: HostProfile>: Send + Sync + 'static {
-    type State;
+    type State: Send;
 
     fn project(state: &mut Profile::RunState) -> &mut Self::State;
 }
@@ -45,7 +46,7 @@ where
     Provider: HostProvider<Profile>,
     Return: HostType,
 {
-    runtime: &'call mut dyn HostCallRuntime<Profile>,
+    pub(in crate::host) runtime: &'call mut dyn HostCallRuntime<Profile>,
     marker: PhantomData<(Provider, Return)>,
 }
 
@@ -153,82 +154,6 @@ where
         self.runtime
             .list_item(value.token, index)
             .map(|token| crate::host::type_::from_token::<Item, Profile>(self.runtime, token))
-    }
-
-    #[doc(hidden)]
-    pub fn provider_list<Item, HostItem, Decoder>(
-        &self,
-        value: HostList<'call, HostItem>,
-        decoder: Decoder,
-    ) -> List<Item, ProviderListContext<'call, HostItem, Decoder>>
-    where
-        HostItem: HostType,
-        Decoder: ProviderListItemDecoder<Item>,
-    {
-        let retained = self.runtime.retain_list(value.token);
-        ProviderListContext::new(value, retained, decoder).into_list()
-    }
-
-    #[doc(hidden)]
-    pub fn provider_input_list<Item, HostItem, Decoder>(
-        &self,
-        value: HostList<'call, HostItem>,
-        decoder: Decoder,
-    ) -> List<Item, crate::provider::ProviderInputListContext<Decoder>>
-    where
-        HostItem: HostType,
-        Decoder: ProviderListItemDecoder<Item>,
-    {
-        crate::provider::ProviderInputListContext::new(
-            self.runtime.retain_list(value.token),
-            decoder,
-        )
-    }
-
-    #[doc(hidden)]
-    pub fn provider_external_item_with<Binding, Schema, Arguments>(
-        &self,
-        value: HostExternal<'call, HostExternalType<Schema, Arguments>>,
-    ) -> crate::provider::ProviderExternalItem<BoundExternalPayload<Profile, Binding, Schema>>
-    where
-        Schema: HostExternalSchema,
-        Binding: HostExternalBinding<Profile, Schema>,
-        Arguments: HostTypeSequence,
-    {
-        let lease = self.runtime.external_lease(value.token);
-        crate::provider::ProviderExternalItem::new(
-            BoundExternalStorage::<Profile, Binding, Schema>::store(self.runtime.external_stores())
-                .view(&lease),
-            lease,
-        )
-    }
-
-    #[doc(hidden)]
-    pub fn provider_external_from_item<Schema, Arguments, Payload>(
-        &mut self,
-        value: crate::provider::ProviderExternalItem<Payload>,
-    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>>
-    where
-        Schema: HostExternalSchema,
-        Arguments: HostTypeSequence,
-    {
-        HostExternal::new(self.runtime.build_external(
-            &crate::host::HostTypeDescriptor::of::<HostExternalType<Schema, Arguments>>(),
-            value.into_lease(),
-        ))
-    }
-
-    #[doc(hidden)]
-    pub fn provider_external_payload_access_with<Binding, Schema>(
-        &self,
-    ) -> ProviderExternalPayloadAccess<BoundExternalPayload<Profile, Binding, Schema>>
-    where
-        Schema: HostExternalSchema,
-        Binding: HostExternalBinding<Profile, Schema>,
-    {
-        ProviderExternalPayloadAccess::new(BoundExternalStorage::<Profile, Binding, Schema>::store(
-            self.runtime.external_stores(),
-        ))
     }
 
     /// Constructs a list authorized by one registered construction token.
@@ -390,56 +315,6 @@ where
         self.restore_runtime_value::<Type>(&value.value)
     }
 
-    #[doc(hidden)]
-    pub fn provider_store<Stored, Type>(
-        &mut self,
-        value: Type::Value<'call>,
-    ) -> HostStoredValue<Stored>
-    where
-        Type: HostType,
-    {
-        HostStoredValue::new(
-            self.runtime
-                .retain_stored(crate::host::type_::into_scoped::<Type>(value)),
-        )
-    }
-
-    #[doc(hidden)]
-    pub fn provider_restore<Type, Stored>(
-        &mut self,
-        value: &HostStoredValue<Stored>,
-    ) -> Type::Value<'call>
-    where
-        Type: HostType,
-    {
-        self.restore_stored::<Type, Stored>(value)
-    }
-
-    #[doc(hidden)]
-    pub fn provider_store_dynamic<Type>(
-        &mut self,
-        value: Type::Value<'call>,
-    ) -> crate::HostStoredDynamic
-    where
-        Type: HostType,
-    {
-        crate::HostStoredDynamic::new(
-            self.runtime
-                .retain_stored(crate::host::type_::into_scoped::<Type>(value)),
-        )
-    }
-
-    #[doc(hidden)]
-    pub fn provider_restore_dynamic<Type>(
-        &mut self,
-        value: &crate::HostStoredDynamic,
-    ) -> Option<Type::Value<'call>>
-    where
-        Type: HostType,
-    {
-        value.decode::<Profile, Provider, Return, Type>(self)
-    }
-
     pub(in crate::host) fn restore_runtime_value<Type>(
         &mut self,
         value: &crate::runtime::StoredRuntimeValue,
@@ -517,6 +392,36 @@ where
         ))
     }
 
+    /// Constructs an intermediate external payload authorized by one registered type token.
+    pub fn construct_external<Schema, Arguments>(
+        &mut self,
+        _construction: HostConstruction<'call, HostExternalType<Schema, Arguments>>,
+        value: BoundExternalPayload<Profile, Provider, Schema>,
+    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>>
+    where
+        Schema: HostExternalSchema,
+        Provider: HostExternalBinding<Profile, Schema>,
+        Arguments: HostTypeSequence,
+        HostExternalType<Schema, Arguments>: HostType,
+    {
+        self.construct_external_with_binding::<Provider, Schema, Arguments>(_construction, value)
+    }
+
+    #[doc(hidden)]
+    pub fn construct_external_with_binding<Binding, Schema, Arguments>(
+        &mut self,
+        _construction: HostConstruction<'call, HostExternalType<Schema, Arguments>>,
+        value: BoundExternalPayload<Profile, Binding, Schema>,
+    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>>
+    where
+        Schema: HostExternalSchema,
+        Binding: HostExternalBinding<Profile, Schema>,
+        Arguments: HostTypeSequence,
+        HostExternalType<Schema, Arguments>: HostType,
+    {
+        self.seal_constructed_external_with::<Binding, Schema, Arguments>(value)
+    }
+
     /// Constructs an intermediate external payload that retains typed Gleam values.
     pub fn construct_external_with<Schema, Arguments>(
         &mut self,
@@ -563,6 +468,243 @@ where
             build(&mut builder)
         };
         self.seal_constructed_external_with::<Binding, Schema, Arguments>(value)
+    }
+
+    fn seal_constructed_external_with<Binding, Schema, Arguments>(
+        &mut self,
+        value: BoundExternalPayload<Profile, Binding, Schema>,
+    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>>
+    where
+        Schema: HostExternalSchema,
+        Binding: HostExternalBinding<Profile, Schema>,
+        Arguments: HostTypeSequence,
+        HostExternalType<Schema, Arguments>: HostType,
+    {
+        let lease = self.insert_external_payload_with::<Binding, Schema, Arguments>(value);
+        HostExternal::new(self.runtime.build_external(
+            &crate::host::HostTypeDescriptor::of::<HostExternalType<Schema, Arguments>>(),
+            lease,
+        ))
+    }
+
+    fn insert_external_payload_with<Binding, Schema, Arguments>(
+        &self,
+        value: BoundExternalPayload<Profile, Binding, Schema>,
+    ) -> crate::host::ExternalPayloadLease
+    where
+        Schema: HostExternalSchema,
+        Binding: HostExternalBinding<Profile, Schema>,
+        Arguments: HostTypeSequence,
+        HostExternalType<Schema, Arguments>: HostType,
+    {
+        BoundExternalStorage::<Profile, Binding, Schema>::store(self.runtime.external_stores())
+            .insert(
+                value,
+                BoundExternalStorage::<Profile, Binding, Schema>::source_equal,
+                BoundExternalStorage::<Profile, Binding, Schema>::source_hash,
+                BoundExternalStorage::<Profile, Binding, Schema>::inspect,
+            )
+    }
+
+    pub(crate) fn stored_equal(
+        &self,
+        left: &StoredRuntimeValue,
+        right: &StoredRuntimeValue,
+    ) -> bool {
+        self.runtime.stored_equal(left, right)
+    }
+
+    pub(crate) fn stored_source_hash(&self, value: &StoredRuntimeValue) -> u64 {
+        self.runtime.stored_source_hash(value)
+    }
+
+    pub(crate) fn stored_inspect(&self, value: &StoredRuntimeValue) -> ecow::EcoString {
+        self.runtime.stored_inspect(value)
+    }
+
+    pub(crate) fn stored_list_len(&self, value: &StoredRuntimeValue) -> usize {
+        self.runtime.stored_list_len(value)
+    }
+
+    pub(crate) fn stored_list_item(
+        &self,
+        value: &StoredRuntimeValue,
+        index: usize,
+    ) -> Option<StoredRuntimeValue> {
+        self.runtime.stored_list_item(value, index)
+    }
+
+    #[doc(hidden)]
+    pub fn provider_retained_list<Item, HostItem, Decoder>(
+        &self,
+        value: HostList<'call, HostItem>,
+        decoder: Decoder,
+    ) -> crate::provider::List<Item, crate::provider::ProviderListContext<HostItem, Decoder>>
+    where
+        HostItem: HostType,
+        Decoder: crate::provider::ProviderListItemDecoder<Item>,
+    {
+        crate::provider::ProviderListContext::new(self.retain_list_value(value), decoder)
+    }
+
+    #[doc(hidden)]
+    pub fn provider_retained_input_list<Item, HostItem, Decoder>(
+        &self,
+        value: HostList<'call, HostItem>,
+        decoder: Decoder,
+    ) -> crate::provider::List<Item, crate::provider::ProviderInputListContext<Decoder>>
+    where
+        HostItem: HostType,
+        Decoder: crate::provider::ProviderListItemDecoder<Item>,
+    {
+        crate::provider::ProviderInputListContext::new(self.retain_list_value(value), decoder)
+    }
+
+    #[doc(hidden)]
+    pub fn provider_list_from_input<Item, HostItem, Decoder>(
+        &mut self,
+        value: crate::provider::List<Item, crate::provider::ProviderListContext<HostItem, Decoder>>,
+    ) -> HostList<'call, HostItem>
+    where
+        HostItem: HostType,
+        Decoder: crate::provider::ProviderListItemDecoder<Item>,
+    {
+        self.restore_list_value(value.__geam_into_context().retained())
+    }
+
+    #[doc(hidden)]
+    pub fn provider_external_item_with<Binding, Schema, Arguments>(
+        &self,
+        value: HostExternal<'call, HostExternalType<Schema, Arguments>>,
+    ) -> crate::provider::ProviderOwnedExternal<BoundExternalPayload<Profile, Binding, Schema>>
+    where
+        Schema: HostExternalSchema,
+        Binding: HostExternalBinding<Profile, Schema>,
+        Arguments: HostTypeSequence,
+        BoundExternalPayload<Profile, Binding, Schema>: Send,
+    {
+        let lease = self.runtime.external_lease(value.token);
+        let access = self.provider_external_payload_access_with::<Binding, Schema>();
+        crate::provider::ProviderOwnedExternal::new(access, lease)
+    }
+
+    #[doc(hidden)]
+    pub fn provider_external_view_with<Binding, Schema, Arguments>(
+        &self,
+        value: HostExternal<'call, HostExternalType<Schema, Arguments>>,
+    ) -> crate::provider::ProviderExternalView<BoundExternalPayload<Profile, Binding, Schema>>
+    where
+        Schema: HostExternalSchema,
+        Binding: HostExternalBinding<Profile, Schema>,
+        Arguments: HostTypeSequence,
+        BoundExternalPayload<Profile, Binding, Schema>: Send,
+    {
+        let lease = self.runtime.external_lease(value.token);
+        let view =
+            BoundExternalStorage::<Profile, Binding, Schema>::store(self.runtime.external_stores())
+                .view(&lease);
+        crate::provider::ProviderExternalView::new(view, lease)
+    }
+
+    #[doc(hidden)]
+    pub fn provider_external_from_item<Schema, Arguments, Payload>(
+        &mut self,
+        value: crate::provider::ProviderOwnedExternal<Payload>,
+    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>>
+    where
+        Schema: HostExternalSchema,
+        Arguments: HostTypeSequence,
+        Payload: Send + 'static,
+    {
+        HostExternal::new(self.runtime.build_external(
+            &crate::host::HostTypeDescriptor::of::<HostExternalType<Schema, Arguments>>(),
+            value.into_lease(),
+        ))
+    }
+
+    #[doc(hidden)]
+    pub fn provider_external_from_view<Schema, Arguments, Payload>(
+        &mut self,
+        value: crate::provider::ProviderExternalView<Payload>,
+    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>>
+    where
+        Schema: HostExternalSchema,
+        Arguments: HostTypeSequence,
+    {
+        HostExternal::new(self.runtime.build_external(
+            &crate::host::HostTypeDescriptor::of::<HostExternalType<Schema, Arguments>>(),
+            value.into_lease(),
+        ))
+    }
+
+    #[doc(hidden)]
+    pub fn provider_external_from_return<Schema, Arguments, Payload>(
+        &mut self,
+        value: crate::provider::ProviderExternalReturn<Payload>,
+    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>>
+    where
+        Schema: HostExternalSchema,
+        Arguments: HostTypeSequence,
+    {
+        HostExternal::new(self.runtime.build_external(
+            &crate::host::HostTypeDescriptor::of::<HostExternalType<Schema, Arguments>>(),
+            value.into_lease(),
+        ))
+    }
+
+    #[doc(hidden)]
+    pub fn provider_external_payload_access_with<Binding, Schema>(
+        &self,
+    ) -> crate::provider::ProviderExternalPayloadAccess<
+        BoundExternalPayload<Profile, Binding, Schema>,
+    >
+    where
+        Schema: HostExternalSchema,
+        Binding: HostExternalBinding<Profile, Schema>,
+        BoundExternalPayload<Profile, Binding, Schema>: Send,
+    {
+        crate::provider::ProviderExternalPayloadAccess::new(BoundExternalStorage::<
+            Profile,
+            Binding,
+            Schema,
+        >::store(
+            self.runtime.external_stores()
+        ))
+    }
+
+    pub(crate) fn retain_value<Type: HostType>(
+        &self,
+        value: Type::Value<'call>,
+    ) -> StoredRuntimeValue {
+        self.runtime
+            .retain_stored(crate::host::type_::into_scoped::<Type>(value))
+    }
+
+    pub(crate) fn restore_value<Type: HostType>(
+        &mut self,
+        value: &StoredRuntimeValue,
+    ) -> Type::Value<'call> {
+        let token = self.runtime.restore_stored(value);
+        crate::host::type_::from_runtime_token::<Type, _>(self.runtime, token)
+    }
+
+    pub(crate) fn stored_has_type<Type: HostType>(&self, value: &StoredRuntimeValue) -> bool {
+        self.resolve_host_type::<Type>()
+            .is_some_and(|requested| value.type_() == &requested)
+    }
+
+    pub(crate) fn retain_list_value<Item: HostType>(
+        &self,
+        value: HostList<'call, Item>,
+    ) -> StoredRuntimeList {
+        self.runtime.retain_list(value.token)
+    }
+
+    pub(crate) fn restore_list_value<Item: HostType>(
+        &mut self,
+        value: &StoredRuntimeList,
+    ) -> HostList<'call, Item> {
+        HostList::new(self.runtime.restore_list(value))
     }
 }
 
@@ -625,79 +767,6 @@ where
             &crate::host::HostTypeDescriptor::of::<HostExternalType<Schema, Arguments>>(),
             lease,
         ))
-    }
-}
-
-impl<'call, Profile, Provider, Return> HostCall<'call, Profile, Provider, Return>
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-{
-    /// Constructs an intermediate external payload authorized by one registered type token.
-    pub fn construct_external<Schema, Arguments>(
-        &mut self,
-        _construction: HostConstruction<'call, HostExternalType<Schema, Arguments>>,
-        value: BoundExternalPayload<Profile, Provider, Schema>,
-    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>>
-    where
-        Schema: HostExternalSchema,
-        Provider: HostExternalBinding<Profile, Schema>,
-        Arguments: HostTypeSequence,
-        HostExternalType<Schema, Arguments>: HostType,
-    {
-        self.construct_external_with_binding::<Provider, Schema, Arguments>(_construction, value)
-    }
-
-    #[doc(hidden)]
-    pub fn construct_external_with_binding<Binding, Schema, Arguments>(
-        &mut self,
-        _construction: HostConstruction<'call, HostExternalType<Schema, Arguments>>,
-        value: BoundExternalPayload<Profile, Binding, Schema>,
-    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>>
-    where
-        Schema: HostExternalSchema,
-        Binding: HostExternalBinding<Profile, Schema>,
-        Arguments: HostTypeSequence,
-        HostExternalType<Schema, Arguments>: HostType,
-    {
-        self.seal_constructed_external_with::<Binding, Schema, Arguments>(value)
-    }
-
-    fn seal_constructed_external_with<Binding, Schema, Arguments>(
-        &mut self,
-        value: BoundExternalPayload<Profile, Binding, Schema>,
-    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>>
-    where
-        Schema: HostExternalSchema,
-        Binding: HostExternalBinding<Profile, Schema>,
-        Arguments: HostTypeSequence,
-        HostExternalType<Schema, Arguments>: HostType,
-    {
-        let lease = self.insert_external_payload_with::<Binding, Schema, Arguments>(value);
-        HostExternal::new(self.runtime.build_external(
-            &crate::host::HostTypeDescriptor::of::<HostExternalType<Schema, Arguments>>(),
-            lease,
-        ))
-    }
-
-    fn insert_external_payload_with<Binding, Schema, Arguments>(
-        &self,
-        value: BoundExternalPayload<Profile, Binding, Schema>,
-    ) -> crate::host::ExternalPayloadLease
-    where
-        Schema: HostExternalSchema,
-        Binding: HostExternalBinding<Profile, Schema>,
-        Arguments: HostTypeSequence,
-        HostExternalType<Schema, Arguments>: HostType,
-    {
-        BoundExternalStorage::<Profile, Binding, Schema>::store(self.runtime.external_stores())
-            .insert(
-                value,
-                BoundExternalStorage::<Profile, Binding, Schema>::source_equal,
-                BoundExternalStorage::<Profile, Binding, Schema>::source_hash,
-                BoundExternalStorage::<Profile, Binding, Schema>::inspect,
-            )
     }
 }
 
@@ -769,6 +838,8 @@ where
 mod tests {
     use super::{HostCall, HostProvider};
     use crate::BitArrayValue;
+    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
+    use crate::frontend::compile_typed_host_program;
     use crate::host::function::CallArguments;
     use crate::host::test::{
         StatelessTestProvider, TestHostCallRuntime, TestHostProfile, TestRunState,
@@ -783,8 +854,16 @@ mod tests {
         HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
         HostValueFamily, HostValueToken, StatelessHostProfile,
     };
+    use crate::host::{
+        HostComponentProfile, HostFutureStore, HostProfile, HostProviderComponentRegistration,
+        HostProviderModule, HostProviderSet,
+    };
+    use crate::provider::{ProviderError, ProviderOk, ProviderResult};
     use crate::provider::{ProviderListItemDecoder, ProviderListItemValue};
+    use crate::work_fixture::{WorkComponent, WorkHostType, WorkSchema};
+    use crate::{HostCallCompletion, HostCallError, HostExternal, ModuleSource, PackageSource};
     use ecow::EcoString;
+    use futures_util::FutureExt;
     use num_bigint::BigInt;
 
     struct Counter;
@@ -1031,7 +1110,7 @@ mod tests {
             let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
             let existing = HostList::<BigInt>::new(HostListToken::Stored(0));
             let retained = HostCall::<TestHostProfile, Counter, List>::new(&mut runtime)
-                .provider_list(existing, IntListDecoder);
+                .provider_retained_list(existing, IntListDecoder);
 
             assert_eq!(retained.len(), 1);
             assert_eq!(retained.get(0), Some(BigInt::from(1)));
@@ -1085,5 +1164,142 @@ mod tests {
         HostCall::<TestHostProfile, Counter, ()>::new(&mut runtime)
             .invoke(empty, ())
             .expect("zero-argument test callback should return Nil");
+    }
+
+    struct Profile;
+    impl HostProfile for Profile {
+        type RunState = ();
+        type ExternalStores = HostFutureStore;
+    }
+    impl crate::host::HostWorkProfile for Profile {
+        type Work = crate::work_fixture::WorkComponent;
+    }
+    impl HostComponentProfile<WorkComponent> for Profile {
+        fn component_stores(stores: &HostFutureStore) -> &HostFutureStore {
+            stores
+        }
+        fn component_state(state: &mut ()) -> &mut () {
+            state
+        }
+    }
+    type Pair = HostTypeList<BigInt, HostTypeList<EcoString, HostTypeListEnd>>;
+    type Choice = ProviderResult<BigInt, EcoString>;
+
+    fn inspect_data<'call>(
+        mut call: HostCall<'call, Profile, WorkComponent, ()>,
+        values: HostList<'call, BigInt>,
+        pair: HostTuple<'call, Pair>,
+        choice: HostCustom<'call, Choice>,
+    ) -> Result<HostCallCompletion<'call, ()>, HostCallError> {
+        assert_eq!(call.state(), &());
+        assert_eq!(call.list_len(values), 2);
+        assert_eq!(call.list_item(values, 1), Some(BigInt::from(42)));
+        assert_eq!(call.list_item(values, 2), None);
+        assert_eq!(call.tuple_len(pair), 2);
+        assert_eq!(
+            call.tuple_values(pair),
+            (BigInt::from(42), (EcoString::from("answer"), ()))
+        );
+        let ok = call.custom_fields::<ProviderOk<BigInt, EcoString>>(choice);
+        let error = call.custom_fields::<ProviderError<BigInt, EcoString>>(choice);
+        assert_eq!(ok.is_some(), call.custom_constructor(choice) == 0);
+        assert_eq!(error.is_some(), call.custom_constructor(choice) == 1);
+        if let Some((value, ())) = ok {
+            assert_eq!(value, BigInt::from(42));
+        }
+        if let Some((message, ())) = error {
+            assert_eq!(message, "failed");
+        }
+        assert_eq!(
+            call.inspect::<HostListType<BigInt>>(values),
+            "charlist.from_string(\")*\")"
+        );
+        Ok(call.return_value(()))
+    }
+
+    fn same_work<'call>(
+        call: HostCall<'call, Profile, WorkComponent, bool>,
+        left: HostExternal<'call, WorkHostType<BigInt>>,
+        right: HostExternal<'call, WorkHostType<BigInt>>,
+    ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+        let equal = call.equal::<WorkHostType<BigInt>>(left, right);
+        if equal {
+            assert_eq!(
+                call.source_hash::<WorkHostType<BigInt>>(left),
+                call.source_hash::<WorkHostType<BigInt>>(right)
+            );
+        }
+        assert_eq!(call.inspect::<WorkHostType<BigInt>>(left), "Work(...)");
+        let payload =
+            call.external_payload::<WorkSchema, HostTypeList<BigInt, HostTypeListEnd>>(left);
+        drop(payload);
+        Ok(call.return_value(equal))
+    }
+
+    #[test]
+    fn scoped_views_preserve_source_shapes_and_operation_identity() {
+        let mut providers =
+            <WorkComponent as HostProviderComponentRegistration<Profile>>::providers()
+                .expect("Future registration");
+        providers.push(HostProviderModule::new("application", "library")
+            .expect("module")
+            .with_scoped_function::<WorkComponent, (HostListType<BigInt>, HostTupleType<Pair>, Choice), (), _>("inspect_data", inspect_data).expect("data observer")
+            .with_scoped_function::<WorkComponent, (WorkHostType<BigInt>, WorkHostType<BigInt>), bool, _>("same_work", same_work).expect("work identity"));
+        let program = compile_typed_host_program(
+            "application",
+            "library",
+            [
+                PackageSource::new(
+                    "work_fixture",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "fixture/work",
+                        "src/fixture/work.gleam",
+                        WorkComponent::SOURCE,
+                    )],
+                ),
+                PackageSource::new(
+                    "application",
+                    ["work_fixture"],
+                    [ModuleSource::new(
+                        "library",
+                        "src/library.gleam",
+                        r#"
+import fixture/work as future
+@external(erlang, "native", "inspect_data")
+fn inspect_data(values: List(Int), pair: #(Int, String), choice: Result(Int, String)) -> Nil
+@external(erlang, "native", "same_work")
+fn same_work(left: future.Work(Int), right: future.Work(Int)) -> Bool
+pub fn run() {
+  echo 42
+  inspect_data([41, 42], #(42, "answer"), Ok(42))
+  inspect_data([41, 42], #(42, "answer"), Error("failed"))
+  let work = future.ready(42)
+  same_work(work, work) && !same_work(work, future.ready(42))
+}
+"#,
+                    )],
+                ),
+            ],
+            HostProviderSet::from_providers(providers).expect("selected providers"),
+        )
+        .expect("ordinary source");
+        let (bindings, run) = HostedModuleBuilder::new(program)
+            .expect("plan")
+            .function(FunctionDeclaration::<(), bool>::new("run"))
+            .expect("entry");
+        let mut module = bindings.seal().expect("sealed execution");
+        let mut state = ();
+        let mut outputs = Vec::new();
+        let mut echo = |output: crate::EchoOutput| outputs.push(output.to_string());
+        with_execution_scope(async |guard| {
+            assert_eq!(
+                module.attach(guard, &mut state, &mut echo).call(&run, ()),
+                Ok(true)
+            );
+        })
+        .now_or_never()
+        .expect("direct native calls do not need an executor");
+        assert_eq!(outputs, ["src/library.gleam:8\n42"]);
     }
 }

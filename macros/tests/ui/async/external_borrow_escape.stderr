@@ -1,0 +1,8 @@
+error: lifetime may not live long enough
+  --> tests/ui/async/external_borrow_escape.rs:34:44
+   |
+34 |         let value = counter.with(|counter| &counter.0);
+   |                                   -------- ^^^^^^^^^^ returning this value requires that `'1` must outlive `'2`
+   |                                   |      |
+   |                                   |      return type of closure is &'2 BigInt
+   |                                   has type `&'1 Counter`

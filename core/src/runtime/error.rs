@@ -1,7 +1,10 @@
 mod diagnostic;
 mod host;
 mod invariant;
+mod observation;
 mod panic;
+mod shared;
+mod subject;
 
 use crate::plan::{PanicSite, SourceContext, SourceSpan};
 use crate::runtime::Value;
@@ -11,20 +14,29 @@ pub(crate) use self::host::HostCallOrigin;
 pub use self::host::{HostError, HostLocation, HostOrigin};
 pub use self::invariant::InvariantError;
 pub use self::panic::{BitArraySegmentPanicReason, Panic, PanicDetails, PanicKind, PanicMessage};
+pub use observation::ObservationError;
+pub use shared::SharedExecutionError;
+pub use subject::PanicValue;
 
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
-pub enum ExecutionError {
+pub enum ExecutionError<Subject = PanicValue> {
     #[error("{0}")]
-    Panic(Panic),
+    Panic(Panic<Subject>),
     #[error("{0}")]
     Invariant(InvariantError),
     #[error("{0}")]
     Host(Box<HostError>),
 }
 
-pub(crate) type ExecutionResult<T> = Result<T, ExecutionError>;
+pub(crate) type ExecutionResult<T> = Result<T, ExecutionError<crate::PanicValue>>;
 
-impl ExecutionError {
+impl<Subject> From<InvariantError> for ExecutionError<Subject> {
+    fn from(error: InvariantError) -> Self {
+        Self::Invariant(error)
+    }
+}
+
+impl<Subject> ExecutionError<Subject> {
     pub(crate) fn from_host_call(
         function: &crate::plan::execution::host::HostedFunctionMetadata,
         site: crate::plan::HostCallSite,
@@ -76,7 +88,7 @@ impl ExecutionError {
         source_context: Option<&SourceContext>,
         message: Option<EcoString>,
         site: PanicSite,
-        value: Value,
+        value: Subject,
         pattern_span: SourceSpan,
     ) -> Self {
         Self::Panic(Panic::new(
@@ -106,6 +118,36 @@ impl ExecutionError {
     }
 }
 
+impl ExecutionError {
+    /// Materializes assertion values for callers that need a public diagnostic value.
+    ///
+    /// The returned error preserves the source, provider, and panic details.
+    pub fn into_materialized(self) -> ExecutionError<Value> {
+        match self {
+            Self::Panic(panic) => ExecutionError::Panic(panic.into_materialized()),
+            Self::Host(error) => ExecutionError::Host(error),
+            Self::Invariant(error) => ExecutionError::Invariant(error),
+        }
+    }
+
+    pub(in crate::runtime) fn host_failure(
+        plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
+        origin: HostCallOrigin,
+        function: &crate::plan::execution::host::HostedFunctionMetadata,
+        failure: crate::HostFailure,
+    ) -> Self {
+        match origin.into_source_site(function.site()) {
+            Ok(site) => Self::from_host_call(
+                function,
+                site.clone(),
+                plan.source_context_for(site.module()),
+                failure,
+            ),
+            Err(caller) => Self::from_host_origin(function, caller, failure),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{ExecutionError, InvariantError};
@@ -117,7 +159,7 @@ mod tests {
             expected: FunctionReturnFamily::Int,
             actual: FunctionReturnFamily::String,
         };
-        let error = ExecutionError::Invariant(invariant);
+        let error: ExecutionError = ExecutionError::Invariant(invariant);
 
         assert_eq!(
             error.to_string(),

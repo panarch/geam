@@ -69,4 +69,41 @@ pub fn main() {
 
   base
 }
+pub fn map_probe(fail: Bool) -> Int {
+  let values = dict.from_list([#("a", 21)])
+  let mapped = dict.map_values(values, fn(_, value) {
+    case fail {
+      True -> panic as "map callback"
+      False -> value * 2
+    }
+  })
+  let assert Ok(value) = dict.get(mapped, "a")
+  value
+}
+
+pub fn fold_probe(fail: Bool) -> Int {
+  dict.from_list([#("a", 21)])
+  |> dict.fold(0, fn(total, _, value) {
+    case fail {
+      True -> panic as "fold callback"
+      False -> total + value * 2
+    }
+  })
+}
+
+pub fn update_probe(fail: Bool) -> Int {
+  let values = dict.from_list([#("a", 21)])
+  let updated = dict.upsert(values, "a", fn(value) {
+    case fail {
+      True -> panic as "update callback"
+      False -> {
+        let assert Some(value) = value
+        value * 2
+      }
+    }
+  })
+  let assert Ok(value) = dict.get(updated, "a")
+  value
+}
+
 // @geam:expect dict.from_list([#("a", 3), #("b", 2)])

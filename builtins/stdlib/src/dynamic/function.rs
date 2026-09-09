@@ -1,8 +1,8 @@
 use super::storage::{DynamicRepresentation, DynamicValue};
 use super::{Dynamic, DynamicSchema};
 use crate::{
-    Component, GleamStdlibRunState, HostCall, HostConstruction, HostExternal, HostProvider,
-    HostType, HostTypeListEnd,
+    Component, GleamStdlibRunState, HostConstruction, HostExternal, HostProvider, HostType,
+    HostTypeListEnd,
 };
 use ecow::EcoString;
 use geam_core::provider::advanced::{Equality, Hashing, Inspection, RetainedExternalPayload};
@@ -16,7 +16,7 @@ use std::hash::{Hash, Hasher};
     crate_path = geam_core,
     profile = crate::GleamStdlibHostProfile,
     component = crate::Component<Profile::Io>,
-    stores = crate::dynamic::stores,
+    stores = dynamic,
 )]
 pub(super) mod provider {
     use super::{
@@ -30,7 +30,9 @@ pub(super) mod provider {
     }
 
     impl DynamicPayload {
-        pub(crate) fn stored(value: geam_core::provider::advanced::StoredDynamic<Self>) -> Self {
+        pub(crate) fn stored(
+            value: geam_core::provider::advanced::StoredDynamic<DynamicPayload>,
+        ) -> Self {
             Self {
                 value: DynamicValue::stored(value),
             }
@@ -40,7 +42,9 @@ pub(super) mod provider {
             self.value.representation()
         }
 
-        pub(crate) fn stored_value(&self) -> &geam_core::provider::advanced::StoredDynamic<Self> {
+        pub(crate) fn stored_value(
+            &self,
+        ) -> &geam_core::provider::advanced::StoredDynamic<DynamicPayload> {
             self.value.value()
         }
     }
@@ -156,37 +160,38 @@ pub(super) mod provider {
     }
 }
 
+pub(super) fn host_provider<Profile>()
+-> Result<crate::HostProviderModule<Profile>, crate::HostRegistrationError>
+where
+    Profile: crate::GleamStdlibProviderProfile,
+{
+    provider::__geam_module::<Profile>()
+}
+
 pub fn create_value<'call, Profile, Provider, Return, Type>(
-    call: &mut HostCall<'call, Profile, Provider, Return>,
+    call: &mut geam_core::host::HostCall<'call, Profile, Provider, Return>,
     construction: HostConstruction<'call, Dynamic>,
     value: Type::Value<'call>,
 ) -> HostExternal<'call, Dynamic>
 where
-    Profile: crate::GleamStdlibHostProfile,
+    Profile: crate::GleamStdlibProviderProfile,
+    Profile::RunState: Send,
     Provider: HostProvider<Profile>,
     Return: HostType,
     Type: HostType,
 {
-    call.construct_retained_external_with_binding::<
-        provider::__GeamProvider,
-        DynamicSchema,
-        HostTypeListEnd,
-    >(construction, |builder| {
-        provider::DynamicPayload::stored(geam_core::__macro_support::retain_dynamic::<
-            _,
-            HostTypeListEnd,
-            provider::DynamicPayload,
-            Type,
-        >(builder, value))
-    })
-}
-
-pub(super) fn host_provider<Profile>()
--> Result<crate::HostProviderModule<Profile>, crate::HostRegistrationError>
-where
-    Profile: crate::GleamStdlibHostProfile,
-{
-    provider::__geam_module::<Profile>()
+    let value = geam_core::__macro_support::retain_constructed_dynamic::<
+        _,
+        _,
+        _,
+        _,
+        _,
+        provider::DynamicPayload,
+        Type,
+    >(call, &construction, value);
+    call.construct_external_with_binding::<provider::__GeamProvider, DynamicSchema, HostTypeListEnd>(
+        construction, provider::DynamicPayload::stored(value),
+    )
 }
 
 #[cfg(test)]

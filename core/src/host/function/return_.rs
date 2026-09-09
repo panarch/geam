@@ -8,7 +8,8 @@ mod string;
 mod utf_codepoint;
 
 use crate::host::{
-    HostCallArguments, HostCallError, HostCallRuntime, HostProfile, HostScopedValue, HostValueToken,
+    HostCallArguments, HostCallError, HostCallRuntime, HostFailure, HostProfile, HostScopedValue,
+    HostValueToken,
 };
 use std::sync::Arc;
 
@@ -43,12 +44,27 @@ enum HostValueFunctionKind<Profile: HostProfile> {
     Scoped(Arc<HostScopedCallback<Profile>>),
 }
 
-pub(super) type HostCallback<Profile, Return> = dyn Fn(
+pub(crate) type HostCallback<Profile, Return> = dyn Fn(
         &mut <Profile as HostProfile>::RunState,
         &dyn HostCallArguments,
-    ) -> Result<Return, HostCallError>
+    ) -> Result<Return, HostFailure>
     + Send
     + Sync;
+
+pub(crate) struct OwnedHostCallback<Profile: HostProfile, Return> {
+    implementation: Arc<HostCallback<Profile, Return>>,
+}
+
+pub(crate) enum OwnedHostFunctionImplementation<Profile: HostProfile> {
+    Never(OwnedHostCallback<Profile, std::convert::Infallible>),
+    Int(OwnedHostCallback<Profile, num_bigint::BigInt>),
+    Float(OwnedHostCallback<Profile, f64>),
+    String(OwnedHostCallback<Profile, ecow::EcoString>),
+    BitArray(OwnedHostCallback<Profile, crate::BitArrayValue>),
+    UtfCodepoint(OwnedHostCallback<Profile, char>),
+    Bool(OwnedHostCallback<Profile, bool>),
+    Nil(OwnedHostCallback<Profile, ()>),
+}
 
 type HostScopedCallback<Profile> = dyn Fn(&mut dyn HostCallRuntime<Profile>) -> Result<HostValueToken, HostCallError>
     + Send
@@ -58,11 +74,82 @@ pub(super) trait HostReturn: Sized {
     fn descriptor() -> crate::host::HostTypeDescriptor;
 
     fn implementation<Profile: HostProfile>(
-        function: impl Fn(&mut Profile::RunState, &dyn HostCallArguments) -> Result<Self, HostCallError>
+        function: impl Fn(&mut Profile::RunState, &dyn HostCallArguments) -> Result<Self, HostFailure>
         + Send
         + Sync
         + 'static,
-    ) -> HostFunctionImplementation<Profile>;
+    ) -> OwnedHostFunctionImplementation<Profile>;
+}
+
+impl<Profile: HostProfile, Return> Clone for OwnedHostCallback<Profile, Return> {
+    fn clone(&self) -> Self {
+        Self {
+            implementation: Arc::clone(&self.implementation),
+        }
+    }
+}
+
+impl<Profile: HostProfile, Return> OwnedHostCallback<Profile, Return> {
+    pub(super) fn new(
+        implementation: impl Fn(
+            &mut Profile::RunState,
+            &dyn HostCallArguments,
+        ) -> Result<Return, HostFailure>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        Self {
+            implementation: Arc::new(implementation),
+        }
+    }
+
+    pub(crate) fn call(
+        &self,
+        state: &mut Profile::RunState,
+        arguments: &dyn HostCallArguments,
+    ) -> Result<Return, HostFailure> {
+        (self.implementation)(state, arguments)
+    }
+
+    fn call_runtime(
+        &self,
+        runtime: &mut dyn HostCallRuntime<Profile>,
+    ) -> Result<Return, HostCallError> {
+        let (state, arguments) = runtime.scalar_context();
+        self.call(state, arguments).map_err(HostCallError::from)
+    }
+}
+
+impl<Profile: HostProfile> OwnedHostFunctionImplementation<Profile> {
+    pub(crate) fn into_immediate(self) -> HostFunctionImplementation<Profile> {
+        match self {
+            Self::Never(function) => {
+                HostFunctionImplementation::Never(HostNeverFunction::owned(function))
+            }
+            Self::Int(function) => {
+                HostFunctionImplementation::Value(HostValueFunction::int(function))
+            }
+            Self::Float(function) => {
+                HostFunctionImplementation::Value(HostValueFunction::float(function))
+            }
+            Self::String(function) => {
+                HostFunctionImplementation::Value(HostValueFunction::string(function))
+            }
+            Self::BitArray(function) => {
+                HostFunctionImplementation::Value(HostValueFunction::bit_array(function))
+            }
+            Self::UtfCodepoint(function) => {
+                HostFunctionImplementation::Value(HostValueFunction::utf_codepoint(function))
+            }
+            Self::Bool(function) => {
+                HostFunctionImplementation::Value(HostValueFunction::bool_(function))
+            }
+            Self::Nil(function) => {
+                HostFunctionImplementation::Value(HostValueFunction::nil(function))
+            }
+        }
+    }
 }
 
 impl<Profile: HostProfile> Clone for HostValueFunction<Profile> {
@@ -170,22 +257,26 @@ impl<Profile: HostProfile> HostValueFunction<Profile> {
         runtime: &mut dyn HostCallRuntime<Profile>,
     ) -> Result<HostValueToken, HostCallError> {
         let value = match &self.kind {
-            HostValueFunctionKind::Int(function) => HostScopedValue::Int(function.call(runtime)?),
+            HostValueFunctionKind::Int(function) => {
+                HostScopedValue::Int(function.call_runtime(runtime)?)
+            }
             HostValueFunctionKind::Float(function) => {
-                HostScopedValue::Float(function.call(runtime)?)
+                HostScopedValue::Float(function.call_runtime(runtime)?)
             }
             HostValueFunctionKind::String(function) => {
-                HostScopedValue::String(function.call(runtime)?)
+                HostScopedValue::String(function.call_runtime(runtime)?)
             }
             HostValueFunctionKind::BitArray(function) => {
-                HostScopedValue::BitArray(function.call(runtime)?)
+                HostScopedValue::BitArray(function.call_runtime(runtime)?)
             }
             HostValueFunctionKind::UtfCodepoint(function) => {
-                HostScopedValue::UtfCodepoint(function.call(runtime)?)
+                HostScopedValue::UtfCodepoint(function.call_runtime(runtime)?)
             }
-            HostValueFunctionKind::Bool(function) => HostScopedValue::Bool(function.call(runtime)?),
+            HostValueFunctionKind::Bool(function) => {
+                HostScopedValue::Bool(function.call_runtime(runtime)?)
+            }
             HostValueFunctionKind::Nil(function) => {
-                function.call(runtime)?;
+                function.call_runtime(runtime)?;
                 HostScopedValue::Nil
             }
             HostValueFunctionKind::Scoped(function) => return function(runtime),
@@ -215,8 +306,9 @@ mod tests {
     #[test]
     fn value_return_dispatch_preserves_typed_callback_failure() {
         let implementation = <bool as HostReturn>::implementation::<TestHostProfile>(|_, _| {
-            Err(HostCallError::from(HostFailure::new("bool unavailable")))
-        });
+            Err(HostFailure::new("bool unavailable"))
+        })
+        .into_immediate();
         let implementation = expect_value_implementation(&implementation);
         let mut state = TestRunState::default();
         let mut runtime =
@@ -233,8 +325,9 @@ mod tests {
     fn value_return_dispatch_shape_guard_is_visible() {
         let implementation =
             <Infallible as HostReturn>::implementation::<TestHostProfile>(|_, _| {
-                Err(HostCallError::from(HostFailure::new("stopped")))
-            });
+                Err(HostFailure::new("stopped"))
+            })
+            .into_immediate();
         let mut state = TestRunState::default();
         let mut runtime =
             TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));

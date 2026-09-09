@@ -1,6 +1,6 @@
 use crate::host::{
-    ExternalPayloadLease, HostCustomToken, HostExternalToken, HostFunctionToken, HostListToken,
-    HostScopedValue, HostStoredValueFamily, HostTupleToken, HostValueFamily, HostValueToken,
+    HostCustomToken, HostExternalToken, HostFunctionToken, HostListToken, HostScopedValue,
+    HostStoredValueFamily, HostTupleToken, HostValueFamily, HostValueToken,
 };
 use crate::plan::execution::type_::ListStorageTypeId;
 use crate::runtime::evaluated::{
@@ -12,7 +12,7 @@ use crate::runtime::graph::RetainedValues;
 use crate::runtime::retained_list::RetainedList;
 use crate::runtime::state::list::{
     CustomListAllocation, ExternalListAllocation, ListValueId, ParameterListValueId,
-    RuntimeListStorage, StoredListValueId,
+    StoredListValueId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -34,9 +34,30 @@ pub(super) struct ScopedValues {
     tuples: Vec<Vec<EvaluatedValue>>,
     customs: Vec<EvaluatedCustomValue>,
     externals: Vec<EvaluatedExternalValue>,
-    functions: Vec<InvocableFunctionValue>,
+    functions: Vec<crate::runtime::RetainedCallable>,
     symbolic_functions: Vec<EvaluatedGenericFunction>,
-    function_values: HashMap<HostValueToken, EvaluatedFunctionValue>,
+    function_indices: HashMap<HostValueToken, FunctionIndex>,
+}
+
+#[derive(Clone, Copy)]
+enum FunctionIndex {
+    Invocable(usize),
+    Symbolic(usize),
+}
+
+impl FunctionIndex {
+    fn token(self) -> HostValueToken {
+        match self {
+            Self::Invocable(index) => HostValueToken {
+                family: HostValueFamily::Function,
+                index,
+            },
+            Self::Symbolic(index) => HostValueToken {
+                family: HostValueFamily::SymbolicFunction,
+                index,
+            },
+        }
+    }
 }
 
 pub(crate) struct StoredRuntimeValue {
@@ -83,6 +104,20 @@ impl StoredRuntimeValue {
         &self.type_
     }
 
+    pub(crate) fn has_external_schema<Schema>(&self) -> bool
+    where
+        Schema: crate::host::HostExternalSchema,
+    {
+        let crate::plan::ValueType::External(type_) = &self.type_ else {
+            return false;
+        };
+        let name = type_.type_name();
+        name.package() == Schema::PACKAGE
+            && name.module() == Schema::MODULE
+            && name.name() == Schema::NAME
+            && type_.arguments().len() == Schema::PARAMETER_COUNT
+    }
+
     pub(crate) fn family(&self) -> HostStoredValueFamily {
         match &self.value {
             EvaluatedValue::Int(_) => HostStoredValueFamily::Int,
@@ -120,6 +155,14 @@ impl StoredRuntimeValue {
             (value, type_) => Err(Self::new(value, type_)),
         }
     }
+
+    pub(crate) fn clone_retained(&self) -> Self {
+        Self::new(self.value.clone(), self.type_.clone())
+    }
+
+    pub(crate) fn semantic_value(&self) -> crate::runtime::RetainedValueRef<'_> {
+        crate::runtime::RetainedValueRef::new(&self.value)
+    }
 }
 
 impl StoredRuntimeList {
@@ -145,11 +188,15 @@ impl StoredRuntimeList {
         Some(decode(item))
     }
 
+    pub(in crate::runtime) fn handle(&self) -> ListValueId {
+        self.retained.handle().clone()
+    }
+
     #[cfg(test)]
     pub(crate) fn test_ints(values: Vec<BigInt>) -> Self {
         let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [1] }");
         let type_id = plan.int_list_function_id(0).type_id();
-        let mut storage = RuntimeListStorage::default();
+        let storage = crate::runtime::state::list::RuntimeListStorage::default();
         let value = storage.int(type_id, values);
         Self::new(value.into())
     }
@@ -194,7 +241,7 @@ impl<'value> StoredRuntimeListItem<'value> {
         self.values.take_nil(self.token);
     }
 
-    pub(crate) fn into_external_lease(self) -> ExternalPayloadLease {
+    pub(crate) fn into_external_lease(self) -> crate::runtime::ExternalPayloadLease {
         self.values.take_external(self.token).into_parts().1
     }
 
@@ -264,9 +311,9 @@ impl ScopedValues {
             HostValueFamily::Function => {
                 retained.push_function(self.functions[token.index].clone().into_evaluated())
             }
-            HostValueFamily::SymbolicFunction => {
-                retained.push_function(self.symbolic_functions[token.index].clone().into())
-            }
+            HostValueFamily::SymbolicFunction => retained.push_function(
+                EvaluatedFunctionValue::from(self.symbolic_functions[token.index].clone()),
+            ),
         }
     }
 
@@ -471,102 +518,113 @@ impl ScopedValues {
     }
 
     fn push_function(&mut self, value: EvaluatedFunctionValue) -> HostValueToken {
-        let (family, index) = match value.kind() {
+        let index = match value.into_kind() {
             EvaluatedFunctionValueKind::Generic(function) => {
                 let index = self.symbolic_functions.len();
-                self.symbolic_functions.push(function.clone());
-                (HostValueFamily::SymbolicFunction, index)
+                self.symbolic_functions.push(function);
+                FunctionIndex::Symbolic(index)
             }
             EvaluatedFunctionValueKind::Never(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::Never(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(crate::runtime::RetainedCallable::new(
+                    InvocableFunctionValue::Never(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::Int(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::Int(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(crate::runtime::RetainedCallable::new(
+                    InvocableFunctionValue::Int(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::Float(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::Float(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(crate::runtime::RetainedCallable::new(
+                    InvocableFunctionValue::Float(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::String(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::String(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(crate::runtime::RetainedCallable::new(
+                    InvocableFunctionValue::String(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::BitArray(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::BitArray(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(crate::runtime::RetainedCallable::new(
+                    InvocableFunctionValue::BitArray(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::UtfCodepoint(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::UtfCodepoint(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(crate::runtime::RetainedCallable::new(
+                    InvocableFunctionValue::UtfCodepoint(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::Custom(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::Custom(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(crate::runtime::RetainedCallable::new(
+                    InvocableFunctionValue::Custom(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::External(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::External(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(crate::runtime::RetainedCallable::new(
+                    InvocableFunctionValue::External(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::Bool(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::Bool(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(crate::runtime::RetainedCallable::new(
+                    InvocableFunctionValue::Bool(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::Nil(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::Nil(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(crate::runtime::RetainedCallable::new(
+                    InvocableFunctionValue::Nil(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::Tuple(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::Tuple(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(crate::runtime::RetainedCallable::new(
+                    InvocableFunctionValue::Tuple(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::List(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::List(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(crate::runtime::RetainedCallable::new(
+                    InvocableFunctionValue::List(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
             EvaluatedFunctionValueKind::Function(function) => {
                 let index = self.functions.len();
-                self.functions
-                    .push(InvocableFunctionValue::Function(function.clone()));
-                (HostValueFamily::Function, index)
+                self.functions.push(crate::runtime::RetainedCallable::new(
+                    InvocableFunctionValue::Function(function),
+                ));
+                FunctionIndex::Invocable(index)
             }
         };
-        let token = HostValueToken { family, index };
-        self.function_values.insert(token, value);
+        let token = index.token();
+        self.function_indices.insert(token, index);
         token
     }
-}
 
-impl ScopedValues {
     pub(super) fn allocate_list(
         &self,
         storage_type: ListStorageTypeId,
-        storage: &mut RuntimeListStorage,
+        storage: &mut crate::runtime::RuntimeListStorage,
         values: &[HostValueToken],
     ) -> ListValueId {
         match storage_type {
@@ -667,7 +725,14 @@ impl ScopedValues {
                     type_id,
                     values
                         .iter()
-                        .map(|token| self.function_values[token].clone())
+                        .map(|token| match self.function_indices[token] {
+                            FunctionIndex::Invocable(index) => {
+                                self.functions[index].clone().into_evaluated()
+                            }
+                            FunctionIndex::Symbolic(index) => {
+                                self.symbolic_functions[index].clone().into()
+                            }
+                        })
                         .collect(),
                 )
                 .into(),
@@ -809,7 +874,7 @@ impl ScopedValues {
         self.customs[value.0].take_fields()
     }
 
-    pub(super) fn function(&self, value: HostFunctionToken) -> InvocableFunctionValue {
+    pub(super) fn function(&self, value: HostFunctionToken) -> crate::runtime::RetainedCallable {
         self.functions[value.0].clone()
     }
 
@@ -844,10 +909,54 @@ impl ScopedValues {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn retaining_callable_shares_the_scoped_target_and_capture_allocation() {
+        use crate::plan::execution::function::IntFunctionId;
+        use crate::plan::execution::graph::IntLocalId;
+        use crate::plan::execution::type_::{FunctionType, ValueType};
+
+        use crate::runtime::evaluated::{EvaluatedCapture, EvaluatedIntFunction};
+
+        let captured = num_bigint::BigInt::from(1u8) << 1024usize;
+        let function = EvaluatedIntFunction::closure(
+            IntFunctionId(0),
+            Vec::new(),
+            vec![EvaluatedCapture::int(IntLocalId(0), captured.clone())],
+            FunctionType::new(Vec::new(), ValueType::Int),
+        );
+        let original_captures = function.captures().as_ptr();
+        let mut scoped = super::ScopedValues::default();
+        let token = scoped.push_function(function.into());
+        let callable = scoped.function(crate::host::HostFunctionToken(token.index));
+        let retained = callable.clone();
+        callable.with_value(|first| {
+            retained.with_value(|second| {
+                assert!(std::ptr::eq(first, second));
+                let first = int_target(first);
+                let second = int_target(second);
+                assert_eq!(first.captures().as_ptr(), original_captures);
+                assert!(std::ptr::eq(first.captures(), second.captures()));
+            })
+        });
+        drop(scoped);
+        drop(callable);
+        std::thread::spawn(move || {
+            retained.with_value(|value| {
+                let value = int_target(value);
+                assert_eq!(
+                    value.captures(),
+                    &[EvaluatedCapture::int(IntLocalId(0), captured)]
+                );
+            });
+        })
+        .join()
+        .expect("retained callback is transferable");
+    }
+
     use super::{ScopedValues, StoredRuntimeListItem, StoredRuntimeValue};
     use crate::host::HostCustomToken;
     use crate::host::test::{StatelessTestProvider, TestTypeParameter, stateless_identity};
-    use crate::runtime::state::list::RuntimeListStorage;
+    use crate::runtime::state::list::{ListValueId, ParameterListValueId, RuntimeListStorage};
     use crate::runtime::{EvaluatedBitArray, EvaluatedCustomValue, EvaluatedValue};
     use crate::{
         BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostList, HostListType,
@@ -867,7 +976,33 @@ mod tests {
         let restored = scoped.push(stored.value().clone());
 
         assert_eq!(stored.type_(), &crate::plan::ValueType::Int);
+        assert!(std::ptr::eq(
+            stored.semantic_value().value(),
+            stored.value()
+        ));
         assert_eq!(scoped.int(restored), BigInt::from(7));
+    }
+
+    #[test]
+    fn stored_generic_lists_preserve_their_runtime_handle_and_item_type() {
+        let plan = crate::runtime::plan_src(
+            "fn values(items: List(value)) { items } pub fn main() { values([]) }",
+        );
+        let list = ParameterListValueId::new(plan.parameter_list_function_id(0).type_id());
+        let item = crate::plan::TypeParameterId(0);
+        let stored = StoredRuntimeValue::new(
+            EvaluatedValue::ParameterList(list),
+            crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Parameter(item))),
+        );
+
+        assert_eq!(
+            crate::runtime::BorrowedValue::from_stored(&stored).list(),
+            ListValueId::Parameter(list)
+        );
+        assert_eq!(
+            stored.type_(),
+            &crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Parameter(item))),
+        );
     }
 
     #[test]
@@ -927,13 +1062,14 @@ mod tests {
         let mut values = ScopedValues::default();
         let retained = StoredRuntimeListItem::new(&mut values, EvaluatedValue::External(external))
             .into_external_lease();
-        assert_eq!(retained.id(), lease.id());
-        let stored_equal = |_: &StoredRuntimeValue, _: &StoredRuntimeValue| false;
-        let stored_hash = |_: &StoredRuntimeValue| 0;
-        let stored_inspect = |_: &StoredRuntimeValue| EcoString::from("7");
-        let equality = crate::host::HostExternalEquality::new(&stored_equal);
-        let hashing = crate::host::HostExternalHashing::new(&stored_hash);
-        let inspection = crate::host::HostExternalInspection::new(&stored_inspect);
+        assert_eq!(retained.identity(), lease.identity());
+        let stored_equal =
+            |_: &crate::runtime::RetainedValueRef, _: &crate::runtime::RetainedValueRef| false;
+        let stored_hash = |_: &crate::runtime::RetainedValueRef| 0;
+        let stored_inspect = |_: &crate::runtime::RetainedValueRef| EcoString::from("7");
+        let equality = crate::host::RetainedValueEquality::new(&stored_equal);
+        let hashing = crate::host::RetainedValueHashing::new(&stored_hash);
+        let inspection = crate::host::RetainedValueInspection::new(&stored_inspect);
         assert!(retained.source_equal(&equality, &lease));
         assert_eq!(retained.source_hash(&hashing), 7);
         assert_eq!(retained.inspection(&inspection), "Payload(7)");
@@ -957,7 +1093,7 @@ mod tests {
         let plan = crate::runtime::plan_src(
             "pub type Item { Item(Int, List(Int)) } pub fn values() { [2] } pub fn main() { Item(1, values()) }",
         );
-        let mut storage = RuntimeListStorage::default();
+        let storage = RuntimeListStorage::default();
         let nested = storage.int(plan.int_list_function_id(0).type_id(), vec![2.into()]);
         let custom = EvaluatedCustomValue::from_fields(
             plan.custom_constructor_id(0, 0),
@@ -1090,5 +1226,90 @@ pub fn main() {
         let expected = Value::Bool(true);
 
         assert_eq!(execution.run_main(&mut (), &mut Vec::new()), Ok(expected),);
+    }
+    fn int_target(
+        value: &crate::runtime::function::InvocableFunctionValue,
+    ) -> &crate::runtime::evaluated::EvaluatedIntFunction {
+        match value {
+            crate::runtime::function::InvocableFunctionValue::Int(value) => value,
+            _ => panic!("fixture requires an Int callback"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture requires an Int callback")]
+    fn int_target_rejects_a_nil_callback_fixture() {
+        let function = crate::runtime::evaluated::EvaluatedNilFunction::reference(
+            crate::plan::execution::function::NilFunctionId(0),
+            Vec::new(),
+            Vec::new(),
+            crate::plan::execution::type_::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::type_::ValueType::Nil,
+            ),
+        );
+        int_target(&crate::runtime::function::InvocableFunctionValue::Nil(
+            function,
+        ));
+    }
+    #[test]
+    fn generic_list_reconstruction_preserves_symbolic_and_invocable_function_values() {
+        fn copy<'call>(
+            mut call: HostCall<
+                'call,
+                StatelessHostProfile,
+                StatelessTestProvider,
+                HostListType<TestTypeParameter>,
+            >,
+            values: HostList<'call, TestTypeParameter>,
+        ) -> Result<HostCallCompletion<'call, HostListType<TestTypeParameter>>, HostCallError>
+        {
+            let mut copied = Vec::new();
+            for index in 0..call.list_len(values) {
+                copied.push(
+                    call.list_item(values, index)
+                        .expect("index below list length"),
+                );
+            }
+            Ok(call.return_list(copied))
+        }
+        let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
+            .expect("provider")
+            .with_scoped_function::<StatelessTestProvider, (HostListType<TestTypeParameter>,), HostListType<TestTypeParameter>, _>(
+                "copy", copy,
+            ).expect("generic List reconstruction");
+        let source = r#"pub type Never
+fn identity(value: value) -> value { value }
+@external(erlang, "native", "copy")
+fn copy(values: List(value)) -> List(value)
+pub fn main() {
+  let values: List(fn(Never) -> Never) = [identity]
+  let restored = copy(values)
+  let callable_values = [fn(value: Int) { value + 1 }]
+  let assert [callback] = copy(callable_values)
+  restored == values && copy(restored) == values && copy([]) == []
+    && callback(41) == 42
+}
+"#;
+        let program = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new("main", "src/main.gleam", source)],
+            )],
+            HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
+                .expect("providers"),
+        )
+        .expect("source");
+        let plan = HostedExecution::try_from_module_plan(plan_host_program(program).expect("plan"))
+            .expect("symbolic functions are stored, not invoked");
+        let mut echo = Vec::new();
+        assert_eq!(
+            plan.run_main(&mut (), &mut echo).expect("source execution"),
+            Value::Bool(true)
+        );
+        assert!(echo.is_empty());
     }
 }

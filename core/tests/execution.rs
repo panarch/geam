@@ -1,4 +1,7 @@
+use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
+use geam_core::host::{HostComponentProfile, HostFutureStore, HostProfile, HostProviderSet};
 use geam_core::planner::InvalidTypedAstReason;
+use geam_core::{EchoOutput, EchoSink, PackageSource};
 use geam_core::{
     ExecutionError, FunctionType, ListValue, ModuleSource, PlanError, SourceContext, Value,
     ValueType, compile_typed_module, compile_typed_program, plan_module, plan_module_with_source,
@@ -6,6 +9,14 @@ use geam_core::{
 };
 use gleam_compiler_core::ast::Constant;
 use miette::{GraphicalReportHandler, GraphicalTheme};
+use std::future::Future;
+use std::pin::pin;
+use std::task::{Context, Poll, Waker};
+
+#[path = "support/fixture_observation.rs"]
+mod fixture_observation;
+#[path = "support/work_representation.rs"]
+mod work_fixture;
 
 macro_rules! fixture_cases {
     ($runner:path, $dir:literal; $($name:ident),+ $(,)?) => {
@@ -1106,7 +1117,7 @@ fn run_fixture(file_name: &str) {
     let src = std::fs::read_to_string(&path).expect("fixture should be readable");
     let expected = expected_text_with_prefix(&src, "// @geam:expect ");
     let module = compile_typed_module("main", path.clone(), &src).expect("fixture should compile");
-    let source_context = SourceContext::new(path, src.clone());
+    let source_context = SourceContext::new(path.clone(), src.clone());
     let module_plan = plan_module_with_source(module, source_context).expect("fixture should plan");
     let plan = geam_core::ExecutionPlan::from_module_plan(module_plan);
     let mut echo = Vec::new();
@@ -1117,6 +1128,7 @@ fn run_fixture(file_name: &str) {
         echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
         expected_echoes(&src),
     );
+    assert_transfer_fixture(vec![ModuleSource::new("main", path, src)]);
 }
 
 fn run_module_fixture(case: &str) {
@@ -1136,13 +1148,14 @@ fn run_module_fixture(case: &str) {
         echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
         expected_echoes(&main),
     );
+    assert_transfer_fixture(module_sources(&directory));
 }
 
 fn run_error_fixture(file_name: &str) {
     let path = format!("tests/fixtures/execution_errors/{file_name}");
     let src = std::fs::read_to_string(&path).expect("fixture should be readable");
     let expected = expected_error_text(&src);
-    let module = compile_typed_module("main", path, &src).expect("fixture should compile");
+    let module = compile_typed_module("main", path.clone(), &src).expect("fixture should compile");
     let source_context = SourceContext::new(
         format!("tests/fixtures/execution_errors/{file_name}"),
         src.clone(),
@@ -1161,6 +1174,7 @@ fn run_error_fixture(file_name: &str) {
         echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
         expected_echoes(&src),
     );
+    assert_transfer_fixture(vec![ModuleSource::new("main", path, src)]);
 }
 
 fn run_module_error_fixture(case: &str) {
@@ -1181,6 +1195,118 @@ fn run_module_error_fixture(case: &str) {
         echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
         expected_echoes(&main),
     );
+    assert_transfer_fixture(module_sources(&directory));
+}
+
+#[derive(Default)]
+struct TransferFixtureEcho {
+    effects: Vec<String>,
+    result: Option<(ValueType, String)>,
+}
+
+impl EchoSink for TransferFixtureEcho {
+    fn emit(&mut self, output: EchoOutput) {
+        if output.location().echo_site().function() == fixture_observation::ENTRY {
+            self.result = Some((output.value().value_type(), render_value(output.value())));
+        } else {
+            self.effects.push(output.to_string());
+        }
+    }
+}
+
+struct TransferFixtureProfile;
+
+impl HostProfile for TransferFixtureProfile {
+    type RunState = ();
+    type ExternalStores = HostFutureStore;
+}
+
+impl geam_core::host::HostWorkProfile for TransferFixtureProfile {
+    type Work = work_fixture::WorkComponent;
+}
+
+impl HostComponentProfile<work_fixture::WorkComponent> for TransferFixtureProfile {
+    fn component_stores(stores: &HostFutureStore) -> &HostFutureStore {
+        stores
+    }
+
+    fn component_state(state: &mut ()) -> &mut () {
+        state
+    }
+}
+
+fn assert_transfer_fixture(modules: Vec<ModuleSource>) {
+    // Echo observes every return family through the public typed Nil entry.
+    let modules = modules
+        .into_iter()
+        .map(|module| {
+            let source = if module.module() == "main" {
+                fixture_observation::source(module.source())
+            } else {
+                module.source().to_owned()
+            };
+            ModuleSource::new(module.module().clone(), module.path().clone(), source)
+        })
+        .collect::<Vec<_>>();
+    let immediate = compile_typed_program("main", modules.clone())
+        .expect("fixture with observation entry should compile");
+    let plan = geam_core::ExecutionPlan::from_module_plan(
+        plan_program(immediate).expect("fixture with observation entry should plan"),
+    );
+    let mut expected_echo = Vec::new();
+    let expected = run_main(&plan, &mut expected_echo);
+    let hosts = HostProviderSet::<TransferFixtureProfile>::from_providers([])
+        .expect("empty transferable provider set");
+    let program = geam_core::frontend::compile_typed_host_program(
+        "geam",
+        "main",
+        [PackageSource::new("geam", Vec::<String>::new(), modules)],
+        hosts,
+    )
+    .expect("fixture should compile for transferable embedding");
+    let (bindings, entry) = HostedModuleBuilder::new(program)
+        .expect("fixture should plan for transferable embedding")
+        .function(FunctionDeclaration::<(), ()>::new(
+            fixture_observation::ENTRY,
+        ))
+        .expect("fixture observation entry should bind");
+    let mut module = bindings.seal().expect("transferable execution should seal");
+    let mut state = ();
+    let mut echo = TransferFixtureEcho::default();
+    let result = {
+        let mut future = pin!(with_execution_scope(async |guard| {
+            module.attach(guard, &mut state, &mut echo).call(&entry, ())
+        }));
+        future
+            .as_mut()
+            .poll(&mut Context::from_waker(Waker::noop()))
+            .map(|result| result.map_err(geam_core::embedding::CallError::into_materialized))
+    };
+    assert_eq!(
+        echo.effects,
+        expected_echo
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+    );
+    match expected {
+        Ok(value) => {
+            assert_eq!(result, Poll::Ready(Ok(())));
+            assert_eq!(
+                echo.result,
+                Some((value.value_type(), render_value(&value)))
+            );
+        }
+        Err(error) => {
+            assert_eq!(
+                result,
+                Poll::Ready(Err(
+                    geam_core::embedding::CallError::from(error).into_materialized()
+                ))
+            );
+            assert_eq!(echo.result, None);
+        }
+    }
 }
 
 fn expected_echoes(source: &str) -> Vec<String> {

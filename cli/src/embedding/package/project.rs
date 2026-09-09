@@ -6,7 +6,12 @@ use crate::error::CliError;
 use crate::project::read_package_config;
 use camino::{Utf8Path, Utf8PathBuf};
 use gleam_core::config::PackageConfig;
+use serde::Deserialize;
 use serde_json::json;
+
+#[derive(Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct EmbeddingConfiguration {}
 
 #[derive(Debug)]
 pub(in crate::embedding) struct EmbeddingProject {
@@ -57,18 +62,26 @@ impl EmbeddingProject {
         )?;
         let package = select_package(&metadata, &manifest)?;
         let package_name = package.name.to_string();
-        if package
+        let configuration = package
             .metadata
             .get("geam")
-            .and_then(|geam| geam.get("embedding"))
-            .is_some()
-        {
+            .and_then(|geam| geam.get("embedding"));
+        if configuration.is_some_and(|configuration| configuration.get("storage").is_some()) {
             return Err(CliError::InvalidEmbeddingProject {
-                package: package_name,
-                manifest,
-                reason: "remove obsolete [package.metadata.geam.embedding]; embedding uses gleam/ and the Cargo package name".to_owned(),
+                package: package_name.clone(),
+                manifest: manifest.clone(),
+                reason: "embedding uses one Send execution contract; remove `storage` from [package.metadata.geam.embedding] and run `geam embedding sync`".to_owned(),
             });
         }
+        configuration
+            .map(|value| serde_json::from_value::<EmbeddingConfiguration>(value.clone()))
+            .transpose()
+            .map_err(|error| CliError::InvalidEmbeddingProject {
+                package: package_name.clone(),
+                manifest: manifest.clone(),
+                reason: format!("invalid [package.metadata.geam.embedding]: {error}; embedding uses gleam/ and the Cargo package name"),
+            })?
+            .unwrap_or_default();
         let root_module = package_name.replace('-', "_");
         serde_json::from_value::<PackageConfig>(json!({ "name": root_module })).map_err(
             |error| CliError::InvalidEmbeddingProject {
@@ -245,7 +258,7 @@ module = "another_module"
         assert_eq!(
             error.to_string(),
             format!(
-                "invalid Rust embedding project for package inventory at {}: remove obsolete [package.metadata.geam.embedding]; embedding uses gleam/ and the Cargo package name",
+                "invalid Rust embedding project for package inventory at {}: invalid [package.metadata.geam.embedding]: unknown field `module`, there are no fields; embedding uses gleam/ and the Cargo package name",
                 fixture.root.join("Cargo.toml"),
             )
         );
@@ -282,6 +295,48 @@ module = "another_module"
                 .expect("member directory should select its own package");
         assert_eq!(member.manifest, fixture.root.join("member/Cargo.toml"));
         assert_eq!(member.project_root, fixture.root.join("member/gleam"));
+    }
+
+    #[test]
+    fn accepts_empty_configuration_without_changing_paths_or_resolving_dependencies() {
+        for metadata in ["", "[package.metadata.geam.embedding]\n"] {
+            let source = format!(
+                "[package]\nname = 'selected-host'\nversion = '0.1.0'\n{metadata}[workspace]\n"
+            );
+            let fixture = ProjectFixture::new(&source);
+            let selected = EmbeddingProject::load(&fixture.root).expect("conventional project");
+            assert_eq!(selected.root_module, "selected_host");
+            assert_eq!(selected.project_root, fixture.root.join("gleam"));
+            assert_eq!(
+                fs::read_to_string(selected.manifest).expect("unchanged manifest"),
+                source
+            );
+            assert!(!fixture.root.join("Cargo.lock").exists());
+        }
+    }
+
+    #[test]
+    fn rejects_removed_storage_without_changing_files_or_resolving_dependencies() {
+        for storage in ["'local'", "'transferable'", "'automatic'", "42"] {
+            let source = format!(
+                "[package]\nname = 'selected-host'\nversion = '0.1.0'\n[package.metadata.geam.embedding]\nstorage = {storage}\n[workspace]\n"
+            );
+            let fixture = ProjectFixture::new(&source);
+            let error = EmbeddingProject::load(&fixture.root).expect_err("removed mode selection");
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "invalid Rust embedding project for package selected-host at {}: embedding uses one Send execution contract; remove `storage` from [package.metadata.geam.embedding] and run `geam embedding sync`",
+                    fixture.root.join("Cargo.toml"),
+                )
+            );
+            assert_eq!(
+                fs::read_to_string(fixture.root.join("Cargo.toml")).expect("manifest"),
+                source
+            );
+            assert!(!fixture.root.join("Cargo.lock").exists());
+            assert!(!fixture.root.join("gleam").exists());
+        }
     }
 
     #[cfg(unix)]

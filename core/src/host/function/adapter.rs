@@ -1,5 +1,5 @@
 use super::argument::{HostArgument, HostParameter, HostParameterLayout, HostScopedArgument};
-use super::return_::{HostFunctionImplementation, HostReturn};
+use super::return_::{HostFunctionImplementation, HostReturn, OwnedHostFunctionImplementation};
 use crate::host::{
     HostAbiType, HostCall, HostCallCompletion, HostCallError, HostConstructions, HostFailure,
     HostProfile, HostProvider, HostTypeDescriptor, HostTypeSequence,
@@ -19,7 +19,7 @@ where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
 {
-    fn register(self) -> HostFunctionRegistration<Profile>;
+    fn register(self) -> ScopedHostFunctionRegistration<Profile>;
 }
 
 pub trait ScopedConstructingHostFunctionAdapter<Profile, Provider, Arguments, Return, Constructions>:
@@ -29,7 +29,7 @@ where
     Provider: HostProvider<Profile>,
     Constructions: HostTypeSequence,
 {
-    fn register(self) -> HostFunctionRegistration<Profile>;
+    fn register(self) -> ScopedHostFunctionRegistration<Profile>;
 }
 
 pub trait ScopedDivergingHostFunctionAdapter<Profile, Provider, Arguments, Return>:
@@ -38,7 +38,7 @@ where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
 {
-    fn register(self) -> HostFunctionRegistration<Profile>;
+    fn register(self) -> ScopedHostFunctionRegistration<Profile>;
 }
 
 pub struct HostFunctionRegistration<Profile: HostProfile> {
@@ -46,7 +46,27 @@ pub struct HostFunctionRegistration<Profile: HostProfile> {
     pub(super) parameter_types: Box<[HostTypeDescriptor]>,
     pub(super) return_type: HostTypeDescriptor,
     pub(super) custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
+    pub(super) implementation: OwnedHostFunctionImplementation<Profile>,
+}
+
+pub struct ScopedHostFunctionRegistration<Profile: HostProfile> {
+    pub(super) parameters: Box<[HostParameter]>,
+    pub(super) parameter_types: Box<[HostTypeDescriptor]>,
+    pub(super) return_type: HostTypeDescriptor,
+    pub(super) custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
     pub(super) implementation: HostFunctionImplementation<Profile>,
+}
+
+impl<Profile: HostProfile> HostFunctionRegistration<Profile> {
+    pub(super) fn into_immediate(self) -> ScopedHostFunctionRegistration<Profile> {
+        ScopedHostFunctionRegistration {
+            parameters: self.parameters,
+            parameter_types: self.parameter_types,
+            return_type: self.return_type,
+            custom_schemas: self.custom_schemas,
+            implementation: self.implementation.into_immediate(),
+        }
+    }
 }
 
 macro_rules! host_function {
@@ -56,7 +76,9 @@ macro_rules! host_function {
             Function: Fn() -> Return + Send + Sync + 'static,
             Return: HostReturn,
         {
-            fn register<Profile: HostProfile>(self) -> HostFunctionRegistration<Profile> {
+            fn register<Profile: HostProfile>(
+                self,
+            ) -> HostFunctionRegistration<Profile> {
                 HostFunctionRegistration {
                     parameters: Box::new([]),
                     parameter_types: Box::new([]),
@@ -72,15 +94,15 @@ macro_rules! host_function {
             Function: Fn() -> Result<Return, HostFailure> + Send + Sync + 'static,
             Return: HostReturn,
         {
-            fn register<Profile: HostProfile>(self) -> HostFunctionRegistration<Profile> {
+            fn register<Profile: HostProfile>(
+                self,
+            ) -> HostFunctionRegistration<Profile> {
                 HostFunctionRegistration {
                     parameters: Box::new([]),
                     parameter_types: Box::new([]),
                     return_type: <Return as HostReturn>::descriptor(),
                     custom_schemas: Box::new([]),
-                    implementation: Return::implementation(move |_, _| {
-                        self().map_err(HostCallError::from)
-                    }),
+                    implementation: Return::implementation(move |_, _| self()),
                 }
             }
         }
@@ -98,14 +120,14 @@ macro_rules! host_function {
                 + 'static,
             Return: HostAbiType,
         {
-            fn register(self) -> HostFunctionRegistration<Profile> {
+            fn register(self) -> ScopedHostFunctionRegistration<Profile> {
                 let mut custom_schemas = Vec::new();
                 let mut visited = std::collections::HashSet::new();
                 <Return as HostAbiType>::collect_custom_schemas(
                     &mut custom_schemas,
                     &mut visited,
                 );
-                HostFunctionRegistration {
+                ScopedHostFunctionRegistration {
                     parameters: Box::new([]),
                     parameter_types: Box::new([]),
                     return_type: <Return as HostAbiType>::descriptor(),
@@ -133,14 +155,14 @@ macro_rules! host_function {
                 + 'static,
             Return: HostAbiType,
         {
-            fn register(self) -> HostFunctionRegistration<Profile> {
+            fn register(self) -> ScopedHostFunctionRegistration<Profile> {
                 let mut custom_schemas = Vec::new();
                 let mut visited = std::collections::HashSet::new();
                 <Return as HostAbiType>::collect_custom_schemas(
                     &mut custom_schemas,
                     &mut visited,
                 );
-                HostFunctionRegistration {
+                ScopedHostFunctionRegistration {
                     parameters: Box::new([]),
                     parameter_types: Box::new([]),
                     return_type: <Return as HostAbiType>::descriptor(),
@@ -166,14 +188,14 @@ macro_rules! host_function {
                 + 'static,
             Return: HostAbiType,
         {
-            fn register(self) -> HostFunctionRegistration<Profile> {
+            fn register(self) -> ScopedHostFunctionRegistration<Profile> {
                 let mut custom_schemas = Vec::new();
                 let mut visited = std::collections::HashSet::new();
                 <Return as HostAbiType>::collect_custom_schemas(
                     &mut custom_schemas,
                     &mut visited,
                 );
-                HostFunctionRegistration {
+                ScopedHostFunctionRegistration {
                     parameters: Box::new([]),
                     parameter_types: Box::new([]),
                     return_type: <Return as HostAbiType>::descriptor(),
@@ -192,7 +214,9 @@ macro_rules! host_function {
             Return: HostReturn,
             $($argument: HostArgument,)*
         {
-            fn register<Profile: HostProfile>(self) -> HostFunctionRegistration<Profile> {
+            fn register<Profile: HostProfile>(
+                self,
+            ) -> HostFunctionRegistration<Profile> {
                 let mut layout = HostParameterLayout::default();
                 $(let $slot = layout.register::<$argument>();)*
                 let implementation = Return::implementation(move |_, arguments| {
@@ -215,11 +239,13 @@ macro_rules! host_function {
             Return: HostReturn,
             $($argument: HostArgument,)*
         {
-            fn register<Profile: HostProfile>(self) -> HostFunctionRegistration<Profile> {
+            fn register<Profile: HostProfile>(
+                self,
+            ) -> HostFunctionRegistration<Profile> {
                 let mut layout = HostParameterLayout::default();
                 $(let $slot = layout.register::<$argument>();)*
                 let implementation = Return::implementation(move |_, arguments| {
-                    self($($argument::read(arguments, $slot)),*).map_err(HostCallError::from)
+                    self($($argument::read(arguments, $slot)),*)
                 });
                 HostFunctionRegistration {
                     parameters: layout.finish(),
@@ -246,7 +272,7 @@ macro_rules! host_function {
             Return: HostAbiType,
             $($argument: HostScopedArgument,)*
         {
-            fn register(self) -> HostFunctionRegistration<Profile> {
+            fn register(self) -> ScopedHostFunctionRegistration<Profile> {
                 let mut layout = HostParameterLayout::default();
                 $(let $slot = <$argument as HostScopedArgument>::register(&mut layout);)*
                 let mut custom_schemas = Vec::new();
@@ -268,7 +294,7 @@ macro_rules! host_function {
                     )
                     .map(|completion| completion.token)
                 });
-                HostFunctionRegistration {
+                ScopedHostFunctionRegistration {
                     parameters: layout.finish(),
                     parameter_types: vec![$(<$argument as HostAbiType>::descriptor()),*].into_boxed_slice(),
                     return_type: <Return as HostAbiType>::descriptor(),
@@ -301,7 +327,7 @@ macro_rules! host_function {
             Return: HostAbiType,
             $($argument: HostScopedArgument,)*
         {
-            fn register(self) -> HostFunctionRegistration<Profile> {
+            fn register(self) -> ScopedHostFunctionRegistration<Profile> {
                 let mut layout = HostParameterLayout::default();
                 $(let $slot = <$argument as HostScopedArgument>::register(&mut layout);)*
                 let mut custom_schemas = Vec::new();
@@ -324,7 +350,7 @@ macro_rules! host_function {
                     )
                     .map(|completion| completion.token)
                 });
-                HostFunctionRegistration {
+                ScopedHostFunctionRegistration {
                     parameters: layout.finish(),
                     parameter_types: vec![$(<$argument as HostAbiType>::descriptor()),*].into_boxed_slice(),
                     return_type: <Return as HostAbiType>::descriptor(),
@@ -349,7 +375,7 @@ macro_rules! host_function {
             Return: HostAbiType,
             $($argument: HostScopedArgument,)*
         {
-            fn register(self) -> HostFunctionRegistration<Profile> {
+            fn register(self) -> ScopedHostFunctionRegistration<Profile> {
                 let mut layout = HostParameterLayout::default();
                 $(let $slot = <$argument as HostScopedArgument>::register(&mut layout);)*
                 let mut custom_schemas = Vec::new();
@@ -370,7 +396,7 @@ macro_rules! host_function {
                         $($slot),*
                     )
                 });
-                HostFunctionRegistration {
+                ScopedHostFunctionRegistration {
                     parameters: layout.finish(),
                     parameter_types: vec![$(<$argument as HostAbiType>::descriptor()),*].into_boxed_slice(),
                     return_type: <Return as HostAbiType>::descriptor(),
@@ -605,6 +631,7 @@ mod tests {
     #[test]
     fn supports_zero_arguments() {
         let registration = <_ as HostFunctionAdapter<(), BigInt>>::register(|| BigInt::from(7));
+        let registration = registration.into_immediate();
 
         assert_eq!(registration.parameters.as_ref(), []);
         assert_eq!(registration.return_type, HostTypeDescriptor::Int);
@@ -619,6 +646,7 @@ mod tests {
         let registration = <_ as FallibleHostFunctionAdapter<(), BigInt>>::register::<
             TestHostProfile,
         >(|| Err(HostFailure::new("unavailable")));
+        let registration = registration.into_immediate();
         let implementation = expect_value_implementation(&registration.implementation);
 
         assert_eq!(registration.parameters.as_ref(), []);
@@ -671,6 +699,7 @@ mod tests {
         ];
 
         for (arity, registration) in registrations.into_iter().enumerate() {
+            let registration = registration.into_immediate();
             assert_eq!(
                 registration.parameter_types.as_ref(),
                 vec![HostTypeDescriptor::Nil; arity],
@@ -988,6 +1017,7 @@ mod tests {
     fn supports_one_argument() {
         let registration =
             <_ as HostFunctionAdapter<(BigInt,), BigInt>>::register(|a: BigInt| a + 1);
+        let registration = registration.into_immediate();
 
         assert_eq!(
             registration.parameter_types.as_ref(),
@@ -1004,6 +1034,7 @@ mod tests {
         let registration = <_ as HostFunctionAdapter<(BigInt, BigInt), BigInt>>::register(
             |a: BigInt, b: BigInt| a - b,
         );
+        let registration = registration.into_immediate();
 
         assert_eq!(
             registration.parameter_types.as_ref(),
@@ -1026,6 +1057,7 @@ mod tests {
                 if condition { left } else { right }
             },
         );
+        let registration = registration.into_immediate();
 
         assert_eq!(
             registration.parameter_types.as_ref(),
@@ -1060,6 +1092,7 @@ mod tests {
                 left < right && first && !second
             },
         );
+        let registration = registration.into_immediate();
 
         assert_eq!(
             registration.parameter_types.as_ref(),
@@ -1083,6 +1116,7 @@ mod tests {
             <_ as HostFunctionAdapter<(BigInt, BigInt, BigInt, BigInt, BigInt), BigInt>>::register(
                 |a: BigInt, b: BigInt, c: BigInt, d: BigInt, e: BigInt| a + b + c + d + e,
             );
+        let registration = registration.into_immediate();
 
         assert_eq!(
             registration.parameter_types.as_ref(),
@@ -1112,6 +1146,7 @@ mod tests {
                     a && !b && c && !d && e && !f
                 },
             );
+        let registration = registration.into_immediate();
 
         assert_eq!(
             registration.parameter_types.as_ref(),
@@ -1144,6 +1179,7 @@ mod tests {
                 a + c + e + g
             },
         );
+        let registration = registration.into_immediate();
 
         assert_eq!(
             registration.parameter_types.as_ref(),
@@ -1195,6 +1231,7 @@ mod tests {
                 .into()
             },
         );
+        let registration = registration.into_immediate();
 
         assert_eq!(
             registration.parameter_types.as_ref(),
@@ -1228,6 +1265,7 @@ mod tests {
     fn int_return_shape_guard_is_visible() {
         let registration =
             <_ as HostFunctionAdapter<(), bool>>::register(<bool as Default>::default);
+        let registration = registration.into_immediate();
         call_int(&registration.implementation, Vec::new(), Vec::new());
     }
 
@@ -1236,6 +1274,7 @@ mod tests {
     fn bool_return_shape_guard_is_visible() {
         call_bool(
             <_ as HostFunctionAdapter<(), BigInt>>::register(<BigInt as Default>::default)
+                .into_immediate()
                 .implementation,
             Vec::new(),
             Vec::new(),
@@ -1247,6 +1286,7 @@ mod tests {
     fn string_return_shape_guard_is_visible() {
         call_string(
             <_ as HostFunctionAdapter<(), BigInt>>::register(<BigInt as Default>::default)
+                .into_immediate()
                 .implementation,
             CallArguments::new(Vec::new(), Vec::new()),
         );

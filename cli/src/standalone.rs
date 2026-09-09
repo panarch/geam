@@ -347,6 +347,57 @@ mod tests {
     }
 
     #[test]
+    fn prepares_and_runs_work_entries_through_the_same_managed_runner() {
+        let project = project(
+            "application",
+            "import geam/future\npub fn main() { future.ready(Nil) }\n",
+        );
+        let root = utf8_path(&project);
+        let future = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("workspace")
+            .join("builtins/geam/gleam");
+        fs::write(root.join("gleam.toml"), format!("name = \"application\"\nversion = \"1.0.0\"\n[dependencies]\ngeam = {{ path = {future:?} }}\n")).expect("application dependency");
+        fs::write(root.join("manifest.toml"), format!("packages = [{{ name = \"geam\", version = \"{}\", build_tools = [\"gleam\"], requirements = [], source = \"local\", path = {future:?} }}]\n[requirements]\ngeam = {{ path = {future:?} }}\n", env!("CARGO_PKG_VERSION"))).expect("locked local dependency");
+        let cargo = RecordingCargo::default();
+        prepare_with(&root, "application".to_owned(), &cargo, &cargo)
+            .expect("prepare the work entry");
+        assert_eq!(*cargo.operations.borrow(), ["lock", "check:application"]);
+        cargo.operations.borrow_mut().clear();
+        let manifest = fs::read(root.join("Cargo.toml")).expect("managed manifest");
+        let runner = fs::read(root.join("build/geam/runner.rs")).expect("generated runner");
+        run_with(
+            &root,
+            &root,
+            "application".to_owned(),
+            Vec::new(),
+            &cargo,
+            &cargo,
+        )
+        .expect("run through the existing runner executor");
+        assert_eq!(*cargo.operations.borrow(), ["run:application:"]);
+        assert_eq!(
+            fs::read(root.join("Cargo.toml")).expect("manifest"),
+            manifest
+        );
+        assert_eq!(
+            fs::read(root.join("build/geam/runner.rs")).expect("runner"),
+            runner
+        );
+        cargo.operations.borrow_mut().clear();
+
+        fs::write(root.join("src/application.gleam"), "pub fn main() { 1 }\n")
+            .expect("dependency outside the source closure");
+        prepare_with(&root, "application".to_owned(), &cargo, &cargo)
+            .expect("unused dependency does not select an execution capability");
+        assert_eq!(*cargo.operations.borrow(), ["check:application"]);
+        assert_eq!(
+            fs::read(root.join("build/geam/runner.rs")).expect("runner"),
+            runner
+        );
+    }
+
+    #[test]
     fn prepares_pure_projects_and_reuses_unchanged_runner_inputs() {
         let project = project("application", "pub fn main() { 1 }\n");
         let root = utf8_path(&project);

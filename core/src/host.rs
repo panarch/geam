@@ -4,6 +4,7 @@ mod error;
 mod external;
 mod failure;
 mod function;
+mod future;
 mod module;
 mod profile;
 mod type_;
@@ -23,11 +24,18 @@ pub use external::{
     HostExternalStore, HostExternalType, HostExternalTypeSchema, HostStoredDynamic, HostStoredType,
     HostStoredValue,
 };
+pub(crate) use external::{RetainedValueEquality, RetainedValueHashing, RetainedValueInspection};
 pub(crate) use failure::HostCallErrorKind;
 pub use failure::{HostCallError, HostFailure};
 pub use function::{
     FallibleHostFunction, HostFunction, HostFunctionSchema, ScopedConstructingHostFunction,
     ScopedDivergingHostFunction, ScopedHostFunction,
+};
+pub(crate) use future::work_store;
+pub use future::{
+    HostFutureCallable, HostFutureCompletion, HostFutureContext, HostFutureError,
+    HostFuturePayload, HostFutureStore, HostFutureType, HostFutureValue, HostWorkProfile,
+    HostWorkRepresentation, HostWorkSchema, HostWorkStorage, SharedExecutionError,
 };
 pub use module::{HostModule, HostProviderModule, HostProviderSet};
 pub use profile::{HostCall, HostProfile, HostProvider, StatelessHostProfile};
@@ -48,6 +56,8 @@ pub use value::{
 pub(crate) use external::{ExternalTestProfile, ExternalTestRunState, ExternalTestStores};
 #[cfg(test)]
 pub(crate) use function::CallArguments;
+#[cfg(test)]
+pub(crate) use function::HostParameterLayout;
 pub(crate) use function::RegisteredHostConstructions;
 pub(crate) use function::{
     HostBitArrayArgumentSlot, HostBoolArgumentSlot, HostCallArguments, HostCustomArgumentSlot,
@@ -62,9 +72,10 @@ pub(crate) use module::{
     RegisteredHostFunction, RegisteredHostImplementationId, RegisteredHostImplementations,
     RegisteredHostModule, RegisteredHostProviderModule,
 };
-pub(crate) use profile::HostCallRuntime;
+pub(crate) use profile::HostCodecScope;
 #[cfg(test)]
 pub(crate) use profile::test;
+pub(crate) use profile::{HostCallRuntime, HostTokenRuntime};
 pub(crate) use type_::{
     HostAbiType, HostAbiTypeSequence, HostOpaqueFunctionType, HostTypeDescriptor,
 };

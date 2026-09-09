@@ -1,0 +1,11 @@
+error: lifetime may not live long enough
+ --> tests/ui/rejected/escape.rs:5:5
+  |
+4 | pub fn escape<'scope>(work: Future<'scope, BigInt>) -> Future<'static, BigInt> {
+  |               ------ lifetime `'scope` defined here
+5 |     work
+  |     ^^^^ returning this value requires that `'scope` must outlive `'static`
+  |
+  = note: requirement occurs because of the type `geam_core::embedding::Future<'_, BigInt, HostFutureSchema>`, which makes the generic argument `'_` invariant
+  = note: the struct `geam_core::embedding::Future<'scope, Value, Schema>` is invariant over the parameter `'scope`
+  = help: see <https://doc.rust-lang.org/nomicon/subtyping.html> for more information about variance

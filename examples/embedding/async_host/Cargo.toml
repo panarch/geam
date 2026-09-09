@@ -1,0 +1,20 @@
+[package]
+name = "geam-rust-embedding-async-host"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+publish = false
+
+[dependencies]
+futures = "0.3"
+geam = { version = "=0.2.3", default-features = false, features = ["embedding", "geam-builtin"] }
+geam-example-async-files = { path = "../../provider/async_files/provider" }
+
+[patch.crates-io]
+geam = { path = "../../.." }
+
+[dev-dependencies]
+tempfile = "3"
+
+[workspace]
+resolver = "3"

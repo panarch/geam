@@ -88,7 +88,10 @@ jobs:
         run: cargo llvm-cov clean --workspace
 
       - name: Run built-in coverage closure
-        run: cargo llvm-cov --no-report --package geam-stdlib --package geam-json --package geam-time --locked
+        run: cargo llvm-cov --no-report --package geam-stdlib --package geam-json --package geam-time --package geam-builtin --locked
+
+      - name: Check geam-builtin coverage
+        run: cargo llvm-cov report --package geam-builtin --summary-only --fail-under-lines 100 --fail-under-regions 100
 
       - name: Check geam-stdlib coverage
         run: cargo llvm-cov report --package geam-stdlib --summary-only --fail-under-lines 100 --fail-under-regions 100

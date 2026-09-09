@@ -70,7 +70,7 @@ impl From<HostFailure> for HostCallError {
 
 #[cfg(test)]
 mod tests {
-    use super::{HostCallError, HostFailure};
+    use super::{HostCallError, HostCallErrorKind, HostFailure};
     use crate::{ExecutionError, InvariantError, ValueType};
 
     #[test]
@@ -109,5 +109,38 @@ mod tests {
             nested.into_kind(),
             super::HostCallErrorKind::Nested(execution),
         );
+    }
+
+    #[test]
+    fn async_host_call_error_preserves_owned_and_nested_failures() {
+        fn classify(error: HostCallError) -> Result<HostFailure, ExecutionError> {
+            match error.into_kind() {
+                HostCallErrorKind::Failure(failure) => Ok(failure),
+                HostCallErrorKind::Nested(error) => Err(error),
+            }
+        }
+
+        let failure = HostCallError::from(HostFailure::new("async input rejected"));
+
+        assert_eq!(failure.to_string(), "async input rejected");
+
+        assert_eq!(
+            classify(failure),
+            Ok(HostFailure::new("async input rejected")),
+        );
+
+        let invariant = InvariantError::ListIndexOutOfBounds {
+            item_type: ValueType::String,
+            index: 2,
+            length: 1,
+        };
+        let nested = HostCallError::nested(invariant.clone().into());
+
+        assert_eq!(
+            nested.to_string(),
+            "list index out of bounds for String list (index 2, length 1)",
+        );
+
+        assert_eq!(classify(nested), Err(ExecutionError::Invariant(invariant)));
     }
 }

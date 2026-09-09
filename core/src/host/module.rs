@@ -18,7 +18,7 @@ pub struct HostModule<Profile: HostProfile = StatelessHostProfile> {
     functions: RegisteredFunctions<Profile>,
 }
 
-pub struct HostProviderModule<Profile: HostProfile> {
+pub struct HostProviderModule<Profile: HostProfile = StatelessHostProfile> {
     identity: HostModuleIdentity,
     functions: RegisteredFunctions<Profile>,
     external_types: RegisteredExternalTypes,
@@ -29,9 +29,9 @@ pub struct HostProviderSet<Profile: HostProfile = StatelessHostProfile> {
     providers: Vec<HostProviderModule<Profile>>,
 }
 
-struct HostModuleIdentity {
-    package: EcoString,
-    module: EcoString,
+pub(super) struct HostModuleIdentity {
+    pub(super) package: EcoString,
+    pub(super) module: EcoString,
 }
 
 pub(crate) struct RegisteredHostModule {
@@ -64,7 +64,7 @@ struct RegisteredFunctions<Profile: HostProfile> {
     functions: Vec<HostFunctionDefinition<Profile>>,
 }
 
-struct RegisteredExternalTypes {
+pub(super) struct RegisteredExternalTypes {
     types: Vec<HostExternalTypeSchema>,
 }
 
@@ -297,6 +297,12 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
 }
 
 impl<Profile: HostProfile> HostProviderSet<Profile> {
+    pub fn from_providers(
+        providers: impl IntoIterator<Item = HostProviderModule<Profile>>,
+    ) -> Result<Self, HostRegistrationError> {
+        Self::with_providers([], providers)
+    }
+
     pub fn new(
         modules: impl IntoIterator<Item = HostModule<Profile>>,
     ) -> Result<Self, HostRegistrationError> {
@@ -372,7 +378,10 @@ impl<Profile: HostProfile> HostProviderSet<Profile> {
 }
 
 impl HostModuleIdentity {
-    fn new(package: EcoString, module: EcoString) -> Result<Self, HostRegistrationError> {
+    pub(super) fn new(
+        package: EcoString,
+        module: EcoString,
+    ) -> Result<Self, HostRegistrationError> {
         validate_module_name(&module)?;
         Ok(Self { package, module })
     }
@@ -400,7 +409,7 @@ fn validate_module_name(module: &EcoString) -> Result<(), HostRegistrationError>
     }
 }
 
-fn validate_module_identities(
+pub(super) fn validate_module_identities(
     identities: &[(&EcoString, &EcoString)],
 ) -> Result<(), HostRegistrationError> {
     let mut modules = BTreeMap::new();
@@ -432,14 +441,7 @@ impl<Profile: HostProfile> RegisteredFunctions<Profile> {
         )
             -> Result<HostFunctionDefinition<Profile>, HostRegistrationError>,
     ) -> Result<(), HostRegistrationError> {
-        if string_to_keyword(&name).is_some()
-            || check_name_case(SrcSpan::new(0, 0), &name, Named::Function).is_err()
-        {
-            return Err(HostRegistrationError::InvalidFunctionName {
-                module: module.clone(),
-                function: name,
-            });
-        }
+        validate_function_name(module, &name)?;
         if self
             .functions
             .iter()
@@ -471,12 +473,28 @@ impl<Profile: HostProfile> RegisteredFunctions<Profile> {
     }
 }
 
+pub(super) fn validate_function_name(
+    module: &EcoString,
+    name: &EcoString,
+) -> Result<(), HostRegistrationError> {
+    if string_to_keyword(name).is_some()
+        || check_name_case(SrcSpan::new(0, 0), name, Named::Function).is_err()
+    {
+        Err(HostRegistrationError::InvalidFunctionName {
+            module: module.clone(),
+            function: name.clone(),
+        })
+    } else {
+        Ok(())
+    }
+}
+
 impl RegisteredExternalTypes {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self { types: Vec::new() }
     }
 
-    fn register(
+    pub(super) fn register(
         &mut self,
         module: &EcoString,
         schema: HostExternalTypeSchema,
@@ -506,7 +524,7 @@ impl RegisteredExternalTypes {
         self.types.iter()
     }
 
-    fn into_vec(self) -> Vec<HostExternalTypeSchema> {
+    pub(super) fn into_vec(self) -> Vec<HostExternalTypeSchema> {
         self.types
     }
 }
@@ -592,6 +610,8 @@ impl<Profile: HostProfile> RegisteredHostImplementations<Profile> {
 #[cfg(test)]
 mod tests {
     use super::{HostModule, HostProviderModule, HostProviderSet, RegisteredFunctions};
+    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
+    use crate::frontend::compile_typed_host_program;
     use crate::host::function::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
@@ -601,8 +621,14 @@ mod tests {
         HostRegistrationError, HostScopedValue, HostStoredValue, StatelessHostProfile,
         expect_never_implementation, expect_value_implementation,
     };
+    use crate::host::{
+        HostComponentProfile, HostFutureStore, HostProfile, HostType, HostTypeParameter,
+    };
     use crate::plan::ValueType;
+    use crate::work_fixture::{WorkComponent, WorkSchema, WorkType};
+    use crate::{ModuleSource, PackageSource};
     use ecow::EcoString;
+    use futures_util::FutureExt;
     use num_bigint::BigInt;
     use std::cell::Cell;
     use std::collections::BTreeSet;
@@ -859,12 +885,15 @@ mod tests {
         let stores = ExternalTestStores::default();
         let mut state = ExternalTestRunState::default();
         let equal =
-            |_: &crate::runtime::StoredRuntimeValue, _: &crate::runtime::StoredRuntimeValue| false;
-        let source_hash = |_: &crate::runtime::StoredRuntimeValue| 0;
-        let inspect = |_: &crate::runtime::StoredRuntimeValue| EcoString::new();
-        let equality = crate::host::HostExternalEquality::new(&equal);
-        let hashing = crate::host::HostExternalHashing::new(&source_hash);
-        let inspection = crate::host::HostExternalInspection::new(&inspect);
+            |_: &crate::runtime::RetainedValueRef, _: &crate::runtime::RetainedValueRef| false;
+        let source_hash = |_: &crate::runtime::RetainedValueRef| 0;
+        let inspect = |_: &crate::runtime::RetainedValueRef| EcoString::new();
+        let raw_equality = crate::host::RetainedValueEquality::new(&equal);
+        let equality = crate::host::HostExternalEquality(&raw_equality);
+        let raw_hashing = crate::host::RetainedValueHashing::new(&source_hash);
+        let hashing = crate::host::HostExternalHashing(&raw_hashing);
+        let raw_inspection = crate::host::RetainedValueInspection::new(&inspect);
+        let inspection = crate::host::HostExternalInspection(&raw_inspection);
         let stored = HostStoredValue::<BigInt>::new(crate::runtime::StoredRuntimeValue::test_int(
             BigInt::from(7),
         ));
@@ -1203,6 +1232,433 @@ mod tests {
                 function: "sparse".into(),
                 parameters: vec![2].into_boxed_slice(),
             }),
+        );
+    }
+
+    struct Profile;
+    impl HostProfile for Profile {
+        type RunState = ();
+        type ExternalStores = HostFutureStore;
+    }
+    impl crate::host::HostWorkProfile for Profile {
+        type Work = crate::work_fixture::WorkComponent;
+    }
+    impl HostComponentProfile<WorkComponent> for Profile {
+        fn component_stores(stores: &HostFutureStore) -> &HostFutureStore {
+            stores
+        }
+        fn component_state(state: &mut ()) -> &mut () {
+            state
+        }
+    }
+
+    fn identity<'call, Value: HostType>(
+        mut call: HostCall<'call, Profile, WorkComponent, Value>,
+        value: Value::Value<'call>,
+    ) -> Result<HostCallCompletion<'call, Value>, HostCallError> {
+        assert_eq!(call.state(), &());
+        Ok(call.return_value(value))
+    }
+
+    #[test]
+    fn module_identity_and_schemas_describe_the_functions_that_execute() {
+        let mut providers = WorkComponent::providers::<Profile>().expect("Future module");
+        assert_eq!(providers[0].package(), "work_fixture");
+        assert_eq!(providers[0].module(), "fixture/work");
+        assert_eq!(providers[0].functions().len(), 4);
+        assert_eq!(
+            providers[0]
+                .functions()
+                .map(|schema| schema.name().as_str())
+                .collect::<Vec<_>>(),
+            ["ready", "map", "flatten", "all"]
+        );
+        providers.push(HostProviderModule::new("application", "library")
+            .expect("module")
+            .with_scoped_function::<WorkComponent, (HostTypeParameter<0>,), HostTypeParameter<0>, _>(
+                "identity", identity::<HostTypeParameter<0>>,
+            ).expect("generic identity"));
+        let program = compile_typed_host_program(
+            "application",
+            "library",
+            [
+                PackageSource::new(
+                    "work_fixture",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "fixture/work",
+                        "src/fixture/work.gleam",
+                        WorkComponent::SOURCE,
+                    )],
+                ),
+                PackageSource::new(
+                    "application",
+                    ["work_fixture"],
+                    [ModuleSource::new(
+                        "library",
+                        "src/library.gleam",
+                        r#"
+import fixture/work as future
+@external(erlang, "native", "identity")
+fn identity(value: a) -> a
+pub fn answer() { future.ready(identity(42)) }
+"#,
+                    )],
+                ),
+            ],
+            HostProviderSet::from_providers(providers).expect("selected modules"),
+        )
+        .expect("source types");
+        let (bindings, answer) = HostedModuleBuilder::new(program)
+            .expect("plan")
+            .function(FunctionDeclaration::<(), WorkType<BigInt>>::new("answer"))
+            .expect("entry");
+        let mut module = bindings.seal().expect("sealed execution");
+        with_execution_scope(async |guard| {
+            let mut state = ();
+            let mut echo = drop;
+            let mut execution = module.attach(guard, &mut state, &mut echo);
+            let work = execution.call(&answer, ()).expect("constructed work");
+            execution
+                .observe(&work)
+                .await
+                .expect("completion")
+                .read(|value| assert_eq!(value, &BigInt::from(42)));
+        })
+        .now_or_never()
+        .expect("ready work");
+    }
+
+    #[test]
+    fn constructing_and_never_functions_validate_names_before_their_bodies_run() {
+        use crate::host::{HostConstructions, HostTypeListEnd};
+        fn construct<'call>(
+            call: HostCall<'call, Profile, WorkComponent, BigInt>,
+            _: HostConstructions<'call, HostTypeListEnd>,
+        ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+            Ok(call.return_value(BigInt::from(42)))
+        }
+        fn stop(
+            _: HostCall<'_, Profile, WorkComponent, BigInt>,
+        ) -> Result<std::convert::Infallible, HostCallError> {
+            Err(crate::HostFailure::new("native stopped").into())
+        }
+        for name in ["Bad", "construct"] {
+            let result = HostProviderModule::new("application", "library")
+                .expect("module")
+                .with_scoped_function_and_constructions::<WorkComponent, (), BigInt, HostTypeListEnd, _>(name, construct);
+            assert_eq!(
+                result.err(),
+                if name == "Bad" {
+                    Some(HostRegistrationError::InvalidFunctionName {
+                        module: "library".into(),
+                        function: name.into(),
+                    })
+                } else {
+                    None
+                }
+            );
+        }
+        for name in ["Bad", "stop"] {
+            let result = HostProviderModule::new("application", "library")
+                .expect("module")
+                .with_scoped_diverging_function::<WorkComponent, (), BigInt, _>(name, stop);
+            assert_eq!(
+                result.err(),
+                if name == "Bad" {
+                    Some(HostRegistrationError::InvalidFunctionName {
+                        module: "library".into(),
+                        function: name.into(),
+                    })
+                } else {
+                    None
+                }
+            );
+        }
+        let provider = HostProviderModule::new("application", "library")
+        .expect("module")
+        .with_scoped_function_and_constructions::<WorkComponent, (), BigInt, HostTypeListEnd, _>(
+            "construct",
+            construct,
+        )
+        .expect("construct")
+        .with_scoped_diverging_function::<WorkComponent, (), BigInt, _>("stop", stop)
+        .expect("stop");
+        let program = compile_typed_host_program(
+            "application",
+            "library",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "library",
+                    "src/library.gleam",
+                    r#"
+@external(erlang, "native", "construct")
+fn construct() -> Int
+@external(erlang, "native", "stop")
+fn stop() -> Int
+pub fn run(fails: Bool) { case fails { True -> stop() False -> construct() } }
+"#,
+                )],
+            )],
+            HostProviderSet::from_providers([provider]).expect("providers"),
+        )
+        .expect("ordinary source");
+        let (bindings, run) = HostedModuleBuilder::new(program)
+            .expect("plan")
+            .function(FunctionDeclaration::<(bool,), BigInt>::new("run"))
+            .expect("entry");
+        let mut module = bindings.seal().expect("host specializations");
+        let mut state = ();
+        let mut echo = drop;
+        with_execution_scope(async |guard| {
+            let mut scope = module.attach(guard, &mut state, &mut echo);
+            assert_eq!(
+                scope.call(&run, (false,)).expect("direct result"),
+                BigInt::from(42)
+            );
+            assert!(
+                scope
+                    .call(&run, (true,))
+                    .expect_err("diverging result")
+                    .to_string()
+                    .contains("native stopped")
+            );
+        })
+        .now_or_never()
+        .expect("ordinary calls need no suspension");
+    }
+
+    #[test]
+    fn function_validation_precedes_scoped_definition_assembly() {
+        use crate::host::HostFunctionDefinition;
+        use std::cell::Cell;
+
+        let mut module =
+            HostProviderModule::<Profile>::new("application", "library").expect("module");
+        let assemblies = Cell::new(0);
+        let assemble = |name: ecow::EcoString| {
+            assemblies.set(assemblies.get() + 1);
+            if name == "sparse" {
+                HostFunctionDefinition::new_scoped::<
+                    WorkComponent,
+                    (HostTypeParameter<1>,),
+                    HostTypeParameter<1>,
+                    _,
+                >(name, identity::<HostTypeParameter<1>>)
+            } else {
+                HostFunctionDefinition::new_scoped::<
+                    WorkComponent,
+                    (HostTypeParameter<0>,),
+                    HostTypeParameter<0>,
+                    _,
+                >(name, identity::<HostTypeParameter<0>>)
+            }
+        };
+        assert_eq!(
+            module
+                .functions
+                .register(&module.identity.module, "Bad".into(), assemble)
+                .err(),
+            Some(HostRegistrationError::InvalidFunctionName {
+                module: "library".into(),
+                function: "Bad".into(),
+            })
+        );
+        assert_eq!(assemblies.get(), 0);
+        module
+            .functions
+            .register(&module.identity.module, "identity".into(), assemble)
+            .expect("valid definition");
+        assert_eq!(assemblies.get(), 1);
+        assert_eq!(
+            module
+                .functions
+                .register(&module.identity.module, "identity".into(), assemble)
+                .err(),
+            Some(HostRegistrationError::DuplicateFunction {
+                module: "library".into(),
+                function: "identity".into(),
+            })
+        );
+        assert_eq!(assemblies.get(), 1);
+        assert_eq!(
+            module
+                .functions
+                .register(&module.identity.module, "sparse".into(), assemble)
+                .err(),
+            Some(HostRegistrationError::NonContiguousTypeParameters {
+                function: "sparse".into(),
+                parameters: Box::new([1]),
+            })
+        );
+        assert_eq!(assemblies.get(), 2);
+        assert_eq!(module.functions().len(), 1);
+    }
+
+    #[test]
+    fn external_return_callbacks_preserve_nested_source_failures() {
+        use crate::host::{HostCallable, HostFunctionType, HostTypeListEnd};
+        use crate::work_fixture::WorkHostType;
+
+        fn bridge<'call>(
+            mut call: HostCall<'call, Profile, WorkComponent, WorkHostType<BigInt>>,
+            callback: HostCallable<'call, HostTypeListEnd, WorkHostType<BigInt>>,
+        ) -> Result<HostCallCompletion<'call, WorkHostType<BigInt>>, HostCallError> {
+            let value = call.invoke(callback, ())?;
+            Ok(call.return_value(value))
+        }
+        fn reject<'call>(
+            _: HostCall<'call, Profile, WorkComponent, WorkHostType<BigInt>>,
+        ) -> Result<HostCallCompletion<'call, WorkHostType<BigInt>>, HostCallError> {
+            Err(crate::HostFailure::new("native rejected").into())
+        }
+        let mut providers = WorkComponent::providers::<Profile>().expect("Future module");
+        providers.push(HostProviderModule::new("application", "library").expect("native module")
+            .with_scoped_function::<WorkComponent, (HostFunctionType<HostTypeListEnd, WorkHostType<BigInt>>,), WorkHostType<BigInt>, _>("bridge", bridge).expect("callback")
+            .with_scoped_function::<WorkComponent, (), WorkHostType<BigInt>, _>("reject", reject).expect("failure"));
+        let source = r#"import fixture/work as future
+@external(erlang, "native", "bridge")
+fn bridge(callback: fn() -> future.Work(Int)) -> future.Work(Int)
+@external(erlang, "native", "reject")
+fn reject() -> future.Work(Int)
+pub fn run(mode: Int) {
+  case mode {
+    2 -> reject()
+    _ -> bridge(fn() {
+      case mode {
+        1 -> panic as "source rejected"
+        _ -> future.ready(42)
+      }
+    })
+  }
+}
+"#;
+        let program = compile_typed_host_program(
+            "application",
+            "library",
+            [
+                PackageSource::new(
+                    "work_fixture",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "fixture/work",
+                        "src/fixture/work.gleam",
+                        WorkComponent::SOURCE,
+                    )],
+                ),
+                PackageSource::new(
+                    "application",
+                    ["work_fixture"],
+                    [ModuleSource::new("library", "src/library.gleam", source)],
+                ),
+            ],
+            HostProviderSet::from_providers(providers).expect("providers"),
+        )
+        .expect("ordinary callback source");
+        let (bindings, run) = HostedModuleBuilder::new(program)
+            .expect("plan")
+            .function(FunctionDeclaration::<(BigInt,), WorkType<BigInt>>::new(
+                "run",
+            ))
+            .expect("entry");
+        let mut module = bindings.seal().expect("sealed functions");
+        let mut state = ();
+        let mut echo = drop;
+        with_execution_scope(async |guard| {
+            let mut scope = module.attach(guard, &mut state, &mut echo);
+            for mode in 0..3 {
+                match scope.call(&run, (mode.into(),)) {
+                    Ok(work) => {
+                        assert_eq!(mode, 0);
+                        scope
+                            .observe(&work)
+                            .await
+                            .expect("ready work")
+                            .read(|value| assert_eq!(value, &BigInt::from(42)));
+                    }
+                    Err(error) => assert!(error.to_string().contains(if mode == 1 {
+                        "source rejected"
+                    } else {
+                        "native rejected"
+                    })),
+                }
+            }
+        })
+        .now_or_never()
+        .expect("all source calls finish immediately");
+    }
+
+    #[test]
+    fn registration_rejects_invalid_and_duplicate_names_before_execution() {
+        assert_eq!(
+            HostProviderModule::<Profile>::new("application", "Bad").err(),
+            Some(HostRegistrationError::InvalidModuleName {
+                module: "Bad".into()
+            })
+        );
+        for name in ["Bad", "identity"] {
+            let error = HostProviderModule::new("application", "library")
+                .expect("module")
+                .with_scoped_function::<WorkComponent, (HostTypeParameter<0>,), HostTypeParameter<0>, _>(
+                    "identity", identity::<HostTypeParameter<0>>,
+                ).expect("first registration")
+                .with_scoped_function::<WorkComponent, (HostTypeParameter<0>,), HostTypeParameter<0>, _>(
+                    name, identity::<HostTypeParameter<0>>,
+                ).err();
+            let expected = if name == "Bad" {
+                HostRegistrationError::InvalidFunctionName {
+                    module: "library".into(),
+                    function: name.into(),
+                }
+            } else {
+                HostRegistrationError::DuplicateFunction {
+                    module: "library".into(),
+                    function: name.into(),
+                }
+            };
+            assert_eq!(error, Some(expected));
+        }
+        let error = HostProviderModule::new("application", "library")
+        .expect("module")
+        .with_scoped_function::<WorkComponent, (HostTypeParameter<1>,), HostTypeParameter<1>, _>(
+            "identity",
+            identity::<HostTypeParameter<1>>,
+        )
+        .err();
+        assert_eq!(
+            error,
+            Some(HostRegistrationError::NonContiguousTypeParameters {
+                function: "identity".into(),
+                parameters: Box::new([1]),
+            })
+        );
+        let error = HostProviderModule::<Profile>::new("work_fixture", "fixture/work")
+            .expect("module")
+            .with_external_type::<WorkComponent, WorkSchema>()
+            .expect("first type")
+            .with_external_type::<WorkComponent, WorkSchema>()
+            .err();
+        assert_eq!(
+            error,
+            Some(HostRegistrationError::DuplicateExternalType {
+                module: "fixture/work".into(),
+                type_: "Work".into(),
+            })
+        );
+        let error = HostProviderSet::from_providers([
+            HostProviderModule::<Profile>::new("first", "library").expect("first"),
+            HostProviderModule::new("second", "library").expect("second"),
+        ])
+        .err();
+        assert_eq!(
+            error,
+            Some(HostRegistrationError::DuplicateModule {
+                module: "library".into(),
+                first_package: "first".into(),
+                second_package: "second".into(),
+            })
         );
     }
 }

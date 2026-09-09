@@ -4,6 +4,7 @@ pub mod advanced;
 mod call;
 mod callback;
 mod codec;
+mod future;
 mod list;
 mod prelude;
 mod stored;
@@ -12,27 +13,36 @@ mod value;
 pub use crate::{BitArrayValue, HostFailure};
 pub use call::{Call, HostResult};
 #[doc(hidden)]
-pub use call::{ProviderActiveCall, ProviderCallPlaceholder, ProviderSharedCall};
+pub use call::{
+    ProviderActiveCall, ProviderCallPlaceholder, ProviderFutureCall, ProviderSharedCall,
+};
 pub use callback::Callback;
 #[doc(hidden)]
-pub use callback::{MissingCallbackContext, ProviderCallbackCodec, ProviderCallbackContext};
+pub use callback::{
+    MissingCallbackContext, ProviderCallbackCodec, ProviderCallbackContext,
+    ProviderFutureCallbackContext,
+};
 #[doc(hidden)]
 pub use codec::{
     ProviderConstruction, ProviderConstructionIndex0, ProviderConstructionIndexNext,
     ProviderConstructionList, ProviderConstructionRequirementAt, ProviderConstructionRequirements,
     ProviderConstructions, ProviderExternalCodec, ProviderInputValue, ProviderListInputCodec,
     ProviderListInputValue, ProviderNoConstructions, ProviderOutputValue, ProviderRootOutputValue,
-    ProviderValue,
+    ProviderValue, ProviderValueForms,
 };
 pub use ecow::EcoString;
+pub use future::Future;
+#[doc(hidden)]
+pub use future::{MissingFutureContext, ProviderFutureValueContext};
 pub use num_bigint::BigInt;
 
 pub use list::List;
 #[doc(hidden)]
 pub use list::{
-    ProviderExternalItem, ProviderExternalListDecoder, ProviderExternalPayloadAccess,
+    ProviderExternalListDecoder, ProviderExternalPayloadAccess, ProviderExternalView,
     ProviderInputListContext, ProviderListContext, ProviderListCustomFields,
-    ProviderListItemDecoder, ProviderListItemValue, ProviderScalarListDecoder,
+    ProviderListItemDecoder, ProviderListItemValue, ProviderListTupleItems, ProviderOwnedExternal,
+    ProviderOwnedExternalListDecoder, ProviderScalarListDecoder,
 };
 #[doc(hidden)]
 pub use prelude::{
@@ -43,8 +53,10 @@ pub use stored::Stored;
 #[doc(hidden)]
 pub use stored::{
     MissingExternalInputContext, MissingExternalOutputContext, MissingStoredContext,
-    ProviderExternalInputContext, ProviderExternalOutput, ProviderStoredInput,
-    ProviderStoredOutput, ProviderStoredOwner, retain_argument, retain_dynamic,
+    ProviderExternalInputContext, ProviderExternalOutput, ProviderExternalReturn,
+    ProviderOwnedExternalInputContext, ProviderOwnedStoredInput, ProviderStoredInput,
+    ProviderStoredOutput, ProviderStoredOwner, retain_argument, retain_constructed_argument,
+    retain_constructed_dynamic, retain_dynamic,
 };
 pub use value::Value;
 #[doc(hidden)]

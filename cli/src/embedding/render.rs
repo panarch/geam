@@ -35,36 +35,16 @@ pub(super) fn plain(bindings: &PlainBindings, project_path: &Utf8Path) -> String
         bindings.root_module
     ));
     push_plain_project(&mut output, project_path);
-    output.push_str("#[allow(clippy::type_complexity)]\npub struct Functions {\n");
+    output.push_str("#[allow(dead_code, clippy::type_complexity)]\npub struct Functions {\n");
     for (index, function) in bindings.functions().enumerate() {
         push_function_field(&mut output, index, function);
     }
     output.push_str("}\n\n");
     push_input_shapes(&mut output, bindings);
     output.push_str(
-        "pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), BindingError> {\n",
+        "#[allow(dead_code)]\npub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), BindingError> {\n",
     );
-    let first = &bindings.first;
-    let mutability = if bindings.remaining.is_empty() {
-        ""
-    } else {
-        "mut "
-    };
-    push_binding(
-        &mut output,
-        &format!("({mutability}bindings, function_0)"),
-        "builder",
-        first,
-    );
-    for (index, function) in bindings.remaining.iter().enumerate() {
-        push_binding(
-            &mut output,
-            &format!("function_{}", index + 1),
-            "bindings",
-            function,
-        );
-    }
-    push_binding_result(&mut output, bindings);
+    push_bind_body(&mut output, bindings, "Functions", "function");
     output.push_str("}\n");
     output
 }
@@ -76,12 +56,12 @@ pub(super) fn hosted(bindings: &HostedBindings, project_path: &Utf8Path) -> Stri
     let components = &bindings.components;
     let mut host_imports = BTreeSet::from([
         "HostComponentProfile",
-        "HostModule",
         "HostProfile",
         "HostProviderComponent",
         "HostProviderComponentRegistration",
         "HostProviderSet",
         "HostRegistrationError",
+        "HostWorkProfile",
     ]);
     if components.has_external() {
         host_imports.extend([
@@ -91,6 +71,11 @@ pub(super) fn hosted(bindings: &HostedBindings, project_path: &Utf8Path) -> Stri
         ]);
     }
     for import in host_imports {
+        let import = if import == "HostProviderComponentRegistration" {
+            "HostProviderComponentRegistration as ComponentRegistration"
+        } else {
+            import
+        };
         output.push_str(&format!("use {alias}::{import};\n"));
     }
     output.push('\n');
@@ -173,11 +158,12 @@ fn push_hosted_project(
 ) {
     let profile = profile_type(components);
     output.push_str(&format!(
-        "pub fn project{}() -> HostedProject<{profile}>",
+        "pub fn project{}() -> {}<{profile}>",
         generics(components),
+        "HostedProject",
     ));
     push_bounds_open(output, alias, components);
-    output.push_str("    HostedProject::new(\n");
+    output.push_str(&format!("    {}::new(\n", "HostedProject"));
     push_project_root_argument(output, project_path, "        ");
     output.push_str("        ROOT_MODULE,\n");
     let registration = match generics(components) {
@@ -206,8 +192,9 @@ fn push_project_root_argument(output: &mut String, project_path: &Utf8Path, inde
 
 fn push_provider_set_alias(output: &mut String, components: &HostedComponents) {
     output.push_str(&format!(
-        "pub type ProviderSet{} = HostProviderSet<{}>;\n\n",
+        "pub type ProviderSet{} = {}<{}>;\n\n",
         generics(components),
+        "HostProviderSet",
         profile_type(components),
     ));
 }
@@ -231,7 +218,7 @@ fn push_stores(output: &mut String, alias: &str, components: &HostedComponents) 
     output.push_str(&format!("pub struct Stores{}", generics(components)));
     push_bounds_open(output, alias, components);
     for component in components.iter() {
-        push_component_field(output, alias, component, "Stores");
+        push_component_field(output, alias, component, "HostProviderComponent", "Stores");
     }
     output.push_str("}\n\n");
 
@@ -260,6 +247,12 @@ fn push_stores(output: &mut String, alias: &str, components: &HostedComponents) 
 }
 
 fn push_run_state_inputs(output: &mut String, alias: &str, components: &HostedComponents) {
+    if components.first() == &ComponentBinding::Future && !components.has_multiple() {
+        output.push_str(
+            "pub struct RunStateInputs {}\n\nimpl RunStateInputs {\n    pub fn initialize(self) -> RunState {\n        RunState { future: () }\n    }\n}\n\n",
+        );
+        return;
+    }
     output.push_str(&format!(
         "pub struct RunStateInputs{}",
         generics(components),
@@ -267,6 +260,7 @@ fn push_run_state_inputs(output: &mut String, alias: &str, components: &HostedCo
     push_bounds_open(output, alias, components);
     for component in components.iter() {
         match component {
+            ComponentBinding::Future => {}
             ComponentBinding::Stdlib => output.push_str(&format!(
                 "    pub stdlib: {alias}::gleam_stdlib::GleamStdlibRunState<Io>,\n"
             )),
@@ -297,6 +291,7 @@ fn push_run_state_inputs(output: &mut String, alias: &str, components: &HostedCo
     }
     for component in components.iter() {
         match component {
+            ComponentBinding::Future => output.push_str("            future: (),\n"),
             ComponentBinding::Stdlib => output.push_str("            stdlib: self.stdlib,\n"),
             ComponentBinding::Json => output.push_str("            json: (),\n"),
             ComponentBinding::Time => output.push_str("            time: self.time,\n"),
@@ -317,7 +312,13 @@ fn push_run_state(output: &mut String, alias: &str, components: &HostedComponent
     output.push_str(&format!("pub struct RunState{}", generics(components)));
     push_bounds_open(output, alias, components);
     for component in components.iter() {
-        push_component_field(output, alias, component, "RunState");
+        push_component_field(
+            output,
+            alias,
+            component,
+            "HostProviderComponent",
+            "RunState",
+        );
     }
     output.push_str("}\n\n");
 
@@ -347,6 +348,14 @@ fn push_host_profile(output: &mut String, alias: &str, components: &HostedCompon
         generics(components),
         generics(components),
     ));
+    output.push_str(&format!(
+        "impl{} HostWorkProfile for {profile}",
+        generics(components)
+    ));
+    push_bounds_open(output, alias, components);
+    output.push_str(&format!(
+        "    type Work = {alias}::FutureComponent;\n}}\n\n"
+    ));
 }
 
 fn push_component_profile(
@@ -358,24 +367,50 @@ fn push_component_profile(
     let component_type = component_type(alias, component);
     let field = component_field(component);
     let implementation = format!(
-        "impl{} HostComponentProfile<{component_type}> for {}",
+        "impl{} {}<{component_type}> for {}",
         generics(components),
+        "HostComponentProfile",
         profile_type(components),
     );
-    if implementation.len() <= 100 {
+    let needs_brace = components.capabilities() == HostedCapabilities::None;
+    let inline = implementation.len() + if needs_brace { 2 } else { 0 } <= 100;
+    if inline {
         output.push_str(&implementation);
+    } else if format!(
+        "impl{} HostComponentProfile<{component_type}>",
+        generics(components),
+    )
+    .len()
+        <= 100
+    {
+        output.push_str(&format!(
+            "impl{} {}<{component_type}>\n    for {}",
+            generics(components),
+            "HostComponentProfile",
+            profile_type(components),
+        ));
     } else {
         output.push_str(&format!(
-            "impl{} HostComponentProfile<{component_type}>\n    for {}",
+            "impl{}\n    HostComponentProfile<\n        {component_type},\n    > for {}",
             generics(components),
             profile_type(components),
         ));
     }
-    push_bounds_open(output, alias, components);
-    output.push_str("    fn component_stores(\n        stores: &Self::ExternalStores,\n");
+    if !inline && needs_brace {
+        output.push_str("\n{\n");
+    } else {
+        push_bounds_open(output, alias, components);
+    }
+    output.push_str(&format!(
+        "    fn {}(\n        stores: &Self::ExternalStores,\n",
+        "component_stores"
+    ));
     push_method_open(
         output,
-        &format!("    ) -> &<{component_type} as HostProviderComponent>::Stores"),
+        &format!(
+            "    ) -> &<{component_type} as {}>::{}",
+            "HostProviderComponent", "Stores"
+        ),
     );
     output.push_str(&format!("        &stores.{field}\n    }}\n\n"));
     output.push_str("    fn component_state(\n        state: &mut Self::RunState,\n");
@@ -388,7 +423,8 @@ fn push_component_profile(
 
 fn push_method_open(output: &mut String, signature: &str) {
     output.push_str(signature);
-    if signature.len() <= 100 {
+    // Rustfmt reserves a method indent when budgeting a multiline return type.
+    if 4 + signature.len() + 2 <= 100 {
         output.push_str(" {\n");
     } else {
         output.push_str("\n    {\n");
@@ -423,56 +459,47 @@ fn push_host_providers(output: &mut String, alias: &str, components: &HostedComp
         generics(components),
     ));
     push_bounds_open(output, alias, components);
-    let mutability = if components.has_multiple() {
-        "mut "
-    } else {
-        ""
-    };
-    let first_type = component_type(alias, components.first());
-    let registration =
-        format!("<{first_type} as HostProviderComponentRegistration<{profile}>>::providers()?;");
-    let first_registration = format!("    let {mutability}providers = {registration}\n");
-    if first_registration.trim_end().len() <= 100 {
-        output.push_str(&first_registration);
-    } else if 8 + registration.len() <= 100 {
-        output.push_str(&format!(
-            "    let {mutability}providers =\n        {registration}\n"
-        ));
-    } else if components.capabilities() == HostedCapabilities::IoAndTime {
-        output.push_str(&format!(
-            "    let {mutability}providers =\n        <{first_type} as HostProviderComponentRegistration<\n            {profile},\n        >>::providers()?;\n"
-        ));
-    } else {
-        output.push_str(&format!(
-            "    let {mutability}providers = <{first_type} as HostProviderComponentRegistration<\n        {profile},\n    >>::providers()?;\n"
-        ));
-    }
-    for component in components.remaining() {
-        let component_type = component_type(alias, component);
-        let registration = format!(
-            "<{component_type} as HostProviderComponentRegistration<{profile}>>::providers()?"
-        );
-        let direct_opening = format!(
-            "    let additional_providers = <{component_type} as HostProviderComponentRegistration<"
-        );
-        if 8 + registration.len() <= 100 {
+    let registered = components
+        .iter()
+        .filter(|component| component != &&ComponentBinding::Future || components.future_source)
+        .collect::<Vec<_>>();
+    for (index, component) in registered.iter().enumerate() {
+        let component = component_type(alias, component);
+        let declaration = if index == 0 {
+            if registered.len() == 1 {
+                "let providers"
+            } else {
+                "let mut providers"
+            }
+        } else {
+            "let additional_providers"
+        };
+        let registration =
+            format!("<{component} as ComponentRegistration<{profile}>>::providers()?;");
+        let statement = format!("    {declaration} = {registration}");
+        if statement.len() <= 100 {
+            output.push_str(&format!("{statement}\n"));
+        } else if 8 + registration.len() <= 100 {
+            output.push_str(&format!("    {declaration} =\n        {registration}\n"));
+        } else if format!("    {declaration} = <{component} as ComponentRegistration<").len() < 100
+        {
             output.push_str(&format!(
-                "    let additional_providers =\n        {registration};\n"
+                "    {declaration} = <{component} as ComponentRegistration<\n        {profile},\n    >>::providers()?;\n"
             ));
-        } else if direct_opening.len() < 100 {
+        } else if 8 + registration.len() - 3 <= 100 {
             output.push_str(&format!(
-                "    let additional_providers = <{component_type} as HostProviderComponentRegistration<\n        {profile},\n    >>::providers()?;\n"
+                "    {declaration} =\n        <{component} as ComponentRegistration<{profile}>>::providers(\n        )?;\n"
             ));
         } else {
             output.push_str(&format!(
-                "    let additional_providers =\n        <{component_type} as HostProviderComponentRegistration<\n            {profile},\n        >>::providers()?;\n"
+                "    {declaration} =\n        <{component} as ComponentRegistration<\n            {profile},\n        >>::providers()?;\n",
             ));
         }
-        output.push_str("    providers.extend(additional_providers);\n");
+        if index != 0 {
+            output.push_str("    providers.extend(additional_providers);\n");
+        }
     }
-    output.push_str(&format!(
-        "    HostProviderSet::with_providers(Vec::<HostModule<{profile}>>::new(), providers)\n}}\n\n"
-    ));
+    output.push_str("    HostProviderSet::from_providers(providers)\n}\n\n");
 }
 
 fn push_hosted_bind(
@@ -483,11 +510,18 @@ fn push_hosted_bind(
 ) {
     let profile = profile_type(components);
     output.push_str(&format!(
-        "pub fn bind{}(\n    builder: HostedModuleBuilder<{profile}>,\n) -> Result<(HostedModuleBindings<{profile}>, Functions), BindingError>",
+        "pub fn bind{}(\n    builder: {}<{profile}>,\n) -> Result<({}<{profile}>, Functions), BindingError>",
         generics(components),
+        "HostedModuleBuilder",
+        "HostedModuleBindings",
     ));
     push_bounds_open(output, alias, components);
-    let mutability = if boundary.remaining.is_empty() {
+    push_bind_body(output, boundary, "Functions", "function");
+    output.push_str("}\n");
+}
+
+fn push_bind_body(output: &mut String, bindings: &PlainBindings, functions: &str, method: &str) {
+    let mutability = if bindings.remaining.is_empty() {
         ""
     } else {
         "mut "
@@ -496,22 +530,25 @@ fn push_hosted_bind(
         output,
         &format!("({mutability}bindings, function_0)"),
         "builder",
-        &boundary.first,
+        &bindings.first,
+        method,
     );
-    for (index, function) in boundary.remaining.iter().enumerate() {
+    for (index, function) in bindings.remaining.iter().enumerate() {
         push_binding(
             output,
             &format!("function_{}", index + 1),
             "bindings",
             function,
+            method,
         );
     }
-    push_binding_result(output, boundary);
-    output.push_str("}\n");
+    push_binding_result(output, bindings, functions);
 }
 
-fn push_binding_result(output: &mut String, bindings: &PlainBindings) {
-    output.push_str("    Ok((\n        bindings,\n        Functions {\n");
+fn push_binding_result(output: &mut String, bindings: &PlainBindings, functions: &str) {
+    output.push_str(&format!(
+        "    Ok((\n        bindings,\n        {functions} {{\n"
+    ));
     for (index, function) in bindings.functions().enumerate() {
         let name = function.rust_name.as_str();
         let value = format!("function_{index}.with_input_shape()");
@@ -528,11 +565,12 @@ fn push_component_field(
     output: &mut String,
     alias: &str,
     component: &ComponentBinding,
+    component_trait: &str,
     associated_type: &str,
 ) {
     let prefix = format!("    {}:", component_field(component));
     let type_path = format!(
-        "<{} as HostProviderComponent>::{associated_type},",
+        "<{} as {component_trait}>::{associated_type},",
         component_type(alias, component),
     );
     if prefix.len() + 1 + type_path.len() <= 100 {
@@ -575,6 +613,7 @@ fn push_external_initialization(
 
 fn component_field(component: &ComponentBinding) -> &str {
     match component {
+        ComponentBinding::Future => "future",
         ComponentBinding::Stdlib => "stdlib",
         ComponentBinding::Json => "json",
         ComponentBinding::Time => "time",
@@ -584,6 +623,7 @@ fn component_field(component: &ComponentBinding) -> &str {
 
 fn component_type(alias: &str, component: &ComponentBinding) -> String {
     match component {
+        ComponentBinding::Future => format!("{alias}::FutureComponent"),
         ComponentBinding::Stdlib => format!("{alias}::gleam_stdlib::Component<Io>"),
         ComponentBinding::Json => format!("{alias}::gleam_json::Component"),
         ComponentBinding::Time => format!("{alias}::gleam_time::Component<Source>"),
@@ -625,9 +665,15 @@ fn push_bounds_open(output: &mut String, alias: &str, components: &HostedCompone
     }
 }
 
-fn push_binding(output: &mut String, pattern: &str, owner: &str, function: &FunctionBinding) {
+fn push_binding(
+    output: &mut String,
+    pattern: &str,
+    owner: &str,
+    function: &FunctionBinding,
+    method: &str,
+) {
     let statement = format!(
-        "    let {pattern} = {owner}.function(FunctionDeclaration::new({:?}))?;\n",
+        "    let {pattern} = {owner}.{method}(FunctionDeclaration::new({:?}))?;\n",
         function.gleam_name
     );
     // Rustfmt wraps this fallible call once the statement exceeds 98 columns.
@@ -635,7 +681,7 @@ fn push_binding(output: &mut String, pattern: &str, owner: &str, function: &Func
         output.push_str(&statement);
     } else {
         output.push_str(&format!(
-            "    let {pattern} =\n        {owner}.function(FunctionDeclaration::new({:?}))?;\n",
+            "    let {pattern} =\n        {owner}.{method}(FunctionDeclaration::new({:?}))?;\n",
             function.gleam_name
         ));
     }
@@ -658,6 +704,10 @@ impl DataType {
                 item.collect_imports(imports);
             }
             Self::Option(item) => item.collect_imports(imports),
+            Self::Future(item) => {
+                imports.insert("FutureType");
+                item.collect_imports(imports);
+            }
             Self::Tuple(elements) => {
                 for element in elements {
                     element.collect_imports(imports);
@@ -703,6 +753,7 @@ mod tests {
                     arguments: Vec::new(),
                     return_type: DataType::Nil,
                 },
+                "function",
             );
         }
         source.push_str("}\n");
@@ -776,7 +827,7 @@ pub fn project() -> Project {
     Project::new(concat!(env!("CARGO_MANIFEST_DIR"), "/gleam"), ROOT_MODULE)
 }
 
-#[allow(clippy::type_complexity)]
+#[allow(dead_code, clippy::type_complexity)]
 pub struct Functions {
     pub r#async: Function<(), (), Function0Input>,
     pub all_values: Function<
@@ -794,6 +845,7 @@ pub struct Function1Input;
 
 impl InputShape<(BigInt, f64, EcoString, BitArrayValue, char, bool, ())> for Function1Input {}
 
+#[allow(dead_code)]
 pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), BindingError> {
     let (mut bindings, function_0) = builder.function(FunctionDeclaration::new("async"))?;
     let function_1 = bindings.function(FunctionDeclaration::new("all_values"))?;
@@ -813,17 +865,98 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
 
     #[test]
     fn collects_recursive_imports_once() {
-        let type_ = DataType::List(Box::new(DataType::List(Box::new(DataType::Result(
-            Box::new(DataType::Tuple(vec![DataType::String, DataType::Int])),
-            Box::new(DataType::Option(Box::new(DataType::BitArray))),
+        let type_ = DataType::Future(Box::new(DataType::List(Box::new(DataType::List(
+            Box::new(DataType::Result(
+                Box::new(DataType::Tuple(vec![DataType::String, DataType::Int])),
+                Box::new(DataType::Option(Box::new(DataType::BitArray))),
+            )),
         )))));
         let mut imports = std::collections::BTreeSet::new();
         type_.collect_imports(&mut imports);
         type_.collect_imports(&mut imports);
         assert_eq!(
             imports.into_iter().collect::<Vec<_>>(),
-            ["BigInt", "BitArrayValue", "EcoString", "List"]
+            ["BigInt", "BitArrayValue", "EcoString", "FutureType", "List"]
         );
+    }
+
+    #[test]
+    fn renders_one_host_contract_with_only_the_required_source_registration() {
+        for source_required in [false, true] {
+            let components = if source_required {
+                HostedComponents::from_builtin(BuiltInProvider::Geam)
+            } else {
+                external_components()
+            };
+            let runtime = hosted_source(components);
+            assert!(runtime.contains("pub fn project() -> HostedProject<Profile>"));
+            assert!(runtime.contains("HostedModuleBuilder<Profile>"));
+            assert!(runtime.contains("HostedModuleBindings<Profile>"));
+            assert!(!runtime.contains("AsyncFunctions"));
+            assert!(!runtime.contains("bind_async"));
+            assert_eq!(
+                runtime.contains("FutureComponent as ComponentRegistration"),
+                source_required
+            );
+            assert!(runtime.contains("HostWorkProfile"));
+            assert_rustfmt_stable("host runtime", &runtime);
+
+            for builtin in [
+                BuiltInProvider::Stdlib,
+                BuiltInProvider::Json,
+                BuiltInProvider::Time,
+            ] {
+                let mut components = HostedComponents::from_builtin(builtin);
+                if source_required {
+                    components.extend(HostedComponents::from_builtin(BuiltInProvider::Geam));
+                }
+                components.extend(external_components());
+                let mixed = hosted_source(components);
+                assert!(mixed.contains("HostComponentProfile"));
+                assert!(mixed.contains("HostProviderComponent"));
+                assert!(mixed.contains("Io: runtime::gleam_stdlib::IoSink + 'static"));
+                assert_rustfmt_stable("built-in and external", &mixed);
+            }
+        }
+        let mut long = HostedComponents::from_external(ExternalComponent {
+            package: "a".to_owned(),
+            input_field: identifier("a"),
+            state_field: identifier("provider_a"),
+            crate_alias: identifier("provider_with_a_deliberately_long_cargo_alias_for_calls"),
+        });
+        long.extend(external_components());
+        let long = hosted_source(long);
+        assert!(long.contains(
+            "impl HostComponentProfile<provider_with_a_deliberately_long_cargo_alias_for_calls::Component>\n    for Profile\n{\n"
+        ));
+        assert_rustfmt_stable("long external component", &long);
+
+        let very_long = HostedComponents::from_external(ExternalComponent {
+            package: "native".to_owned(),
+            input_field: identifier("native"),
+            state_field: identifier("provider_native"),
+            crate_alias: identifier(
+                "provider_with_a_deliberately_long_cargo_alias_that_requires_wrapping",
+            ),
+        });
+        let runtime = hosted_source(very_long);
+        assert!(runtime.contains(
+            "impl\n    HostComponentProfile<\n        provider_with_a_deliberately_long_cargo_alias_that_requires_wrapping::Component,\n    > for Profile\n{\n"
+        ));
+        assert_rustfmt_stable("wrapped component type", &runtime);
+
+        let mut wrapped_call = external_components();
+        wrapped_call.extend(HostedComponents::from_external(ExternalComponent {
+            package: "long_name".to_owned(),
+            input_field: identifier("long_name"),
+            state_field: identifier("provider_long_name"),
+            crate_alias: identifier("provider_with_a_long_public_name"),
+        }));
+        let wrapped_call = hosted_source(wrapped_call);
+        assert!(wrapped_call.contains(
+            "let additional_providers =\n        <provider_with_a_long_public_name::Component as ComponentRegistration<Profile>>::providers(\n        )?;"
+        ));
+        assert_rustfmt_stable("transfer wrapped registration call", &wrapped_call);
     }
 
     #[test]
@@ -869,7 +1002,10 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         assert!(stdlib.contains("pub struct RunStateInputs<Io>"));
         assert!(stdlib.contains("pub stdlib: runtime::gleam_stdlib::GleamStdlibRunState<Io>"));
         assert!(stdlib.contains("pub fn initialize(self) -> RunState<Io>"));
-        assert!(stdlib.contains("RunState {\n            stdlib: self.stdlib,"));
+        assert!(
+            stdlib
+                .contains("RunState {\n            future: (),\n            stdlib: self.stdlib,")
+        );
         assert!(!stdlib.contains("ProviderConfigurations"));
         assert!(stdlib.contains("gleam_stdlib::Component<Io>"));
         assert!(!stdlib.contains("gleam_json::Component"));

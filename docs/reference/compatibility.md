@@ -53,15 +53,27 @@ generic, retained, and callback forms documented in the
 Generated Rust function bindings currently support this recursive data grammar:
 
 ```text
-Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data)
+Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data) | Future(Data)
 ```
 
-Records, domain custom types, external values, callbacks, and generic types
-cannot currently appear in generated Rust function signatures. Gleam modules
+The Future case is the `geam` package's nominal `geam/future.Future`.
+Records, domain custom types, other external values, callbacks, and generic types
+cannot currently appear in generated Rust function signatures. The built-in requires the
+`geam-builtin` feature; other external types remain unsupported in generated
+signatures. Gleam modules
 may still use them internally. Rust can reach such logic through generated
 bindings only when the same-name root module exposes a public function with
 supported arguments and return values. See [Rust embedding](embedding-boundary.md)
 for the exact recursive type map.
+
+## Geam Runtime APIs
+
+The `geam` package provides `geam/future` as an ordinary Gleam dependency.
+Its types work with the official Gleam language server. Geam implements the
+operations as a built-in over core's owned-work execution. The standalone runner
+drives a Future returned by `main` with Tokio; Rust embedding supplies its own
+execution scope and executor. Erlang and JavaScript implementations
+are not currently available. See [Future](../future.md) for its API and lifecycle.
 
 ## Verified Package Integrations
 

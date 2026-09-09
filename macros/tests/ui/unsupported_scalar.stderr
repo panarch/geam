@@ -19,16 +19,6 @@ note: required by a bound in `HostCall`
    |             ^^^^^^^^ required by this bound in `HostCall`
    = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0599]: the method `return_value` exists for struct `HostCall<'__geam_call, Profile, __GeamProvider, i64>`, but its trait bounds were not satisfied
-  --> tests/ui/unsupported_scalar.rs:19:1
-   |
-19 | #[geam_macros::module(path = "counter", crate_path = geam_core)]
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method cannot be called due to unsatisfied trait bounds
-   |
-   = note: the following trait bounds were not satisfied:
-           `i64: HostType`
-   = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)
-
 error[E0277]: the trait bound `i64: host::function::argument::HostArgument` is not satisfied
   --> tests/ui/unsupported_scalar.rs:19:1
    |
@@ -51,4 +41,14 @@ note: required by a bound in `HostProviderModule::<Profile>::with_scoped_functio
 ...
    |         Function: ScopedHostFunction<Profile, Provider, Arguments, Return>,
    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `HostProviderModule::<Profile>::with_scoped_function`
+   = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0599]: the method `return_value` exists for struct `HostCall<'__geam_call, Profile, __GeamProvider, i64>`, but its trait bounds were not satisfied
+  --> tests/ui/unsupported_scalar.rs:19:1
+   |
+19 | #[geam_macros::module(path = "counter", crate_path = geam_core)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method cannot be called due to unsatisfied trait bounds
+   |
+   = note: the following trait bounds were not satisfied:
+           `i64: HostType`
    = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -52,14 +52,7 @@ impl HostStoredDynamic {
     where
         Schema: crate::host::HostExternalSchema,
     {
-        let crate::plan::ValueType::External(type_) = self.value.type_() else {
-            return false;
-        };
-        let name = type_.type_name();
-        name.package() == Schema::PACKAGE
-            && name.module() == Schema::MODULE
-            && name.name() == Schema::NAME
-            && type_.arguments().len() == Schema::PARAMETER_COUNT
+        self.value.has_external_schema::<Schema>()
     }
 
     #[expect(
@@ -75,7 +68,7 @@ impl HostStoredDynamic {
             .map_err(Self::new)
     }
 
-    pub(super) fn runtime_value(&self) -> &crate::runtime::StoredRuntimeValue {
+    pub(crate) fn runtime_value(&self) -> &crate::runtime::StoredRuntimeValue {
         &self.value
     }
 

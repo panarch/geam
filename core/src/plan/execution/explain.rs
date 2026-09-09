@@ -1,4 +1,4 @@
-use super::{ExecutionPlan, HostedExecution};
+use super::{ExecutionPlan, HostedProgram};
 use crate::host::HostProfile;
 use crate::plan::execution::type_::{ValueShapeId, ValueShapeTable, ValueType};
 use std::fmt;
@@ -42,7 +42,7 @@ impl<'plan, 'output> ExplainContext<'plan, 'output> {
     }
 
     pub(in crate::plan::execution) fn new_hosted<Profile: HostProfile>(
-        execution: &'plan HostedExecution<Profile>,
+        execution: &'plan HostedProgram<Profile>,
         output: &'output mut String,
     ) -> Self {
         Self {
@@ -110,9 +110,7 @@ impl<'a> ExecutionPlanExplanation<'a> {
         }
     }
 
-    pub(super) fn new_hosted<Profile: HostProfile>(
-        execution: &'a HostedExecution<Profile>,
-    ) -> Self {
+    pub(super) fn new_hosted<Profile: HostProfile>(execution: &'a HostedProgram<Profile>) -> Self {
         Self {
             execution: ExplainedExecution::Hosted(execution),
         }
@@ -133,7 +131,7 @@ impl fmt::Display for ExecutionPlanExplanation<'_> {
     }
 }
 
-impl<Profile: HostProfile> HostedExplanation for HostedExecution<Profile> {
+impl<Profile: HostProfile> HostedExplanation for HostedProgram<Profile> {
     fn write_to(&self, output: &mut String) {
         let mut context = ExplainContext::new_hosted(self, output);
         context.write(self);

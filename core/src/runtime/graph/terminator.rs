@@ -5,13 +5,14 @@ use crate::plan::execution::graph::{
     BlockGraphExitId, BlockId, Edge, MatchEdge, MatchEdgeArgument, NeverCallTarget, SourceStopKind,
     Terminator,
 };
-use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::ExecutionError;
-use crate::runtime::error::{ExecutionResult, PanicKind};
-use crate::runtime::evaluated::EvaluatedNeverFunction;
-use crate::runtime::state::RuntimeStateFor;
 
-pub(super) enum GraphAction {
+use crate::runtime::error::PanicKind;
+use crate::runtime::evaluated::EvaluatedNeverFunction;
+
+use crate::runtime::state::RuntimeState;
+
+pub(in crate::runtime) enum GraphAction {
     Continue {
         block: BlockId,
         inputs: RetainedValues,
@@ -24,17 +25,107 @@ pub(super) enum GraphAction {
     },
 }
 
-pub(super) enum NeverCall {
+pub(in crate::runtime) enum NeverCall {
     Direct(NeverFunctionId),
     Value(EvaluatedNeverFunction),
 }
 
-pub(super) fn terminator_action<Plan: ExecutableRuntimePlan>(
+pub(in crate::runtime) trait RuntimeGraphState {
+    type Error: From<crate::runtime::InvariantError>;
+
+    fn lists(&self) -> &crate::runtime::RuntimeListStorage;
+    fn lists_mut(&mut self) -> &mut crate::runtime::RuntimeListStorage;
+    fn emit_echo(&mut self, output: crate::runtime::EchoOutput);
+
+    fn source_panic(
+        &self,
+        source: Option<&crate::plan::SourceContext>,
+        kind: PanicKind,
+        message: Option<ecow::EcoString>,
+        site: crate::plan::PanicSite,
+    ) -> Self::Error;
+
+    fn let_assert_panic<Plan>(
+        &self,
+        plan: &Plan,
+        source: Option<&crate::plan::SourceContext>,
+        message: Option<ecow::EcoString>,
+        site: crate::plan::PanicSite,
+        subject: crate::runtime::EvaluatedValue,
+        pattern_span: crate::plan::SourceSpan,
+    ) -> Self::Error
+    where
+        Plan: crate::plan::execution::runtime::RuntimeExecutionPlan;
+
+    fn bit_array_segment_panic(
+        &self,
+        source: Option<&crate::plan::SourceContext>,
+        reason: crate::runtime::BitArraySegmentPanicReason,
+        site: crate::plan::PanicSite,
+    ) -> Self::Error;
+}
+
+impl<Host> RuntimeGraphState for RuntimeState<'_, Host> {
+    type Error = ExecutionError<crate::PanicValue>;
+
+    fn lists(&self) -> &crate::runtime::RuntimeListStorage {
+        self.lists()
+    }
+
+    fn lists_mut(&mut self) -> &mut crate::runtime::RuntimeListStorage {
+        self.lists_mut()
+    }
+
+    fn emit_echo(&mut self, output: crate::runtime::EchoOutput) {
+        self.emit_echo(output);
+    }
+
+    fn source_panic(
+        &self,
+        source: Option<&crate::plan::SourceContext>,
+        kind: PanicKind,
+        message: Option<ecow::EcoString>,
+        site: crate::plan::PanicSite,
+    ) -> Self::Error {
+        ExecutionError::source_panic(source, kind, message, site)
+    }
+
+    fn let_assert_panic<Plan>(
+        &self,
+        plan: &Plan,
+        source: Option<&crate::plan::SourceContext>,
+        message: Option<ecow::EcoString>,
+        site: crate::plan::PanicSite,
+        subject: crate::runtime::EvaluatedValue,
+        pattern_span: crate::plan::SourceSpan,
+    ) -> Self::Error
+    where
+        Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    {
+        let subject = crate::runtime::error::PanicValue::new(plan, self.lists(), subject);
+        ExecutionError::let_assert_panic(source, message, site, subject, pattern_span)
+    }
+
+    fn bit_array_segment_panic(
+        &self,
+        source: Option<&crate::plan::SourceContext>,
+        reason: crate::runtime::BitArraySegmentPanicReason,
+        site: crate::plan::PanicSite,
+    ) -> Self::Error {
+        ExecutionError::bit_array_segment_panic(source, reason, site)
+    }
+}
+
+pub(in crate::runtime) fn terminator_action<Plan, State>(
     plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
+    state: &mut State,
     environment: &BlockEnvironment,
     terminator: &Terminator,
-) -> ExecutionResult<GraphAction> {
+) -> Result<GraphAction, State::Error>
+where
+    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    State: RuntimeGraphState,
+{
     match terminator {
         Terminator::Jump(jump) => Ok(transition(environment, jump.edge())),
         Terminator::BoolBranch(branch) => {
@@ -83,13 +174,20 @@ pub(super) fn terminator_action<Plan: ExecutableRuntimePlan>(
         }
         Terminator::Match(matcher) => {
             let subject = environment.value(matcher.subject());
-            let matched =
-                pattern::match_pattern(plan, state, environment, matcher.pattern(), &subject);
+            let matched = pattern::match_pattern(
+                plan,
+                state.lists_mut(),
+                environment,
+                matcher.pattern(),
+                &subject,
+            );
             drop(subject);
-            matched.map(|matched| match matched {
-                Some(bindings) => transition_match(environment, matcher.success(), bindings),
-                None => transition(environment, matcher.failure()),
-            })
+            matched
+                .map_err(State::Error::from)
+                .map(|matched| match matched {
+                    Some(bindings) => transition_match(environment, matcher.success(), bindings),
+                    None => transition(environment, matcher.failure()),
+                })
         }
         Terminator::Echo(echo) => {
             let subject = environment.value(echo.subject());
@@ -106,7 +204,7 @@ pub(super) fn terminator_action<Plan: ExecutableRuntimePlan>(
         Terminator::Exit(exit) => Ok(GraphAction::Exit(*exit)),
         Terminator::SourceStop(stop) => {
             let message = stop.message().map(|message| environment.string(message));
-            Err(ExecutionError::source_panic(
+            Err(state.source_panic(
                 plan.source_context_for(stop.site().module()),
                 panic_kind(stop.kind()),
                 message,
@@ -116,9 +214,8 @@ pub(super) fn terminator_action<Plan: ExecutableRuntimePlan>(
         Terminator::LetAssertPanic(panic) => {
             let subject = environment.value(panic.subject());
             let message = panic.message().map(|message| environment.string(message));
-            let subject =
-                crate::runtime::materialize::value(plan.value_metadata(), state.lists(), subject);
-            Err(ExecutionError::let_assert_panic(
+            Err(state.let_assert_panic(
+                plan,
                 plan.source_context_for(panic.site().module()),
                 message,
                 panic.site().clone(),

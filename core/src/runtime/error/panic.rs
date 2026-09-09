@@ -6,12 +6,12 @@ use num_bigint::BigInt;
 use std::fmt;
 
 #[derive(Debug, Clone)]
-pub struct Panic {
+pub struct Panic<Subject = Value> {
     kind: PanicKind,
     message: PanicMessage,
     site: PanicSite,
     source: Option<Box<NamedSource<String>>>,
-    details: Option<Box<PanicDetails>>,
+    details: Option<Box<PanicDetails<Subject>>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,9 +33,9 @@ pub enum PanicMessage {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum PanicDetails {
+pub enum PanicDetails<Subject = Value> {
     LetAssert {
-        value: Value,
+        value: Subject,
         pattern_span: SourceSpan,
     },
     BitArraySegment {
@@ -50,13 +50,13 @@ pub enum BitArraySegmentPanicReason {
     SizeOutOfRange { bit_size: BigInt },
 }
 
-impl Panic {
+impl<Subject> Panic<Subject> {
     pub(crate) fn new(
         kind: PanicKind,
         message: PanicMessage,
         site: PanicSite,
         source_context: Option<&SourceContext>,
-        details: Option<PanicDetails>,
+        details: Option<PanicDetails<Subject>>,
     ) -> Self {
         Self {
             kind,
@@ -81,7 +81,7 @@ impl Panic {
         &self.site
     }
 
-    pub fn details(&self) -> Option<&PanicDetails> {
+    pub fn details(&self) -> Option<&PanicDetails<Subject>> {
         self.details.as_deref()
     }
 
@@ -103,7 +103,7 @@ impl Panic {
     }
 }
 
-impl PartialEq for Panic {
+impl<Subject: PartialEq> PartialEq for Panic<Subject> {
     fn eq(&self, other: &Self) -> bool {
         self.kind == other.kind
             && self.message == other.message
@@ -124,16 +124,41 @@ fn named_source_eq(
     }
 }
 
-impl fmt::Display for Panic {
+impl<Subject> fmt::Display for Panic<Subject> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.kind.code(), self.message_text())
     }
 }
 
-impl std::error::Error for Panic {}
+impl<Subject: fmt::Debug> std::error::Error for Panic<Subject> {}
+
+impl Panic<super::PanicValue> {
+    pub(super) fn into_materialized(self) -> Panic {
+        Panic {
+            kind: self.kind,
+            message: self.message,
+            site: self.site,
+            source: self.source,
+            details: self.details.map(|details| {
+                Box::new(match *details {
+                    PanicDetails::LetAssert {
+                        value,
+                        pattern_span,
+                    } => PanicDetails::LetAssert {
+                        value: value.into_value(),
+                        pattern_span,
+                    },
+                    PanicDetails::BitArraySegment { reason } => {
+                        PanicDetails::BitArraySegment { reason }
+                    }
+                })
+            }),
+        }
+    }
+}
 
 impl PanicKind {
-    pub(in crate::runtime::error) fn code(&self) -> &'static str {
+    pub(in crate::runtime) fn code(&self) -> &'static str {
         match self {
             Self::Panic => "panic",
             Self::Todo => "todo",
@@ -181,7 +206,7 @@ impl PanicMessage {
         }
     }
 
-    fn text(&self, kind: PanicKind) -> std::borrow::Cow<'_, str> {
+    pub(in crate::runtime) fn text(&self, kind: PanicKind) -> std::borrow::Cow<'_, str> {
         match self {
             Self::Explicit(message) => std::borrow::Cow::Borrowed(message.as_str()),
             Self::Default => std::borrow::Cow::Borrowed(kind.default_message()),
@@ -193,7 +218,7 @@ impl PanicMessage {
 mod tests {
     use super::{BitArraySegmentPanicReason, Panic, PanicDetails, PanicKind, PanicMessage};
     use crate::plan::{PanicSite, SourceContext, SourceSpan, ValueType};
-    use crate::runtime::ExecutionError;
+    type ExecutionError = crate::runtime::ExecutionError;
     use crate::runtime::Value;
 
     #[test]

@@ -7,8 +7,8 @@ use super::EmbeddingOutput;
 use crate::host::HostProfile;
 use crate::plan::execution::HostedExecution;
 use crate::plan::execution::function::{
-    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, ExecutionGraphProfile, FloatFunctionId,
-    IntFunctionId, NilFunctionId, ProfiledListFunctionId, StringFunctionId, TupleFunctionId,
+    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, IntFunctionId,
+    LibraryListFunctionId, NilFunctionId, StringFunctionId, TupleFunctionId,
     UtfCodepointFunctionId,
 };
 
@@ -19,7 +19,12 @@ pub(crate) fn run_hosted_embedded_int<Profile: HostProfile>(
     host: &mut Profile::RunState,
     echo: &mut dyn EchoSink,
 ) -> Result<num_bigint::BigInt, ExecutionError> {
-    let mut state = RuntimeState::with_host(echo, host);
+    let work = crate::runtime::work::execution::ExecutionWork::<Profile>::new();
+    let mut state = RuntimeState::with_host(
+        echo,
+        crate::runtime::state::RuntimeHost::<Profile>::new(host, plan.external_stores(), &work),
+    );
+    let plan = plan.execution();
     function::run_int(plan, &mut state, function, HostCallOrigin::Entry, inputs)
 }
 
@@ -30,7 +35,12 @@ pub(crate) fn run_hosted_embedded_float<Profile: HostProfile>(
     host: &mut Profile::RunState,
     echo: &mut dyn EchoSink,
 ) -> Result<f64, ExecutionError> {
-    let mut state = RuntimeState::with_host(echo, host);
+    let work = crate::runtime::work::execution::ExecutionWork::<Profile>::new();
+    let mut state = RuntimeState::with_host(
+        echo,
+        crate::runtime::state::RuntimeHost::<Profile>::new(host, plan.external_stores(), &work),
+    );
+    let plan = plan.execution();
     function::run_float(plan, &mut state, function, HostCallOrigin::Entry, inputs)
 }
 
@@ -41,7 +51,12 @@ pub(crate) fn run_hosted_embedded_string<Profile: HostProfile>(
     host: &mut Profile::RunState,
     echo: &mut dyn EchoSink,
 ) -> Result<ecow::EcoString, ExecutionError> {
-    let mut state = RuntimeState::with_host(echo, host);
+    let work = crate::runtime::work::execution::ExecutionWork::<Profile>::new();
+    let mut state = RuntimeState::with_host(
+        echo,
+        crate::runtime::state::RuntimeHost::<Profile>::new(host, plan.external_stores(), &work),
+    );
+    let plan = plan.execution();
     function::run_string(plan, &mut state, function, HostCallOrigin::Entry, inputs)
 }
 
@@ -52,7 +67,12 @@ pub(crate) fn run_hosted_embedded_bit_array<Profile: HostProfile>(
     host: &mut Profile::RunState,
     echo: &mut dyn EchoSink,
 ) -> Result<crate::BitArrayValue, ExecutionError> {
-    let mut state = RuntimeState::with_host(echo, host);
+    let work = crate::runtime::work::execution::ExecutionWork::<Profile>::new();
+    let mut state = RuntimeState::with_host(
+        echo,
+        crate::runtime::state::RuntimeHost::<Profile>::new(host, plan.external_stores(), &work),
+    );
+    let plan = plan.execution();
     function::run_bit_array(plan, &mut state, function, HostCallOrigin::Entry, inputs)
         .map(EvaluatedBitArray::into_value)
 }
@@ -64,7 +84,12 @@ pub(crate) fn run_hosted_embedded_utf_codepoint<Profile: HostProfile>(
     host: &mut Profile::RunState,
     echo: &mut dyn EchoSink,
 ) -> Result<char, ExecutionError> {
-    let mut state = RuntimeState::with_host(echo, host);
+    let work = crate::runtime::work::execution::ExecutionWork::<Profile>::new();
+    let mut state = RuntimeState::with_host(
+        echo,
+        crate::runtime::state::RuntimeHost::<Profile>::new(host, plan.external_stores(), &work),
+    );
+    let plan = plan.execution();
     function::run_utf_codepoint(plan, &mut state, function, HostCallOrigin::Entry, inputs)
 }
 
@@ -75,7 +100,12 @@ pub(crate) fn run_hosted_embedded_custom<Profile: HostProfile>(
     host: &mut Profile::RunState,
     echo: &mut dyn EchoSink,
 ) -> Result<EmbeddingOutput, ExecutionError> {
-    let mut state = RuntimeState::with_host(echo, host);
+    let work = crate::runtime::work::execution::ExecutionWork::<Profile>::new();
+    let mut state = RuntimeState::with_host(
+        echo,
+        crate::runtime::state::RuntimeHost::<Profile>::new(host, plan.external_stores(), &work),
+    );
+    let plan = plan.execution();
     function::run_custom(plan, &mut state, function, HostCallOrigin::Entry, inputs)
         .map(EmbeddingOutput::from_custom)
 }
@@ -87,7 +117,12 @@ pub(crate) fn run_hosted_embedded_bool<Profile: HostProfile>(
     host: &mut Profile::RunState,
     echo: &mut dyn EchoSink,
 ) -> Result<bool, ExecutionError> {
-    let mut state = RuntimeState::with_host(echo, host);
+    let work = crate::runtime::work::execution::ExecutionWork::<Profile>::new();
+    let mut state = RuntimeState::with_host(
+        echo,
+        crate::runtime::state::RuntimeHost::<Profile>::new(host, plan.external_stores(), &work),
+    );
+    let plan = plan.execution();
     function::run_bool(plan, &mut state, function, HostCallOrigin::Entry, inputs)
 }
 
@@ -98,7 +133,12 @@ pub(crate) fn run_hosted_embedded_nil<Profile: HostProfile>(
     host: &mut Profile::RunState,
     echo: &mut dyn EchoSink,
 ) -> Result<(), ExecutionError> {
-    let mut state = RuntimeState::with_host(echo, host);
+    let work = crate::runtime::work::execution::ExecutionWork::<Profile>::new();
+    let mut state = RuntimeState::with_host(
+        echo,
+        crate::runtime::state::RuntimeHost::<Profile>::new(host, plan.external_stores(), &work),
+    );
+    let plan = plan.execution();
     function::run_nil(plan, &mut state, function, HostCallOrigin::Entry, inputs)
 }
 
@@ -109,20 +149,35 @@ pub(crate) fn run_hosted_embedded_tuple<Profile: HostProfile>(
     host: &mut Profile::RunState,
     echo: &mut dyn EchoSink,
 ) -> Result<EmbeddingOutput, ExecutionError> {
-    let mut state = RuntimeState::with_host(echo, host);
+    let work = crate::runtime::work::execution::ExecutionWork::<Profile>::new();
+    let mut state = RuntimeState::with_host(
+        echo,
+        crate::runtime::state::RuntimeHost::<Profile>::new(host, plan.external_stores(), &work),
+    );
+    let plan = plan.execution();
     function::run_tuple(plan, &mut state, function, HostCallOrigin::Entry, inputs)
         .map(EmbeddingOutput::from_tuple)
 }
 
 pub(crate) fn run_hosted_embedded_list<Profile: HostProfile>(
     plan: &HostedExecution<Profile>,
-    function: &ProfiledListFunctionId<std::convert::Infallible>,
+    function: &LibraryListFunctionId,
     inputs: RetainedValues,
     host: &mut Profile::RunState,
     echo: &mut dyn EchoSink,
 ) -> Result<EmbeddingOutput, ExecutionError> {
-    let mut state = RuntimeState::with_host(echo, host);
-    let function = std::convert::Infallible::list_function(function);
-    function::run_list(plan, &mut state, function, HostCallOrigin::Entry, inputs)
-        .map(|value| EmbeddingOutput::from_value(value.into()))
+    let work = crate::runtime::work::execution::ExecutionWork::<Profile>::new();
+    let mut state = RuntimeState::with_host(
+        echo,
+        crate::runtime::state::RuntimeHost::<Profile>::new(host, plan.external_stores(), &work),
+    );
+    let plan = plan.execution();
+    function::run_list(
+        plan,
+        &mut state,
+        function.runtime_id(),
+        HostCallOrigin::Entry,
+        inputs,
+    )
+    .map(|value| EmbeddingOutput::from_value(value.into()))
 }

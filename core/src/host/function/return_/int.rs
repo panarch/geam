@@ -1,29 +1,8 @@
-use super::{HostCallback, HostFunctionImplementation, HostReturn, HostValueFunction};
-use crate::host::{HostAbiType, HostCallArguments, HostCallError, HostCallRuntime, HostProfile};
+use super::{HostReturn, OwnedHostCallback, OwnedHostFunctionImplementation};
+use crate::host::{HostAbiType, HostCallArguments, HostFailure, HostProfile};
 use num_bigint::BigInt;
-use std::sync::Arc;
 
-pub(super) struct HostIntFunction<Profile: HostProfile> {
-    implementation: Arc<HostCallback<Profile, BigInt>>,
-}
-
-impl<Profile: HostProfile> Clone for HostIntFunction<Profile> {
-    fn clone(&self) -> Self {
-        Self {
-            implementation: Arc::clone(&self.implementation),
-        }
-    }
-}
-
-impl<Profile: HostProfile> HostIntFunction<Profile> {
-    pub(super) fn call(
-        &self,
-        runtime: &mut dyn HostCallRuntime<Profile>,
-    ) -> Result<BigInt, HostCallError> {
-        let (state, arguments) = runtime.scalar_context();
-        (self.implementation)(state, arguments)
-    }
-}
+pub(super) type HostIntFunction<Profile> = OwnedHostCallback<Profile, BigInt>;
 
 impl HostReturn for BigInt {
     fn descriptor() -> crate::host::HostTypeDescriptor {
@@ -31,14 +10,12 @@ impl HostReturn for BigInt {
     }
 
     fn implementation<Profile: HostProfile>(
-        function: impl Fn(&mut Profile::RunState, &dyn HostCallArguments) -> Result<Self, HostCallError>
+        function: impl Fn(&mut Profile::RunState, &dyn HostCallArguments) -> Result<Self, HostFailure>
         + Send
         + Sync
         + 'static,
-    ) -> HostFunctionImplementation<Profile> {
-        HostFunctionImplementation::Value(HostValueFunction::int(HostIntFunction {
-            implementation: Arc::new(function),
-        }))
+    ) -> OwnedHostFunctionImplementation<Profile> {
+        OwnedHostFunctionImplementation::Int(OwnedHostCallback::new(function))
     }
 }
 
@@ -60,6 +37,7 @@ mod tests {
             <BigInt as HostReturn>::implementation::<TestHostProfile>(move |_, arguments| {
                 Ok(arguments.int(slot) + 42)
             });
+        let implementation = implementation.into_immediate();
         let mut state = TestRunState::default();
         let mut runtime = TestHostCallRuntime::new(
             &mut state,

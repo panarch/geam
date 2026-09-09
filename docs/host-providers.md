@@ -118,6 +118,55 @@ before provider state is initialized or application code runs.
 Geam re-exports its author-facing value types from `geam::provider`, so this
 single dependency supplies types such as `EcoString`, `BigInt`, and `List`.
 
+## Return async Rust work
+
+An async provider function returns explicit work to Gleam. Its source
+declaration uses the ordinary `geam` package:
+
+```gleam
+import geam/future.{type Future}
+
+@external(erlang, "example_async_files", "read")
+pub fn read(path: String) -> Future(Result(String, String))
+```
+
+The same function macro accepts an ordinary Rust `async fn`. Here the
+provider uses the `async-fs` crate to read a file:
+
+```rust
+#[geam::module(path = "example_async_files")]
+mod files {
+    use geam::provider::EcoString;
+
+    #[geam::function]
+    async fn read(path: EcoString) -> Result<EcoString, EcoString> {
+        async_fs::read_to_string(path.as_str())
+            .await
+            .map(EcoString::from)
+            .map_err(|error| EcoString::from(error.to_string()))
+    }
+}
+```
+
+The macro maps the returned Rust Future to `Future(Result(String, String))`;
+it does not wait for the file read while returning an ordinary Gleam Result.
+No additional async metadata flag is needed. Gleam composes the work with
+`future.map`, `future.then`, or `future.all`. `geam run` drives the Future returned
+by `main`; a Rust embedding application observes work with its own executor.
+
+Follow [Add the package](future.md#add-the-package) to include `geam`
+in the Gleam package. The Future guide also explains the composition functions
+and shared results.
+
+The [async files provider](../examples/provider/async_files) includes a runnable
+standalone project. Its [embedding application](../examples/embedding/async_host)
+uses the same provider from Rust.
+
+Provider state, retained payloads, and native Futures must be `Send`. They do not
+need to be `Sync`: an async `Call` gives bounded access to the original mutable
+state. A provider using Tokio can use the standalone runner's I/O and time
+drivers; an embedding application supplies the runtime its providers require.
+
 ## Declare which Gleam versions it supports
 
 Cargo metadata connects the crate to its Gleam package and states the package

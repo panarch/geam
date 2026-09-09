@@ -378,7 +378,7 @@ pub fn main() {
 "#,
             ),
             PlanError::UnsupportedBitArraySegment {
-                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness
             },
         );
     }

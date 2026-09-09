@@ -10,7 +10,7 @@ use crate::{Component, GleamJsonHostProfile};
     crate_path = geam_core,
     profile = crate::GleamJsonHostProfile,
     component = crate::Component,
-    stores = crate::provider_stores,
+    stores = json,
 )]
 pub(super) mod provider {
     use super::{decode, encode};
@@ -90,7 +90,7 @@ pub(super) mod provider {
 
     #[geam_macros::function]
     fn do_float(value: f64) -> HostResult<JsonPayload> {
-        encode::do_float(value)
+        Ok(encode::do_float(value)?)
     }
 
     #[geam_macros::function]
@@ -178,7 +178,7 @@ fn json_source_hash<'call>(
         num_bigint::BigInt,
     >,
     json: crate::HostExternal<'call, Json>,
-) -> Result<crate::HostCallCompletion<'call, num_bigint::BigInt>, crate::HostCallError> {
+) -> Result<crate::HostCallCompletion<'call, num_bigint::BigInt>, geam_core::HostCallError> {
     let hash = num_bigint::BigInt::from(call.source_hash::<Json>(json));
     Ok(call.return_value(hash))
 }
@@ -240,7 +240,7 @@ mod tests {
 
     #[test]
     fn json_payload_owns_structural_source_semantics_and_canonical_inspection() {
-        let segmented = JsonPayload::from_tree(StoredStringTree::sequence([
+        let segmented: JsonPayload = JsonPayload::from_tree(StoredStringTree::sequence([
             StoredStringTree::text("[".into()),
             StoredStringTree::text("1".into()),
             StoredStringTree::text("]".into()),

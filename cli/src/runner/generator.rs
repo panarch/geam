@@ -33,6 +33,11 @@ impl RunnerComponent {
                 type_path: "geam::gleam_time::Component".to_owned(),
                 initialization: ComponentInitialization::SystemTime,
             },
+            BuiltInProvider::Geam => Self {
+                field: "future".to_owned(),
+                type_path: "geam::FutureComponent".to_owned(),
+                initialization: ComponentInitialization::Unit,
+            },
         }
     }
 
@@ -214,6 +219,10 @@ impl geam::HostProfile for Profile {
     type ExternalStores = Stores;
 }
 
+impl geam::HostWorkProfile for Profile {
+    type Work = geam::FutureComponent;
+}
+
 __COMPONENT_PROFILES__
 
 impl geam::gleam_stdlib::GleamStdlibHostProfile for Profile {
@@ -226,13 +235,13 @@ impl geam::gleam_time::GleamTimeHostProfile for Profile {
 
 fn host_providers() -> Result<geam::HostProviderSet<Profile>, geam::HostRegistrationError> {
     let mut providers = Vec::new();
-__COMPONENT_REGISTRATIONS__    geam::HostProviderSet::with_providers(Vec::<geam::HostModule<Profile>>::new(), providers)
+__COMPONENT_REGISTRATIONS__    geam::HostProviderSet::from_providers(providers)
 }
 
 fn check(project_root: String, module: String) -> Result<(), Box<dyn std::error::Error>> {
     let typed = geam::compile_typed_host_project(project_root, module, host_providers()?)?;
     let plan = geam::plan_host_program(typed)?;
-    let _execution = geam::HostedExecution::try_from_module_plan(plan)?;
+    let _execution = geam::HostedEntry::try_from_module_plan(plan)?;
     Ok(())
 }
 
@@ -246,14 +255,19 @@ fn run_project(
 __CONFIGURATION_SELECTIONS__    if let Some(package) = configurations.keys().next() {
         return Err(invalid_data(format!("no selected provider accepts configuration for Gleam package {package}")).into());
     }
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_io()
+        .enable_time()
+        .build()?;
+    let _runtime_context = runtime.enter();
 __CONFIGURED_INITIALIZATIONS__    let output = SharedOutput::new();
 __CAPABILITY_INITIALIZATIONS__
     let mut state = RunState {
 __STATE_INITIALIZERS__    };
     let plan = geam::plan_host_program(typed)?;
-    let execution = geam::HostedExecution::try_from_module_plan(plan)?;
+    let mut execution = geam::HostedEntry::try_from_module_plan(plan)?;
     let mut echo = output.echo_sink();
-    let execution_result = execution.run_main(&mut state, &mut echo);
+    let execution_result = runtime.block_on(execution.run(&mut state, &mut echo));
     output.finish()?;
     execution_result?;
     Ok(())
@@ -320,13 +334,13 @@ fn configuration_value(
 
 #[derive(Clone)]
 struct SharedOutput {
-    failure: std::rc::Rc<std::cell::RefCell<Option<std::io::Error>>>,
+    failure: std::sync::Arc<std::sync::OnceLock<std::sync::Arc<std::io::Error>>>,
 }
 
 impl SharedOutput {
     fn new() -> Self {
         Self {
-            failure: std::rc::Rc::new(std::cell::RefCell::new(None)),
+            failure: std::sync::Arc::new(std::sync::OnceLock::new()),
         }
     }
 
@@ -343,7 +357,7 @@ impl SharedOutput {
     }
 
     fn write(&self, stream: OutputStream, text: &str) {
-        if self.failure.borrow().is_some() {
+        if self.failure.get().is_some() {
             return;
         }
         let result = match stream {
@@ -351,13 +365,13 @@ impl SharedOutput {
             OutputStream::Stderr => write_stderr(text),
         };
         if let Err(error) = result {
-            *self.failure.borrow_mut() = Some(error);
+            let _ = self.failure.set(std::sync::Arc::new(error));
         }
     }
 
-    fn finish(&self) -> Result<(), std::io::Error> {
-        match self.failure.borrow_mut().take() {
-            Some(error) => Err(error),
+    fn finish(&self) -> Result<(), std::sync::Arc<std::io::Error>> {
+        match self.failure.get() {
+            Some(error) => Err(std::sync::Arc::clone(error)),
             None => Ok(()),
         }
     }
@@ -469,6 +483,11 @@ mod tests {
                     initialization: ComponentInitialization::SystemTime,
                 },
                 RunnerComponent {
+                    field: "future".to_owned(),
+                    type_path: "geam::FutureComponent".to_owned(),
+                    initialization: ComponentInitialization::Unit,
+                },
+                RunnerComponent {
                     field: "geam_provider_alpha".to_owned(),
                     type_path: "geam_provider_alpha::Component".to_owned(),
                     initialization: ComponentInitialization::Configured {
@@ -492,6 +511,7 @@ mod tests {
             "stdlib",
             "json",
             "time",
+            "future",
             "geam_provider_alpha",
             "geam_provider_zeta",
         ] {
@@ -499,11 +519,13 @@ mod tests {
         }
         assert!(source.contains("impl geam::gleam_stdlib::GleamStdlibHostProfile for Profile"));
         assert!(source.contains("impl geam::gleam_time::GleamTimeHostProfile for Profile"));
+        assert!(source.contains("impl geam::HostWorkProfile for Profile"));
 
         let type_paths = [
             "geam::gleam_stdlib::Component<CliIoSink>",
             "geam::gleam_json::Component",
             "geam::gleam_time::Component",
+            "geam::FutureComponent",
             "geam_provider_alpha::Component",
             "geam_provider_zeta::Component",
         ];
@@ -540,9 +562,13 @@ mod tests {
             .expect("shared output should initialize");
         assert!(alpha_initialization < zeta_initialization);
         assert!(zeta_initialization < output_initialization);
+        let runtime_context = source
+            .find("let _runtime_context = runtime.enter();")
+            .expect("entered runtime");
+        assert!(runtime_context < alpha_initialization);
 
         let mut previous_initialization = output_initialization;
-        for field in ["stdlib", "json", "time"] {
+        for field in ["stdlib", "json", "time", "future"] {
             let initialization = source
                 .find(&format!("let state_{field}"))
                 .expect("runner capability should initialize");
@@ -554,9 +580,9 @@ mod tests {
         ));
         assert!(source.contains("let state_json = ();"));
         assert!(source.contains("let state_time = geam::gleam_time::SystemTimeSource;"));
-        assert!(
-            source.contains("let execution_result = execution.run_main(&mut state, &mut echo);")
-        );
+        assert!(source.contains(
+            "let execution_result = runtime.block_on(execution.run(&mut state, &mut echo));"
+        ));
         assert_eq!(
             source,
             render_source(&[

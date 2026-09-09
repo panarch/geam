@@ -582,8 +582,9 @@ mod tests {
 
     #[test]
     fn counter_fixture_source_semantics_are_exact() {
-        let retained_hash = |_: &crate::runtime::StoredRuntimeValue| 0;
-        let hashing = crate::host::HostExternalHashing::new(&retained_hash);
+        let retained_hash = |_: &crate::runtime::RetainedValueRef| 0;
+        let raw_hashing = crate::host::RetainedValueHashing::new(&retained_hash);
+        let hashing = crate::host::HostExternalHashing(&raw_hashing);
         let value = BigInt::from(7);
         let mut expected = std::collections::hash_map::DefaultHasher::new();
         std::hash::Hash::hash(&value, &mut expected);
@@ -681,10 +682,10 @@ function tuple#0
     return %tuple#0
 "#;
         let mut actual = String::new();
-        let mut context = explain::ExplainContext::new_hosted(&execution, &mut actual);
+        let mut context = explain::ExplainContext::new_hosted(execution.execution(), &mut actual);
         context.write(&HostedFunctionTablesExplanation::new(
-            &execution.program.functions,
-            &execution.host_functions,
+            &execution.execution.program.functions,
+            &execution.execution.host_functions,
         ));
 
         assert_eq!(actual, expected);
@@ -775,10 +776,10 @@ function function.int#0
   host host_support::host/generic.identity signature=fn(fn(Int) -> Int) -> fn(Int) -> Int
 "#;
         let mut actual = String::new();
-        let mut context = explain::ExplainContext::new_hosted(&execution, &mut actual);
+        let mut context = explain::ExplainContext::new_hosted(execution.execution(), &mut actual);
         context.write(&HostedFunctionTablesExplanation::new(
-            &execution.program.functions,
-            &execution.host_functions,
+            &execution.execution.program.functions,
+            &execution.execution.host_functions,
         ));
 
         assert_eq!(actual, expected);
@@ -899,10 +900,10 @@ function function.list.external#0
     return %function.list.external#0
 "#;
         let mut actual = String::new();
-        let mut context = explain::ExplainContext::new_hosted(&execution, &mut actual);
+        let mut context = explain::ExplainContext::new_hosted(execution.execution(), &mut actual);
         context.write(&HostedFunctionTablesExplanation::new(
-            &execution.program.functions,
-            &execution.host_functions,
+            &execution.execution.program.functions,
+            &execution.execution.host_functions,
         ));
 
         assert_eq!(actual, expected);

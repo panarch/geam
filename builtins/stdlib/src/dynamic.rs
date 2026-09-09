@@ -9,20 +9,13 @@ pub use function::provider::{
 };
 
 pub(crate) use self::storage::DynamicRepresentation;
-use super::GleamStdlibHostProfile;
-use crate::{HostExternalType, HostProviderModule, HostRegistrationError, stdlib_stores};
+use super::GleamStdlibProviderProfile;
+use crate::{HostExternalType, HostProviderModule, HostRegistrationError};
 
 pub type Dynamic = HostExternalType<DynamicSchema>;
-fn stores<Profile>(stores: &Profile::ExternalStores) -> &Stores
-where
-    Profile: GleamStdlibHostProfile,
-{
-    &stdlib_stores::<Profile>(stores).dynamic
-}
-
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
-    Profile: GleamStdlibHostProfile,
+    Profile: GleamStdlibProviderProfile,
 {
     function::host_provider::<Profile>()
 }

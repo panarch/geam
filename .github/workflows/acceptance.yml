@@ -48,6 +48,7 @@ jobs:
         run: |
           cargo test --package geam --test binary --locked
           cargo test --package geam --test cross_crate_http --locked
+          cargo test --package geam --test future_builtins --locked
           cargo test --package geam --test standalone_distribution --locked
 
       - name: Verify standalone provider packages
@@ -61,6 +62,12 @@ jobs:
           for package in catalog counter pure_labels; do
             (cd "cli/tests/fixtures/standalone_cli/project/packages/$package" && gleam export hex-tarball)
           done
+
+      - name: Verify standalone Future provider package
+        working-directory: cli/tests/fixtures/standalone_future/provider
+        run: |
+          cargo package --quiet --offline --allow-dirty --no-verify --locked \
+            --config "patch.crates-io.geam.path='$GITHUB_WORKSPACE'"
 
   rust-embedding:
     name: Rust embedding
@@ -91,12 +98,15 @@ jobs:
             . -> target
             examples/embedding/application -> target
 
+      - name: Fetch workspace dependencies for offline fixtures
+        run: cargo fetch --locked
+
       - name: Verify application dependency graph
         run: |
           cargo tree --manifest-path examples/embedding/application/Cargo.toml --locked --package geam --edges normal --depth 1 --prefix none > "$RUNNER_TEMP/geam-embedding-graph"
           cat "$RUNNER_TEMP/geam-embedding-graph"
           test "$(grep -Ec '^geam v' "$RUNNER_TEMP/geam-embedding-graph")" -eq 1
-          for package in geam-core geam-macros geam-stdlib; do
+          for package in geam-core geam-macros geam-stdlib geam-builtin; do
             grep -Eq "^${package} v" "$RUNNER_TEMP/geam-embedding-graph"
           done
           if grep -Eq '^geam-(cli|json|time) v' "$RUNNER_TEMP/geam-embedding-graph"; then
@@ -116,7 +126,8 @@ jobs:
             data \
             package \
             io \
-            provider
+            provider \
+            async_host
           do
             echo "::group::$example"
             (
@@ -130,6 +141,26 @@ jobs:
             )
             echo "::endgroup::"
           done
+
+      - name: Verify the independent async provider
+        working-directory: examples/provider/async_files/provider
+        run: |
+          cargo fmt --all --check
+          CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding" cargo test --locked
+          CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding" cargo clippy --all-targets --locked -- -D warnings
+          cargo package --locked --no-verify \
+            --config "patch.crates-io.geam.path='$GITHUB_WORKSPACE'"
+          (cd ../project && gleam format --check)
+          (cd ../project/packages/example_async_files && gleam format --check && gleam build)
+
+      - name: Verify standalone async file reading
+        run: cargo test --package geam --test provider_examples --locked -- --exact runs_the_documented_async_files_provider_to_completion
+
+      - name: Verify Geam Gleam package
+        working-directory: builtins/geam/gleam
+        run: |
+          gleam format --check
+          gleam export hex-tarball
 
       - name: Check manual embedding formatting
         working-directory: examples/embedding/manual

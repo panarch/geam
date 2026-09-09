@@ -38,7 +38,7 @@ use super::type_::{
     CustomConstructorId, CustomTypeId, FunctionListTypeId, FunctionType, ListListTypeId,
     ListTypeId, TupleListTypeId, ValueShapeId, ValueType,
 };
-use super::{ExecutionPlan, ExecutionProgram, HostedExecution};
+use super::{ExecutionPlan, ExecutionProgram, HostedProgram};
 use crate::host::HostProfile;
 use crate::plan::SourceContext;
 use ecow::EcoString;
@@ -49,6 +49,10 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
     type RunState;
 
     fn program(&self) -> &ExecutionProgram<Self::Profile>;
+
+    fn function_parameters(&self) -> &super::function::FunctionParameterCatalog {
+        &self.program().common.function_parameters
+    }
 
     fn value_metadata(&self) -> RuntimeValueMetadata<'_> {
         RuntimeValueMetadata::new(&self.program().common)
@@ -403,6 +407,13 @@ pub(crate) struct RuntimeValueMetadata<'plan> {
     external_types: &'plan super::type_::ExternalTypeTable,
 }
 
+#[derive(Clone)]
+pub(crate) struct OwnedRuntimeValueMetadata {
+    list_types: super::type_::ListTypeTable,
+    custom_types: super::type_::CustomTypeTable,
+    external_types: super::type_::ExternalTypeTable,
+}
+
 impl<'plan> RuntimeValueMetadata<'plan> {
     fn new<Graph: super::function::ExecutionGraphProfile>(
         common: &'plan super::ExecutionProgramCommon<Graph>,
@@ -459,6 +470,24 @@ impl<'plan> RuntimeValueMetadata<'plan> {
     ) -> &'plan super::type_::CustomConstructorDescriptor {
         self.custom_types.constructor(id)
     }
+
+    pub(crate) fn to_owned(self) -> OwnedRuntimeValueMetadata {
+        OwnedRuntimeValueMetadata {
+            list_types: self.list_types.clone(),
+            custom_types: self.custom_types.clone(),
+            external_types: self.external_types.clone(),
+        }
+    }
+}
+
+impl OwnedRuntimeValueMetadata {
+    pub(crate) fn as_borrowed(&self) -> RuntimeValueMetadata<'_> {
+        RuntimeValueMetadata {
+            list_types: &self.list_types,
+            custom_types: &self.custom_types,
+            external_types: &self.external_types,
+        }
+    }
 }
 
 impl RuntimeExecutionPlan for ExecutionPlan {
@@ -484,7 +513,7 @@ impl RuntimeExecutionPlan for ExecutionPlan {
     }
 }
 
-impl<Profile: HostProfile> RuntimeExecutionPlan for HostedExecution<Profile> {
+impl<Profile: HostProfile> RuntimeExecutionPlan for HostedProgram<Profile> {
     type Profile = super::host::HostedExecutionProfile;
     type RunState = Profile::RunState;
 

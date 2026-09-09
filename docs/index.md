@@ -115,6 +115,8 @@ on a particular Gleam package, runtime effect, target, or deployment shape.
 
 ## Keep exploring
 
+- [Future](future.md) shows how Gleam combines async Rust work, transforms its
+  results, and passes it back to the Rust host to drive.
 - [Technical reference](reference/README.md) documents public execution,
   embedding, provider, and compatibility contracts.
 - [Geam development](development/README.md) covers tests, review rules,

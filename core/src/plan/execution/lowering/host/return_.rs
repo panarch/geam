@@ -3,6 +3,9 @@ use super::super::function;
 use super::super::local;
 use super::super::specialization::{SpecializationKey, SpecializedFunctionShape, StoredValueShape};
 use crate::plan::execution::function as execution_function;
+use crate::plan::execution::function::{
+    ExecutionFunction, ExecutionFunctionBody, ExecutionNeverFunction,
+};
 use crate::plan::execution::graph as execution_graph;
 use crate::plan::execution::host::{
     HostFunctionId, HostNeverFunctionId, HostedExecutionProfile, HostedFunctionTarget,
@@ -12,6 +15,18 @@ use crate::plan::execution::host::{
 pub(super) enum HostTargetIndex {
     Value(usize),
     Never(usize),
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct HostNeverTargetIndex(pub(super) usize);
+
+impl HostNeverTargetIndex {
+    fn lower_never(
+        self,
+        key: &SpecializationKey,
+    ) -> function::LoweredSpecialization<ExecutionNeverFunction<HostedExecutionProfile>> {
+        function::lowered_host_function(key, HostNeverFunctionId::new(self.0))
+    }
 }
 
 pub(super) fn lower_host_return(
@@ -520,45 +535,28 @@ fn lowered_host_target<Body>(
     key: &SpecializationKey,
     specialization: HostTargetIndex,
     return_: Body::Return,
-) -> function::LoweredSpecialization<
-    execution_function::ValueFunctionEntry<Body, HostedFunctionTarget<Body>>,
->
+) -> function::LoweredSpecialization<ExecutionFunction<HostedExecutionProfile, Body>>
 where
-    Body: execution_function::ExecutionFunctionBody,
+    Body: ExecutionFunctionBody,
 {
-    match specialization {
-        HostTargetIndex::Value(index) => function::lowered_host_function(
-            key,
-            HostedFunctionTarget::value(HostFunctionId::<Body>::new(index, return_)),
-        ),
-        HostTargetIndex::Never(index) => function::lowered_host_function(
-            key,
-            HostedFunctionTarget::never(HostNeverFunctionId::new(index)),
-        ),
-    }
+    let target = match specialization {
+        HostTargetIndex::Value(index) => {
+            HostedFunctionTarget::value(HostFunctionId::<Body>::new(index, return_))
+        }
+        HostTargetIndex::Never(index) => {
+            HostedFunctionTarget::never(HostNeverFunctionId::new(index))
+        }
+    };
+    function::lowered_host_function(key, target)
 }
 
 pub(super) fn lower_uninhabited_never_return(
     index: usize,
     key: &SpecializationKey,
-    host_index: usize,
+    target: HostNeverTargetIndex,
     functions: &mut function::ProfiledFunctionEntries<HostedExecutionProfile>,
 ) {
-    functions
-        .never
-        .push((index, lowered_never_host_target(key, host_index)));
-}
-
-fn lowered_never_host_target(
-    key: &SpecializationKey,
-    index: usize,
-) -> function::LoweredSpecialization<
-    execution_function::ValueFunctionEntry<
-        execution_function::NeverFunctionBody,
-        HostNeverFunctionId,
-    >,
-> {
-    function::lowered_host_function(key, HostNeverFunctionId::new(index))
+    functions.never.push((index, target.lower_never(key)));
 }
 
 #[cfg(test)]
@@ -604,9 +602,17 @@ pub fn main() {
         let execution =
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         let graph: &ValueFunctionEntry<IntFunctionBody, HostedFunctionTarget<IntFunctionBody>> =
-            execution.program.functions.int_function(IntFunctionId(0));
+            execution
+                .execution
+                .program
+                .functions
+                .int_function(IntFunctionId(0));
         let host: &ValueFunctionEntry<IntFunctionBody, HostedFunctionTarget<IntFunctionBody>> =
-            execution.program.functions.int_function(IntFunctionId(2));
+            execution
+                .execution
+                .program
+                .functions
+                .int_function(IntFunctionId(2));
 
         assert_eq!(
             [graph, host].map(|function| match function {
@@ -660,13 +666,25 @@ pub fn main() {
         let execution =
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         let main: &ValueFunctionEntry<BoolFunctionBody, HostedFunctionTarget<BoolFunctionBody>> =
-            execution.program.functions.bool_function(BoolFunctionId(0));
+            execution
+                .execution
+                .program
+                .functions
+                .bool_function(BoolFunctionId(0));
         let host: &ValueFunctionEntry<BoolFunctionBody, HostedFunctionTarget<BoolFunctionBody>> =
-            execution.program.functions.bool_function(BoolFunctionId(1));
+            execution
+                .execution
+                .program
+                .functions
+                .bool_function(BoolFunctionId(1));
         let identity: &ValueFunctionEntry<
             BoolFunctionBody,
             HostedFunctionTarget<BoolFunctionBody>,
-        > = execution.program.functions.bool_function(BoolFunctionId(2));
+        > = execution
+            .execution
+            .program
+            .functions
+            .bool_function(BoolFunctionId(2));
 
         assert_eq!(
             [main, host, identity].map(|function| match function {

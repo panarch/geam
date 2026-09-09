@@ -3,8 +3,9 @@ use super::custom_value::{
 };
 use super::list_model::static_value_key;
 use super::{
-    FunctionArgumentType, FunctionInputType, FunctionModel, FunctionReturnType, GeneratedNames,
-    GeneratedValue, ListDeclaredAccess, ListDecoderModel, ListExternalAccess, StaticValueType,
+    FunctionArgumentType, FunctionFlavor, FunctionInputType, FunctionModel, FunctionReturnType,
+    GeneratedNames, GeneratedValue, ListDeclaredAccess, ListDecoderModel, ListExternalAccess,
+    StaticValueType,
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -30,27 +31,42 @@ pub(super) fn validate_list_return(function: &FunctionModel) -> syn::Result<()> 
     Ok(())
 }
 
-pub(super) fn generate_list_decoder(
+pub(super) fn generate_list_decoders(
     decoder: &ListDecoderModel,
     customs: &[CustomModel],
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
 ) -> TokenStream {
-    let ident = &decoder.ident;
-    let item = validated_list_item_type(&decoder.value, custom_inputs, support);
+    [FunctionFlavor::Immediate, FunctionFlavor::Async]
+        .into_iter()
+        .map(|flavor| generate_list_decoder(decoder, customs, custom_inputs, support, flavor))
+        .collect()
+}
+
+fn generate_list_decoder(
+    decoder: &ListDecoderModel,
+    customs: &[CustomModel],
+    custom_inputs: &BTreeMap<usize, Ident>,
+    support: &TokenStream,
+    flavor: FunctionFlavor,
+) -> TokenStream {
+    let ident = list_decoder_ident(&decoder.ident, flavor);
+    let item = validated_list_item_type(&decoder.value, custom_inputs, support, flavor);
     let accesses = list_external_accesses(&decoder.value, customs);
     let declared = list_declared_accesses(&decoder.value, customs);
-    let fields = accesses.iter().map(|access| {
-        let field = &access.field;
-        let payload = &access.payload;
-        quote!(#field: #support::ProviderExternalPayloadAccess<#payload>,)
-    });
     let declared_fields = declared.iter().map(|access| {
         let field = &access.field;
         let type_ = &access.type_;
+        let input = list_input_associated_type(type_, support, flavor);
         quote!(
-            #field: <<#type_ as #support::ProviderValue>::ListInput as
-                #support::ProviderListInputValue>::Decoder,
+            #field: <#input as #support::ProviderListInputValue>::Decoder,
+        )
+    });
+    let fields = accesses.iter().map(|access| {
+        let field = &access.field;
+        let payload = &access.payload;
+        quote!(
+            #field: #support::ProviderExternalPayloadAccess<#payload>,
         )
     });
     let definition = if accesses.is_empty() && declared.is_empty() {
@@ -77,10 +93,11 @@ pub(super) fn generate_list_decoder(
         custom_inputs,
         support,
         &mut names,
+        flavor,
     );
     let statements = decoded.statements;
     let value = decoded.value;
-    let view = list_item_view_type(&decoder.value, custom_inputs, support);
+    let view = list_item_view_type_with_flavor(&decoder.value, custom_inputs, support, flavor);
     quote! {
         #definition
 
@@ -102,32 +119,62 @@ fn validated_list_item_type(
     type_: &StaticValueType,
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
+    flavor: FunctionFlavor,
 ) -> TokenStream {
     match type_ {
         StaticValueType::Scalar(type_) => quote!(#type_),
         StaticValueType::Declared { type_, .. } => {
-            quote!(<#type_ as #support::ProviderValue>::ListInput)
+            list_input_associated_type(type_, support, flavor)
         }
-        StaticValueType::External { payload, .. } => quote!(#payload),
+        StaticValueType::External { payload, .. } => match flavor {
+            FunctionFlavor::Immediate => {
+                quote!(#support::ProviderExternalView<#payload>)
+            }
+            FunctionFlavor::Async => {
+                quote!(#support::ProviderOwnedExternal<#payload>)
+            }
+        },
         StaticValueType::Custom { index, .. } => {
-            let input = &custom_inputs[index];
+            let input = custom_input_ident(&custom_inputs[index], flavor);
             quote!(#input)
         }
         StaticValueType::Tuple(elements) => {
             let elements = elements
                 .iter()
-                .map(|element| validated_list_item_type(element, custom_inputs, support))
+                .map(|element| validated_list_item_type(element, custom_inputs, support, flavor))
                 .collect::<Vec<_>>();
             quote!((#(#elements,)*))
         }
         StaticValueType::Result { success, failure } => {
-            let success = validated_list_item_type(success, custom_inputs, support);
-            let failure = validated_list_item_type(failure, custom_inputs, support);
+            let success = validated_list_item_type(success, custom_inputs, support, flavor);
+            let failure = validated_list_item_type(failure, custom_inputs, support, flavor);
             quote!(::core::result::Result<#success, #failure>)
         }
         StaticValueType::Option { value } => {
-            let value = validated_list_item_type(value, custom_inputs, support);
+            let value = validated_list_item_type(value, custom_inputs, support, flavor);
             quote!(::core::option::Option<#value>)
+        }
+    }
+}
+
+pub(super) fn list_decoder_ident(ident: &Ident, flavor: FunctionFlavor) -> Ident {
+    match flavor {
+        FunctionFlavor::Immediate => format_ident!("__GeamImmediate{}", ident),
+        FunctionFlavor::Async => format_ident!("__GeamOwned{}", ident),
+    }
+}
+
+fn list_input_associated_type(
+    type_: &Type,
+    support: &TokenStream,
+    flavor: FunctionFlavor,
+) -> TokenStream {
+    match flavor {
+        FunctionFlavor::Immediate => {
+            quote!(<#type_ as #support::ProviderValueForms>::ImmediateListInput)
+        }
+        FunctionFlavor::Async => {
+            quote!(<#type_ as #support::ProviderValueForms>::OwnedListInput)
         }
     }
 }
@@ -137,7 +184,11 @@ pub(super) fn list_decoder_value(
     value: &StaticValueType,
     customs: &[CustomModel],
     support: &TokenStream,
+    flavor: FunctionFlavor,
+    provider: &TokenStream,
+    call: &TokenStream,
 ) -> TokenStream {
+    let ident = list_decoder_ident(ident, flavor);
     let accesses = list_external_accesses(value, customs);
     let declared = list_declared_accesses(value, customs);
     if accesses.is_empty() && declared.is_empty() {
@@ -156,9 +207,12 @@ pub(super) fn list_decoder_value(
         let declared_fields = declared.iter().map(|access| {
             let field = &access.field;
             let type_ = &access.type_;
+            let input = list_input_associated_type(type_, support, flavor);
             quote!(
-                #field: <<#type_ as #support::ProviderValue>::ListInput as
-                    #support::ProviderListInputCodec<Profile>>::decoder(&call),
+                #field: <#input as #support::ProviderListInputCodec<
+                        Profile,
+                        #provider,
+                    >>::decoder(#call),
             )
         });
         quote! {
@@ -264,6 +318,7 @@ fn list_external_accesses(
                 payload,
                 schema,
                 store_field,
+                ..
             } => {
                 if accesses.iter().any(|access| access.schema == *schema) {
                     return;
@@ -306,6 +361,7 @@ fn decode_list_item(
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
     names: &mut GeneratedNames,
+    flavor: FunctionFlavor,
 ) -> GeneratedValue {
     match type_ {
         StaticValueType::Scalar(type_) => GeneratedValue {
@@ -314,18 +370,35 @@ fn decode_list_item(
         },
         StaticValueType::Declared { type_, .. } => {
             let field = declared_access_field(type_);
+            let decoder = { quote!(#support::ProviderListItemDecoder) };
             GeneratedValue {
                 statements: TokenStream::new(),
-                value: quote!(#support::ProviderListItemDecoder::decode(&self.#field, #input)),
+                value: quote!(#decoder::decode(&self.#field, #input)),
             }
         }
-        StaticValueType::External { store_field, .. } => GeneratedValue {
-            statements: TokenStream::new(),
-            value: quote!(#input.into_external(&self.#store_field)),
-        },
-        StaticValueType::Custom { index, .. } => {
-            decode_list_custom(*index, input, customs, custom_inputs, support, names)
+        StaticValueType::External { store_field, .. } => {
+            let value = match flavor {
+                FunctionFlavor::Async => {
+                    quote!(#input.into_external(&self.#store_field))
+                }
+                FunctionFlavor::Immediate => {
+                    quote!(#input.into_external_view(&self.#store_field))
+                }
+            };
+            GeneratedValue {
+                statements: TokenStream::new(),
+                value,
+            }
         }
+        StaticValueType::Custom { index, .. } => decode_list_custom(
+            *index,
+            input,
+            customs,
+            custom_inputs,
+            support,
+            names,
+            flavor,
+        ),
         StaticValueType::Tuple(elements) => {
             let tuple = names.next("list_tuple");
             let decoded_elements = elements
@@ -346,6 +419,7 @@ fn decode_list_item(
                     custom_inputs,
                     support,
                     names,
+                    flavor,
                 );
                 let generated_statements = generated.statements;
                 let generated_value = generated.value;
@@ -370,6 +444,7 @@ fn decode_list_item(
                 custom_inputs,
                 support,
                 names,
+                flavor,
             );
             let success_statements = decoded_success.statements;
             let success_value = decoded_success.value;
@@ -380,6 +455,7 @@ fn decode_list_item(
                 custom_inputs,
                 support,
                 names,
+                flavor,
             );
             let failure_statements = decoded_failure.statements;
             let failure_value = decoded_failure.value;
@@ -413,6 +489,7 @@ fn decode_list_item(
                 custom_inputs,
                 support,
                 names,
+                flavor,
             );
             let statements = decoded.statements;
             let value = decoded.value;
@@ -442,13 +519,15 @@ fn decode_list_custom_field(
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
     names: &mut GeneratedNames,
+    flavor: FunctionFlavor,
 ) -> GeneratedValue {
     match type_ {
         CustomFieldValueType::Value(type_) => {
-            decode_list_item(type_, input, customs, custom_inputs, support, names)
+            decode_list_item(type_, input, customs, custom_inputs, support, names, flavor)
         }
         CustomFieldValueType::List(list) => {
-            let decoder = nested_list_decoder_value(&list.decoder, &list.collection.value, customs);
+            let decoder =
+                nested_list_decoder_value(&list.decoder, &list.collection.value, customs, flavor);
             GeneratedValue {
                 statements: TokenStream::new(),
                 value: quote!(#input.into_list(#decoder)),
@@ -464,9 +543,17 @@ fn decode_list_custom(
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
     names: &mut GeneratedNames,
+    flavor: FunctionFlavor,
 ) -> GeneratedValue {
     let custom = &customs[custom_index];
-    let input_type = &custom_inputs[&custom_index];
+    let input_type = match flavor {
+        FunctionFlavor::Immediate => {
+            custom_input_ident(&custom_inputs[&custom_index], FunctionFlavor::Immediate)
+        }
+        FunctionFlavor::Async => {
+            custom_input_ident(&custom_inputs[&custom_index], FunctionFlavor::Async)
+        }
+    };
     let custom_value = names.next("list_custom");
     let mut arms = Vec::new();
     for (constructor_index, constructor) in custom.constructors.iter().enumerate() {
@@ -485,6 +572,7 @@ fn decode_list_custom(
                 custom_inputs,
                 support,
                 names,
+                flavor,
             );
             let generated_statements = generated.statements;
             let generated_value = generated.value;
@@ -494,7 +582,7 @@ fn decode_list_custom(
                 let #decoded = #generated_value;
             });
         }
-        let expression = custom_input_expression(input_type, constructor, &decoded_names);
+        let expression = custom_input_expression(&input_type, constructor, &decoded_names);
         let pattern = if constructor_index + 1 == custom.constructors.len() {
             quote!(_)
         } else {
@@ -523,7 +611,12 @@ fn nested_list_decoder_value(
     ident: &Ident,
     value: &StaticValueType,
     customs: &[CustomModel],
+    flavor: FunctionFlavor,
 ) -> TokenStream {
+    let ident = match flavor {
+        FunctionFlavor::Immediate => list_decoder_ident(ident, FunctionFlavor::Immediate),
+        FunctionFlavor::Async => list_decoder_ident(ident, FunctionFlavor::Async),
+    };
     let accesses = list_external_accesses(value, customs);
     let declared = list_declared_accesses(value, customs);
     if accesses.is_empty() && declared.is_empty() {
@@ -567,47 +660,79 @@ pub(super) fn custom_input_expression(
     }
 }
 
-pub(super) fn list_item_view_type(
+fn list_item_view_type_with_flavor(
     type_: &StaticValueType,
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
+    flavor: FunctionFlavor,
 ) -> TokenStream {
     match type_ {
         StaticValueType::Scalar(type_) => quote!(#type_),
-        StaticValueType::Declared { type_, .. } => {
-            quote!(<<#type_ as #support::ProviderValue>::ListInput as
-                #support::ProviderListInputValue>::View)
-        }
-        StaticValueType::External { payload, .. } => {
-            quote!(#support::ProviderExternalItem<#payload>)
-        }
+        StaticValueType::Declared { type_, .. } => match flavor {
+            FunctionFlavor::Immediate => {
+                let input = list_input_associated_type(type_, support, FunctionFlavor::Immediate);
+                quote!(
+                    <#input as #support::ProviderListInputValue>::View
+                )
+            }
+            FunctionFlavor::Async => {
+                let input = list_input_associated_type(type_, support, FunctionFlavor::Async);
+                quote!(
+                    <#input as #support::ProviderListInputValue>::View
+                )
+            }
+        },
+        StaticValueType::External { payload, .. } => match flavor {
+            FunctionFlavor::Immediate => {
+                quote!(#support::ProviderExternalView<#payload>)
+            }
+            FunctionFlavor::Async => {
+                quote!(#support::ProviderOwnedExternal<#payload>)
+            }
+        },
         StaticValueType::Custom { index, .. } => {
-            let input = &custom_inputs[index];
+            let input = match flavor {
+                FunctionFlavor::Immediate => {
+                    custom_input_ident(&custom_inputs[index], FunctionFlavor::Immediate)
+                }
+                FunctionFlavor::Async => {
+                    custom_input_ident(&custom_inputs[index], FunctionFlavor::Async)
+                }
+            };
             quote!(#input)
         }
         StaticValueType::Tuple(elements) => {
             let types = elements
                 .iter()
-                .map(|element| list_item_view_type(element, custom_inputs, support))
+                .map(|element| {
+                    list_item_view_type_with_flavor(element, custom_inputs, support, flavor)
+                })
                 .collect::<Vec<_>>();
             quote!((#(#types,)*))
         }
         StaticValueType::Result { success, failure } => {
-            let success = list_item_view_type(success, custom_inputs, support);
-            let failure = list_item_view_type(failure, custom_inputs, support);
+            let success = list_item_view_type_with_flavor(success, custom_inputs, support, flavor);
+            let failure = list_item_view_type_with_flavor(failure, custom_inputs, support, flavor);
             quote!(::core::result::Result<#success, #failure>)
         }
         StaticValueType::Option { value } => {
-            let value = list_item_view_type(value, custom_inputs, support);
+            let value = list_item_view_type_with_flavor(value, custom_inputs, support, flavor);
             quote!(::core::option::Option<#value>)
         }
     }
 }
 
+pub(super) fn custom_input_ident(input: &Ident, flavor: FunctionFlavor) -> Ident {
+    match flavor {
+        FunctionFlavor::Immediate => format_ident!("__GeamImmediate{}", input),
+        FunctionFlavor::Async => format_ident!("__GeamOwned{}", input),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::list_item_view_type;
-    use crate::module::StaticValueType;
+    use super::list_item_view_type_with_flavor;
+    use crate::module::{FunctionFlavor, StaticValueType};
     use quote::quote;
 
     #[test]
@@ -622,10 +747,11 @@ mod tests {
         };
 
         assert_eq!(
-            list_item_view_type(
+            list_item_view_type_with_flavor(
                 &input,
                 &std::collections::BTreeMap::new(),
                 &quote!(geam_core),
+                FunctionFlavor::Immediate,
             )
             .to_string(),
             ":: core :: result :: Result < :: core :: option :: Option < BigInt > , :: core :: option :: Option < EcoString > >",

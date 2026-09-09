@@ -11,7 +11,7 @@ mod source;
 pub(in crate::runtime) use capture::{
     EvaluatedCapture, EvaluatedCaptureKind, EvaluatedListCapture,
 };
-pub(in crate::runtime) use external::EvaluatedExternalValue;
+pub(crate) use external::EvaluatedExternalValue;
 pub(in crate::runtime) use function::{
     EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCoreFunctionFunction,
     EvaluatedCustomFunction, EvaluatedExternalFunction, EvaluatedExternalFunctionFunction,
@@ -52,6 +52,10 @@ impl EvaluatedBitArray {
 
     pub(in crate::runtime) fn value(&self) -> crate::BitArrayValue {
         self.value.clone()
+    }
+
+    pub(in crate::runtime) fn as_value(&self) -> &crate::BitArrayValue {
+        &self.value
     }
 
     pub(in crate::runtime) fn into_value(self) -> crate::BitArrayValue {

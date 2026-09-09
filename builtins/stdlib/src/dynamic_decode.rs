@@ -2,12 +2,12 @@ mod function;
 
 pub use function::provider::DecodeError as DynamicDecodeErrorValue;
 
-use super::GleamStdlibHostProfile;
+use super::GleamStdlibProviderProfile;
 use crate::{HostProviderModule, HostRegistrationError};
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
-    Profile: GleamStdlibHostProfile,
+    Profile: GleamStdlibProviderProfile,
 {
     function::host_provider::<Profile>()
 }

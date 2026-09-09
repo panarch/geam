@@ -1,7 +1,7 @@
 use super::source::split_system_time;
-use super::{Component, GleamTimeHostProfile, TimeSource};
+use super::{GleamTimeProviderProfile, TimeSource};
 use crate::{HostProviderModule, HostRegistrationError};
-use geam_core::provider::{Call, HostResult};
+use geam_core::provider::Call;
 use num_bigint::BigInt;
 
 #[geam_macros::module(
@@ -11,7 +11,8 @@ use num_bigint::BigInt;
     component = crate::Component<Profile::Source>,
 )]
 mod provider {
-    use super::{BigInt, Call, HostResult, TimeSource, split_system_time};
+    use super::{BigInt, Call, TimeSource, split_system_time};
+    use geam_core::provider::HostResult;
 
     #[geam_macros::function(profile = Profile)]
     fn get_system_time(
@@ -24,7 +25,7 @@ mod provider {
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
-    Profile: GleamTimeHostProfile,
+    Profile: GleamTimeProviderProfile,
 {
     provider::__geam_module::<Profile>()
 }

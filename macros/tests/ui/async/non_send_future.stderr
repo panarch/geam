@@ -1,0 +1,16 @@
+error: future cannot be sent between threads safely
+  --> tests/ui/async/non_send_future.rs:10:1
+   |
+10 | #[geam_macros::module(path = "native", crate_path = geam_core)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ future created by async block is not `Send`
+   |
+   = help: within `{async block@$DIR/tests/ui/async/non_send_future.rs:10:1: 10:64}`, the trait `Send` is not implemented for `Rc<i32>`
+note: future is not `Send` as this value is used across an await
+  --> tests/ui/async/non_send_future.rs:17:38
+   |
+16 |         let value = std::rc::Rc::new(42);
+   |             ----- has type `Rc<i32>` which is not `Send`
+17 |         std::future::pending::<()>().await;
+   |                                      ^^^^^ await occurs here, with `value` maybe used later
+   = note: required for the cast from `Pin<Box<{async block@$DIR/tests/ui/async/non_send_future.rs:10:1: 10:64}>>` to `Pin<Box<dyn std::future::Future<Output = Result<HostFutureCompletion<Profile, __GeamProvider, BigInt, HostTypeListEnd>, HostFutureError>> + Send>>`
+   = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)

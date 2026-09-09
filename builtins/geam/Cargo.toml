@@ -1,0 +1,25 @@
+[package]
+name = "geam-builtin"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Built-in Rust implementation of the geam Gleam package"
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+publish = ["crates-io"]
+include = ["/src/**", "/README.md", "/LICENSE"]
+
+[dependencies]
+geam-core.workspace = true
+ecow.workspace = true
+
+[dev-dependencies]
+gleam-compiler-core.workspace = true
+futures-channel.workspace = true
+futures-util.workspace = true
+num-bigint.workspace = true
+tempfile.workspace = true
+serde_json.workspace = true
+trybuild.workspace = true
+url = "2"

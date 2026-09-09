@@ -1,6 +1,5 @@
-use super::super::{EvaluatedFunctionExit, evaluate_entry, parameter_locals};
+use super::super::{EvaluatedFunctionExit, evaluate_entry};
 use crate::plan::execution::function::BoolFunctionId;
-use crate::plan::execution::graph::ParamLocal;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::graph::RetainedValues;
@@ -29,18 +28,12 @@ pub(in crate::runtime) fn run_bool<Plan: ExecutableRuntimePlan>(
     }
 }
 
-pub(in crate::runtime) fn bool_parameter_locals<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    function: BoolFunctionId,
-) -> Vec<ParamLocal> {
-    parameter_locals(plan, plan.bool_function(function))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::bool_parameter_locals;
     use crate::plan::execution::function::BoolFunctionId;
+    use crate::plan::execution::graph::FunctionTarget;
     use crate::plan::execution::graph::{BoolLocalId, IntLocalId, ParamLocal};
+    use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::{
         HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource, Value,
         compile_typed_host_program, compile_typed_module, plan_host_program, plan_module, run_main,
@@ -63,7 +56,9 @@ pub fn main() {
         let plan = plan_module(typed).expect("source should plan");
         let execution = crate::ExecutionPlan::from_module_plan(plan);
         assert_eq!(
-            bool_parameter_locals(&execution, BoolFunctionId(1)),
+            execution
+                .function_parameters()
+                .function(&FunctionTarget::Bool(BoolFunctionId(1))),
             [ParamLocal::Bool(BoolLocalId(0))],
         );
         assert_eq!(run_main(&execution, &mut Vec::new()), Ok(Value::Bool(true)),);
@@ -102,11 +97,17 @@ pub fn main() {
         let execution =
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         assert_eq!(
-            bool_parameter_locals(&execution, BoolFunctionId(2)),
+            execution
+                .execution()
+                .function_parameters()
+                .function(&FunctionTarget::Bool(BoolFunctionId(2))),
             [ParamLocal::Bool(BoolLocalId(0))],
         );
         assert_eq!(
-            bool_parameter_locals(&execution, BoolFunctionId(1)),
+            execution
+                .execution()
+                .function_parameters()
+                .function(&FunctionTarget::Bool(BoolFunctionId(1))),
             [ParamLocal::Int(IntLocalId(0))],
         );
         assert_eq!(

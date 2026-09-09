@@ -8,9 +8,10 @@ use crate::plan::execution::type_::FunctionType;
 use ecow::EcoString;
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 pub(crate) struct HostedFunction<Implementation> {
-    metadata: HostedFunctionMetadata,
+    metadata: Arc<HostedFunctionMetadata>,
     implementation: Implementation,
 }
 
@@ -29,6 +30,7 @@ pub(crate) struct HostedFunctionMetadata {
     type_: FunctionType,
 }
 
+#[derive(Clone)]
 pub(crate) struct HostConstructionTypes {
     lists: HashMap<crate::plan::ValueType, crate::plan::execution::type_::ListTypeId>,
     customs: HashMap<crate::plan::ValueType, crate::plan::execution::type_::CustomTypeId>,
@@ -49,11 +51,10 @@ pub(crate) enum HostCallParameter {
     Tuple(ParamLocal),
     Custom(ParamLocal),
     External(ParamLocal),
-    Function(ParamLocal),
+    Function { local: ParamLocal, arity: usize },
 }
 
 pub(in crate::plan::execution) struct HostedFunctionParameters {
-    entry: Box<[ParamLocal]>,
     call: Box<[HostCallParameter]>,
 }
 
@@ -189,11 +190,11 @@ impl<Body: ExecutionFunctionBody> HostedFunctionTarget<Body> {
 
 impl<Implementation> HostedFunction<Implementation> {
     pub(in crate::plan::execution) fn new(
-        metadata: HostedFunctionMetadata,
+        metadata: impl Into<Arc<HostedFunctionMetadata>>,
         implementation: Implementation,
     ) -> Self {
         Self {
-            metadata,
+            metadata: metadata.into(),
             implementation,
         }
     }
@@ -210,20 +211,8 @@ impl<Implementation> HostedFunction<Implementation> {
         self.metadata.name()
     }
 
-    pub(crate) fn parameters(&self) -> &[ParamLocal] {
-        self.metadata.parameters()
-    }
-
-    pub(crate) fn type_arguments(&self) -> &[crate::plan::ValueType] {
-        self.metadata.type_arguments()
-    }
-
     pub(crate) fn call_parameters(&self) -> &[HostCallParameter] {
         self.metadata.call_parameters()
-    }
-
-    pub(crate) fn constructions(&self) -> &HostConstructionTypes {
-        self.metadata.constructions()
     }
 
     pub(crate) fn type_(&self) -> &FunctionType {
@@ -231,6 +220,10 @@ impl<Implementation> HostedFunction<Implementation> {
     }
 
     pub(crate) fn metadata(&self) -> &HostedFunctionMetadata {
+        &self.metadata
+    }
+
+    pub(crate) fn metadata_handle(&self) -> &Arc<HostedFunctionMetadata> {
         &self.metadata
     }
 
@@ -280,19 +273,15 @@ impl HostedFunctionMetadata {
         &self.signature
     }
 
-    fn type_arguments(&self) -> &[crate::plan::ValueType] {
+    pub(crate) fn type_arguments(&self) -> &[crate::plan::ValueType] {
         &self.type_arguments
     }
 
-    fn parameters(&self) -> &[ParamLocal] {
-        self.parameters.entry()
-    }
-
-    fn call_parameters(&self) -> &[HostCallParameter] {
+    pub(crate) fn call_parameters(&self) -> &[HostCallParameter] {
         self.parameters.call()
     }
 
-    fn constructions(&self) -> &HostConstructionTypes {
+    pub(crate) fn constructions(&self) -> &HostConstructionTypes {
         &self.constructions
     }
 
@@ -337,15 +326,8 @@ impl HostConstructionTypes {
 }
 
 impl HostedFunctionParameters {
-    pub(in crate::plan::execution) fn new(
-        entry: Box<[ParamLocal]>,
-        call: Box<[HostCallParameter]>,
-    ) -> Self {
-        Self { entry, call }
-    }
-
-    fn entry(&self) -> &[ParamLocal] {
-        &self.entry
+    pub(in crate::plan::execution) fn new(call: Box<[HostCallParameter]>) -> Self {
+        Self { call }
     }
 
     fn call(&self) -> &[HostCallParameter] {
@@ -368,7 +350,7 @@ impl HostCallParameter {
             Self::Tuple(local) => local.clone(),
             Self::Custom(local) => local.clone(),
             Self::External(local) => local.clone(),
-            Self::Function(local) => local.clone(),
+            Self::Function { local, .. } => local.clone(),
         }
     }
 }
@@ -470,7 +452,13 @@ mod tests {
             (HostCallParameter::List(list.clone()), list),
             (HostCallParameter::Tuple(tuple.clone()), tuple),
             (HostCallParameter::Custom(custom.clone()), custom),
-            (HostCallParameter::Function(function.clone()), function),
+            (
+                HostCallParameter::Function {
+                    local: function.clone(),
+                    arity: 3,
+                },
+                function,
+            ),
         ];
 
         for (parameter, expected) in cases {

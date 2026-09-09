@@ -5,22 +5,63 @@ use geam_core::provider::advanced::{
 use im::{HashMap, Vector};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::rc::Rc;
 
 pub struct DictPayload {
     pub(super) storage: DictStorage,
 }
 
-#[derive(Clone, Default)]
 pub(super) struct DictStorage {
-    pub(super) buckets: HashMap<u64, Vector<Rc<DictEntry>>>,
+    pub(super) buckets: HashMap<u64, Vector<std::sync::Arc<DictEntry>>>,
     pub(super) len: usize,
 }
 
 pub(super) struct DictEntry {
     pub(super) key_hash: u64,
-    pub(super) key: Rc<Retained<DictPayload, Index0>>,
-    pub(super) value: Rc<Retained<DictPayload, Next<Index0>>>,
+    pub(super) key: std::sync::Arc<Retained<DictPayload, Index0>>,
+    pub(super) value: std::sync::Arc<Retained<DictPayload, Next<Index0>>>,
+}
+
+impl DictEntry {
+    pub(super) fn new(
+        key_hash: u64,
+        key: Retained<DictPayload, Index0>,
+        value: Retained<DictPayload, Next<Index0>>,
+    ) -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self {
+            key_hash,
+            key: std::sync::Arc::new(key),
+            value: std::sync::Arc::new(value),
+        })
+    }
+
+    pub(super) fn with_value(
+        &self,
+        value: Retained<DictPayload, Next<Index0>>,
+    ) -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self {
+            key_hash: self.key_hash,
+            key: self.key.clone(),
+            value: std::sync::Arc::new(value),
+        })
+    }
+}
+
+impl Clone for DictStorage {
+    fn clone(&self) -> Self {
+        Self {
+            buckets: self.buckets.clone(),
+            len: self.len,
+        }
+    }
+}
+
+impl Default for DictStorage {
+    fn default() -> Self {
+        Self {
+            buckets: HashMap::new(),
+            len: 0,
+        }
+    }
 }
 
 impl DictPayload {
@@ -32,11 +73,15 @@ impl DictPayload {
             .collect()
     }
 
-    pub(crate) fn key(&self, key_hash: u64, index: usize) -> &Retained<Self, Index0> {
+    pub(crate) fn key(&self, key_hash: u64, index: usize) -> &Retained<DictPayload, Index0> {
         self.storage.buckets[&key_hash][index].key.as_ref()
     }
 
-    pub(crate) fn value(&self, key_hash: u64, index: usize) -> &Retained<Self, Next<Index0>> {
+    pub(crate) fn value(
+        &self,
+        key_hash: u64,
+        index: usize,
+    ) -> &Retained<DictPayload, Next<Index0>> {
         self.storage.buckets[&key_hash][index].value.as_ref()
     }
 
@@ -112,7 +157,7 @@ impl DictStorage {
         &self,
         key_hash: u64,
         index: Option<usize>,
-        entry: Rc<DictEntry>,
+        entry: std::sync::Arc<DictEntry>,
     ) -> Self {
         let mut bucket = self.buckets.get(&key_hash).cloned().unwrap_or_default();
         let len = match index {
@@ -155,7 +200,7 @@ impl DictStorage {
         (0..bucket.len()).find(|index| is_equal(*index))
     }
 
-    fn entries(&self) -> impl Iterator<Item = &Rc<DictEntry>> {
+    fn entries(&self) -> impl Iterator<Item = &std::sync::Arc<DictEntry>> {
         self.buckets.values().flat_map(Vector::iter)
     }
 }

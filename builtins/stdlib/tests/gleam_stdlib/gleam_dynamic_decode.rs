@@ -95,7 +95,7 @@ fn runs_official_gleam_dynamic_decode_primitives() {
         "gleam_dynamic_decode_primitives",
         DEPENDENCIES,
         hosts(),
-        &mut GleamStdlibRunState::from_seed([0; 32]),
+        || GleamStdlibRunState::from_seed([0; 32]),
     );
 }
 
@@ -105,18 +105,15 @@ fn runs_official_gleam_dynamic_decode_collections() {
         "gleam_dynamic_decode_collections",
         DEPENDENCIES,
         hosts(),
-        &mut GleamStdlibRunState::from_seed([0; 32]),
+        || GleamStdlibRunState::from_seed([0; 32]),
     );
 }
 
 #[test]
 fn runs_official_gleam_dynamic_decode_paths() {
-    run_hosted_fixture(
-        "gleam_dynamic_decode_paths",
-        DEPENDENCIES,
-        hosts(),
-        &mut GleamStdlibRunState::from_seed([0; 32]),
-    );
+    run_hosted_fixture("gleam_dynamic_decode_paths", DEPENDENCIES, hosts(), || {
+        GleamStdlibRunState::from_seed([0; 32])
+    });
 }
 
 #[test]
@@ -125,7 +122,7 @@ fn runs_official_gleam_dynamic_decode_combinators() {
         "gleam_dynamic_decode_combinators",
         DEPENDENCIES,
         hosts(),
-        &mut GleamStdlibRunState::from_seed([0; 32]),
+        || GleamStdlibRunState::from_seed([0; 32]),
     );
 }
 
@@ -135,6 +132,6 @@ fn runs_official_gleam_dynamic_decode_recursive_values() {
         "gleam_dynamic_decode_recursive",
         DEPENDENCIES,
         hosts(),
-        &mut GleamStdlibRunState::from_seed([0; 32]),
+        || GleamStdlibRunState::from_seed([0; 32]),
     );
 }

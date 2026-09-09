@@ -65,15 +65,68 @@ impl<Profile: HostProfile> HostedProject<Profile> {
 #[cfg(test)]
 mod tests {
     use super::{HostedProject, HostedProjectError, Project};
-    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder};
+    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
+    use crate::host::{
+        HostCall, HostCallCompletion, HostComponentProfile, HostFutureStore, HostProfile,
+        HostProvider, HostProviderModule, HostProviderSet,
+    };
+    use crate::work_fixture::WorkComponent;
     use crate::{
-        HostModule, HostProviderModule, HostProviderSet, HostRegistrationError, ProjectError,
-        StatelessHostProfile,
+        EchoOutput, EchoSink, HostModule, HostRegistrationError, ProjectError, StatelessHostProfile,
     };
     use camino::{Utf8Path, Utf8PathBuf};
+    use futures_util::FutureExt;
     use num_bigint::BigInt;
     use std::fs;
     use tempfile::{TempDir, tempdir};
+
+    struct Profile;
+    struct Provider;
+    impl HostProfile for Profile {
+        type RunState = ();
+        type ExternalStores = HostFutureStore;
+    }
+    impl crate::host::HostWorkProfile for Profile {
+        type Work = crate::work_fixture::WorkComponent;
+    }
+    impl HostComponentProfile<WorkComponent> for Profile {
+        fn component_stores(stores: &HostFutureStore) -> &HostFutureStore {
+            stores
+        }
+        fn component_state(state: &mut ()) -> &mut () {
+            state
+        }
+    }
+    impl HostProvider<Profile> for Provider {
+        type State = ();
+        fn project(state: &mut ()) -> &mut () {
+            state
+        }
+    }
+    fn scoped_providers() -> Result<HostProviderSet<Profile>, HostRegistrationError> {
+        fn adjust<'call>(
+            mut call: HostCall<'call, Profile, Provider, BigInt>,
+            value: BigInt,
+        ) -> Result<HostCallCompletion<'call, BigInt>, crate::HostCallError> {
+            let () = *call.state();
+            Ok(call.return_value(value + 1))
+        }
+        HostProviderSet::from_providers([HostProviderModule::new("application", "inventory_rules")
+            .expect("fixture module")
+            .with_scoped_function::<Provider, (BigInt,), BigInt, _>("adjust", adjust)
+            .expect("fixture function")])
+    }
+
+    #[derive(Default)]
+    struct SendEcho {
+        outputs: usize,
+    }
+
+    impl EchoSink for SendEcho {
+        fn emit(&mut self, _output: EchoOutput) {
+            self.outputs += 1;
+        }
+    }
 
     #[test]
     fn compiles_plain_project_import_closure() {
@@ -140,6 +193,50 @@ pub fn quantity() -> Int
     }
 
     #[test]
+    fn registers_scoped_providers_at_compile_without_changing_source_return_types() {
+        let project = project();
+        write_file(
+            &project,
+            "src/inventory_rules.gleam",
+            r#"
+@external(erlang, "host", "adjust")
+fn adjust(value: Int) -> Int {
+  value
+}
+
+pub fn quantity(value: Int) -> Int {
+  echo value as "input"
+  adjust(value)
+}
+"#,
+        );
+        let program =
+            HostedProject::new(project_root(&project), "inventory_rules", scoped_providers)
+                .compile()
+                .expect("hosted project compilation");
+        assert_eq!(program.root_package(), "application");
+        assert_eq!(program.root_module(), "inventory_rules");
+        let (bindings, quantity) = HostedModuleBuilder::new(program)
+            .expect("plan")
+            .function(FunctionDeclaration::<(BigInt,), BigInt>::new("quantity"))
+            .expect("binding");
+        let mut module = bindings.seal().expect("sealing");
+        let mut state = ();
+        assert!(std::ptr::eq(
+            <WorkComponent as HostProvider<Profile>>::project(&mut state),
+            &state,
+        ));
+        let mut echo = SendEcho::default();
+        with_execution_scope(async |guard| {
+            let mut scope = module.attach(guard, &mut state, &mut echo);
+            assert_eq!(scope.call(&quantity, (41.into(),)), Ok(42.into()));
+        })
+        .now_or_never()
+        .expect("ordinary result stays immediate");
+        assert_eq!(echo.outputs, 1);
+    }
+
+    #[test]
     fn preserves_project_error_identity() {
         let directory = tempdir().expect("temporary directory should be created");
         let root = project_root(&directory).join("missing");
@@ -184,6 +281,33 @@ pub fn quantity() -> Int
             HostedProjectError::Project(ProjectError::ConfigIo { path, .. })
                 if path == root.join("gleam.toml")
         ));
+    }
+
+    #[test]
+    fn scoped_registration_is_deferred_and_preserves_error_identity() {
+        fn invalid() -> Result<HostProviderSet<Profile>, HostRegistrationError> {
+            Err(HostRegistrationError::InvalidModuleName {
+                module: "invalid module".into(),
+            })
+        }
+        let directory = tempdir().expect("directory");
+        let root = project_root(&directory).join("missing");
+        let selected = HostedProject::new(root.clone(), "inventory_rules", invalid);
+        let error = selected
+            .compile()
+            .err()
+            .expect("registration precedes filesystem access");
+        assert!(matches!(error, HostedProjectError::HostRegistration(
+            HostRegistrationError::InvalidModuleName { module }
+        ) if module == "invalid module"));
+        let error = HostedProject::new(root.clone(), "inventory_rules", scoped_providers)
+            .compile()
+            .err()
+            .expect("read failure after successful registration");
+        assert!(
+            matches!(error, HostedProjectError::Project(ProjectError::ConfigIo { path, .. })
+            if path == root.join("gleam.toml"))
+        );
     }
 
     fn inventory_providers() -> Result<HostProviderSet<StatelessHostProfile>, HostRegistrationError>

@@ -85,4 +85,8 @@ pub fn main() {
 
   Nil
 }
+pub fn encode_number(value: Float) -> String {
+  json.float(value) |> json.to_string
+}
+
 // @geam:expect Nil

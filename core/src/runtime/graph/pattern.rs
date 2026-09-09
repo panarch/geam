@@ -9,11 +9,8 @@ use crate::plan::execution::graph::{
     BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, MatchIntBindingId,
     MatchPattern, MatchPatternBinding, MatchPatternListTail,
 };
-use crate::runtime::ExecutableRuntimePlan;
-use crate::runtime::error::ExecutionResult;
+use crate::runtime::InvariantError;
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedValue};
-use crate::runtime::state::RuntimeStateFor;
-use crate::runtime::{ExecutionError, InvariantError};
 
 pub(super) struct MatchBindings {
     values: Vec<EvaluatedValue>,
@@ -46,29 +43,35 @@ impl MatchBindings {
     }
 }
 
-pub(super) fn match_pattern<Plan: ExecutableRuntimePlan>(
+pub(super) fn match_pattern<Plan>(
     plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
+    lists: &mut crate::runtime::RuntimeListStorage,
     environment: &BlockEnvironment,
     pattern: &MatchPattern,
     subject: &EvaluatedValue,
-) -> ExecutionResult<Option<MatchBindings>> {
+) -> Result<Option<MatchBindings>, InvariantError>
+where
+    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+{
     let mut bindings = MatchBindings::new();
-    if matches(plan, state, environment, pattern, subject, &mut bindings)? {
+    if matches(plan, lists, environment, pattern, subject, &mut bindings)? {
         Ok(Some(bindings))
     } else {
         Ok(None)
     }
 }
 
-fn matches<Plan: ExecutableRuntimePlan>(
+fn matches<Plan>(
     plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
+    lists: &mut crate::runtime::RuntimeListStorage,
     environment: &BlockEnvironment,
     pattern: &MatchPattern,
     value: &EvaluatedValue,
     bindings: &mut MatchBindings,
-) -> ExecutionResult<bool> {
+) -> Result<bool, InvariantError>
+where
+    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+{
     match pattern {
         MatchPattern::Bind(binding) => {
             bindings.bind(binding, value.clone());
@@ -97,7 +100,7 @@ fn matches<Plan: ExecutableRuntimePlan>(
             }
             for (index, pattern) in patterns.iter().enumerate() {
                 let value = &values[index];
-                if !matches(plan, state, environment, pattern, value, bindings)? {
+                if !matches(plan, lists, environment, pattern, value, bindings)? {
                     return Ok(false);
                 }
             }
@@ -117,7 +120,7 @@ fn matches<Plan: ExecutableRuntimePlan>(
                 EvaluatedValue::List(value) => value,
                 _ => return Ok(false),
             };
-            let values = state.lists().evaluated_values(value);
+            let values = lists.evaluated_values(value);
             let element_count = pattern.elements().len();
             if pattern.tail().is_some() {
                 if values.len() < element_count {
@@ -128,12 +131,12 @@ fn matches<Plan: ExecutableRuntimePlan>(
             }
             for (index, pattern) in pattern.elements().iter().enumerate() {
                 let value = &values[index];
-                if !matches(plan, state, environment, pattern, value, bindings)? {
+                if !matches(plan, lists, environment, pattern, value, bindings)? {
                     return Ok(false);
                 }
             }
             if let Some(MatchPatternListTail::Bind(binding)) = pattern.tail() {
-                let tail = state.lists_mut().drop_first(value, element_count);
+                let tail = lists.drop_first(value, element_count);
                 bindings.bind(binding, EvaluatedValue::List(tail));
             }
             Ok(true)
@@ -159,17 +162,15 @@ fn matches<Plan: ExecutableRuntimePlan>(
                 let value = &value.fields()[index];
                 let expected = descriptor.fields()[index].type_();
                 if plan.value_type(expected) != value.value_type(plan.value_metadata()) {
-                    return Err(ExecutionError::Invariant(
-                        InvariantError::CustomFieldFamilyMismatch {
-                            custom_type: plan.custom_value_type(constructor.type_id()),
-                            constructor: descriptor.name().clone(),
-                            field_index: index,
-                            expected: plan.value_type(expected),
-                            actual: value.value_type(plan.value_metadata()),
-                        },
-                    ));
+                    return Err(InvariantError::CustomFieldFamilyMismatch {
+                        custom_type: plan.custom_value_type(constructor.type_id()),
+                        constructor: descriptor.name().clone(),
+                        field_index: index,
+                        expected: plan.value_type(expected),
+                        actual: value.value_type(plan.value_metadata()),
+                    });
                 }
-                if !matches(plan, state, environment, pattern, value, bindings)? {
+                if !matches(plan, lists, environment, pattern, value, bindings)? {
                     return Ok(false);
                 }
             }
@@ -195,7 +196,7 @@ fn matches<Plan: ExecutableRuntimePlan>(
             Ok(true)
         }
         MatchPattern::Alias { pattern, binding } => {
-            if !matches(plan, state, environment, pattern, value, bindings)? {
+            if !matches(plan, lists, environment, pattern, value, bindings)? {
                 return Ok(false);
             }
             bindings.bind(binding, value.clone());
@@ -453,14 +454,74 @@ mod tests {
     use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedValue};
     use crate::runtime::state::RuntimeState;
     use crate::runtime::state::list::{CustomListAllocation, ListValueId, ParameterListValueId};
-    use crate::runtime::{ExecutionError, InvariantError, Value};
+    use crate::runtime::{InvariantError, Value};
 
     #[test]
     fn recursive_matcher_executes_every_supported_pattern_family() {
         assert_eq!(
-            crate::runtime::run_src(include_str!(
-                "../../../tests/fixtures/execution/bindings/let_assert_pattern_families.gleam"
-            )),
+            crate::runtime::run_src(
+                r#"pub type Payload {
+  Payload(Int, BitArray, String, fn(Int) -> Int)
+  Empty
+}
+
+fn add(captured: Int) {
+  fn(value) { captured + value }
+}
+
+fn final_literal(value: Int) {
+  let assert 42 = value
+}
+
+pub fn main() {
+  let assert 1 as one = 1
+  let assert 1.5 = 1.5
+  let assert "ready" = "ready"
+  let assert Nil = Nil
+
+  let function = add(10)
+  let subject = #(
+    [1],
+    <<2>>,
+    Payload(3, <<4>>, "prefix", function),
+  )
+  let assert #(
+    [first],
+    <<second>>,
+    Payload(third, <<fourth>>, "pre" <> suffix, nested_function) as payload,
+  ) as whole = subject
+  let assert #(
+    [whole_first],
+    <<whole_second>>,
+    Payload(whole_third, _, _, whole_function),
+  ) = whole
+  let assert Payload(payload_number, _, _, payload_function) = payload
+
+  let captured = 5
+  let message = "unused"
+  let closure = fn(value) {
+    let assert #(captured_value, [item]) = #(captured, [value]) as message
+    captured_value + item
+  }
+
+  #(
+    first,
+    one,
+    second,
+    third,
+    fourth,
+    suffix,
+    nested_function(1),
+    whole_first + whole_second + whole_third + whole_function(1),
+    payload_number + payload_function(1),
+    closure(6),
+    final_literal(42),
+  )
+}
+
+// @geam:expect Tuple([Int(1), Int(1), Int(2), Int(3), Int(4), String("fix"), Int(11), Int(17), Int(14), Int(11), Int(42)])
+"#
+            ),
             Value::Tuple(vec![
                 Value::Int(1.into()),
                 Value::Int(1.into()),
@@ -480,9 +541,46 @@ mod tests {
     #[test]
     fn recursive_matcher_preserves_aliases_across_literal_and_prefix_patterns() {
         assert_eq!(
-            crate::runtime::run_src(include_str!(
-                "../../../tests/fixtures/execution/control_flow/case/pattern_alias_families.gleam"
-            )),
+            crate::runtime::run_src(
+                r#"pub fn main() {
+  let bool_literal = case True {
+    True as alias -> alias
+    False -> False
+  }
+
+  let bool_variable = case True {
+    value as alias -> value && alias
+  }
+
+  let string_variable = case "one" {
+    value as alias -> value <> alias
+  }
+
+  let string_literal = case "one" {
+    "one" as alias -> alias
+    _ -> ""
+  }
+
+  let float_literal = case 1.5 {
+    1.5 as alias -> alias +. 0.5
+    _ -> 0.0
+  }
+
+  let float_variable = case 1.5 {
+    value as alias -> value +. alias
+  }
+
+  bool_literal
+  && bool_variable
+  && string_variable == "oneone"
+  && string_literal == "one"
+  && float_literal == 2.0
+  && float_variable == 3.0
+}
+
+// @geam:expect Bool(true)
+"#
+            ),
             Value::Bool(true),
         );
     }
@@ -505,9 +603,15 @@ pub fn main() {
     #[test]
     fn recursive_matcher_exports_list_tails() {
         assert_eq!(
-            crate::runtime::run_src(include_str!(
-                "../../../tests/fixtures/execution/bindings/let_assert_list_destructuring.gleam"
-            )),
+            crate::runtime::run_src(
+                r#"pub fn main() {
+  let assert [first, ..rest] = [1, 2]
+  first == 1 && rest == [2]
+}
+
+// @geam:expect Bool(true)
+"#
+            ),
             Value::Bool(true),
         );
     }
@@ -638,9 +742,73 @@ pub fn main() {
     #[test]
     fn source_matcher_evaluates_every_size_operator_and_boundary() {
         assert_eq!(
-            crate::runtime::run_src(include_str!(
-                "../../../tests/fixtures/execution/control_flow/case/bit_array_pattern_integers.gleam"
-            )),
+            crate::runtime::run_src(
+                r#"const base_pattern_size = 8
+const pattern_size = base_pattern_size
+
+pub fn main() {
+  let outer_size = 12
+  let negative_size = -1
+  let zero_size = 0
+  let huge_size = 184467440737095516160
+
+  #(
+    case <<-2:size(12)>> {
+      <<value:signed-size(12)>> -> value
+      _ -> 0
+    },
+    case <<-2:size(12)>> {
+      <<value:unsigned-size(12)>> -> value
+      _ -> 0
+    },
+    case <<0x234:little-size(12)>> {
+      <<value:little-size(12)>> -> value
+      _ -> 0
+    },
+    case <<0x234:size(12)>> {
+      <<value:size(outer_size)>> -> value
+      _ -> 0
+    },
+    case <<12, 0x234:size(12)>> {
+      <<size, value:size(size)>> -> value
+      _ -> 0
+    },
+    case <<>> {
+      <<_:bits-size(negative_size)>> -> 1
+      _ -> 0
+    },
+    case <<>> {
+      <<_:bits-size(huge_size)>> -> 1
+      _ -> 0
+    },
+    case <<1>> {
+      <<_:bits-size(16)>> -> 1
+      _ -> 0
+    },
+    case <<1>> {
+      <<_:size(16)>> -> 1
+      _ -> 0
+    },
+    case <<>> {
+      <<value:size(zero_size)>> if value == 0 -> 1
+      _ -> 0
+    },
+    case <<1, 2, 3, 4, 5>> {
+      <<
+        one:size(pattern_size),
+        two:size(outer_size - 4),
+        three:size(outer_size * 2 / 3),
+        four:size(outer_size % 5 + 6),
+        five:size({ outer_size - 4 }),
+      >> -> one + two + three + four + five
+      _ -> 0
+    },
+  )
+}
+
+// @geam:expect Tuple([Int(-2), Int(4094), Int(564), Int(564), Int(564), Int(0), Int(0), Int(0), Int(0), Int(0), Int(15)])
+"#
+            ),
             Value::Tuple(vec![
                 Value::Int((-2).into()),
                 Value::Int(4094.into()),
@@ -785,7 +953,7 @@ pub fn main() {
 
         let bindings = match_pattern(
             &plan,
-            &mut state,
+            state.lists_mut(),
             &environment,
             pattern,
             &EvaluatedValue::String("prefix".into()),
@@ -808,7 +976,7 @@ pub fn main() {
 
         let bindings = match_pattern(
             &plan,
-            &mut state,
+            state.lists_mut(),
             &environment,
             pattern,
             &EvaluatedValue::Bool(true),
@@ -837,7 +1005,7 @@ pub fn main() {
 
         let error = exact_match_error(match_pattern(
             &plan,
-            &mut state,
+            state.lists_mut(),
             &environment,
             pattern,
             &subject,
@@ -845,13 +1013,13 @@ pub fn main() {
 
         assert_eq!(
             error,
-            ExecutionError::Invariant(InvariantError::CustomFieldFamilyMismatch {
+            InvariantError::CustomFieldFamilyMismatch {
                 custom_type: plan.custom_value_type(constructor.type_id()),
                 constructor: descriptor.name().clone(),
                 field_index: 0,
                 expected: ValueType::Int,
                 actual: ValueType::String,
-            },),
+            },
         );
     }
 
@@ -928,7 +1096,7 @@ pub fn main() {
         let mut state = RuntimeState::new(&mut echo);
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
 
-        let matched = match_pattern(plan, &mut state, &environment, pattern, &subject)
+        let matched = match_pattern(plan, state.lists_mut(), &environment, pattern, &subject)
             .expect("refutable mismatch should not be an execution error");
         assert!(matched.is_none());
     }
@@ -944,7 +1112,7 @@ pub fn main() {
 
         let matched = match_pattern(
             &plan,
-            &mut state,
+            state.lists_mut(),
             &environment,
             main_pattern(&plan),
             &EvaluatedValue::List(list.into()),
@@ -955,8 +1123,8 @@ pub fn main() {
     }
 
     fn exact_match_error(
-        result: Result<Option<super::MatchBindings>, ExecutionError>,
-    ) -> ExecutionError {
+        result: Result<Option<super::MatchBindings>, InvariantError>,
+    ) -> InvariantError {
         match result {
             Err(error) => error,
             Ok(_) => panic!("expected pattern matching to report an execution error"),
@@ -1015,14 +1183,20 @@ pub fn main() {
         let descriptor = plan.custom_constructor(constructor);
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
         assert_eq!(
-            exact_match_error(match_pattern(plan, state, &environment, pattern, &subject,)),
-            ExecutionError::Invariant(InvariantError::CustomFieldFamilyMismatch {
+            exact_match_error(match_pattern(
+                plan,
+                state.lists_mut(),
+                &environment,
+                pattern,
+                &subject,
+            )),
+            InvariantError::CustomFieldFamilyMismatch {
                 custom_type: plan.custom_value_type(constructor.type_id()),
                 constructor: descriptor.name().clone(),
                 field_index: 0,
                 expected: ValueType::Int,
                 actual: ValueType::String,
-            }),
+            },
         );
     }
 

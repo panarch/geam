@@ -156,7 +156,10 @@ pub(super) fn is_qualified_type_path(type_: &Type) -> bool {
 }
 
 pub(super) fn is_declared_provider_type(type_: &Type) -> syn::Result<bool> {
-    is_advanced_external(type_).map(|external| external | is_qualified_type_path(type_))
+    let Type::Path(TypePath { qself: None, path }) = type_ else {
+        return Ok(false);
+    };
+    Ok(is_advanced_external(type_)? || path.segments.len() > 1)
 }
 
 pub(super) fn is_advanced_external(type_: &Type) -> syn::Result<bool> {
@@ -176,4 +179,14 @@ pub(super) fn external_type<'external>(
     };
     let ident = path.get_ident()?;
     externals.iter().find(|external| &external.ident == ident)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_qualified_type_path;
+
+    #[test]
+    fn qualified_declared_types_exclude_non_path_syntax() {
+        assert!(!is_qualified_type_path(&syn::parse_quote!([u8; 4])));
+    }
 }

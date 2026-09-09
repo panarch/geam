@@ -22,5 +22,7 @@ rand.workspace = true
 unicode-segmentation.workspace = true
 
 [dev-dependencies]
+geam-builtin.workspace = true
 camino.workspace = true
 gleam-core.workspace = true
+tempfile.workspace = true

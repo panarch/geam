@@ -1,0 +1,174 @@
+error[E0277]: `Rc<BigInt>` cannot be sent between threads safely
+  --> tests/ui/async/non_send_payload.rs:9:1
+   |
+ 9 | / #[geam_macros::provider(
+10 | |     package = "non_send_payload",
+11 | |     modules = [native],
+12 | |     crate_path = geam_core,
+13 | | )]
+   | |__^ `Rc<BigInt>` cannot be sent between threads safely
+   |
+   = help: within `native::Value`, the trait `Send` is not implemented for `Rc<BigInt>`
+note: required because it appears within the type `native::Value`
+  --> tests/ui/async/non_send_payload.rs:21:12
+   |
+21 |     struct Value(Rc<BigInt>);
+   |            ^^^^^
+   = note: required for `lock_api::remutex::ReentrantMutex<parking_lot::raw_mutex::RawMutex, parking_lot::remutex::RawThreadId, native::Value>` to implement `Sync`
+   = note: 1 redundant requirement hidden
+   = note: required for `Arc<lock_api::remutex::ReentrantMutex<parking_lot::raw_mutex::RawMutex, parking_lot::remutex::RawThreadId, native::Value>>` to implement `Sync`
+note: required because it appears within the type `host::external::store::StoredExternalPayload<native::Value>`
+  --> $WORKSPACE/core/src/host/external/store.rs
+   |
+   | struct StoredExternalPayload<Payload> {
+   |        ^^^^^^^^^^^^^^^^^^^^^
+   = note: required for `Arc<host::external::store::StoredExternalPayload<native::Value>>` to implement `Send`
+   = note: required because it appears within the type `(u64, Arc<host::external::store::StoredExternalPayload<native::Value>>)`
+   = note: required for `hashbrown::raw::RawTable<(u64, Arc<host::external::store::StoredExternalPayload<native::Value>>)>` to implement `Send`
+note: required because it appears within the type `hashbrown::map::HashMap<u64, Arc<host::external::store::StoredExternalPayload<native::Value>>, RandomState>`
+  --> /rust/deps/hashbrown-0.16.1/src/map.rs:185:11
+note: required because it appears within the type `HashMap<u64, Arc<host::external::store::StoredExternalPayload<native::Value>>>`
+  --> $RUST/std/src/collections/hash/map.rs
+   = note: required for `std::sync::Mutex<HashMap<u64, Arc<host::external::store::StoredExternalPayload<native::Value>>>>` to implement `Sync`
+   = note: 1 redundant requirement hidden
+   = note: required for `Arc<std::sync::Mutex<HashMap<u64, Arc<host::external::store::StoredExternalPayload<native::Value>>>>>` to implement `Send`
+note: required because it appears within the type `HostExternalStore<native::Value>`
+  --> $WORKSPACE/core/src/host/external/store.rs
+   |
+   | pub struct HostExternalStore<Payload> {
+   |            ^^^^^^^^^^^^^^^^^
+note: required because it appears within the type `__GeamStores`
+  --> tests/ui/async/non_send_payload.rs:16:1
+   |
+16 | #[geam_macros::module(path = "non_send_payload/native", crate_path = geam_core)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: required because it appears within the type `Stores`
+  --> tests/ui/async/non_send_payload.rs:9:1
+   |
+ 9 | / #[geam_macros::provider(
+10 | |     package = "non_send_payload",
+11 | |     modules = [native],
+12 | |     crate_path = geam_core,
+13 | | )]
+   | |__^
+note: required by a bound in `geam_core::HostProviderComponent::Stores`
+  --> $WORKSPACE/core/src/host/component.rs
+   |
+   |     type Stores: Default + Send + 'static;
+   |                            ^^^^ required by this bound in `HostProviderComponent::Stores`
+   = note: this error originates in the attribute macro `geam_macros::provider` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: `Rc<BigInt>` cannot be sent between threads safely
+  --> tests/ui/async/non_send_payload.rs:21:12
+   |
+21 |     struct Value(Rc<BigInt>);
+   |            ^^^^^ `Rc<BigInt>` cannot be sent between threads safely
+   |
+   = help: within `native::Value`, the trait `Send` is not implemented for `Rc<BigInt>`
+note: required because it appears within the type `native::Value`
+  --> tests/ui/async/non_send_payload.rs:21:12
+   |
+21 |     struct Value(Rc<BigInt>);
+   |            ^^^^^
+note: required by a bound in `geam_core::HostExternalStorage::Payload`
+  --> $WORKSPACE/core/src/host/external.rs
+   |
+   |     type Payload: Send + 'static;
+   |                   ^^^^ required by this bound in `HostExternalStorage::Payload`
+
+error[E0277]: `Rc<BigInt>` cannot be sent between threads safely
+  --> tests/ui/async/non_send_payload.rs:47:27
+   |
+47 |     type ExternalStores = <Component as HostProviderComponent>::Stores;
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rc<BigInt>` cannot be sent between threads safely
+   |
+   = help: within `native::Value`, the trait `Send` is not implemented for `Rc<BigInt>`
+note: required because it appears within the type `native::Value`
+  --> tests/ui/async/non_send_payload.rs:21:12
+   |
+21 |     struct Value(Rc<BigInt>);
+   |            ^^^^^
+   = note: required for `lock_api::remutex::ReentrantMutex<parking_lot::raw_mutex::RawMutex, parking_lot::remutex::RawThreadId, native::Value>` to implement `Sync`
+   = note: 1 redundant requirement hidden
+   = note: required for `Arc<lock_api::remutex::ReentrantMutex<parking_lot::raw_mutex::RawMutex, parking_lot::remutex::RawThreadId, native::Value>>` to implement `Sync`
+note: required because it appears within the type `host::external::store::StoredExternalPayload<native::Value>`
+  --> $WORKSPACE/core/src/host/external/store.rs
+   |
+   | struct StoredExternalPayload<Payload> {
+   |        ^^^^^^^^^^^^^^^^^^^^^
+   = note: required for `Arc<host::external::store::StoredExternalPayload<native::Value>>` to implement `Send`
+   = note: required because it appears within the type `(u64, Arc<host::external::store::StoredExternalPayload<native::Value>>)`
+   = note: required for `hashbrown::raw::RawTable<(u64, Arc<host::external::store::StoredExternalPayload<native::Value>>)>` to implement `Send`
+note: required because it appears within the type `hashbrown::map::HashMap<u64, Arc<host::external::store::StoredExternalPayload<native::Value>>, RandomState>`
+  --> /rust/deps/hashbrown-0.16.1/src/map.rs:185:11
+note: required because it appears within the type `HashMap<u64, Arc<host::external::store::StoredExternalPayload<native::Value>>>`
+  --> $RUST/std/src/collections/hash/map.rs
+   = note: required for `std::sync::Mutex<HashMap<u64, Arc<host::external::store::StoredExternalPayload<native::Value>>>>` to implement `Sync`
+   = note: 1 redundant requirement hidden
+   = note: required for `Arc<std::sync::Mutex<HashMap<u64, Arc<host::external::store::StoredExternalPayload<native::Value>>>>>` to implement `Send`
+note: required because it appears within the type `HostExternalStore<native::Value>`
+  --> $WORKSPACE/core/src/host/external/store.rs
+   |
+   | pub struct HostExternalStore<Payload> {
+   |            ^^^^^^^^^^^^^^^^^
+note: required because it appears within the type `__GeamStores`
+  --> tests/ui/async/non_send_payload.rs:16:1
+   |
+16 | #[geam_macros::module(path = "non_send_payload/native", crate_path = geam_core)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: required because it appears within the type `Stores`
+  --> tests/ui/async/non_send_payload.rs:9:1
+   |
+ 9 | / #[geam_macros::provider(
+10 | |     package = "non_send_payload",
+11 | |     modules = [native],
+12 | |     crate_path = geam_core,
+13 | | )]
+   | |__^
+note: required by a bound in `geam_core::HostProfile::ExternalStores`
+  --> $WORKSPACE/core/src/host/profile.rs
+   |
+   |     type ExternalStores: Default + Send + 'static;
+   |                                    ^^^^ required by this bound in `HostProfile::ExternalStores`
+   = note: this error originates in the attribute macro `geam_macros::module` which comes from the expansion of the attribute macro `geam_macros::provider` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: `Rc<BigInt>` cannot be sent between threads safely
+  --> tests/ui/async/non_send_payload.rs:65:14
+   |
+65 |     let _ = <Component as HostProviderComponentRegistration<Profile>>::providers();
+   |              ^^^^^^^^^ `Rc<BigInt>` cannot be sent between threads safely
+   |
+   = help: within `native::Value`, the trait `Send` is not implemented for `Rc<BigInt>`
+help: the trait `HostProviderComponentRegistration<Profile>` is implemented for `Component`
+  --> tests/ui/async/non_send_payload.rs:9:1
+   |
+ 9 | / #[geam_macros::provider(
+10 | |     package = "non_send_payload",
+11 | |     modules = [native],
+12 | |     crate_path = geam_core,
+13 | | )]
+   | |__^
+note: required because it appears within the type `native::Value`
+  --> tests/ui/async/non_send_payload.rs:21:12
+   |
+21 |     struct Value(Rc<BigInt>);
+   |            ^^^^^
+note: required for `__GeamModule` to implement `geam_core::__macro_support::ProviderModuleRegistration<Profile>`
+  --> tests/ui/async/non_send_payload.rs:16:70
+   |
+16 |   #[geam_macros::module(path = "non_send_payload/native", crate_path = geam_core)]
+   |  _---------------------------------------------------------------------^----------
+   | | |
+   | | unsatisfied trait bound introduced here
+17 | | mod native {
+   | |_____^^^^^^
+note: required for `Component` to implement `HostProviderComponentRegistration<Profile>`
+  --> tests/ui/async/non_send_payload.rs:9:1
+   |
+ 9 | / #[geam_macros::provider(
+10 | |     package = "non_send_payload",
+11 | |     modules = [native],
+12 | |     crate_path = geam_core,
+13 | | )]
+   | |__^
+   = note: this error originates in the attribute macro `geam_macros::provider` (in Nightly builds, run with -Z macro-backtrace for more info)

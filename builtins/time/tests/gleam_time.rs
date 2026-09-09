@@ -20,6 +20,10 @@ mod effects;
 mod surface;
 #[path = "gleam_time/timestamp.rs"]
 mod timestamp;
+#[path = "gleam_time/transfer.rs"]
+mod transfer;
+#[path = "../../../tests/support/transfer_fixture.rs"]
+mod transfer_fixture;
 #[path = "support/upstream_surface.rs"]
 mod upstream_surface;
 #[path = "support/workspace_dependencies.rs"]
@@ -45,10 +49,12 @@ const FULL_DEPENDENCY_ORDER: &[(&str, &str)] = &[
     ("geam_time_test", "gleam_time_effects"),
 ];
 
+#[derive(Clone)]
 struct ScriptedSource {
     events: VecDeque<ScriptedEvent>,
 }
 
+#[derive(Clone)]
 enum ScriptedEvent {
     SystemTime(SystemTime),
     LocalOffset(i32),
@@ -106,21 +112,29 @@ fn assert_full_project_graph() {
 }
 
 fn run_fixture(root_module: &str, source: ScriptedSource) -> Value {
+    let mut transferred = transfer::fixture(root_module);
+    let mut transfer_state = transfer::RunState {
+        stdlib: GleamStdlibRunState::from_seed([0; 32]),
+        source: source.clone(),
+        work: (),
+    };
     let mut state = GleamTimeRunState::new(GleamStdlibRunState::from_seed([0; 32]), source);
-    run_fixture_with_state(root_module, &mut state)
-}
-
-fn run_fixture_with_state(
-    root_module: &str,
-    state: &mut GleamTimeRunState<ScriptedSource>,
-) -> Value {
     let expected = fixture_expected(root_module);
     let execution = fixture_execution(root_module);
+    let mut echo = Vec::new();
     let actual = execution
-        .run_main(state, &mut Vec::new())
+        .run_main(&mut state, &mut echo)
         .expect("official Time fixture should run");
 
     assert_eq!(actual.inspect().to_string(), expected);
+    let mut transfer_echo = transfer_fixture::ObservedEcho::default();
+    transferred
+        .run(&mut transfer_state, &mut transfer_echo)
+        .expect("official transferable Time fixture");
+    transfer_echo.assert_result(&actual, &echo);
+    assert!(state.source().events.is_empty());
+    assert!(transfer_state.source.events.is_empty());
+    assert!(transfer_state.stdlib.io_outputs().is_empty());
     actual
 }
 

@@ -1,12 +1,14 @@
 use super::{
     Callback, ProviderCallbackCodec, ProviderCallbackContext, ProviderExternalCodec,
-    ProviderExternalItem, ProviderStoredInput, ProviderStoredOutput, ProviderStoredOwner,
-    ProviderValueContext, Stored, Value,
+    ProviderExternalView, ProviderFutureCallbackContext, ProviderOwnedStoredInput,
+    ProviderStoredInput, ProviderStoredOutput, ProviderStoredOwner, ProviderValueContext,
+    ProviderValueForms, Stored, Value,
 };
-use crate::provider::advanced::{ProviderDynamicInput, ProviderDynamicValue, StoredDynamic};
-use crate::{
-    HostCall, HostCallError, HostListType, HostProfile, HostProvider, HostStoredType, HostType,
+use crate::host::{HostFutureContext, HostFutureError, HostTypeListEnd, HostTypeSequence};
+use crate::provider::advanced::{
+    ProviderDynamicInput, ProviderDynamicValue, Retained, StoredDynamic,
 };
+use crate::{HostCall, HostCallError, HostListType, HostProfile, HostProvider, HostType};
 use ecow::EcoString;
 use std::marker::PhantomData;
 
@@ -21,7 +23,7 @@ pub struct Call<State, Context = ProviderCallPlaceholder> {
 }
 
 /// A provider failure that stops the active source execution.
-pub type HostResult<Value> = Result<Value, HostCallError>;
+pub type HostResult<Value, Error = HostCallError> = Result<Value, Error>;
 
 #[doc(hidden)]
 pub struct ProviderCallPlaceholder;
@@ -31,6 +33,7 @@ pub struct ProviderSharedCall<'state, State> {
     state: &'state State,
 }
 
+/// Active immediate call context for a transferable provider composition.
 #[doc(hidden)]
 pub struct ProviderActiveCall<'call, Profile, Provider, Return>
 where
@@ -39,6 +42,16 @@ where
     Return: HostType,
 {
     call: HostCall<'call, Profile, Provider, Return>,
+}
+
+/// Request capability supplied to a macro-authored async provider function.
+#[doc(hidden)]
+pub struct ProviderFutureCall<'work, Profile, Provider>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+{
+    call: HostFutureContext<'work, Profile, Provider, HostTypeListEnd>,
 }
 
 impl<'state, State> Call<State, ProviderSharedCall<'state, State>> {
@@ -70,170 +83,150 @@ where
         self.context.call.state()
     }
 
-    /// Compares two generic values with Gleam source equality semantics.
     pub fn equal<Type, Host>(
         &self,
-        left: &Value<Type, ProviderValueContext<'call, Host>>,
-        right: &Value<Type, ProviderValueContext<'call, Host>>,
+        left: &Value<Type, crate::provider::ProviderValueContext<Host>>,
+        right: &Value<Type, crate::provider::ProviderValueContext<Host>>,
     ) -> bool
     where
         Host: HostType,
-        Host::Value<'call>: Clone,
     {
-        self.context.call.equal::<Host>(left.host(), right.host())
+        self.context
+            .call
+            .stored_equal(left.stored(), right.stored())
     }
 
-    /// Hashes a generic call-scoped value consistently with source equality.
-    ///
-    /// The result is an execution-local lookup key, not a stable serialized
-    /// value.
     pub fn source_hash<Type, Host>(
         &self,
-        value: &Value<Type, ProviderValueContext<'call, Host>>,
+        value: &Value<Type, crate::provider::ProviderValueContext<Host>>,
     ) -> u64
     where
         Host: HostType,
-        Host::Value<'call>: Clone,
     {
-        self.context.call.source_hash::<Host>(value.host())
+        self.context.call.stored_source_hash(value.stored())
     }
 
-    /// Returns the canonical source-facing inspection of a generic value.
     pub fn inspect<Type, Host>(
         &self,
-        value: &Value<Type, ProviderValueContext<'call, Host>>,
+        value: &Value<Type, crate::provider::ProviderValueContext<Host>>,
     ) -> EcoString
     where
         Host: HostType,
-        Host::Value<'call>: Clone,
     {
-        self.context.call.inspect::<Host>(value.host())
+        self.context.call.stored_inspect(value.stored())
     }
 
-    /// Returns the length of an opaque generic List without decoding an item.
     pub fn list_len<ListType, ItemHost>(
         &self,
-        value: &Value<ListType, ProviderValueContext<'call, HostListType<ItemHost>>>,
+        value: &Value<ListType, crate::provider::ProviderValueContext<HostListType<ItemHost>>>,
     ) -> usize
     where
         ItemHost: HostType,
     {
-        self.context.call.list_len(value.host())
+        self.context.call.stored_list_len(value.stored())
     }
 
-    /// Reads one opaque generic List item as a call-scoped generic value.
     pub fn list_get<ListType, Item, ItemHost>(
         &mut self,
-        value: &Value<ListType, ProviderValueContext<'call, HostListType<ItemHost>>>,
+        value: &Value<ListType, crate::provider::ProviderValueContext<HostListType<ItemHost>>>,
         index: usize,
-    ) -> Option<Value<Item, ProviderValueContext<'call, ItemHost>>>
+    ) -> Option<Value<Item, crate::provider::ProviderValueContext<ItemHost>>>
     where
         ItemHost: HostType,
     {
         self.context
             .call
-            .list_item(value.host(), index)
-            .map(Value::from_host)
+            .stored_list_item(value.stored(), index)
+            .map(Value::from_stored)
     }
 
-    /// Retains one generic source value for the generated external payload
-    /// that owns the returned field.
+    /// Retains one transferable generic value for its generated payload.
     pub fn store<Type, Host, Owner, Index>(
         &mut self,
-        value: Value<Type, ProviderValueContext<'call, Host>>,
-    ) -> Stored<Type, ProviderStoredOutput<'call, Owner, Index, Host>>
+        value: Value<Type, ProviderValueContext<Host>>,
+    ) -> Stored<Type, ProviderStoredOutput<Owner, Index, Host>>
     where
         Host: HostType,
         Owner: ProviderStoredOwner,
     {
-        Stored::from_output(
-            self.context
-                .call
-                .provider_store::<HostStoredType<Index>, Host>(value.into_host()),
-        )
+        Stored::from_output(Retained::from_runtime_value(value.into_stored()))
     }
 
-    /// Restores one generic value selected from the active external input.
+    /// Restores one generic value selected from a transferable external input.
     pub fn restore<Type, Host, Owner, Index>(
         &mut self,
         value: Stored<Type, ProviderStoredInput<'_, Owner, Index, Host>>,
-    ) -> Value<Type, ProviderValueContext<'call, Host>>
+    ) -> Value<Type, ProviderValueContext<Host>>
     where
         Host: HostType,
         Owner: ProviderStoredOwner,
     {
-        Value::from_host(
-            self.context
-                .call
-                .provider_restore::<Host, HostStoredType<Index>>(value.host()),
-        )
+        Value::from_stored(value.retained().stored().clone_retained())
     }
 
-    /// Reads the payload of a statically known external source value.
-    ///
-    /// This advanced bridge preserves the original external lease. It is used
-    /// when a retained generic field has already fixed its source type to one
-    /// generated external declaration.
+    /// Reads the payload of a statically known transferable external value.
     #[doc(hidden)]
     pub fn external_payload<Type>(
-        &self,
-        value: Value<Type, ProviderValueContext<'call, Type::Host>>,
-    ) -> ProviderExternalItem<Type>
+        &mut self,
+        value: Value<Type, ProviderValueContext<Type::Host>>,
+    ) -> ProviderExternalView<Type::Output>
     where
-        Type: ProviderExternalCodec<Profile>,
+        Type: ProviderValueForms,
+        Type::Output: ProviderExternalCodec<Profile>,
     {
-        Type::input(&self.context.call, value.into_host())
+        let value = value.into_host(&mut self.context.call);
+        Type::Output::immediate_input(&self.context.call, value)
     }
 
-    /// Retains one call-scoped generic value with its exact specialized type.
+    /// Retains one transferable value with its exact specialized type.
     pub fn store_dynamic<Value, Owner>(&mut self, value: Value) -> StoredDynamic<Owner>
     where
         Value: ProviderDynamicValue<'call, Profile, Provider, Return>,
         Owner: ProviderStoredOwner,
     {
-        let value = value.into_host(&mut self.context.call);
-        StoredDynamic::new(
-            self.context
-                .call
-                .provider_store_dynamic::<Value::Host>(value),
-        )
+        value.into_stored::<Owner>(&mut self.context.call)
     }
 
-    /// Restores an existential value only when its exact specialized type
-    /// matches the requested generated input codec.
+    /// Restores an existential transferable value only at its exact type.
     pub fn restore_dynamic<Type, Owner>(
         &mut self,
         value: &StoredDynamic<Owner>,
-    ) -> Option<Type::View<'call>>
+    ) -> Option<Type::View>
     where
         Type: ProviderDynamicInput<Profile, Provider, Return>,
         Owner: ProviderStoredOwner,
     {
+        if !self
+            .context
+            .call
+            .stored_has_type::<Type::Host>(value.stored())
+        {
+            return None;
+        }
         let value = self
             .context
             .call
-            .provider_restore_dynamic::<Type::Host>(value.host())?;
+            .restore_value::<Type::Host>(value.stored());
         Some(Type::from_host(&mut self.context.call, value))
     }
 
-    /// Restores an existential value with the exact specialization of an
-    /// existing call-scoped generic value.
+    /// Restores an existential value with a transferable type witness.
     pub fn restore_dynamic_value<Type, Host, Owner>(
         &mut self,
         value: &StoredDynamic<Owner>,
-        _type_witness: &Value<Type, ProviderValueContext<'call, Host>>,
-    ) -> Option<Value<Type, ProviderValueContext<'call, Host>>>
+        _type_witness: &Value<Type, ProviderValueContext<Host>>,
+    ) -> Option<Value<Type, ProviderValueContext<Host>>>
     where
         Host: HostType,
         Owner: ProviderStoredOwner,
     {
         self.context
             .call
-            .provider_restore_dynamic::<Host>(value.host())
-            .map(Value::from_host)
+            .stored_has_type::<Host>(value.stored())
+            .then(|| Value::from_stored(value.stored().clone_retained()))
     }
 
-    /// Invokes one typed Gleam callback within this active provider call.
+    /// Invokes one typed Gleam callback during an immediate transferable call.
     pub fn invoke<Signature, Codec>(
         &mut self,
         callback: Callback<
@@ -241,9 +234,9 @@ where
             ProviderCallbackContext<'call, Profile, Provider, Return, Codec>,
         >,
         arguments: Codec::Arguments,
-    ) -> HostResult<Codec::Returned>
+    ) -> Result<Codec::Returned, crate::HostCallError>
     where
-        Codec: ProviderCallbackCodec<'call, Profile, Provider, Return>,
+        Codec: ProviderCallbackCodec<Profile, Provider, Return>,
     {
         callback.invoke(&mut self.context.call, arguments)
     }
@@ -262,6 +255,93 @@ where
     }
 }
 
+impl<'work, Profile, Provider> Call<Provider::State, ProviderFutureCall<'work, Profile, Provider>>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+{
+    /// Retains one owned generic value for an external payload returned after
+    /// this async provider call completes.
+    pub fn store<Type, Host, Owner, Index>(
+        &mut self,
+        value: Value<Type, ProviderValueContext<Host>>,
+    ) -> Stored<Type, ProviderStoredOutput<Owner, Index, Host>>
+    where
+        Host: HostType,
+        Owner: ProviderStoredOwner,
+    {
+        Stored::from_output(Retained::from_runtime_value(value.into_stored()))
+    }
+
+    /// Restores one retained generic value owned by this async invocation.
+    pub fn restore<Type, Host, Owner, Index>(
+        &mut self,
+        value: Stored<Type, ProviderOwnedStoredInput<Owner, Index, Host>>,
+    ) -> Value<Type, ProviderValueContext<Host>>
+    where
+        Host: HostType,
+        Owner: ProviderStoredOwner,
+    {
+        Value::from_stored(value.into_async_stored().stored().clone_retained())
+    }
+
+    /// Runs one bounded operation against the provider's original execution state.
+    pub async fn with_state<Operation, Output>(
+        &mut self,
+        operation: Operation,
+    ) -> Result<Output, HostFutureError>
+    where
+        Profile::RunState: Send,
+        Operation: FnOnce(&mut Provider::State) -> Output + Send + 'static,
+        Output: Send + 'static,
+    {
+        self.context.call.with_state(operation).await
+    }
+
+    /// Invokes a retained callback on its original execution, without implicitly driving its result.
+    pub async fn invoke<Signature, Codec>(
+        &mut self,
+        callback: &Callback<Signature, ProviderFutureCallbackContext<Profile, Provider, Codec>>,
+        arguments: Codec::Arguments,
+    ) -> Result<Codec::Returned, HostFutureError>
+    where
+        Profile::RunState: Send,
+        Profile::ExternalStores: Send,
+        Codec: ProviderCallbackCodec<Profile, Provider, ()> + 'static,
+        Codec::Arguments: Send + 'static,
+        Codec::Returned: Send + 'static,
+    {
+        callback.invoke_future(&self.context.call, arguments).await
+    }
+
+    /// Explicitly observes a Future returned by Gleam, sharing its original work.
+    pub async fn observe<Value, Host, Output>(
+        &mut self,
+        work: &super::Future<
+            Value,
+            super::ProviderFutureValueContext<Profile, Provider, Host, Output>,
+        >,
+    ) -> Result<Output, HostFutureError>
+    where
+        Host: HostType,
+        Output: Send + 'static,
+    {
+        work.observe(&self.context.call).await
+    }
+
+    #[doc(hidden)]
+    pub fn from_future_context<Constructions: HostTypeSequence>(
+        call: HostFutureContext<'work, Profile, Provider, Constructions>,
+    ) -> Self {
+        Self {
+            context: ProviderFutureCall {
+                call: call.without_constructions(),
+            },
+            state: PhantomData,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Call, HostResult};
@@ -270,7 +350,7 @@ mod tests {
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
         HostCallable, HostFunctionToken, HostScopedValue, HostTypeList, HostTypeListEnd,
-        HostTypeParameter, HostValue, HostValueFamily, HostValueToken,
+        HostTypeParameter,
     };
     use crate::provider::{
         Callback, ProviderCallbackCodec, ProviderCallbackContext, ProviderConstructions,
@@ -291,14 +371,14 @@ mod tests {
 
     struct IntCallbackCodec;
 
-    impl<'call> ProviderCallbackCodec<'call, TestHostProfile, Provider, BigInt> for IntCallbackCodec {
+    impl ProviderCallbackCodec<TestHostProfile, Provider, BigInt> for IntCallbackCodec {
         type HostArguments = HostTypeList<BigInt, HostTypeListEnd>;
         type HostReturn = BigInt;
         type Arguments = (BigInt,);
         type Returned = BigInt;
         type Requirements = ProviderNoConstructions;
 
-        fn into_host_arguments(
+        fn into_host_arguments<'call>(
             arguments: Self::Arguments,
             _call: &mut HostCall<'call, TestHostProfile, Provider, BigInt>,
             _constructions: &ProviderConstructions<'call, Self::Requirements>,
@@ -306,7 +386,7 @@ mod tests {
             (arguments.0, ())
         }
 
-        fn from_host_return(
+        fn from_host_return<'call>(
             value: <Self::HostReturn as crate::HostType>::Value<'call>,
             _call: &mut HostCall<'call, TestHostProfile, Provider, BigInt>,
         ) -> Self::Returned {
@@ -364,18 +444,22 @@ mod tests {
         let mut state = TestRunState::default();
         let mut runtime =
             TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
-        let host = HostValue::<Parameter>::new(HostValueToken {
-            family: HostValueFamily::String,
-            index: 2,
-        });
-        let left = Value::<Parameter, ProviderValueContext<'_, Parameter>>::from_host(host);
-        let right = Value::<Parameter, ProviderValueContext<'_, Parameter>>::from_host(host);
+        let left = Value::<Parameter, ProviderValueContext<Parameter>>::from_stored(
+            crate::runtime::StoredRuntimeValue::test_int(7.into()),
+        );
+        let same = Value::<Parameter, ProviderValueContext<Parameter>>::from_stored(
+            crate::runtime::StoredRuntimeValue::test_int(7.into()),
+        );
+        let different = Value::<Parameter, ProviderValueContext<Parameter>>::from_stored(
+            crate::runtime::StoredRuntimeValue::test_int(8.into()),
+        );
         let host_call = HostCall::<TestHostProfile, Provider, bool>::new(&mut runtime);
         let call = Call::from_host_call(host_call);
 
-        assert!(!call.equal(&left, &right));
-        assert_eq!(call.source_hash(&left), 17);
-        assert_eq!(call.inspect(&left), "inspected");
+        assert!(call.equal(&left, &same));
+        assert!(!call.equal(&left, &different));
+        assert_eq!(call.source_hash(&left), call.source_hash(&same));
+        assert_eq!(call.inspect(&left), "7");
     }
 
     #[test]

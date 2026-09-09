@@ -101,6 +101,17 @@ pub(crate) fn from_token<'call, Type: HostType, Profile: crate::host::HostProfil
     <Type as private::Abi>::from_token(runtime, token)
 }
 
+pub(crate) fn from_runtime_token<'call, Type, Runtime>(
+    runtime: &Runtime,
+    token: crate::host::HostValueToken,
+) -> Type::Value<'call>
+where
+    Type: HostType,
+    Runtime: crate::host::HostTokenRuntime + ?Sized,
+{
+    <Type as private::Abi>::from_token(runtime, token)
+}
+
 pub(crate) fn into_scoped_values<Types: HostTypeSequence>(
     values: Types::Values<'_>,
     output: &mut Vec<HostScopedValue>,
@@ -447,8 +458,8 @@ mod private {
         fn into_scoped(value: <Self as super::HostType>::Value<'_>) -> super::HostScopedValue
         where
             Self: super::HostType;
-        fn from_token<'call, Profile: crate::host::HostProfile>(
-            runtime: &dyn crate::host::HostCallRuntime<Profile>,
+        fn from_token<'call, Runtime: crate::host::HostTokenRuntime + ?Sized>(
+            runtime: &Runtime,
             token: crate::host::HostValueToken,
         ) -> <Self as super::HostType>::Value<'call>
         where
@@ -467,8 +478,8 @@ mod private {
             output: &mut Vec<super::HostScopedValue>,
         ) where
             Self: super::HostTypeSequence;
-        fn from_tokens<'call, Profile: crate::host::HostProfile>(
-            runtime: &dyn crate::host::HostCallRuntime<Profile>,
+        fn from_tokens<'call, Runtime: crate::host::HostTokenRuntime + ?Sized>(
+            runtime: &Runtime,
             tokens: &[crate::host::HostValueToken],
             index: &mut usize,
         ) -> <Self as super::HostTypeSequence>::Values<'call>

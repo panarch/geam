@@ -14,6 +14,10 @@ mod encode;
 mod error;
 #[path = "gleam_json/surface.rs"]
 mod surface;
+#[path = "gleam_json/transfer.rs"]
+mod transfer;
+#[path = "../../../tests/support/transfer_fixture.rs"]
+mod transfer_fixture;
 #[path = "support/upstream_surface.rs"]
 mod upstream_surface;
 #[path = "support/workspace_dependencies.rs"]
@@ -62,14 +66,27 @@ fn assert_full_project_graph() {
 fn run_fixture(root_module: &str) -> Value {
     let expected = fixture_expected(root_module);
     let execution = fixture_execution(root_module);
+    let mut echo = Vec::new();
     let actual = execution
         .run_main(
             &mut GleamJsonRunState::new(GleamStdlibRunState::from_seed([0; 32])),
-            &mut Vec::new(),
+            &mut echo,
         )
         .expect("official JSON fixture should run");
 
     assert_eq!(actual.inspect().to_string(), expected);
+    let mut transferred = transfer::fixture(root_module);
+    let mut state = transfer::RunState {
+        stdlib: GleamStdlibRunState::from_seed([0; 32]),
+        json: (),
+        work: (),
+    };
+    let mut transfer_echo = transfer_fixture::ObservedEcho::default();
+    transferred
+        .run(&mut state, &mut transfer_echo)
+        .expect("official transferable JSON fixture");
+    transfer_echo.assert_result(&actual, &echo);
+    assert!(state.stdlib.io_outputs().is_empty());
     actual
 }
 
@@ -89,8 +106,30 @@ fn run_fixture_repeated(root_module: &str) {
         .run_main(&mut second_state, &mut Vec::new())
         .expect("official JSON fixture should run with an independent state");
 
-    for actual in [first, repeated, independent] {
+    let mut transferred = transfer::fixture(root_module);
+    let mut transfer_first = transfer::RunState {
+        stdlib: GleamStdlibRunState::from_seed([1; 32]),
+        json: (),
+        work: (),
+    };
+    let mut transfer_independent = transfer::RunState {
+        stdlib: GleamStdlibRunState::from_seed([2; 32]),
+        json: (),
+        work: (),
+    };
+    for (index, actual) in [first, repeated, independent].into_iter().enumerate() {
         assert_eq!(actual.inspect().to_string(), expected);
+        let state = if index == 2 {
+            &mut transfer_independent
+        } else {
+            &mut transfer_first
+        };
+        let mut echo = transfer_fixture::ObservedEcho::default();
+        transferred
+            .run(state, &mut echo)
+            .expect("repeated transferable JSON fixture");
+        echo.assert_result(&actual, &[]);
+        assert!(state.stdlib.io_outputs().is_empty());
     }
 }
 

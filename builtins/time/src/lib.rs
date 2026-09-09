@@ -20,7 +20,7 @@ use std::marker::PhantomData;
 use std::time::SystemTime;
 
 /// A caller-owned source for official Gleam wall-clock operations.
-pub trait TimeSource: 'static {
+pub trait TimeSource: Send + 'static {
     /// Returns the current wall-clock time.
     fn system_time(&mut self) -> Result<SystemTime, HostFailure>;
 
@@ -29,11 +29,21 @@ pub trait TimeSource: 'static {
 }
 
 /// A host profile that composes the official Gleam Time and standard-library components.
-pub trait GleamTimeHostProfile:
-    GleamStdlibHostProfile + HostComponentProfile<Component<Self::Source>>
-{
+pub trait GleamTimeHostProfile: GleamStdlibHostProfile {
     /// The concrete caller-owned wall-clock source.
     type Source: TimeSource;
+}
+
+/// The Time capability and local component projection used together.
+#[doc(hidden)]
+pub trait GleamTimeProviderProfile:
+    GleamTimeHostProfile + HostComponentProfile<Component<Self::Source>>
+{
+}
+
+impl<Profile> GleamTimeProviderProfile for Profile where
+    Profile: GleamTimeHostProfile + HostComponentProfile<Component<Profile::Source>>
+{
 }
 
 /// The statically composed provider component for the official Gleam Time package.
@@ -151,14 +161,14 @@ where
 /// Registers the Rust providers for the official Gleam Time package.
 pub fn host_providers<Profile>() -> Result<Vec<HostProviderModule<Profile>>, HostRegistrationError>
 where
-    Profile: GleamTimeHostProfile,
+    Profile: GleamTimeProviderProfile,
 {
     <Component<Profile::Source> as HostProviderComponentRegistration<Profile>>::providers()
 }
 
 impl<Profile, Source> HostProviderComponentRegistration<Profile> for Component<Source>
 where
-    Profile: GleamTimeHostProfile<Source = Source>,
+    Profile: GleamTimeProviderProfile<Source = Source>,
     Source: TimeSource,
 {
     fn providers() -> Result<Vec<HostProviderModule<Profile>>, HostRegistrationError> {

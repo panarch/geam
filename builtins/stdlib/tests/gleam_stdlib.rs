@@ -1,6 +1,6 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use geam_core::{
-    ExecutionPlan, HostProfile, HostProviderSet, HostedExecution, TypedProgram, Value,
+    ExecutionPlan, HostProviderSet, HostedExecution, TypedProgram, Value,
     compile_typed_host_project, compile_typed_project, plan_host_program, plan_program, run_main,
 };
 
@@ -42,6 +42,12 @@ mod gleam_string;
 mod gleam_string_tree;
 #[path = "gleam_stdlib/gleam_uri.rs"]
 mod gleam_uri;
+#[path = "gleam_stdlib/transfer.rs"]
+mod transfer;
+#[path = "../../../tests/support/transfer_fixture.rs"]
+mod transfer_fixture;
+#[path = "../../../tests/support/stdlib_transfer.rs"]
+mod transfer_support;
 #[path = "support/upstream_surface.rs"]
 mod upstream_surface;
 #[path = "support/workspace_dependencies.rs"]
@@ -88,18 +94,26 @@ fn run_fixture(root_module: &str, dependency_modules: &[&str]) -> Value {
     );
 
     let plan = ExecutionPlan::from_module_plan(module_plan);
-    let actual = run_main(&plan, &mut Vec::new()).expect("stdlib fixture should run");
+    let mut echo = Vec::new();
+    let actual = run_main(&plan, &mut echo).expect("stdlib fixture should run");
 
     assert_eq!(actual.inspect().to_string(), expected);
+
+    transfer::assert_fixture(
+        root_module,
+        geam_stdlib::GleamStdlibRunState::from_seed([0; 32]),
+        &actual,
+        &echo,
+    );
 
     actual
 }
 
-fn run_hosted_fixture<Profile: HostProfile>(
+fn run_hosted_fixture(
     root_module: &str,
     dependency_modules: &[&str],
-    hosts: HostProviderSet<Profile>,
-    state: &mut Profile::RunState,
+    hosts: HostProviderSet<geam_stdlib::GleamStdlibProfile>,
+    fresh_state: impl Fn() -> geam_stdlib::GleamStdlibRunState,
 ) -> Value {
     let root_path = project_root()
         .join("src")
@@ -131,11 +145,14 @@ fn run_hosted_fixture<Profile: HostProfile>(
 
     let execution = HostedExecution::try_from_module_plan(module_plan)
         .expect("hosted stdlib fixture should seal");
+    let mut echo = Vec::new();
     let actual = execution
-        .run_main(state, &mut Vec::new())
+        .run_main(&mut fresh_state(), &mut echo)
         .expect("hosted stdlib fixture should run");
 
     assert_eq!(actual.inspect().to_string(), expected);
+
+    transfer::assert_fixture(root_module, fresh_state(), &actual, &echo);
 
     actual
 }

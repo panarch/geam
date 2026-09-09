@@ -17,9 +17,9 @@ pub(crate) use body::{
 };
 pub(crate) use id::{
     BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, ExternalListFunctionId,
-    FloatListFunctionId, FunctionListFunctionId, IntListFunctionId, ListFunctionId,
-    ListListFunctionId, NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId,
-    ProfiledListFunctionId, RuntimeListFunctionId, StringListFunctionId, TupleListFunctionId,
-    UtfCodepointListFunctionId,
+    FloatListFunctionId, FunctionListFunctionId, IntListFunctionId, LibraryListFunctionId,
+    ListFunctionId, ListListFunctionId, NilListFunctionId, ParameterListFunctionId,
+    ParameterListListFunctionId, ProfiledListFunctionId, RuntimeListFunctionId,
+    StringListFunctionId, TupleListFunctionId, UtfCodepointListFunctionId,
 };
 pub(in crate::plan::execution) use table::ListFunctionTables;

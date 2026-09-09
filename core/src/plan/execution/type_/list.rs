@@ -107,7 +107,7 @@ pub(crate) enum ListStorageTypeId {
     External(ExternalListTypeId),
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct ListTypeTable {
     types: Vec<ListStorageTypeId>,
     tuple_items: Vec<Vec<ValueType>>,

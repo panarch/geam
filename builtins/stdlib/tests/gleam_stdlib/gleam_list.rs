@@ -172,12 +172,9 @@ fn tracks_official_gleam_list_public_surface() {
 #[test]
 fn runs_official_gleam_list_basics() {
     assert_eq!(
-        run_hosted_fixture(
-            "gleam_list_basics",
-            DEPENDENCIES,
-            hosts(),
-            &mut GleamStdlibRunState::from_seed([0; 32]),
-        ),
+        run_hosted_fixture("gleam_list_basics", DEPENDENCIES, hosts(), || {
+            GleamStdlibRunState::from_seed([0; 32])
+        },),
         Value::Nil,
     );
 }
@@ -185,12 +182,9 @@ fn runs_official_gleam_list_basics() {
 #[test]
 fn runs_official_gleam_list_transforms() {
     assert_eq!(
-        run_hosted_fixture(
-            "gleam_list_transforms",
-            DEPENDENCIES,
-            hosts(),
-            &mut GleamStdlibRunState::from_seed([1; 32]),
-        ),
+        run_hosted_fixture("gleam_list_transforms", DEPENDENCIES, hosts(), || {
+            GleamStdlibRunState::from_seed([1; 32])
+        },),
         Value::Nil,
     );
 }
@@ -198,12 +192,9 @@ fn runs_official_gleam_list_transforms() {
 #[test]
 fn runs_official_gleam_list_folds() {
     assert_eq!(
-        run_hosted_fixture(
-            "gleam_list_folds",
-            DEPENDENCIES,
-            hosts(),
-            &mut GleamStdlibRunState::from_seed([2; 32]),
-        ),
+        run_hosted_fixture("gleam_list_folds", DEPENDENCIES, hosts(), || {
+            GleamStdlibRunState::from_seed([2; 32])
+        },),
         Value::Nil,
     );
 }
@@ -211,12 +202,9 @@ fn runs_official_gleam_list_folds() {
 #[test]
 fn runs_official_gleam_list_pairs() {
     assert_eq!(
-        run_hosted_fixture(
-            "gleam_list_pairs",
-            DEPENDENCIES,
-            hosts(),
-            &mut GleamStdlibRunState::from_seed([3; 32]),
-        ),
+        run_hosted_fixture("gleam_list_pairs", DEPENDENCIES, hosts(), || {
+            GleamStdlibRunState::from_seed([3; 32])
+        },),
         Value::Nil,
     );
 }
@@ -224,12 +212,9 @@ fn runs_official_gleam_list_pairs() {
 #[test]
 fn runs_official_gleam_list_shapes() {
     assert_eq!(
-        run_hosted_fixture(
-            "gleam_list_shapes",
-            DEPENDENCIES,
-            hosts(),
-            &mut GleamStdlibRunState::from_seed([4; 32]),
-        ),
+        run_hosted_fixture("gleam_list_shapes", DEPENDENCIES, hosts(), || {
+            GleamStdlibRunState::from_seed([4; 32])
+        },),
         Value::Nil,
     );
 }
@@ -237,12 +222,9 @@ fn runs_official_gleam_list_shapes() {
 #[test]
 fn runs_official_gleam_list_random_collections() {
     assert_eq!(
-        run_hosted_fixture(
-            "gleam_list_random",
-            DEPENDENCIES,
-            hosts(),
-            &mut GleamStdlibRunState::from_seed([5; 32]),
-        ),
+        run_hosted_fixture("gleam_list_random", DEPENDENCIES, hosts(), || {
+            GleamStdlibRunState::from_seed([5; 32])
+        },),
         Value::Nil,
     );
 }

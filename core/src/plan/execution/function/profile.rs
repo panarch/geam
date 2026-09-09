@@ -61,7 +61,9 @@ pub(crate) trait ExecutionGraphProfile: Sized + Debug + Clone + PartialEq + Eq {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct HostedExecutionGraph;
 
-pub(crate) trait ExecutionFunctionBody: FunctionBodyOwner {}
+pub(crate) trait ExecutionFunctionBody: FunctionBodyOwner + Sized {}
+
+impl<Body: FunctionBodyOwner> ExecutionFunctionBody for Body {}
 
 pub(crate) trait ExecutionFunctionEntry<Body> {
     type HostTarget;
@@ -80,8 +82,6 @@ pub(crate) type ExecutionHostTarget<Profile, Body> =
     <Profile as ExecutionProfile>::HostTarget<Body>;
 pub(crate) type ExecutionNeverFunction<Profile> = <Profile as ExecutionProfile>::NeverFunction;
 pub(crate) type ExecutionNeverHostTarget<Profile> = <Profile as ExecutionProfile>::NeverHostTarget;
-
-impl<Body> ExecutionFunctionBody for Body where Body: FunctionBodyOwner {}
 
 impl ExecutionProfile for Infallible {
     type Graph = Infallible;
@@ -383,8 +383,8 @@ pub(super) fn plain_core_runtime_function_id(
 #[cfg(test)]
 mod tests {
     use super::{
-        ExecutionFunction, ExecutionGraphProfile, ExecutionHostTarget, HostedExecutionGraph,
-        HostedExecutionProfile,
+        ExecutionFunction, ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionGraphProfile,
+        ExecutionHostTarget, ExecutionProfile, HostedExecutionGraph, HostedExecutionProfile,
     };
     use crate::plan::execution::function::{
         BitArrayFunctionBody, BitArrayFunctionFunctionBody, BitArrayListFunctionBody,
@@ -394,16 +394,19 @@ mod tests {
         ExternalFunctionFunctionBody, ExternalFunctionFunctionId, ExternalFunctionId,
         ExternalListFunctionBody, ExternalListFunctionFunctionBody, ExternalListFunctionFunctionId,
         ExternalListFunctionId, FloatFunctionBody, FloatFunctionFunctionBody,
-        FloatListFunctionBody, FunctionBodyOwner, FunctionFunctionFunctionBody, FunctionFunctionId,
+        FloatListFunctionBody, FunctionExit, FunctionFunctionFunctionBody, FunctionFunctionId,
         FunctionListFunctionBody, GenericFunctionFunctionBody, IntFunctionBody,
         IntFunctionFunctionBody, IntListFunctionBody, ListFunctionFunctionId, ListListFunctionBody,
         NeverFunctionBody, NeverFunctionFunctionBody, NilFunctionBody, NilFunctionFunctionBody,
         NilListFunctionBody, ParameterListFunctionBody, ParameterListListFunctionBody,
-        ProfiledFunctionFunctionId, ProfiledListFunctionFunctionId, ProfiledListFunctionId,
-        RuntimeListFunctionId, StringFunctionBody, StringFunctionFunctionBody,
-        StringListFunctionBody, TupleFunctionBody, TupleFunctionFunctionBody,
-        TupleListFunctionBody, UtfCodepointFunctionBody, UtfCodepointFunctionFunctionBody,
-        UtfCodepointListFunctionBody, ValueFunctionEntry,
+        ProfiledFunctionBody, ProfiledFunctionFunctionId, ProfiledListFunctionFunctionId,
+        ProfiledListFunctionId, RuntimeListFunctionId, StringFunctionBody,
+        StringFunctionFunctionBody, StringListFunctionBody, TupleFunctionBody,
+        TupleFunctionFunctionBody, TupleListFunctionBody, UtfCodepointFunctionBody,
+        UtfCodepointFunctionFunctionBody, UtfCodepointListFunctionBody, ValueFunctionEntry,
+    };
+    use crate::plan::execution::graph::{
+        BlockGraphExitId, BlockId, IntLocalId, ProfiledBlock, ProfiledBlockGraph, Terminator,
     };
     use crate::plan::execution::host::{HostNeverFunctionId, HostedFunctionTarget};
     use crate::plan::execution::type_::{
@@ -489,6 +492,34 @@ mod tests {
     }
 
     #[test]
+    fn transfer_profile_keeps_graph_entries() {
+        let transfer = <HostedExecutionProfile as ExecutionProfile>::graph(int_graph());
+        let transfer_never =
+            <HostedExecutionProfile as ExecutionProfile>::never_graph(never_graph());
+        for (entry, graph) in [
+            (transfer, true),
+            (
+                ValueFunctionEntry::host(HostedFunctionTarget::Never(HostNeverFunctionId::new(0))),
+                false,
+            ),
+        ] {
+            assert_eq!(
+                matches!(entry.as_ref(), ExecutionFunctionRef::Graph(_)),
+                graph
+            );
+        }
+        for (entry, graph) in [
+            (transfer_never, true),
+            (ValueFunctionEntry::host(HostNeverFunctionId::new(0)), false),
+        ] {
+            assert_eq!(
+                matches!(entry.as_ref(), ExecutionFunctionRef::Graph(_)),
+                graph
+            );
+        }
+    }
+
+    #[test]
     fn resolves_external_function_ids_through_the_hosted_graph_profile() {
         let external_type = ExternalTypeId::new(0);
         let list_type = ExternalListTypeId::new(ListTypeId::new(1), external_type);
@@ -534,7 +565,7 @@ mod tests {
 
     fn assert_hosted<Body>()
     where
-        Body: FunctionBodyOwner + 'static,
+        Body: super::ExecutionFunctionBody + 'static,
         HostedFunctionTarget<Body>: 'static,
     {
         assert_same::<ExecutionHostTarget<Hosted, Body>, HostedFunctionTarget<Body>>();
@@ -542,5 +573,36 @@ mod tests {
 
     fn assert_same<Actual: 'static, Expected: 'static>() {
         assert_eq!(TypeId::of::<Actual>(), TypeId::of::<Expected>());
+    }
+
+    fn int_graph() -> ExecutableFunction<IntFunctionBody> {
+        ExecutableFunction::new(
+            0,
+            ProfiledFunctionBody::from_parts(
+                single_exit_graph(),
+                vec![FunctionExit::Return(IntLocalId(0))],
+            ),
+        )
+    }
+
+    fn never_graph() -> ExecutableFunction<NeverFunctionBody> {
+        ExecutableFunction::new(
+            0,
+            ProfiledFunctionBody::from_parts(
+                single_exit_graph(),
+                Vec::<FunctionExit<std::convert::Infallible, _>>::new(),
+            ),
+        )
+    }
+
+    fn single_exit_graph() -> ProfiledBlockGraph<HostedExecutionGraph> {
+        ProfiledBlockGraph::from_parts(
+            BlockId::new(0),
+            vec![ProfiledBlock::new(
+                Vec::new(),
+                Vec::new(),
+                Terminator::Exit(BlockGraphExitId::new(0)),
+            )],
+        )
     }
 }

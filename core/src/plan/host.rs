@@ -17,11 +17,14 @@ pub struct HostedModulePlan<Profile: HostProfile> {
     implementation_bindings: Vec<HostImplementationBinding<Profile>>,
 }
 
-pub(crate) struct HostedLibraryModulePlan<Profile: HostProfile> {
+pub(crate) struct ProfiledHostedLibraryModulePlan<Implementation> {
     root: ModuleId,
     modules: Vec<HostedPlannedModule>,
-    implementation_bindings: Vec<HostImplementationBinding<Profile>>,
+    implementation_bindings: Vec<implementation::ProfiledHostImplementationBinding<Implementation>>,
 }
+
+pub(crate) type HostedLibraryModulePlan<Profile> =
+    ProfiledHostedLibraryModulePlan<crate::host::HostFunctionImplementation<Profile>>;
 
 pub(crate) struct HostedModulePlanParts<Profile: HostProfile> {
     pub(crate) root: ModuleId,
@@ -30,11 +33,15 @@ pub(crate) struct HostedModulePlanParts<Profile: HostProfile> {
     pub(crate) implementation_bindings: Vec<HostImplementationBinding<Profile>>,
 }
 
-pub(crate) struct HostedLibraryModulePlanParts<Profile: HostProfile> {
+pub(crate) struct ProfiledHostedLibraryModulePlanParts<Implementation> {
     pub(crate) root: ModuleId,
     pub(crate) modules: Vec<HostedPlannedModule>,
-    pub(crate) implementation_bindings: Vec<HostImplementationBinding<Profile>>,
+    pub(crate) implementation_bindings:
+        Vec<implementation::ProfiledHostImplementationBinding<Implementation>>,
 }
+
+pub(crate) type HostedLibraryModulePlanParts<Profile> =
+    ProfiledHostedLibraryModulePlanParts<crate::host::HostFunctionImplementation<Profile>>;
 
 impl<Profile: HostProfile> HostedModulePlan<Profile> {
     pub(crate) fn new(
@@ -73,11 +80,13 @@ impl<Profile: HostProfile> HostedModulePlan<Profile> {
     }
 }
 
-impl<Profile: HostProfile> HostedLibraryModulePlan<Profile> {
+impl<Implementation> ProfiledHostedLibraryModulePlan<Implementation> {
     pub(crate) fn new(
         root: ModuleId,
         modules: Vec<HostedPlannedModule>,
-        implementation_bindings: Vec<HostImplementationBinding<Profile>>,
+        implementation_bindings: Vec<
+            implementation::ProfiledHostImplementationBinding<Implementation>,
+        >,
     ) -> Self {
         Self {
             root,
@@ -100,8 +109,8 @@ impl<Profile: HostProfile> HostedLibraryModulePlan<Profile> {
             .find(|definition| definition.name() == name)
     }
 
-    pub(crate) fn into_parts(self) -> HostedLibraryModulePlanParts<Profile> {
-        HostedLibraryModulePlanParts {
+    pub(crate) fn into_parts(self) -> ProfiledHostedLibraryModulePlanParts<Implementation> {
+        ProfiledHostedLibraryModulePlanParts {
             root: self.root,
             modules: self.modules,
             implementation_bindings: self.implementation_bindings,

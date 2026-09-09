@@ -6,7 +6,23 @@ use crate::runtime::Value;
 use miette::{Diagnostic, LabeledSpan, SourceCode};
 use std::fmt;
 
-impl Diagnostic for ExecutionError {
+pub(super) trait PanicSubject: fmt::Debug {
+    fn diagnostic_value(&self) -> String;
+}
+
+impl PanicSubject for Value {
+    fn diagnostic_value(&self) -> String {
+        render_value(self)
+    }
+}
+
+impl PanicSubject for super::PanicValue {
+    fn diagnostic_value(&self) -> String {
+        render_value(&self.to_value())
+    }
+}
+
+impl<Subject: PanicSubject> Diagnostic for ExecutionError<Subject> {
     fn code<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
         match self {
             Self::Panic(panic) => panic.code(),
@@ -40,16 +56,17 @@ impl Diagnostic for ExecutionError {
     }
 }
 
-impl Diagnostic for Panic {
+impl<Subject: PanicSubject> Diagnostic for Panic<Subject> {
     fn code<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
         Some(Box::new(format!("geam::{}", self.kind().code())))
     }
 
     fn help<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
         match self.details() {
-            Some(PanicDetails::LetAssert { value, .. }) => {
-                Some(Box::new(format!("failed value: {}", render_value(value))))
-            }
+            Some(PanicDetails::LetAssert { value, .. }) => Some(Box::new(format!(
+                "failed value: {}",
+                value.diagnostic_value()
+            ))),
             Some(PanicDetails::BitArraySegment { reason }) => Some(Box::new(match reason {
                 BitArraySegmentPanicReason::InvalidFloatSize { bit_size } => format!(
                     "float segments must be 16, 32, or 64 bits; evaluated size was {bit_size} bits"
@@ -280,7 +297,7 @@ mod tests {
 
     #[test]
     fn source_less_panic_diagnostic_has_no_source_labels_or_help() {
-        let error =
+        let error: ExecutionError =
             ExecutionError::source_panic(None, PanicKind::Panic, None, PanicSite::unknown());
 
         assert_eq!(
@@ -323,7 +340,7 @@ mod tests {
         assert_eq!(labels[0].offset(), 18);
         assert_eq!(labels[0].len(), 7);
 
-        let error = ExecutionError::Host(Box::new(host));
+        let error: ExecutionError = ExecutionError::Host(Box::new(host));
         assert_eq!(
             error.code().map(|code| code.to_string()),
             Some("geam::host_function".into()),
@@ -361,7 +378,7 @@ mod tests {
             "main.gleam",
             "pub fn main() {\n  let assert [x, ..] = []\n}",
         );
-        let panic = Panic::new(
+        let panic: Panic = Panic::new(
             PanicKind::LetAssert,
             PanicMessage::Default,
             PanicSite::new("main".into(), "main".into(), SourceSpan::new(18, 43)),
@@ -396,7 +413,7 @@ mod tests {
     #[test]
     fn source_backed_panic_without_details_has_one_primary_label() {
         let source = SourceContext::new("main.gleam", "pub fn main() {\n  assert False\n}");
-        let panic = Panic::new(
+        let panic: Panic = Panic::new(
             PanicKind::Assert,
             PanicMessage::Default,
             PanicSite::new("main".into(), "main".into(), SourceSpan::new(18, 30)),
@@ -462,7 +479,7 @@ mod tests {
             assert!(invariant.source_code().is_none());
             assert!(invariant.labels().is_none());
 
-            let error = ExecutionError::Invariant(invariant);
+            let error: ExecutionError = ExecutionError::Invariant(invariant);
 
             assert_eq!(
                 error.code().map(|code| code.to_string()),
@@ -513,19 +530,20 @@ mod tests {
             source_hash,
             inspect,
         );
-        let stored_equal =
-            |left: &crate::runtime::StoredRuntimeValue,
-             right: &crate::runtime::StoredRuntimeValue| left.value() == right.value();
-        let equality = crate::host::HostExternalEquality::new(&stored_equal);
+        let stored_equal = |left: &crate::runtime::RetainedValueRef,
+                            right: &crate::runtime::RetainedValueRef| {
+            left.value() == right.value()
+        };
+        let equality = crate::host::RetainedValueEquality::new(&stored_equal);
         assert!(first.source_equal(&equality, &equal));
-        let stored_hash = |_: &crate::runtime::StoredRuntimeValue| 7;
-        let stored_inspect = |_: &crate::runtime::StoredRuntimeValue| "Resource(7)".into();
+        let stored_hash = |_: &crate::runtime::RetainedValueRef| 7;
+        let stored_inspect = |_: &crate::runtime::RetainedValueRef| "Resource(7)".into();
         assert_eq!(
-            first.source_hash(&crate::host::HostExternalHashing::new(&stored_hash)),
+            first.source_hash(&crate::host::RetainedValueHashing::new(&stored_hash)),
             7,
         );
         assert_eq!(
-            first.inspection(&crate::host::HostExternalInspection::new(&stored_inspect)),
+            first.inspection(&crate::host::RetainedValueInspection::new(&stored_inspect)),
             "Resource(7)",
         );
         let external = ExternalValue::from_evaluated(

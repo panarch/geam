@@ -1,6 +1,5 @@
-use super::super::{EvaluatedFunctionExit, evaluate_entry, parameter_locals};
+use super::super::{EvaluatedFunctionExit, evaluate_entry};
 use crate::plan::execution::function::BitArrayFunctionId;
-use crate::plan::execution::graph::ParamLocal;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::evaluated::EvaluatedBitArray;
@@ -36,18 +35,12 @@ pub(in crate::runtime) fn run_bit_array<Plan: ExecutableRuntimePlan>(
     }
 }
 
-pub(in crate::runtime) fn bit_array_parameter_locals<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    function: BitArrayFunctionId,
-) -> Vec<ParamLocal> {
-    parameter_locals(plan, plan.bit_array_function(function))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::bit_array_parameter_locals;
     use crate::plan::execution::function::BitArrayFunctionId;
+    use crate::plan::execution::graph::FunctionTarget;
     use crate::plan::execution::graph::{BitArrayLocalId, ParamLocal};
+    use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::{
         BitArrayValue, HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
         Value, compile_typed_host_program, compile_typed_module, plan_host_program, plan_module,
@@ -70,7 +63,9 @@ pub fn main() {
         let plan = plan_module(typed).expect("source should plan");
         let execution = crate::ExecutionPlan::from_module_plan(plan);
         assert_eq!(
-            bit_array_parameter_locals(&execution, BitArrayFunctionId(1)),
+            execution
+                .function_parameters()
+                .function(&FunctionTarget::BitArray(BitArrayFunctionId(1))),
             [ParamLocal::BitArray(BitArrayLocalId(0))],
         );
         assert_eq!(
@@ -112,11 +107,17 @@ pub fn main() {
         let execution =
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         assert_eq!(
-            bit_array_parameter_locals(&execution, BitArrayFunctionId(2)),
+            execution
+                .execution()
+                .function_parameters()
+                .function(&FunctionTarget::BitArray(BitArrayFunctionId(2))),
             [ParamLocal::BitArray(BitArrayLocalId(0))],
         );
         assert_eq!(
-            bit_array_parameter_locals(&execution, BitArrayFunctionId(1)),
+            execution
+                .execution()
+                .function_parameters()
+                .function(&FunctionTarget::BitArray(BitArrayFunctionId(1))),
             [ParamLocal::BitArray(BitArrayLocalId(0))],
         );
         assert_eq!(

@@ -15,7 +15,7 @@ use crate::project::{
 use boundary::PlainBindings;
 use camino::Utf8Path;
 use package::{EmbeddingPackage, EmbeddingProject};
-use profile::HostedBindings;
+use profile::{HostedBindings, HostedComponents};
 use std::collections::BTreeSet;
 use std::io::Write;
 
@@ -116,6 +116,13 @@ fn prepare(
     let program = geam_core::compile_typed_project(project.project_root(), project.root_module())?;
     let requirements = geam_core::required_host_functions(&program);
     let mut features = BTreeSet::from(["embedding"]);
+    if !requirements.is_empty()
+        || program.modules().any(|module| {
+            BuiltInProvider::from_package(&module.type_info.package) == Some(BuiltInProvider::Geam)
+        })
+    {
+        features.insert("geam-builtin");
+    }
     for requirement in &requirements {
         if let Some(builtin) = BuiltInProvider::from_package(requirement.package()) {
             features.insert(builtin.geam_feature());
@@ -151,7 +158,17 @@ fn generate(
     read_project: fn(&Utf8Path) -> Result<ResolvedProject, CliError>,
 ) -> Result<GeneratedBindings, CliError> {
     package.require_geam_feature("embedding", "to generate Rust embedding bindings")?;
+    if !requirements.is_empty() || bindings.has_future() {
+        package.require_geam_feature("geam-builtin", "to generate hosted embedding bindings")?;
+    }
     let source = match requirements {
+        [] if bindings.has_future() => render::hosted(
+            &HostedBindings {
+                boundary: bindings,
+                components: HostedComponents::from_builtin(BuiltInProvider::Geam),
+            },
+            package.project_path(),
+        ),
         [] => render::plain(&bindings, package.project_path()),
         [first, remaining @ ..] => {
             let remaining_packages = remaining
@@ -752,6 +769,487 @@ pub fn normalize(value: String) -> String
     }
 
     #[test]
+    fn runs_a_send_plain_project_without_execution_mode_metadata() {
+        let fixture = ApplicationFixture::new();
+        fixture.write_plain_project();
+        fs::write(
+            fixture
+                .root
+                .join("gleam/src/plain_embedding_application.gleam"),
+            "pub fn double(value: Int) -> Int { value * 2 }\n",
+        )
+        .expect("ordinary provider-free boundary");
+        fs::write(
+            fixture.root.join("src/main.rs"),
+            r#"mod geam_bindings;
+use runtime::embedding::ModuleBuilder;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let program = geam_bindings::project().compile()?;
+    let builder = ModuleBuilder::from_program(program)?;
+    let (bindings, functions) = geam_bindings::bind(builder)?;
+    let module = bindings.seal();
+    fn assert_send<T: Send>(_: &T) {}
+    assert_send(&module);
+    let mut echo = Vec::new();
+    assert_eq!(module.call(&functions.double, (21.into(),), &mut echo)?, 42.into());
+    assert!(echo.is_empty());
+    Ok(())
+}
+"#,
+        )
+        .expect("caller-owned execution of an ordinary source function");
+        fixture.generate_lockfile();
+        sync(&fixture.root).expect("generate provider-free bindings");
+        check(&fixture.root).expect("check the same contract without storage selection");
+        let generated_path = fixture.root.join("src/geam_bindings.rs");
+        let generated = fs::read_to_string(&generated_path).expect("generated source");
+        assert!(!generated.contains("HostProviderSet"));
+        assert!(!generated.contains("RunStateInputs"));
+        assert!(!generated.contains("<runtime::FutureComponent as ComponentRegistration<"));
+        assert_success(
+            Command::new("rustfmt").arg("--check").arg(&generated_path),
+            "provider-free formatting",
+        );
+        assert_success(
+            fixture.cargo("clippy").args([
+                "--locked",
+                "--offline",
+                "--all-targets",
+                "--",
+                "-D",
+                "warnings",
+            ]),
+            "provider-free Send Rust types",
+        );
+        let output = success_output(
+            fixture
+                .cargo("run")
+                .args(["--locked", "--offline", "--quiet"]),
+            "provider-free execution",
+        );
+        assert_eq!(output.stdout, b"");
+        assert_eq!(output.stderr, b"");
+    }
+
+    #[test]
+    fn binds_future_values_when_native_declarations_have_fallbacks() {
+        let fixture = ApplicationFixture::new();
+        fixture.write_plain_project();
+        let package = fixture.root.join("gleam/packages/geam");
+        fs::create_dir_all(package.join("src/geam")).expect("fallback package directory");
+        fs::write(
+            package.join("gleam.toml"),
+            "name = \"geam\"\nversion = \"0.1.0\"\n",
+        )
+        .expect("local package manifest");
+        fs::write(
+            package.join("src/geam/future.gleam"),
+            r#"@external(erlang, "geam_future", "Future")
+pub type Future(value)
+
+@external(erlang, "geam_future", "ready")
+pub fn ready(value: value) -> Future(value) { panic as "fallback ready" }
+
+@external(erlang, "geam_future", "map")
+pub fn map(value: Future(a), callback: fn(a) -> b) -> Future(b) {
+  panic as "fallback map"
+}
+
+@external(erlang, "geam_future", "flatten")
+fn flatten(value: Future(Future(a))) -> Future(a) { panic as "fallback flatten" }
+
+pub fn then(value: Future(a), callback: fn(a) -> Future(b)) -> Future(b) {
+  flatten(map(value, callback))
+}
+
+@external(erlang, "geam_future", "all")
+pub fn all(values: List(Future(a))) -> Future(List(a)) { panic as "fallback all" }
+"#,
+        )
+        .expect("complete native declarations with source fallbacks");
+        fs::write(
+            fixture.root.join("gleam/gleam.toml"),
+            "name = \"plain_embedding_application\"\nversion = \"1.0.0\"\n[dependencies]\ngeam = { path = \"packages/geam\" }\n",
+        )
+        .expect("fallback dependency");
+        fs::write(
+            fixture
+                .root
+                .join("gleam/src/plain_embedding_application.gleam"),
+            r#"import geam/future.{type Future}
+
+pub fn empty() -> List(Future(Int)) { [] }
+pub fn keep(values: List(Future(Int))) { values }
+pub fn ready(value: Int) { future.ready(value) }
+"#,
+        )
+        .expect("ordinary source passing work values");
+        let cargo_path = fixture.root.join("Cargo.toml");
+        let mut cargo: toml_edit::DocumentMut = fs::read_to_string(&cargo_path)
+            .expect("Cargo manifest")
+            .parse()
+            .expect("Cargo TOML");
+        cargo["dependencies"]["futures"] = toml_edit::value("0.3");
+        fs::write(&cargo_path, cargo.to_string()).expect("caller-owned executor dependency");
+        fs::write(
+            fixture.root.join("src/main.rs"),
+            r#"mod geam_bindings;
+use runtime::embedding::{HostedModuleBuilder, with_execution_scope};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let program = geam_bindings::project().compile()?;
+    let (bindings, functions) = geam_bindings::bind(HostedModuleBuilder::new(program)?)?;
+    let mut module = bindings.seal()?;
+    let mut state = geam_bindings::RunStateInputs {}.initialize();
+    let mut echo = Vec::new();
+    futures::executor::block_on(with_execution_scope(async |guard| {
+        let mut scope = module.attach(guard, &mut state, &mut echo);
+        let values = scope.call(&functions.empty, ())?;
+        assert!(values.is_empty());
+        let retained = scope.call(&functions.keep, (&values,))?;
+        assert!(retained.is_empty());
+        let work = scope.call(&functions.ready, (42.into(),))?;
+        assert_eq!(scope.observe(&work).await?.read(Clone::clone), 42.into());
+        Ok::<_, Box<dyn std::error::Error>>(())
+    }))?;
+    assert!(echo.is_empty());
+    Ok(())
+}
+"#,
+        )
+        .expect("same-owner work container calls");
+        fixture.generate_lockfile();
+        sync(&fixture.root).expect("generate work-capable bindings without native requirements");
+        check(&fixture.root).expect("read-only check of the same binding contract");
+        let program = geam_core::compile_typed_project(
+            fixture.root.join("gleam"),
+            "plain_embedding_application",
+        )
+        .expect("typed source");
+        assert!(geam_core::required_host_functions(&program).is_empty());
+        let generated_path = fixture.root.join("src/geam_bindings.rs");
+        let generated = fs::read_to_string(&generated_path).expect("generated source");
+        assert!(generated.contains("pub fn project() -> HostedProject<Profile>"));
+        assert!(generated.contains("type Work = runtime::FutureComponent;"));
+        assert_success(
+            Command::new("rustfmt").arg("--check").arg(&generated_path),
+            "optional-native work binding format",
+        );
+        assert_success(
+            fixture.cargo("clippy").args([
+                "--locked",
+                "--offline",
+                "--all-targets",
+                "--",
+                "-D",
+                "warnings",
+            ]),
+            "optional-native work Rust binding types",
+        );
+        let output = success_output(
+            fixture
+                .cargo("run")
+                .args(["--locked", "--offline", "--quiet"]),
+            "ordinary work container execution",
+        );
+        assert_eq!(output.stdout, b"");
+        assert_eq!(output.stderr, b"");
+    }
+
+    #[test]
+    fn binds_recursive_future_values_from_an_ordinary_local_package() {
+        let fixture = ApplicationFixture::new();
+        fs::create_dir_all(fixture.root.join("src")).expect("Rust source directory");
+        fs::create_dir_all(fixture.root.join("gleam/src")).expect("Gleam source directory");
+        let future = fixture.repository.join("builtins/geam/gleam");
+        let manifest = format!(
+            r#"[package]
+name = "future-embedding-application"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding", "geam-builtin"] }}
+futures = "0.3"
+
+[workspace]
+resolver = "3"
+"#,
+            fixture.repository
+        );
+        fs::write(fixture.root.join("Cargo.toml"), &manifest).expect("Cargo project");
+        fs::write(fixture.root.join("gleam/gleam.toml"), format!("name = \"future_embedding_application\"\nversion = \"1.0.0\"\n[dependencies]\ngeam = {{ path = {future:?} }}\n")).expect("Gleam project");
+        fs::write(
+            fixture
+                .root
+                .join("gleam/src/future_embedding_application.gleam"),
+            r#"import geam/future.{type Future}
+
+pub fn double(value: Int) { value * 2 }
+pub fn ready(value: Int) { future.ready(value) }
+pub fn collect(values: List(Future(Int))) { future.all(values) }
+pub fn nested(value: Future(Int)) { future.ready(value) }
+pub fn result(value: Future(Int)) -> Result(Future(Int), String) { Ok(value) }
+"#,
+        )
+        .expect("recursive Future boundary");
+        fs::write(
+            fixture.root.join("src/main.rs"),
+            r#"mod geam_bindings;
+use runtime::embedding::{HostedModuleBuilder, with_execution_scope};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let program = geam_bindings::project().compile()?;
+    let builder = HostedModuleBuilder::new(program)?;
+    let (bindings, functions) = geam_bindings::bind(builder)?;
+    let mut module = bindings.seal()?;
+    let mut state = geam_bindings::RunStateInputs {}.initialize();
+    let mut echo = |value: runtime::EchoOutput| panic!("unexpected Echo: {value}");
+    futures::executor::block_on(with_execution_scope(async |guard| {
+        let mut scope = module.attach(guard, &mut state, &mut echo);
+        assert_eq!(scope.call(&functions.double, (21.into(),))?, 42.into());
+        let work = scope.call(&functions.ready, (21.into(),))?;
+        let work_list = scope.call(&functions.collect, (vec![&work, &work],))?;
+        let list = scope.observe(&work_list).await?;
+        list.read(|items| {
+            assert_eq!(items.len(), 2);
+            assert_eq!(items.read_item(0, Clone::clone), Some(21.into()));
+            assert_eq!(items.read_item(1, Clone::clone), Some(21.into()));
+        });
+        let nested = scope.call(&functions.nested, (&work,))?;
+        let completion = scope.observe(&nested).await?;
+        let retained = completion.read(|inner| inner);
+        assert_eq!(scope.observe(&retained).await?.read(Clone::clone), 21.into());
+        let result = scope.call(&functions.result, (work,))?;
+        let alias = result.expect("source success");
+        assert_eq!(scope.observe(&alias).await?.read(Clone::clone), 21.into());
+        Ok::<_, Box<dyn std::error::Error>>(())
+    }))
+}
+"#,
+        )
+        .expect("caller-owned executor and generated bindings");
+        fixture.generate_lockfile();
+        sync(&fixture.root).expect("generate Future bindings");
+        let generated =
+            fs::read(fixture.root.join("src/geam_bindings.rs")).expect("generated source");
+        let files = [
+            "Cargo.toml",
+            "Cargo.lock",
+            "gleam/gleam.toml",
+            "gleam/manifest.toml",
+        ];
+        let before =
+            files.map(|path| fs::read(fixture.root.join(path)).expect("prepared source and lock"));
+        fs::remove_dir_all(fixture.root.join("gleam/build")).expect("clear generated Gleam cache");
+        check(&fixture.root).expect("check restores readiness without publication");
+        sync(&fixture.root).expect("idempotent generation");
+        assert_eq!(
+            fs::read(fixture.root.join("src/geam_bindings.rs")).expect("same generated source"),
+            generated
+        );
+        assert_eq!(
+            files.map(|path| fs::read(fixture.root.join(path)).expect("preserved source and lock")),
+            before
+        );
+        assert_success(
+            Command::new("rustfmt")
+                .arg("--check")
+                .arg(fixture.root.join("src/geam_bindings.rs")),
+            "recursive Future binding format",
+        );
+        assert_success(
+            fixture.cargo("clippy").args([
+                "--locked",
+                "--offline",
+                "--all-targets",
+                "--",
+                "-D",
+                "warnings",
+            ]),
+            "recursive Future generated Rust types",
+        );
+        let output = success_output(
+            fixture
+                .cargo("run")
+                .args(["--locked", "--offline", "--quiet"]),
+            "recursive Future generated execution",
+        );
+        assert_eq!(output.stdout, b"");
+        assert_eq!(output.stderr, b"");
+        fs::write(
+            fixture.root.join("src/geam_bindings.rs"),
+            [generated.as_slice(), b"\n// stale generated output\n"].concat(),
+        )
+        .expect("generated drift preserves ownership marker");
+        assert!(check(&fixture.root).is_err());
+        sync(&fixture.root).expect("recover drift");
+        assert_eq!(
+            fs::read(fixture.root.join("src/geam_bindings.rs")).expect("recovered source"),
+            generated
+        );
+    }
+
+    #[test]
+    fn generates_transferable_builtin_composition_with_caller_owned_state() {
+        let fixture = ApplicationFixture::new();
+        fs::create_dir_all(fixture.root.join("src")).expect("Rust source");
+        fs::create_dir_all(fixture.root.join("gleam/src")).expect("Gleam source");
+        fs::write(
+            fixture.root.join("Cargo.toml"),
+            format!(
+                r#"[package]
+name = "generated-future-builtins"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding", "geam-builtin", "gleam-json", "gleam-time"] }}
+futures = "0.3"
+
+[workspace]
+resolver = "3"
+"#,
+                fixture.repository
+            ),
+        )
+        .expect("explicit storage and facade capabilities");
+        let pinned = fixture
+            .repository
+            .join("tests/fixtures/projects/future_builtins");
+        let future = fixture.repository.join("builtins/geam/gleam");
+        let mut config = fs::read_to_string(pinned.join("gleam.toml"))
+            .expect("pinned source requirements")
+            .parse::<toml_edit::DocumentMut>()
+            .expect("valid source requirements");
+        config["name"] = toml_edit::value("generated_future_builtins");
+        config["dependencies"]["geam"]["path"] = toml_edit::value(future.as_str());
+        fs::write(fixture.root.join("gleam/gleam.toml"), config.to_string())
+            .expect("consumer requirements");
+        let mut manifest = fs::read_to_string(pinned.join("manifest.toml"))
+            .expect("pinned source versions")
+            .parse::<toml_edit::DocumentMut>()
+            .expect("valid source manifest");
+        manifest["requirements"]["geam"]["path"] = toml_edit::value(future.as_str());
+        for package in manifest["packages"]
+            .as_array_mut()
+            .expect("packages")
+            .iter_mut()
+        {
+            let package = package.as_inline_table_mut().expect("package source");
+            if package.get("name").and_then(toml_edit::Value::as_str) == Some("geam") {
+                package.insert("path", future.as_str().into());
+            }
+        }
+        fs::write(
+            fixture.root.join("gleam/manifest.toml"),
+            manifest.to_string(),
+        )
+        .expect("consumer source lock");
+        fs::write(
+            fixture
+                .root
+                .join("gleam/src/generated_future_builtins.gleam"),
+            r#"import geam/future
+import gleam/io
+import gleam/json
+import gleam/time/timestamp
+
+pub fn double(value: Int) { value * 2 }
+
+pub fn answer() -> future.Future(String) {
+  use _ <- future.map(future.ready(Nil))
+  io.println("finished")
+  let #(seconds, _) = timestamp.system_time() |> timestamp.to_unix_seconds_and_nanoseconds
+  json.object([#("answer", json.int(seconds))]) |> json.to_string
+}
+"#,
+        )
+        .expect("ordinary Future with all generated built-in components");
+        fs::write(
+            fixture.root.join("src/main.rs"),
+            r#"mod geam_bindings;
+use runtime::embedding::{HostedModuleBuilder, with_execution_scope};
+use runtime::gleam_stdlib::{GleamStdlibRunState, IoOutput, IoStream};
+use runtime::gleam_time::TimeSource;
+use std::cell::Cell;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+struct Clock(Cell<u64>);
+impl TimeSource for Clock {
+    fn system_time(&mut self) -> Result<SystemTime, runtime::HostFailure> {
+        let value = self.0.get();
+        self.0.set(value + 1);
+        Ok(UNIX_EPOCH + Duration::from_secs(value))
+    }
+    fn local_offset_seconds(&mut self) -> Result<i32, runtime::HostFailure> { Ok(0) }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let program = geam_bindings::project::<Vec<IoOutput>, Clock>().compile()?;
+    let builder = HostedModuleBuilder::new(program)?;
+    let (bindings, functions) = geam_bindings::bind(builder)?;
+    let mut module = bindings.seal()?;
+    let mut state = geam_bindings::RunStateInputs {
+        stdlib: GleamStdlibRunState::from_seed([7; 32]),
+        time: Clock(Cell::new(42)),
+    }.initialize();
+    assert!(state.stdlib().io_outputs().is_empty());
+    let mut echo = |value: runtime::EchoOutput| panic!("unexpected Echo: {value}");
+    futures::executor::block_on(with_execution_scope(async |guard| {
+        let mut scope = module.attach(guard, &mut state, &mut echo);
+        assert_eq!(scope.call(&functions.double, (21.into(),))?, 42.into());
+        let work = scope.call(&functions.answer, ())?;
+        let completed = scope.observe(&work).await?;
+        completed.read(|text| assert_eq!(text, "{\"answer\":42}"));
+        scope.observe(&work).await?.read(|text| assert_eq!(text, "{\"answer\":42}"));
+        let next = scope.call(&functions.answer, ())?;
+        scope.observe(&next).await?.read(|text| assert_eq!(text, "{\"answer\":43}"));
+        Ok::<_, Box<dyn std::error::Error>>(())
+    }))?;
+    let output = state.stdlib_mut().take_io_outputs();
+    assert_eq!(output.len(), 2);
+    for output in output {
+        assert_eq!(output.stream(), IoStream::Stdout);
+        assert_eq!(output.text(), "finished\n");
+    }
+    Ok(())
+}
+"#,
+        )
+        .expect("generated composition with a Send-only clock");
+        fixture.generate_lockfile();
+        sync(&fixture.root).expect("generate all built-in components");
+        check(&fixture.root).expect("generated composition is current");
+        assert_success(
+            Command::new("rustfmt")
+                .arg("--check")
+                .arg(fixture.root.join("src/geam_bindings.rs")),
+            "generated built-in transfer formatting",
+        );
+        assert_success(
+            fixture.cargo("clippy").args([
+                "--locked",
+                "--offline",
+                "--all-targets",
+                "--",
+                "-D",
+                "warnings",
+            ]),
+            "generated built-in transfer types",
+        );
+        let output = success_output(
+            fixture
+                .cargo("run")
+                .args(["--locked", "--offline", "--quiet"]),
+            "generated built-in transfer execution",
+        );
+        assert_eq!(output.stdout, b"");
+        assert_eq!(output.stderr, b"");
+    }
+
+    #[test]
     fn checks_missing_stale_and_plain_boundary_drift_without_writing() {
         let fixture = ApplicationFixture::new();
         fixture.write_plain_project();
@@ -944,7 +1442,59 @@ pub fn contains_only_words(_text: String) -> Bool { True }
         check(&hosted.root).expect("prepared built-in project should check");
         assert_eq!(
             fs::read_to_string(&manifest_path).expect("updated manifest"),
-            manifest
+            manifest.replace(
+                "\"gleam-time\", \"geam-builtin\"",
+                "\"geam-builtin\", \"gleam-time\"",
+            )
+        );
+    }
+
+    #[test]
+    fn checks_hosted_features_and_sync_enables_the_required_builtin() {
+        let fixture = ApplicationFixture::new();
+        fixture.write_built_in_project();
+        let manifest_path = fixture.root.join("Cargo.toml");
+        let mut manifest = fs::read_to_string(&manifest_path)
+            .expect("Cargo manifest")
+            .parse::<toml_edit::DocumentMut>()
+            .expect("valid Cargo manifest");
+        manifest["dependencies"]["runtime"]["features"]
+            .as_array_mut()
+            .expect("facade features")
+            .retain(|feature| feature.as_str() != Some("geam-builtin"));
+        fs::write(&manifest_path, manifest.to_string()).expect("missing common hosted feature");
+        fixture.generate_lockfile();
+
+        let error = check(&fixture.root).expect_err("missing runtime API feature");
+        assert!(matches!(
+            error,
+            CliError::InvalidEmbeddingDependency { package, manifest, reason }
+                if package == "built-in-embedding-application"
+                    && manifest == manifest_path
+                    && reason == "enabled Geam feature `geam-builtin` is required to generate hosted embedding bindings; run `geam embedding sync` to enable it on the direct Geam dependency"
+        ));
+        assert!(!fixture.root.join("src/geam_bindings.rs").exists());
+        assert_eq!(
+            fs::read_to_string(&manifest_path).expect("unchanged manifest"),
+            manifest.to_string()
+        );
+
+        sync(&fixture.root).expect("sync follows the diagnostic without manual feature edits");
+        manifest["dependencies"]["runtime"]["features"]
+            .as_array_mut()
+            .expect("facade features")
+            .push("geam-builtin");
+        assert_eq!(
+            fs::read_to_string(&manifest_path).expect("updated manifest"),
+            manifest.to_string()
+        );
+        check(&fixture.root).expect("prepared hosted project");
+        let generated_path = fixture.root.join("src/geam_bindings.rs");
+        let generated = fs::read(&generated_path).expect("generated bindings");
+        sync(&fixture.root).expect("repeated sync");
+        assert_eq!(
+            fs::read(&generated_path).expect("unchanged bindings"),
+            generated
         );
     }
 
@@ -1120,6 +1670,7 @@ gleam_stdlib = { version = ">= 1.0.3 and < 1.0.4" }
         }
 
         fn write_plain_project(&self) {
+            let binary = self.binary_name();
             fs::create_dir_all(self.root.join("src/nested"))
                 .expect("Rust source directory should be created");
             fs::create_dir_all(self.root.join("gleam/src"))
@@ -1144,6 +1695,10 @@ gleam_stdlib = { version = ">= 1.0.3 and < 1.0.4" }
 name = "plain-embedding-application"
 version = "0.0.0"
 edition = "2024"
+
+[[bin]]
+name = {binary:?}
+path = "src/main.rs"
 
 [dependencies]
 runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding"] }}
@@ -1322,6 +1877,7 @@ pub fn double(value: Int) -> Int {
         }
 
         fn write_hosted_project(&self) {
+            let binary = self.binary_name();
             fs::create_dir_all(self.root.join("src"))
                 .expect("Rust source directory should be created");
             fs::create_dir_all(self.root.join("gleam/src"))
@@ -1353,6 +1909,10 @@ pub fn double(value: Int) -> Int {
 name = "hosted-embedding-application"
 version = "0.0.0"
 edition = "2024"
+
+[[bin]]
+name = {binary:?}
+path = "src/main.rs"
 
 [dependencies]
 runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding"] }}
@@ -1526,6 +2086,7 @@ pub fn words_again(values: List(Result(String, String))) { values }
         }
 
         fn write_built_in_project(&self) {
+            let binary = self.binary_name();
             fs::create_dir_all(self.root.join("src"))
                 .expect("Rust source directory should be created");
             fs::create_dir_all(self.root.join("gleam/src"))
@@ -1554,8 +2115,12 @@ name = "built-in-embedding-application"
 version = "0.0.0"
 edition = "2024"
 
+[[bin]]
+name = {binary:?}
+path = "src/main.rs"
+
 [dependencies]
-runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding", "gleam-json", "gleam-time"] }}
+runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding", "gleam-json", "gleam-time", "geam-builtin"] }}
 
 [workspace]
 resolver = "3"
@@ -1652,6 +2217,17 @@ pub fn ready() -> Bool {
                 self.cargo("generate-lockfile").arg("--offline"),
                 "fixture lockfile generation",
             );
+        }
+
+        fn binary_name(&self) -> String {
+            // Share dependency artifacts without racing another fixture's executable.
+            format!(
+                "embedding-{}",
+                self.root
+                    .file_name()
+                    .expect("fixture directory")
+                    .trim_start_matches('.'),
+            )
         }
 
         fn cargo(&self, command: &str) -> Command {

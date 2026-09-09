@@ -62,6 +62,7 @@ mod tests {
             type_: syn::parse_quote!(crate::Tag),
         };
         let external = StaticValueType::External {
+            declaration: syn::parse_quote!(Payload),
             payload: syn::parse_quote!(Payload),
             schema: syn::parse_quote!(Schema),
             store_field: syn::parse_quote!(store),
@@ -96,12 +97,10 @@ mod tests {
         let mut decoders: Vec<ListDecoderModel> = Vec::new();
         let integers = CollectionType {
             source: syn::parse_quote!(geam::List<BigInt>),
-            item: syn::parse_quote!(BigInt),
             value: StaticValueType::Scalar(syn::parse_quote!(BigInt)),
         };
         let booleans = CollectionType {
             source: syn::parse_quote!(geam::List<bool>),
-            item: syn::parse_quote!(bool),
             value: StaticValueType::Scalar(syn::parse_quote!(bool)),
         };
 

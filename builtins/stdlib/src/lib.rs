@@ -1,15 +1,15 @@
 pub(crate) use geam_core::{
-    BitArrayValue, HostCall, HostComponentProfile, HostConstruction, HostExternal,
-    HostExternalType, HostFailure, HostProfile, HostProvider, HostProviderComponent,
+    BitArrayValue, HostComponentProfile, HostConstruction, HostExternal, HostExternalType,
+    HostFailure, HostProfile, HostProvider, HostProviderComponent,
     HostProviderComponentRegistration, HostProviderModule, HostRegistrationError, HostType,
     HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
 };
 #[cfg(test)]
 pub(crate) use geam_core::{
-    ExecutionError, HostCallCompletion, HostCallError, HostExternalBinding, HostExternalEquality,
-    HostExternalHashing, HostExternalInspection, HostExternalSchema, HostExternalStorage,
-    HostExternalStore, HostExternalTypeSchema, HostModule, HostProviderSet, HostedExecution,
-    ModuleSource, PackageSource, PanicKind, PanicMessage, Value, ValueType,
+    ExecutionError, HostCall, HostCallCompletion, HostCallError, HostExternalBinding,
+    HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalSchema,
+    HostExternalStorage, HostExternalStore, HostExternalTypeSchema, HostModule, HostProviderSet,
+    HostedExecution, ModuleSource, PackageSource, PanicKind, PanicMessage, Value, ValueType,
     compile_typed_host_program, plan_host_program,
 };
 use std::marker::PhantomData;
@@ -46,9 +46,21 @@ pub mod provider_support {
 }
 
 /// A host profile that exposes state and storage for the official Gleam standard library.
-pub trait GleamStdlibHostProfile: HostComponentProfile<Component<Self::Io>> {
+pub trait GleamStdlibHostProfile: HostProfile {
     /// The concrete caller-owned sink used by official Gleam IO functions.
     type Io: IoSink + 'static;
+}
+
+/// The standard-library capability and local-store projections used together.
+#[doc(hidden)]
+pub trait GleamStdlibProviderProfile:
+    GleamStdlibHostProfile + HostComponentProfile<Component<Self::Io>>
+{
+}
+
+impl<Profile> GleamStdlibProviderProfile for Profile where
+    Profile: GleamStdlibHostProfile + HostComponentProfile<Component<Profile::Io>>
+{
 }
 
 /// External value stores used by the official Gleam standard library providers.
@@ -105,14 +117,14 @@ impl GleamStdlibHostProfile for GleamStdlibProfile {
 /// Registers the Rust providers for the official Gleam standard library.
 pub fn host_providers<Profile>() -> Result<Vec<HostProviderModule<Profile>>, HostRegistrationError>
 where
-    Profile: GleamStdlibHostProfile,
+    Profile: GleamStdlibProviderProfile,
 {
     <Component<Profile::Io> as HostProviderComponentRegistration<Profile>>::providers()
 }
 
 impl<Profile, Io> HostProviderComponentRegistration<Profile> for Component<Io>
 where
-    Profile: GleamStdlibHostProfile<Io = Io>,
+    Profile: GleamStdlibProviderProfile<Io = Io>,
     Io: IoSink + 'static,
 {
     fn providers() -> Result<Vec<HostProviderModule<Profile>>, HostRegistrationError> {
@@ -120,17 +132,10 @@ where
     }
 }
 
-pub(crate) fn stdlib_stores<Profile>(stores: &Profile::ExternalStores) -> &GleamStdlibStores
-where
-    Profile: GleamStdlibHostProfile,
-{
-    <Profile as HostComponentProfile<Component<Profile::Io>>>::component_stores(stores)
-}
-
 fn register_host_providers<Profile>()
 -> Result<Vec<HostProviderModule<Profile>>, HostRegistrationError>
 where
-    Profile: GleamStdlibHostProfile,
+    Profile: GleamStdlibProviderProfile,
 {
     let registrations: [ProviderRegistration<Profile>; 10] = [
         dict::host_provider::<Profile>,
@@ -158,7 +163,7 @@ type ProviderRegistration<Profile> =
 mod tests {
     use super::{
         Component, GleamStdlibHostProfile, GleamStdlibProfile, GleamStdlibRunState,
-        GleamStdlibStores, IoOutput, IoSink, IoStream, host_providers, stdlib_stores,
+        GleamStdlibStores, IoOutput, IoSink, IoStream, host_providers,
     };
     use crate::{
         HostComponentProfile, HostProfile, HostProviderComponent, HostProviderComponentRegistration,
@@ -294,11 +299,15 @@ mod tests {
         };
 
         assert!(std::ptr::eq(
-            stdlib_stores::<GleamStdlibProfile>(&default_stores),
+            <GleamStdlibProfile as HostComponentProfile<Component>>::component_stores(
+                &default_stores
+            ),
             &default_stores,
         ));
         assert!(std::ptr::eq(
-            stdlib_stores::<CustomProfile>(&stores),
+            <CustomProfile as HostComponentProfile<Component<RecordingSink>>>::component_stores(
+                &stores
+            ),
             &stores.stdlib,
         ));
         let default_state_pointer = &mut default_state as *mut GleamStdlibRunState;

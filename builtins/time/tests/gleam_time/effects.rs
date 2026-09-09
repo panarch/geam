@@ -21,9 +21,34 @@ fn preserves_time_source_order_backward_clocks_repeated_runs_and_independent_sta
         .run_main(&mut independent_state, &mut Vec::new())
         .expect("official Time effects fixture should use independent state");
 
-    for actual in [first, repeated, independent] {
+    let mut transferred = super::transfer::fixture("gleam_time_effects");
+    let mut transfer_first = super::transfer::RunState {
+        stdlib: GleamStdlibRunState::from_seed([1; 32]),
+        source: scripted_state().source().clone(),
+        work: (),
+    };
+    let mut transfer_independent = super::transfer::RunState {
+        stdlib: GleamStdlibRunState::from_seed([1; 32]),
+        source: scripted_state().source().clone(),
+        work: (),
+    };
+    for (index, actual) in [first, repeated, independent].into_iter().enumerate() {
         assert_eq!(actual.inspect().to_string(), expected);
+        let state = if index == 2 {
+            &mut transfer_independent
+        } else {
+            &mut transfer_first
+        };
+        let mut echo = super::transfer_fixture::ObservedEcho::default();
+        transferred
+            .run(state, &mut echo)
+            .expect("repeated transferable Time effects");
+        echo.assert_result(&actual, &[]);
     }
+    assert!(first_state.source().events.is_empty());
+    assert!(transfer_first.source.events.is_empty());
+    assert_eq!(independent_state.source().events.len(), 4);
+    assert_eq!(transfer_independent.source.events.len(), 4);
 }
 
 fn scripted_state() -> GleamTimeRunState<ScriptedSource> {

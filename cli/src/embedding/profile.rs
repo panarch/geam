@@ -16,6 +16,7 @@ pub(super) struct HostedBindings {
 
 #[derive(Debug)]
 pub(super) struct HostedComponents {
+    pub(super) future_source: bool,
     first: ComponentBinding,
     remaining: Vec<ComponentBinding>,
 }
@@ -29,6 +30,7 @@ pub(super) enum HostedCapabilities {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum ComponentBinding {
+    Future,
     Stdlib,
     Json,
     Time,
@@ -87,9 +89,11 @@ impl HostedComponents {
 
     fn new(first: ComponentBinding) -> Self {
         let mut components = Self {
+            future_source: first == ComponentBinding::Future,
             first,
             remaining: Vec::new(),
         };
+        components.insert(ComponentBinding::Future);
         components.assign_external_fields();
         components
     }
@@ -111,6 +115,7 @@ impl HostedComponents {
     }
 
     pub(super) fn extend(&mut self, components: Self) {
+        self.future_source |= components.future_source;
         self.insert(components.first);
         for component in components.remaining {
             self.insert(component);
@@ -123,10 +128,6 @@ impl HostedComponents {
 
     pub(super) fn first(&self) -> &ComponentBinding {
         &self.first
-    }
-
-    pub(super) fn remaining(&self) -> impl Iterator<Item = &ComponentBinding> {
-        self.remaining.iter()
     }
 
     pub(super) fn has_multiple(&self) -> bool {
@@ -160,13 +161,20 @@ impl HostedComponents {
 
     fn assign_external_fields(&mut self) {
         let mut used_inputs = BTreeSet::from(["stdlib".to_owned(), "time".to_owned()]);
-        let mut used_state =
-            BTreeSet::from(["stdlib".to_owned(), "json".to_owned(), "time".to_owned()]);
+        let mut used_state = BTreeSet::from([
+            "stdlib".to_owned(),
+            "json".to_owned(),
+            "time".to_owned(),
+            "future".to_owned(),
+        ]);
         let mut external = std::iter::once(&mut self.first)
             .chain(self.remaining.iter_mut())
             .filter_map(|component| match component {
                 ComponentBinding::External(component) => Some(component),
-                ComponentBinding::Stdlib | ComponentBinding::Json | ComponentBinding::Time => None,
+                ComponentBinding::Future
+                | ComponentBinding::Stdlib
+                | ComponentBinding::Json
+                | ComponentBinding::Time => None,
             })
             .collect::<Vec<_>>();
         // A reserved package keeps its stable escaped field when another
@@ -197,10 +205,14 @@ impl HostedComponents {
             };
             package.require_geam_feature(
                 provider.geam_feature(),
-                &format!(
-                    "because the selected source closure requires Gleam package `{}`",
-                    provider.package(),
-                ),
+                &if provider == BuiltInProvider::Geam {
+                    "to generate hosted embedding bindings".to_owned()
+                } else {
+                    format!(
+                        "because the selected source closure requires Gleam package `{}`",
+                        provider.package(),
+                    )
+                },
             )?;
         }
         Ok(())
@@ -246,6 +258,7 @@ impl From<BuiltInProvider> for ComponentBinding {
             BuiltInProvider::Stdlib => Self::Stdlib,
             BuiltInProvider::Json => Self::Json,
             BuiltInProvider::Time => Self::Time,
+            BuiltInProvider::Geam => Self::Future,
         }
     }
 }
@@ -256,6 +269,7 @@ impl ComponentBinding {
             Self::Stdlib => Some(BuiltInProvider::Stdlib),
             Self::Json => Some(BuiltInProvider::Json),
             Self::Time => Some(BuiltInProvider::Time),
+            Self::Future => Some(BuiltInProvider::Geam),
             Self::External(_) => None,
         }
     }
@@ -459,21 +473,29 @@ mod tests {
         let stdlib = HostedComponents::from_builtin(BuiltInProvider::Stdlib);
         assert_eq!(
             stdlib.iter().collect::<Vec<_>>(),
-            [&ComponentBinding::Stdlib]
+            [&ComponentBinding::Future, &ComponentBinding::Stdlib]
         );
         assert_eq!(stdlib.capabilities(), HostedCapabilities::Io);
 
         let json = HostedComponents::from_builtin(BuiltInProvider::Json);
         assert_eq!(
             json.iter().collect::<Vec<_>>(),
-            [&ComponentBinding::Stdlib, &ComponentBinding::Json],
+            [
+                &ComponentBinding::Future,
+                &ComponentBinding::Stdlib,
+                &ComponentBinding::Json
+            ],
         );
         assert_eq!(json.capabilities(), HostedCapabilities::Io);
 
         let time = HostedComponents::from_builtin(BuiltInProvider::Time);
         assert_eq!(
             time.iter().collect::<Vec<_>>(),
-            [&ComponentBinding::Stdlib, &ComponentBinding::Time],
+            [
+                &ComponentBinding::Future,
+                &ComponentBinding::Stdlib,
+                &ComponentBinding::Time
+            ],
         );
         assert_eq!(time.capabilities(), HostedCapabilities::IoAndTime);
     }
@@ -492,6 +514,7 @@ mod tests {
         assert_eq!(
             components.iter().collect::<Vec<_>>(),
             [
+                &ComponentBinding::Future,
                 &ComponentBinding::Stdlib,
                 &ComponentBinding::Time,
                 &ComponentBinding::External(ExternalComponent {
@@ -515,12 +538,15 @@ mod tests {
         });
         assert_eq!(
             reserved.iter().cloned().collect::<Vec<_>>(),
-            [ComponentBinding::External(ExternalComponent {
-                package: "stdlib".to_owned(),
-                input_field: identifier("provider_stdlib"),
-                state_field: identifier("provider_stdlib"),
-                crate_alias: identifier("stdlib_provider"),
-            })],
+            [
+                ComponentBinding::Future,
+                ComponentBinding::External(ExternalComponent {
+                    package: "stdlib".to_owned(),
+                    input_field: identifier("provider_stdlib"),
+                    state_field: identifier("provider_stdlib"),
+                    crate_alias: identifier("stdlib_provider"),
+                })
+            ],
         );
 
         let mut escaped = HostedComponents::from_external(ExternalComponent {
@@ -538,6 +564,7 @@ mod tests {
         assert_eq!(
             escaped.iter().cloned().collect::<Vec<_>>(),
             [
+                ComponentBinding::Future,
                 ComponentBinding::External(ExternalComponent {
                     package: "_crate".to_owned(),
                     input_field: identifier("_crate"),
@@ -568,6 +595,7 @@ mod tests {
         assert_eq!(
             collisions.iter().cloned().collect::<Vec<_>>(),
             [
+                ComponentBinding::Future,
                 ComponentBinding::External(ExternalComponent {
                     package: "provider_stdlib".to_owned(),
                     input_field: identifier("provider_provider_stdlib"),
@@ -604,12 +632,15 @@ mod tests {
             .expect("one compatible direct provider should resolve");
         assert_eq!(
             hosted.components.iter().collect::<Vec<_>>(),
-            [&ComponentBinding::External(ExternalComponent {
-                package: "images".to_owned(),
-                input_field: identifier("images"),
-                state_field: identifier("provider_images"),
-                crate_alias: identifier("patterns"),
-            })],
+            [
+                &ComponentBinding::Future,
+                &ComponentBinding::External(ExternalComponent {
+                    package: "images".to_owned(),
+                    input_field: identifier("images"),
+                    state_field: identifier("provider_images"),
+                    crate_alias: identifier("patterns"),
+                })
+            ],
         );
 
         let error = fixture
@@ -865,7 +896,7 @@ mod tests {
                 .expect("application source should be written");
 
             let mut dependencies = vec![format!(
-                "runtime = {{ package = \"geam\", path = {repository:?}, default-features = false, features = [\"embedding\"] }}"
+                "runtime = {{ package = \"geam\", path = {repository:?}, default-features = false, features = [\"embedding\", \"geam-builtin\"] }}"
             )];
             let split_geam = root.join("split-geam");
             for provider in providers {

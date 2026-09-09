@@ -1,11 +1,21 @@
 use crate::embedding::boundary::{DataType, FunctionBinding, PlainBindings};
 
 pub(super) fn push_function_field(output: &mut String, index: usize, function: &FunctionBinding) {
+    push_function_field_with(output, index, function, "Function", DataType::rust_type);
+}
+
+fn push_function_field_with(
+    output: &mut String,
+    index: usize,
+    function: &FunctionBinding,
+    function_type: &'static str,
+    rust_type: fn(&DataType) -> TypeExpression,
+) {
     let type_ = TypeExpression::Apply(
-        "Function",
+        function_type,
         vec![
-            TypeExpression::Tuple(function.arguments.iter().map(DataType::rust_type).collect()),
-            function.return_type.rust_type(),
+            TypeExpression::Tuple(function.arguments.iter().map(rust_type).collect()),
+            rust_type(&function.return_type),
             TypeExpression::Name(format!("Function{index}Input")),
         ],
     );
@@ -16,7 +26,7 @@ pub(super) fn push_function_field(output: &mut String, index: usize, function: &
         output.push_str(&format!("{prefix} {inline},\n"));
     } else if can_inline && 8 + inline.len() < 100 {
         output.push_str(&format!("{prefix}\n        {inline},\n"));
-    } else if prefix.len() + " Function<".len() <= 100 {
+    } else if prefix.len() + 1 + function_type.len() < 100 {
         output.push_str(&format!("{prefix} "));
         type_.push(output, 4, prefix.len() + 1, 100);
         output.push_str(",\n");
@@ -81,19 +91,20 @@ impl DataType {
             Self::Bool => TypeExpression::Name("bool".to_owned()),
             Self::Nil => TypeExpression::Name("()".to_owned()),
             Self::Tuple(elements) => {
-                TypeExpression::Tuple(elements.iter().map(Self::rust_type).collect())
+                TypeExpression::Tuple(elements.iter().map(|element| element.rust_type()).collect())
             }
             Self::Result(ok, error) => {
                 TypeExpression::Apply("Result", vec![ok.rust_type(), error.rust_type()])
             }
             Self::Option(item) => TypeExpression::Apply("Option", vec![item.rust_type()]),
             Self::List(item) => TypeExpression::Apply("List", vec![item.rust_type()]),
+            Self::Future(item) => TypeExpression::Apply("FutureType", vec![item.rust_type()]),
         }
     }
 
     fn input_type(&self, parameters: &mut Vec<String>) -> TypeExpression {
         match self {
-            Self::List(_) => {
+            Self::List(_) | Self::Future(_) => {
                 let name = format!("Input{}", parameters.len());
                 parameters.push(name.clone());
                 TypeExpression::Name(name)
@@ -186,6 +197,7 @@ impl TypeExpression {
     fn can_inline(&self) -> bool {
         match self {
             Self::Name(_) => true,
+            Self::Tuple(elements) if elements.len() == 1 => elements[0].can_inline(),
             Self::Tuple(_) => {
                 // Rustfmt limits tuple contents to its default 60-column call width.
                 self.inline().len() <= 62
@@ -217,6 +229,12 @@ mod tests {
         assert_eq!(
             data.rust_type().inline(),
             "(Result<List<List<BigInt>>, EcoString>, Option<List<bool>>, (BitArrayValue,))"
+        );
+        assert_eq!(
+            DataType::Future(Box::new(data.clone()))
+                .rust_type()
+                .inline(),
+            "FutureType<(Result<List<List<BigInt>>, EcoString>, Option<List<bool>>, (BitArrayValue,))>"
         );
         let mut parameters = Vec::new();
         assert_eq!(
@@ -318,6 +336,36 @@ mod tests {
         assert_eq!(
             source,
             "pub struct Functions {\n    pub normalize_inventory_code_before_exporting:\n        Function<(EcoString,), EcoString, Function0Input>,\n}\n"
+        );
+        assert_rustfmt_stable(&source);
+    }
+
+    #[test]
+    fn keeps_a_single_nested_tuple_argument_inline() {
+        let data = DataType::Tuple(vec![
+            DataType::List(Box::new(DataType::Int)),
+            DataType::Option(Box::new(DataType::List(Box::new(DataType::String)))),
+            DataType::String,
+        ]);
+        let function = FunctionBinding {
+            gleam_name: "mixed_data".to_owned(),
+            rust_name: RustIdentifier::parse("mixed_data").expect("fixture function"),
+            arguments: vec![data.clone()],
+            return_type: data,
+        };
+        let mut source = "pub struct Functions {\n".to_owned();
+        push_function_field(&mut source, 0, &function);
+        source.push_str("}\n");
+        assert_eq!(
+            source,
+            r#"pub struct Functions {
+    pub mixed_data: Function<
+        ((List<BigInt>, Option<List<EcoString>>, EcoString),),
+        (List<BigInt>, Option<List<EcoString>>, EcoString),
+        Function0Input,
+    >,
+}
+"#
         );
         assert_rustfmt_stable(&source);
     }

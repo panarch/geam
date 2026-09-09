@@ -13,17 +13,15 @@ pub(in crate::runtime) use returning_function::{
     run_core_function, run_external_function_function,
 };
 pub(in crate::runtime) use value::{
-    bit_array_parameter_locals, bool_parameter_locals, float_parameter_locals,
-    int_parameter_locals, nil_parameter_locals, run_bit_array, run_bool, run_custom, run_external,
-    run_float, run_int, run_never, run_never_value, run_nil, run_string, run_tuple,
-    run_utf_codepoint, string_parameter_locals, utf_codepoint_parameter_locals,
+    run_bit_array, run_bool, run_custom, run_external, run_float, run_int, run_never,
+    run_never_value, run_nil, run_string, run_tuple, run_utf_codepoint,
 };
 
+use crate::plan::execution::function::ExecutionFunctionEntry;
 use crate::plan::execution::function::{
-    ExecutionFunction, ExecutionFunctionBody, ExecutionFunctionEntry, ExecutionFunctionRef,
-    ExecutionNeverFunction, FunctionBodyOwner, FunctionExit, ProfiledFunctionBody,
+    ExecutionFunction, ExecutionFunctionBody, ExecutionFunctionRef, ExecutionNeverFunction,
+    FunctionBodyOwner, FunctionExit, ProfiledFunctionBody,
 };
-use crate::plan::execution::graph::ParamLocal;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::graph::{self, GraphValue, RetainedValues};
 use crate::runtime::state::RuntimeStateFor;
@@ -37,18 +35,17 @@ pub(super) enum EvaluatedFunctionExit<Return, TailCall> {
     },
 }
 
+type EvaluatedEntryReturn<Body> = <<Body as FunctionBodyOwner>::Return as GraphValue>::Evaluated;
+type EvaluatedEntry<Body> =
+    EvaluatedFunctionExit<EvaluatedEntryReturn<Body>, <Body as FunctionBodyOwner>::TailCall>;
+
 pub(super) fn evaluate_entry<Plan, Body>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
     function: &ExecutionFunction<Plan::Profile, Body>,
     origin: HostCallOrigin,
     inputs: RetainedValues,
-) -> ExecutionResult<
-    EvaluatedFunctionExit<
-        <Body::Return as GraphValue>::Evaluated,
-        <Body as FunctionBodyOwner>::TailCall,
-    >,
->
+) -> ExecutionResult<EvaluatedEntry<Body>>
 where
     Plan: ExecutableRuntimePlan,
     Body: ExecutionFunctionBody<Graph = RuntimeGraph<Plan>>,
@@ -105,52 +102,15 @@ where
         let exit = function.exit(completed.exit());
         match exit {
             FunctionExit::Return(value) => {
-                EvaluatedFunctionExit::Return(completed.into_value(state, value))
+                EvaluatedFunctionExit::Return(completed.into_value(value))
             }
             FunctionExit::TailCall { function, args } => {
                 let function = function.clone();
-                let args = completed.into_retained(state, args);
+                let args = completed.into_retained(args);
                 EvaluatedFunctionExit::TailCall { function, args }
             }
         }
     })
-}
-
-pub(super) fn parameter_locals<Plan, Body>(
-    plan: &Plan,
-    function: &ExecutionFunction<Plan::Profile, Body>,
-) -> Vec<ParamLocal>
-where
-    Plan: ExecutableRuntimePlan,
-    Body: ExecutionFunctionBody,
-{
-    match function.as_ref() {
-        ExecutionFunctionRef::Graph(function) => function
-            .entry()
-            .params(function.body().function_body())
-            .iter()
-            .map(|slot| slot.local().clone())
-            .collect(),
-        ExecutionFunctionRef::Host(target) => plan.host_parameters(target).to_vec(),
-    }
-}
-
-pub(super) fn never_parameter_locals<Plan>(
-    plan: &Plan,
-    function: &ExecutionNeverFunction<Plan::Profile>,
-) -> Vec<ParamLocal>
-where
-    Plan: ExecutableRuntimePlan,
-{
-    match function.as_ref() {
-        ExecutionFunctionRef::Graph(function) => function
-            .entry()
-            .params(function.body().function_body())
-            .iter()
-            .map(|slot| slot.local().clone())
-            .collect(),
-        ExecutionFunctionRef::Host(target) => plan.host_never_parameters(target).to_vec(),
-    }
 }
 
 fn run_tail<Plan, Id, Return, TailCall>(

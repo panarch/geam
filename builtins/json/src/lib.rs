@@ -2,10 +2,9 @@ mod function;
 mod schema;
 
 pub(crate) use geam_core::{
-    BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostComponentProfile,
-    HostCustomType, HostExternal, HostList, HostListType, HostProfile, HostProvider,
-    HostProviderComponent, HostProviderComponentRegistration, HostProviderModule,
-    HostRegistrationError,
+    BitArrayValue, HostCall, HostCallCompletion, HostComponentProfile, HostCustomType,
+    HostExternal, HostListType, HostProfile, HostProvider, HostProviderComponent,
+    HostProviderComponentRegistration, HostProviderModule, HostRegistrationError,
 };
 #[cfg(test)]
 pub(crate) use geam_core::{
@@ -20,10 +19,13 @@ use geam_stdlib::{
 };
 
 /// A host profile that composes the official Gleam JSON and standard-library components.
-pub trait GleamJsonHostProfile: GleamStdlibHostProfile + HostComponentProfile<Component> {}
+pub trait GleamJsonHostProfile:
+    geam_stdlib::GleamStdlibProviderProfile + HostComponentProfile<Component>
+{
+}
 
 impl<Profile> GleamJsonHostProfile for Profile where
-    Profile: GleamStdlibHostProfile + HostComponentProfile<Component>
+    Profile: geam_stdlib::GleamStdlibProviderProfile + HostComponentProfile<Component>
 {
 }
 
@@ -127,20 +129,6 @@ where
     }
 }
 
-pub(crate) fn json_stores<Profile>(stores: &Profile::ExternalStores) -> &GleamJsonStores
-where
-    Profile: GleamJsonHostProfile,
-{
-    <Profile as HostComponentProfile<Component>>::component_stores(stores)
-}
-
-pub(crate) fn provider_stores<Profile>(stores: &Profile::ExternalStores) -> &function::Stores
-where
-    Profile: GleamJsonHostProfile,
-{
-    &json_stores::<Profile>(stores).json
-}
-
 #[cfg(test)]
 mod test_support;
 
@@ -149,7 +137,6 @@ mod tests {
     use super::test_support::{CustomProfile, CustomRunState, CustomStores};
     use super::{
         Component, GleamJsonProfile, GleamJsonProfileStores, GleamJsonRunState, host_providers,
-        json_stores,
     };
     use crate::{HostComponentProfile, HostProviderComponent, HostProviderComponentRegistration};
     use geam_stdlib::{Component as GleamStdlibComponent, GleamStdlibRunState};
@@ -184,7 +171,7 @@ mod tests {
             &default.stdlib,
         ));
         assert!(std::ptr::eq(
-            json_stores::<GleamJsonProfile>(&default),
+            <GleamJsonProfile as HostComponentProfile<Component>>::component_stores(&default),
             &default.json,
         ));
         assert!(std::ptr::eq(
@@ -194,7 +181,7 @@ mod tests {
             &custom.stdlib,
         ));
         assert!(std::ptr::eq(
-            json_stores::<CustomProfile>(&custom),
+            <CustomProfile as HostComponentProfile<Component>>::component_stores(&custom),
             &custom.json,
         ));
 

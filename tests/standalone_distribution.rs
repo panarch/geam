@@ -7,6 +7,9 @@ use tempfile::{TempDir, tempdir};
 #[path = "support/workspace_dependencies.rs"]
 mod workspace_dependencies;
 
+#[path = "standalone_distribution/future.rs"]
+mod future;
+
 #[test]
 fn runs_the_canonical_standalone_project_with_independent_path_providers() {
     let fixture = standalone_fixture();

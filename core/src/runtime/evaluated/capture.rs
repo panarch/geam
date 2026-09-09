@@ -344,6 +344,7 @@ mod tests {
     use super::{EvaluatedCapture, EvaluatedCaptureKind, EvaluatedListCapture};
     use crate::plan::execution::function::IntFunctionId;
     use crate::plan::execution::graph::{IntFunctionLocalId, IntListLocalId, IntLocalId};
+
     use crate::runtime::evaluated::EvaluatedIntFunction;
     use crate::runtime::state::RuntimeState;
 
@@ -364,7 +365,7 @@ pub fn main() {
         let list_value = state
             .lists_mut()
             .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let function_value = EvaluatedIntFunction::reference(
+        let function_value: EvaluatedIntFunction = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             Vec::new(),
             Vec::new(),
@@ -393,7 +394,7 @@ pub fn main() {
             }),
         );
         assert_eq!(
-            EvaluatedCapture::int_function(IntFunctionLocalId(0), function_value.clone()).kind(),
+            EvaluatedCapture::int_function(IntFunctionLocalId(0), function_value.clone(),).kind(),
             &EvaluatedCaptureKind::IntFunction {
                 local: IntFunctionLocalId(0),
                 value: function_value,

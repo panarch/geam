@@ -2,26 +2,25 @@ use super::storage::{DictEntry, DictPayload, DictStorage};
 use super::{DictOf, DictSchema};
 use crate::dynamic::Dynamic;
 use crate::{
-    Component, GleamStdlibRunState, HostCall, HostConstruction, HostExternal, HostProvider,
-    HostType, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
+    Component, GleamStdlibRunState, HostConstruction, HostExternal, HostProvider, HostType,
+    HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
 };
-use geam_core::provider::{Call, Callback, HostResult, Value};
+use geam_core::provider::{Call, Callback, Value};
 use num_bigint::BigInt;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 #[geam_macros::module(
     path = "gleam/dict",
     crate_path = geam_core,
     profile = crate::GleamStdlibHostProfile,
     component = crate::Component<Profile::Io>,
-    stores = crate::dict::stores,
+    stores = dict,
 )]
 pub(super) mod provider {
     use super::{
-        BigInt, Call, Callback, DictEntry, DictPayload, DictStorage, GleamStdlibRunState,
-        HostResult, Rc, Value,
+        BigInt, Call, Callback, DictEntry, DictPayload, DictStorage, GleamStdlibRunState, Value,
     };
+    use geam_core::provider::HostResult;
 
     #[geam_macros::external(
         name = "Dict",
@@ -29,6 +28,7 @@ pub(super) mod provider {
         input = DictInput,
         payload = DictPayload,
         manual,
+
     )]
     pub struct DictValue<Key, Item>;
 
@@ -38,6 +38,7 @@ pub(super) mod provider {
         input = TransientDictInput,
         payload = DictPayload,
         manual,
+
     )]
     pub(super) struct TransientDictValue<Key, Item>;
 
@@ -128,11 +129,11 @@ pub(super) mod provider {
                     call.equal(&candidate, &key)
                 });
         let storage = dict.payload().storage.clone();
-        let entry = Rc::new(DictEntry {
+        let entry = DictEntry::new(
             key_hash,
-            key: Rc::new(call.store(key).into_retained()),
-            value: Rc::new(call.store(value).into_retained()),
-        });
+            call.store(key).into_retained(),
+            call.store(value).into_retained(),
+        );
         DictValue::from_payload(DictPayload {
             storage: storage.with_entry(key_hash, index, entry),
         })
@@ -157,11 +158,11 @@ pub(super) mod provider {
                 call.equal(&candidate, &key)
             });
         let storage = transient.payload().storage.clone();
-        let entry = Rc::new(DictEntry {
+        let entry = DictEntry::new(
             key_hash,
-            key: Rc::new(call.store(key).into_retained()),
-            value: Rc::new(call.store(value).into_retained()),
-        });
+            call.store(key).into_retained(),
+            call.store(value).into_retained(),
+        );
         TransientDictValue::from_payload(DictPayload {
             storage: storage.with_entry(key_hash, index, entry),
         })
@@ -184,11 +185,8 @@ pub(super) mod provider {
                     payload.storage.buckets[&key_hash][index].value.as_ref()
                 }));
             let value = call.invoke(function, (key, value))?;
-            let entry = Rc::new(DictEntry {
-                key_hash,
-                key: dict.payload().storage.buckets[&key_hash][index].key.clone(),
-                value: Rc::new(call.store(value).into_retained()),
-            });
+            let entry = dict.payload().storage.buckets[&key_hash][index]
+                .with_value(call.store(value).into_retained());
             buckets
                 .entry(key_hash)
                 .or_insert_with(im::Vector::new)
@@ -276,11 +274,11 @@ pub(super) mod provider {
             None => initial,
         };
         let storage = transient.payload().storage.clone();
-        let entry = Rc::new(DictEntry {
+        let entry = DictEntry::new(
             key_hash,
-            key: Rc::new(call.store(key).into_retained()),
-            value: Rc::new(call.store(value).into_retained()),
-        });
+            call.store(key).into_retained(),
+            call.store(value).into_retained(),
+        );
         Ok(TransientDictValue::from_payload(DictPayload {
             storage: storage.with_entry(key_hash, index, entry),
         }))
@@ -290,13 +288,22 @@ pub(super) mod provider {
 type KeyIndex = HostTypeIndex0;
 type ItemIndex = HostTypeIndexNext<KeyIndex>;
 
+pub(super) fn host_provider<Profile>()
+-> Result<crate::HostProviderModule<Profile>, crate::HostRegistrationError>
+where
+    Profile: crate::GleamStdlibProviderProfile,
+{
+    provider::__geam_module::<Profile>()
+}
+
 pub fn create_dynamic_dict<'call, Profile, Provider, Return>(
-    call: &mut HostCall<'call, Profile, Provider, Return>,
+    call: &mut geam_core::host::HostCall<'call, Profile, Provider, Return>,
     construction: HostConstruction<'call, DictOf<Dynamic, Dynamic>>,
     entries: impl IntoIterator<Item = (HostExternal<'call, Dynamic>, HostExternal<'call, Dynamic>)>,
 ) -> HostExternal<'call, DictOf<Dynamic, Dynamic>>
 where
-    Profile: crate::GleamStdlibHostProfile,
+    Profile: crate::GleamStdlibProviderProfile,
+    Profile::RunState: Send,
     Provider: HostProvider<Profile>,
     Return: HostType,
 {
@@ -307,51 +314,42 @@ where
             call.equal::<Dynamic>(*stored, *candidate)
         });
     }
-
-    call.construct_retained_external_with_binding::<
-        provider::__GeamProvider,
-        DictSchema,
-        HostTypeList<Dynamic, HostTypeList<Dynamic, HostTypeListEnd>>,
-    >(construction, move |builder| {
-        let len = buckets.values().map(Vec::len).sum();
-        let buckets = buckets
-            .into_iter()
-            .map(|(key_hash, entries)| {
-                let entries = entries
-                    .into_iter()
-                    .map(|(key, value)| {
-                        Rc::new(DictEntry {
-                            key_hash,
-                            key: Rc::new(geam_core::__macro_support::retain_argument::<
-                                _,
-                                _,
-                                DictPayload,
-                                KeyIndex,
-                            >(builder, key)),
-                            value: Rc::new(geam_core::__macro_support::retain_argument::<
-                                _,
-                                _,
-                                DictPayload,
-                                ItemIndex,
-                            >(builder, value)),
-                        })
-                    })
-                    .collect();
-                (key_hash, entries)
-            })
-            .collect();
-        DictPayload {
-            storage: DictStorage { buckets, len },
-        }
-    })
-}
-
-pub(super) fn host_provider<Profile>()
--> Result<crate::HostProviderModule<Profile>, crate::HostRegistrationError>
-where
-    Profile: crate::GleamStdlibHostProfile,
-{
-    provider::__geam_module::<Profile>()
+    let len = buckets.values().map(Vec::len).sum();
+    let buckets = buckets
+        .into_iter()
+        .map(|(key_hash, entries)| {
+            let entries = entries
+                .into_iter()
+                .map(|(key, value)| {
+                    DictEntry::new(
+                        key_hash,
+                        geam_core::__macro_support::retain_constructed_argument::<
+                            _,
+                            _,
+                            _,
+                            _,
+                            _,
+                            DictPayload,
+                            KeyIndex,
+                        >(call, &construction, key),
+                        geam_core::__macro_support::retain_constructed_argument::<
+                            _,
+                            _,
+                            _,
+                            _,
+                            _,
+                            DictPayload,
+                            ItemIndex,
+                        >(call, &construction, value),
+                    )
+                })
+                .collect();
+            (key_hash, entries)
+        })
+        .collect();
+    call.construct_external_with_binding::<provider::__GeamProvider, DictSchema, HostTypeList<Dynamic, HostTypeList<Dynamic, HostTypeListEnd>>>(
+        construction, DictPayload { storage: DictStorage { buckets, len } },
+    )
 }
 
 pub(super) fn insert_first<Key, Value>(
@@ -369,6 +367,201 @@ pub(super) fn insert_first<Key, Value>(
 
 #[cfg(test)]
 mod tests {
+    mod transfer {
+        use super::DICT_DECLARATIONS;
+        use crate::dict::function::provider::__GeamProvider as DictProvider;
+        use crate::dict::storage::DictEntry;
+        use crate::dict::{DictOf, DictSchema};
+        use crate::{
+            Component, GleamStdlibHostProfile, GleamStdlibRunState, GleamStdlibStores, IoOutput,
+        };
+        use ecow::EcoString;
+        use geam_builtin::FutureComponent;
+        use geam_core::embedding::{
+            FunctionDeclaration, HostedModuleBuilder, with_execution_scope,
+        };
+        use geam_core::frontend::compile_typed_host_program;
+        use geam_core::host::{
+            HostCall, HostComponentProfile, HostExternalBinding, HostFutureStore,
+        };
+        use geam_core::{
+            HostCallCompletion, HostExternal, HostProfile, HostProvider, HostProviderSet,
+            ModuleSource, PackageSource,
+        };
+        use num_bigint::BigInt;
+        use std::future::Future;
+        use std::pin::pin;
+        use std::sync::{Arc, Weak};
+        use std::task::{Context, Poll, Waker};
+
+        struct Profile;
+        #[derive(Default)]
+        struct Stores {
+            stdlib: GleamStdlibStores,
+            work: HostFutureStore,
+        }
+        struct State {
+            stdlib: GleamStdlibRunState,
+            work: (),
+            entries: Vec<Weak<DictEntry>>,
+        }
+        struct Observer;
+        #[derive(Default)]
+        struct Echo(Vec<String>);
+        impl geam_core::EchoSink for Echo {
+            fn emit(&mut self, output: geam_core::EchoOutput) {
+                self.0.push(output.value().inspect().to_string());
+            }
+        }
+        type Dict = DictOf<EcoString, geam_core::HostListType<BigInt>>;
+
+        impl HostProfile for Profile {
+            type RunState = State;
+            type ExternalStores = Stores;
+        }
+        impl GleamStdlibHostProfile for Profile {
+            type Io = Vec<IoOutput>;
+        }
+        impl HostComponentProfile<Component> for Profile {
+            fn component_stores(stores: &Stores) -> &GleamStdlibStores {
+                &stores.stdlib
+            }
+            fn component_state(state: &mut State) -> &mut GleamStdlibRunState {
+                &mut state.stdlib
+            }
+        }
+        impl geam_core::host::HostWorkProfile for Profile {
+            type Work = FutureComponent;
+        }
+        impl HostComponentProfile<FutureComponent> for Profile {
+            fn component_stores(stores: &Stores) -> &HostFutureStore {
+                &stores.work
+            }
+            fn component_state(state: &mut State) -> &mut () {
+                &mut state.work
+            }
+        }
+        impl HostProvider<Profile> for Observer {
+            type State = Vec<Weak<DictEntry>>;
+            fn project(state: &mut State) -> &mut Self::State {
+                &mut state.entries
+            }
+        }
+        impl HostExternalBinding<Profile, DictSchema> for Observer {
+            type Storage = <DictProvider as HostExternalBinding<Profile, DictSchema>>::Storage;
+        }
+
+        fn observe<'call>(
+            mut call: HostCall<'call, Profile, Observer, ()>,
+            before: HostExternal<'call, Dict>,
+            after: HostExternal<'call, Dict>,
+            mapped: bool,
+        ) -> Result<HostCallCompletion<'call, ()>, geam_core::HostCallError> {
+            let before = call.external_payload(before);
+            let after = call.external_payload(after);
+            assert_eq!(before.storage.len, 2);
+            assert_eq!(after.storage.len, 2);
+            let mut shared_entries = 0;
+            let mut changed_values = 0;
+            for (hash, bucket) in &before.storage.buckets {
+                for (index, entry) in bucket.iter().enumerate() {
+                    let updated = &after.storage.buckets[hash][index];
+                    if Arc::ptr_eq(entry, updated) {
+                        shared_entries += 1;
+                        assert!(Arc::ptr_eq(&entry.key, &updated.key));
+                        assert!(Arc::ptr_eq(&entry.value, &updated.value));
+                    } else {
+                        changed_values += 1;
+                        assert_eq!(Arc::ptr_eq(&entry.key, &updated.key), mapped);
+                        assert!(!Arc::ptr_eq(&entry.value, &updated.value));
+                    }
+                    call.state()
+                        .extend([Arc::downgrade(entry), Arc::downgrade(updated)]);
+                }
+            }
+            assert_eq!(
+                (shared_entries, changed_values),
+                if mapped { (0, 2) } else { (1, 1) }
+            );
+            Ok(call.return_value(()))
+        }
+
+        #[test]
+        fn persistent_transfer_updates_share_unchanged_entries_and_release_the_graph() {
+            let source = format!(
+                "{DICT_DECLARATIONS}\n{}",
+                r#"
+@external(erlang, "observer", "compare")
+fn observe(before: Dict(String, List(Int)), after: Dict(String, List(Int)), mapped: Bool) -> Nil
+
+pub fn run() -> Nil {
+  let original = new() |> do_insert("first", [1, 2], _) |> do_insert("second", [3], _)
+  let updated = do_insert("first", [4, 5], original)
+  echo size(updated)
+  observe(original, updated, False)
+  observe(original, do_map_values(fn(_, value) { value }, original), True)
+}
+"#
+            );
+            let dict = super::super::host_provider::<Profile>()
+                .expect("dict registration")
+                .with_scoped_function::<Observer, (Dict, Dict, bool), (), _>("observe", observe)
+                .expect("observation registration");
+            let program = compile_typed_host_program(
+                "gleam_stdlib",
+                "gleam/dict",
+                [PackageSource::new(
+                    "gleam_stdlib",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "gleam/dict",
+                        "src/gleam/dict.gleam",
+                        source,
+                    )],
+                )],
+                HostProviderSet::from_providers([dict]).expect("provider set"),
+            )
+            .expect("dict source");
+            let (bindings, entry) = HostedModuleBuilder::new(program)
+                .expect("plan")
+                .function(FunctionDeclaration::<(), ()>::new("run"))
+                .expect("entry");
+            let mut module = bindings.seal().expect("seal");
+            let mut state = State {
+                stdlib: GleamStdlibRunState::from_seed([0; 32]),
+                work: (),
+                entries: Vec::new(),
+            };
+            assert!(std::ptr::eq(
+                <Profile as HostComponentProfile<Component>>::component_state(&mut state),
+                &state.stdlib,
+            ));
+            assert!(std::ptr::eq(
+                <Profile as HostComponentProfile<FutureComponent>>::component_state(&mut state),
+                &state.work,
+            ));
+            let mut echo = Echo::default();
+            {
+                let mut task = pin!(with_execution_scope(async |guard| {
+                    module
+                        .attach(guard, &mut state, &mut echo)
+                        .call(&entry, ())
+                        .expect("direct update");
+                }));
+                assert_eq!(
+                    task.as_mut().poll(&mut Context::from_waker(Waker::noop())),
+                    Poll::Ready(())
+                );
+            }
+            assert_eq!(state.entries.len(), 8);
+            std::thread::spawn(move || drop(module))
+                .join()
+                .expect("owner drop on another worker");
+            assert!(state.entries.iter().all(|entry| entry.upgrade().is_none()));
+            assert_eq!(echo.0, ["2"]);
+        }
+    }
+
     use super::super::host_provider;
     use super::{insert_first, provider::__GeamProvider as DictProvider};
     use crate::{

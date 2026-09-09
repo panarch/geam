@@ -81,8 +81,13 @@ jobs:
           git switch -c "$branch"
 
       - name: Update standalone provider requirements
-        working-directory: cli/tests/fixtures/standalone_cli/providers
-        run: cargo upgrade --package "geam@=$RELEASE_VERSION" --pinned --recursive false
+        run: |
+          for project in \
+            cli/tests/fixtures/standalone_cli/providers \
+            cli/tests/fixtures/standalone_future/provider
+          do
+            (cd "$project" && cargo upgrade --package "geam@=$RELEASE_VERSION" --pinned --recursive false)
+          done
 
       - name: Update example provider requirements
         run: |
@@ -97,7 +102,8 @@ jobs:
             examples/embedding/data \
             examples/embedding/package \
             examples/embedding/io \
-            examples/embedding/provider
+            examples/embedding/provider \
+            examples/embedding/async_host
           do
             (cd "$project" && cargo upgrade --package "geam@=$RELEASE_VERSION" --pinned --recursive false)
           done

@@ -20,13 +20,13 @@ pub(crate) struct EmbeddingOutput {
 }
 
 impl EmbeddingOutput {
-    pub(super) fn from_value(value: EvaluatedValue) -> Self {
+    pub(in crate::runtime) fn from_value(value: EvaluatedValue) -> Self {
         let mut output = Self::empty();
         output.push_reversed(value);
         output
     }
 
-    pub(super) fn from_tuple(values: Vec<EvaluatedValue>) -> Self {
+    pub(in crate::runtime) fn from_tuple(values: Vec<EvaluatedValue>) -> Self {
         let mut output = Self::empty();
         for value in values.into_iter().rev() {
             output.push_reversed(value);
@@ -34,7 +34,7 @@ impl EmbeddingOutput {
         output
     }
 
-    pub(super) fn from_custom(value: EvaluatedCustomValue) -> Self {
+    pub(in crate::runtime) fn from_custom(value: EvaluatedCustomValue) -> Self {
         let mut output = Self::empty();
         output.push_reversed(EvaluatedValue::Custom(value));
         output
@@ -62,6 +62,10 @@ impl EmbeddingOutput {
 
     pub(crate) fn take_variant(&mut self) -> usize {
         take_last(&mut self.variants)
+    }
+
+    pub(crate) fn take_external(&mut self) -> EvaluatedExternalValue {
+        take_last(&mut self._externals)
     }
 
     pub(crate) fn take_bool(&mut self) -> bool {
@@ -164,15 +168,17 @@ pub fn main() {
             |context, value| context.stored_value_hash(value),
             |context, value| context.inspect_stored_value(value),
         );
-        let external = EvaluatedExternalValue::new(ExternalTypeId::new(0), external);
-        let stored_equal =
-            |left: &crate::runtime::StoredRuntimeValue,
-             right: &crate::runtime::StoredRuntimeValue| left.value() == right.value();
-        let stored_hash = |_: &crate::runtime::StoredRuntimeValue| 7;
-        let stored_inspect = |_: &crate::runtime::StoredRuntimeValue| "stored".into();
-        let equality = crate::host::HostExternalEquality::new(&stored_equal);
-        let hashing = crate::host::HostExternalHashing::new(&stored_hash);
-        let inspection = crate::host::HostExternalInspection::new(&stored_inspect);
+        let external: EvaluatedExternalValue =
+            EvaluatedExternalValue::new(ExternalTypeId::new(0), external);
+        let stored_equal = |left: &crate::runtime::RetainedValueRef,
+                            right: &crate::runtime::RetainedValueRef| {
+            left.value() == right.value()
+        };
+        let stored_hash = |_: &crate::runtime::RetainedValueRef| 7;
+        let stored_inspect = |_: &crate::runtime::RetainedValueRef| "stored".into();
+        let equality = crate::host::RetainedValueEquality::new(&stored_equal);
+        let hashing = crate::host::RetainedValueHashing::new(&stored_hash);
+        let inspection = crate::host::RetainedValueInspection::new(&stored_inspect);
         assert!(external.source_equal(&equality, &external));
         assert_eq!(external.source_hash(&hashing), 7);
         assert_eq!(external.lease().inspection(&inspection), "stored");

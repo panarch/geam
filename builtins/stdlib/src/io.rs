@@ -1,12 +1,12 @@
 mod function;
 
-use crate::{Component, GleamStdlibHostProfile, GleamStdlibRunState};
+use crate::{GleamStdlibProviderProfile, GleamStdlibRunState};
 use crate::{HostProviderModule, HostRegistrationError};
 use ecow::EcoString;
 use geam_core::provider::Call;
 
 /// A caller-owned destination for official Gleam standard-library IO events.
-pub trait IoSink {
+pub trait IoSink: Send {
     /// Receives one owned standard-library IO event.
     fn emit(&mut self, output: IoOutput);
 }
@@ -93,7 +93,7 @@ mod provider {
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
-    Profile: GleamStdlibHostProfile,
+    Profile: GleamStdlibProviderProfile,
 {
     provider::__geam_module::<Profile>()
 }

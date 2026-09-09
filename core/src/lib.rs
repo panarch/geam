@@ -1,5 +1,11 @@
 #![recursion_limit = "256"]
 
+#[cfg(test)]
+extern crate self as geam_core;
+#[cfg(test)]
+#[path = "../tests/support/work_fixture.rs"]
+mod work_fixture;
+
 #[cfg(not(target_pointer_width = "64"))]
 compile_error!("geam requires a 64-bit target");
 
@@ -43,7 +49,7 @@ pub use host::{
 };
 pub use plan::execution::{
     ExecutionPlan, ExecutionPlanExplanation, HostSpecializationError,
-    HostSpecializationErrorReason, HostedExecution,
+    HostSpecializationErrorReason, HostedEntry, HostedExecution,
 };
 pub use plan::{
     BitArrayExpr, BitArrayLocalId, BoolExpr, BoolLocalId, CustomType, CustomTypeName, EchoSite,
@@ -62,6 +68,6 @@ pub use runtime::{
     BitArraySegmentPanicReason, BitArrayValue, BitArrayValueLengthError, CustomFieldValue,
     CustomValue, EchoLocation, EchoOutput, EchoSink, ExecutionError, ExternalValue,
     ExternalValueIdentity, FunctionValue, HostError, HostLocation, HostOrigin, InvariantError,
-    ListValue, ListValueItemTypeMismatch, Panic, PanicDetails, PanicKind, PanicMessage, Value,
-    ValueInspection, run_main,
+    ListValue, ListValueItemTypeMismatch, Panic, PanicDetails, PanicKind, PanicMessage, PanicValue,
+    Value, ValueInspection, run_main,
 };

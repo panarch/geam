@@ -115,8 +115,22 @@ conventional nested `gleam/` project connection and checked-in typed bindings.
 Rust loads and seals the selected module, supplies capabilities and state, and
 calls generated function handles.
 
-Provider crates can serve both workflows because component registration and
-runtime ownership do not change.
+Synchronous and async provider crates can serve both workflows. The standalone
+runner owns a Tokio runtime and drives the outer Future returned by `main`.
+Rust embedding applications supply their own executor and observe work explicitly.
+
+### Owned Work And Runtime APIs
+
+Core owns work construction, callback and capture lifetimes, observation, shared
+completion, and execution-scope shutdown. A work representation component selects
+its nominal schema and storage adapter; the aggregate profile selects that
+component. Core tests this contract independently of a particular Gleam package.
+
+`builtins/geam` supplies the concrete `geam/future` representation and operations.
+Its `gleam/` directory is the ordinary `geam` package, and its Rust crate is
+`geam-builtin`. Source types remain visible to the official Gleam compiler
+and language server through the package dependency. Neither core nor the built-in
+creates an executor or implicitly awaits a returned source work value.
 
 ## Effects Stay Caller-Owned
 

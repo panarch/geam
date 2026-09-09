@@ -754,7 +754,7 @@ mod tests {
     };
     use crate::host::{
         HostCustomTypeSchema, HostExternalTypeSchema, HostModule, HostProviderSet,
-        HostTypeDescriptor,
+        HostTypeDescriptor, StatelessHostProfile,
     };
     use crate::plan_host_program;
     use crate::planner::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
@@ -1762,9 +1762,26 @@ pub fn main() {
             .expect_err("invalid syntax should fail");
         let analyse = compile_typed_module("main", "main.gleam", "pub fn main() { 1 + \"bad\" }")
             .expect_err("invalid types should fail");
+        let transfer_parse = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new("main", "main.gleam", "pub fn main(")],
+            )],
+            HostProviderSet::<StatelessHostProfile>::from_providers([])
+                .expect("empty transferable providers should be valid"),
+        )
+        .err()
+        .expect("invalid transfer-hosted syntax should fail while parsing");
 
         assert_eq!(parse.to_string(), "failed to parse Gleam module main.gleam");
         assert_eq!(analyse.to_string(), "failed to analyse Gleam module");
+        assert_eq!(
+            transfer_parse.to_string(),
+            "failed to parse Gleam module main.gleam"
+        );
     }
 
     #[test]

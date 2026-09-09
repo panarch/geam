@@ -303,11 +303,11 @@ exact external scheme, preserve a declared Gleam fallback when no provider is
 selected, reject missing providers for bodyless externals, and never defer
 selection or ordinary-function override decisions to runtime.
 
-Keep compound host values call-scoped and typed. Registration owns recursive
-type descriptors, planning validates ordinary custom schemas exactly, and
-execution specialization seals concrete locals and return storage. Do not
-replace these boundaries with materialized public values, per-specialization
-user registration, or runtime shape validation.
+Keep compound host values typed. Registration owns recursive type descriptors,
+planning validates ordinary custom schemas exactly, and execution specialization
+seals concrete locals and return storage. Do not replace these boundaries with
+materialized public values, per-specialization user registration, or runtime
+shape validation.
 
 Intermediate compound construction must be declared by the same sealed
 registration that creates its callback adapter. Give the callback exact typed
@@ -323,9 +323,11 @@ while a provider-owned storage adapter supplies schema-specific payload
 semantics through the aggregate profile's store projection. Do not require the
 final profile to own a foreign provider's binding. Each public external value
 must own its opaque payload lifetime without borrowing runtime state. Retained
-Gleam values may be created and restored only through an external payload and
-an active typed host call; do not expose them through run state, public `Value`,
-Rust downcasts, or cross-execution import.
+Gleam values may be created and restored through an external payload and an
+active typed host call, or through the explicit typed work owner described
+below. Keep construction and invocation permission sealed in either case; do
+not expose retained values through run state, public `Value`, Rust downcasts,
+or cross-execution import.
 
 External source equality, hashing, and inspection must use narrow
 operation-specific contexts for retained values. Equal payloads must produce
@@ -346,17 +348,91 @@ payload versions. Operations may share acyclic retained entries, but must not
 mutate published payloads or introduce consumed-token validation, general
 external references, or cycle collection as hidden runtime margins.
 
-Treat callable invocation as an explicit call-scoped capability. A callback
-capability must have inhabited argument storage when hosted execution is
-sealed; an opaque function value may pass through generic storage without
-becoming invocable. Keep symbolic and invocable function storage distinct, and
-do not add a runtime generic callback branch.
+Call-borrowed host views and callable capabilities cannot escape their
+invocation. Owned work follows the [execution lifetime rules](#explicit-work-execution-rules)
+below. Callable invocation must retain the actual specialized target and
+inhabited argument storage established at sealing; an opaque function value may
+pass through generic storage without becoming invocable. Keep symbolic and
+invocable function storage distinct, and do not add a runtime generic callback
+branch.
 
-End provider-state and actual payload borrows before nested execution re-enters
-Gleam. Call-scoped runtime-owned handles may remain live across re-entry, but
-they must not escape the host invocation. Nested source panics and host
-failures must retain the actual failed source or provider identity; an outer
-provider must not repackage them as its own failure.
+End active provider-state, payload, and poll-local runtime borrows before
+suspension or nested Gleam execution. Owned typed handles may remain live
+without retaining those borrows. Before invoking user code or a Waker, release
+runtime locks that the invocation may reacquire directly or through re-entry.
+
+## Explicit Work Execution Rules
+
+Gleam work uses an ordinary nominal generic type supplied by an explicit package
+dependency, not an injected prelude or compiler effect. A source function
+returning `Future(a)` returns work, not an implicitly awaited `a`. Ordinary calls
+remain direct. Adding unrelated async implementations must not change an
+ordinary entry's call contract.
+
+Each work construction creates one operation with shared completion. Passing or
+returning an existing work value preserves that operation. A Rust `Future`
+driving an observation is distinct from the source work value. Preserve the
+native polling contract: never replay effects or poll completed native work to
+satisfy another observer. Shared success and failure must not require arbitrary
+payload clones.
+
+Work owns its native inputs, pending state, typed callbacks, and captures. The
+execution scope supplies access to the loaded program and caller-owned provider
+state, capabilities, and Echo. It owns the active execution lifetime, not a
+second loaded program. Work may outlive its creating invocation, but must not
+retain a borrow of that invocation or attach to a different scope or fresh host
+state. Public callback and state-access capabilities must carry the actual
+execution lifetime or an explicit closed-endpoint protocol that prevents
+reactivation and abandoned waits after shutdown.
+
+Core composes with a caller-owned executor through the standard Rust `Future`
+contract. It must not select an executor, block a worker to complete work,
+detach tasks, poll from wake notifications, or run in the background without
+its Rust driver. A provider may wrap external work already started elsewhere;
+Geam does not promise that all external effects begin with its first poll.
+
+Retained execution graphs, provider payloads and state, native work, and caller
+capabilities carried by execution satisfy one `Send` contract. Do not preserve
+local/transferable modes or introduce internal thread affinity. This does not
+require `Sync` for exclusively accessed data or `'static` for borrowed host
+resources. Call-local views may be non-`Send` when they cannot escape. Ordinary
+calls must not acquire Future allocation or polling costs merely because
+work-valued calls coexist.
+
+The generated standalone runner is an explicit Rust host and may own its
+executor. It selects ordinary or outer-work completion at typed entry sealing,
+not by inspecting public values or scanning returned containers. That entry
+policy must not turn ordinary source calls into implicit awaits. End the Geam
+execution scope before shutting down the host executor.
+
+The execution scope and work graph have distinct drop semantics:
+
+- Dropping one observer releases its wait, not work retained by another owner.
+  Without a driver Geam makes no progress; retained work can be driven again.
+- Dropping the last work owner releases pending native inputs and captures,
+  including unpolled work. Scope tracking must not become a hidden strong owner.
+- Ending the execution scope cancels pending work and preserves completed
+  results. Dropping the host Future enclosing that scope ends it; dropping one
+  observer does not. Pending work cannot restart against a subsequent scope.
+- Cancelling composition releases its references, not independently retained
+  sibling work. Cancellation is not rollback or preemption of synchronous code.
+
+Scope termination is an explicit host lifecycle outcome, not fabricated source
+data, a rewritten source `Result`, an invalid token, or an embedding invariant.
+
+Runtime-owned work has a narrow logical-operation identity contract: aliases
+compare equal, distinct constructions differ, and equality/hash/inspection stay
+stable across pending, completion, and cancellation. This does not authorize
+mutable ordinary external payloads or general source references. Use private
+operation identity and apply the host boundary's source-hash restrictions.
+Work and retained-value graphs must remain acyclic with deterministic release;
+do not hide cycles behind a collector or ever-growing registry.
+
+Owner tests must deterministically prove these work contracts, including
+transfer of pending and completed work. Executor-specific integration does not
+replace those proofs.
+Explicit work does not grant actors, parallel Gleam roots, preemption, detached
+execution, or scheduler ownership; those need separate contracts.
 
 ## Rust Embedding Rules
 
@@ -398,6 +474,10 @@ invariant, fallback, or panic is a blocking representation defect.
   explicit caller-owned inputs; do not recreate execution ownership per
   function or call, or hide configuration, IO, entropy, clocks, or other
   capabilities behind embedding defaults.
+- Input and output adapters preserve the work ownership and cancellation
+  contract through nested values, including work retained in external payloads.
+  A completed result may outlive active execution only when its contained values
+  permit it; nesting scoped work does not erase its execution lifetime.
 - Keep the public surface to Rust-native values and narrow embedding wrappers.
   Static adapter implementations should scale with supported value families
   and the established Rust function arity boundary, not with the Cartesian
@@ -432,6 +512,10 @@ those panics local, visible, and covered by explicit panic tests.
 
 Errors make boundaries visible:
 
+- Source panics and provider failures retain their existing failure domains,
+  actual origin, structured diagnostics, and Echo ordering through nested calls
+  and shared completion. Wrappers may share the original error; they must not
+  reclassify it or replace it with a parallel failure model.
 - Use `Unsupported*` errors for valid Gleam source outside the Geam profile.
 - Use `InvalidTypedAst` errors for typed AST margin cases.
 - Use `HostSpecializationError` only for a valid hosted plan whose reachable

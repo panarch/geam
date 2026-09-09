@@ -1,9 +1,9 @@
 # Publishing
 
-Each Geam release publishes nine artifacts at one version: seven workspace
-crates, the `geam-example-text-pattern` reference provider on crates.io, and the
+Each Geam release publishes the workspace crates, the
+`geam-example-text-pattern` reference provider on crates.io, and the
 `example_text_pattern` package on Hex. The workspace crates are `geam-core`,
-`geam-macros`, `geam-stdlib`, `geam-json`, `geam-time`, `geam-cli`, and the root
+`geam-macros`, `geam-stdlib`, `geam-json`, `geam-time`, `geam-builtin`, `geam-cli`, and the root
 `geam` facade. The root owns the installable `geam` binary.
 
 `Cargo.toml` owns the release version; this guide does not repeat the current
@@ -61,7 +61,7 @@ Run **Geam: Publish release** from `main` and select an `operation`:
 
 | Operation | `crates` | Work performed |
 | --- | --- | --- |
-| `Publish release` | Empty | Publish all seven workspace crates, call the reference-example workflow, then create the GitHub Release. |
+| `Publish release` | Empty | Publish all workspace crates, call the reference-example workflow, then create the GitHub Release. |
 | `Retry workspace crates` | Remaining workspace crate names, space-separated | Publish those crates, call the reference-example workflow, then create the GitHub Release. |
 | `Create GitHub Release` | Empty | Verify the workspace and reference example, then create only the GitHub Release. |
 
@@ -96,7 +96,7 @@ dry-run creates tags, uploads, or GitHub Releases. A successful dry-run does not
 prove actual OIDC or Hex credentials, nor upload availability.
 
 For a new release, run `Publish release` again with **dry-run** disabled and the
-**same full commit SHA**. The workspace job publishes its seven crates through
+**same full commit SHA**. The workspace job publishes its crates through
 Trusted Publishing. The reference workflow publishes the provider against the
 released workspace, waits until crates.io serves it, then runs
 `gleam publish --yes` with the Hex API key stored in the release environment.
@@ -159,17 +159,62 @@ newer main commit for the same version.
 Registry and GitHub network or permission failures stop the run. There is no
 custom registry client, missing-package inference, or automatic recovery loop.
 
-Publication attempts are serialized. There is no upload retry loop, personal
-token fallback, or publication from a non-main workflow ref.
+Automated publication attempts are serialized. There is no upload retry loop,
+personal token fallback, or publication from a non-main workflow ref.
+
+## Geam Hex Package
+
+The `geam` Gleam package in `builtins/geam/gleam` has its own version, independent
+of the Rust workspace. The maintainer publishes it manually when its package
+contents change. No workflow bumps its version or publishes it, and a Rust-only
+release does not require a new Hex release. The Rust `geam-builtin` crate
+continues to follow the workspace version and publication workflow.
+
+For a Hex release, update `builtins/geam/gleam/gleam.toml` and review the package
+changes. Refresh the tracked local consumers from the repository root:
+
+```sh
+for project in \
+  examples/embedding/async_host/gleam \
+  examples/provider/async_files/project \
+  tests/fixtures/projects/future_builtins
+do
+  (cd "$project" && gleam deps update geam)
+done
+```
+
+Review the lock changes and run the package and consumer checks described in
+the [testing guide](testing.md). CI verifies the source, Rust implementation,
+editor support, and Hex tarball without publishing the package.
+
+Publish manually from the reviewed package checkout:
+
+```sh
+cd builtins/geam/gleam
+gleam export hex-tarball
+gleam publish
+```
+
+HexDocs source links use the package's `repository.path` of
+`builtins/geam/gleam` and `tag_prefix` of `hex-geam-`. For each published Hex
+version, push `hex-geam-v<version>` at a commit containing the exact published
+package source. These tags are independent of the Rust workspace's
+`v<version>` tags. Uploading the package neither requires nor creates a Git
+tag; the source links become available after the matching tag is pushed.
+
+Local tests and tarball generation do not verify Hex ownership or credentials.
 
 ## Authentication
 
-The seven workspace crates use this Trusted Publisher configuration:
+The workspace crates use this Trusted Publisher configuration:
 
 - repository owner: `panarch`
 - repository: `geam`
 - workflow: `publish.yml`
 - environment: `crates-io`
+
+New workspace crates, including `geam-builtin`, need their own Trusted
+Publisher registration before their first automated publication.
 
 The reference provider needs two configurations with the same repository and
 environment: `publish.yml` authorizes the reusable workflow when the main
@@ -184,7 +229,10 @@ checks CI, and the final release job alone receives `contents: write`. No
 long-lived registry token or local-publish fallback is part of the regular
 release path.
 
-The same `crates-io` environment stores `HEXPM_API_KEY` for the Hex publication.
-The reference workflow resolves that environment secret in both automatic and
-direct runs. It does not use the key for crates.io and does not provide a local
-or personal-token fallback for either registry.
+The same `crates-io` environment stores `HEXPM_API_KEY` for automated
+`example_text_pattern` publication. The reference workflow resolves that secret
+in both automatic and direct runs. It does not use the key for crates.io and
+does not provide a local or personal-token fallback for either registry.
+
+Manual publication of the Hex `geam` package uses the maintainer's local Hex
+authentication, separate from the GitHub release environment.

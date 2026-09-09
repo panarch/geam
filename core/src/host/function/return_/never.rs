@@ -1,6 +1,6 @@
-use super::{HostCallback, HostFunctionImplementation, HostReturn};
+use super::{HostReturn, OwnedHostCallback, OwnedHostFunctionImplementation};
 use crate::host::{
-    HostCallArguments, HostCallError, HostCallRuntime, HostProfile, HostTypeDescriptor,
+    HostCallArguments, HostCallError, HostCallRuntime, HostFailure, HostProfile, HostTypeDescriptor,
 };
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -10,7 +10,7 @@ pub(crate) struct HostNeverFunction<Profile: HostProfile> {
 }
 
 enum HostNeverFunctionKind<Profile: HostProfile> {
-    Scalar(Arc<HostCallback<Profile, Infallible>>),
+    Scalar(OwnedHostCallback<Profile, Infallible>),
     Scoped(Arc<HostScopedNeverCallback<Profile>>),
 }
 
@@ -22,7 +22,7 @@ impl<Profile: HostProfile> Clone for HostNeverFunction<Profile> {
         Self {
             implementation: match &self.implementation {
                 HostNeverFunctionKind::Scalar(function) => {
-                    HostNeverFunctionKind::Scalar(Arc::clone(function))
+                    HostNeverFunctionKind::Scalar(function.clone())
                 }
                 HostNeverFunctionKind::Scoped(function) => {
                     HostNeverFunctionKind::Scoped(Arc::clone(function))
@@ -40,7 +40,7 @@ impl<Profile: HostProfile> HostNeverFunction<Profile> {
         match &self.implementation {
             HostNeverFunctionKind::Scalar(function) => {
                 let (state, arguments) = runtime.scalar_context();
-                function(state, arguments)
+                function.call(state, arguments).map_err(HostCallError::from)
             }
             HostNeverFunctionKind::Scoped(function) => function(runtime),
         }
@@ -56,6 +56,12 @@ impl<Profile: HostProfile> HostNeverFunction<Profile> {
             implementation: HostNeverFunctionKind::Scoped(Arc::new(function)),
         }
     }
+
+    pub(super) fn owned(function: OwnedHostCallback<Profile, Infallible>) -> Self {
+        Self {
+            implementation: HostNeverFunctionKind::Scalar(function),
+        }
+    }
 }
 
 impl HostReturn for Infallible {
@@ -64,22 +70,20 @@ impl HostReturn for Infallible {
     }
 
     fn implementation<Profile: HostProfile>(
-        function: impl Fn(&mut Profile::RunState, &dyn HostCallArguments) -> Result<Self, HostCallError>
+        function: impl Fn(&mut Profile::RunState, &dyn HostCallArguments) -> Result<Self, HostFailure>
         + Send
         + Sync
         + 'static,
-    ) -> HostFunctionImplementation<Profile> {
-        HostFunctionImplementation::Never(HostNeverFunction {
-            implementation: HostNeverFunctionKind::Scalar(Arc::new(function)),
-        })
+    ) -> OwnedHostFunctionImplementation<Profile> {
+        OwnedHostFunctionImplementation::Never(OwnedHostCallback::new(function))
     }
 }
 
 #[cfg(test)]
 pub(crate) fn expect_never_implementation<Profile: HostProfile>(
-    implementation: &HostFunctionImplementation<Profile>,
+    implementation: &super::HostFunctionImplementation<Profile>,
 ) -> &HostNeverFunction<Profile> {
-    let HostFunctionImplementation::Never(implementation) = implementation else {
+    let super::HostFunctionImplementation::Never(implementation) = implementation else {
         panic!("Infallible return should create a Never implementation");
     };
     implementation
@@ -90,7 +94,7 @@ mod tests {
     use super::{HostReturn, expect_never_implementation};
     use crate::host::function::argument::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
-    use crate::host::{HostCallArguments, HostCallError, HostFailure, HostTypeDescriptor};
+    use crate::host::{HostCallArguments, HostFailure, HostTypeDescriptor};
     use std::convert::Infallible;
 
     #[test]
@@ -101,8 +105,9 @@ mod tests {
         );
         let implementation =
             <Infallible as HostReturn>::implementation::<TestHostProfile>(|_, _| {
-                Err(HostCallError::from(HostFailure::new("stopped")))
+                Err(HostFailure::new("stopped"))
             });
+        let implementation = implementation.into_immediate();
         let arguments = CallArguments::new(Vec::new(), Vec::new());
         let mut state = TestRunState::default();
         let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
@@ -120,7 +125,8 @@ mod tests {
     #[should_panic(expected = "Infallible return should create a Never implementation")]
     fn never_return_shape_guard_is_visible() {
         let callback = |_: &mut TestRunState, _: &dyn HostCallArguments| Ok(true);
-        let implementation = <bool as HostReturn>::implementation::<TestHostProfile>(callback);
+        let implementation =
+            <bool as HostReturn>::implementation::<TestHostProfile>(callback).into_immediate();
         expect_never_implementation(&implementation);
     }
 }

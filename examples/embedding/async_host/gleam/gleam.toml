@@ -1,0 +1,7 @@
+name = "geam_rust_embedding_async_host"
+version = "0.1.0"
+target = "erlang"
+
+[dependencies]
+geam = { path = "../../../../builtins/geam/gleam" }
+example_async_files = { path = "../../../provider/async_files/project/packages/example_async_files" }

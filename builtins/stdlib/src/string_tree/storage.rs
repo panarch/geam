@@ -2,11 +2,9 @@ use ecow::EcoString;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::mem;
-use std::rc::Rc;
 
-#[derive(Clone)]
 pub struct StringTree {
-    root: Rc<StringTreeNode>,
+    root: std::sync::Arc<StringTreeNode>,
 }
 
 struct StringTreeNode {
@@ -16,13 +14,21 @@ struct StringTreeNode {
 
 enum StringTreeNodeKind {
     Text(EcoString),
-    Sequence(Box<[Rc<StringTreeNode>]>),
+    Sequence(Box<[std::sync::Arc<StringTreeNode>]>),
+}
+
+impl Clone for StringTree {
+    fn clone(&self) -> Self {
+        Self {
+            root: self.root.clone(),
+        }
+    }
 }
 
 impl StringTree {
     pub fn text(text: EcoString) -> Self {
         Self {
-            root: Rc::new(StringTreeNode {
+            root: std::sync::Arc::new(StringTreeNode {
                 byte_len: text.len(),
                 kind: StringTreeNodeKind::Text(text),
             }),
@@ -36,7 +42,7 @@ impl StringTree {
             .collect::<Box<[_]>>();
         let byte_len = children.iter().map(|child| child.byte_len).sum();
         Self {
-            root: Rc::new(StringTreeNode {
+            root: std::sync::Arc::new(StringTreeNode {
                 byte_len,
                 kind: StringTreeNodeKind::Sequence(children),
             }),
@@ -58,7 +64,7 @@ impl StringTree {
             match &node.kind {
                 StringTreeNodeKind::Text(text) => output.push_str(text),
                 StringTreeNodeKind::Sequence(children) => {
-                    pending.extend(children.iter().rev().map(Rc::as_ref));
+                    pending.extend(children.iter().rev().map(AsRef::as_ref));
                 }
             }
         }
@@ -109,7 +115,7 @@ impl StringTree {
                 StringTreeNodeKind::Sequence(children) => {
                     1_u8.hash(&mut hasher);
                     children.len().hash(&mut hasher);
-                    pending.extend(children.iter().rev().map(Rc::as_ref));
+                    pending.extend(children.iter().rev().map(AsRef::as_ref));
                 }
             }
         }
@@ -125,7 +131,7 @@ impl Drop for StringTreeNode {
     fn drop(&mut self) {
         let mut pending = take_children(&mut self.kind);
         while let Some(child) = pending.pop() {
-            let Ok(mut child) = Rc::try_unwrap(child) else {
+            let Ok(mut child) = std::sync::Arc::try_unwrap(child) else {
                 continue;
             };
             pending.extend(take_children(&mut child.kind));
@@ -133,7 +139,7 @@ impl Drop for StringTreeNode {
     }
 }
 
-fn take_children(kind: &mut StringTreeNodeKind) -> Vec<Rc<StringTreeNode>> {
+fn take_children(kind: &mut StringTreeNodeKind) -> Vec<std::sync::Arc<StringTreeNode>> {
     match mem::replace(kind, StringTreeNodeKind::Text(EcoString::new())) {
         StringTreeNodeKind::Text(_) => Vec::new(),
         StringTreeNodeKind::Sequence(children) => children.into_vec(),
@@ -142,11 +148,13 @@ fn take_children(kind: &mut StringTreeNodeKind) -> Vec<Rc<StringTreeNode>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{StringTree, StringTreeNode, StringTreeNodeKind};
+    use super::{StringTreeNode, StringTreeNodeKind};
     use ecow::EcoString;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
-    fn children(tree: &StringTree) -> Option<&[Rc<StringTreeNode>]> {
+    type StringTree = super::StringTree;
+
+    fn children(tree: &super::StringTree) -> Option<&[std::sync::Arc<StringTreeNode>]> {
         match &tree.root.kind {
             StringTreeNodeKind::Text(_) => None,
             StringTreeNodeKind::Sequence(children) => Some(children),
@@ -179,8 +187,8 @@ mod tests {
         let appended = prefix.append(&suffix);
         assert!(children(&prefix).is_none());
         let children = children(&appended).expect("append should create a sequence node");
-        assert!(Rc::ptr_eq(&children[0], &prefix.root));
-        assert!(Rc::ptr_eq(&children[1], &suffix.root));
+        assert!(Arc::ptr_eq(&children[0], &prefix.root));
+        assert!(Arc::ptr_eq(&children[1], &suffix.root));
 
         let mut deep = StringTree::text(EcoString::new());
         for _ in 0..50_000 {
@@ -200,5 +208,49 @@ mod tests {
         assert_eq!(sequence.flatten(), "");
         assert!(!text.structurally_equal(&sequence));
         assert_ne!(text.structural_hash(), sequence.structural_hash());
+    }
+
+    #[test]
+    fn transferable_trees_share_nodes_and_release_deep_graphs_on_another_worker() {
+        use std::sync::Arc;
+        type TransferTree = super::StringTree;
+
+        let prefix = TransferTree::text("a".into());
+        let suffix = TransferTree::text("b".into());
+        let tree = prefix.append(&suffix);
+        let alias = tree.clone();
+        assert!(Arc::ptr_eq(&tree.root, &alias.root));
+        assert!(children(&prefix).is_none());
+        let children = children(&tree).expect("append owns a sequence");
+        assert!(Arc::ptr_eq(&children[0], &prefix.root));
+        assert!(Arc::ptr_eq(&children[1], &suffix.root));
+        let root = Arc::downgrade(&tree.root);
+        let prefix_weak = Arc::downgrade(&prefix.root);
+        drop(prefix);
+        drop(suffix);
+        drop(alias);
+        std::thread::spawn(move || {
+            let equal = TransferTree::sequence([
+                TransferTree::text("a".into()),
+                TransferTree::text("b".into()),
+            ]);
+            assert!(tree.structurally_equal(&equal));
+            assert_eq!(tree.structural_hash(), equal.structural_hash());
+            assert_eq!(tree.inspect(), "string_tree.from_string(\"ab\")");
+            assert_eq!(tree.flatten(), "ab");
+            assert!(!tree.structurally_equal(&TransferTree::text("ab".into())));
+            assert!(!tree.structurally_equal(&TransferTree::text("abc".into())));
+            let mut deep = tree;
+            for _ in 0..50_000 {
+                deep = deep.append(&TransferTree::text("x".into()));
+            }
+            assert_eq!(deep.byte_len(), 50_002);
+            assert_eq!(deep.flatten().len(), 50_002);
+            drop(deep);
+        })
+        .join()
+        .expect("transfer tree worker");
+        assert!(root.upgrade().is_none());
+        assert!(prefix_weak.upgrade().is_none());
     }
 }

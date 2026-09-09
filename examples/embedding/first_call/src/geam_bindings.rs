@@ -15,7 +15,7 @@ pub fn project() -> Project {
     Project::new(concat!(env!("CARGO_MANIFEST_DIR"), "/gleam"), ROOT_MODULE)
 }
 
-#[allow(clippy::type_complexity)]
+#[allow(dead_code, clippy::type_complexity)]
 pub struct Functions {
     pub double: Function<(BigInt,), BigInt, Function0Input>,
 }
@@ -24,6 +24,7 @@ pub struct Function0Input;
 
 impl InputShape<(BigInt,)> for Function0Input {}
 
+#[allow(dead_code)]
 pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), BindingError> {
     let (bindings, function_0) = builder.function(FunctionDeclaration::new("double"))?;
     Ok((

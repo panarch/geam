@@ -1,10 +1,9 @@
 mod function;
 mod parse;
 
-use super::{Component, GleamStdlibHostProfile};
+use super::GleamStdlibProviderProfile;
 use crate::{HostProviderModule, HostRegistrationError};
 use ecow::EcoString;
-use geam_core::provider::HostResult;
 use num_bigint::BigInt;
 
 #[geam_macros::module(
@@ -14,7 +13,8 @@ use num_bigint::BigInt;
     component = crate::Component<Profile::Io>,
 )]
 mod provider {
-    use super::{BigInt, EcoString, HostResult, function};
+    use super::{BigInt, EcoString, function};
+    use geam_core::provider::HostResult;
 
     #[geam_macros::function]
     fn parse(source: EcoString) -> Result<BigInt, ()> {
@@ -74,7 +74,7 @@ mod provider {
 
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
-    Profile: GleamStdlibHostProfile,
+    Profile: GleamStdlibProviderProfile,
 {
     provider::__geam_module::<Profile>()
 }

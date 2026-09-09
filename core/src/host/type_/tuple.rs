@@ -37,8 +37,8 @@ impl<Elements: HostAbiTypeSequence> private::Abi for HostTupleType<Elements> {
         HostScopedValue::Tuple(value.token)
     }
 
-    fn from_token<'call, Profile: crate::host::HostProfile>(
-        runtime: &dyn crate::host::HostCallRuntime<Profile>,
+    fn from_token<'call, Runtime: crate::host::HostTokenRuntime + ?Sized>(
+        runtime: &Runtime,
         token: crate::host::HostValueToken,
     ) -> <Self as HostType>::Value<'call> {
         HostTuple::new(runtime.tuple_token(token))

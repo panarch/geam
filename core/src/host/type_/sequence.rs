@@ -93,8 +93,8 @@ impl private::Sequence for HostTypeListEnd {
     ) {
     }
 
-    fn from_tokens<'call, Profile: crate::host::HostProfile>(
-        _runtime: &dyn crate::host::HostCallRuntime<Profile>,
+    fn from_tokens<'call, Runtime: crate::host::HostTokenRuntime + ?Sized>(
+        _runtime: &Runtime,
         _tokens: &[crate::host::HostValueToken],
         _index: &mut usize,
     ) -> <Self as HostTypeSequence>::Values<'call> {
@@ -142,8 +142,8 @@ where
         <Tail as HostAbiTypeSequence>::into_scoped_values(tail, output);
     }
 
-    fn from_tokens<'call, Profile: crate::host::HostProfile>(
-        runtime: &dyn crate::host::HostCallRuntime<Profile>,
+    fn from_tokens<'call, Runtime: crate::host::HostTokenRuntime + ?Sized>(
+        runtime: &Runtime,
         tokens: &[crate::host::HostValueToken],
         index: &mut usize,
     ) -> <Self as HostTypeSequence>::Values<'call> {

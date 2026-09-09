@@ -2,6 +2,7 @@ mod body;
 mod entry;
 mod function_return;
 mod list_return;
+mod parameters;
 mod profile;
 mod runtime;
 mod table;
@@ -57,12 +58,13 @@ pub(crate) use list_return::{
     ExecutionTupleListFunctionBody, ExecutionUtfCodepointListFunctionBody,
     ExternalListFunctionBody, ExternalListFunctionId, FloatListFunctionBody, FloatListFunctionId,
     FunctionListFunctionBody, FunctionListFunctionId, IntListFunctionBody, IntListFunctionId,
-    ListFunctionId, ListListFunctionBody, ListListFunctionId, NilListFunctionBody,
-    NilListFunctionId, ParameterListFunctionBody, ParameterListFunctionId,
+    LibraryListFunctionId, ListFunctionId, ListListFunctionBody, ListListFunctionId,
+    NilListFunctionBody, NilListFunctionId, ParameterListFunctionBody, ParameterListFunctionId,
     ParameterListListFunctionBody, ParameterListListFunctionId, ProfiledListFunctionId,
     RuntimeListFunctionId, StringListFunctionBody, StringListFunctionId, TupleListFunctionBody,
     TupleListFunctionId, UtfCodepointListFunctionBody, UtfCodepointListFunctionId,
 };
+pub(crate) use parameters::{FunctionParameterCatalog, FunctionTableFamily};
 pub(crate) use profile::{
     ExecutionFunction, ExecutionFunctionBody, ExecutionFunctionEntry, ExecutionFunctionRef,
     ExecutionGraphProfile, ExecutionHostTarget, ExecutionNeverFunction, ExecutionNeverHostTarget,

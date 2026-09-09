@@ -326,6 +326,69 @@ then invokes the existing typed host ABI without materializing generic values.
 state borrow prevents callback re-entry through Rust's borrow checker, so state
 must be released before invoking source code.
 
+## Explicit Async Functions
+
+An ordinary `#[geam::function] async fn` constructs the canonical
+`geam/future` operation. The source declaration returns
+`geam/future.Future(T)`, where `T` is the mapped Rust completion type.
+`async fn read(...) -> Result<EcoString, EcoString>`, for example, implements
+`Future(Result(String, String))`. A source declaration returning plain
+`Result(String, String)` does not match it.
+
+The provider depends on the ordinary Gleam package for this nominal type, just
+like any other imported source type. The function signature supplies the async
+mapping; no separate metadata flag is needed.
+[The provider guide](../host-providers.md#return-async-rust-work) shows a complete
+declaration/implementation pair and local package acquisition.
+
+Inputs, exact callback targets and their captures belong to the returned work,
+not the temporary source invocation. Async provider values support the same
+declared scalar, tuple, Result, Option, List, custom, generic and retained
+external families as their synchronous counterparts, subject to the existing
+family-specific restrictions in this reference. All provider stores, retained
+payloads, state, and native Futures require `Send`, without adding `Sync` to
+exclusively accessed data. Synchronous and async functions use one registration
+and storage contract.
+
+The injected `Call` supplies bounded access to the original execution:
+
+```rust
+#[geam::function]
+async fn add_then_call(
+    #[geam::call] call: &mut Call<BigInt>,
+    callback: Callback<fn(BigInt) -> BigInt>,
+    value: BigInt,
+) -> HostResult<BigInt> {
+    let total = call
+        .with_state(move |state| {
+            *state += value;
+            state.clone()
+        })
+        .await?;
+    call.invoke(&callback, (total,)).await
+}
+```
+
+The state operation ends its borrow before source re-entry or another await.
+A retained callback can be invoked repeatedly with new arguments. The await on
+`invoke` schedules that source call in its original execution; it does not
+implicitly drive a Future returned by the callback. An explicitly Future-valued
+callback uses `Callback<fn(...) -> Future<T>>`. Receive that work, then use
+`call.observe(&work).await` when the provider intends to drive it.
+
+Functions accepting `Future<T>`, including a Future returned by a callback,
+receive work without polling it even when the Rust function itself is
+synchronous. Ordinary functions remain direct and do not acquire hidden
+Future allocation or polling.
+
+Work follows the [shared completion and cancellation
+semantics](runtime-semantics.md#explicit-work). Ending the execution scope closes
+the provider's state and callback endpoint; pending work cannot use it again.
+Provider failures and source panics retain their original execution error,
+separate from ordinary source Result errors. The embedding application drives
+progress with its own executor; the standalone runner supplies Tokio and drives
+only an outer Future returned by `main`.
+
 ## Generic Values And Retention
 
 [`generic_box`](../../examples/provider/generic_box)

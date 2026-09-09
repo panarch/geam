@@ -154,25 +154,33 @@ pub(crate) struct LibraryModulePlan {
 }
 
 #[derive(Clone)]
-pub(crate) struct LibraryEntry {
+pub(crate) struct LibraryEntry<External = super::ExternalType> {
     template: FunctionTemplateId,
-    return_: LibraryValueType,
+    return_: LibraryValueType<External>,
     input_variants: Box<[super::StandardVariant]>,
     input_lists: Box<[LibraryValueType]>,
 }
 
+pub(crate) type LibraryEntryParts<External> = (
+    FunctionTemplateId,
+    LibraryValueType<External>,
+    Box<[super::StandardVariant]>,
+    Box<[LibraryValueType]>,
+);
+
 #[derive(Clone)]
-pub(crate) enum LibraryValueType {
+pub(crate) enum LibraryValueType<External = super::ExternalType> {
     Int,
     Float,
     String,
     BitArray,
     UtfCodepoint,
     Custom(super::CustomType),
+    External(External),
     Bool,
     Nil,
     Tuple(Vec<super::ValueType>),
-    List(Box<LibraryValueType>),
+    List(Box<LibraryValueType<External>>),
 }
 
 impl LibraryValueType {
@@ -185,6 +193,7 @@ impl LibraryValueType {
             Self::BitArray => ValueType::BitArray,
             Self::UtfCodepoint => ValueType::UtfCodepoint,
             Self::Custom(type_) => ValueType::Custom(type_.clone()),
+            Self::External(type_) => ValueType::External(type_.clone()),
             Self::Bool => ValueType::Bool,
             Self::Nil => ValueType::Nil,
             Self::Tuple(elements) => ValueType::Tuple(elements.clone()),
@@ -193,10 +202,10 @@ impl LibraryValueType {
     }
 }
 
-impl LibraryEntry {
+impl<External> LibraryEntry<External> {
     pub(crate) fn new(
         template: FunctionTemplateId,
-        return_: LibraryValueType,
+        return_: LibraryValueType<External>,
         input_variants: Vec<super::StandardVariant>,
         input_lists: Vec<LibraryValueType>,
     ) -> Self {
@@ -208,18 +217,11 @@ impl LibraryEntry {
         }
     }
 
-    pub(crate) fn return_(&self) -> &LibraryValueType {
+    pub(crate) fn return_(&self) -> &LibraryValueType<External> {
         &self.return_
     }
 
-    pub(crate) fn into_parts(
-        self,
-    ) -> (
-        FunctionTemplateId,
-        LibraryValueType,
-        Box<[super::StandardVariant]>,
-        Box<[LibraryValueType]>,
-    ) {
+    pub(crate) fn into_parts(self) -> LibraryEntryParts<External> {
         (
             self.template,
             self.return_,

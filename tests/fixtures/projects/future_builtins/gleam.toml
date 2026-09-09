@@ -1,0 +1,10 @@
+name = "geam_future_builtins_test"
+version = "0.0.0"
+gleam = ">= 1.18.1"
+target = "erlang"
+
+[dependencies]
+geam = { path = "../../../../builtins/geam/gleam" }
+gleam_stdlib = ">= 1.0.3 and < 1.0.4"
+gleam_json = ">= 3.1.0 and < 3.1.1"
+gleam_time = ">= 1.8.0 and < 1.8.1"

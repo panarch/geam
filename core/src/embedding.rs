@@ -1,23 +1,25 @@
 //! Statically typed Rust calls into plain or hosted Gleam code.
 //!
-//! Loading and binding happen once. [`ModuleBuilder`] and
-//! [`HostedModuleBuilder`] select the first function into non-empty binding
-//! owners, which validate any remaining names and signatures from the selected
-//! root before sealing one immutable execution shared by every returned
+//! Loading and binding happen once. [`ModuleBuilder`] and [`HostedModuleBuilder`]
+//! select the first function into non-empty
+//! binding owners, which validate any remaining names and signatures from the
+//! selected root before sealing one execution shared by every returned
 //! [`Function`] handle. Plain calls supply an echo sink; hosted calls also
-//! borrow the caller's provider state explicitly. Both accept only the Rust
-//! argument and return shapes that were bound up front.
+//! borrow the caller's provider state explicitly. A source Future returns work
+//! which the caller explicitly drives through [`ExecutionScope::observe`].
+//! All paths accept only the Rust argument and return shapes bound up front.
 //!
 //! Values include scalars and recursive Rust tuples, standard `Result` and
 //! `Option`, and [`List`]. Tuple values have arity one through seven; function
 //! argument tuples have arity zero through seven, and `()` remains Gleam Nil.
 //! Result and Option map only to the exact prelude and stdlib types.
 //! A consumed `Vec` constructs a List; a borrowed same-owner List reuses its
-//! retained storage. See [`List`] for lazy reads and ownership restrictions.
+//! retained storage. The same List declaration returns a [`SharedList`] in
+//! an attached execution scope, preserving lazy reads and nested work lifetimes.
 //!
-//! [`Project`] and [`HostedProject`] retain one source selection until it is
-//! compiled into the corresponding existing typed program owner. Hosted
-//! compilation also performs the generated static provider registration.
+//! [`Project`] and [`HostedProject`] retain one source
+//! selection until it is compiled into the corresponding typed program owner.
+//! Hosted compilation also performs the selected provider registration.
 
 mod binding;
 mod error;
@@ -26,6 +28,7 @@ mod input;
 mod list;
 mod project;
 mod value;
+mod work;
 
 pub use crate::BitArrayValue;
 pub use binding::{BindingError, FunctionDeclaration, ModuleBindings, ModuleBuilder};
@@ -37,18 +40,23 @@ pub use input::InputShape;
 pub use list::{Iter, List};
 pub use num_bigint::BigInt;
 pub use project::{HostedProject, HostedProjectError, Project};
+pub use work::{
+    Completed, ExecutionGuard, ExecutionScope, Future, FutureType, ObservationError, ReadValue,
+    SharedExecutionError, SharedList, SourceType, with_execution_scope,
+};
 
 use self::input::ArgumentsInput;
-use self::value::{Arguments, ReturnValue};
+use self::value::{Arguments, EmbeddingValue, ReturnValue};
 use crate::plan::execution::LibraryFunctionEntries;
 use crate::{EchoSink, ExecutionPlan};
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-/// A typed function handle created by a plain or hosted module builder.
+/// A typed function handle created by an embedding module builder.
 ///
 /// The handle becomes callable only after its binding owner is sealed, and
-/// only the resulting [`Module`] or [`HostedModule`] may call it.
+/// only the resulting [`Module`], [`HostedModule`], or its attached
+/// [`ExecutionScope`] may call it.
 pub struct Function<Arguments, Return, Shape = Arguments> {
     name: EcoString,
     slot: usize,
@@ -59,7 +67,7 @@ pub struct Function<Arguments, Return, Shape = Arguments> {
 /// One sealed plain execution shared by all functions selected from a module.
 pub struct Module {
     execution: ExecutionPlan,
-    entries: LibraryFunctionEntries,
+    entries: LibraryFunctionEntries<std::convert::Infallible>,
     owner: Arc<()>,
 }
 
@@ -135,7 +143,7 @@ impl Module {
 
     fn from_parts(
         execution: ExecutionPlan,
-        entries: LibraryFunctionEntries,
+        entries: LibraryFunctionEntries<std::convert::Infallible>,
         owner: Arc<()>,
     ) -> Self {
         Self {

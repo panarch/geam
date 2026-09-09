@@ -4,7 +4,7 @@ Geam uses Rust unit tests for compiler-boundary, lowering, and runtime
 milestones.
 
 The root Cargo workspace contains the `geam` facade and binary, `geam-core`,
-`geam-stdlib`, `geam-json`, `geam-time`, `geam-cli`, and `geam-macros`. Each
+`geam-stdlib`, `geam-json`, `geam-time`, `geam-builtin`, `geam-cli`, and `geam-macros`. Each
 extracted package owns tests for its production protocols. Root integration
 targets own the public `geam::...` facade, cross-crate compatibility, and
 standalone distribution behavior; they do not replace package-local owner
@@ -17,6 +17,7 @@ default distribution:
 cargo check --package geam --no-default-features --features embedding --all-targets --locked
 cargo check --package geam --no-default-features --features provider --all-targets --locked
 cargo check --package geam --no-default-features --features embedding,gleam-stdlib --all-targets --locked
+cargo check --package geam --no-default-features --features embedding,geam-builtin --all-targets --locked
 ```
 
 Default workspace tests and installation still use the complete `full`
@@ -75,6 +76,30 @@ pub fn main() {
 The integration runner reads those fixtures through the public Geam API:
 `compile_typed_module -> plan_module_with_source ->
 ExecutionPlan::from_module_plan -> run_main`.
+
+The same mandatory fixture target also runs each successful and failing source
+through the public embedding boundary. A synthetic Nil-returning entry
+captures the original result through Echo, so arbitrary fixture return families
+remain covered without adding a universal embedding return type. It compares
+the exact result type and inspection, execution error, and Echo sequence with
+the ordinary pipeline using the same source. These calls do not drive Future
+work.
+
+The observation entry is assembled by a shared test helper, not repeated in
+tracked Gleam fixtures. In-memory cases append it before compilation. Resolved
+project cases copy the fixture source, unchanged manifests and downloaded package
+source into a temporary directory, add the entry only to that copy, and use the
+normal project loader. Original fixture files and upstream source stay unchanged;
+the temporary copy is removed after compilation.
+
+Future lifecycle tests in `core/src/runtime/work.rs` and its child modules use
+controlled polling, wakes, and drop observations to cover shared success and
+failure, observer removal, last-owner release, re-entry, and scope shutdown.
+The `core/tests/work_embedding.rs` target exercises the public typed boundary,
+including existing work passed through functions and nested containers. Transfer
+tests cover both pending work and shared completion with caller-borrowed state.
+These tests establish the [work execution contract](review-policy.md#explicit-work-execution-rules)
+independently of executor-specific examples.
 
 Multi-module execution cases live under
 `tests/fixtures/execution/modules/<case>/`. The runner derives canonical module
@@ -155,11 +180,11 @@ locked acquisition path. CI runs it as a separate provider SDK boundary.
 
 The independently locked managed embedding examples fix the user-facing
 progression from the first generated function call through recursive ordinary
-data, a Gleam package, caller-owned IO, and an external provider. Each example
-owns a nested Gleam project, generated Rust bindings, a handwritten entry point,
-and an integration test that executes the binary and fixes complete stdout and
-stderr. Their READMEs explain one new boundary at a time; none depends on an
-earlier example at build or run time.
+data, a Gleam package, caller-owned IO, an external provider, and a caller-owned
+async executor. Each example owns a nested Gleam project, generated Rust
+bindings, a handwritten entry point, and an integration test that executes the
+binary and fixes complete stdout and stderr. Their READMEs explain one new
+boundary at a time; none depends on an earlier example at build or run time.
 
 Run the guided examples locally from the repository root:
 
@@ -170,7 +195,8 @@ for example in \
   data \
   package \
   io \
-  provider
+  provider \
+  async_host
 do
   (
     cd "examples/embedding/$example"
@@ -183,6 +209,28 @@ do
   )
 done
 ```
+
+The `async_host` example owns the generated explicit-Future user workflow.
+It loads an independently locked macro-authored file provider, creates work
+through ordinary Gleam source, drives it using the application's `futures`
+executor, and observes its completion again. Its binary test fixes stdout and
+stderr alongside an ordinary direct call.
+
+Core owners and `geam-macros`'s `async_provider` target exercise deterministic
+Pending, shared completion, bounded state access, rich callbacks, cancellation,
+and cross-worker transfer. The root `future_builtins` target composes the same
+path with pinned official built-in source. These obligations are not delegated
+to the filesystem example.
+
+The embedding example also checks missing-file and invalid-Unicode results
+through the generated bindings and the actual file provider. CI separately
+checks the independent `examples/provider/async_files/provider` crate's build,
+formatting, and Clippy.
+The `geam-builtin` owner tests use the ordinary package source from
+`builtins/geam/gleam`. Package tests also exercise the official Gleam language
+server and native Erlang diagnostics. CI builds a Hex tarball locally without
+publishing it; the Rust archive excludes the nested Gleam package and its build
+products.
 
 The independently locked
 [`examples/embedding/application`](../../examples/embedding/application)
@@ -230,7 +278,7 @@ that tracked application files remain unchanged. It then makes generated source
 stale, requires `embedding check` to fail, and runs production sync to restore
 the exact committed file before formatting, testing, linting, and running the
 application with the exact inventory report and its captured Gleam IO. The same
-job requires one Geam package identity, the exact core/macros/stdlib application
+job requires one Geam package identity, the exact core/macros/stdlib/builtin application
 profile, the text-pattern provider, and no CLI/JSON/Time dependency.
 Provider-example jobs remain separate because they own provider authoring and
 standalone consumption rather than Rust-first application composition.
@@ -313,19 +361,22 @@ This test requires Erlang/OTP as well as Gleam; CI supplies OTP `29`. The native
 Erlang source is included in the exported Hex package.
 
 CI formats, tests, lints, and packages every independent example provider. The
-nine macro examples select the current unreleased authoring surface through
+ten macro examples select the current unreleased authoring surface through
 repository-local patches and complete standalone execution. The independent
 Provider SDK fixture remains the canonical low-level typed-host ABI acceptance
 owner.
 
-The [Acceptance workflow](../../.github/workflows/acceptance.yml) runs one matrix
-job per documented example. Each job selects its exact `provider_examples`
+The [Acceptance workflow](../../.github/workflows/acceptance.yml) runs a matrix
+for the nine synchronous providers. Each job selects its exact `provider_examples`
 test, runs the independent provider's tests, verifies its Cargo package, and
 exports its Gleam package. A failed example does not cancel the other matrix
 jobs. The parallel `Published provider` job has no repository checkout and
 therefore cannot substitute path dependencies or checkout binaries for the
 released artifacts it monitors. Formatting and Clippy remain in the Workspace
-workflow.
+workflow. The Rust embedding job checks the independent `async_files` provider
+and its standalone case, sharing its existing embedding build cache. It builds
+the Gleam package with the checkout's local `geam` dependency; a Hex export of
+that example requires a published `geam` dependency and is not a local gate.
 
 Each example has a distinct cache key. Within a job, the root test binary and
 independent provider use the checkout's `target/` directory so Cargo can reuse
@@ -341,17 +392,21 @@ fixture package is published. The text-pattern provider and matching Hex package
 are release-coupled public documentation artifacts and share every Geam release
 version.
 
-The root package keeps four explicit acceptance targets:
+The root package keeps five explicit acceptance targets:
 
 - `binary` starts the installed-shape `geam` process for command dispatch,
   process failures, pure execution, and IO/Echo ordering.
 - `cross_crate_http` proves that the Pure Gleam `gleam_http` package works
   through the root facade and stdlib composition. HTTP is not a Geam built-in
   and has no provider crate.
-- `provider_examples` executes the nine documented provider projects through
+- `provider_examples` executes the ten documented provider projects through
   the real binary and generated runners.
+- `future_builtins` composes a macro-authored asynchronous provider with stdlib,
+  JSON, and Time in a caller-driven Rust embedding scope.
 - `standalone_distribution` combines built-ins and two independent providers
-  in one canonical managed-project flow.
+  in one canonical managed-project flow. Its Future cases verify exact outer
+  entry completion and a generated Tokio host using controlled timers, loopback
+  I/O, state initialization, repeated calls, and bounded shutdown.
 
 Detailed project loading, provider selection validation, explicit provider
 resolution, manifest, lock, and runner behavior remain in `geam-cli`; the root
@@ -383,7 +438,12 @@ provider profile does not include every built-in used by a generated runner.
 The relevant Acceptance and Coverage jobs explicitly fetch workspace
 dependencies before testing, whether or not a cache was restored.
 
-The workspace's explicit default members are the same seven packages, so
+When packaging a provider against this checkout, pass the `geam` path patch
+through Cargo configuration (`--config` or `.cargo/config.toml`). Cargo removes
+manifest-level patches when generating the package, so a patch in `Cargo.toml`
+alone makes packaging depend on registry availability instead of the checkout.
+
+The workspace's explicit default members include every production package, so
 `cargo test --locked` remains equivalent for local use. CI spells out
 `--workspace` so newly added internal packages cannot be omitted implicitly.
 
@@ -393,6 +453,7 @@ Run a package-owned compatibility suite directly:
 cargo test --package geam-stdlib --test gleam_stdlib --locked
 cargo test --package geam-json --test gleam_json --locked
 cargo test --package geam-time --test gleam_time --locked
+cargo test --package geam-builtin --locked
 ```
 
 Run the root acceptance targets independently:
@@ -401,6 +462,7 @@ Run the root acceptance targets independently:
 cargo test --package geam --test binary --locked
 cargo test --package geam --test cross_crate_http --locked
 cargo test --package geam --test provider_examples --locked
+cargo test --package geam --test future_builtins --locked
 cargo test --package geam --test standalone_distribution --locked
 ```
 
@@ -411,7 +473,7 @@ cargo test --package geam --test provider_examples --locked -- \
   --exact runs_the_documented_text_tools_provider_across_three_modules
 ```
 
-The unfiltered `provider_examples` command still runs all nine examples locally.
+The unfiltered `provider_examples` command runs all ten examples locally.
 
 Planner unit tests use the crate-internal `planner::dsl` expected-plan helpers
 instead of snapshots, so supported lowering changes update the expected plan
@@ -466,10 +528,11 @@ Run the built-in closure with Gleam `v1.18.1` available:
 
 ```sh
 cargo llvm-cov clean --workspace
-cargo llvm-cov --no-report --package geam-stdlib --package geam-json --package geam-time --locked
+cargo llvm-cov --no-report --package geam-stdlib --package geam-json --package geam-time --package geam-builtin --locked
 cargo llvm-cov report --package geam-stdlib --summary-only --fail-under-lines 100 --fail-under-regions 100
 cargo llvm-cov report --package geam-json --summary-only --fail-under-lines 100 --fail-under-regions 100
 cargo llvm-cov report --package geam-time --summary-only --fail-under-lines 100 --fail-under-regions 100
+cargo llvm-cov report --package geam-builtin --summary-only --fail-under-lines 100 --fail-under-regions 100
 ```
 
 Run the CLI and binary closure with Gleam `v1.18.1` available:

@@ -1,4 +1,5 @@
 pub(crate) mod constant;
+mod entry;
 mod explain;
 pub(crate) mod function;
 pub(crate) mod graph;
@@ -25,13 +26,13 @@ use self::function::{
     ExecutionNilFunctionBody, ExecutionNilFunctionFunctionBody,
     ExecutionStringFunctionFunctionBody, ExecutionTupleFunctionBody,
     ExecutionTupleFunctionFunctionBody, ExecutionUtfCodepointFunctionFunctionBody,
-    FloatFunctionFunctionId, FloatListFunctionId, FunctionFunctionFunctionId,
-    FunctionListFunctionId, GenericFunctionFunctionId, IntFunctionFunctionId, IntFunctionId,
-    IntListFunctionId, ListListFunctionId, NeverFunctionFunctionId, NilFunctionFunctionId,
-    NilFunctionId, NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId,
-    ProfiledListFunctionFunctionId, StringFunctionFunctionId, StringListFunctionId,
-    TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionId,
-    UtfCodepointListFunctionId,
+    ExternalListFunctionId, FloatFunctionFunctionId, FloatListFunctionId,
+    FunctionFunctionFunctionId, FunctionListFunctionId, GenericFunctionFunctionId,
+    IntFunctionFunctionId, IntFunctionId, IntListFunctionId, ListListFunctionId,
+    NeverFunctionFunctionId, NilFunctionFunctionId, NilFunctionId, NilListFunctionId,
+    ParameterListFunctionId, ParameterListListFunctionId, ProfiledListFunctionFunctionId,
+    StringFunctionFunctionId, StringListFunctionId, TupleFunctionFunctionId, TupleFunctionId,
+    TupleListFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointListFunctionId,
 };
 use self::function::{
     ExecutionGraphProfile, ExecutionProfile, FunctionLabelSource, FunctionTables,
@@ -47,6 +48,8 @@ use self::type_::{CustomTypeTable, ExternalTypeTable, ListTypeTable, ValueShapeT
 use crate::host::HostProfile;
 use crate::plan::{HostedModulePlan, ModuleId, ModulePlan, SourceContext};
 use ecow::EcoString;
+pub(crate) use entry::EntryCompletion;
+pub use entry::HostedEntry;
 pub use explain::ExecutionPlanExplanation;
 pub use host::{HostSpecializationError, HostSpecializationErrorReason};
 use std::convert::Infallible;
@@ -73,23 +76,27 @@ pub(crate) struct LibraryListConstructions {
     pub(crate) bit_arrays: Vec<type_::BitArrayListTypeId>,
     pub(crate) utf_codepoints: Vec<type_::UtfCodepointListTypeId>,
     pub(crate) customs: Vec<type_::CustomListTypeId>,
+    pub(crate) externals: Vec<type_::ExternalListTypeId>,
     pub(crate) bools: Vec<type_::BoolListTypeId>,
     pub(crate) nils: Vec<type_::NilListTypeId>,
     pub(crate) tuples: Vec<type_::TupleListTypeId>,
     pub(crate) lists: Vec<type_::ListListTypeId>,
 }
 
-pub(crate) struct LibraryFunctionEntries {
+pub(crate) struct LibraryFunctionEntries<
+    Graph: ExecutionGraphProfile = function::HostedExecutionGraph,
+> {
     pub(crate) ints: Box<[LibraryFunctionEntry<function::IntFunctionId>]>,
     pub(crate) floats: Box<[LibraryFunctionEntry<function::FloatFunctionId>]>,
     pub(crate) strings: Box<[LibraryFunctionEntry<function::StringFunctionId>]>,
     pub(crate) bit_arrays: Box<[LibraryFunctionEntry<function::BitArrayFunctionId>]>,
     pub(crate) utf_codepoints: Box<[LibraryFunctionEntry<function::UtfCodepointFunctionId>]>,
     pub(crate) customs: Box<[LibraryFunctionEntry<function::CustomFunctionId>]>,
+    pub(crate) externals: Box<[LibraryFunctionEntry<Graph::ExternalFunctionId>]>,
     pub(crate) bools: Box<[LibraryFunctionEntry<function::BoolFunctionId>]>,
     pub(crate) nils: Box<[LibraryFunctionEntry<function::NilFunctionId>]>,
     pub(crate) tuples: Box<[LibraryFunctionEntry<function::TupleFunctionId>]>,
-    pub(crate) lists: Box<[LibraryFunctionEntry<function::ProfiledListFunctionId<Infallible>>]>,
+    pub(crate) lists: Box<[LibraryFunctionEntry<function::LibraryListFunctionId<Graph>>]>,
 }
 
 impl<Function> LibraryFunctionEntry<Function> {
@@ -130,13 +137,17 @@ impl LibraryInputConstructions {
 }
 
 pub struct HostedExecution<Profile: HostProfile> {
-    program: ExecutionProgram<host::HostedExecutionProfile>,
-    host_functions: host::HostFunctionTables<Profile>,
+    execution: HostedProgram<Profile>,
     external_stores: Profile::ExternalStores,
 }
 
+pub(crate) struct HostedProgram<Profile: HostProfile> {
+    program: ExecutionProgram<host::HostedExecutionProfile>,
+    host_functions: host::HostFunctionTables<Profile>,
+}
+
 pub(crate) struct ExecutionProgram<Profile: ExecutionProfile> {
-    common: ExecutionProgramCommon<Profile::Graph>,
+    common: std::sync::Arc<ExecutionProgramCommon<Profile::Graph>>,
     functions: FunctionTables<Profile>,
 }
 
@@ -145,6 +156,7 @@ struct ExecutionProgramCommon<Graph: ExecutionGraphProfile> {
     modules: Box<[ExecutionModuleContext]>,
     main: ProfiledRuntimeFunctionId<Graph>,
     constants: ProfiledConstantTable<Graph>,
+    function_parameters: std::sync::Arc<function::FunctionParameterCatalog>,
     list_types: ListTypeTable,
     custom_types: CustomTypeTable,
     external_types: ExternalTypeTable,
@@ -181,7 +193,7 @@ impl explain::Explain for ExecutionPlan {
     }
 }
 
-impl<Profile: HostProfile> explain::Explain for HostedExecution<Profile> {
+impl<Profile: HostProfile> explain::Explain for HostedProgram<Profile> {
     fn write_explanation(&self, context: &mut explain::ExplainContext<'_, '_>) {
         context.push_str("module ");
         context.push_str(&self.program.common.modules[self.program.common.root.index()].module);
@@ -209,9 +221,9 @@ impl ExecutionPlan {
 
     pub(crate) fn from_library_plan(
         module_plan: crate::plan::LibraryModulePlan,
-        first: crate::plan::LibraryEntry,
-        remaining: Vec<crate::plan::LibraryEntry>,
-    ) -> (Self, LibraryFunctionEntries) {
+        first: crate::plan::LibraryEntry<Infallible>,
+        remaining: Vec<crate::plan::LibraryEntry<Infallible>>,
+    ) -> (Self, LibraryFunctionEntries<Infallible>) {
         let (program, entries) = lowering::lower_library(module_plan, first, remaining);
         (Self { program }, entries)
     }
@@ -240,8 +252,10 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
     ) -> Result<Self, HostSpecializationError> {
         let (program, host_functions) = lowering::lower_hosted(module_plan)?;
         Ok(Self {
-            program,
-            host_functions,
+            execution: HostedProgram {
+                program,
+                host_functions,
+            },
             external_stores: Profile::ExternalStores::default(),
         })
     }
@@ -251,12 +265,10 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
         first: crate::plan::LibraryEntry,
         remaining: Vec<crate::plan::LibraryEntry>,
     ) -> Result<(Self, LibraryFunctionEntries), HostSpecializationError> {
-        let (program, host_functions, entries) =
-            lowering::lower_hosted_library(module_plan, first, remaining)?;
+        let (execution, entries) = HostedProgram::from_library_plan(module_plan, first, remaining)?;
         Ok((
             Self {
-                program,
-                host_functions,
+                execution,
                 external_stores: Profile::ExternalStores::default(),
             },
             entries,
@@ -272,7 +284,45 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
     }
 
     pub fn explain(&self) -> ExecutionPlanExplanation<'_> {
-        ExecutionPlanExplanation::new_hosted(self)
+        ExecutionPlanExplanation::new_hosted(&self.execution)
+    }
+
+    pub(crate) fn execution(&self) -> &HostedProgram<Profile> {
+        &self.execution
+    }
+
+    pub(crate) fn external_stores(&self) -> &Profile::ExternalStores {
+        &self.external_stores
+    }
+
+    pub(crate) fn parts_mut(&mut self) -> (&HostedProgram<Profile>, &mut Profile::ExternalStores) {
+        (&self.execution, &mut self.external_stores)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn external_list_function_id(&self, index: usize) -> ExternalListFunctionId {
+        self.execution
+            .program
+            .functions
+            .external_list_function_id(index)
+    }
+}
+
+impl<Profile: HostProfile> HostedProgram<Profile> {
+    pub(crate) fn from_library_plan(
+        module_plan: crate::plan::HostedLibraryModulePlan<Profile>,
+        first: crate::plan::LibraryEntry,
+        remaining: Vec<crate::plan::LibraryEntry>,
+    ) -> Result<(Self, LibraryFunctionEntries), HostSpecializationError> {
+        let (program, host_functions, entries) =
+            lowering::lower_hosted_library(module_plan, first, remaining)?;
+        Ok((
+            Self {
+                program,
+                host_functions,
+            },
+            entries,
+        ))
     }
 
     pub(crate) fn host_value_function<Body>(
@@ -290,10 +340,6 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
         id: host::HostNeverFunctionId,
     ) -> &host::HostedNeverFunction<Profile> {
         self.host_functions.never(id)
-    }
-
-    pub(crate) fn external_stores(&self) -> &Profile::ExternalStores {
-        &self.external_stores
     }
 }
 

@@ -1,28 +1,7 @@
-use super::{HostCallback, HostFunctionImplementation, HostReturn, HostValueFunction};
-use crate::host::{HostAbiType, HostCallArguments, HostCallError, HostCallRuntime, HostProfile};
-use std::sync::Arc;
+use super::{HostReturn, OwnedHostCallback, OwnedHostFunctionImplementation};
+use crate::host::{HostAbiType, HostCallArguments, HostFailure, HostProfile};
 
-pub(super) struct HostNilFunction<Profile: HostProfile> {
-    implementation: Arc<HostCallback<Profile, ()>>,
-}
-
-impl<Profile: HostProfile> Clone for HostNilFunction<Profile> {
-    fn clone(&self) -> Self {
-        Self {
-            implementation: Arc::clone(&self.implementation),
-        }
-    }
-}
-
-impl<Profile: HostProfile> HostNilFunction<Profile> {
-    pub(super) fn call(
-        &self,
-        runtime: &mut dyn HostCallRuntime<Profile>,
-    ) -> Result<(), HostCallError> {
-        let (state, arguments) = runtime.scalar_context();
-        (self.implementation)(state, arguments)
-    }
-}
+pub(super) type HostNilFunction<Profile> = OwnedHostCallback<Profile, ()>;
 
 impl HostReturn for () {
     fn descriptor() -> crate::host::HostTypeDescriptor {
@@ -30,14 +9,12 @@ impl HostReturn for () {
     }
 
     fn implementation<Profile: HostProfile>(
-        function: impl Fn(&mut Profile::RunState, &dyn HostCallArguments) -> Result<Self, HostCallError>
+        function: impl Fn(&mut Profile::RunState, &dyn HostCallArguments) -> Result<Self, HostFailure>
         + Send
         + Sync
         + 'static,
-    ) -> HostFunctionImplementation<Profile> {
-        HostFunctionImplementation::Value(HostValueFunction::nil(HostNilFunction {
-            implementation: Arc::new(function),
-        }))
+    ) -> OwnedHostFunctionImplementation<Profile> {
+        OwnedHostFunctionImplementation::Nil(OwnedHostCallback::new(function))
     }
 }
 
@@ -59,6 +36,7 @@ mod tests {
                 arguments.nil(slot);
                 Ok(())
             });
+        let implementation = implementation.into_immediate();
         let arguments = CallArguments::new(Vec::new(), Vec::new()).with_scalar_values(
             Vec::new(),
             Vec::new(),

@@ -35,8 +35,8 @@ impl<Item: HostAbiType> private::Abi for HostListType<Item> {
         HostScopedValue::List(value.token)
     }
 
-    fn from_token<'call, Profile: crate::host::HostProfile>(
-        runtime: &dyn crate::host::HostCallRuntime<Profile>,
+    fn from_token<'call, Runtime: crate::host::HostTokenRuntime + ?Sized>(
+        runtime: &Runtime,
         token: crate::host::HostValueToken,
     ) -> <Self as HostType>::Value<'call> {
         HostList::new(runtime.list_token(token))

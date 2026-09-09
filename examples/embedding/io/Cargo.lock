@@ -973,8 +973,17 @@ dependencies = [
 name = "geam"
 version = "0.2.3"
 dependencies = [
+ "geam-builtin",
  "geam-core",
  "geam-stdlib",
+]
+
+[[package]]
+name = "geam-builtin"
+version = "0.2.3"
+dependencies = [
+ "ecow",
+ "geam-core",
 ]
 
 [[package]]
@@ -984,11 +993,14 @@ dependencies = [
  "bitvec",
  "camino",
  "ecow",
+ "futures-channel",
+ "futures-util",
  "geam-gleam-core",
  "half",
  "im",
  "miette",
  "num-bigint",
+ "parking_lot",
  "thiserror 2.0.20",
  "toml 0.9.12+spec-1.1.0",
  "vec1",

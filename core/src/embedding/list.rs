@@ -1,6 +1,8 @@
 use super::Module;
-use super::input::{FreshInput, InputConstructions, InputValue, ListFamily};
-use super::value::{EmbeddingValue, ReturnValue};
+use super::input::{
+    FreshInput, InputConstructions, InputValue, ListFamily, ScopedFreshInput, ScopedInputValue,
+};
+use super::value::{EmbeddingValue, OutputValue, ReturnValue};
 use crate::plan::execution::{
     LibraryFunctionEntries, LibraryInputConstructions, LibraryListConstructions,
 };
@@ -26,18 +28,13 @@ use std::sync::Arc;
 /// List items still retain their own source handles and need explicit
 /// materialization before they can become fresh Vec inputs for another owner.
 ///
-/// Retained lists are not transferable between threads:
+/// Retained lists own immutable source storage and can be moved or shared
+/// between threads when their Rust item type permits it:
 ///
-/// ```compile_fail
-/// use geam_core::embedding::List;
-/// fn require_send<T: Send>() {}
-/// require_send::<List<bool>>();
 /// ```
-///
-/// ```compile_fail
 /// use geam_core::embedding::List;
-/// fn require_sync<T: Sync>() {}
-/// require_sync::<List<bool>>();
+/// fn require_send_and_sync<T: Send + Sync>() {}
+/// require_send_and_sync::<List<bool>>();
 /// ```
 ///
 /// A fresh outer Vec cannot contain retained child Lists. Materialize each
@@ -69,7 +66,10 @@ pub struct Iter<'a, T> {
 }
 
 #[allow(private_bounds)]
-impl<T: EmbeddingValue> List<T> {
+impl<T> List<T>
+where
+    T: OutputValue,
+{
     /// Returns the number of items without decoding them.
     pub fn len(&self) -> usize {
         self.value.len()
@@ -101,7 +101,10 @@ impl<T: EmbeddingValue> List<T> {
     }
 }
 
-impl<T: EmbeddingValue> Iterator for Iter<'_, T> {
+impl<T> Iterator for Iter<'_, T>
+where
+    T: OutputValue,
+{
     type Item = T;
 
     fn next(&mut self) -> Option<T> {
@@ -110,10 +113,8 @@ impl<T: EmbeddingValue> Iterator for Iter<'_, T> {
 }
 
 impl<T: EmbeddingValue> EmbeddingValue for List<T> {
-    type Runtime = EmbeddingListInput;
-
     const VARIANT_COUNT: usize = T::VARIANT_COUNT;
-    const LIST_COUNTS: [usize; 10] = {
+    const LIST_COUNTS: [usize; 11] = {
         let mut counts = T::LIST_COUNTS;
         counts[T::LIST_FAMILY as usize] += 1;
         counts
@@ -128,16 +129,26 @@ impl<T: EmbeddingValue> EmbeddingValue for List<T> {
         T::collect_variants(variants);
     }
 
+    fn collect_input_variants(variants: &mut Vec<StandardVariant>) {
+        T::collect_input_variants(variants);
+    }
+
     fn collect_lists(lists: &mut Vec<LibraryValueType>) {
         lists.push(T::library_type());
         T::collect_lists(lists);
     }
+}
 
-    fn list_id(
-        lists: &LibraryListConstructions,
-        index: usize,
-    ) -> <Self::Runtime as EmbeddingInputValue>::ListType {
-        lists.lists[index]
+impl<T: EmbeddingValue> super::value::EmbeddingInputRuntime for List<T> {
+    type Runtime = EmbeddingListInput;
+}
+
+impl<T> OutputValue for List<T>
+where
+    T: OutputValue,
+{
+    fn plain_library_type() -> LibraryValueType<std::convert::Infallible> {
+        LibraryValueType::List(Box::new(T::plain_library_type()))
     }
 
     fn take(output: &mut EmbeddingOutput, owner: &Arc<()>) -> Self {
@@ -162,7 +173,7 @@ where
         constructions: &mut InputConstructions<'_>,
         storage: &EmbeddingInputStorage,
     ) -> Self::Runtime {
-        let type_ = constructions.take_list::<T>();
+        let type_ = constructions.take_list::<T, Input>();
         let item_constructions = *constructions;
         constructions.skip::<T>();
         let values = input.into_iter().map(|value| {
@@ -173,7 +184,17 @@ where
     }
 }
 
-impl<T, Input> FreshInput<Vec<Input>> for List<T> where T: FreshInput<Input> {}
+impl<T, Input> FreshInput<Vec<Input>> for List<T>
+where
+    T: FreshInput<Input>,
+{
+    fn list_id(
+        lists: &LibraryListConstructions,
+        index: usize,
+    ) -> <Self::Runtime as EmbeddingInputValue>::ListType {
+        lists.lists[index]
+    }
+}
 
 impl<T: EmbeddingValue> InputValue<&List<T>> for List<T> {
     fn owners_match(input: &&List<T>, owner: &Arc<()>) -> bool {
@@ -190,9 +211,50 @@ impl<T: EmbeddingValue> InputValue<&List<T>> for List<T> {
     }
 }
 
-impl<T: EmbeddingValue> ReturnValue for List<T> {
-    fn input_constructions(
-        entries: &LibraryFunctionEntries,
+impl<Scope, T, Input> ScopedInputValue<Vec<Input>, Scope> for List<T>
+where
+    T: ScopedFreshInput<Input, Scope>,
+{
+    type ScopedRuntime = EmbeddingListInput;
+
+    fn owners_match(_input: &Vec<Input>, _owner: &Arc<()>) -> bool {
+        true
+    }
+
+    fn into_runtime(
+        input: Vec<Input>,
+        constructions: &mut InputConstructions<'_>,
+        storage: &EmbeddingInputStorage,
+    ) -> Self::ScopedRuntime {
+        let type_ = constructions.take_scoped_list::<T, Input, Scope>();
+        let item_constructions = *constructions;
+        constructions.skip::<T>();
+        let values = input.into_iter().map(|value| {
+            let mut constructions = item_constructions;
+            T::into_runtime(value, &mut constructions, storage)
+        });
+        <T as ScopedInputValue<Input, Scope>>::ScopedRuntime::into_list(type_, values, storage)
+    }
+}
+
+impl<Scope, T, Input> ScopedFreshInput<Vec<Input>, Scope> for List<T>
+where
+    T: ScopedFreshInput<Input, Scope>,
+{
+    fn list_id(
+        lists: &LibraryListConstructions,
+        index: usize,
+    ) -> <Self::ScopedRuntime as EmbeddingInputValue>::ListType {
+        lists.lists[index]
+    }
+}
+
+impl<T> ReturnValue for List<T>
+where
+    T: OutputValue,
+{
+    fn input_constructions<Graph: crate::plan::execution::function::ExecutionGraphProfile>(
+        entries: &LibraryFunctionEntries<Graph>,
         slot: usize,
     ) -> &LibraryInputConstructions {
         entries.lists[slot].inputs()

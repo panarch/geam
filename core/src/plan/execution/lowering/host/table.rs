@@ -2,7 +2,7 @@ use super::super::function;
 use super::super::specialization::{
     SpecializationKey, SpecializedFunctionShape, ValueInhabitation,
 };
-use super::super::{LoweredExecution, LoweringCompletion, LoweringContext, SpecializationOutcome};
+use super::super::{LoweredExecution, LoweringCompletion, LoweringContext};
 use super::{parameter, return_, sealing};
 use crate::host::{
     HostFunctionImplementation as RegisteredHostFunctionImplementation, HostProfile,
@@ -208,7 +208,7 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
                         return_::lower_uninhabited_never_return(
                             index,
                             key,
-                            host_index,
+                            return_::HostNeverTargetIndex(host_index),
                             &mut self.additional,
                         );
                     }
@@ -237,42 +237,6 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
             never_functions.into_boxed_slice(),
         );
         (completion, tables)
-    }
-}
-
-impl LoweringContext {
-    fn finish_hosted(
-        self,
-        additional: function::ProfiledFunctionEntries<HostedExecutionProfile>,
-    ) -> LoweringCompletion<HostedLoweredExecution> {
-        let Self {
-            constant_templates,
-            constants,
-            types,
-            representations,
-            functions,
-            erased_specializations,
-            ..
-        } = self;
-        let outcome = functions
-            .finish_hosted(additional)
-            .zip_with(
-                SpecializationOutcome::Complete(constants.finish_hosted()),
-                |functions, constants| {
-                    let (list_types, custom_types, external_types, value_shapes) =
-                        types.into_tables();
-                    Box::new(LoweredExecution {
-                        constants,
-                        functions: *functions,
-                        list_types,
-                        custom_types,
-                        external_types,
-                        value_shapes,
-                    })
-                },
-            )
-            .include_prior_erasure(erased_specializations);
-        (constant_templates, representations, outcome)
     }
 }
 
@@ -328,9 +292,15 @@ pub fn main() {
             HostProviderSet::new([math]).expect("host modules should be unique"),
         );
 
-        let functions = execution.host_functions.value_functions();
+        let functions = execution.execution.host_functions.value_functions();
         assert_eq!(functions.len(), 3);
-        assert!(execution.host_functions.never_functions().is_empty());
+        assert!(
+            execution
+                .execution
+                .host_functions
+                .never_functions()
+                .is_empty()
+        );
         assert_host_metadata(
             &functions[0],
             "host_support",
@@ -366,17 +336,17 @@ pub fn main() {
         );
 
         assert!(matches!(
-            execution.program.functions.int_function(IntFunctionId(0)),
+            execution.execution.program.functions.int_function(IntFunctionId(0)),
             ValueFunctionEntry::Host(HostedFunctionTarget::Value(target))
                 if *target == HostFunctionId::new(0, IntLocalId(0))
         ));
         assert!(matches!(
-            execution.program.functions.int_function(IntFunctionId(1)),
+            execution.execution.program.functions.int_function(IntFunctionId(1)),
             ValueFunctionEntry::Host(HostedFunctionTarget::Value(target))
                 if *target == HostFunctionId::new(1, IntLocalId(0))
         ));
         assert!(matches!(
-            execution.program.functions.bool_function(BoolFunctionId(0)),
+            execution.execution.program.functions.bool_function(BoolFunctionId(0)),
             ValueFunctionEntry::Host(HostedFunctionTarget::Value(target))
                 if *target == HostFunctionId::new(2, BoolLocalId(0))
         ));
@@ -415,8 +385,14 @@ pub fn main() {
             providers,
         );
 
-        assert!(execution.host_functions.value_functions().is_empty());
-        let functions = execution.host_functions.never_functions();
+        assert!(
+            execution
+                .execution
+                .host_functions
+                .value_functions()
+                .is_empty()
+        );
+        let functions = execution.execution.host_functions.never_functions();
         assert_eq!(functions.len(), 2);
         assert_host_metadata(
             &functions[0],
@@ -438,12 +414,12 @@ pub fn main() {
         );
 
         assert!(matches!(
-            execution.program.functions.int_function(IntFunctionId(0)),
+            execution.execution.program.functions.int_function(IntFunctionId(0)),
             ValueFunctionEntry::Host(HostedFunctionTarget::Never(target))
                 if *target == HostNeverFunctionId::new(0)
         ));
         assert!(matches!(
-            execution.program.functions.bool_function(BoolFunctionId(0)),
+            execution.execution.program.functions.bool_function(BoolFunctionId(0)),
             ValueFunctionEntry::Host(HostedFunctionTarget::Never(target))
                 if *target == HostNeverFunctionId::new(1)
         ));
@@ -462,7 +438,7 @@ pub fn main() {
         assert_eq!(function.module(), module);
         assert_eq!(function.name(), name);
         assert_eq!(function.metadata().signature(), &signature);
-        assert_eq!(function.type_arguments(), type_arguments);
+        assert_eq!(function.metadata().type_arguments(), type_arguments);
         assert_eq!(function.type_(), &type_);
     }
 

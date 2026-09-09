@@ -5,7 +5,6 @@ use crate::plan::execution::function::{
     ExecutionFunctionBody, ExecutionGraphProfile, ExecutionHostTarget, ExecutionNeverHostTarget,
     ExecutionProfile, FunctionBodyOwner, RuntimeFunctionFunctionTarget,
 };
-use crate::plan::execution::graph::ParamLocal;
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::graph::RetainedValues;
@@ -33,13 +32,6 @@ pub(in crate::runtime) trait ExecutableRuntimePlan:
         Body: ExecutionFunctionBody,
         Body::Return: graph::GraphValue;
 
-    fn host_parameters<Body>(
-        &self,
-        target: &ExecutionHostTarget<Self::Profile, Body>,
-    ) -> &[ParamLocal]
-    where
-        Body: ExecutionFunctionBody;
-
     fn call_host_never(
         &self,
         state: &mut RuntimeStateFor<'_, Self>,
@@ -47,11 +39,6 @@ pub(in crate::runtime) trait ExecutableRuntimePlan:
         target: &ExecutionNeverHostTarget<Self::Profile>,
         inputs: RetainedValues,
     ) -> ExecutionResult<Infallible>;
-
-    fn host_never_parameters(
-        &self,
-        target: &ExecutionNeverHostTarget<Self::Profile>,
-    ) -> &[ParamLocal];
 
     fn execute_external_list_instruction(
         &self,
@@ -67,7 +54,11 @@ pub(in crate::runtime) trait ExecutableRuntimePlan:
         environment: &mut graph::BlockEnvironment,
         instruction: &<RuntimeGraph<Self> as ExecutionGraphProfile>::ExternalFunctionInstruction,
     ) -> ExecutionResult<()>;
+}
 
+pub(in crate::runtime) trait ExecutableProgramPlan:
+    ExecutableRuntimePlan
+{
     fn run_function_return(
         &self,
         state: &mut RuntimeStateFor<'_, Self>,
@@ -94,16 +85,6 @@ impl ExecutableRuntimePlan for ExecutionPlan {
         match *target {}
     }
 
-    fn host_parameters<Body>(
-        &self,
-        target: &ExecutionHostTarget<Self::Profile, Body>,
-    ) -> &[ParamLocal]
-    where
-        Body: ExecutionFunctionBody,
-    {
-        match *target {}
-    }
-
     fn call_host_never(
         &self,
         _state: &mut RuntimeStateFor<'_, Self>,
@@ -111,13 +92,6 @@ impl ExecutableRuntimePlan for ExecutionPlan {
         target: &ExecutionNeverHostTarget<Self::Profile>,
         _inputs: RetainedValues,
     ) -> ExecutionResult<Infallible> {
-        match *target {}
-    }
-
-    fn host_never_parameters(
-        &self,
-        target: &ExecutionNeverHostTarget<Self::Profile>,
-    ) -> &[ParamLocal] {
         match *target {}
     }
 
@@ -139,7 +113,9 @@ impl ExecutableRuntimePlan for ExecutionPlan {
     ) -> ExecutionResult<()> {
         match *instruction {}
     }
+}
 
+impl ExecutableProgramPlan for ExecutionPlan {
     fn run_function_return(
         &self,
         state: &mut RuntimeStateFor<'_, Self>,
@@ -152,10 +128,10 @@ impl ExecutableRuntimePlan for ExecutionPlan {
 }
 
 impl<Profile: crate::HostProfile> ExecutableRuntimePlan
-    for crate::plan::execution::HostedExecution<Profile>
+    for crate::plan::execution::HostedProgram<Profile>
 {
     type RuntimeHost<'run>
-        = &'run mut Profile::RunState
+        = crate::runtime::state::RuntimeHost<'run, Profile>
     where
         Self: 'run;
 
@@ -180,23 +156,6 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
         }
     }
 
-    fn host_parameters<Body>(
-        &self,
-        target: &ExecutionHostTarget<Self::Profile, Body>,
-    ) -> &[ParamLocal]
-    where
-        Body: ExecutionFunctionBody,
-    {
-        match target {
-            crate::plan::execution::host::HostedFunctionTarget::Value(target) => {
-                self.host_value_function(target).parameters()
-            }
-            crate::plan::execution::host::HostedFunctionTarget::Never(target) => {
-                self.host_never_function(*target).parameters()
-            }
-        }
-    }
-
     fn call_host_never(
         &self,
         state: &mut RuntimeStateFor<'_, Self>,
@@ -205,13 +164,6 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
         inputs: RetainedValues,
     ) -> ExecutionResult<Infallible> {
         host::invoke_never(self, state, origin, *target, inputs)
-    }
-
-    fn host_never_parameters(
-        &self,
-        target: &ExecutionNeverHostTarget<Self::Profile>,
-    ) -> &[ParamLocal] {
-        self.host_never_function(*target).parameters()
     }
 
     fn execute_external_list_instruction(
@@ -232,7 +184,11 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
     ) -> ExecutionResult<()> {
         graph::execute_external_function_instruction(self, state, environment, instruction)
     }
+}
 
+impl<Profile: crate::HostProfile> ExecutableProgramPlan
+    for crate::plan::execution::HostedProgram<Profile>
+{
     fn run_function_return(
         &self,
         state: &mut RuntimeStateFor<'_, Self>,
@@ -325,8 +281,9 @@ pub(in crate::runtime) mod external_test {
 
     #[test]
     fn runtime_counter_fixture_source_hash_is_exact() {
-        let retained_hash = |_: &crate::runtime::StoredRuntimeValue| 0;
-        let hashing = crate::host::HostExternalHashing::new(&retained_hash);
+        let retained_hash = |_: &crate::runtime::RetainedValueRef| 0;
+        let raw_hashing = crate::host::RetainedValueHashing::new(&retained_hash);
+        let hashing = crate::host::HostExternalHashing(&raw_hashing);
         let value = BigInt::from(7);
         let mut expected = std::collections::hash_map::DefaultHasher::new();
         std::hash::Hash::hash(&value, &mut expected);
@@ -343,6 +300,7 @@ pub(in crate::runtime) mod external_test {
 
 #[cfg(test)]
 mod tests {
+
     use super::external_test::{
         RuntimeCounterCallable, RuntimeCounterProvider, RuntimeCounterSchema,
         RuntimeGenericCallable, RuntimeGenericValue, RuntimeHostCounter, RuntimeIntArguments,
@@ -613,5 +571,154 @@ pub fn main() {
         );
         assert_eq!(echoes[7].value().inspect().to_string(), "[]");
         assert_eq!(echoes[8].value(), &Value::Bool(true));
+    }
+    #[test]
+    fn transfer_never_calls_preserve_nested_provider_identity_and_host_caller() {
+        use crate::frontend::compile_typed_host_program;
+        use crate::host::{
+            HostCall, HostFunctionType, HostProfile, HostProvider, HostProviderModule,
+            HostProviderSet,
+        };
+        use std::cell::Cell;
+        use std::convert::Infallible;
+
+        struct Profile;
+        struct Provider;
+        impl HostProfile for Profile {
+            type RunState = Cell<usize>;
+            type ExternalStores = ();
+        }
+        impl HostProvider<Profile> for Provider {
+            type State = Cell<usize>;
+            fn project(state: &mut Self::State) -> &mut Self::State {
+                state
+            }
+        }
+        fn stop<'call>(
+            mut call: HostCall<'call, Profile, Provider, BigInt>,
+            callback: HostCallable<'call, HostTypeListEnd, BigInt>,
+        ) -> Result<Infallible, crate::HostCallError> {
+            call.state().set(1);
+            let value = call.invoke(callback, ())?;
+            assert_eq!(value, BigInt::from(42));
+            Err(crate::HostFailure::new("stopped after callback").into())
+        }
+        fn reject<'call>(
+            mut call: HostCall<'call, Profile, Provider, BigInt>,
+        ) -> Result<HostCallCompletion<'call, BigInt>, crate::HostCallError> {
+            call.state().set(2);
+            Err(crate::HostFailure::new("native rejected").into())
+        }
+        let provider = HostProviderModule::new("application", "library")
+            .expect("native module")
+            .with_scoped_function::<Provider, (), BigInt, _>("reject", reject).expect("reject")
+            .with_scoped_diverging_function::<Provider, (HostFunctionType<HostTypeListEnd, BigInt>,), BigInt, _>("stop", stop).expect("stop");
+        let source = r#"@external(erlang, "native", "reject")
+fn reject() -> Int
+@external(erlang, "native", "stop")
+fn stop(callback: fn() -> Int) -> Int
+pub fn run(fails: Bool) {
+  case fails {
+    True -> stop(reject)
+    False -> stop(fn() { echo 42 42 })
+  }
+}
+"#;
+        let program = compile_typed_host_program(
+            "application",
+            "library",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new("library", "src/library.gleam", source)],
+            )],
+            HostProviderSet::<Profile>::from_providers([provider]).expect("providers"),
+        )
+        .expect("source");
+        let library = crate::planner::plan_host_library_program(program).expect("plan");
+        let template = library
+            .functions()
+            .iter()
+            .find(|function| function.name() == "run")
+            .expect("run")
+            .signature()
+            .id();
+        let entry = crate::plan::LibraryEntry::new(
+            template,
+            crate::plan::LibraryValueType::Int,
+            Vec::new(),
+            Vec::new(),
+        );
+        let (plan, entries) =
+            crate::plan::execution::HostedProgram::from_library_plan(library, entry, Vec::new())
+                .expect("diverging callbacks seal");
+        for fails in [false, true] {
+            let mut state = Cell::new(0);
+            let mut output = Vec::new();
+            let mut echo = |value: crate::EchoOutput| output.push(value.to_string());
+            let mut stores = ();
+            let mut driver = crate::runtime::work::driver::Driver::new(
+                &plan,
+                &mut state,
+                &mut stores,
+                &mut echo,
+            );
+            let mut input = crate::runtime::RetainedInputs::empty();
+            input.push_value(crate::runtime::EvaluatedValue::Bool(fails));
+            let error = driver
+                .run_int(*entries.ints[0].function(), input)
+                .expect_err("native function never returns");
+            drop(driver);
+            {
+                let error = transfer_host_error(&error);
+                assert_eq!(error.package(), "application");
+                assert_eq!(error.module(), "library");
+                assert_eq!(error.function(), if fails { "reject" } else { "stop" });
+                assert_eq!(
+                    error.failure().message(),
+                    if fails {
+                        "native rejected"
+                    } else {
+                        "stopped after callback"
+                    }
+                );
+                assert_eq!(
+                    error
+                        .location()
+                        .caller()
+                        .map(|caller| caller.function().as_str()),
+                    if fails { Some("stop") } else { None }
+                );
+                assert_eq!(error.location().line(), if fails { None } else { Some(8) });
+            }
+            assert_eq!(state.get(), if fails { 2 } else { 1 });
+            assert_eq!(
+                output,
+                if fails {
+                    Vec::<&str>::new()
+                } else {
+                    vec!["src/library.gleam:8\n42"]
+                }
+            );
+        }
+    }
+
+    fn transfer_host_error(error: &crate::ExecutionError) -> &crate::HostError {
+        match error {
+            crate::ExecutionError::Host(error) => error,
+            _ => panic!("fixture requires a native host failure"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture requires a native host failure")]
+    fn transfer_host_error_rejects_an_invariant_fixture() {
+        transfer_host_error(&crate::ExecutionError::Invariant(
+            crate::InvariantError::ListIndexOutOfBounds {
+                item_type: crate::ValueType::Int,
+                index: 0,
+                length: 0,
+            },
+        ));
     }
 }

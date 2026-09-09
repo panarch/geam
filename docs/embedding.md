@@ -106,9 +106,12 @@ application that can be run and tested on its own:
 | Gleam IO | Route Gleam IO through Rust and capture Echo separately | [`io`](../examples/embedding/io) |
 | External provider | Call Gleam code backed by a configured Rust provider | [`provider`](../examples/embedding/provider) |
 | Application | Combine packages, IO, a provider, structured data, and repeated calls | [`application`](../examples/embedding/application) |
+| Async Rust host | Return explicit work and drive it on the application's executor | [`async_host`](../examples/embedding/async_host) |
 
 Follow the stages in order when learning the API, or open the smallest example
-that contains the feature your application needs.
+that contains the feature your application needs. The application example
+combines the preceding examples; the async-host example then adds explicit
+Future values.
 
 ## Keep Gleam and Rust in sync
 
@@ -248,6 +251,82 @@ provider](../examples/embedding/provider)
 separately. The [application example](../examples/embedding/application) then
 combines stdlib IO, an external provider, structured data, and repeated calls.
 
+## Drive explicit Future values
+
+A Rust provider can expose an `async fn` as a Gleam function returning
+`Future(a)`. Gleam creates and composes that work; the Rust application decides
+when to drive it. The [Future guide](future.md) covers package setup and Gleam
+composition. Ordinary functions still return ordinary values:
+
+```gleam
+import example_async_files as files
+import geam/future.{type Future}
+
+pub fn double(value: Int) -> Int {
+  value * 2
+}
+
+pub fn greeting(path: String) -> Future(Result(String, String)) {
+  use result <- future.map(files.read(path))
+  case result {
+    Ok(text) -> Ok("Hello " <> text)
+    Error(error) -> Error(error)
+  }
+}
+```
+
+Run `geam embedding sync` after adding the Gleam package and Rust provider.
+Sync enables `geam-builtin` on the application's Geam dependency for hosted
+bindings. Ordinary functions and Future functions share one loaded module and
+provider state.
+
+The generated project and bindings use the same loading sequence:
+
+```rust
+let program = geam_bindings::project().compile()?;
+let builder = HostedModuleBuilder::new(program)?;
+let (bindings, functions) = geam_bindings::bind(builder)?;
+let mut module = bindings.seal()?;
+```
+
+After initializing the generated `RunStateInputs`, attach the module to an
+execution scope owned by the Rust application:
+
+```rust
+with_execution_scope(async |guard| {
+    let mut scope = module.attach(guard, &mut state, &mut echo);
+    let doubled = scope.call(&functions.double, (21.into(),))?;
+    let work = scope.call(&functions.greeting, (path.into(),))?;
+    let result = scope.observe(&work).await?;
+    result.read(|value| println!("{value:?}"));
+    Ok::<_, Box<dyn std::error::Error>>(())
+})
+.await?;
+```
+
+The application drives this enclosing Rust Future with its own executor.
+`scope.call` evaluates the Gleam function and returns its value. For a function
+returning `Future`, that value is work to observe, not its eventual result.
+`scope.observe` drives the work and returns shared access to its result.
+Observing the same work again reuses its completion rather than running its
+native effects again.
+
+The scope borrows the module, provider state, and Echo sink. Dropping one
+observation leaves separately retained work available for another observation
+in the same scope. Ending the scope cancels pending work; plain results already
+obtained with `observe` remain available. See the
+[embedding reference](reference/embedding-boundary.md#explicit-future-execution)
+for nested Future values and completion errors.
+
+The [async-host example](../examples/embedding/async_host) contains the complete
+Gleam package, independent async file provider, generated bindings, state
+initialization, and caller-owned executor. The same provider also works through
+the [standalone async example](../examples/provider/async_files).
+
+State, retained values, native Futures, and the Echo sink must be `Send`; borrowed
+host resources need only live for the execution scope. Geam does not require
+`Sync` for exclusively accessed state or create an executor for embedding.
+
 ## Verify a prepared checkout
 
 Use `check` after cloning, in review, or in CI:
@@ -274,10 +353,12 @@ compilation and tests.
 Generated bindings currently support this recursive data grammar:
 
 ```text
-Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data)
+Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data) | Future(Data)
 ```
 
 This includes nested Lists and combinations of Tuple, Result, and Option.
+Bindings also recognize the nominal `geam/future.Future` type in
+these positions.
 Records, arbitrary custom types, external values, callbacks, and generic types
 cannot currently be used in generated Rust function signatures. Gleam code may
 use them internally. Through generated bindings, Rust can call such code only
@@ -292,6 +373,11 @@ shows both operations without adding providers. See the [embedding
 boundary](reference/embedding-boundary.md) for the complete type map, ownership
 rules, list transfer behavior, provider state, and lower-level manual binding
 API.
+
+Within an attached execution scope, `List<T>` declarations produce `SharedList`
+values with borrowed item access. Ordinary module calls return `List<T>` values
+with owned item access. Both retain their source storage. Nested Future values
+keep their execution scope; putting work inside a List does not erase its owner.
 
 ## Ship the Gleam sources with your application
 

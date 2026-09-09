@@ -2,7 +2,7 @@ use crate::dict::DictDeclaration;
 use crate::dynamic::{DynamicPayload, DynamicRepresentation};
 use crate::{Component, GleamStdlibRunState};
 use ecow::EcoString;
-use geam_core::provider::{Call, Callback, HostResult, List, Value};
+use geam_core::provider::{Call, Callback, List, Value};
 use num_bigint::BigInt;
 use num_traits::ToPrimitive;
 
@@ -15,8 +15,9 @@ use num_traits::ToPrimitive;
 pub(super) mod provider {
     use super::{
         BigInt, Call, Callback, DictDeclaration, DynamicPayload, DynamicRepresentation, EcoString,
-        GleamStdlibRunState, HostResult, List, ToPrimitive, Value,
+        GleamStdlibRunState, List, ToPrimitive, Value,
     };
+    use geam_core::provider::HostResult;
 
     #[geam_macros::custom(input = DecodeErrorInput)]
     pub enum DecodeError {
@@ -227,7 +228,7 @@ pub(super) mod provider {
 pub(super) fn host_provider<Profile>()
 -> Result<crate::HostProviderModule<Profile>, crate::HostRegistrationError>
 where
-    Profile: crate::GleamStdlibHostProfile,
+    Profile: crate::GleamStdlibProviderProfile,
 {
     provider::__geam_module::<Profile>()
 }

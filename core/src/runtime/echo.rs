@@ -6,7 +6,7 @@ use ecow::EcoString;
 use crate::plan::{EchoSite, SourceContext};
 use crate::runtime::Value;
 
-pub trait EchoSink {
+pub trait EchoSink: Send {
     fn emit(&mut self, output: EchoOutput);
 }
 
@@ -103,6 +103,12 @@ impl EchoLocation {
 impl EchoSink for Vec<EchoOutput> {
     fn emit(&mut self, output: EchoOutput) {
         self.push(output);
+    }
+}
+
+impl<Emit: FnMut(EchoOutput) + Send> EchoSink for Emit {
+    fn emit(&mut self, output: EchoOutput) {
+        self(output);
     }
 }
 
@@ -214,6 +220,29 @@ mod tests {
         outputs.emit(output.clone());
 
         assert_eq!(outputs, vec![output]);
+    }
+
+    #[test]
+    fn closure_sink_borrows_the_callers_output_without_retaining_local_values() {
+        fn require_send<T: Send>(_: &T) {}
+        let mut outputs = Vec::new();
+        let mut emit = |output: EchoOutput| outputs.push(output.to_string());
+        require_send(&emit);
+        for value in [false, true] {
+            emit.emit(EchoOutput::new(
+                EchoLocation::resolved(
+                    EchoSite::new("main".into(), "run".into(), SourceSpan::new(0, 1)),
+                    "src/main.gleam",
+                    1,
+                ),
+                None,
+                Value::Bool(value),
+            ));
+        }
+        assert_eq!(
+            outputs,
+            ["src/main.gleam:1\nFalse", "src/main.gleam:1\nTrue"]
+        );
     }
 
     #[test]

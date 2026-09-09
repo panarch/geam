@@ -1,0 +1,5 @@
+name = "standalone_future"
+version = "1.0.0"
+
+[dependencies]
+geam = { path = "../../../../../builtins/geam/gleam" }

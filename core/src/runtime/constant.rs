@@ -15,6 +15,6 @@ where
 {
     graph::execute(plan, state, program.block_graph(), RetainedValues::empty()).map(|completed| {
         let return_ = program.return_(completed.exit());
-        completed.into_value(state, return_)
+        completed.into_value(return_)
     })
 }

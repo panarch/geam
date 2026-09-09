@@ -6,6 +6,10 @@ pub mod gleam_json;
 pub mod gleam_stdlib;
 #[cfg(feature = "gleam-time")]
 pub mod gleam_time;
+#[cfg(feature = "geam-builtin")]
+pub use geam_builtin as builtin;
+#[cfg(feature = "geam-builtin")]
+pub use geam_builtin::FutureComponent;
 #[cfg(feature = "provider")]
 pub mod provider {
     pub mod advanced {
@@ -16,7 +20,7 @@ pub mod provider {
     }
 
     pub use geam_core::provider::{
-        BigInt, BitArrayValue, Call, Callback, Configuration, EcoString, ExternalPayload,
+        BigInt, BitArrayValue, Call, Callback, Configuration, EcoString, ExternalPayload, Future,
         HostFailure, HostResult, InitializationError, List, Stored, Value,
     };
 }
@@ -32,13 +36,14 @@ pub mod __macro_support {
         HostCustomFieldList, HostCustomFieldListEnd, HostCustomIndex0, HostCustomIndexNext,
         HostCustomSchema, HostCustomType, HostExternal, HostExternalBinding, HostExternalEquality,
         HostExternalHashing, HostExternalInspection, HostExternalSchema, HostExternalStorage,
-        HostExternalStore, HostExternalType, HostFunctionType, HostList, HostListType,
-        HostOpaqueFunctionType, HostProfile, HostProvider, HostProviderComponent,
-        HostProviderComponentInitialization, HostProviderComponentRegistration,
-        HostProviderConfiguration, HostProviderInitializationError, HostProviderModule,
-        HostRegistrationError, HostResult, HostStoredType, HostStoredValue, HostTuple,
-        HostTupleType, HostType, HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeList,
-        HostTypeListEnd, HostTypeParameter, HostTypeSequence, Index0, Inspection, List,
+        HostExternalStore, HostExternalType, HostFunctionType, HostFutureCompletion,
+        HostFutureError, HostFutureType, HostList, HostListType, HostOpaqueFunctionType,
+        HostProfile, HostProvider, HostProviderComponent, HostProviderComponentInitialization,
+        HostProviderComponentRegistration, HostProviderConfiguration,
+        HostProviderInitializationError, HostProviderModule, HostRegistrationError, HostResult,
+        HostStoredType, HostStoredValue, HostTuple, HostTupleType, HostType, HostTypeAt,
+        HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter,
+        HostTypeSequence, HostWorkProfile, HostWorkSchema, Index0, Inspection, List,
         MissingCallbackContext, MissingExternalInputContext, MissingExternalOutputContext,
         MissingStoredContext, MissingValueContext, Next, NoCustomInput, ProviderActiveCall,
         ProviderCallPlaceholder, ProviderCallbackCodec, ProviderCallbackContext,
@@ -47,22 +52,25 @@ pub mod __macro_support {
         ProviderConstructionRequirements, ProviderConstructions, ProviderCustomDeclaration,
         ProviderCustomInputDeclaration, ProviderDynamicInput, ProviderDynamicValue, ProviderError,
         ProviderExternalCodec, ProviderExternalDeclaration, ProviderExternalInputContext,
-        ProviderExternalItem, ProviderExternalListDecoder, ProviderExternalOutput,
-        ProviderExternalPayloadAccess, ProviderInputListContext, ProviderInputValue,
-        ProviderListContext, ProviderListCustomFields, ProviderListInputCodec,
+        ProviderExternalListDecoder, ProviderExternalOutput, ProviderExternalPayloadAccess,
+        ProviderExternalReturn, ProviderExternalView, ProviderFuture, ProviderFutureCall,
+        ProviderFutureCallbackContext, ProviderFutureValueContext, ProviderInputListContext,
+        ProviderInputValue, ProviderListContext, ProviderListCustomFields, ProviderListInputCodec,
         ProviderListInputValue, ProviderListItemDecoder, ProviderListItemValue,
-        ProviderModuleRegistration, ProviderNoConstructions, ProviderNone, ProviderOk,
-        ProviderOption, ProviderOutputValue, ProviderPackage, ProviderResult,
-        ProviderRootOutputValue, ProviderScalarListDecoder, ProviderSharedCall, ProviderSome,
-        ProviderStoredInput, ProviderStoredOutput, ProviderStoredOwner, ProviderValue,
-        ProviderValueContext, Retained, RetainedExternalPayload, Stored, Value,
+        ProviderListTupleItems, ProviderModuleRegistration, ProviderNoConstructions, ProviderNone,
+        ProviderOk, ProviderOption, ProviderOutputValue, ProviderOwnedExternal,
+        ProviderOwnedExternalInputContext, ProviderOwnedExternalListDecoder,
+        ProviderOwnedStoredInput, ProviderPackage, ProviderResult, ProviderRootOutputValue,
+        ProviderScalarListDecoder, ProviderSharedCall, ProviderSome, ProviderStoredInput,
+        ProviderStoredOutput, ProviderStoredOwner, ProviderValue, ProviderValueContext,
+        ProviderValueForms, Retained, RetainedExternalPayload, Stored, StoredDynamic, Value,
         component_initialization_error, external_payload_hash,
     };
 }
 
 pub use geam_core::List;
 #[cfg(feature = "embedding")]
-pub use geam_core::embedding;
+pub mod embedding;
 pub use geam_core::{frontend, host, plan, planner, runtime};
 #[cfg(feature = "provider")]
 pub use geam_macros::{custom, external, function, module, provider};
@@ -83,18 +91,19 @@ pub use geam_core::host::{
     HostExternalHashing, HostExternalInspection, HostExternalPayloadBuilder,
     HostExternalPayloadView, HostExternalSchema, HostExternalStorage, HostExternalStore,
     HostExternalType, HostExternalTypeSchema, HostFailure, HostFunction, HostFunctionSchema,
-    HostFunctionType, HostList, HostListType, HostModule, HostProfile, HostProvider,
-    HostProviderComponent, HostProviderComponentInitialization, HostProviderComponentRegistration,
-    HostProviderConfiguration, HostProviderConfigurationValue, HostProviderInitializationError,
-    HostProviderModule, HostProviderSet, HostRegistrationError, HostSchemaType, HostStoredDynamic,
-    HostStoredType, HostStoredValue, HostTuple, HostTupleType, HostType, HostTypeAt,
-    HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter,
-    HostTypeSequence, HostValue, ScopedConstructingHostFunction, ScopedDivergingHostFunction,
+    HostFunctionType, HostFutureStore, HostList, HostListType, HostModule, HostProfile,
+    HostProvider, HostProviderComponent, HostProviderComponentInitialization,
+    HostProviderComponentRegistration, HostProviderConfiguration, HostProviderConfigurationValue,
+    HostProviderInitializationError, HostProviderModule, HostProviderSet, HostRegistrationError,
+    HostSchemaType, HostStoredDynamic, HostStoredType, HostStoredValue, HostTuple, HostTupleType,
+    HostType, HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
+    HostTypeParameter, HostTypeSequence, HostValue, HostWorkProfile, HostWorkRepresentation,
+    HostWorkSchema, HostWorkStorage, ScopedConstructingHostFunction, ScopedDivergingHostFunction,
     ScopedHostFunction, StatelessHostProfile,
 };
 pub use geam_core::plan::execution::{
     ExecutionPlan, ExecutionPlanExplanation, HostSpecializationError,
-    HostSpecializationErrorReason, HostedExecution,
+    HostSpecializationErrorReason, HostedEntry, HostedExecution,
 };
 pub use geam_core::plan::{
     BitArrayExpr, BitArrayLocalId, BoolExpr, BoolLocalId, CustomType, CustomTypeName, EchoSite,
@@ -112,6 +121,6 @@ pub use geam_core::runtime::{
     BitArraySegmentPanicReason, BitArrayValue, BitArrayValueLengthError, CustomFieldValue,
     CustomValue, EchoLocation, EchoOutput, EchoSink, ExecutionError, ExternalValue,
     ExternalValueIdentity, FunctionValue, HostError, HostLocation, HostOrigin, InvariantError,
-    ListValue, ListValueItemTypeMismatch, Panic, PanicDetails, PanicKind, PanicMessage, Value,
-    ValueInspection, run_main,
+    ListValue, ListValueItemTypeMismatch, Panic, PanicDetails, PanicKind, PanicMessage, PanicValue,
+    Value, ValueInspection, run_main,
 };

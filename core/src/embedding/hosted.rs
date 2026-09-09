@@ -1,6 +1,8 @@
 use super::binding::{BindingBuilder, BindingParts, Bindings};
 use super::input::{ArgumentsInput, InputShape};
-use super::{Arguments, BindingError, CallError, Function, FunctionDeclaration, ReturnValue};
+use super::{
+    Arguments, BindingError, CallError, EmbeddingValue, Function, FunctionDeclaration, ReturnValue,
+};
 use crate::frontend::HostedTypedProgram;
 use crate::host::HostProfile;
 use crate::plan::HostedLibraryModulePlan;
@@ -27,9 +29,9 @@ pub struct HostedModuleBindings<Profile: HostProfile> {
 /// The module owns immutable execution data and provider external stores.
 /// Mutable provider state remains caller-owned and is supplied to every call.
 pub struct HostedModule<Profile: HostProfile> {
-    execution: HostedExecution<Profile>,
-    entries: LibraryFunctionEntries,
-    owner: Arc<()>,
+    pub(in crate::embedding) execution: HostedExecution<Profile>,
+    pub(in crate::embedding) entries: LibraryFunctionEntries,
+    pub(in crate::embedding) owner: Arc<()>,
 }
 
 impl<Profile: HostProfile> HostedModuleBuilder<Profile> {
@@ -56,10 +58,10 @@ impl<Profile: HostProfile> HostedModuleBuilder<Profile> {
     >
     where
         ArgumentsType: Arguments,
-        Return: ReturnValue,
+        Return: EmbeddingValue,
     {
         self.inner
-            .function(declaration)
+            .function(declaration, Return::library_type())
             .map(|(inner, function)| (HostedModuleBindings { inner }, function))
     }
 }
@@ -73,9 +75,9 @@ impl<Profile: HostProfile> HostedModuleBindings<Profile> {
     ) -> Result<Function<ArgumentsType, Return>, BindingError>
     where
         ArgumentsType: Arguments,
-        Return: ReturnValue,
+        Return: EmbeddingValue,
     {
-        self.inner.function(declaration)
+        self.inner.function(declaration, Return::library_type())
     }
 
     /// Seals every selected entry and its reachable provider specializations.

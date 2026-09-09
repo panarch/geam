@@ -6,10 +6,10 @@ use super::function::{
     EvaluatedCustomFunction, EvaluatedFunction, EvaluatedFunctionFunction,
     EvaluatedFunctionIdentity, EvaluatedFunctionValue, EvaluatedFunctionValueKind,
 };
-use crate::runtime::state::list::{RuntimeListStorage, StoredListValueId};
+use crate::runtime::state::list::StoredListValueId;
 
 pub(in crate::runtime) fn values_equal(
-    storage: &RuntimeListStorage,
+    storage: &crate::runtime::RuntimeListStorage,
     left: &EvaluatedValue,
     right: &EvaluatedValue,
 ) -> bool {
@@ -29,11 +29,7 @@ pub(in crate::runtime) fn values_equal(
                     .all(|(left, right)| values_equal(storage, left, right))
         }
         (EvaluatedValue::External(left), EvaluatedValue::External(right)) => {
-            let equal = |left: &crate::runtime::StoredRuntimeValue,
-                         right: &crate::runtime::StoredRuntimeValue| {
-                values_equal(storage, left.value(), right.value())
-            };
-            left.source_equal(&crate::host::HostExternalEquality::new(&equal), right)
+            super::external::source::values_equal(storage, left, right)
         }
         (EvaluatedValue::Bool(left), EvaluatedValue::Bool(right)) => left == right,
         (EvaluatedValue::Nil, EvaluatedValue::Nil) => true,
@@ -58,7 +54,7 @@ pub(in crate::runtime) fn values_equal(
 }
 
 pub(in crate::runtime) fn value_source_hash(
-    storage: &RuntimeListStorage,
+    storage: &crate::runtime::RuntimeListStorage,
     value: &EvaluatedValue,
 ) -> u64 {
     let mut hasher = DefaultHasher::new();
@@ -66,7 +62,11 @@ pub(in crate::runtime) fn value_source_hash(
     hasher.finish()
 }
 
-fn hash_value(storage: &RuntimeListStorage, value: &EvaluatedValue, hasher: &mut DefaultHasher) {
+fn hash_value(
+    storage: &crate::runtime::RuntimeListStorage,
+    value: &EvaluatedValue,
+    hasher: &mut DefaultHasher,
+) {
     match value {
         EvaluatedValue::Int(value) => {
             0u8.hash(hasher);
@@ -104,12 +104,7 @@ fn hash_value(storage: &RuntimeListStorage, value: &EvaluatedValue, hasher: &mut
         EvaluatedValue::External(value) => {
             6u8.hash(hasher);
             value.type_id().hash(hasher);
-            let source_hash = |value: &crate::runtime::StoredRuntimeValue| {
-                value_source_hash(storage, value.value())
-            };
-            value
-                .source_hash(&crate::host::HostExternalHashing::new(&source_hash))
-                .hash(hasher);
+            super::external::source::source_hash(storage, value).hash(hasher);
         }
         EvaluatedValue::Bool(value) => {
             7u8.hash(hasher);
@@ -229,7 +224,7 @@ fn hash_function_identity(value: &EvaluatedFunctionIdentity, hasher: &mut Defaul
 }
 
 fn lists_equal(
-    storage: &RuntimeListStorage,
+    storage: &crate::runtime::RuntimeListStorage,
     left: &StoredListValueId,
     right: &StoredListValueId,
 ) -> bool {
@@ -836,7 +831,7 @@ pub fn main() {
         }
 
         let bit_array = EvaluatedBitArray::new(bitvec::bitvec![u8, Msb0; 1, 0, 1]);
-        let scalar_and_compound_pairs = vec![
+        let scalar_and_compound_pairs: Vec<(EvaluatedValue, EvaluatedValue)> = vec![
             (EvaluatedValue::Int(1.into()), EvaluatedValue::Int(1.into())),
             (EvaluatedValue::Float(0.0), EvaluatedValue::Float(-0.0)),
             (EvaluatedValue::Float(1.5), EvaluatedValue::Float(1.5)),
@@ -910,13 +905,15 @@ pub fn main() {
             |_, _| 41,
             inspect,
         );
-        let stored_inspect = |_: &crate::runtime::StoredRuntimeValue| "stored".into();
-        let inspection = crate::host::HostExternalInspection::new(&stored_inspect);
+        let stored_inspect = |_: &crate::runtime::RetainedValueRef| "stored".into();
+        let inspection = crate::host::RetainedValueInspection::new(&stored_inspect);
         assert_eq!(first.inspection(&inspection), "stored");
         let external_type = crate::plan::execution::type_::ExternalTypeId::new(0);
-        let first = EvaluatedValue::External(EvaluatedExternalValue::new(external_type, first));
-        let equal = EvaluatedValue::External(EvaluatedExternalValue::new(external_type, equal));
-        let collision =
+        let first: EvaluatedValue =
+            EvaluatedValue::External(EvaluatedExternalValue::new(external_type, first));
+        let equal: EvaluatedValue =
+            EvaluatedValue::External(EvaluatedExternalValue::new(external_type, equal));
+        let collision: EvaluatedValue =
             EvaluatedValue::External(EvaluatedExternalValue::new(external_type, collision));
         assert!(values_equal(state.lists(), &first, &equal));
         assert_eq!(
@@ -931,16 +928,16 @@ pub fn main() {
         assert!(!values_equal(
             state.lists(),
             &EvaluatedValue::from(ListValueId::Int(int_lists.0)),
-            &EvaluatedValue::from(ListValueId::String(string_lists.0)),
+            &EvaluatedValue::from(ListValueId::String(string_lists.0,)),
         ));
         assert!(values_equal(
             state.lists(),
-            &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
-            &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
+            &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into(),)]),
+            &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into(),)]),
         ));
         assert!(!values_equal(
             state.lists(),
-            &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
+            &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into(),)]),
             &EvaluatedValue::Tuple(Vec::new()),
         ));
         assert!(!values_equal(

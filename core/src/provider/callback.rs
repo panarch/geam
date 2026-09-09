@@ -1,7 +1,10 @@
 use super::{ProviderConstructionRequirements, ProviderConstructions};
-use crate::{
-    HostCall, HostCallError, HostCallable, HostProfile, HostProvider, HostType, HostTypeSequence,
+use crate::host::{
+    HostFutureCallable, HostFutureContext, HostFutureError, HostProfile, HostProvider, HostType,
+    HostTypeListEnd, HostTypeSequence,
 };
+use crate::{HostCall, HostCallError, HostCallable};
+use std::future::Future;
 use std::marker::PhantomData;
 
 type CallbackContextMarker<Profile, Provider, Return> =
@@ -20,10 +23,10 @@ pub struct Callback<Signature, Context = MissingCallbackContext> {
 #[doc(hidden)]
 pub struct MissingCallbackContext;
 
-/// Directional Rust and host conversion selected by one generated callback
-/// declaration.
+/// Owned Rust and transferable-host conversion selected by one generated
+/// callback declaration.
 #[doc(hidden)]
-pub trait ProviderCallbackCodec<'call, Profile, Provider, Return>
+pub trait ProviderCallbackCodec<Profile, Provider, Return>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
@@ -35,30 +38,63 @@ where
     type Returned;
     type Requirements: ProviderConstructionRequirements;
 
-    fn into_host_arguments(
+    fn into_host_arguments<'call>(
         arguments: Self::Arguments,
         call: &mut HostCall<'call, Profile, Provider, Return>,
         constructions: &ProviderConstructions<'call, Self::Requirements>,
     ) -> <Self::HostArguments as HostTypeSequence>::Values<'call>;
 
-    fn from_host_return(
+    fn from_host_return<'call>(
         value: <Self::HostReturn as HostType>::Value<'call>,
         call: &mut HostCall<'call, Profile, Provider, Return>,
     ) -> Self::Returned;
 }
 
-/// Exact callable and construction proof generated for one callback argument.
+/// Exact callable and construction proof for one immediate transferable call.
 #[doc(hidden)]
 pub struct ProviderCallbackContext<'call, Profile, Provider, Return, Codec>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
-    Codec: ProviderCallbackCodec<'call, Profile, Provider, Return>,
+    Codec: ProviderCallbackCodec<Profile, Provider, Return>,
 {
     callable: HostCallable<'call, Codec::HostArguments, Codec::HostReturn>,
     constructions: ProviderConstructions<'call, Codec::Requirements>,
     context: CallbackContextMarker<Profile, Provider, Return>,
+}
+
+/// Owned callable and construction proof for one native Future.
+#[doc(hidden)]
+pub struct ProviderFutureCallbackContext<Profile, Provider, Codec>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Codec: ProviderCallbackCodec<Profile, Provider, ()>,
+{
+    callable: FutureCallback<Profile, Provider, Codec>,
+}
+
+type FutureCallback<Profile, Provider, Codec> = HostFutureCallable<
+    Profile,
+    Provider,
+    <Codec as ProviderCallbackCodec<Profile, Provider, ()>>::HostArguments,
+    <Codec as ProviderCallbackCodec<Profile, Provider, ()>>::HostReturn,
+    <<Codec as ProviderCallbackCodec<Profile, Provider, ()>>::Requirements as
+        ProviderConstructionRequirements>::Types<HostTypeListEnd>,
+>;
+
+impl<Profile, Provider, Codec> Clone for ProviderFutureCallbackContext<Profile, Provider, Codec>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Codec: ProviderCallbackCodec<Profile, Provider, ()>,
+{
+    fn clone(&self) -> Self {
+        Self {
+            callable: self.callable.clone(),
+        }
+    }
 }
 
 impl<'call, Signature, Profile, Provider, Return, Codec>
@@ -67,7 +103,7 @@ where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
-    Codec: ProviderCallbackCodec<'call, Profile, Provider, Return>,
+    Codec: ProviderCallbackCodec<Profile, Provider, Return>,
 {
     #[doc(hidden)]
     pub fn from_host(
@@ -95,13 +131,60 @@ where
     }
 }
 
+impl<Signature, Profile, Provider, Codec>
+    Callback<Signature, ProviderFutureCallbackContext<Profile, Provider, Codec>>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Codec: ProviderCallbackCodec<Profile, Provider, ()>,
+{
+    #[doc(hidden)]
+    pub fn from_future_host<'call, Return: HostType>(
+        call: &HostCall<'call, Profile, Provider, Return>,
+        callable: HostCallable<'call, Codec::HostArguments, Codec::HostReturn>,
+        constructions: ProviderConstructions<'call, Codec::Requirements>,
+    ) -> Self {
+        Self {
+            context: ProviderFutureCallbackContext {
+                callable: call.future_callable(callable, &constructions.host()),
+            },
+            signature: PhantomData,
+        }
+    }
+
+    pub(crate) fn invoke_future<'request>(
+        &'request self,
+        context: &'request HostFutureContext<'_, Profile, Provider, HostTypeListEnd>,
+        arguments: Codec::Arguments,
+    ) -> impl Future<Output = Result<Codec::Returned, HostFutureError>> + Send + 'request
+    where
+        Profile::RunState: Send,
+        Profile::ExternalStores: Send,
+        Codec: 'static,
+        Codec::Arguments: Send + 'static,
+        Codec::Returned: Send + 'static,
+    {
+        self.context.callable.invoke(
+            context,
+            move |mut call, constructions| {
+                Codec::into_host_arguments(
+                    arguments,
+                    &mut call,
+                    &ProviderConstructions::new(&constructions),
+                )
+            },
+            |mut call, value| Ok(Codec::from_host_return(value, &mut call)),
+        )
+    }
+}
+
 impl<'call, Profile, Provider, Return, Codec> Clone
     for ProviderCallbackContext<'call, Profile, Provider, Return, Codec>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
-    Codec: ProviderCallbackCodec<'call, Profile, Provider, Return>,
+    Codec: ProviderCallbackCodec<Profile, Provider, Return>,
 {
     fn clone(&self) -> Self {
         *self
@@ -114,7 +197,7 @@ where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
-    Codec: ProviderCallbackCodec<'call, Profile, Provider, Return>,
+    Codec: ProviderCallbackCodec<Profile, Provider, Return>,
 {
 }
 

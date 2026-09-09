@@ -1,11 +1,13 @@
 use crate::plan::execution::type_::{
-    BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomListTypeId, FloatListTypeId,
-    IntListTypeId, ListListTypeId, NilListTypeId, StringListTypeId, TupleListTypeId,
-    UtfCodepointListTypeId,
+    BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomListTypeId, ExternalListTypeId,
+    FloatListTypeId, IntListTypeId, ListListTypeId, NilListTypeId, StringListTypeId,
+    TupleListTypeId, UtfCodepointListTypeId,
 };
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedCustomValue, EvaluatedValue};
 use crate::runtime::graph::RetainedValues;
-use crate::runtime::state::list::{CustomListAllocation, RuntimeListStorage, StoredListValueId};
+use crate::runtime::state::list::{
+    CustomListAllocation, ExternalListAllocation, StoredListValueId,
+};
 
 pub(crate) struct EmbeddingInput(EvaluatedValue);
 
@@ -22,16 +24,18 @@ pub(crate) trait EmbeddingInputValue: Sized {
 }
 
 #[derive(Default)]
-pub(crate) struct EmbeddingInputStorage(std::cell::RefCell<Option<RuntimeListStorage>>);
+pub(crate) struct EmbeddingInputStorage(
+    std::cell::RefCell<Option<crate::runtime::RuntimeListStorage>>,
+);
 
 pub(crate) struct EmbeddingTupleInput(Vec<EvaluatedValue>);
 pub(crate) struct EmbeddingCustomInput(EvaluatedCustomValue);
 pub(crate) struct EmbeddingListInput(pub(in crate::runtime::embedding) StoredListValueId);
 
 impl EmbeddingInputStorage {
-    fn lists(&self) -> std::cell::RefMut<'_, RuntimeListStorage> {
+    fn lists(&self) -> std::cell::RefMut<'_, crate::runtime::RuntimeListStorage> {
         std::cell::RefMut::map(self.0.borrow_mut(), |storage| {
-            storage.get_or_insert_with(RuntimeListStorage::default)
+            storage.get_or_insert_with(crate::runtime::RuntimeListStorage::default)
         })
     }
 }
@@ -171,8 +175,29 @@ impl EmbeddingInputValue for EmbeddingListInput {
     }
 }
 
+impl EmbeddingInputValue for crate::runtime::EvaluatedExternalValue {
+    type ListType = ExternalListTypeId;
+
+    fn into_input(self) -> EmbeddingInput {
+        EmbeddingInput(EvaluatedValue::External(self))
+    }
+
+    fn into_list(
+        type_: Self::ListType,
+        values: impl ExactSizeIterator<Item = Self>,
+        storage: &EmbeddingInputStorage,
+    ) -> EmbeddingListInput {
+        let allocation = ExternalListAllocation::new(type_, values.collect());
+        EmbeddingListInput(storage.lists().external(allocation).into())
+    }
+}
+
 impl EmbeddingInput {
     pub(crate) fn retain(self, values: &mut RetainedValues) {
         values.push_evaluated(self.0);
+    }
+
+    pub(in crate::runtime) fn into_value(self) -> EvaluatedValue {
+        self.0
     }
 }

@@ -1,16 +1,3 @@
-error[E0277]: the trait bound `i64: HostType` is not satisfied
- --> tests/ui/unsupported_tuple_scalar.rs:8:1
-  |
-8 | #[geam_macros::module(path = "tuples", crate_path = geam_core)]
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `HostType` is not implemented for `i64`
-  |
-help: the trait `HostType` is implemented for `f64`
- --> $WORKSPACE/core/src/host/type_/scalar.rs
-  |
-  | impl HostType for f64 {
-  | ^^^^^^^^^^^^^^^^^^^^^
-  = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)
-
 error[E0277]: the trait bound `HostTupleType<HostTypeList<i64, HostTypeList<bool, HostTypeListEnd>>>: host::function::argument::HostScopedArgument` is not satisfied
  --> tests/ui/unsupported_tuple_scalar.rs:8:1
   |
@@ -59,4 +46,17 @@ note: required by a bound in `HostProviderModule::<Profile>::with_scoped_functio
 ...
   |         Function: ScopedHostFunction<Profile, Provider, Arguments, Return>,
   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `HostProviderModule::<Profile>::with_scoped_function`
+  = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `i64: HostType` is not satisfied
+ --> tests/ui/unsupported_tuple_scalar.rs:8:1
+  |
+8 | #[geam_macros::module(path = "tuples", crate_path = geam_core)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `HostType` is not implemented for `i64`
+  |
+help: the trait `HostType` is implemented for `f64`
+ --> $WORKSPACE/core/src/host/type_/scalar.rs
+  |
+  | impl HostType for f64 {
+  | ^^^^^^^^^^^^^^^^^^^^^
   = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)

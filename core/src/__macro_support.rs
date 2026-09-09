@@ -5,39 +5,45 @@ pub use crate::host::{
     HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomIndex0,
     HostCustomIndexNext, HostCustomSchema, HostCustomType, HostExternal, HostExternalBinding,
     HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalSchema,
-    HostExternalStorage, HostExternalStore, HostExternalType, HostFunctionType, HostList,
-    HostListType, HostProfile, HostProvider, HostProviderComponent,
-    HostProviderComponentInitialization, HostProviderComponentRegistration,
-    HostProviderConfiguration, HostProviderInitializationError, HostProviderModule,
-    HostRegistrationError, HostStoredType, HostStoredValue, HostTuple, HostTupleType, HostType,
-    HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
-    HostTypeParameter, HostTypeSequence,
+    HostExternalStorage, HostExternalStore, HostExternalType, HostFunctionType,
+    HostFutureCompletion, HostFutureError, HostFutureType, HostList, HostListType, HostProfile,
+    HostProvider, HostProviderComponent, HostProviderComponentInitialization,
+    HostProviderComponentRegistration, HostProviderConfiguration, HostProviderInitializationError,
+    HostProviderModule, HostRegistrationError, HostStoredType, HostStoredValue, HostTuple,
+    HostTupleType, HostType, HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeList,
+    HostTypeListEnd, HostTypeParameter, HostTypeSequence, HostWorkProfile, HostWorkSchema,
 };
 pub use crate::provider::ExternalPayload;
 pub use crate::provider::advanced::{
     Equality, Hashing, Index0, Inspection, Next, ProviderDynamicInput, ProviderDynamicValue,
-    Retained, RetainedExternalPayload,
+    Retained, RetainedExternalPayload, StoredDynamic,
 };
 pub use crate::provider::{
     Call, Callback, HostResult, List, MissingCallbackContext, MissingExternalInputContext,
     MissingExternalOutputContext, MissingStoredContext, MissingValueContext, ProviderActiveCall,
-    ProviderCallPlaceholder, ProviderExternalInputContext, ProviderExternalItem,
-    ProviderExternalListDecoder, ProviderExternalOutput, ProviderExternalPayloadAccess,
-    ProviderInputListContext, ProviderListContext, ProviderListCustomFields,
-    ProviderListItemDecoder, ProviderListItemValue, ProviderScalarListDecoder, ProviderSharedCall,
-    ProviderStoredInput, ProviderStoredOutput, ProviderStoredOwner, ProviderValueContext, Stored,
-    Value,
+    ProviderCallPlaceholder, ProviderExternalInputContext, ProviderExternalListDecoder,
+    ProviderExternalOutput, ProviderExternalPayloadAccess, ProviderExternalReturn,
+    ProviderExternalView, ProviderFutureCall, ProviderInputListContext, ProviderListContext,
+    ProviderListCustomFields, ProviderListItemDecoder, ProviderListItemValue,
+    ProviderListTupleItems, ProviderOwnedExternal, ProviderOwnedExternalInputContext,
+    ProviderOwnedExternalListDecoder, ProviderOwnedStoredInput, ProviderScalarListDecoder,
+    ProviderSharedCall, ProviderStoredInput, ProviderStoredOutput, ProviderStoredOwner,
+    ProviderValueContext, Stored, Value,
 };
+pub use crate::provider::{Future as ProviderFuture, ProviderFutureValueContext};
 pub use crate::provider::{
     ProviderCallbackCodec, ProviderCallbackContext, ProviderConstruction,
     ProviderConstructionIndex0, ProviderConstructionIndexNext, ProviderConstructionList,
     ProviderConstructionRequirementAt, ProviderConstructionRequirements, ProviderConstructions,
-    ProviderError, ProviderExternalCodec, ProviderExternalDeclaration, ProviderInputValue,
-    ProviderListInputCodec, ProviderListInputValue, ProviderNoConstructions, ProviderNone,
-    ProviderOk, ProviderOption, ProviderOutputValue, ProviderResult, ProviderRootOutputValue,
-    ProviderSome, ProviderValue,
+    ProviderError, ProviderExternalCodec, ProviderExternalDeclaration,
+    ProviderFutureCallbackContext, ProviderInputValue, ProviderListInputCodec,
+    ProviderListInputValue, ProviderNoConstructions, ProviderNone, ProviderOk, ProviderOption,
+    ProviderOutputValue, ProviderResult, ProviderRootOutputValue, ProviderSome, ProviderValue,
+    ProviderValueForms,
 };
-pub use crate::provider::{retain_argument, retain_dynamic};
+pub use crate::provider::{
+    retain_argument, retain_constructed_argument, retain_constructed_dynamic, retain_dynamic,
+};
 pub use crate::provider_support::HostOpaqueFunctionType;
 pub use ecow::EcoString;
 use std::collections::hash_map::DefaultHasher;

@@ -1,0 +1,13 @@
+[package]
+name = "geam-macro-cross-crate-application"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+ecow.workspace = true
+geam-core.workspace = true
+geam-builtin.workspace = true
+geam-macro-cross-crate-consumer.workspace = true
+geam-macro-cross-crate-declarations.workspace = true
+num-bigint.workspace = true

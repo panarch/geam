@@ -12,10 +12,10 @@ pub trait HostProviderComponent: Send + Sync + 'static {
     const ID: &'static str;
 
     /// External stores owned by this component.
-    type Stores: Default + 'static;
+    type Stores: Default + Send + 'static;
 
     /// Caller-owned mutable state used while executing this component.
-    type RunState: 'static;
+    type RunState: Send + 'static;
 }
 
 /// Initializes one provider component from explicit read-only configuration.
@@ -187,6 +187,45 @@ mod tests {
 
         assert_eq!(state.first, "initial first");
         assert_eq!(state.second, 8);
+    }
+
+    #[test]
+    fn components_keep_their_stores_and_state_when_moved_to_a_worker() {
+        let stores = AggregateStores {
+            first: vec![3],
+            second: vec![5],
+        };
+        let mut state = AggregateState {
+            first: "initial".into(),
+            second: 7,
+        };
+
+        let (stores, state) = std::thread::spawn(move || {
+            assert_eq!(
+                <AggregateProfile as HostComponentProfile<FirstComponent>>::component_stores(
+                    &stores
+                ),
+                &[3],
+            );
+            assert_eq!(
+                <AggregateProfile as HostComponentProfile<SecondComponent>>::component_stores(
+                    &stores
+                ),
+                &[5],
+            );
+            <AggregateProfile as HostComponentProfile<FirstComponent>>::component_state(&mut state)
+                .push_str(" worker");
+            *<AggregateProfile as HostComponentProfile<SecondComponent>>::component_state(
+                &mut state,
+            ) += 2;
+            (stores, state)
+        })
+        .join()
+        .expect("worker");
+        assert_eq!(stores.first, [3]);
+        assert_eq!(stores.second, [5]);
+        assert_eq!(state.first, "initial worker");
+        assert_eq!(state.second, 9);
     }
 
     #[test]

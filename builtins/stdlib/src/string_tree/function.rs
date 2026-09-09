@@ -2,11 +2,12 @@ use super::provider::StringTreePayload;
 use super::storage::StringTree as StoredStringTree;
 use ecow::EcoString;
 use num_bigint::BigInt;
+use std::ops::Deref;
 use unicode_segmentation::UnicodeSegmentation;
 
 pub(super) fn append_tree(
-    tree: &StringTreePayload,
-    suffix: &StringTreePayload,
+    tree: impl Deref<Target = StringTreePayload>,
+    suffix: impl Deref<Target = StringTreePayload>,
 ) -> StringTreePayload {
     StringTreePayload::from_stored(tree.stored().append(suffix.stored()))
 }
@@ -15,20 +16,20 @@ pub(super) fn from_string(string: EcoString) -> StringTreePayload {
     StringTreePayload::from_stored(StoredStringTree::text(string))
 }
 
-pub(super) fn to_string(tree: &StringTreePayload) -> EcoString {
+pub(super) fn to_string(tree: impl Deref<Target = StringTreePayload>) -> EcoString {
     tree.stored().flatten()
 }
 
-pub(super) fn byte_size(tree: &StringTreePayload) -> BigInt {
+pub(super) fn byte_size(tree: impl Deref<Target = StringTreePayload>) -> BigInt {
     BigInt::from(tree.stored().byte_len())
 }
 
-pub(super) fn lowercase(tree: &StringTreePayload) -> StringTreePayload {
+pub(super) fn lowercase(tree: impl Deref<Target = StringTreePayload>) -> StringTreePayload {
     let value = tree.stored().flatten().to_lowercase();
     StringTreePayload::from_stored(StoredStringTree::text(value))
 }
 
-pub(super) fn uppercase(tree: &StringTreePayload) -> StringTreePayload {
+pub(super) fn uppercase(tree: impl Deref<Target = StringTreePayload>) -> StringTreePayload {
     let value = tree.stored().flatten().to_uppercase();
     StringTreePayload::from_stored(StoredStringTree::text(value))
 }
@@ -37,7 +38,10 @@ pub(super) fn do_to_graphemes(string: EcoString) -> Vec<EcoString> {
     string.graphemes(true).map(EcoString::from).collect()
 }
 
-pub(super) fn erl_split(tree: &StringTreePayload, pattern: EcoString) -> Vec<StringTreePayload> {
+pub(super) fn erl_split(
+    tree: impl Deref<Target = StringTreePayload>,
+    pattern: EcoString,
+) -> Vec<StringTreePayload> {
     let text = tree.stored().flatten();
     let parts = if pattern.is_empty() {
         vec![text]
@@ -51,7 +55,7 @@ pub(super) fn erl_split(tree: &StringTreePayload, pattern: EcoString) -> Vec<Str
 }
 
 pub(super) fn replace(
-    tree: &StringTreePayload,
+    tree: impl Deref<Target = StringTreePayload>,
     pattern: EcoString,
     substitute: EcoString,
 ) -> StringTreePayload {
@@ -64,11 +68,14 @@ pub(super) fn replace(
     StringTreePayload::from_stored(StoredStringTree::text(replaced))
 }
 
-pub(super) fn is_equal(left: &StringTreePayload, right: &StringTreePayload) -> bool {
+pub(super) fn is_equal(
+    left: impl Deref<Target = StringTreePayload>,
+    right: impl Deref<Target = StringTreePayload>,
+) -> bool {
     left.stored().flatten() == right.stored().flatten()
 }
 
-pub(super) fn is_empty(tree: &StringTreePayload) -> bool {
+pub(super) fn is_empty(tree: impl Deref<Target = StringTreePayload>) -> bool {
     tree.stored().byte_len() == 0
 }
 

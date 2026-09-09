@@ -9,10 +9,9 @@ pub use function::provider::{
 };
 
 use self::storage::DictPayload;
-use super::GleamStdlibHostProfile;
+use super::GleamStdlibProviderProfile;
 use crate::{
     HostExternalType, HostProviderModule, HostRegistrationError, HostTypeList, HostTypeListEnd,
-    stdlib_stores,
 };
 
 pub type DictOf<Key, Item> =
@@ -24,16 +23,9 @@ pub(crate) type DynamicDictOutput = function::provider::DictValue<
     geam_core::__macro_support::ProviderExternalOutput<DictPayload>,
 >;
 
-fn stores<Profile>(stores: &Profile::ExternalStores) -> &Stores
-where
-    Profile: GleamStdlibHostProfile,
-{
-    &stdlib_stores::<Profile>(stores).dict
-}
-
 pub(super) fn host_provider<Profile>() -> Result<HostProviderModule<Profile>, HostRegistrationError>
 where
-    Profile: GleamStdlibHostProfile,
+    Profile: GleamStdlibProviderProfile,
 {
     function::host_provider::<Profile>()
 }

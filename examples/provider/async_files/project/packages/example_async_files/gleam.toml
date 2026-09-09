@@ -1,0 +1,8 @@
+name = "example_async_files"
+version = "1.0.0"
+description = "File reading through an async Rust provider"
+licences = ["Apache-2.0"]
+target = "erlang"
+
+[dependencies]
+geam = { path = "../../../../../../builtins/geam/gleam" }

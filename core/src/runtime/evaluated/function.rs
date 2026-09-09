@@ -1,4 +1,3 @@
-use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::EvaluatedCapture;
@@ -15,7 +14,7 @@ use crate::plan::execution::type_::{CustomConstructorId, FunctionType};
 static NEXT_FUNCTION_INSTANCE_ID: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::runtime) struct EvaluatedFunction<Id> {
+pub(crate) struct EvaluatedFunction<Id> {
     pub(super) identity: EvaluatedFunctionIdentity,
     runtime_id: Id,
     params: Vec<ParamLocal>,
@@ -58,26 +57,14 @@ pub(in crate::runtime) enum ListFunctionReturnFamily {
     Function,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum EvaluatedFunctionIdentity {
     Reference(FunctionReferenceIdentity),
-    Instance(Rc<FunctionInstance>),
+    Instance(FunctionInstance),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct FunctionInstance(pub(super) u64);
-
-impl PartialEq for EvaluatedFunctionIdentity {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Reference(left), Self::Reference(right)) => left == right,
-            (Self::Instance(left), Self::Instance(right)) => Rc::ptr_eq(left, right),
-            _ => false,
-        }
-    }
-}
-
-impl Eq for EvaluatedFunctionIdentity {}
 
 pub(in crate::runtime) trait FunctionReferenceId {
     fn reference_identity(&self) -> FunctionReferenceIdentity;
@@ -439,6 +426,7 @@ pub(in crate::runtime) enum EvaluatedFunctionValueKind {
     Function(EvaluatedFunctionFunction),
 }
 
+#[allow(private_bounds)]
 impl<Id: Clone + FunctionReferenceId> EvaluatedFunction<Id> {
     pub(in crate::runtime) fn reference(
         runtime_id: Id,
@@ -465,9 +453,9 @@ impl<Id: Clone> EvaluatedFunction<Id> {
         type_: FunctionType,
     ) -> Self {
         Self {
-            identity: EvaluatedFunctionIdentity::Instance(Rc::new(FunctionInstance(
+            identity: EvaluatedFunctionIdentity::Instance(FunctionInstance(
                 NEXT_FUNCTION_INSTANCE_ID.fetch_add(1, Ordering::Relaxed),
-            ))),
+            )),
             runtime_id,
             params,
             captures,
@@ -602,7 +590,7 @@ impl EvaluatedFunctionFunction {
 }
 
 macro_rules! evaluated_function_value_from {
-    ($function:ty, $variant:ident) => {
+    ($function:ident, $variant:ident) => {
         impl From<$function> for EvaluatedFunctionValue {
             fn from(value: $function) -> Self {
                 Self::from_kind(EvaluatedFunctionValueKind::$variant(value))
@@ -633,6 +621,10 @@ impl EvaluatedFunctionValue {
 
     pub(in crate::runtime) fn kind(&self) -> &EvaluatedFunctionValueKind {
         &self.kind
+    }
+
+    pub(in crate::runtime) fn into_kind(self) -> EvaluatedFunctionValueKind {
+        self.kind
     }
 
     pub(in crate::runtime) fn type_(&self) -> &FunctionType {
@@ -789,7 +781,7 @@ pub fn main() {
             Vec::new(),
             crate::plan::execution::type_::ValueType::Int,
         );
-        let reference = EvaluatedIntFunction::reference(
+        let reference: EvaluatedIntFunction = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             Vec::new(),
             Vec::new(),
@@ -1044,7 +1036,8 @@ pub fn main() {
                 .collect(),
             crate::plan::execution::type_::ValueType::Custom(constructor_id.type_id()),
         );
-        let first = EvaluatedCustomFunction::constructor(constructor_id, type_.clone());
+        let first: EvaluatedCustomFunction =
+            EvaluatedCustomFunction::constructor(constructor_id, type_.clone());
         let same = first.clone();
         let separate = EvaluatedCustomFunction::constructor(constructor_id, type_);
 

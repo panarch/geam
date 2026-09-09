@@ -30,9 +30,12 @@ pub(in crate::plan::execution) fn lower(module_plan: ModulePlan) -> ExecutionPro
 
 pub(in crate::plan::execution) fn lower_library(
     module_plan: LibraryModulePlan,
-    first: LibraryEntry,
-    remaining: Vec<LibraryEntry>,
-) -> (ExecutionProgram<Infallible>, LibraryFunctionEntries) {
+    first: LibraryEntry<Infallible>,
+    remaining: Vec<LibraryEntry<Infallible>>,
+) -> (
+    ExecutionProgram<Infallible>,
+    LibraryFunctionEntries<Infallible>,
+) {
     let parts = module_plan.into_parts();
     let (program, entries) = lower_plain(
         parts.root,
@@ -48,7 +51,7 @@ fn lower_plain(
     modules: Vec<PlannedModule>,
     first_entry: PlainEntry,
     remaining_entries: Vec<PlainEntry>,
-) -> (ExecutionProgram<Infallible>, library::EntryIds) {
+) -> (ExecutionProgram<Infallible>, library::EntryIds<Infallible>) {
     let mut module_contexts = Vec::with_capacity(modules.len());
     let mut module_templates = Vec::with_capacity(modules.len());
     let mut constant_templates = Vec::with_capacity(modules.len());
@@ -140,16 +143,17 @@ fn lower_plain(
         entry.push(&mut entry_ids);
     }
     let program = ExecutionProgram {
-        common: ExecutionProgramCommon {
+        common: std::sync::Arc::new(ExecutionProgramCommon {
             root,
             modules: module_contexts.into_boxed_slice(),
             main,
             constants: lowered.constants,
+            function_parameters: std::sync::Arc::new(lowered.function_parameters),
             list_types: lowered.list_types,
             custom_types: lowered.custom_types,
             external_types: lowered.external_types,
             value_shapes: lowered.value_shapes,
-        },
+        }),
         functions: lowered.functions,
     };
     (program, entry_ids)
@@ -158,7 +162,7 @@ fn lower_plain(
 #[derive(Clone)]
 enum PlainEntry {
     Main(FunctionTemplateId),
-    Library(library::Entry),
+    Library(library::Entry<Infallible>),
 }
 
 enum ReservedPlainEntry {
@@ -166,20 +170,20 @@ enum ReservedPlainEntry {
         key: SpecializationKey,
         id: execution_function::RuntimeFunctionId,
     },
-    Library(library::ReservedEntry),
+    Library(Box<library::ReservedEntry<Infallible>>),
 }
 
 enum SealedPlainEntry {
     Main(execution_function::ProfiledRuntimeFunctionId<Infallible>),
-    Library(library::SealedEntry),
+    Library(Box<library::SealedEntry<Infallible>>),
 }
 
 struct FunctionTemplates {
     templates: Vec<Vec<FunctionTemplate>>,
 }
 
-impl From<LibraryEntry> for PlainEntry {
-    fn from(entry: LibraryEntry) -> Self {
+impl From<LibraryEntry<Infallible>> for PlainEntry {
+    fn from(entry: LibraryEntry<Infallible>) -> Self {
         Self::Library(entry.into())
     }
 }
@@ -207,7 +211,10 @@ impl ReservedPlainEntry {
             ),
             Self::Library(entry) => {
                 let (key, entry) = entry.seal();
-                (key, entry.map(SealedPlainEntry::Library))
+                (
+                    key,
+                    entry.map(|entry| SealedPlainEntry::Library(Box::new(entry))),
+                )
             }
         }
     }
@@ -221,9 +228,9 @@ impl SealedPlainEntry {
         }
     }
 
-    fn push(self, entries: &mut library::EntryIds) {
+    fn push(self, entries: &mut library::EntryIds<Infallible>) {
         if let Self::Library(entry) = self {
-            entries.push(entry);
+            entries.push(*entry);
         }
     }
 }
@@ -272,7 +279,7 @@ fn reserve_plain_entry(
             let id = context.reserve_main(key.clone(), return_);
             ReservedPlainEntry::Main { key, id }
         }
-        PlainEntry::Library(entry) => ReservedPlainEntry::Library(entry.reserve(context)),
+        PlainEntry::Library(entry) => ReservedPlainEntry::Library(Box::new(entry.reserve(context))),
     }
 }
 

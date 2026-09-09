@@ -1,0 +1,11 @@
+error[E0603]: module `work` is private
+ --> tests/ui/rejected/private_engine.rs:1:25
+  |
+1 | use geam_core::runtime::work::WorkScope;
+  |                         ^^^^ private module
+  |
+note: the module `work` is defined here
+ --> $WORKSPACE/core/src/runtime.rs
+  |
+  | pub(crate) mod work;
+  | ^^^^^^^^^^^^^^^^^^^

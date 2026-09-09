@@ -1,6 +1,8 @@
+mod borrowed;
 mod constant;
 mod echo;
 mod embedding;
+mod entry;
 mod error;
 mod evaluated;
 mod function;
@@ -9,40 +11,48 @@ mod host;
 mod materialize;
 mod profile;
 mod retained_list;
+pub(crate) mod shared;
 mod state;
+pub(crate) use state::list::RuntimeListStorage;
+mod retained;
 mod value;
+pub(crate) mod work;
 
+pub(crate) use borrowed::BorrowedValue;
+pub use echo::{EchoLocation, EchoOutput, EchoSink};
 pub(crate) use embedding::{
-    EmbeddingCustomInput, EmbeddingInputStorage, EmbeddingInputValue, EmbeddingList,
-    EmbeddingListInput, EmbeddingOutput, EmbeddingTupleInput, run_embedded_bit_array,
-    run_embedded_bool, run_embedded_custom, run_embedded_float, run_embedded_int,
-    run_embedded_list, run_embedded_nil, run_embedded_string, run_embedded_tuple,
+    EmbeddingCustomInput, EmbeddingInput, EmbeddingInputStorage, EmbeddingInputValue,
+    EmbeddingList, EmbeddingListInput, EmbeddingOutput, EmbeddingTupleInput,
+    run_embedded_bit_array, run_embedded_bool, run_embedded_custom, run_embedded_float,
+    run_embedded_int, run_embedded_list, run_embedded_nil, run_embedded_string, run_embedded_tuple,
     run_embedded_utf_codepoint, run_hosted_embedded_bit_array, run_hosted_embedded_bool,
     run_hosted_embedded_custom, run_hosted_embedded_float, run_hosted_embedded_int,
     run_hosted_embedded_list, run_hosted_embedded_nil, run_hosted_embedded_string,
     run_hosted_embedded_tuple, run_hosted_embedded_utf_codepoint,
 };
-pub(crate) use host::{
-    StoredRuntimeList, StoredRuntimeListCustomFields, StoredRuntimeListItem,
-    StoredRuntimeListTupleItems, StoredRuntimeValue,
-};
-
-pub use echo::{EchoLocation, EchoOutput, EchoSink};
+pub(crate) use entry::run_hosted_entry;
+pub(crate) use error::HostCallOrigin;
 pub use error::{
     BitArraySegmentPanicReason, ExecutionError, HostError, HostLocation, HostOrigin,
-    InvariantError, Panic, PanicDetails, PanicKind, PanicMessage,
+    InvariantError, ObservationError, Panic, PanicDetails, PanicKind, PanicMessage, PanicValue,
+    SharedExecutionError,
 };
+pub(crate) use evaluated::EvaluatedExternalValue;
 pub(in crate::runtime) use evaluated::{
     EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
     EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedExternalFunction,
-    EvaluatedExternalValue, EvaluatedFloatFunction, EvaluatedFunctionFunction,
-    EvaluatedFunctionValueKind, EvaluatedGenericFunction, EvaluatedIntFunction,
-    EvaluatedListFunction, EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction,
-    EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
+    EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedFunctionValueKind,
+    EvaluatedGenericFunction, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNeverFunction,
+    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 #[cfg(test)]
 pub(in crate::runtime) use evaluated::{EvaluatedFunctionValue, EvaluatedListCapture};
 pub(crate) use graph::RetainedValues;
+pub(crate) use host::{
+    StoredRuntimeList, StoredRuntimeListCustomFields, StoredRuntimeListItem,
+    StoredRuntimeListTupleItems, StoredRuntimeValue,
+};
 pub(crate) use value::{
     BitArrayFunctionValue, BoolFunctionValue, CaptureListValue, CaptureValue, CustomFunctionValue,
     CustomFunctionValueTarget, ExternalFunctionValue, FloatFunctionValue, FunctionFunctionValue,
@@ -56,7 +66,9 @@ pub use value::{
     ValueInspection,
 };
 
-pub(in crate::runtime) use profile::{ExecutableRuntimePlan, RuntimeGraph};
+pub(crate) use crate::host::{ExternalPayloadLease, ExternalPayloadView};
+pub(in crate::runtime) use profile::{ExecutableProgramPlan, ExecutableRuntimePlan, RuntimeGraph};
+pub(crate) use retained::{CallbackInputs, RetainedCallable, RetainedInputs, RetainedValueRef};
 
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::function::{
@@ -81,21 +93,25 @@ pub(crate) fn run_hosted_main<Profile: crate::HostProfile>(
     host: &mut Profile::RunState,
     echo: &mut dyn EchoSink,
 ) -> Result<Value, ExecutionError> {
-    let mut state = RuntimeState::with_host(echo, host);
-    run_hosted_program_inner(plan, &mut state)
+    let work = crate::runtime::work::execution::ExecutionWork::<Profile>::new();
+    let mut state = RuntimeState::with_host(
+        echo,
+        crate::runtime::state::RuntimeHost::<Profile>::new(host, plan.external_stores(), &work),
+    );
+    run_hosted_program_inner(plan.execution(), &mut state)
 }
 
 #[cfg(test)]
 fn run_hosted_program<Profile: crate::HostProfile>(
-    plan: &crate::plan::execution::HostedExecution<Profile>,
-    state: &mut RuntimeStateFor<'_, crate::plan::execution::HostedExecution<Profile>>,
+    plan: &crate::plan::execution::HostedProgram<Profile>,
+    state: &mut RuntimeStateFor<'_, crate::plan::execution::HostedProgram<Profile>>,
 ) -> Result<Value, ExecutionError> {
     run_hosted_program_inner(plan, state)
 }
 
 fn run_hosted_program_inner<Profile: crate::HostProfile>(
-    plan: &crate::plan::execution::HostedExecution<Profile>,
-    state: &mut RuntimeStateFor<'_, crate::plan::execution::HostedExecution<Profile>>,
+    plan: &crate::plan::execution::HostedProgram<Profile>,
+    state: &mut RuntimeStateFor<'_, crate::plan::execution::HostedProgram<Profile>>,
 ) -> Result<Value, ExecutionError> {
     let inputs = RetainedValues::empty();
     let value = match plan.main_runtime() {
@@ -114,10 +130,10 @@ fn run_core_program<Plan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
     function: ProfiledCoreRuntimeFunctionId<RuntimeGraph<Plan>>,
-    inputs: RetainedValues,
+    inputs: graph::RetainedValues,
 ) -> ExecutionResult<EvaluatedValue>
 where
-    Plan: ExecutableRuntimePlan,
+    Plan: ExecutableProgramPlan,
 {
     match function {
         ProfiledCoreRuntimeFunctionId::Never(function) => {
@@ -175,11 +191,10 @@ fn finish_program<Plan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
     value: EvaluatedValue,
-) -> Result<Value, ExecutionError>
+) -> ExecutionResult<Value>
 where
     Plan: ExecutableRuntimePlan,
 {
-    state.lists_mut().drain_releases();
     Ok(materialize::value(
         plan.value_metadata(),
         state.lists(),
@@ -217,6 +232,9 @@ fn plan_src(src: &str) -> crate::ExecutionPlan {
 fn int(value: i64) -> Value {
     Value::Int(num_bigint::BigInt::from(value))
 }
+
+#[cfg(test)]
+pub(crate) use host::call_fixture as host_call_fixture;
 
 #[cfg(test)]
 mod tests {

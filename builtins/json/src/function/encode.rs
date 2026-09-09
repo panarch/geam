@@ -1,15 +1,15 @@
 use super::provider::JsonPayload;
 use ecow::EcoString;
 use geam_core::HostFailure;
-use geam_core::provider::HostResult;
 use geam_stdlib::provider_support::{StoredStringTree, StringTreePayload};
 use num_bigint::BigInt;
+use std::ops::Deref;
 
-pub(super) fn do_to_string(json: &JsonPayload) -> EcoString {
+pub(super) fn do_to_string(json: impl Deref<Target = JsonPayload>) -> EcoString {
     json.tree().flatten()
 }
 
-pub(super) fn to_string_tree(json: &JsonPayload) -> StringTreePayload {
+pub(super) fn to_string_tree(json: impl Deref<Target = JsonPayload>) -> StringTreePayload {
     StringTreePayload::from_stored(json.tree().clone())
 }
 
@@ -26,9 +26,9 @@ pub(super) fn do_int(value: BigInt) -> JsonPayload {
     JsonPayload::from_tree(StoredStringTree::text(value.to_string().into()))
 }
 
-pub(super) fn do_float(value: f64) -> HostResult<JsonPayload> {
+pub(super) fn do_float(value: f64) -> Result<JsonPayload, HostFailure> {
     if !value.is_finite() {
-        return Err(HostFailure::new("JSON cannot encode a non-finite Float").into());
+        return Err(HostFailure::new("JSON cannot encode a non-finite Float"));
     }
     Ok(JsonPayload::from_tree(StoredStringTree::text(
         encode_float(value).into(),

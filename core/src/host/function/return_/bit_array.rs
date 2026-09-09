@@ -1,29 +1,8 @@
-use super::{HostCallback, HostFunctionImplementation, HostReturn, HostValueFunction};
+use super::{HostReturn, OwnedHostCallback, OwnedHostFunctionImplementation};
 use crate::BitArrayValue;
-use crate::host::{HostAbiType, HostCallArguments, HostCallError, HostCallRuntime, HostProfile};
-use std::sync::Arc;
+use crate::host::{HostAbiType, HostCallArguments, HostFailure, HostProfile};
 
-pub(super) struct HostBitArrayFunction<Profile: HostProfile> {
-    implementation: Arc<HostCallback<Profile, BitArrayValue>>,
-}
-
-impl<Profile: HostProfile> Clone for HostBitArrayFunction<Profile> {
-    fn clone(&self) -> Self {
-        Self {
-            implementation: Arc::clone(&self.implementation),
-        }
-    }
-}
-
-impl<Profile: HostProfile> HostBitArrayFunction<Profile> {
-    pub(super) fn call(
-        &self,
-        runtime: &mut dyn HostCallRuntime<Profile>,
-    ) -> Result<BitArrayValue, HostCallError> {
-        let (state, arguments) = runtime.scalar_context();
-        (self.implementation)(state, arguments)
-    }
-}
+pub(super) type HostBitArrayFunction<Profile> = OwnedHostCallback<Profile, BitArrayValue>;
 
 impl HostReturn for BitArrayValue {
     fn descriptor() -> crate::host::HostTypeDescriptor {
@@ -31,14 +10,12 @@ impl HostReturn for BitArrayValue {
     }
 
     fn implementation<Profile: HostProfile>(
-        function: impl Fn(&mut Profile::RunState, &dyn HostCallArguments) -> Result<Self, HostCallError>
+        function: impl Fn(&mut Profile::RunState, &dyn HostCallArguments) -> Result<Self, HostFailure>
         + Send
         + Sync
         + 'static,
-    ) -> HostFunctionImplementation<Profile> {
-        HostFunctionImplementation::Value(HostValueFunction::bit_array(HostBitArrayFunction {
-            implementation: Arc::new(function),
-        }))
+    ) -> OwnedHostFunctionImplementation<Profile> {
+        OwnedHostFunctionImplementation::BitArray(OwnedHostCallback::new(function))
     }
 }
 
@@ -59,6 +36,7 @@ mod tests {
         let implementation = <BitArrayValue as HostReturn>::implementation::<TestHostProfile>(
             move |_, arguments| Ok(arguments.bit_array(slot)),
         );
+        let implementation = implementation.into_immediate();
         let arguments = CallArguments::new(Vec::new(), Vec::new()).with_scalar_values(
             Vec::new(),
             Vec::new(),

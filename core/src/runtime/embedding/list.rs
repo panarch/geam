@@ -8,6 +8,10 @@ pub(crate) struct EmbeddingList {
 }
 
 impl EmbeddingList {
+    pub(crate) fn from_borrowed(value: crate::runtime::BorrowedValue<'_>) -> Self {
+        Self::new(value.stored_list().clone())
+    }
+
     pub(super) fn new(value: StoredListValueId) -> Self {
         Self {
             retained: RetainedList::new(value),
@@ -22,6 +26,14 @@ impl EmbeddingList {
         self.retained.item(index).map(EmbeddingOutput::from_value)
     }
 
+    pub(crate) fn read_item<Output>(
+        &self,
+        index: usize,
+        read: impl FnOnce(crate::runtime::BorrowedValue<'_>) -> Output,
+    ) -> Option<Output> {
+        crate::runtime::BorrowedValue::read_list_item(self.retained.handle(), index, read)
+    }
+
     pub(crate) fn input(&self) -> EmbeddingListInput {
         EmbeddingListInput(self.retained.handle().clone())
     }
@@ -29,6 +41,11 @@ impl EmbeddingList {
     #[cfg(test)]
     pub(crate) fn item_reads(&self) -> usize {
         self.retained.item_reads()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn same_allocation(&self, other: &Self) -> bool {
+        self.retained.handle() == other.retained.handle()
     }
 }
 
@@ -40,7 +57,7 @@ mod tests {
     #[test]
     fn retained_input_preserves_the_exact_allocation_without_reading_items() {
         let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [1, 2] }");
-        let mut storage = RuntimeListStorage::default();
+        let storage = RuntimeListStorage::default();
         let allocation: StoredListValueId = storage
             .int(
                 plan.int_list_function_id(0).type_id(),

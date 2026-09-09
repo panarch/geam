@@ -82,6 +82,7 @@ fn selects_locks_builds_and_runs_explicit_path_providers() {
                 "[dependencies]\n",
                 "geam = {{ version = \"={}\", default-features = false, features = [\"builtins\"] }}\n",
                 "toml = \"0.9\"\n",
+                "tokio = {{ version = \"1.53.1\", default-features = false, features = [\"rt-multi-thread\", \"net\", \"time\"] }}\n",
                 "geam_provider_catalog = {{ package = \"geam-catalog\", path = {} }}\n",
                 "geam_provider_counter = {{ package = \"geam-counter\", path = {} }}\n\n",
                 "[workspace]\n",

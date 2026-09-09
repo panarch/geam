@@ -8,6 +8,84 @@ use tempfile::{TempDir, tempdir};
 mod workspace_dependencies;
 
 #[test]
+fn runs_the_documented_async_files_provider_to_completion() {
+    let fixture = provider_example("async_files");
+    let project = fixture.path().join("project");
+    let geam = Path::new(env!("CARGO_MANIFEST_DIR")).join("builtins/geam/gleam");
+    let geam_path = toml::Value::String(geam.to_str().expect("UTF-8 package path").to_owned());
+    for directory in [
+        project.clone(),
+        project.join("packages/example_async_files"),
+    ] {
+        let path = directory.join("gleam.toml");
+        let source = fs::read_to_string(&path).expect("Gleam configuration");
+        let mut config: toml::Value = toml::from_str(&source).expect("valid TOML document");
+        config["dependencies"]["geam"]["path"] = geam_path.clone();
+        fs::write(&path, toml::to_string_pretty(&config).expect("Gleam TOML"))
+            .expect("resolve the checkout package after copying the example");
+
+        let path = directory.join("manifest.toml");
+        let source = fs::read_to_string(&path).expect("Gleam lock");
+        let mut lock: toml::Value = toml::from_str(&source).expect("valid lock document");
+        lock["requirements"]["geam"]["path"] = geam_path.clone();
+        let package = lock["packages"]
+            .as_array_mut()
+            .expect("locked packages")
+            .iter_mut()
+            .find(|package| package["name"].as_str() == Some("geam"))
+            .expect("locked Geam package");
+        package["path"] = geam_path.clone();
+        fs::write(
+            &path,
+            toml::to_string_pretty(&lock).expect("Gleam lock TOML"),
+        )
+        .expect("relocate only the local package path, preserving locked versions");
+    }
+
+    let add = geam_at(&project, ["provider", "add", "--path", "../provider"]);
+    assert!(
+        add.status.success(),
+        "{}",
+        String::from_utf8_lossy(&add.stderr)
+    );
+    let prepared = geam_at(&project, ["prepare"]);
+    assert!(
+        prepared.status.success(),
+        "{}",
+        String::from_utf8_lossy(&prepared.stderr)
+    );
+    assert!(prepared.stdout.is_empty());
+    let manifest = fs::read(project.join("Cargo.toml")).expect("managed manifest");
+    let lock = fs::read(project.join("Cargo.lock")).expect("managed lock");
+    let runner = fs::read(project.join("build/geam/runner.rs")).expect("managed runner");
+
+    for _ in 0..2 {
+        let run = geam_at(&project, ["run"]);
+        assert!(
+            run.status.success(),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        assert_eq!(run.stdout, b"Read by a Rust async function.\n");
+        assert!(
+            String::from_utf8_lossy(&run.stderr)
+                .contains("geam: Starting standalone runner for async_files_example\n"),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        assert_eq!(
+            fs::read(project.join("Cargo.toml")).expect("manifest"),
+            manifest
+        );
+        assert_eq!(fs::read(project.join("Cargo.lock")).expect("lock"), lock);
+        assert_eq!(
+            fs::read(project.join("build/geam/runner.rs")).expect("runner"),
+            runner
+        );
+    }
+}
+
+#[test]
 fn runs_the_documented_run_metrics_provider_without_configuration() {
     let fixture = provider_example("run_metrics");
     let project = fixture.path().join("project");
@@ -490,6 +568,7 @@ fn prepare_provider_dependency(name: &str) {
     static FEATURE_FLAGS: OnceLock<Result<(), String>> = OnceLock::new();
     static RUN_METRICS: OnceLock<Result<(), String>> = OnceLock::new();
     static TEXT_PATTERN: OnceLock<Result<(), String>> = OnceLock::new();
+    static ASYNC_FILES: OnceLock<Result<(), String>> = OnceLock::new();
 
     let prepared = match name {
         "text_tools" => &TEXT_TOOLS,
@@ -501,6 +580,7 @@ fn prepare_provider_dependency(name: &str) {
         "feature_flags" => &FEATURE_FLAGS,
         "run_metrics" => &RUN_METRICS,
         "text_pattern" => &TEXT_PATTERN,
+        "async_files" => &ASYNC_FILES,
         _ => panic!("unknown provider example {name}"),
     };
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
