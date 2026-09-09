@@ -65,7 +65,9 @@ jobs:
 
       - name: Verify standalone Future provider package
         working-directory: cli/tests/fixtures/standalone_future/provider
-        run: cargo package --quiet --offline --allow-dirty --no-verify --locked
+        run: |
+          cargo package --quiet --offline --allow-dirty --no-verify --locked \
+            --config "patch.crates-io.geam.path='$GITHUB_WORKSPACE'"
 
   rust-embedding:
     name: Rust embedding
@@ -143,7 +145,8 @@ jobs:
           cargo fmt --all --check
           CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding" cargo test --locked
           CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding" cargo clippy --all-targets --locked -- -D warnings
-          cargo package --locked --no-verify
+          cargo package --locked --no-verify \
+            --config "patch.crates-io.geam.path='$GITHUB_WORKSPACE'"
           (cd ../project && gleam format --check)
           (cd ../project/packages/example_async_files && gleam format --check && gleam build)
 

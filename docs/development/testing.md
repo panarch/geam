@@ -438,6 +438,11 @@ provider profile does not include every built-in used by a generated runner.
 The relevant Acceptance and Coverage jobs explicitly fetch workspace
 dependencies before testing, whether or not a cache was restored.
 
+When packaging a provider against this checkout, pass the `geam` path patch
+through Cargo configuration (`--config` or `.cargo/config.toml`). Cargo removes
+manifest-level patches when generating the package, so a patch in `Cargo.toml`
+alone makes packaging depend on registry availability instead of the checkout.
+
 The workspace's explicit default members include every production package, so
 `cargo test --locked` remains equivalent for local use. CI spells out
 `--workspace` so newly added internal packages cannot be omitted implicitly.
