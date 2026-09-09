@@ -64,15 +64,15 @@ mod tests {
         let store = crate::host::HostExternalStore::default();
         let first = EvaluatedExternalValue::new(
             ExternalTypeId::new(0),
-            store.insert(7usize, equal, hash, inspect),
+            store.insert(7usize, equal, hash, inspect, |_| None),
         );
         let second = EvaluatedExternalValue::new(
             ExternalTypeId::new(0),
-            store.insert(7usize, equal, hash, inspect),
+            store.insert(7usize, equal, hash, inspect, |_| None),
         );
         let different = EvaluatedExternalValue::new(
             ExternalTypeId::new(0),
-            store.insert(8usize, equal, hash, inspect),
+            store.insert(8usize, equal, hash, inspect, |_| None),
         );
         let lists = crate::runtime::RuntimeListStorage::default();
 

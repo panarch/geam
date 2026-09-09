@@ -329,6 +329,12 @@ specialized manual external semantics. `call_tracing` verifies typed callback
 return identity, same-component re-entry, exact state ordering, and fresh state
 on repeated runs. `generic_box` verifies typed retention, cross-type
 replacement, source semantics, and callback mapping without materialization.
+`native_records` verifies declared symbols and records through actual stdlib
+Dynamic decoding, bidirectional equality, dictionary key hashing, inspection,
+and a typed callback with retained captures. Core owners separately prove
+nominal/generic restoration, sealed conversion permissions, recursive values,
+lazy native traversal, payload access, and release; the example does not replace
+those tests.
 The root `provider_examples` target follows each documented path add, prepare,
 run, and repeated-run workflow against independently locked provider crates.
 The complete Gleam entrypoints execute every public example function.
@@ -361,13 +367,13 @@ This test requires Erlang/OTP as well as Gleam; CI supplies OTP `29`. The native
 Erlang source is included in the exported Hex package.
 
 CI formats, tests, lints, and packages every independent example provider. The
-ten macro examples select the current unreleased authoring surface through
+eleven macro examples select the current unreleased authoring surface through
 repository-local patches and complete standalone execution. The independent
 Provider SDK fixture remains the canonical low-level typed-host ABI acceptance
 owner.
 
 The [Acceptance workflow](../../.github/workflows/acceptance.yml) runs a matrix
-for the nine synchronous providers. Each job selects its exact `provider_examples`
+for the ten synchronous providers. Each job selects its exact `provider_examples`
 test, runs the independent provider's tests, verifies its Cargo package, and
 exports its Gleam package. A failed example does not cancel the other matrix
 jobs. The parallel `Published provider` job has no repository checkout and
@@ -386,7 +392,7 @@ those isolated runner artifacts are not shared or cached between jobs.
 
 The normal suite executes the full generated runner with the fixture's locked
 Gleam and Rust dependencies. CI exports the standalone fixture's three local
-Gleam dependencies and all nine example Gleam packages. It also packages the
+Gleam dependencies and all ten synchronous example Gleam packages. It also packages the
 two standalone fixture providers and every example provider. No test-only
 fixture package is published. The text-pattern provider and matching Hex package
 are release-coupled public documentation artifacts and share every Geam release
@@ -399,7 +405,7 @@ The root package keeps five explicit acceptance targets:
 - `cross_crate_http` proves that the Pure Gleam `gleam_http` package works
   through the root facade and stdlib composition. HTTP is not a Geam built-in
   and has no provider crate.
-- `provider_examples` executes the ten documented provider projects through
+- `provider_examples` executes the eleven documented provider projects through
   the real binary and generated runners.
 - `future_builtins` composes a macro-authored asynchronous provider with stdlib,
   JSON, and Time in a caller-driven Rust embedding scope.
@@ -473,7 +479,7 @@ cargo test --package geam --test provider_examples --locked -- \
   --exact runs_the_documented_text_tools_provider_across_three_modules
 ```
 
-The unfiltered `provider_examples` command runs all ten examples locally.
+The unfiltered `provider_examples` command runs all eleven examples locally.
 
 Planner unit tests use the crate-internal `planner::dsl` expected-plan helpers
 instead of snapshots, so supported lowering changes update the expected plan

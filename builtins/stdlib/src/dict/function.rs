@@ -28,7 +28,6 @@ pub(super) mod provider {
         input = DictInput,
         payload = DictPayload,
         manual,
-
     )]
     pub struct DictValue<Key, Item>;
 
@@ -38,7 +37,6 @@ pub(super) mod provider {
         input = TransientDictInput,
         payload = DictPayload,
         manual,
-
     )]
     pub(super) struct TransientDictValue<Key, Item>;
 
@@ -67,7 +65,7 @@ pub(super) mod provider {
         key: Value<Key>,
         dict: DictInput<Key, Item>,
     ) -> bool {
-        let key_hash = call.source_hash(&key);
+        let key_hash = call.native_source_hash(&key);
         dict.payload()
             .storage
             .matching_index(key_hash, &mut |index| {
@@ -93,7 +91,7 @@ pub(super) mod provider {
         dict: DictInput<Key, Item>,
         key: Value<Key>,
     ) -> Result<Value<Item>, ()> {
-        let key_hash = call.source_hash(&key);
+        let key_hash = call.native_source_hash(&key);
         let Some(index) =
             dict.payload()
                 .storage
@@ -118,7 +116,7 @@ pub(super) mod provider {
         value: Value<Item>,
         dict: DictInput<Key, Item>,
     ) -> DictValue<Key, Item> {
-        let key_hash = call.source_hash(&key);
+        let key_hash = call.native_source_hash(&key);
         let index =
             dict.payload()
                 .storage
@@ -146,7 +144,7 @@ pub(super) mod provider {
         value: Value<Item>,
         transient: TransientDictInput<Key, Item>,
     ) -> TransientDictValue<Key, Item> {
-        let key_hash = call.source_hash(&key);
+        let key_hash = call.native_source_hash(&key);
         let index = transient
             .payload()
             .storage
@@ -206,7 +204,7 @@ pub(super) mod provider {
         key: Value<Key>,
         transient: TransientDictInput<Key, Item>,
     ) -> TransientDictValue<Key, Item> {
-        let key_hash = call.source_hash(&key);
+        let key_hash = call.native_source_hash(&key);
         let Some(index) = transient
             .payload()
             .storage
@@ -253,7 +251,7 @@ pub(super) mod provider {
         initial: Value<Item>,
         transient: TransientDictInput<Key, Item>,
     ) -> HostResult<TransientDictValue<Key, Item>> {
-        let key_hash = call.source_hash(&key);
+        let key_hash = call.native_source_hash(&key);
         let index = transient
             .payload()
             .storage
@@ -307,9 +305,28 @@ where
     Provider: HostProvider<Profile>,
     Return: HostType,
 {
+    create_dynamic_dict_with(call, construction, entries, |_, entry| entry)
+}
+
+pub(super) fn create_dynamic_dict_with<'call, Profile, Provider, Return, Entry>(
+    call: &mut geam_core::host::HostCall<'call, Profile, Provider, Return>,
+    construction: HostConstruction<'call, DictOf<Dynamic, Dynamic>>,
+    entries: impl IntoIterator<Item = Entry>,
+    mut convert: impl FnMut(
+        &mut geam_core::host::HostCall<'call, Profile, Provider, Return>,
+        Entry,
+    ) -> (HostExternal<'call, Dynamic>, HostExternal<'call, Dynamic>),
+) -> HostExternal<'call, DictOf<Dynamic, Dynamic>>
+where
+    Profile: crate::GleamStdlibProviderProfile,
+    Profile::RunState: Send,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+{
     let mut buckets = HashMap::new();
-    for (key, value) in entries {
-        let key_hash = call.source_hash::<Dynamic>(key);
+    for entry in entries {
+        let (key, value) = convert(call, entry);
+        let key_hash = call.native_source_hash::<Dynamic>(key);
         insert_first(&mut buckets, key_hash, key, value, |stored, candidate| {
             call.equal::<Dynamic>(*stored, *candidate)
         });

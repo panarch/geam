@@ -283,6 +283,43 @@ impl HostCallRuntime<TestHostProfile> for TestHostCallRuntime<'_> {
         token(HostValueFamily::Int)
     }
 
+    fn owns_stored(&self, value: &StoredRuntimeValue) -> bool {
+        self.execution
+            .execution()
+            .value_metadata()
+            .shares_owner(value.metadata())
+    }
+
+    fn build_native_list(
+        &mut self,
+        type_: crate::plan::execution::type_::ListTypeId,
+        values: Box<[HostScopedValue]>,
+    ) -> HostValueToken {
+        let tokens = values
+            .into_vec()
+            .into_iter()
+            .map(|value| self.scoped.push_scoped(value))
+            .collect::<Vec<_>>();
+        let storage = self.execution.execution().list_storage_type(type_);
+        let list = self.scoped.allocate_list(storage, &mut self.lists, &tokens);
+        self.scoped.push_list(list)
+    }
+
+    fn build_native_custom(
+        &mut self,
+        constructor: crate::plan::execution::type_::CustomConstructorId,
+        fields: Box<[HostScopedValue]>,
+    ) -> HostValueToken {
+        let fields = fields
+            .into_vec()
+            .into_iter()
+            .map(|field| self.scoped.value_from_scoped(field))
+            .collect();
+        self.scoped.push_custom(
+            crate::runtime::evaluated::EvaluatedCustomValue::from_fields(constructor, fields),
+        )
+    }
+
     fn work(&self) -> crate::runtime::work::execution::WorkContext<TestHostProfile> {
         self.work.context()
     }
@@ -311,6 +348,25 @@ impl HostCallRuntime<TestHostProfile> for TestHostCallRuntime<'_> {
 
     fn stored_equal(&self, left: &StoredRuntimeValue, right: &StoredRuntimeValue) -> bool {
         crate::runtime::evaluated::values_equal(&self.lists, left.value(), right.value())
+    }
+
+    fn native_equal(
+        &self,
+        left: &crate::runtime::NativeValue,
+        right: &crate::runtime::NativeValue,
+    ) -> bool {
+        crate::runtime::native::values_equal(&self.lists, left, right)
+    }
+
+    fn native_hash(&self, value: &crate::runtime::NativeValue) -> u64 {
+        crate::runtime::native::value_hash(&self.lists, value)
+    }
+
+    fn native_tuple(&self, value: HostListToken) -> crate::runtime::NativeValue {
+        crate::runtime::NativeValue::tuple_from_list(
+            self.scoped.list_value(value),
+            self.execution.execution().value_metadata(),
+        )
     }
 
     fn stored_source_hash(&self, value: &StoredRuntimeValue) -> u64 {
@@ -344,8 +400,7 @@ impl HostCallRuntime<TestHostProfile> for TestHostCallRuntime<'_> {
                 index,
             )
             .map(|value| {
-                let type_ = value.value_type(self.execution.execution().value_metadata());
-                StoredRuntimeValue::new(value, type_)
+                StoredRuntimeValue::new(value, self.execution.execution().value_metadata())
             })
     }
 
@@ -418,6 +473,7 @@ impl HostTokenRuntime for TestHostCallRuntime<'_> {
 mod tests {
     use super::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{HostCallRuntime, HostFunctionToken, HostScopedValue};
+    use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::runtime::EvaluatedValue;
     use crate::runtime::graph::RetainedValues;
     use crate::runtime::host::scoped::{StoredRuntimeList, StoredRuntimeValue};
@@ -452,10 +508,9 @@ mod tests {
         let first = runtime.callable(HostFunctionToken(0));
         let second = runtime.callable(HostFunctionToken(0));
         first.with_value(|first| second.with_value(|second| assert!(std::ptr::eq(first, second))));
-        let work = runtime.work().ready(StoredRuntimeValue::new(
-            EvaluatedValue::Int(42.into()),
-            ValueType::Int,
-        ));
+        let work = runtime
+            .work()
+            .ready(StoredRuntimeValue::test_int(42.into()));
         let completion = work
             .observe()
             .now_or_never()
@@ -479,7 +534,7 @@ mod tests {
         );
         let value = StoredRuntimeValue::new(
             EvaluatedValue::List(StoredListValueId::Int(list.clone())),
-            ValueType::List(Box::new(ValueType::Int)),
+            plan.value_metadata(),
         );
         assert_eq!(runtime.stored_list_len(&value), 2);
         for (index, expected) in [7, 9].into_iter().enumerate() {
@@ -518,6 +573,102 @@ mod tests {
                 .into_arguments()
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn fixture_native_construction_uses_the_current_compiled_types_and_owner() {
+        use crate::host::HostTokenRuntime;
+        use crate::plan::execution::function::{
+            ListFunctionId, ProfiledCoreRuntimeFunctionId, ProfiledListFunctionId,
+            ProfiledRuntimeFunctionId,
+        };
+        use crate::runtime::NativeValue;
+        for (source, is_list) in [
+            ("pub fn main() { [7, 9] }", true),
+            (
+                "pub type Packet { Packet(Int) } pub fn main() { [Packet(42)] }",
+                false,
+            ),
+        ] {
+            let typed = crate::compile_typed_host_program(
+                "application",
+                "main",
+                [PackageSource::new(
+                    "application",
+                    Vec::<String>::new(),
+                    [ModuleSource::new("main", "main.gleam", source)],
+                )],
+                crate::HostProviderSet::new(Vec::<crate::HostModule<TestHostProfile>>::new())
+                    .unwrap(),
+            )
+            .unwrap();
+            let execution = crate::HostedExecution::try_from_module_plan(
+                crate::plan_host_program(typed).unwrap(),
+            )
+            .unwrap();
+            let mut state = TestRunState::default();
+            let mut runtime = TestHostCallRuntime::new(&mut state, RetainedValues::empty());
+            runtime.execution = execution;
+            let entry = runtime.execution.execution().main_runtime();
+            let list = match &entry {
+                ProfiledRuntimeFunctionId::Core(ProfiledCoreRuntimeFunctionId::List(
+                    ProfiledListFunctionId::Core(ListFunctionId::Int(id)),
+                )) => Some(id.type_id()),
+                _ => None,
+            };
+            assert_eq!(list.is_some(), is_list);
+            if let Some(list) = list {
+                let token = runtime.build_native_list(
+                    list.list_type(),
+                    Box::new([
+                        HostScopedValue::Int(7.into()),
+                        HostScopedValue::Int(9.into()),
+                    ]),
+                );
+                let tuple = runtime.native_tuple(runtime.list_token(token));
+                let alias = tuple.clone();
+                drop(tuple);
+                assert_eq!(alias.kind(), crate::runtime::NativeKind::Tuple);
+                assert_eq!(alias.len(), Some(2));
+                assert_eq!(alias.index(1).unwrap().as_int(), Some(9.into()));
+                assert!(alias.index(2).is_none());
+                assert!(runtime.native_equal(&alias, &alias));
+            }
+            let custom = match entry {
+                ProfiledRuntimeFunctionId::Core(ProfiledCoreRuntimeFunctionId::List(
+                    ProfiledListFunctionId::Core(ListFunctionId::Custom(id)),
+                )) => Some(
+                    runtime
+                        .execution
+                        .execution()
+                        .custom_constructor_id(id.type_id().item_type(), 0),
+                ),
+                _ => None,
+            };
+            assert_eq!(custom.is_some(), !is_list);
+            if let Some(constructor) = custom {
+                let token = runtime
+                    .build_native_custom(constructor, Box::new([HostScopedValue::Int(42.into())]));
+                let value = runtime
+                    .scoped
+                    .value_from_scoped(HostScopedValue::Value(token));
+                let value = NativeValue::from_stored(StoredRuntimeValue::new(
+                    value,
+                    runtime.execution.execution().value_metadata(),
+                ));
+                assert_eq!(
+                    value.index(0).unwrap().as_symbol().as_deref(),
+                    Some("packet")
+                );
+                assert_eq!(value.index(1).unwrap().as_int(), Some(42.into()));
+            }
+            let stored = StoredRuntimeValue::new(
+                EvaluatedValue::Int(42.into()),
+                runtime.execution.execution().value_metadata(),
+            );
+            assert!(runtime.owns_stored(&stored));
+            assert!(!runtime.owns_stored(&StoredRuntimeValue::test_int(42.into())));
+        }
     }
 
     #[test]

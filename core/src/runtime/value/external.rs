@@ -86,8 +86,20 @@ mod tests {
             format!("Resource({})", context.inspect_stored_value(&stored)).into()
         };
         let before = ExternalValueIdentity::allocate_id();
-        let first = store.insert(7usize, |_, left, right| left == right, source_hash, inspect);
-        let second = store.insert(7usize, |_, left, right| left == right, source_hash, inspect);
+        let first = store.insert(
+            7usize,
+            |_, left, right| left == right,
+            source_hash,
+            inspect,
+            |_| None,
+        );
+        let second = store.insert(
+            7usize,
+            |_, left, right| left == right,
+            source_hash,
+            inspect,
+            |_| None,
+        );
         let after = ExternalValueIdentity::allocate_id();
         assert!(before < first.identity());
         assert!(first.identity() < second.identity());
@@ -150,7 +162,7 @@ mod tests {
 
         let store = crate::host::HostExternalStore::default();
         let before = ExternalValueIdentity::allocate_id();
-        let lease = store.insert(7usize, equal, hash, inspect);
+        let lease = store.insert(7usize, equal, hash, inspect, |_| None);
         let identity = lease.identity();
         let after = ExternalValueIdentity::allocate_id();
         assert!(before < identity);

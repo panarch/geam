@@ -355,6 +355,8 @@ jobs:
             test: runs_the_documented_call_tracing_provider_with_fresh_callback_state
           - example: generic_box
             test: runs_the_documented_generic_box_provider_with_persistent_values
+          - example: native_records
+            test: runs_the_documented_native_records_provider_through_dynamic_and_callbacks
           - example: text_pattern
             test: runs_the_documented_text_pattern_on_erlang_and_geam
     env:

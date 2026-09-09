@@ -1286,6 +1286,7 @@ pub fn main() -> List(List(Int)) { [inner()] }
                 external_equal,
                 external_hash,
                 external_inspect,
+                |_| None,
             ),
         );
         let external_peer = EvaluatedExternalValue::new(
@@ -1295,6 +1296,7 @@ pub fn main() -> List(List(Int)) { [inner()] }
                 external_equal,
                 external_hash,
                 external_inspect,
+                |_| None,
             ),
         );
         let external = RuntimeListStorage::external(
@@ -2381,8 +2383,7 @@ pub fn main() -> Int {
         }
         let allocated_list_slots = lock(&state.lists.storage.state).pools.lists.slots.len();
         let evaluated = EvaluatedValue::List(value.clone());
-        let value_type = evaluated.value_type(plan.value_metadata());
-        let stored = StoredRuntimeValue::new(evaluated, value_type);
+        let stored = StoredRuntimeValue::new(evaluated, plan.value_metadata());
         let retained = crate::runtime::retained_list::RetainedList::new(value.clone());
 
         drop(value);

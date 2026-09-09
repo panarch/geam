@@ -14,8 +14,8 @@ pub use geam_builtin::FutureComponent;
 pub mod provider {
     pub mod advanced {
         pub use geam_core::provider::advanced::{
-            DynamicKind, Equality, External, Hashing, Index0, Inspection, Next, Retained,
-            RetainedExternalPayload, StoredDynamic,
+            DynamicKind, Equality, External, Hashing, Index0, Inspection, NativeKind, NativeMap,
+            NativeMapEntry, NativeValue, Next, Retained, RetainedExternalPayload, StoredDynamic,
         };
     }
 
@@ -45,10 +45,10 @@ pub mod __macro_support {
         HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter,
         HostTypeSequence, HostWorkProfile, HostWorkSchema, Index0, Inspection, List,
         MissingCallbackContext, MissingExternalInputContext, MissingExternalOutputContext,
-        MissingStoredContext, MissingValueContext, Next, NoCustomInput, ProviderActiveCall,
-        ProviderCallPlaceholder, ProviderCallbackCodec, ProviderCallbackContext,
-        ProviderConstruction, ProviderConstructionIndex0, ProviderConstructionIndexNext,
-        ProviderConstructionList, ProviderConstructionRequirementAt,
+        MissingStoredContext, MissingValueContext, NativeValue, Next, NoCustomInput,
+        ProviderActiveCall, ProviderCallPlaceholder, ProviderCallbackCodec,
+        ProviderCallbackContext, ProviderConstruction, ProviderConstructionIndex0,
+        ProviderConstructionIndexNext, ProviderConstructionList, ProviderConstructionRequirementAt,
         ProviderConstructionRequirements, ProviderConstructions, ProviderCustomDeclaration,
         ProviderCustomInputDeclaration, ProviderDynamicInput, ProviderDynamicValue, ProviderError,
         ProviderExternalCodec, ProviderExternalDeclaration, ProviderExternalInputContext,

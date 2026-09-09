@@ -55,10 +55,6 @@ impl HostStoredDynamic {
         self.value.has_external_schema::<Schema>()
     }
 
-    #[expect(
-        clippy::result_large_err,
-        reason = "non-tuples retain the original value without another heap allocation"
-    )]
     pub(crate) fn map_tuple_items<Item>(
         self,
         mut map: impl FnMut(Self) -> Item,

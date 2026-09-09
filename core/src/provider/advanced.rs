@@ -13,6 +13,8 @@ use crate::runtime::StoredRuntimeValue;
 use ecow::EcoString;
 use std::marker::PhantomData;
 
+pub use crate::runtime::{NativeKind, NativeMap, NativeMapEntry, NativeValue};
+
 /// Source-equality access for retained values in one immutable payload.
 pub type Equality<'value> = HostExternalEquality<'value>;
 
@@ -250,12 +252,22 @@ pub trait RetainedExternalPayload: 'static {
     fn source_hash(&self, context: &Hashing<'_>) -> u64;
 
     fn inspect(&self, context: &Inspection<'_>) -> EcoString;
+
+    /// Projects an immutable native view before any nested value traversal.
+    fn native_view(&self) -> Option<NativeValue> {
+        None
+    }
 }
 
 impl<Owner, Index> Retained<Owner, Index>
 where
     Owner: ProviderStoredOwner,
 {
+    /// Retains the native representation without restoring the generic source type.
+    pub fn native_view(&self) -> NativeValue {
+        NativeValue::from_stored(self.stored().clone_retained())
+    }
+
     /// Compares two retained values with Gleam source equality.
     pub fn source_equal(&self, context: &Equality<'_>, other: &Self) -> bool {
         context.stored_values_equal(&self.value, &other.value)
@@ -303,6 +315,11 @@ where
         DynamicKind::from_family(self.value.value_family())
     }
 
+    /// Returns an owned native view while preserving this value's exact type.
+    pub fn native_view(&self) -> NativeValue {
+        NativeValue::from_stored(self.stored().clone_retained())
+    }
+
     /// Confirms one generated external declaration without exposing names.
     pub fn is_external<Declaration>(&self) -> bool
     where
@@ -314,10 +331,6 @@ where
     /// Consumes a retained tuple and retains each element under the same owner.
     ///
     /// Non-tuples are returned unchanged.
-    #[expect(
-        clippy::result_large_err,
-        reason = "non-tuples retain the original value without another heap allocation"
-    )]
     pub fn into_tuple_items(self) -> Result<Box<[Self]>, Self> {
         self.value
             .map_tuple_items(|value| value)
@@ -466,5 +479,14 @@ mod tests {
         assert_eq!(comparisons.get(), 2);
         assert_eq!(first.source_hash(&hashing), 17);
         assert_eq!(first.inspect(&inspection), "Int(7)");
+        let native = first.native_view();
+        drop(first);
+        assert_eq!(native.kind(), super::NativeKind::Int);
+        assert_eq!(native.as_int(), Some(7.into()));
+        assert_eq!(
+            native.find_source(|value| Some(value.type_().clone())),
+            Some(crate::ValueType::Int)
+        );
+        assert_eq!(comparisons.get(), 2);
     }
 }

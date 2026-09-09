@@ -521,6 +521,7 @@ mod tests {
             source_equal,
             source_hash,
             inspect,
+            |_| None,
         );
         let equal = external_store.insert(
             crate::host::HostStoredValue::new(crate::runtime::StoredRuntimeValue::test_int(
@@ -529,6 +530,7 @@ mod tests {
             source_equal,
             source_hash,
             inspect,
+            |_| None,
         );
         let stored_equal = |left: &crate::runtime::RetainedValueRef,
                             right: &crate::runtime::RetainedValueRef| {

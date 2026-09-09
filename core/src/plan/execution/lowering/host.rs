@@ -1,3 +1,4 @@
+mod native;
 mod parameter;
 mod return_;
 mod sealing;
@@ -247,9 +248,9 @@ fn assemble_hosted_program(
             main,
             constants,
             function_parameters: std::sync::Arc::new(function_parameters),
-            list_types,
-            custom_types,
-            external_types,
+            list_types: std::sync::Arc::new(list_types),
+            custom_types: std::sync::Arc::new(custom_types),
+            external_types: std::sync::Arc::new(external_types),
             value_shapes,
         }),
         functions,
@@ -678,6 +679,112 @@ pub fn run() { let _ = produce 42 }
             error.reason(),
             &HostSpecializationErrorReason::UndeterminedReturnStorage
         );
+    }
+
+    #[test]
+    fn native_rules_reject_overlap_only_after_generic_specialization() {
+        use crate::work_fixture::WorkSchema;
+        type Other = HostTypeParameter<1>;
+        type FirstArguments = HostTypeList<Generic, HostTypeListEnd>;
+        type SecondArguments = HostTypeList<Other, HostTypeListEnd>;
+        fn ready<'call>(
+            call: crate::host::native::NativeCall<'call, Profile, Provider, bool, HostTypeListEnd>,
+            _: <Generic as HostType>::Value<'call>,
+            _: <Other as HostType>::Value<'call>,
+        ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+            Ok(call.finish(true))
+        }
+        for (source, overlaps) in [
+            (
+                r#"
+@external(erlang, "native", "ready")
+fn ready(left: a, right: b) -> Bool
+pub fn run() { ready(1, 2) }
+"#,
+                true,
+            ),
+            (
+                r#"
+@external(erlang, "native", "ready")
+fn ready(left: a, right: b) -> Bool
+pub fn run() { ready(1, "two") }
+"#,
+                false,
+            ),
+        ] {
+            let host = HostProviderModule::new("application", "library")
+                .unwrap()
+                .with_native_function::<Provider, (Generic, Other), bool, HostTypeListEnd, _>(
+                    "ready",
+                    crate::host::native::NativeRules::default()
+                        .external::<WorkSchema, FirstArguments>(|_, _, _| None)
+                        .external::<WorkSchema, SecondArguments>(|_, _, _| None),
+                    ready,
+                )
+                .unwrap();
+            let work = HostProviderModule::new("work_fixture", "fixture/work")
+                .unwrap()
+                .with_external_type::<WorkComponent, WorkSchema>()
+                .unwrap();
+            let typed = compile_typed_host_program(
+                "application",
+                "library",
+                [
+                    PackageSource::new(
+                        "application",
+                        ["work_fixture"],
+                        [ModuleSource::new("library", "src/library.gleam", source)],
+                    ),
+                    PackageSource::new(
+                        "work_fixture",
+                        Vec::<String>::new(),
+                        [ModuleSource::new(
+                            "fixture/work",
+                            "src/fixture/work.gleam",
+                            "pub type Work(a)",
+                        )],
+                    ),
+                ],
+                HostProviderSet::from_providers([host, work]).unwrap(),
+            )
+            .unwrap();
+            let (bindings, run) = HostedModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(), bool>::new("run"))
+                .unwrap();
+            if overlaps {
+                let error = bindings
+                    .seal()
+                    .err()
+                    .expect("same specialization must conflict");
+                assert_eq!(error.function(), "ready");
+                assert_eq!(
+                    error.reason(),
+                    &HostSpecializationErrorReason::ConflictingNativeConversions {
+                        type_: crate::ValueType::External(crate::ExternalType::new(
+                            crate::ExternalTypeName::new(
+                                "work_fixture".into(),
+                                "fixture/work".into(),
+                                "Work".into()
+                            ),
+                            vec![crate::ValueType::Int],
+                        )),
+                    }
+                );
+            } else {
+                let mut module = bindings.seal().expect("distinct specialized rules");
+                with_execution_scope(async |guard| {
+                    assert!(
+                        module
+                            .attach(guard, &mut (), &mut drop)
+                            .call(&run, ())
+                            .unwrap()
+                    );
+                })
+                .now_or_never()
+                .expect("direct entry");
+            }
+        }
     }
 
     #[test]

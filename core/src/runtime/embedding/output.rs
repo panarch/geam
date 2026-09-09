@@ -167,6 +167,7 @@ pub fn main() {
             |context, left, right| context.stored_values_equal(left, right),
             |context, value| context.stored_value_hash(value),
             |context, value| context.inspect_stored_value(value),
+            |_| None,
         );
         let external: EvaluatedExternalValue =
             EvaluatedExternalValue::new(ExternalTypeId::new(0), external);

@@ -157,9 +157,9 @@ struct ExecutionProgramCommon<Graph: ExecutionGraphProfile> {
     main: ProfiledRuntimeFunctionId<Graph>,
     constants: ProfiledConstantTable<Graph>,
     function_parameters: std::sync::Arc<function::FunctionParameterCatalog>,
-    list_types: ListTypeTable,
-    custom_types: CustomTypeTable,
-    external_types: ExternalTypeTable,
+    list_types: std::sync::Arc<ListTypeTable>,
+    custom_types: std::sync::Arc<CustomTypeTable>,
+    external_types: std::sync::Arc<ExternalTypeTable>,
     value_shapes: ValueShapeTable,
 }
 

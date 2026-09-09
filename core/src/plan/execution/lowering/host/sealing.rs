@@ -41,13 +41,16 @@ pub(super) fn seal_host_types(
     constructions: &crate::host::RegisteredHostConstructions,
     key: &SpecializationKey,
     context: &mut LoweringContext,
-) -> HostConstructionTypes {
+) -> Result<HostConstructionTypes, HostSpecializationError> {
     let schemas = template
         .custom_schemas()
         .iter()
         .chain(constructions.custom_schemas())
         .map(|schema| (identity(schema), schema))
         .collect::<HashMap<_, _>>();
+    let mut native = constructions
+        .native_rules()
+        .map(|rules| (rules, HashMap::new()));
     let mut sealing = HostTypeSealing {
         substitution: key.substitution(),
         schemas,
@@ -55,6 +58,7 @@ pub(super) fn seal_host_types(
         lists: HashMap::new(),
         customs: HashMap::new(),
         externals: HashMap::new(),
+        native_customs: native.as_mut().map(|(_, customs)| customs),
         context,
     };
 
@@ -65,7 +69,19 @@ pub(super) fn seal_host_types(
     for descriptor in constructions.types() {
         sealing.seal(descriptor);
     }
-    sealing.finish()
+    let types = sealing.finish();
+    let Some((rules, customs)) = native else {
+        return Ok(types);
+    };
+    let natives = super::native::seal(
+        template,
+        constructions.types(),
+        rules,
+        key,
+        context,
+        customs,
+    )?;
+    Ok(types.with_natives(natives))
 }
 
 struct HostTypeSealing<'a, 'context> {
@@ -75,6 +91,12 @@ struct HostTypeSealing<'a, 'context> {
     lists: HashMap<crate::plan::ValueType, crate::plan::execution::type_::ListTypeId>,
     customs: HashMap<crate::plan::ValueType, crate::plan::execution::type_::CustomTypeId>,
     externals: HashMap<crate::plan::ValueType, crate::plan::execution::type_::ExternalTypeId>,
+    native_customs: Option<
+        &'context mut HashMap<
+            crate::plan::ValueType,
+            Box<[super::native::NativeCustomConstruction]>,
+        >,
+    >,
     context: &'context mut LoweringContext,
 }
 
@@ -157,6 +179,7 @@ impl HostTypeSealing<'_, '_> {
             CustomConstructorRefinement::Any,
         );
         if self.visiting.insert(type_.clone()) {
+            let mut native_constructors = Vec::new();
             for (index, constructor) in schema.constructors().iter().enumerate() {
                 let fields = constructor
                     .fields()
@@ -168,29 +191,52 @@ impl HostTypeSealing<'_, '_> {
                         )
                     })
                     .collect::<Vec<_>>();
-                self.context
-                    .types
-                    .custom_constructor(SpecializedCustomConstructor::new(
-                        type_.clone(),
-                        constructor.name().clone(),
-                        index,
+                let constructor_id =
+                    self.context
+                        .types
+                        .custom_constructor(SpecializedCustomConstructor::new(
+                            type_.clone(),
+                            constructor.name().clone(),
+                            index,
+                            fields
+                                .iter()
+                                .map(|(label, descriptor)| {
+                                    SpecializedCustomConstructorField::new(
+                                        label.clone(),
+                                        SpecializedValueShape::instantiate(
+                                            &descriptor.value_shape(),
+                                            self.substitution,
+                                        ),
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .into_boxed_slice(),
+                        ));
+                if self.native_customs.is_some() {
+                    native_constructors.push(super::native::NativeCustomConstruction::new(
+                        constructor_id,
+                        constructor.name(),
                         fields
                             .iter()
-                            .map(|(label, descriptor)| {
-                                SpecializedCustomConstructorField::new(
-                                    label.clone(),
-                                    SpecializedValueShape::instantiate(
-                                        &descriptor.value_shape(),
-                                        self.substitution,
-                                    ),
+                            .map(|(_, descriptor)| {
+                                SpecializedValueShape::instantiate(
+                                    &descriptor.value_shape(),
+                                    self.substitution,
                                 )
                             })
-                            .collect::<Vec<_>>()
-                            .into_boxed_slice(),
+                            .collect(),
                     ));
+                }
                 for (_, field) in &fields {
                     self.seal(field);
                 }
+            }
+
+            if let Some(customs) = &mut self.native_customs {
+                customs.insert(
+                    crate::plan::ValueType::Custom(type_.to_module_shape().type_().clone()),
+                    native_constructors.into_boxed_slice(),
+                );
             }
 
             self.visiting.remove(&type_);

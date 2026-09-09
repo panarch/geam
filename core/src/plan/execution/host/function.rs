@@ -35,6 +35,7 @@ pub(crate) struct HostConstructionTypes {
     lists: HashMap<crate::plan::ValueType, crate::plan::execution::type_::ListTypeId>,
     customs: HashMap<crate::plan::ValueType, crate::plan::execution::type_::CustomTypeId>,
     externals: HashMap<crate::plan::ValueType, crate::plan::execution::type_::ExternalTypeId>,
+    natives: Arc<super::NativeConversions>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -300,6 +301,7 @@ impl HostConstructionTypes {
             lists,
             customs,
             externals,
+            natives: Arc::default(),
         }
     }
 
@@ -308,6 +310,18 @@ impl HostConstructionTypes {
         type_: &crate::plan::ValueType,
     ) -> crate::plan::execution::type_::ListTypeId {
         self.lists[type_]
+    }
+
+    pub(in crate::plan::execution) fn with_natives(
+        mut self,
+        natives: super::NativeConversions,
+    ) -> Self {
+        self.natives = Arc::new(natives);
+        self
+    }
+
+    pub(crate) fn natives(&self) -> &super::NativeConversions {
+        &self.natives
     }
 
     pub(crate) fn custom(

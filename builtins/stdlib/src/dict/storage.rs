@@ -1,10 +1,9 @@
 use ecow::EcoString;
 use geam_core::provider::advanced::{
-    Equality, Hashing, Index0, Inspection, Next, Retained, RetainedExternalPayload,
+    Equality, Hashing, Index0, Inspection, NativeMap, NativeMapEntry, NativeValue, Next, Retained,
+    RetainedExternalPayload,
 };
 use im::{HashMap, Vector};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 
 pub struct DictPayload {
     pub(super) storage: DictStorage,
@@ -73,83 +72,33 @@ impl DictPayload {
             .collect()
     }
 
-    pub(crate) fn key(&self, key_hash: u64, index: usize) -> &Retained<DictPayload, Index0> {
-        self.storage.buckets[&key_hash][index].key.as_ref()
-    }
-
-    pub(crate) fn value(
-        &self,
-        key_hash: u64,
-        index: usize,
-    ) -> &Retained<DictPayload, Next<Index0>> {
-        self.storage.buckets[&key_hash][index].value.as_ref()
-    }
-
-    pub(crate) fn cloned(&self) -> Self {
-        Self {
-            storage: self.storage.clone(),
-        }
+    fn native_value(&self) -> NativeValue {
+        NativeValue::map(NativeMap::new(
+            self.storage.clone(),
+            |storage| storage.len,
+            DictStorage::native_entries,
+            DictStorage::native_get,
+        ))
     }
 }
 
 impl RetainedExternalPayload for DictPayload {
     fn source_equal(&self, context: &Equality<'_>, other: &Self) -> bool {
-        storage_equal(context, &self.storage, &other.storage)
+        self.native_value()
+            .source_equal(context, &other.native_value())
     }
 
     fn source_hash(&self, context: &Hashing<'_>) -> u64 {
-        storage_hash(context, &self.storage)
+        self.native_value().source_hash(context)
     }
 
     fn inspect(&self, context: &Inspection<'_>) -> EcoString {
-        inspect_storage(context, &self.storage)
-    }
-}
-
-fn storage_equal(context: &Equality<'_>, left: &DictStorage, right: &DictStorage) -> bool {
-    left.len == right.len
-        && left.entries().all(|left| {
-            right.buckets.get(&left.key_hash).is_some_and(|bucket| {
-                bucket.iter().any(|right| {
-                    left.key.source_equal(context, &right.key)
-                        && left.value.source_equal(context, &right.value)
-                })
-            })
-        })
-}
-
-fn storage_hash(context: &Hashing<'_>, storage: &DictStorage) -> u64 {
-    let mut sum = 0_u64;
-    let mut xor = 0_u64;
-    for entry in storage.entries() {
-        let mut hasher = DefaultHasher::new();
-        entry.key_hash.hash(&mut hasher);
-        entry.value.source_hash(context).hash(&mut hasher);
-        let hash = hasher.finish();
-        sum = sum.wrapping_add(hash);
-        xor ^= hash.rotate_left(29);
+        self.native_value().inspect(context)
     }
 
-    let mut hasher = DefaultHasher::new();
-    storage.len.hash(&mut hasher);
-    sum.hash(&mut hasher);
-    xor.hash(&mut hasher);
-    hasher.finish()
-}
-
-fn inspect_storage(context: &Inspection<'_>, storage: &DictStorage) -> EcoString {
-    let mut entries = storage
-        .entries()
-        .map(|entry| {
-            format!(
-                "#({}, {})",
-                entry.key.inspect(context),
-                entry.value.inspect(context),
-            )
-        })
-        .collect::<Vec<_>>();
-    entries.sort_unstable();
-    format!("dict.from_list([{}])", entries.join(", ")).into()
+    fn native_view(&self) -> Option<NativeValue> {
+        Some(self.native_value())
+    }
 }
 
 impl DictStorage {
@@ -200,7 +149,235 @@ impl DictStorage {
         (0..bucket.len()).find(|index| is_equal(*index))
     }
 
-    fn entries(&self) -> impl Iterator<Item = &std::sync::Arc<DictEntry>> {
-        self.buckets.values().flat_map(Vector::iter)
+    fn native_entries(&self) -> impl Iterator<Item = NativeMapEntry> + Send + 'static + use<> {
+        self.buckets.clone().into_iter().flat_map(|(_, bucket)| {
+            bucket.into_iter().map(|entry| NativeMapEntry {
+                key_hash: entry.key_hash,
+                key: entry.key.native_view(),
+                value: entry.value.native_view(),
+            })
+        })
+    }
+
+    fn native_get(
+        &self,
+        hash: u64,
+        key: &NativeValue,
+        equal: &dyn Fn(&NativeValue, &NativeValue) -> bool,
+    ) -> Option<NativeValue> {
+        self.buckets.get(&hash)?.iter().find_map(|entry| {
+            equal(&entry.key.native_view(), key).then(|| entry.value.native_view())
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DictPayload, DictStorage};
+    use crate::dict::{DictExternalStorage, DictOf, DictSchema};
+    use crate::{
+        Component, GleamStdlibHostProfile, GleamStdlibRunState, GleamStdlibStores, IoOutput,
+    };
+    use ecow::EcoString;
+    use geam_core::provider::advanced::{Equality, Hashing, Inspection, RetainedExternalPayload};
+    use geam_core::{
+        HostCall, HostCallCompletion, HostCallError, HostComponentProfile, HostExternal,
+        HostExternalBinding, HostExternalSchema, HostExternalStorage, HostExternalStore,
+        HostExternalType, HostProfile, HostProvider, HostProviderModule, HostProviderSet,
+        HostTypeList, HostTypeListEnd, HostedExecution, ModuleSource, PackageSource,
+        compile_typed_host_program, plan_host_program,
+    };
+    use num_bigint::BigInt;
+
+    struct Profile;
+    struct Snapshot;
+    struct SnapshotStorage;
+    type SnapshotType = HostExternalType<Snapshot>;
+
+    impl HostProfile for Profile {
+        type RunState = GleamStdlibRunState;
+        type ExternalStores = (GleamStdlibStores, HostExternalStore<DictPayload>);
+    }
+
+    impl HostComponentProfile<Component> for Profile {
+        fn component_stores(stores: &Self::ExternalStores) -> &GleamStdlibStores {
+            &stores.0
+        }
+
+        fn component_state(state: &mut Self::RunState) -> &mut GleamStdlibRunState {
+            state
+        }
+    }
+
+    impl GleamStdlibHostProfile for Profile {
+        type Io = Vec<IoOutput>;
+    }
+
+    impl HostProvider<Profile> for Snapshot {
+        type State = GleamStdlibRunState;
+
+        fn project(state: &mut Self::State) -> &mut Self::State {
+            state
+        }
+    }
+
+    impl HostExternalSchema for Snapshot {
+        const PACKAGE: &'static str = "application";
+        const MODULE: &'static str = "main";
+        const NAME: &'static str = "Snapshot";
+        const PARAMETER_COUNT: usize = 0;
+    }
+
+    impl HostExternalBinding<Profile, Snapshot> for Snapshot {
+        type Storage = SnapshotStorage;
+    }
+
+    impl HostExternalBinding<Profile, DictSchema> for Snapshot {
+        type Storage = DictExternalStorage;
+    }
+
+    impl HostExternalStorage<Profile, Snapshot> for SnapshotStorage {
+        type Payload = DictPayload;
+
+        fn store(
+            stores: &<Profile as HostProfile>::ExternalStores,
+        ) -> &HostExternalStore<DictPayload> {
+            &stores.1
+        }
+
+        fn source_equal(context: &Equality<'_>, left: &DictPayload, right: &DictPayload) -> bool {
+            left.source_equal(context, right)
+        }
+
+        fn source_hash(context: &Hashing<'_>, value: &DictPayload) -> u64 {
+            value.source_hash(context)
+        }
+
+        fn inspect(context: &Inspection<'_>, value: &DictPayload) -> EcoString {
+            value.inspect(context)
+        }
+    }
+
+    fn snapshot<'call>(
+        mut call: HostCall<'call, Profile, Snapshot, SnapshotType>,
+        dict: HostExternal<'call, DictOf<BigInt, EcoString>>,
+    ) -> Result<HostCallCompletion<'call, SnapshotType>, HostCallError> {
+        let view = call.provider_external_view_with::<
+            Snapshot,
+            DictSchema,
+            HostTypeList<BigInt, HostTypeList<EcoString, HostTypeListEnd>>,
+        >(dict);
+        let storage: DictStorage = view.storage.clone();
+        drop(view);
+        let value = call.create_external(DictPayload { storage });
+        Ok(call.return_value(value))
+    }
+
+    fn hash<'call>(
+        call: HostCall<'call, Profile, Snapshot, BigInt>,
+        value: HostExternal<'call, SnapshotType>,
+    ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+        let hash = call.source_hash::<SnapshotType>(value).into();
+        Ok(call.return_value(hash))
+    }
+
+    #[test]
+    fn dict_payload_semantics_remain_coherent_inside_an_opaque_snapshot() {
+        let snapshot = HostProviderModule::new("application", "main")
+            .unwrap()
+            .with_external_type::<Snapshot, Snapshot>()
+            .unwrap()
+            .with_scoped_function::<Snapshot, (DictOf<BigInt, EcoString>,), SnapshotType, _>(
+                "snapshot", snapshot,
+            )
+            .unwrap()
+            .with_scoped_function::<Snapshot, (SnapshotType,), BigInt, _>("hash", hash)
+            .unwrap();
+        let dict = crate::dict::host_provider::<Profile>().unwrap();
+        let program = compile_typed_host_program(
+            "application",
+            "main",
+            [
+                PackageSource::new(
+                    "gleam_stdlib",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "gleam/dict",
+                        "src/gleam/dict.gleam",
+                        r#"
+pub type Dict(key, value)
+type TransientDict(key, value)
+@external(erlang, "gleam_stdlib", "identity")
+fn to_transient(dict: Dict(key, value)) -> TransientDict(key, value)
+@external(erlang, "gleam_stdlib", "identity")
+fn from_transient(dict: TransientDict(key, value)) -> Dict(key, value)
+@external(erlang, "maps", "size")
+fn size(dict: Dict(key, value)) -> Int
+@external(erlang, "maps", "is_key")
+fn do_has_key(key: key, dict: Dict(key, value)) -> Bool
+@external(erlang, "maps", "new")
+pub fn new() -> Dict(key, value)
+@external(erlang, "gleam_stdlib", "map_get")
+fn get(dict: Dict(key, value), key: key) -> Result(value, Nil)
+@external(erlang, "maps", "put")
+pub fn do_insert(key: key, value: value, dict: Dict(key, value)) -> Dict(key, value)
+@external(erlang, "maps", "put")
+fn transient_insert(key: key, value: value, dict: TransientDict(key, value)) -> TransientDict(key, value)
+@external(erlang, "maps", "map")
+fn do_map_values(function: fn(key, value) -> mapped, dict: Dict(key, value)) -> Dict(key, mapped)
+@external(erlang, "maps", "remove")
+fn transient_delete(key: key, dict: TransientDict(key, value)) -> TransientDict(key, value)
+@external(erlang, "maps", "fold")
+fn do_fold(function: fn(key, value, accumulator) -> accumulator, initial: accumulator, dict: Dict(key, value)) -> accumulator
+@external(erlang, "maps", "update_with")
+fn transient_update_with(key: key, function: fn(value) -> value, initial: value, dict: TransientDict(key, value)) -> TransientDict(key, value)
+"#,
+                    )],
+                ),
+                PackageSource::new(
+                    "application",
+                    ["gleam_stdlib"],
+                    [ModuleSource::new(
+                        "main",
+                        "src/main.gleam",
+                        r#"
+import gleam/dict.{type Dict}
+pub type Snapshot
+@external(erlang, "native", "snapshot")
+fn snapshot(value: Dict(Int, String)) -> Snapshot
+@external(erlang, "native", "hash")
+fn hash(value: Snapshot) -> Int
+pub fn main() {
+  let original = dict.new() |> dict.do_insert(1, "one", _) |> dict.do_insert(2, "two", _)
+  let first = snapshot(original)
+  let same = snapshot(dict.new() |> dict.do_insert(2, "two", _) |> dict.do_insert(1, "one", _))
+  let changed = snapshot(dict.do_insert(1, "changed", original))
+  #(first == same, first != changed, hash(first) == hash(same), first)
+}
+"#,
+                    )],
+                ),
+            ],
+            HostProviderSet::from_providers([dict, snapshot]).unwrap(),
+        )
+        .unwrap();
+        let execution =
+            HostedExecution::try_from_module_plan(plan_host_program(program).unwrap()).unwrap();
+        let mut state = GleamStdlibRunState::from_seed([0; 32]);
+        let state_address = std::ptr::from_mut(&mut state);
+        assert!(std::ptr::eq(
+            state_address,
+            <Snapshot as HostProvider<Profile>>::project(&mut state),
+        ));
+        assert!(std::ptr::eq(
+            state_address,
+            <Profile as HostComponentProfile<Component>>::component_state(&mut state),
+        ));
+        let value = execution.run_main(&mut state, &mut Vec::new()).unwrap();
+        drop(execution);
+        assert_eq!(
+            value.inspect().to_string(),
+            "#(True, True, True, dict.from_list([#(1, \"one\"), #(2, \"two\")]))"
+        );
     }
 }

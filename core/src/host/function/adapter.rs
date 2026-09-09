@@ -69,6 +69,61 @@ impl<Profile: HostProfile> HostFunctionRegistration<Profile> {
     }
 }
 
+macro_rules! native_function {
+    ($($argument:ident => $slot:ident),*) => {
+        impl<Profile, Provider, Return, Targets, Function, $($argument,)*>
+            ScopedConstructingHostFunctionAdapter<Profile, Provider, ($($argument,)*), Return, Targets>
+            for crate::host::native::NativeFunction<Profile, Provider, Return, Targets, Function>
+        where
+            Profile: HostProfile,
+            Provider: HostProvider<Profile>,
+            Return: HostAbiType,
+            Targets: HostTypeSequence,
+            $($argument: HostScopedArgument,)*
+            Function: for<'call> Fn(
+                crate::host::native::NativeCall<'call, Profile, Provider, Return, Targets>,
+                $(<$argument as crate::host::HostType>::Value<'call>),*
+            ) -> Result<HostCallCompletion<'call, Return>, HostCallError> + Send + Sync + 'static,
+        {
+            fn register(self) -> ScopedHostFunctionRegistration<Profile> {
+                // Tie decoded arguments and completion to the same call lifetime.
+                fn callback<Profile, Provider, Return, Targets, Function, $($argument,)*>(function: Function) -> Function
+                where
+                    Profile: HostProfile,
+                    Provider: HostProvider<Profile>,
+                    Return: HostAbiType,
+                    Targets: HostTypeSequence,
+                    $($argument: HostScopedArgument,)*
+                    Function: for<'call> Fn(
+                        HostCall<'call, Profile, Provider, Return>,
+                        HostConstructions<'call, Targets>,
+                        $(<$argument as crate::host::HostType>::Value<'call>),*
+                    ) -> Result<HostCallCompletion<'call, Return>, HostCallError>,
+                {
+                    function
+                }
+                <_ as ScopedConstructingHostFunctionAdapter<
+                    Profile, Provider, ($($argument,)*), Return, Targets,
+                >>::register(callback::<Profile, Provider, Return, Targets, _, $($argument,)*>(move |call, _, $($slot),*| {
+                        (self.function)(
+                            crate::host::native::NativeCall::new(call, std::sync::Arc::clone(&self.rules)),
+                            $($slot),*
+                        )
+                    }))
+            }
+        }
+    };
+}
+
+native_function!();
+native_function!(A => a);
+native_function!(A => a, B => b);
+native_function!(A => a, B => b, C => c);
+native_function!(A => a, B => b, C => c, D => d);
+native_function!(A => a, B => b, C => c, D => d, E => e);
+native_function!(A => a, B => b, C => c, D => d, E => e, F => f);
+native_function!(A => a, B => b, C => c, D => d, E => e, F => f, G => g);
+
 macro_rules! host_function {
     () => {
         impl<Function, Return> HostFunctionAdapter<(), Return> for Function
@@ -925,6 +980,78 @@ mod tests {
                 Some(&HostScopedValue::Int(BigInt::from(arity))),
             );
         }
+    }
+
+    #[test]
+    fn supports_every_native_argument_arity_without_a_second_parameter_layout() {
+        use crate::host::native::{NativeCall, NativeRules};
+        type Call<'call> =
+            NativeCall<'call, TestHostProfile, ScopedProvider, BigInt, HostTypeListEnd>;
+        let provider = crate::HostProviderModule::new("application", "main").unwrap()
+            .with_native_function::<ScopedProvider, (), BigInt, HostTypeListEnd, _>(
+                "zero", NativeRules::default(), |mut call: Call<'_>| {
+                    *call.call().state() += 1;
+                    Ok(call.finish(0.into()))
+                },
+            ).unwrap()
+            .with_native_function::<ScopedProvider, (BigInt,), BigInt, HostTypeListEnd, _>(
+                "one", NativeRules::default(), |call: Call<'_>, a| Ok(call.finish(a)),
+            ).unwrap()
+            .with_native_function::<ScopedProvider, (BigInt, BigInt), BigInt, HostTypeListEnd, _>(
+                "two", NativeRules::default(), |call: Call<'_>, a, b| Ok(call.finish(a * 10 + b)),
+            ).unwrap()
+            .with_native_function::<ScopedProvider, (BigInt, BigInt, BigInt), BigInt, HostTypeListEnd, _>(
+                "three", NativeRules::default(), |call: Call<'_>, a, b, c| Ok(call.finish(a * 100 + b * 10 + c)),
+            ).unwrap()
+            .with_native_function::<ScopedProvider, (BigInt, BigInt, BigInt, BigInt), BigInt, HostTypeListEnd, _>(
+                "four", NativeRules::default(), |call: Call<'_>, a, b, c, d| Ok(call.finish(a * 1000 + b * 100 + c * 10 + d)),
+            ).unwrap()
+            .with_native_function::<ScopedProvider, (BigInt, BigInt, BigInt, BigInt, BigInt), BigInt, HostTypeListEnd, _>(
+                "five", NativeRules::default(), |call: Call<'_>, a, b, c, d, e| Ok(call.finish(a * 10000 + b * 1000 + c * 100 + d * 10 + e)),
+            ).unwrap()
+            .with_native_function::<ScopedProvider, (BigInt, BigInt, BigInt, BigInt, BigInt, BigInt), BigInt, HostTypeListEnd, _>(
+                "six", NativeRules::default(), |call: Call<'_>, a, b, c, d, e, f| Ok(call.finish(a * 100000 + b * 10000 + c * 1000 + d * 100 + e * 10 + f)),
+            ).unwrap()
+            .with_native_function::<ScopedProvider, (BigInt, BigInt, BigInt, BigInt, BigInt, BigInt, BigInt), BigInt, HostTypeListEnd, _>(
+                "seven", NativeRules::default(), |call: Call<'_>, a, b, c, d, e, f, g| Ok(call.finish(a * 1000000 + b * 100000 + c * 10000 + d * 1000 + e * 100 + f * 10 + g)),
+            ).unwrap();
+        let source = r#"
+@external(erlang, "native", "zero") fn zero() -> Int
+@external(erlang, "native", "one") fn one(a: Int) -> Int
+@external(erlang, "native", "two") fn two(a: Int, b: Int) -> Int
+@external(erlang, "native", "three") fn three(a: Int, b: Int, c: Int) -> Int
+@external(erlang, "native", "four") fn four(a: Int, b: Int, c: Int, d: Int) -> Int
+@external(erlang, "native", "five") fn five(a: Int, b: Int, c: Int, d: Int, e: Int) -> Int
+@external(erlang, "native", "six") fn six(a: Int, b: Int, c: Int, d: Int, e: Int, f: Int) -> Int
+@external(erlang, "native", "seven") fn seven(a: Int, b: Int, c: Int, d: Int, e: Int, f: Int, g: Int) -> Int
+pub fn main() {
+  #(zero(), one(1), two(1, 2), three(1, 2, 3), four(1, 2, 3, 4),
+    five(1, 2, 3, 4, 5), six(1, 2, 3, 4, 5, 6), seven(1, 2, 3, 4, 5, 6, 7))
+}
+"#;
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "main",
+            [crate::PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [crate::ModuleSource::new("main", "main.gleam", source)],
+            )],
+            crate::HostProviderSet::from_providers([provider]).unwrap(),
+        )
+        .unwrap();
+        let execution =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let mut state = TestRunState::default();
+        let mut echo = Vec::new();
+        let result = execution.run_main(&mut state, &mut echo).unwrap();
+        assert_eq!(
+            result.inspect().to_string(),
+            "#(0, 1, 12, 123, 1234, 12345, 123456, 1234567)"
+        );
+        assert_eq!(state.counter, 1);
+        assert!(echo.is_empty());
     }
 
     #[test]

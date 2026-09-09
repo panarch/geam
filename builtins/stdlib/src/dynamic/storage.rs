@@ -1,15 +1,8 @@
-use crate::dict::DictDeclaration;
-use geam_core::provider::advanced::{DynamicKind, StoredDynamic};
+use geam_core::provider::advanced::{NativeKind, NativeValue, StoredDynamic};
 
-pub(super) enum DynamicValue {
-    Stored {
-        representation: DynamicRepresentation,
-        value: StoredDynamic<super::function::provider::DynamicPayload>,
-    },
-    Array {
-        value: StoredDynamic<super::function::provider::DynamicPayload>,
-        elements: Box<[StoredDynamic<super::function::provider::DynamicPayload>]>,
-    },
+pub(super) struct DynamicValue {
+    representation: DynamicRepresentation,
+    view: NativeValue,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -19,37 +12,37 @@ pub enum DynamicRepresentation {
     Float,
     Int,
     BitArray,
-    UtfCodepoint,
+    Atom,
     List,
     Array,
     Dict,
     Nil,
     Function,
-    Custom,
     External,
 }
 
 impl DynamicRepresentation {
-    pub(super) fn from_value(
-        value: &StoredDynamic<super::function::provider::DynamicPayload>,
-    ) -> Self {
-        if value.is_external::<DictDeclaration<(), ()>>() {
-            return Self::Dict;
-        }
-
+    pub(super) fn from_value(value: &NativeValue) -> Self {
         match value.kind() {
-            DynamicKind::Int => Self::Int,
-            DynamicKind::Float => Self::Float,
-            DynamicKind::String => Self::String,
-            DynamicKind::BitArray => Self::BitArray,
-            DynamicKind::UtfCodepoint => Self::UtfCodepoint,
-            DynamicKind::Bool => Self::Bool,
-            DynamicKind::Nil => Self::Nil,
-            DynamicKind::List => Self::List,
-            DynamicKind::Tuple => Self::Array,
-            DynamicKind::Custom => Self::Custom,
-            DynamicKind::External => Self::External,
-            DynamicKind::Function => Self::Function,
+            NativeKind::Int => Self::Int,
+            NativeKind::Float => Self::Float,
+            NativeKind::Binary => {
+                if value.bit_len().is_some_and(|len| len.is_multiple_of(8)) {
+                    Self::String
+                } else {
+                    Self::BitArray
+                }
+            }
+            NativeKind::Symbol => match value.as_symbol().as_deref() {
+                Some("true" | "false") => Self::Bool,
+                Some("nil" | "null" | "undefined") => Self::Nil,
+                _ => Self::Atom,
+            },
+            NativeKind::List => Self::List,
+            NativeKind::Tuple => Self::Array,
+            NativeKind::Map => Self::Dict,
+            NativeKind::External => Self::External,
+            NativeKind::Function => Self::Function,
         }
     }
 
@@ -60,13 +53,12 @@ impl DynamicRepresentation {
             Self::Float => "Float",
             Self::Int => "Int",
             Self::BitArray => "BitArray",
-            Self::UtfCodepoint => "UtfCodepoint",
+            Self::Atom => "Atom",
             Self::List => "List",
             Self::Array => "Array",
             Self::Dict => "Dict",
             Self::Nil => "Nil",
             Self::Function => "Function",
-            Self::Custom => "Custom",
             Self::External => "External",
         }
     }
@@ -74,23 +66,22 @@ impl DynamicRepresentation {
 
 impl DynamicValue {
     pub(super) fn stored(value: StoredDynamic<super::function::provider::DynamicPayload>) -> Self {
-        Self::Stored {
-            representation: DynamicRepresentation::from_value(&value),
-            value,
+        Self::native(value.native_view())
+    }
+
+    pub(super) fn native(view: NativeValue) -> Self {
+        Self {
+            representation: DynamicRepresentation::from_value(&view),
+            view,
         }
     }
 
     pub(super) fn representation(&self) -> DynamicRepresentation {
-        match self {
-            Self::Stored { representation, .. } => *representation,
-            Self::Array { .. } => DynamicRepresentation::Array,
-        }
+        self.representation
     }
 
-    pub(super) fn value(&self) -> &StoredDynamic<super::function::provider::DynamicPayload> {
-        match self {
-            Self::Stored { value, .. } | Self::Array { value, .. } => value,
-        }
+    pub(super) fn view(&self) -> &NativeValue {
+        &self.view
     }
 }
 
@@ -106,13 +97,12 @@ mod tests {
             (DynamicRepresentation::Float, "Float"),
             (DynamicRepresentation::Int, "Int"),
             (DynamicRepresentation::BitArray, "BitArray"),
-            (DynamicRepresentation::UtfCodepoint, "UtfCodepoint"),
+            (DynamicRepresentation::Atom, "Atom"),
             (DynamicRepresentation::List, "List"),
             (DynamicRepresentation::Array, "Array"),
             (DynamicRepresentation::Dict, "Dict"),
             (DynamicRepresentation::Nil, "Nil"),
             (DynamicRepresentation::Function, "Function"),
-            (DynamicRepresentation::Custom, "Custom"),
             (DynamicRepresentation::External, "External"),
         ];
 

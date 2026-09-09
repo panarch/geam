@@ -6,7 +6,7 @@ use super::{
 };
 use crate::host::{HostFutureContext, HostFutureError, HostTypeListEnd, HostTypeSequence};
 use crate::provider::advanced::{
-    ProviderDynamicInput, ProviderDynamicValue, Retained, StoredDynamic,
+    NativeValue, ProviderDynamicInput, ProviderDynamicValue, Retained, StoredDynamic,
 };
 use crate::{HostCall, HostCallError, HostListType, HostProfile, HostProvider, HostType};
 use ecow::EcoString;
@@ -104,6 +104,44 @@ where
         Host: HostType,
     {
         self.context.call.stored_source_hash(value.stored())
+    }
+
+    /// Compares declared native representations without changing source types.
+    pub fn native_equal(&self, left: &NativeValue, right: &NativeValue) -> bool {
+        self.context.call.native_equal(left, right)
+    }
+
+    /// Hashes a declared native representation consistently with native equality.
+    pub fn native_hash(&self, value: &NativeValue) -> u64 {
+        self.context.call.native_hash(value)
+    }
+
+    /// Hashes the native representation of a retained source value.
+    pub fn native_source_hash<Type, Host>(
+        &self,
+        value: &Value<Type, ProviderValueContext<Host>>,
+    ) -> u64
+    where
+        Host: HostType,
+    {
+        self.native_hash(&NativeValue::from_stored(value.stored().clone_retained()))
+    }
+
+    /// Views a received List as a native tuple without decoding its elements.
+    pub fn native_tuple<Item, HostItem, Decoder>(
+        &mut self,
+        values: super::List<Item, super::ProviderListContext<HostItem, Decoder>>,
+    ) -> NativeValue
+    where
+        HostItem: HostType,
+        Decoder: super::ProviderListItemDecoder<Item>,
+    {
+        let context = values.__geam_into_context();
+        let values = self
+            .context
+            .call
+            .restore_list_value::<HostItem>(context.retained());
+        self.context.call.native_tuple(values)
     }
 
     pub fn inspect<Type, Host>(
@@ -207,6 +245,23 @@ where
             .context
             .call
             .restore_value::<Type::Host>(value.stored());
+        Some(Type::from_host(&mut self.context.call, value))
+    }
+
+    /// Restores an exact source value carried by a declared native view.
+    ///
+    /// This does not construct a different source type from the native data.
+    pub fn restore_native<Type>(&mut self, value: &NativeValue) -> Option<Type::View>
+    where
+        Type: ProviderDynamicInput<Profile, Provider, Return>,
+    {
+        let value = value.find_source(|value| {
+            self.context
+                .call
+                .native_has_type::<Type::Host>(value)
+                .then(|| value.clone_retained())
+        })?;
+        let value = self.context.call.restore_value::<Type::Host>(&value);
         Some(Type::from_host(&mut self.context.call, value))
     }
 

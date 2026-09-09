@@ -167,6 +167,11 @@ need to be `Sync`: an async `Call` gives bounded access to the original mutable
 state. A provider using Tokio can use the standalone runner's I/O and time
 drivers; an embedding application supplies the runtime its providers require.
 
+For Rust-owned values that need to work with Gleam Dynamic decoders, see
+[native representations](reference/provider-boundary.md#native-representations).
+The [native records example](../examples/provider/native_records) shows a record
+decoded from Gleam and passed to a typed callback.
+
 ## Declare which Gleam versions it supports
 
 Cargo metadata connects the crate to its Gleam package and states the package

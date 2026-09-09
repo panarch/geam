@@ -1,4 +1,4 @@
 pub use geam_stdlib::{
-    Component, GleamStdlibHostProfile, GleamStdlibProfile, GleamStdlibRunState,
+    Component, Dynamic, GleamStdlibHostProfile, GleamStdlibProfile, GleamStdlibRunState,
     GleamStdlibRunStateError, GleamStdlibStores, IoOutput, IoSink, IoStream, host_providers,
 };

@@ -77,5 +77,5 @@ Each run checks that the original box still contains `"alpha"`, a replacement
 can change its item type to `Int`, a Gleam callback maps that value, and equal
 source values compare equal. Both runs are silent when all assertions pass.
 
-Continue with [text pattern](../text_pattern/README.md) to see a Hex package and
-crates.io provider prepared as a separately published pair.
+Continue with [native records](../native_records/README.md) to expose a retained
+value through Dynamic decoders and typed callbacks.

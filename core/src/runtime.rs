@@ -9,6 +9,7 @@ mod function;
 mod graph;
 mod host;
 mod materialize;
+mod native;
 mod profile;
 mod retained_list;
 pub(crate) mod shared;
@@ -53,6 +54,7 @@ pub(crate) use host::{
     StoredRuntimeList, StoredRuntimeListCustomFields, StoredRuntimeListItem,
     StoredRuntimeListTupleItems, StoredRuntimeValue,
 };
+pub use native::{NativeKind, NativeMap, NativeMapEntry, NativeValue};
 pub(crate) use value::{
     BitArrayFunctionValue, BoolFunctionValue, CaptureListValue, CaptureValue, CustomFunctionValue,
     CustomFunctionValueTarget, ExternalFunctionValue, FloatFunctionValue, FunctionFunctionValue,

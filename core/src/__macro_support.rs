@@ -15,8 +15,8 @@ pub use crate::host::{
 };
 pub use crate::provider::ExternalPayload;
 pub use crate::provider::advanced::{
-    Equality, Hashing, Index0, Inspection, Next, ProviderDynamicInput, ProviderDynamicValue,
-    Retained, RetainedExternalPayload, StoredDynamic,
+    Equality, Hashing, Index0, Inspection, NativeValue, Next, ProviderDynamicInput,
+    ProviderDynamicValue, Retained, RetainedExternalPayload, StoredDynamic,
 };
 pub use crate::provider::{
     Call, Callback, HostResult, List, MissingCallbackContext, MissingExternalInputContext,

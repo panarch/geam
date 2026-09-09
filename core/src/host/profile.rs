@@ -99,6 +99,18 @@ where
             .source_hash(crate::host::type_::into_scoped::<Type>(value))
     }
 
+    /// Hashes a source value through its native representation.
+    pub fn native_source_hash<Type: HostType>(&self, value: Type::Value<'call>) -> u64 {
+        self.native_hash(&crate::runtime::NativeValue::from_stored(
+            self.retain_value::<Type>(value),
+        ))
+    }
+
+    /// Views a typed List as a native tuple without traversing its elements.
+    pub fn native_tuple<Item>(&self, value: HostList<'call, Item>) -> crate::runtime::NativeValue {
+        self.runtime.native_tuple(value.token)
+    }
+
     /// Returns the canonical Gleam-facing inspection of a call-scoped value.
     pub fn inspect<Type: HostType>(&self, value: Type::Value<'call>) -> ecow::EcoString {
         self.runtime
@@ -498,12 +510,9 @@ where
         HostExternalType<Schema, Arguments>: HostType,
     {
         BoundExternalStorage::<Profile, Binding, Schema>::store(self.runtime.external_stores())
-            .insert(
-                value,
-                BoundExternalStorage::<Profile, Binding, Schema>::source_equal,
-                BoundExternalStorage::<Profile, Binding, Schema>::source_hash,
-                BoundExternalStorage::<Profile, Binding, Schema>::inspect,
-            )
+            .insert_with_storage::<Profile, Schema, BoundExternalStorage<Profile, Binding, Schema>>(
+            value,
+        )
     }
 
     pub(crate) fn stored_equal(
@@ -512,6 +521,18 @@ where
         right: &StoredRuntimeValue,
     ) -> bool {
         self.runtime.stored_equal(left, right)
+    }
+
+    pub(crate) fn native_equal(
+        &self,
+        left: &crate::runtime::NativeValue,
+        right: &crate::runtime::NativeValue,
+    ) -> bool {
+        self.runtime.native_equal(left, right)
+    }
+
+    pub(crate) fn native_hash(&self, value: &crate::runtime::NativeValue) -> u64 {
+        self.runtime.native_hash(value)
     }
 
     pub(crate) fn stored_source_hash(&self, value: &StoredRuntimeValue) -> u64 {
@@ -691,6 +712,10 @@ where
     pub(crate) fn stored_has_type<Type: HostType>(&self, value: &StoredRuntimeValue) -> bool {
         self.resolve_host_type::<Type>()
             .is_some_and(|requested| value.type_() == &requested)
+    }
+
+    pub(crate) fn native_has_type<Type: HostType>(&self, value: &StoredRuntimeValue) -> bool {
+        self.runtime.owns_stored(value) && self.stored_has_type::<Type>(value)
     }
 
     pub(crate) fn retain_list_value<Item: HostType>(
@@ -990,6 +1015,13 @@ mod tests {
         assert!(!call.equal::<MarkerType>(custom, custom));
         assert_eq!(call.source_hash::<BigInt>(1.into()), 17);
         assert_eq!(call.inspect::<BigInt>(1.into()), "inspected");
+        let retained = call.retain_value::<BigInt>(1.into());
+        let native = crate::runtime::NativeValue::from_stored(retained);
+        assert_eq!(
+            call.native_source_hash::<BigInt>(1.into()),
+            call.native_hash(&native)
+        );
+        assert!(call.native_equal(&native, &native));
     }
 
     #[test]

@@ -27,6 +27,7 @@ pub(crate) struct CustomTypeDescriptor {
 pub(crate) struct CustomConstructorDescriptor {
     id: CustomConstructorId,
     name: EcoString,
+    native_tag: EcoString,
     fields: Vec<CustomFieldDescriptor>,
 }
 
@@ -123,7 +124,12 @@ impl CustomConstructorDescriptor {
         name: EcoString,
         fields: Vec<CustomFieldDescriptor>,
     ) -> Self {
-        Self { id, name, fields }
+        Self {
+            id,
+            native_tag: gleam_compiler_core::strings::to_snake_case(&name),
+            name,
+            fields,
+        }
     }
 
     pub(crate) fn id(&self) -> CustomConstructorId {
@@ -132,6 +138,10 @@ impl CustomConstructorDescriptor {
 
     pub(crate) fn name(&self) -> &EcoString {
         &self.name
+    }
+
+    pub(crate) fn native_tag(&self) -> &EcoString {
+        &self.native_tag
     }
 
     pub(crate) fn fields(&self) -> &[CustomFieldDescriptor] {

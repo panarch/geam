@@ -252,6 +252,35 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
             .map(|()| self)
     }
 
+    /// Registers native conversion targets, external rules, and their callback together.
+    pub fn with_native_function<Provider, Arguments, Return, Targets, Function>(
+        mut self,
+        name: impl Into<EcoString>,
+        rules: crate::host::native::NativeRules<Profile, Provider, Return>,
+        function: Function,
+    ) -> Result<Self, HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Return: crate::host::HostType,
+        Targets: crate::host::HostTypeSequence,
+        crate::host::native::NativeFunction<Profile, Provider, Return, Targets, Function>:
+            ScopedConstructingHostFunction<Profile, Provider, Arguments, Return, Targets>,
+    {
+        let (function, registration) = crate::host::native::NativeFunction::new(rules, function);
+        self.functions
+            .register(&self.identity.module, name.into(), |name| {
+                HostFunctionDefinition::new_scoped_with_constructions::<
+                    Provider,
+                    Arguments,
+                    Return,
+                    Targets,
+                    _,
+                >(name, function)
+                .and_then(|definition| definition.enable_native(registration))
+            })?;
+        Ok(self)
+    }
+
     pub fn with_scoped_diverging_function<Provider, Arguments, Return, Function>(
         mut self,
         name: impl Into<EcoString>,

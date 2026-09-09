@@ -6,6 +6,7 @@ mod failure;
 mod function;
 mod future;
 mod module;
+pub mod native;
 mod profile;
 mod type_;
 mod value;

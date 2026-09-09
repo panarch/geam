@@ -1,0 +1,7 @@
+name = "example_native_records"
+version = "1.0.0"
+description = "Native records and keys supplied by Rust"
+licences = ["Apache-2.0"]
+
+[dependencies]
+gleam_stdlib = ">= 1.0.3 and < 1.0.4"

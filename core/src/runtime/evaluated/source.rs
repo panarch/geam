@@ -888,6 +888,7 @@ pub fn main() {
             external_equal,
             |_, _| 41,
             inspect,
+            |_| None,
         );
         let equal = external_store.insert(
             crate::host::HostStoredValue::<num_bigint::BigInt>::new(
@@ -896,6 +897,7 @@ pub fn main() {
             external_equal,
             |_, _| 41,
             inspect,
+            |_| None,
         );
         let collision = external_store.insert(
             crate::host::HostStoredValue::<num_bigint::BigInt>::new(
@@ -904,6 +906,7 @@ pub fn main() {
             external_equal,
             |_, _| 41,
             inspect,
+            |_| None,
         );
         let stored_inspect = |_: &crate::runtime::RetainedValueRef| "stored".into();
         let inspection = crate::host::RetainedValueInspection::new(&stored_inspect);

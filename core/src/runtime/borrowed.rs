@@ -307,6 +307,8 @@ pub fn run() {
 
     #[test]
     fn recursive_reads_borrow_the_original_scalar_storage() {
+        use crate::plan::execution::runtime::RuntimeExecutionPlan;
+        let plan = crate::runtime::plan_src("pub fn main() { Nil }");
         let number = BigInt::from(1u64) << 256;
         let stored = StoredRuntimeValue::new(
             EvaluatedValue::Tuple(vec![
@@ -317,14 +319,7 @@ pub fn run() {
                 EvaluatedValue::UtfCodepoint('x'),
                 EvaluatedValue::Nil,
             ]),
-            crate::plan::ValueType::Tuple(vec![
-                crate::plan::ValueType::Int,
-                crate::plan::ValueType::String,
-                crate::plan::ValueType::Float,
-                crate::plan::ValueType::Bool,
-                crate::plan::ValueType::UtfCodepoint,
-                crate::plan::ValueType::Nil,
-            ]),
+            plan.value_metadata(),
         );
         let first = BorrowedValue::from_stored(&stored);
         let second = BorrowedValue::from_stored(&stored);

@@ -325,6 +325,25 @@ where
         crate::runtime::evaluated::values_equal(self.state.lists(), left.value(), right.value())
     }
 
+    fn native_equal(
+        &self,
+        left: &crate::runtime::NativeValue,
+        right: &crate::runtime::NativeValue,
+    ) -> bool {
+        crate::runtime::native::values_equal(self.state.lists(), left, right)
+    }
+
+    fn native_hash(&self, value: &crate::runtime::NativeValue) -> u64 {
+        crate::runtime::native::value_hash(self.state.lists(), value)
+    }
+
+    fn native_tuple(&self, value: HostListToken) -> crate::runtime::NativeValue {
+        crate::runtime::NativeValue::tuple_from_list(
+            self.scoped.list_value(value),
+            self.plan.value_metadata(),
+        )
+    }
+
     fn stored_source_hash(&self, value: &StoredRuntimeValue) -> u64 {
         crate::runtime::evaluated::value_source_hash(self.state.lists(), value.value())
     }
@@ -357,10 +376,7 @@ where
                 &crate::runtime::BorrowedValue::from_stored(value).list(),
                 index,
             )
-            .map(|value| {
-                let type_ = value.value_type(self.plan.value_metadata());
-                StoredRuntimeValue::new(value, type_)
-            })
+            .map(|value| StoredRuntimeValue::new(value, self.plan.value_metadata()))
     }
 
     fn complete(&mut self, value: HostScopedValue) -> HostValueToken {
@@ -372,15 +388,21 @@ where
         type_: &crate::host::HostTypeDescriptor,
         values: Box<[HostScopedValue]>,
     ) -> HostValueToken {
+        let type_ = type_.resolve_sealed(self.function.type_arguments());
+        self.build_native_list(self.function.constructions().list(&type_), values)
+    }
+
+    fn build_native_list(
+        &mut self,
+        type_: crate::plan::execution::type_::ListTypeId,
+        values: Box<[HostScopedValue]>,
+    ) -> HostValueToken {
         let values = values
             .into_vec()
             .into_iter()
             .map(|value| self.scoped.push_scoped(value))
             .collect::<Vec<_>>();
-        let type_ = type_.resolve_sealed(self.function.type_arguments());
-        let storage_type = self
-            .plan
-            .list_storage_type(self.function.constructions().list(&type_));
+        let storage_type = self.plan.list_storage_type(type_);
         let list = self
             .scoped
             .allocate_list(storage_type, self.state.lists_mut(), &values);
@@ -402,16 +424,24 @@ where
         constructor: usize,
         fields: Box<[HostScopedValue]>,
     ) -> HostValueToken {
+        let type_ = type_.resolve_sealed(self.function.type_arguments());
+        let constructor = self
+            .plan
+            .custom_constructor_id(self.function.constructions().custom(&type_), constructor);
+        self.build_native_custom(constructor, fields)
+    }
+
+    fn build_native_custom(
+        &mut self,
+        constructor: crate::plan::execution::type_::CustomConstructorId,
+        fields: Box<[HostScopedValue]>,
+    ) -> HostValueToken {
         let fields = fields
             .into_vec()
             .into_iter()
             .map(|value| self.scoped.value_from_scoped(value))
             .collect::<Vec<_>>()
             .into_boxed_slice();
-        let type_ = type_.resolve_sealed(self.function.type_arguments());
-        let constructor = self
-            .plan
-            .custom_constructor_id(self.function.constructions().custom(&type_), constructor);
         self.scoped
             .push_custom(EvaluatedCustomValue::from_fields(constructor, fields))
     }
@@ -441,8 +471,11 @@ where
 
     fn retain_stored(&self, value: HostScopedValue) -> StoredRuntimeValue {
         let value = self.scoped.value_from_scoped(value);
-        let type_ = value.value_type(self.plan.value_metadata());
-        StoredRuntimeValue::new(value, type_)
+        StoredRuntimeValue::new(value, self.plan.value_metadata())
+    }
+
+    fn owns_stored(&self, value: &StoredRuntimeValue) -> bool {
+        self.plan.value_metadata().shares_owner(value.metadata())
     }
 
     fn retain_list(&self, value: HostListToken) -> StoredRuntimeList {

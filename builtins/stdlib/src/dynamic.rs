@@ -3,12 +3,11 @@ mod storage;
 
 pub use function::create_value;
 pub(super) use function::provider::__GeamStores as Stores;
-pub(crate) use function::provider::DynamicPayload;
+pub use function::provider::DynamicPayload;
 pub use function::provider::{
     __GeamExternalSchema0 as DynamicSchema, __GeamExternalStorage0 as DynamicExternalStorage,
 };
 
-pub(crate) use self::storage::DynamicRepresentation;
 use super::GleamStdlibProviderProfile;
 use crate::{HostExternalType, HostProviderModule, HostRegistrationError};
 

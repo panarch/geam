@@ -53,6 +53,11 @@ where
 
     /// Produces the payload's canonical source-oriented inspection.
     fn inspect(context: &HostExternalInspection<'_>, value: &Self::Payload) -> EcoString;
+
+    /// Returns a declared native view without borrowing the payload.
+    fn native_view(_value: &Self::Payload) -> Option<crate::provider::advanced::NativeValue> {
+        None
+    }
 }
 
 /// Selects a provider-owned external storage adapter for one source schema.

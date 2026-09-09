@@ -335,9 +335,8 @@ mod tests {
                         state.get()
                     })
                     .await?;
-                Ok(Shared::new(Ok(Shared::new(StoredRuntimeValue::new(
-                    EvaluatedValue::Int(value.into()),
-                    ValueType::Int,
+                Ok(Shared::new(Ok(Shared::new(StoredRuntimeValue::test_int(
+                    value.into(),
                 )))))
             })
         });

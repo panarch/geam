@@ -192,6 +192,7 @@ pub(crate) struct RegisteredHostConstructions {
     types: Box<[crate::host::HostTypeDescriptor]>,
     custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
     external_schemas: Box<[crate::host::HostExternalTypeSchema]>,
+    native_rules: Option<Box<[crate::host::HostTypeDescriptor]>>,
 }
 
 impl HostFunctionSchema {
@@ -286,11 +287,16 @@ impl RegisteredHostConstructions {
             types,
             custom_schemas,
             external_schemas: external_schemas.into_boxed_slice(),
+            native_rules: None,
         }
     }
 
     pub(crate) fn empty() -> Self {
         Self::new(Box::new([]), Box::new([]))
+    }
+
+    pub(crate) fn native_rules(&self) -> Option<&[crate::host::HostTypeDescriptor]> {
+        self.native_rules.as_deref()
     }
 
     pub(crate) fn types(&self) -> &[crate::host::HostTypeDescriptor] {
@@ -431,6 +437,32 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
         let constructions =
             RegisteredHostConstructions::new(construction_types, custom_schemas.into_boxed_slice());
         Self::from_registration_with_constructions(name, registration, constructions)
+    }
+
+    pub(in crate::host) fn enable_native(
+        mut self,
+        registration: crate::host::native::NativeRegistration,
+    ) -> Result<Self, crate::HostRegistrationError> {
+        let rules = registration.descriptors;
+        for (index, descriptor) in rules.iter().enumerate() {
+            if rules[..index].contains(descriptor) {
+                return Err(crate::HostRegistrationError::DuplicateNativeConversion {
+                    function: self.schema.name().clone(),
+                    type_: descriptor.value_type(),
+                });
+            }
+        }
+        let mut types = self.constructions.types.into_vec();
+        types.extend(rules.iter().cloned());
+        let mut custom_schemas = self.constructions.custom_schemas.into_vec();
+        custom_schemas.extend(registration.custom_schemas);
+        self.constructions = RegisteredHostConstructions::new(
+            types.into_boxed_slice(),
+            custom_schemas.into_boxed_slice(),
+        );
+        self.constructions.native_rules = Some(rules);
+        self.constructions.validate_for(&self.schema)?;
+        Ok(self)
     }
 
     pub(crate) fn new_scoped_diverging<Provider, Arguments, Return, Function>(

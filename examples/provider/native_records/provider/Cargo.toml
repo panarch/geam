@@ -1,0 +1,23 @@
+[package]
+name = "geam-example-native-records"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+publish = false
+description = "Native records and Dynamic decoding for Geam providers"
+license = "Apache-2.0"
+readme = "README.md"
+
+[package.metadata.geam.provider]
+schema = 1
+gleam-package = "example_native_records"
+gleam-version = ">= 1.0.0 and < 2.0.0"
+
+[dependencies]
+geam = { version = "=0.2.3", default-features = false, features = ["provider", "gleam-stdlib"] }
+
+[patch.crates-io]
+geam = { path = "../../../.." }
+
+[workspace]
+resolver = "3"

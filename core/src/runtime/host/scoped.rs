@@ -18,6 +18,7 @@ use ecow::EcoString;
 use num_bigint::BigInt;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Default)]
 pub(super) struct ScopedValues {
@@ -61,8 +62,14 @@ impl FunctionIndex {
 }
 
 pub(crate) struct StoredRuntimeValue {
+    retained: Arc<StoredValue>,
+}
+
+#[derive(Clone)]
+struct StoredValue {
     value: EvaluatedValue,
     type_: crate::plan::ValueType,
+    metadata: crate::plan::execution::runtime::OwnedRuntimeValueMetadata,
 }
 
 pub(crate) struct StoredRuntimeList {
@@ -87,28 +94,45 @@ pub(crate) struct StoredRuntimeListCustomFields<'value> {
 }
 
 impl StoredRuntimeValue {
-    pub(in crate::runtime) fn new(value: EvaluatedValue, type_: crate::plan::ValueType) -> Self {
-        Self { value, type_ }
+    pub(in crate::runtime) fn new(
+        value: EvaluatedValue,
+        metadata: crate::plan::execution::runtime::RuntimeValueMetadata<'_>,
+    ) -> Self {
+        Self {
+            retained: Arc::new(StoredValue {
+                type_: value.value_type(metadata),
+                value,
+                metadata: metadata.to_owned(),
+            }),
+        }
     }
 
     #[cfg(test)]
     pub(crate) fn test_int(value: BigInt) -> Self {
-        Self::new(EvaluatedValue::Int(value), crate::plan::ValueType::Int)
+        use crate::plan::execution::runtime::RuntimeExecutionPlan;
+        let plan = crate::runtime::plan_src("pub fn main() { Nil }");
+        Self::new(EvaluatedValue::Int(value), plan.value_metadata())
     }
 
     pub(in crate::runtime) fn value(&self) -> &EvaluatedValue {
-        &self.value
+        &self.retained.value
     }
 
     pub(crate) fn type_(&self) -> &crate::plan::ValueType {
-        &self.type_
+        &self.retained.type_
+    }
+
+    pub(in crate::runtime) fn metadata(
+        &self,
+    ) -> crate::plan::execution::runtime::RuntimeValueMetadata<'_> {
+        self.retained.metadata.as_borrowed()
     }
 
     pub(crate) fn has_external_schema<Schema>(&self) -> bool
     where
         Schema: crate::host::HostExternalSchema,
     {
-        let crate::plan::ValueType::External(type_) = &self.type_ else {
+        let crate::plan::ValueType::External(type_) = self.type_() else {
             return false;
         };
         let name = type_.type_name();
@@ -119,7 +143,7 @@ impl StoredRuntimeValue {
     }
 
     pub(crate) fn family(&self) -> HostStoredValueFamily {
-        match &self.value {
+        match self.value() {
             EvaluatedValue::Int(_) => HostStoredValueFamily::Int,
             EvaluatedValue::Float(_) => HostStoredValueFamily::Float,
             EvaluatedValue::String(_) => HostStoredValueFamily::String,
@@ -137,31 +161,33 @@ impl StoredRuntimeValue {
         }
     }
 
-    #[expect(
-        clippy::result_large_err,
-        reason = "non-tuples retain the original value without another heap allocation"
-    )]
     pub(crate) fn map_tuple_items<Item>(
         self,
         mut map: impl FnMut(Self) -> Item,
     ) -> Result<Box<[Item]>, Self> {
-        let Self { value, type_ } = self;
-        match (value, type_) {
-            (EvaluatedValue::Tuple(values), crate::plan::ValueType::Tuple(types)) => Ok(values
+        match Arc::unwrap_or_clone(self.retained) {
+            StoredValue {
+                value: EvaluatedValue::Tuple(values),
+                metadata,
+                ..
+            } => Ok(values
                 .into_iter()
-                .zip(types)
-                .map(|(value, type_)| map(Self::new(value, type_)))
+                .map(|value| map(Self::new(value, metadata.as_borrowed())))
                 .collect()),
-            (value, type_) => Err(Self::new(value, type_)),
+            retained => Err(Self {
+                retained: Arc::new(retained),
+            }),
         }
     }
 
     pub(crate) fn clone_retained(&self) -> Self {
-        Self::new(self.value.clone(), self.type_.clone())
+        Self {
+            retained: Arc::clone(&self.retained),
+        }
     }
 
     pub(crate) fn semantic_value(&self) -> crate::runtime::RetainedValueRef<'_> {
-        crate::runtime::RetainedValueRef::new(&self.value)
+        crate::runtime::RetainedValueRef::new(self.value())
     }
 }
 
@@ -956,6 +982,7 @@ mod tests {
     use super::{ScopedValues, StoredRuntimeListItem, StoredRuntimeValue};
     use crate::host::HostCustomToken;
     use crate::host::test::{StatelessTestProvider, TestTypeParameter, stateless_identity};
+    use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::runtime::state::list::{ListValueId, ParameterListValueId, RuntimeListStorage};
     use crate::runtime::{EvaluatedBitArray, EvaluatedCustomValue, EvaluatedValue};
     use crate::{
@@ -969,8 +996,7 @@ mod tests {
 
     #[test]
     fn stored_runtime_value_preserves_its_exact_type_and_restores_its_value() {
-        let stored =
-            StoredRuntimeValue::new(EvaluatedValue::Int(7.into()), crate::plan::ValueType::Int);
+        let stored = StoredRuntimeValue::test_int(7.into());
         let mut scoped = ScopedValues::default();
 
         let restored = scoped.push(stored.value().clone());
@@ -984,16 +1010,52 @@ mod tests {
     }
 
     #[test]
+    fn consuming_stored_tuple_moves_unique_items_and_preserves_shared_items() {
+        use crate::runtime::BorrowedValue;
+
+        let plan = crate::runtime::plan_src("pub fn main() { #(#(7)) }");
+        for shared in [false, true] {
+            let nested = vec![EvaluatedValue::Int(7.into())];
+            let original = std::ptr::from_ref(BorrowedValue::from_value(&nested[0]).int());
+            let stored = StoredRuntimeValue::new(
+                EvaluatedValue::Tuple(vec![EvaluatedValue::Tuple(nested)]),
+                plan.value_metadata(),
+            );
+            let alias = shared.then(|| stored.clone_retained());
+            let mut mapped = 0;
+            let result = stored.map_tuple_items(|item| {
+                mapped += 1;
+                let value = BorrowedValue::from_stored(&item).tuple_item(0).int();
+                assert_eq!(value, &BigInt::from(7));
+                assert_eq!(std::ptr::eq(original, value), !shared);
+                item
+            });
+            assert!(result.is_ok());
+            assert_eq!(mapped, 1);
+            if let Some(alias) = alias {
+                let value = BorrowedValue::from_stored(&alias)
+                    .tuple_item(0)
+                    .tuple_item(0)
+                    .int();
+                assert!(std::ptr::eq(original, value));
+                assert_eq!(value, &BigInt::from(7));
+            }
+        }
+
+        let scalar = StoredRuntimeValue::test_int(7.into());
+        let scalar = scalar.map_tuple_items(|_| ()).unwrap_err();
+        assert_eq!(scalar.value(), &EvaluatedValue::Int(7.into()));
+    }
+
+    #[test]
     fn stored_generic_lists_preserve_their_runtime_handle_and_item_type() {
         let plan = crate::runtime::plan_src(
             "fn values(items: List(value)) { items } pub fn main() { values([]) }",
         );
         let list = ParameterListValueId::new(plan.parameter_list_function_id(0).type_id());
         let item = crate::plan::TypeParameterId(0);
-        let stored = StoredRuntimeValue::new(
-            EvaluatedValue::ParameterList(list),
-            crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Parameter(item))),
-        );
+        let stored =
+            StoredRuntimeValue::new(EvaluatedValue::ParameterList(list), plan.value_metadata());
 
         assert_eq!(
             crate::runtime::BorrowedValue::from_stored(&stored).list(),
@@ -1053,6 +1115,7 @@ mod tests {
                 );
                 format!("Payload({})", context.inspect_stored_value(&stored)).into()
             },
+            |_| None,
         );
         let external = crate::runtime::evaluated::EvaluatedExternalValue::new(
             crate::plan::execution::type_::ExternalTypeId::new(0),

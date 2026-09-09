@@ -343,6 +343,14 @@ Typed decode compares that recursive shape, not Rust payload identity, and a
 shape mismatch remains ordinary provider-level absence rather than a runtime
 error, invariant, panic, or fallback.
 
+Exact restoration and native representation conversion are distinct contracts.
+Native views preserve retained source identity; opaque payloads expose structure
+only through an explicit immutable projection. Seal conversion targets, rules,
+construction permissions, and callback adapters together. Incoming native data
+may be checked against those targets, but runtime must not rediscover their ABI
+or relabel an original value to satisfy a different source type. Native kind,
+equality, hashing, inspection, and decoding must agree through nested views.
+
 Providers that model transient-style builders must use immutable persistent
 payload versions. Operations may share acyclic retained entries, but must not
 mutate published payloads or introduce consumed-token validation, general

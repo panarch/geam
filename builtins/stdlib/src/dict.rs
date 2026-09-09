@@ -1,7 +1,10 @@
+mod dynamic;
 mod function;
 mod storage;
 
+pub(crate) use dynamic::DynamicDictOutput;
 pub use function::create_dynamic_dict;
+use function::create_dynamic_dict_with;
 pub(super) use function::provider::__GeamStores as Stores;
 pub(crate) use function::provider::DictValue as DictDeclaration;
 pub use function::provider::{
@@ -17,7 +20,7 @@ use crate::{
 pub type DictOf<Key, Item> =
     HostExternalType<DictSchema, HostTypeList<Key, HostTypeList<Item, HostTypeListEnd>>>;
 
-pub(crate) type DynamicDictOutput = function::provider::DictValue<
+type ExactDynamicDictOutput = function::provider::DictValue<
     crate::dynamic::DynamicPayload,
     crate::dynamic::DynamicPayload,
     geam_core::__macro_support::ProviderExternalOutput<DictPayload>,

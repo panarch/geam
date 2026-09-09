@@ -15,6 +15,7 @@ pub struct HostSpecializationError {
 pub enum HostSpecializationErrorReason {
     UndeterminedReturnStorage,
     UninhabitedCallbackArguments { callback: FunctionType },
+    ConflictingNativeConversions { type_: crate::plan::ValueType },
 }
 
 impl HostSpecializationError {
@@ -46,6 +47,22 @@ impl HostSpecializationError {
             function,
             signature,
             reason: HostSpecializationErrorReason::UninhabitedCallbackArguments { callback },
+        }
+    }
+
+    pub(in crate::plan::execution) fn conflicting_native_conversions(
+        package: EcoString,
+        module: EcoString,
+        function: EcoString,
+        signature: FunctionType,
+        type_: crate::plan::ValueType,
+    ) -> Self {
+        Self {
+            package,
+            module,
+            function,
+            signature,
+            reason: HostSpecializationErrorReason::ConflictingNativeConversions { type_ },
         }
     }
 
@@ -82,6 +99,11 @@ impl fmt::Display for HostSpecializationError {
                 formatter,
                 "host function `{}::{}.{}` has an executable specialization `{:?}` that exposes callback `{:?}` with uninhabited arguments",
                 self.package, self.module, self.function, self.signature, callback,
+            ),
+            HostSpecializationErrorReason::ConflictingNativeConversions { type_ } => write!(
+                formatter,
+                "host function `{}::{}.{}` has an executable specialization `{:?}` with conflicting native conversions for `{:?}`",
+                self.package, self.module, self.function, self.signature, type_,
             ),
         }
     }
@@ -153,6 +175,33 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "host function `host_support::host/function.apply` has an executable specialization `FunctionType { arguments: [Function(FunctionType { arguments: [Parameter(TypeParameterId(0))], return_: Int })], return_: Int }` that exposes callback `FunctionType { arguments: [Parameter(TypeParameterId(0))], return_: Int }` with uninhabited arguments",
+        );
+        assert_eq!(error.clone(), error);
+    }
+
+    #[test]
+    fn exposes_the_conflicting_native_conversion_specialization() {
+        let signature = FunctionType::new(vec![ValueType::String], ValueType::Bool);
+        let error = HostSpecializationError::conflicting_native_conversions(
+            "host_support".into(),
+            "host/native".into(),
+            "convert".into(),
+            signature.clone(),
+            ValueType::String,
+        );
+        assert_eq!(error.package(), "host_support");
+        assert_eq!(error.module(), "host/native");
+        assert_eq!(error.function(), "convert");
+        assert_eq!(error.signature(), &signature);
+        assert_eq!(
+            error.reason(),
+            &HostSpecializationErrorReason::ConflictingNativeConversions {
+                type_: ValueType::String,
+            }
+        );
+        assert_eq!(
+            error.to_string(),
+            "host function `host_support::host/native.convert` has an executable specialization `FunctionType { arguments: [String], return_: Bool }` with conflicting native conversions for `String`"
         );
         assert_eq!(error.clone(), error);
     }

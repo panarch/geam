@@ -1,0 +1,8 @@
+name = "native_records_example"
+version = "1.0.0"
+description = "Decode Rust native records with Gleam Dynamic"
+licences = ["Apache-2.0"]
+
+[dependencies]
+example_native_records = { path = "packages/example_native_records" }
+gleam_stdlib = ">= 1.0.3 and < 1.0.4"

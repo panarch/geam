@@ -226,10 +226,7 @@ impl<Profile: HostProfile> Request<Profile> {
                             plan, state, function, origin, arguments,
                         )
                     })
-                    .map(|value| {
-                        let type_ = value.value_type(plan.value_metadata());
-                        StoredRuntimeValue::new(value, type_)
-                    });
+                    .map(|value| StoredRuntimeValue::new(value, plan.value_metadata()));
                 Some(Delivery(Box::new(move || {
                     let _ = reply.send(output);
                 })))
@@ -781,10 +778,7 @@ pub fn make() { #(fn(value: Int) {
         for close in [false, true] {
             let execution = ExecutionWork::<Profile>::new();
             let context = execution.context();
-            let value = Shared::new(crate::runtime::StoredRuntimeValue::new(
-                EvaluatedValue::Int(42.into()),
-                ValueType::Int,
-            ));
+            let value = Shared::new(crate::runtime::StoredRuntimeValue::test_int(42.into()));
             let mut decoded = Box::pin(context.decode_completion(
                 value,
                 codec.clone(),
@@ -904,10 +898,7 @@ pub fn make() { #(fn(value: Int) {
             let polls = polls.clone();
             async move {
                 polls.fetch_add(1, Ordering::SeqCst);
-                Ok(crate::runtime::StoredRuntimeValue::new(
-                    EvaluatedValue::Int(42.into()),
-                    ValueType::Int,
-                ))
+                Ok(crate::runtime::StoredRuntimeValue::test_int(42.into()))
             }
         });
         let mut cx = Context::from_waker(Waker::noop());
@@ -919,10 +910,7 @@ pub fn make() { #(fn(value: Int) {
         copied.read(|value| assert!(value.is_ok()));
         assert_eq!(polls.load(Ordering::SeqCst), 1);
 
-        let ready = context.ready(crate::runtime::StoredRuntimeValue::new(
-            EvaluatedValue::Int(7.into()),
-            ValueType::Int,
-        ));
+        let ready = context.ready(crate::runtime::StoredRuntimeValue::test_int(7.into()));
         drop(execution);
         let mut ready_observer = pin!(ready.observe());
         let value = completed_observation(ready_observer.as_mut().poll(&mut cx));

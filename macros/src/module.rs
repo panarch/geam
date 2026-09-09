@@ -920,6 +920,10 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                 ) -> #support::EcoString {
                     <#payload as #support::RetainedExternalPayload>::inspect(value, context)
                 }
+
+                fn native_view(value: &Self::Payload) -> Option<#support::NativeValue> {
+                    <#payload as #support::RetainedExternalPayload>::native_view(value)
+                }
             },
         };
 
@@ -1339,6 +1343,10 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                                     value,
                                     context,
                                 )
+                            }
+
+                            fn native_view(value: &Self::Payload) -> Option<#support::NativeValue> {
+                                <#retained_payload as #support::RetainedExternalPayload>::native_view(value)
                             }
                         }
 

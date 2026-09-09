@@ -446,6 +446,57 @@ implemented with the narrow `RetainedExternalPayload` operation contexts.
 This advanced form exposes no runtime type name, downcast, mutable graph, or
 per-specialization store.
 
+## Native Representations
+
+An external Rust value can declare how it participates in native structural
+operations. The [`native_records`](../../examples/provider/native_records)
+example gives `Key` a symbol representation and `Record` a tagged tuple:
+
+```rust
+fn native_view(&self) -> Option<NativeValue> {
+    Some(self.value.clone())
+}
+```
+
+This method belongs to `provider::advanced::RetainedExternalPayload`. Its view
+drives equality, hashing, and inspection, including when the value is nested in
+a tuple, List, or Dynamic. With no declared view, an external value remains
+opaque and uses its payload's operations.
+
+`NativeValue::symbol` is distinct from a String. `NativeValue::tuple` composes
+retained views; `Call::native_tuple` views a received List as a tuple without
+decoding its elements. `NativeMap` supplies an immutable snapshot with length,
+entry iteration, and hashed lookup. Its entry hashes use native equality, and
+lookup resolves collisions through the supplied equality operation. These
+views do not require the original Rust payload to implement `Clone` or `Sync`.
+
+Enable the `gleam-stdlib` feature to use `geam::gleam_stdlib::Dynamic`.
+`Dynamic::from_native(view)` supplies the actual `gleam/dynamic.Dynamic` value,
+so Gleam can read the declared representation with its ordinary decoders:
+
+```gleam
+let value = records.erase(records.record("visits", 42))
+let decoder = {
+  use label <- decode.field(1, decode.string)
+  use count <- decode.field(2, decode.int)
+  decode.success(#(label, count))
+}
+assert decode.run(value, decoder) == Ok(#("visits", 42))
+```
+
+Native access and exact restoration are different operations.
+`Call::restore_native` restores only a retained value of the requested exact
+source type from the same loaded execution, including its type arguments.
+A record view does not turn its original payload into a different source type.
+
+The typed-host SDK also supports checked conversion to registered targets.
+`HostProviderModule::with_native_function` seals the target types, `NativeRules`,
+construction permissions, and callback together. `NativeCall::convert` checks
+incoming native data against that target and returns `None` for a mismatch.
+An exact retained target passes through; constructing another source view uses
+the registered conversion. External rules receive only their typed construction
+capability. Duplicate or overlapping specialized rules fail before execution.
+
 ## Generated Component Boundary
 
 Each provider crate exports one marker that implements
