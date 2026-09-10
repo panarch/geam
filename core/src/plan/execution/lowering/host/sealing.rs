@@ -594,11 +594,11 @@ pub fn main() {
         .expect("concrete callback list source should compile");
         let valid_plan =
             plan_host_program(valid_typed).expect("concrete callback list source should plan");
-        let valid_execution = HostedExecution::try_from_module_plan(valid_plan)
+        let mut valid_execution = HostedExecution::try_from_module_plan(valid_plan)
             .expect("concrete callback list execution should seal");
 
         assert_eq!(
-            valid_execution.run_main(&mut (), &mut Vec::new()),
+            crate::execution_fixture::run(&mut valid_execution, &mut (), &mut Vec::new()),
             Ok(Value::Int(BigInt::from(1))),
         );
 
@@ -834,11 +834,10 @@ pub fn main() {
         )
         .expect("source should compile");
         let plan = plan_host_program(typed).expect("source should plan");
-        let execution =
+        let mut execution =
             HostedExecution::try_from_module_plan(plan).expect("host execution should seal");
 
-        let value = execution
-            .run_main(&mut (), &mut Vec::new())
+        let value = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
             .expect("custom host return should run");
 
         assert_eq!(value.inspect().to_string(), "Output(7)");
@@ -891,11 +890,10 @@ pub fn main() {
         )
         .expect("source should compile");
         let plan = plan_host_program(typed).expect("source should plan");
-        let execution =
+        let mut execution =
             HostedExecution::try_from_module_plan(plan).expect("host execution should seal");
 
-        let value = execution
-            .run_main(&mut (), &mut Vec::new())
+        let value = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
             .expect("recursive custom host return should run");
 
         assert_eq!(value.inspect().to_string(), "RecursiveOutput([])");

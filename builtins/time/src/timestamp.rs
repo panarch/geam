@@ -60,7 +60,7 @@ mod tests {
     #[test]
     fn preserves_system_time_source_failures() {
         let source = format!("{TIMESTAMP_SOURCE}\npub fn main() {{\n  current_parts()\n}}\n",);
-        let execution = execution::<ScriptedSource>(&source, "gleam/time/timestamp");
+        let mut execution = execution::<ScriptedSource>(&source, "gleam/time/timestamp");
         let mut state = GleamTimeRunState::new(
             GleamStdlibRunState::from_seed([4; 32]),
             ScriptedSource {
@@ -68,8 +68,7 @@ mod tests {
                 offsets: Default::default(),
             },
         );
-        let error = execution
-            .run_main(&mut state, &mut Vec::new())
+        let error = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
             .expect_err("scripted clock failure should remain an execution error");
         let error = expect_clock_host_error(error);
 

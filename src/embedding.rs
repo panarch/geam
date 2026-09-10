@@ -3,9 +3,9 @@
 #[cfg(feature = "geam-builtin")]
 pub use geam_builtin::embedding::{Future, FutureType};
 pub use geam_core::embedding::{
-    BigInt, BindingError, BitArrayValue, CallError, Completed, EcoString, ExecutionGuard,
-    ExecutionScope, Function, FunctionDeclaration, HostedModule, HostedModuleBindings,
-    HostedModuleBuilder, HostedProject, HostedProjectError, InputShape, Iter, List, Module,
-    ModuleBindings, ModuleBuilder, ObservationError, Project, ReadValue, SharedExecutionError,
-    SharedList, SourceType, with_execution_scope,
+    BigInt, BindingError, BitArrayValue, CallError, Completed, Custom, CustomType, EcoString,
+    ExecutionScope, External, ExternalType, Function, FunctionDeclaration, HostedModule,
+    HostedModuleBindings, HostedModuleBuilder, HostedProject, HostedProjectError, InputShape, Iter,
+    List, Module, ModuleBindings, ModuleBuilder, NamedTypeSchema, ObservationError, Project,
+    ReadValue, SharedExecutionError, SharedList, SourceType,
 };

@@ -6,8 +6,8 @@ rust-version = "1.96"
 publish = false
 
 [dependencies]
-futures = "0.3"
-geam = { version = "=0.2.3", default-features = false, features = ["embedding", "geam-builtin"] }
+tokio = { version = "1", features = ["rt"] }
+geam = { version = "=0.2.3", default-features = false, features = ["embedding", "geam-builtin", "tokio"] }
 geam-example-async-files = { path = "../../provider/async_files/provider" }
 
 [patch.crates-io]

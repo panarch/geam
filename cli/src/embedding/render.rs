@@ -3,6 +3,7 @@ use super::profile::{ComponentBinding, HostedBindings, HostedCapabilities, Hoste
 use camino::Utf8Path;
 use std::collections::BTreeSet;
 
+mod named;
 mod value;
 use value::{push_function_field, push_input_shapes};
 
@@ -54,15 +55,18 @@ pub(super) fn hosted(bindings: &HostedBindings, project_path: &Utf8Path) -> Stri
     let boundary = &bindings.boundary;
     let alias = boundary.geam_alias.as_str();
     let components = &bindings.components;
-    let mut host_imports = BTreeSet::from([
-        "HostComponentProfile",
-        "HostProfile",
-        "HostProviderComponent",
-        "HostProviderComponentRegistration",
-        "HostProviderSet",
-        "HostRegistrationError",
-        "HostWorkProfile",
-    ]);
+    let mut host_imports =
+        BTreeSet::from(["HostProfile", "HostProviderSet", "HostRegistrationError"]);
+    if !components.is_empty() {
+        host_imports.extend([
+            "HostComponentProfile",
+            "HostProviderComponent",
+            "HostProviderComponentRegistration",
+        ]);
+    }
+    if components.has_work() {
+        host_imports.insert("HostWorkProfile");
+    }
     if components.has_external() {
         host_imports.extend([
             "HostProviderComponentInitialization",
@@ -108,6 +112,7 @@ pub(super) fn hosted(bindings: &HostedBindings, project_path: &Utf8Path) -> Stri
         "\npub const ROOT_MODULE: &str = {:?};\n\n",
         boundary.root_module
     ));
+    named::push_types(&mut output, alias, &boundary.named_types);
     push_profile_declaration(&mut output, components);
     push_provider_set_alias(&mut output, components);
     push_stores(&mut output, alias, components);
@@ -211,6 +216,10 @@ fn push_profile_declaration(output: &mut String, components: &HostedComponents) 
 }
 
 fn push_stores(output: &mut String, alias: &str, components: &HostedComponents) {
+    if components.is_empty() {
+        output.push_str("#[derive(Default)]\npub struct Stores {}\n\n");
+        return;
+    }
     let derives_default = components.capabilities() == HostedCapabilities::None;
     if derives_default {
         output.push_str("#[derive(Default)]\n");
@@ -247,7 +256,11 @@ fn push_stores(output: &mut String, alias: &str, components: &HostedComponents) 
 }
 
 fn push_run_state_inputs(output: &mut String, alias: &str, components: &HostedComponents) {
-    if components.first() == &ComponentBinding::Future && !components.has_multiple() {
+    if components.is_empty() {
+        output.push_str("pub struct RunStateInputs {}\n\nimpl RunStateInputs {\n    pub fn initialize(self) -> RunState {\n        RunState {}\n    }\n}\n\n");
+        return;
+    }
+    if components.only_work() {
         output.push_str(
             "pub struct RunStateInputs {}\n\nimpl RunStateInputs {\n    pub fn initialize(self) -> RunState {\n        RunState { future: () }\n    }\n}\n\n",
         );
@@ -309,6 +322,10 @@ fn push_run_state_inputs(output: &mut String, alias: &str, components: &HostedCo
 }
 
 fn push_run_state(output: &mut String, alias: &str, components: &HostedComponents) {
+    if components.is_empty() {
+        output.push_str("pub struct RunState {}\n\n");
+        return;
+    }
     output.push_str(&format!("pub struct RunState{}", generics(components)));
     push_bounds_open(output, alias, components);
     for component in components.iter() {
@@ -348,6 +365,9 @@ fn push_host_profile(output: &mut String, alias: &str, components: &HostedCompon
         generics(components),
         generics(components),
     ));
+    if !components.has_work() {
+        return;
+    }
     output.push_str(&format!(
         "impl{} HostWorkProfile for {profile}",
         generics(components)
@@ -463,6 +483,10 @@ fn push_host_providers(output: &mut String, alias: &str, components: &HostedComp
         .iter()
         .filter(|component| component != &&ComponentBinding::Future || components.future_source)
         .collect::<Vec<_>>();
+    if registered.is_empty() {
+        output.push_str("    HostProviderSet::from_providers([])\n}\n\n");
+        return;
+    }
     for (index, component) in registered.iter().enumerate() {
         let component = component_type(alias, component);
         let declaration = if index == 0 {
@@ -708,6 +732,7 @@ impl DataType {
                 imports.insert("FutureType");
                 item.collect_imports(imports);
             }
+            Self::Named(_) => {}
             Self::Tuple(elements) => {
                 for element in elements {
                     element.collect_imports(imports);
@@ -778,6 +803,7 @@ mod tests {
     #[test]
     fn renders_deterministic_plain_bindings_for_all_scalar_paths() {
         let bindings = PlainBindings {
+            named_types: Vec::new(),
             geam_alias: RustIdentifier::parse("runtime")
                 .expect("fixture crate alias should be valid"),
             root_module: "inventory_rules".to_owned(),
@@ -963,6 +989,7 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
     fn keeps_long_representable_identifiers_rustfmt_stable() {
         let name = "function_with_a_deliberately_long_but_representable_name_that_remains_part_of_the_public_boundary";
         let bindings = PlainBindings {
+            named_types: Vec::new(),
             geam_alias: RustIdentifier::parse("runtime")
                 .expect("fixture crate alias should be valid"),
             root_module: "boundary".to_owned(),
@@ -1177,6 +1204,7 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         hosted(
             &HostedBindings {
                 boundary: PlainBindings {
+                    named_types: Vec::new(),
                     geam_alias: identifier("runtime"),
                     root_module: "inventory_rules".to_owned(),
                     first: FunctionBinding {
@@ -1209,6 +1237,57 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
 
     fn identifier(value: &str) -> RustIdentifier {
         RustIdentifier::parse(value).expect("fixture identifier should be valid")
+    }
+
+    #[test]
+    fn named_generic_metadata_preserves_nested_shapes_and_formatting() {
+        use super::named::push_types;
+        use crate::embedding::boundary::{ClosedType, NamedKind, NamedType};
+        let nested = NamedType {
+            package: "some_package".to_owned(),
+            module: "nested/module".to_owned(),
+            name: "Resource".to_owned(),
+            kind: NamedKind::External,
+            arguments: vec![ClosedType::String],
+        };
+        let types = [
+            NamedType {
+                arguments: vec![],
+                ..nested.clone()
+            },
+            NamedType {
+                name: "Session".to_owned(),
+                kind: NamedKind::Custom,
+                arguments: vec![
+                    ClosedType::Int,
+                    ClosedType::Float,
+                    ClosedType::String,
+                    ClosedType::BitArray,
+                    ClosedType::UtfCodepoint,
+                    ClosedType::Bool,
+                    ClosedType::Nil,
+                    ClosedType::List(Box::new(ClosedType::Tuple(vec![
+                        ClosedType::Function(vec![], Box::new(ClosedType::Int)),
+                        ClosedType::Named(nested.clone()),
+                    ]))),
+                    ClosedType::Named(NamedType {
+                        kind: NamedKind::Custom,
+                        ..nested
+                    }),
+                ],
+                package: "application".to_owned(),
+                module: "library".to_owned(),
+            },
+        ];
+        for alias in ["geam", "runtime_dependency_with_a_long_name"] {
+            let mut output = String::new();
+            push_types(&mut output, alias, &types);
+            output.push_str("fn main() {}\n");
+            assert!(output.contains("ValueType::Function(Box::new("));
+            assert!(output.contains("ValueType::External("));
+            assert!(output.contains("ValueType::Custom("));
+            assert_rustfmt_stable("nested opaque metadata", &output);
+        }
     }
 
     fn assert_rustfmt_stable(label: &str, source: &str) {

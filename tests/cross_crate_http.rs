@@ -1,4 +1,6 @@
 use camino::{Utf8Path, Utf8PathBuf};
+#[path = "support/execution_host.rs"]
+mod execution_fixture;
 use geam::gleam_stdlib::{GleamStdlibProfile, GleamStdlibRunState, host_providers};
 use geam::{
     HostModule, HostProviderSet, HostedExecution, TypedProgram, Value, compile_typed_host_project,
@@ -88,12 +90,15 @@ fn run_fixture(root_module: &str) -> Value {
     let typed = compile_typed_host_project(project_root(), root_module, stdlib_hosts())
         .expect("resolved hosted HTTP fixture should compile");
     let plan = plan_host_program(typed).expect("official HTTP fixture should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("official HTTP fixture should seal");
     let mut echo = Vec::new();
-    let actual = execution
-        .run_main(&mut GleamStdlibRunState::from_seed([0; 32]), &mut echo)
-        .expect("official HTTP fixture should run");
+    let actual = crate::execution_fixture::run(
+        &mut execution,
+        &mut GleamStdlibRunState::from_seed([0; 32]),
+        &mut echo,
+    )
+    .expect("official HTTP fixture should run");
 
     assert_eq!(actual.inspect().to_string(), expected);
     transfer::assert_fixture(

@@ -1411,7 +1411,6 @@ mod tests {
     use super::{
         CustomListAllocation, ListListTypeId, ListValueId, ParameterListValueId, StoredListValueId,
     };
-    use crate::host::test::StatelessTestProvider;
     use crate::plan::execution::function::{
         CoreRuntimeFunctionId, ListFunctionId, RuntimeFunctionId, RuntimeListFunctionId,
     };
@@ -1425,22 +1424,43 @@ mod tests {
     use crate::{
         HostCall, HostCallCompletion, HostCallError, HostCallable, HostFailure, HostFunctionType,
         HostList, HostListType, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
-        StatelessHostProfile,
     };
     use num_bigint::BigInt;
     use std::sync::Arc;
 
+    struct LeaseProfile;
+    struct LeaseProvider;
+    impl crate::HostProfile for LeaseProfile {
+        type RunState = Option<super::RuntimeListStorage>;
+        type ExternalStores = ();
+    }
+    impl crate::HostProvider<LeaseProfile> for LeaseProvider {
+        type State = Option<super::RuntimeListStorage>;
+        fn project(state: &mut Self::State) -> &mut Self::State {
+            state
+        }
+    }
+
     fn return_host_list<'call>(
-        call: HostCall<'call, StatelessHostProfile, StatelessTestProvider, HostListType<BigInt>>,
+        mut call: HostCall<'call, LeaseProfile, LeaseProvider, HostListType<BigInt>>,
+        constructions: crate::HostConstructions<
+            'call,
+            HostTypeList<HostListType<BigInt>, HostTypeListEnd>,
+        >,
         value: BigInt,
     ) -> Result<HostCallCompletion<'call, HostListType<BigInt>>, HostCallError> {
-        Ok(call.return_list([value]))
+        let value = call.construct_list(constructions.at::<crate::HostTypeIndex0>(), [value]);
+        let storage = list_storage(&call.retain_value::<HostListType<BigInt>>(value));
+        *call.state() = Some(storage);
+        Ok(call.return_value(value))
     }
 
     fn fail_with_host_list<'call>(
-        _call: HostCall<'call, StatelessHostProfile, StatelessTestProvider, BigInt>,
-        _values: HostList<'call, BigInt>,
+        mut call: HostCall<'call, LeaseProfile, LeaseProvider, BigInt>,
+        values: HostList<'call, BigInt>,
     ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+        let storage = list_storage(&call.retain_value::<HostListType<BigInt>>(values));
+        *call.state() = Some(storage);
         Err(HostFailure::new("stop").into())
     }
 
@@ -1449,12 +1469,53 @@ mod tests {
     type Callback = HostFunctionType<CallbackArguments, CallbackValue>;
 
     fn invoke_generic_callback<'call>(
-        mut call: HostCall<'call, StatelessHostProfile, StatelessTestProvider, CallbackValue>,
+        mut call: HostCall<'call, LeaseProfile, LeaseProvider, CallbackValue>,
+        constructions: crate::HostConstructions<'call, HostTypeListEnd>,
         function: HostCallable<'call, CallbackArguments, CallbackValue>,
         value: HostValue<'call, CallbackValue>,
-    ) -> Result<HostCallCompletion<'call, CallbackValue>, HostCallError> {
-        let returned = call.invoke(function, (value, ()))?;
-        Ok(call.return_value(returned))
+    ) -> Result<crate::HostCallContinuation<'call, CallbackValue>, HostCallError> {
+        type Owned = crate::provider::Value<
+            CallbackValue,
+            crate::provider::ProviderValueContext<CallbackValue>,
+        >;
+        let storage = list_storage(&call.retain_value::<CallbackValue>(value));
+        *call.state() = Some(storage);
+        let value = Owned::from_host(&call, value);
+        let callback = call.owned_callable(function, &constructions);
+        Ok(call.resume(constructions, move |context| {
+            Box::pin(async move {
+                let value = callback
+                    .invoke(
+                        &context,
+                        move |mut call, _| (value.into_host(&mut call), ()),
+                        |call, _, value| Ok(Owned::from_host(&call, value)),
+                    )
+                    .await?;
+                Ok(crate::HostOwnedCompletion::new(move |mut call, _| {
+                    let value = value.into_host(&mut call);
+                    Ok(call.return_value(value))
+                }))
+            })
+        }))
+    }
+
+    fn list_storage(value: &StoredRuntimeValue) -> super::RuntimeListStorage {
+        let value = match value.value() {
+            EvaluatedValue::Custom(custom) => custom.fields().first(),
+            value => Some(value),
+        };
+        let Some(EvaluatedValue::List(StoredListValueId::Int(value))) = value else {
+            panic!("expected an integer list lease");
+        };
+        super::RuntimeListStorage {
+            storage: Arc::clone(&value.core.lease.storage),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "expected an integer list lease")]
+    fn list_storage_rejects_a_scalar_fixture() {
+        list_storage(&StoredRuntimeValue::test_int(1.into()));
     }
 
     fn int_main(plan: &crate::ExecutionPlan) -> crate::plan::execution::function::IntFunctionId {
@@ -1601,9 +1662,9 @@ pub fn main() {
 
     #[test]
     fn host_calls_release_scoped_list_leases_after_success_and_failure() {
-        let returned = crate::HostModule::new("host_support", "host/lists")
+        let returned = crate::HostProviderModule::<LeaseProfile>::new("host_support", "host/lists")
             .expect("host module should be valid")
-            .with_scoped_function::<StatelessTestProvider, (BigInt,), HostListType<BigInt>, _>(
+            .with_scoped_function_and_constructions::<LeaseProvider, (BigInt,), HostListType<BigInt>, HostTypeList<HostListType<BigInt>, HostTypeListEnd>, _>(
                 "wrap",
                 return_host_list,
             )
@@ -1623,38 +1684,35 @@ pub fn main() {
                 "application",
                 ["host_support"],
                 [crate::ModuleSource::new("main", "src/main.gleam", source)],
-            )],
-            crate::HostProviderSet::new([returned]).expect("host module should be unique"),
+            ), crate::PackageSource::new("host_support", Vec::<String>::new(), [
+                crate::ModuleSource::new("host/lists", "src/host/lists.gleam", "@external(erlang, \"native\", \"wrap\") pub fn wrap(value: Int) -> List(Int)")
+            ])],
+            crate::HostProviderSet::from_providers([returned]).expect("host module should be unique"),
         )
         .expect("host source should compile");
         let plan = crate::plan_host_program(typed).expect("host source should plan");
-        let execution = crate::HostedExecution::try_from_module_plan(plan)
+        let mut execution = crate::HostedExecution::try_from_module_plan(plan)
             .expect("hosted execution should seal");
-        let mut host = ();
+        let mut storage = None;
         let mut echo = Vec::new();
-        let work = crate::runtime::work::execution::ExecutionWork::new();
-        let host =
-            crate::runtime::state::RuntimeHost::new(&mut host, execution.external_stores(), &work);
-        let mut state = RuntimeState::with_host(&mut echo, host);
-
-        assert_eq!(
-            crate::runtime::run_hosted_program(execution.execution(), &mut state),
-            Ok(crate::Value::Int(BigInt::from(0))),
-        );
+        let result = crate::execution_fixture::run(&mut execution, &mut storage, &mut echo);
+        let lists = storage.expect("native output storage was recorded");
+        assert_eq!(result, Ok(crate::Value::Int(BigInt::from(0))),);
         {
-            let storage_state = lock(&state.lists.storage.state);
+            let storage_state = lock(&lists.storage.state);
             assert_eq!(storage_state.pools.ints.slots.len(), 1);
             assert_eq!(storage_state.pools.ints.free, [0]);
         }
-        assert!(lock(&state.lists.storage.state).releases.is_empty());
+        assert!(lock(&lists.storage.state).releases.is_empty());
 
-        let failed = crate::HostModule::new("host_support", "host/lists")
-            .expect("host module should be valid")
-            .with_scoped_function::<StatelessTestProvider, (HostListType<BigInt>,), BigInt, _>(
-                "fail",
-                fail_with_host_list,
-            )
-            .expect("host function should be valid");
+        let failed =
+            crate::HostModule::<LeaseProfile>::new_for_profile("host_support", "host/lists")
+                .expect("host module should be valid")
+                .with_scoped_function::<LeaseProvider, (HostListType<BigInt>,), BigInt, _>(
+                    "fail",
+                    fail_with_host_list,
+                )
+                .expect("host function should be valid");
         let source = r#"
 import host/lists
 
@@ -1674,38 +1732,34 @@ pub fn main() {
         )
         .expect("host source should compile");
         let plan = crate::plan_host_program(typed).expect("host source should plan");
-        let execution = crate::HostedExecution::try_from_module_plan(plan)
+        let mut execution = crate::HostedExecution::try_from_module_plan(plan)
             .expect("hosted execution should seal");
-        let mut host = ();
+        let mut storage = None;
         let mut echo = Vec::new();
-        let work = crate::runtime::work::execution::ExecutionWork::new();
-        let host =
-            crate::runtime::state::RuntimeHost::new(&mut host, execution.external_stores(), &work);
-        let mut state = RuntimeState::with_host(&mut echo, host);
-
-        let error = crate::runtime::run_hosted_program(execution.execution(), &mut state)
+        let error = crate::execution_fixture::run(&mut execution, &mut storage, &mut echo)
             .expect_err("the host callback should fail");
+        let lists = storage.expect("native input storage was recorded");
         assert_eq!(
             error.to_string(),
             "host function host_support::host/lists.fail failed: stop",
         );
         {
-            let storage_state = lock(&state.lists.storage.state);
+            let storage_state = lock(&lists.storage.state);
             assert_eq!(storage_state.pools.ints.slots.len(), 1);
             assert_eq!(storage_state.pools.ints.free, [0]);
         }
-        assert!(lock(&state.lists.storage.state).releases.is_empty());
+        assert!(lock(&lists.storage.state).releases.is_empty());
     }
 
     #[test]
     fn nested_callbacks_release_retained_custom_list_values_after_success() {
-        let host = crate::HostModule::new("host_support", "host/callback")
+        let host = crate::HostModule::<LeaseProfile>::new_for_profile("host_support", "host/callback")
             .expect("host module should be valid")
-            .with_scoped_function::<
-                StatelessTestProvider,
+            .with_resumable_function::<
+                LeaseProvider,
                 (Callback, CallbackValue),
                 CallbackValue,
-                _,
+                geam_core::HostTypeListEnd, _,
             >("invoke", invoke_generic_callback)
             .expect("generic callback should be valid");
         let source = r#"
@@ -1736,39 +1790,30 @@ pub fn main() {
         )
         .expect("successful callback source should compile");
         let plan = crate::plan_host_program(typed).expect("successful callback source should plan");
-        let execution = crate::HostedExecution::try_from_module_plan(plan)
+        let mut execution = crate::HostedExecution::try_from_module_plan(plan)
             .expect("successful callback execution should seal");
-        let mut host_state = ();
+        let mut storage = None;
         let mut echo = Vec::new();
-        let work = crate::runtime::work::execution::ExecutionWork::new();
-        let host = crate::runtime::state::RuntimeHost::new(
-            &mut host_state,
-            execution.external_stores(),
-            &work,
-        );
-        let mut state = RuntimeState::with_host(&mut echo, host);
-
-        assert_eq!(
-            crate::runtime::run_hosted_program(execution.execution(), &mut state),
-            Ok(crate::Value::Int(BigInt::from(0))),
-        );
+        let result = crate::execution_fixture::run(&mut execution, &mut storage, &mut echo);
+        let lists = storage.expect("callback input storage was recorded");
+        assert_eq!(result, Ok(crate::Value::Int(BigInt::from(0))),);
         {
-            let storage_state = lock(&state.lists.storage.state);
+            let storage_state = lock(&lists.storage.state);
             assert_eq!(storage_state.pools.ints.slots.len(), 1);
             assert_eq!(storage_state.pools.ints.free, [0]);
         }
-        assert!(lock(&state.lists.storage.state).releases.is_empty());
+        assert!(lock(&lists.storage.state).releases.is_empty());
     }
 
     #[test]
     fn nested_callbacks_release_retained_custom_list_values_after_panic() {
-        let host = crate::HostModule::new("host_support", "host/callback")
+        let host = crate::HostModule::<LeaseProfile>::new_for_profile("host_support", "host/callback")
             .expect("host module should be valid")
-            .with_scoped_function::<
-                StatelessTestProvider,
+            .with_resumable_function::<
+                LeaseProvider,
                 (Callback, CallbackValue),
                 CallbackValue,
-                _,
+                geam_core::HostTypeListEnd, _,
             >("invoke", invoke_generic_callback)
             .expect("generic callback should be valid");
         let source = r#"
@@ -1798,29 +1843,22 @@ pub fn main() {
         )
         .expect("panicking callback source should compile");
         let plan = crate::plan_host_program(typed).expect("panicking callback source should plan");
-        let execution = crate::HostedExecution::try_from_module_plan(plan)
+        let mut execution = crate::HostedExecution::try_from_module_plan(plan)
             .expect("panicking callback execution should seal");
-        let mut host_state = ();
+        let mut storage = None;
         let mut echo = Vec::new();
-        let work = crate::runtime::work::execution::ExecutionWork::new();
-        let host = crate::runtime::state::RuntimeHost::new(
-            &mut host_state,
-            execution.external_stores(),
-            &work,
-        );
-        let mut state = RuntimeState::with_host(&mut echo, host);
-
         let panic = source_panic(
-            crate::runtime::run_hosted_program(execution.execution(), &mut state).map(drop),
+            crate::execution_fixture::run(&mut execution, &mut storage, &mut echo).map(drop),
         );
+        let lists = storage.expect("failed callback input storage was recorded");
         assert_eq!(panic.kind(), crate::PanicKind::Panic);
         assert_eq!(panic.site().function(), "stop");
         {
-            let storage_state = lock(&state.lists.storage.state);
+            let storage_state = lock(&lists.storage.state);
             assert_eq!(storage_state.pools.ints.slots.len(), 1);
             assert_eq!(storage_state.pools.ints.free, [0]);
         }
-        assert!(lock(&state.lists.storage.state).releases.is_empty());
+        assert!(lock(&lists.storage.state).releases.is_empty());
     }
 
     #[test]

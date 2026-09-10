@@ -1,4 +1,5 @@
 use ecow::EcoString;
+use geam_core::execution::{RunError, TokioHost};
 use geam_core::provider::{Call, Callback, HostFailure, HostResult, List, Value};
 use geam_core::{
     ExecutionError, HostComponentProfile, HostLocation, HostModule, HostProfile,
@@ -47,62 +48,68 @@ mod callback_provider {
         call.state().entries.join("/").into()
     }
 
-    #[geam_macros::function]
-    fn around<Item>(
+    #[geam_macros::function(resumable)]
+    async fn around<Item>(
         #[geam_macros::call] call: &mut Call<RunState>,
         callback: Callback<fn() -> Value<Item>>,
     ) -> HostResult<Value<Item>> {
-        call.state_mut().entries.push("before".into());
-        let returned = call.invoke(callback, ())?;
-        call.state_mut().entries.push("after".into());
+        call.with_state(|state| state.entries.push("before".into()))
+            .await?;
+        let returned = call.invoke(&callback, ()).await?;
+        call.with_state(|state| state.entries.push("after".into()))
+            .await?;
         Ok(returned)
     }
 
-    #[geam_macros::function]
-    fn apply<Item>(
+    #[geam_macros::function(resumable)]
+    async fn apply<Item>(
         #[geam_macros::call] call: &mut Call<RunState>,
         callback: Callback<fn(Value<Item>) -> Value<Item>>,
         value: Value<Item>,
     ) -> HostResult<Value<Item>> {
-        call.invoke(callback, (value,))
+        call.invoke(&callback, (value,)).await
     }
 
-    #[geam_macros::function]
-    fn rotate(
+    #[geam_macros::function(resumable)]
+    async fn rotate(
         #[geam_macros::call] call: &mut Call<RunState>,
         callback: Callback<fn(EcoString, BigInt) -> (BigInt, EcoString)>,
         label: EcoString,
         number: BigInt,
     ) -> HostResult<(BigInt, EcoString)> {
-        call.invoke(callback, (label, number))
+        call.invoke(&callback, (label, number)).await
     }
 
-    #[geam_macros::function]
-    fn decide(
+    #[geam_macros::function(resumable)]
+    async fn decide(
         #[geam_macros::call] call: &mut Call<RunState>,
         callback: Callback<fn(Token, Decision) -> DecisionInput>,
         label: EcoString,
     ) -> HostResult<Decision> {
-        let returned = call.invoke(callback, (Token(label.clone()), Decision::Accepted(label)))?;
+        let returned = call
+            .invoke(&callback, (Token(label.clone()), Decision::Accepted(label)))
+            .await?;
         Ok(match returned {
             DecisionInput::Accepted(label) => Decision::Accepted(label),
             DecisionInput::Rejected => Decision::Rejected,
         })
     }
 
-    #[geam_macros::function]
-    fn list_total(
+    #[geam_macros::function(resumable)]
+    async fn list_total(
         #[geam_macros::call] call: &mut Call<RunState>,
         callback: Callback<fn(Vec<((BigInt, EcoString), self::Token)>) -> geam_core::List<BigInt>>,
     ) -> HostResult<BigInt> {
-        let values = call.invoke(
-            callback,
-            (vec![
-                ((1.into(), "one".into()), Token("first".into())),
-                ((2.into(), "two".into()), Token("second".into())),
-                ((3.into(), "three".into()), Token("third".into())),
-            ],),
-        )?;
+        let values = call
+            .invoke(
+                &callback,
+                (vec![
+                    ((1.into(), "one".into()), Token("first".into())),
+                    ((2.into(), "two".into()), Token("second".into())),
+                    ((3.into(), "three".into()), Token("third".into())),
+                ],),
+            )
+            .await?;
         let mut total = BigInt::from(0);
         for index in 0..values.len() {
             total += values.get(index).expect("callback List index must exist");
@@ -110,29 +117,30 @@ mod callback_provider {
         Ok(total)
     }
 
-    #[geam_macros::function]
-    fn classify(
+    #[geam_macros::function(resumable)]
+    async fn classify(
         #[geam_macros::call] call: &mut Call<RunState>,
         callback: Callback<
             fn((EcoString, BigInt), Result<EcoString, Decision>, Option<BigInt>) -> Option<BigInt>,
         >,
     ) -> HostResult<Option<BigInt>> {
         call.invoke(
-            callback,
+            &callback,
             (
                 ("pair".into(), 2.into()),
                 Ok("result".into()),
                 Some(7.into()),
             ),
         )
+        .await
     }
 
-    #[geam_macros::function]
-    fn inspect_callback<Item>(
+    #[geam_macros::function(resumable)]
+    async fn inspect_callback<Item>(
         #[geam_macros::call] call: &mut Call<RunState>,
         callback: Callback<fn() -> (Value<Item>, List<EcoString>)>,
     ) -> HostResult<(Value<Item>, BigInt)> {
-        let (value, messages) = call.invoke(callback, ())?;
+        let (value, messages) = call.invoke(&callback, ()).await?;
         Ok((value, messages.len().into()))
     }
 
@@ -314,8 +322,13 @@ fn execution(source: &str) -> HostedExecution<Profile> {
 
 #[test]
 fn callbacks_reenter_the_component_and_preserve_typed_results() {
-    let returned = execution(SOURCE)
-        .run_main(&mut ProfileState::default(), &mut Vec::new())
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    let returned = runtime
+        .block_on(execution(SOURCE).run_main(&host, &mut ProfileState::default(), &mut Vec::new()))
         .expect("typed callbacks should execute");
 
     let RuntimeValue::Tuple(values) = returned else {
@@ -367,11 +380,16 @@ fn nested_provider_failure_remains_the_original_execution_error() {
         "#(\n    around(body),\n    apply(increment, 4),\n    rotate(rotate_value, \"tag\", 8),\n    decide(keep_decision, \"accepted\"),\n    list_total(keep_list),\n    classify(classify_values),\n    inspect_callback(callback_pair),\n    entries(),\n  )",
         "around(fail_callback)",
     );
-    let error = execution(&source)
-        .run_main(&mut ProfileState::default(), &mut Vec::new())
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    let error = runtime
+        .block_on(execution(&source).run_main(&host, &mut ProfileState::default(), &mut Vec::new()))
         .expect_err("nested provider failure should stop the outer callback");
 
-    let ExecutionError::Host(error) = error else {
+    let RunError::Execution(ExecutionError::Host(error)) = error else {
         panic!("nested provider failure should remain a host error");
     };
     assert_eq!(error.package().as_str(), "callback_provider");
@@ -396,11 +414,16 @@ fn nested_source_panic_is_not_rewrapped_as_a_host_failure() {
         "#(\n    around(body),\n    apply(increment, 4),\n    rotate(rotate_value, \"tag\", 8),\n    decide(keep_decision, \"accepted\"),\n    list_total(keep_list),\n    classify(classify_values),\n    inspect_callback(callback_pair),\n    entries(),\n  )",
         "around(panic_callback)",
     );
-    let error = execution(&source)
-        .run_main(&mut ProfileState::default(), &mut Vec::new())
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    let error = runtime
+        .block_on(execution(&source).run_main(&host, &mut ProfileState::default(), &mut Vec::new()))
         .expect_err("nested source panic should stop the outer callback");
 
-    let ExecutionError::Panic(panic) = error else {
+    let RunError::Execution(ExecutionError::Panic(panic)) = error else {
         panic!("nested source panic should preserve its source error");
     };
     assert_eq!(panic.kind(), PanicKind::Panic);

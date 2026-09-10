@@ -501,7 +501,7 @@ pub fn main() { retain(fn(value) { value + 1 }) }
             .unwrap(),
         )
         .unwrap();
-        let execution =
+        let mut execution =
             crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
                 .unwrap();
         let drops = Arc::new(AtomicUsize::new(0));
@@ -512,7 +512,7 @@ pub fn main() { retain(fn(value) { value + 1 }) }
             drops: Arc::clone(&drops),
         };
         assert_eq!(
-            execution.run_main(&mut state, &mut Vec::new()).unwrap(),
+            crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new()).unwrap(),
             crate::Value::Nil
         );
         drop(execution);

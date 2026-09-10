@@ -253,7 +253,7 @@ pub fn main() {
     )
     .expect("stored source should compile");
     let plan = plan_host_program(typed).expect("stored source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("stored execution should seal");
     let expected_explanation = r#"
 module main
@@ -283,9 +283,9 @@ function tuple#0
     let expected = Value::Tuple(vec![Value::Int(42.into()), Value::String("answer".into())]);
 
     let mut first_state = StoredRunState::default();
-    let first = execution.run_main(&mut first_state, &mut Vec::new());
+    let first = crate::execution_fixture::run(&mut execution, &mut first_state, &mut Vec::new());
     let mut second_state = StoredRunState::default();
-    let second = execution.run_main(&mut second_state, &mut Vec::new());
+    let second = crate::execution_fixture::run(&mut execution, &mut second_state, &mut Vec::new());
 
     assert_eq!(execution.explain().to_string().trim(), expected_explanation);
     assert_eq!(first, Ok(expected.clone()));
@@ -382,12 +382,12 @@ pub fn main() {
     )
     .expect("stored pair source should compile");
     let plan = plan_host_program(typed).expect("stored pair source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("stored pair execution should seal");
     let mut state = StoredRunState::default();
 
     assert_eq!(
-        execution.run_main(&mut state, &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new()),
         Ok(Value::Tuple(vec![
             Value::Int(BigInt::from(42)),
             Value::Int(BigInt::from(42)),
@@ -495,7 +495,7 @@ pub fn main() {
     )
     .expect("stored source should compile");
     let plan = plan_host_program(typed).expect("stored source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("stored execution should seal");
     let expected = Value::Tuple(vec![
         Value::Int(1.into()),
@@ -509,7 +509,7 @@ pub fn main() {
     ]);
 
     let mut state = StoredRunState::default();
-    let actual = execution.run_main(&mut state, &mut Vec::new());
+    let actual = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new());
 
     assert_eq!(actual, Ok(expected));
     assert_eq!(state.drops.load(Ordering::Relaxed), 3);
@@ -538,13 +538,24 @@ fn invokes_a_retained_callable_through_nested_host_reentry() {
 
     fn invoke_callback<'call>(
         mut call: HostCall<'call, StoredProfile, StoredProvider, BigInt>,
+        constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
         stored: HostExternal<'call, StoredCallback>,
         value: BigInt,
-    ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+    ) -> Result<geam_core::HostCallContinuation<'call, BigInt>, HostCallError> {
         let payload = call.external_payload(stored);
         let function = payload.restore(&mut call, |payload| &payload.function);
-        let value = call.invoke(function, (value, ()))?;
-        Ok(call.return_value(value))
+        let function = call.owned_callable(function, &constructions);
+        drop(payload);
+        Ok(call.resume(constructions, move |context| {
+            Box::pin(async move {
+                let value = function
+                    .invoke(&context, move |_, _| (value, ()), |_, _, value| Ok(value))
+                    .await?;
+                Ok(geam_core::HostOwnedCompletion::new(move |call, _| {
+                    Ok(call.return_value(value))
+                }))
+            })
+        }))
     }
 
     let provider = HostProviderModule::<StoredProfile>::new("application", "main")
@@ -561,7 +572,7 @@ fn invokes_a_retained_callable_through_nested_host_reentry() {
             restore_callback,
         )
         .expect("callback restore provider should be valid")
-        .with_scoped_function::<StoredProvider, (StoredCallback, BigInt), BigInt, _>(
+        .with_resumable_function::<StoredProvider, (StoredCallback, BigInt), BigInt, geam_core::HostTypeListEnd, _>(
             "invoke_callback",
             invoke_callback,
         )
@@ -607,7 +618,7 @@ pub fn main() {
     )
     .expect("stored callback source should compile");
     let plan = plan_host_program(typed).expect("stored callback source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("stored callback execution should seal");
     let expected = Value::Tuple(vec![
         Value::Bool(true),
@@ -616,7 +627,11 @@ pub fn main() {
     ]);
 
     assert_eq!(
-        execution.run_main(&mut StoredRunState::default(), &mut Vec::new()),
+        crate::execution_fixture::run(
+            &mut execution,
+            &mut StoredRunState::default(),
+            &mut Vec::new()
+        ),
         Ok(expected),
     );
 }
@@ -670,13 +685,12 @@ pub fn main() {
     )
     .expect("escaping stored source should compile");
     let plan = plan_host_program(typed).expect("escaping stored source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("stored execution should seal");
     let mut state = StoredRunState::default();
     let drops = Arc::clone(&state.drops);
 
-    let result = execution
-        .run_main(&mut state, &mut Vec::new())
+    let result = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect("stored graph should escape as an opaque value");
 
     assert_eq!(
@@ -753,12 +767,11 @@ pub fn main() {
     )
     .expect("stored failure source should compile");
     let plan = plan_host_program(typed).expect("stored failure source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("stored failure execution should seal");
     let mut state = StoredRunState::default();
 
-    let error = execution
-        .run_main(&mut state, &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect_err("host failure should be returned");
 
     assert_eq!(
@@ -818,12 +831,11 @@ pub fn main() {
     )
     .expect("stored panic source should compile");
     let plan = plan_host_program(typed).expect("stored panic source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("stored panic execution should seal");
     let mut state = StoredRunState::default();
 
-    let error = execution
-        .run_main(&mut state, &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect_err("source panic should be returned");
     let ExecutionError::Panic(panic) = error else {
         panic!("let assert should remain a source panic");

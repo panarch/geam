@@ -1,3 +1,6 @@
+#[path = "../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 use geam_core::provider::advanced::{Equality, Hashing, Inspection, RetainedExternalPayload};
 use geam_core::{
     HostComponentProfile, HostModule, HostProfile, HostProviderComponentRegistration,
@@ -85,11 +88,11 @@ pub fn main() { read(new(42)) }
             .expect("static provider composition"),
     )
     .expect("source should compile");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan_host_program(program).expect("plan"))
             .expect("seal");
     assert_eq!(
-        execution.run_main(&mut (), &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Int(42.into()))
     );
 }

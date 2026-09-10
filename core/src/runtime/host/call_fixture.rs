@@ -185,17 +185,6 @@ impl HostCallRuntime<TestHostProfile> for TestHostCallRuntime<'_> {
         Box::new([])
     }
 
-    fn invoke(
-        &mut self,
-        _function: HostFunctionToken,
-        arguments: Box<[HostScopedValue]>,
-    ) -> Result<HostValueToken, HostCallError> {
-        match arguments.into_vec().into_iter().next() {
-            Some(value) => Ok(self.complete(value)),
-            None => Ok(token(HostValueFamily::Nil)),
-        }
-    }
-
     fn equal(&self, _left: HostScopedValue, _right: HostScopedValue) -> bool {
         false
     }
@@ -322,6 +311,10 @@ impl HostCallRuntime<TestHostProfile> for TestHostCallRuntime<'_> {
 
     fn work(&self) -> crate::runtime::work::execution::WorkContext<TestHostProfile> {
         self.work.context()
+    }
+
+    fn execution(&self) -> crate::runtime::execution::ExecutionContext<TestHostProfile> {
+        self.work.execution()
     }
 
     fn origin(&self) -> crate::runtime::HostCallOrigin {
@@ -484,12 +477,10 @@ mod tests {
     #[test]
     fn fixture_callable_and_codec_retain_the_compiled_native_entry() {
         let mut state = TestRunState::default();
-        let runtime = TestHostCallRuntime::new(&mut state, RetainedValues::empty());
+        let mut runtime = TestHostCallRuntime::new(&mut state, RetainedValues::empty());
         let mut echo = Vec::new();
         assert_eq!(
-            runtime
-                .execution
-                .run_main(runtime.state, &mut echo)
+            crate::execution_fixture::run(&mut runtime.execution, runtime.state, &mut echo)
                 .expect("native entry"),
             Value::Int(0.into()),
         );
@@ -521,6 +512,17 @@ mod tests {
                 assert_eq!(value.value(), &EvaluatedValue::Int(42.into()));
             })
         });
+        let context = runtime.execution();
+        runtime.work.close();
+        assert_eq!(
+            context
+                .with_state(std::mem::take)
+                .now_or_never()
+                .unwrap()
+                .err(),
+            Some(crate::runtime::work::Cancelled),
+        );
+        assert_eq!(runtime.state.counter, 0);
     }
 
     #[test]

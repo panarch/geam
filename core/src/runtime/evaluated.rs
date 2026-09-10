@@ -36,7 +36,7 @@ pub(in crate::runtime) struct EvaluatedBitArray {
 #[derive(Debug, Clone, PartialEq)]
 pub(in crate::runtime) struct EvaluatedCustomValue {
     constructor: CustomConstructorId,
-    fields: Box<[EvaluatedValue]>,
+    fields: std::sync::Arc<Box<[EvaluatedValue]>>,
 }
 
 impl EvaluatedBitArray {
@@ -74,7 +74,7 @@ impl EvaluatedCustomValue {
     ) -> Self {
         Self {
             constructor,
-            fields,
+            fields: std::sync::Arc::new(fields),
         }
     }
 
@@ -91,11 +91,14 @@ impl EvaluatedCustomValue {
     }
 
     pub(in crate::runtime) fn take_fields(&mut self) -> Box<[EvaluatedValue]> {
-        std::mem::take(&mut self.fields)
+        std::sync::Arc::unwrap_or_clone(std::mem::take(&mut self.fields))
     }
 
     pub(in crate::runtime) fn into_fields(self) -> (CustomConstructorId, Box<[EvaluatedValue]>) {
-        (self.constructor, self.fields)
+        (
+            self.constructor,
+            std::sync::Arc::unwrap_or_clone(self.fields),
+        )
     }
 }
 

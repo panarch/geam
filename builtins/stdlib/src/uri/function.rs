@@ -187,15 +187,15 @@ pub fn main() {
     #[test]
     fn executes_every_uri_provider_through_the_typed_hosted_pipeline() {
         let source = format!("{URI_DECLARATIONS}\n{URI_MAIN}");
-        let execution = execution(&source);
+        let mut execution = execution(&source);
 
         assert_eq!(
-            execution
-                .run_main(
-                    &mut GleamStdlibRunState::from_seed([5; 32]),
-                    &mut Vec::new(),
-                )
-                .expect("synthetic URI source should run"),
+            crate::execution_fixture::run(
+                &mut execution,
+                &mut GleamStdlibRunState::from_seed([5; 32]),
+                &mut Vec::new()
+            )
+            .expect("synthetic URI source should run"),
             Value::Nil,
         );
     }
@@ -204,13 +204,13 @@ pub fn main() {
     fn preserves_invalid_slices_through_the_uri_host_adapter() {
         let source =
             format!("{URI_DECLARATIONS}\npub fn main() {{ codeunit_slice(\"año\", -1, 1) }}");
-        let execution = execution(&source);
-        let error = execution
-            .run_main(
-                &mut GleamStdlibRunState::from_seed([5; 32]),
-                &mut Vec::new(),
-            )
-            .expect_err("invalid URI slice should fail");
+        let mut execution = execution(&source);
+        let error = crate::execution_fixture::run(
+            &mut execution,
+            &mut GleamStdlibRunState::from_seed([5; 32]),
+            &mut Vec::new(),
+        )
+        .expect_err("invalid URI slice should fail");
         let error = expect_uri_host_error(error);
 
         assert_eq!(error.package(), "gleam_stdlib");

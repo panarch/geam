@@ -18,14 +18,16 @@ use crate::plan::execution::{
     LibraryFunctionEntries, LibraryFunctionEntry, LibraryInputConstructions,
     LibraryListConstructions,
 };
-use crate::plan::{CustomValueShape, LibraryEntry, LibraryValueType, StandardVariant, ValueShape};
+use crate::plan::{
+    CustomValueShape, LibraryEntry, LibraryValueType, LibraryVariant, StandardVariant, ValueShape,
+};
 use std::convert::Infallible;
 
 #[derive(Clone)]
 pub(super) struct Entry<External = crate::plan::ExternalType> {
     template: crate::plan::FunctionTemplateId,
     return_: LibraryValueType<External>,
-    input_variants: Box<[StandardVariant]>,
+    input_variants: Box<[LibraryVariant]>,
     input_lists: Box<[LibraryValueType]>,
 }
 
@@ -625,80 +627,22 @@ impl LoweringContext {
     fn library_input_constructions(
         &mut self,
         key: &SpecializationKey,
-        variants: &[StandardVariant],
+        variants: &[LibraryVariant],
         input_lists: &[LibraryValueType],
     ) -> LibraryInputConstructions {
-        let parameter_shapes = self.entry_templates[&key.template()]
-            .parameter_shapes()
-            .to_vec();
-        let mut next_variant = 0;
         let mut constructions = Vec::with_capacity(variants.len());
         let mut lists = LibraryListConstructions::default();
-        for shape in parameter_shapes {
-            let shape = SpecializedValueShape::instantiate(&shape, key.substitution());
-            self.collect_library_input_constructions(
-                &shape,
-                variants,
-                &mut next_variant,
-                &mut constructions,
+        for variant in variants {
+            let shape = SpecializedCustomValueShape::instantiate(
+                &CustomValueShape::any(variant.kind.custom_type(variant.arguments.clone())),
+                key.substitution(),
             );
+            constructions.push(self.standard_variant_constructors(&shape, variant.kind));
         }
         for item in input_lists {
             self.collect_library_list_construction(item, key.substitution(), &mut lists);
         }
         LibraryInputConstructions::new(constructions, lists)
-    }
-
-    fn collect_library_input_constructions(
-        &mut self,
-        shape: &SpecializedValueShape,
-        variants: &[StandardVariant],
-        next_variant: &mut usize,
-        constructions: &mut Vec<[crate::plan::execution::type_::CustomConstructorId; 2]>,
-    ) {
-        match shape {
-            SpecializedValueShape::Tuple(elements) => {
-                for element in elements {
-                    self.collect_library_input_constructions(
-                        element,
-                        variants,
-                        next_variant,
-                        constructions,
-                    );
-                }
-            }
-            SpecializedValueShape::Custom(custom) => {
-                let variant = variants[*next_variant];
-                *next_variant += 1;
-                constructions.push(self.standard_variant_constructors(custom, variant));
-                for argument in custom.arguments() {
-                    self.collect_library_input_constructions(
-                        argument,
-                        variants,
-                        next_variant,
-                        constructions,
-                    );
-                }
-            }
-            SpecializedValueShape::List(item) => {
-                self.collect_library_input_constructions(
-                    item,
-                    variants,
-                    next_variant,
-                    constructions,
-                );
-            }
-            SpecializedValueShape::Parameter(_)
-            | SpecializedValueShape::Int
-            | SpecializedValueShape::Float
-            | SpecializedValueShape::String
-            | SpecializedValueShape::BitArray
-            | SpecializedValueShape::UtfCodepoint
-            | SpecializedValueShape::Bool
-            | SpecializedValueShape::Nil
-            | SpecializedValueShape::Function(_)
-            | SpecializedValueShape::External(_) => {}
-        }
     }
 
     fn collect_library_list_construction(

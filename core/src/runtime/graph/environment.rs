@@ -1077,8 +1077,7 @@ pub fn main() {
         let mut state = TestRunState::default();
         let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
         assert_eq!(
-            implementation
-                .call(&mut runtime)
+            crate::host::expect_immediate_call(implementation, &mut runtime)
                 .expect("host function should succeed")
                 .family,
             HostValueFamily::Int,
@@ -1095,8 +1094,7 @@ pub fn main() {
 
         let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
         assert_eq!(
-            implementation
-                .call(&mut runtime)
+            crate::host::expect_immediate_call(implementation, &mut runtime)
                 .expect("host function should succeed")
                 .family,
             HostValueFamily::Int,

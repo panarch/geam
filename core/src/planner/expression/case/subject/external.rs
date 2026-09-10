@@ -414,11 +414,14 @@ pub fn main() {
         )
         .expect("external source should compile");
         let plan = crate::plan_host_program(typed).expect("external case should plan");
-        let execution =
+        let mut execution =
             crate::HostedExecution::try_from_module_plan(plan).expect("external case should seal");
-        let returned = execution
-            .run_main(&mut ExternalTestRunState::default(), &mut Vec::new())
-            .expect("external case should execute");
+        let returned = crate::execution_fixture::run(
+            &mut execution,
+            &mut ExternalTestRunState::default(),
+            &mut Vec::new(),
+        )
+        .expect("external case should execute");
 
         assert_eq!(
             returned.inspect().to_string(),

@@ -987,7 +987,7 @@ pub fn main() -> Resource {
         )
         .expect("external main should compile");
         let plan = plan_host_program(typed).expect("external main should plan");
-        let execution =
+        let mut execution =
             HostedExecution::try_from_module_plan(plan).expect("external main should seal");
         let external_type = ExternalType::new(
             ExternalTypeName::new("application".into(), "main".into(), "Resource".into()),
@@ -1005,9 +1005,12 @@ pub fn main() -> Resource {
         assert_eq!(value.kind().family(), FunctionReturnFamily::External);
         assert_eq!(clone_through_family(&value), value);
 
-        let returned = execution
-            .run_main(&mut ExternalTestRunState::default(), &mut Vec::new())
-            .expect("external main should execute");
+        let returned = crate::execution_fixture::run(
+            &mut execution,
+            &mut ExternalTestRunState::default(),
+            &mut Vec::new(),
+        )
+        .expect("external main should execute");
         assert_eq!(returned.inspect().to_string(), "Resource");
         assert_eq!(returned.value_type(), ValueType::External(external_type));
     }

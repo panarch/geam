@@ -1,3 +1,4 @@
+mod activation;
 mod bit_array;
 mod environment;
 mod instruction;
@@ -10,55 +11,27 @@ pub(super) use value::GraphValue;
 
 pub(in crate::runtime) use self::environment::BlockEnvironment;
 pub(in crate::runtime) use self::terminator::RuntimeGraphState;
-use self::terminator::{GraphAction, NeverCall, terminator_action};
-use crate::plan::execution::graph::{BlockGraphExitId, ParamLocal, ProfiledBlockGraph};
-use crate::runtime::{ExecutableRuntimePlan, RuntimeGraph};
+use crate::plan::execution::graph::{BlockGraphExitId, BlockId, ParamLocal};
+use crate::runtime::ExecutableRuntimePlan;
+use crate::runtime::error::ExecutionResult;
+pub(in crate::runtime) use activation::{Activation, Frame, Returns};
+pub(in crate::runtime) use activation::{Execution as GraphExecution, Progress as GraphProgress};
 
-pub(super) fn execute<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    graph: &ProfiledBlockGraph<RuntimeGraph<Plan>>,
-    inputs: RetainedValues,
-) -> ExecutionResult<CompletedGraph> {
-    let mut block_id = graph.entry();
-    let mut environment = BlockEnvironment::from_retained(inputs);
+struct GraphPosition {
+    block: BlockId,
+    instruction: usize,
+    environment: BlockEnvironment,
+}
 
-    loop {
-        let block = graph.block(block_id);
-        for instruction in block.instructions() {
-            instruction::execute(plan, state, &mut environment, instruction)?;
-        }
-
-        match terminator_action(plan, state, &environment, block.terminator())? {
-            GraphAction::Continue { block, inputs } => {
-                drop(environment);
-                block_id = block;
-                environment = BlockEnvironment::from_retained(inputs);
-            }
-            GraphAction::Exit(exit) => return Ok(CompletedGraph { exit, environment }),
-            GraphAction::NeverCall {
-                function,
-                inputs,
-                site,
-            } => {
-                drop(environment);
-                let origin = crate::runtime::error::HostCallOrigin::source(site);
-                return match function {
-                    NeverCall::Direct(function) => {
-                        crate::runtime::function::run_never(plan, state, function, origin, inputs)
-                            .map(|never| match never {})
-                    }
-                    NeverCall::Value(function) => crate::runtime::function::run_never_value(
-                        plan, state, function, origin, inputs,
-                    )
-                    .map(|never| match never {}),
-                };
-            }
+impl GraphPosition {
+    fn new(entry: BlockId, inputs: RetainedValues) -> Self {
+        Self {
+            block: entry,
+            instruction: 0,
+            environment: BlockEnvironment::from_retained(inputs),
         }
     }
 }
-use crate::runtime::error::ExecutionResult;
-use crate::runtime::state::RuntimeStateFor;
 
 pub(in crate::runtime) struct CompletedGraph {
     exit: BlockGraphExitId,
@@ -86,29 +59,30 @@ impl CompletedGraph {
     }
 }
 
-pub(in crate::runtime) fn execute_external_list_instruction<Plan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &mut BlockEnvironment,
+pub(in crate::runtime) fn advance_external_list_instruction<'plan, Plan>(
+    plan: &'plan Plan,
+    state: &mut impl RuntimeGraphState<Error = crate::ExecutionError>,
+    frame: Frame<'plan, Plan>,
+    returns: &mut Returns<'plan, Plan>,
     instruction: &crate::plan::execution::graph::ExternalListInstruction,
     expected: &crate::plan::ValueType,
-) -> ExecutionResult<()>
+) -> ExecutionResult<Activation<'plan, Plan>>
 where
     Plan: ExecutableRuntimePlan<Profile = crate::plan::execution::host::HostedExecutionProfile>,
 {
-    instruction::execute_external_list(plan, state, environment, instruction, expected)
+    instruction::advance_external_list(plan, state, frame, returns, instruction, expected)
 }
 
-pub(in crate::runtime) fn execute_external_function_instruction<Plan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &mut BlockEnvironment,
+pub(in crate::runtime) fn advance_external_function_instruction<'plan, Plan>(
+    plan: &'plan Plan,
+    frame: Frame<'plan, Plan>,
+    returns: &mut Returns<'plan, Plan>,
     instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
-) -> ExecutionResult<()>
+) -> Activation<'plan, Plan>
 where
     Plan: ExecutableRuntimePlan<Profile = crate::plan::execution::host::HostedExecutionProfile>,
 {
-    instruction::execute_external_function(plan, state, environment, instruction)
+    instruction::advance_external_function(plan, frame, returns, instruction)
 }
 
 #[cfg(test)]
@@ -181,10 +155,11 @@ pub fn main() {
         inputs.push_evaluated(EvaluatedValue::Custom(malformed));
 
         assert_eq!(
-            super::execute(
+            crate::runtime::function::run_int(
                 &plan,
                 &mut RuntimeState::new(&mut Vec::new()),
-                plan.int_function(IntFunctionId(1)).body().block_graph(),
+                IntFunctionId(1),
+                crate::runtime::HostCallOrigin::Entry,
                 inputs,
             )
             .map(|_| ()),

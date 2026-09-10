@@ -11,6 +11,9 @@ use geam_core::{
 use num_bigint::BigInt;
 use std::convert::Infallible;
 
+type Owned<Type> =
+    geam_core::provider::Value<Type, geam_core::provider::ProviderValueContext<Type>>;
+
 #[test]
 fn external_profile_preserves_every_callback_return_family() {
     fn new_counter<'call>(
@@ -22,20 +25,50 @@ fn external_profile_preserves_every_callback_return_family() {
     }
 
     fn invoke<'call>(
-        mut call: HostCall<'call, ExternalProfile, CounterProvider, GenericValue>,
+        call: HostCall<'call, ExternalProfile, CounterProvider, GenericValue>,
+        constructions: geam_core::HostConstructions<'call, geam_core::HostTypeListEnd>,
         function: HostCallable<'call, NoArguments, GenericValue>,
-    ) -> Result<HostCallCompletion<'call, GenericValue>, HostCallError> {
-        let value = call.invoke(function, ())?;
-        Ok(call.return_value(value))
+    ) -> Result<geam_core::HostCallContinuation<'call, GenericValue>, HostCallError> {
+        let function = call.owned_callable(function, &constructions);
+        Ok(call.resume(constructions, move |context| {
+            Box::pin(async move {
+                let value = function
+                    .invoke(
+                        &context,
+                        |_, _| (),
+                        |call, _, value| Ok(Owned::<GenericValue>::from_host(&call, value)),
+                    )
+                    .await?;
+                Ok(geam_core::HostOwnedCompletion::new(move |mut call, _| {
+                    let value = value.into_host(&mut call);
+                    Ok(call.return_value(value))
+                }))
+            })
+        }))
     }
 
     fn invoke_with_int<'call>(
-        mut call: HostCall<'call, ExternalProfile, CounterProvider, GenericValue>,
+        call: HostCall<'call, ExternalProfile, CounterProvider, GenericValue>,
+        constructions: geam_core::HostConstructions<'call, geam_core::HostTypeListEnd>,
         function: HostCallable<'call, IntArguments, GenericValue>,
         value: BigInt,
-    ) -> Result<HostCallCompletion<'call, GenericValue>, HostCallError> {
-        let value = call.invoke(function, (value, ()))?;
-        Ok(call.return_value(value))
+    ) -> Result<geam_core::HostCallContinuation<'call, GenericValue>, HostCallError> {
+        let function = call.owned_callable(function, &constructions);
+        Ok(call.resume(constructions, move |context| {
+            Box::pin(async move {
+                let value = function
+                    .invoke(
+                        &context,
+                        move |_, _| (value, ()),
+                        |call, _, value| Ok(Owned::<GenericValue>::from_host(&call, value)),
+                    )
+                    .await?;
+                Ok(geam_core::HostOwnedCompletion::new(move |mut call, _| {
+                    let value = value.into_host(&mut call);
+                    Ok(call.return_value(value))
+                }))
+            })
+        }))
     }
 
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
@@ -47,11 +80,11 @@ fn external_profile_preserves_every_callback_return_family() {
             new_counter,
         )
         .expect("external constructor should be valid")
-        .with_scoped_function::<CounterProvider, (GenericCallback,), GenericValue, _>(
+        .with_resumable_function::<CounterProvider, (GenericCallback,), GenericValue, geam_core::HostTypeListEnd, _>(
             "invoke", invoke,
         )
         .expect("generic callback should be valid")
-        .with_scoped_function::<CounterProvider, (GenericIntCallback, BigInt), GenericValue, _>(
+        .with_resumable_function::<CounterProvider, (GenericIntCallback, BigInt), GenericValue, geam_core::HostTypeListEnd, _>(
             "invoke_with_int",
             invoke_with_int,
         )
@@ -128,15 +161,18 @@ pub fn main() {
     )
     .expect("callback family source should compile");
     let plan = plan_host_program(typed).expect("callback family source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("callback family execution should seal");
 
     assert_eq!(
-        execution
-            .run_main(&mut ExternalRunState::default(), &mut Vec::new())
-            .expect("every callback family should execute")
-            .inspect()
-            .to_string(),
+        crate::execution_fixture::run(
+            &mut execution,
+            &mut ExternalRunState::default(),
+            &mut Vec::new()
+        )
+        .expect("every callback family should execute")
+        .inspect()
+        .to_string(),
         r#"#(1, 1.5, "text", <<1>>, 'A', Marker(2), Marker(7), Counter(3), True, Nil, #(4, False), [5, 6], 9, [Counter(10)], Counter(11), Counter(12))"#,
     );
 }
@@ -182,12 +218,15 @@ pub fn main() {
     )
     .expect("diverging external function source should compile");
     let plan = plan_host_program(typed).expect("diverging external function source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("diverging external function execution should seal");
     let mut echoes = Vec::new();
-    let error = execution
-        .run_main(&mut ExternalRunState::default(), &mut echoes)
-        .expect_err("diverging external function should fail");
+    let error = crate::execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut echoes,
+    )
+    .expect_err("diverging external function should fail");
     let ExecutionError::Host(error) = error else {
         panic!("diverging external function should produce a host error");
     };
@@ -255,11 +294,14 @@ pub fn main() {
     .expect("external function block source should compile");
     let plan =
         plan_host_program(typed).expect("external function block source should plan completely");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("external function block execution should seal");
-    let error = execution
-        .run_main(&mut ExternalRunState::default(), &mut Vec::new())
-        .expect_err("the source panic should stop before the callable is returned");
+    let error = crate::execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut Vec::new(),
+    )
+    .expect_err("the source panic should stop before the callable is returned");
     let ExecutionError::Panic(error) = error else {
         panic!("the block should preserve its source panic");
     };
@@ -274,16 +316,26 @@ fn external_profile_preserves_a_nested_failure_from_a_never_callback() {
     type NeverCallable = HostFunctionType<NoArguments, NeverReturn>;
 
     fn invoke_never<'call>(
-        mut call: HostCall<'call, ExternalProfile, CounterProvider, BigInt>,
+        call: HostCall<'call, ExternalProfile, CounterProvider, BigInt>,
+        constructions: geam_core::HostConstructions<'call, geam_core::HostTypeListEnd>,
         function: HostCallable<'call, NoArguments, NeverReturn>,
-    ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
-        let _ = call.invoke(function, ())?;
-        Ok(call.return_value(0.into()))
+    ) -> Result<geam_core::HostCallContinuation<'call, BigInt>, HostCallError> {
+        let function = call.owned_callable(function, &constructions);
+        Ok(call.resume(constructions, move |context| {
+            Box::pin(async move {
+                function
+                    .invoke(&context, |_, _| (), |_, _, _| Ok(()))
+                    .await?;
+                Ok(geam_core::HostOwnedCompletion::new(move |call, _| {
+                    Ok(call.return_value(0.into()))
+                }))
+            })
+        }))
     }
 
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_scoped_function::<CounterProvider, (NeverCallable,), BigInt, _>(
+        .with_resumable_function::<CounterProvider, (NeverCallable,), BigInt, geam_core::HostTypeListEnd, _>(
             "invoke_never",
             invoke_never,
         )
@@ -313,11 +365,14 @@ pub fn main() {
     )
     .expect("Never callback source should compile");
     let plan = plan_host_program(typed).expect("Never callback source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("Never callback execution should seal");
-    let error = execution
-        .run_main(&mut ExternalRunState::default(), &mut Vec::new())
-        .expect_err("nested Never callback should preserve its panic");
+    let error = crate::execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut Vec::new(),
+    )
+    .expect_err("nested Never callback should preserve its panic");
     let ExecutionError::Panic(error) = error else {
         panic!("nested Never callback should remain a source panic");
     };
@@ -613,13 +668,16 @@ pub fn main() {
     )
     .expect("external function source should compile");
     let plan = plan_host_program(typed).expect("external function source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("external function execution should seal");
 
     let mut echoes = Vec::new();
-    let returned = execution
-        .run_main(&mut ExternalRunState::default(), &mut echoes)
-        .expect("external function source should execute");
+    let returned = crate::execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut echoes,
+    )
+    .expect("external function source should execute");
 
     assert_eq!(echoes.len(), 1);
     assert_eq!(
@@ -665,13 +723,16 @@ pub fn main() -> fn(Int) -> Int {
     )
     .expect("core function source should compile");
     let plan = plan_host_program(typed).expect("core function source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("core function execution should seal");
     let mut echoes = Vec::new();
 
-    let returned = execution
-        .run_main(&mut ExternalRunState::default(), &mut echoes)
-        .expect("core function source should execute");
+    let returned = crate::execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut echoes,
+    )
+    .expect("core function source should execute");
 
     assert_eq!(returned.inspect().to_string(), "//fn(a) { ... }");
     assert_eq!(echoes.len(), 1);
@@ -841,13 +902,16 @@ pub fn main() {
     )
     .expect("symbolic external function source should compile");
     let plan = plan_host_program(typed).expect("symbolic external function source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("symbolic external function execution should seal");
 
     let mut echoes = Vec::new();
-    let returned = execution
-        .run_main(&mut ExternalRunState::default(), &mut echoes)
-        .expect("symbolic external function source should execute");
+    let returned = crate::execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut echoes,
+    )
+    .expect("symbolic external function source should execute");
 
     assert_eq!(returned, Value::Tuple(vec![Value::Bool(true); 14]));
     assert_eq!(echoes.len(), 1);
@@ -965,12 +1029,15 @@ pub fn main() {
     )
     .expect("executable external function source should compile");
     let plan = plan_host_program(typed).expect("executable external function source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("executable external function execution should seal");
 
-    let returned = execution
-        .run_main(&mut ExternalRunState::default(), &mut Vec::new())
-        .expect("executable external function source should execute");
+    let returned = crate::execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut Vec::new(),
+    )
+    .expect("executable external function source should execute");
 
     assert_eq!(returned, Value::Tuple(vec![Value::Bool(true); 11]));
 }
@@ -1123,12 +1190,15 @@ pub fn main() {
     .expect("generic external return function source should compile");
     let plan =
         plan_host_program(typed).expect("generic external return function source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("generic external return function execution should seal");
 
-    let returned = execution
-        .run_main(&mut ExternalRunState::default(), &mut Vec::new())
-        .expect("generic external return function source should execute");
+    let returned = crate::execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut Vec::new(),
+    )
+    .expect("generic external return function source should execute");
 
     assert_eq!(returned, Value::Tuple(vec![Value::Bool(true); 17]));
 }

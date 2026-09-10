@@ -174,6 +174,10 @@ where
         self.state.host().work()
     }
 
+    fn execution(&self) -> crate::runtime::execution::ExecutionContext<Profile> {
+        self.state.host().execution()
+    }
+
     fn origin(&self) -> crate::runtime::HostCallOrigin {
         self.origin.clone()
     }
@@ -268,31 +272,6 @@ where
             .map(|value| self.scoped.push(value))
             .collect::<Vec<_>>()
             .into_boxed_slice()
-    }
-
-    fn invoke(
-        &mut self,
-        function: HostFunctionToken,
-        arguments: Box<[HostScopedValue]>,
-    ) -> Result<HostValueToken, crate::HostCallError> {
-        let function = self.scoped.function(function);
-        let arguments = arguments
-            .into_vec()
-            .into_iter()
-            .map(|value| self.scoped.value_from_scoped(value))
-            .collect::<Vec<_>>();
-        function
-            .with_value(|function| {
-                crate::runtime::function::invoke_callable(
-                    self.plan,
-                    self.state,
-                    function,
-                    crate::runtime::error::HostCallOrigin::host(self.function),
-                    arguments.into_boxed_slice(),
-                )
-            })
-            .map(|value| self.scoped.push(value))
-            .map_err(crate::HostCallError::nested)
     }
 
     fn equal(&self, left: HostScopedValue, right: HostScopedValue) -> bool {

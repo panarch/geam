@@ -1,48 +1,47 @@
-use super::shared::Shared;
-use super::work::driver::Driver;
-use super::{EchoSink, HostCallOrigin, ObservationError, RetainedValues, SharedExecutionError};
+use super::{EchoSink, HostCallOrigin, RetainedValues};
+use crate::execution::{ExecutionHost, RunError};
 use crate::host::HostWorkProfile;
 use crate::plan::execution::{EntryCompletion, HostedEntry};
+use crate::runtime::execution::Domain;
+use std::sync::Arc;
 
 pub(crate) async fn run_hosted_entry<Profile: HostWorkProfile>(
     entry: &mut HostedEntry<Profile>,
+    host: &dyn ExecutionHost,
     state: &mut Profile::RunState,
-    echo: &mut dyn EchoSink,
-) -> Result<(), ObservationError> {
-    let function = match entry.completion {
-        EntryCompletion::Immediate => {
-            return entry
-                .execution
-                .run_main(state, echo)
-                .map(|_| ())
-                .map_err(|error| {
-                    ObservationError::Execution(SharedExecutionError(Shared::new(error)))
-                });
-        }
-        EntryCompletion::Work(function) => function,
-    };
+    echo: &mut (dyn EchoSink + Send),
+) -> Result<(), RunError> {
     let (plan, stores) = entry.execution.parts_mut();
     let store = crate::host::work_store::<Profile>(stores).clone_handle();
-    let mut driver = Driver::new(plan, state, stores, echo);
-    let work = driver.call(|plan, runtime| {
-        super::function::run_external(
-            plan,
-            runtime,
-            function,
-            HostCallOrigin::Entry,
-            RetainedValues::empty(),
-        )
-        .map(|value| store.work(value.lease()))
-        .map_err(|error| ObservationError::Execution(SharedExecutionError(Shared::new(error))))
-    })?;
-    let completed = driver
-        .observe(&work)
-        .await
-        .map_err(|_| ObservationError::Cancelled)?;
-    completed.read(|result| match result {
-        Ok(_) => Ok(()),
-        Err(error) => Err(ObservationError::Execution(SharedExecutionError(
-            error.clone(),
-        ))),
-    })
+    let domain = Domain::new(
+        Arc::clone(plan),
+        host,
+        state,
+        stores,
+        echo,
+        Domain::<Profile>::DEFAULT_BUDGET,
+    );
+    let context = domain.context();
+    domain
+        .drive(async {
+            match entry.completion {
+                EntryCompletion::Immediate => {
+                    context.run_main().await?;
+                }
+                EntryCompletion::Work(function) => {
+                    let value = context
+                        .call(function, HostCallOrigin::Entry, RetainedValues::empty())
+                        .await
+                        .map_err(|_| RunError::Cancelled)??;
+                    let work = store.work(value.lease());
+                    let completed = work.observe().await.map_err(|_| RunError::Cancelled)?;
+                    completed.read(|result| match result {
+                        Ok(_) => Ok(()),
+                        Err(error) => Err(RunError::Execution(error.read(Clone::clone))),
+                    })?;
+                }
+            }
+            Ok(())
+        })
+        .await?
 }

@@ -1,8 +1,6 @@
 use super::super::environment::BlockEnvironment;
 use super::super::{GraphValue, RuntimeGraphState};
-use super::value::{
-    InstructionValue, constant, custom_projection, ensure_list_index, tuple_projection,
-};
+use super::value::{InstructionValue, custom_projection, ensure_list_index, tuple_projection};
 use crate::plan::ValueType;
 use crate::plan::execution::function::{
     BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, ExternalListFunctionId,
@@ -23,14 +21,12 @@ use crate::plan::execution::type_::{
     FunctionListTypeId, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId,
     ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
-use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::InvariantError;
-use crate::runtime::error::{ExecutionResult, HostCallOrigin};
+use crate::runtime::error::HostCallOrigin;
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalListFunction, EvaluatedExternalValue,
     EvaluatedFunctionValue, EvaluatedListFunction, EvaluatedValue,
 };
-use crate::runtime::state::RuntimeStateFor;
 use crate::runtime::state::list::{
     BitArrayListValueId, BoolListValueId, CustomListAllocation, CustomListValueId,
     ExternalListAllocation, ExternalListValueId, FloatListValueId, FunctionListValueId,
@@ -171,101 +167,6 @@ where
         instruction.instruction(),
         expected,
     )
-}
-
-pub(super) fn execute<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &mut BlockEnvironment,
-    instruction: &ListInstruction,
-    expected: &ValueType,
-) -> ExecutionResult<()> {
-    evaluate(plan, state, environment, instruction, expected)
-        .and_then(|value| resolve(plan, state, environment, value))
-}
-
-pub(super) fn execute_external<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &mut BlockEnvironment,
-    instruction: &ExternalListInstruction,
-    expected: &ValueType,
-) -> ExecutionResult<()> {
-    evaluate_external(plan, state, environment, instruction, expected)
-        .and_then(|value| match value {
-            InstructionValue::Ready(value) => Ok(value),
-            InstructionValue::Constant(id) => constant(plan, state, id),
-            InstructionValue::Call {
-                function,
-                origin,
-                inputs,
-            } => crate::runtime::function::run_external_list(plan, state, function, origin, inputs),
-        })
-        .map(|value| environment.push_external_list(value))
-}
-
-fn resolve<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &mut BlockEnvironment,
-    value: ListInstructionValue,
-) -> ExecutionResult<()> {
-    macro_rules! resolve_value {
-        ($value:expr, $run:ident, $push:ident) => {{
-            match $value {
-                InstructionValue::Ready(value) => {
-                    environment.$push(value);
-                    Ok(())
-                }
-                InstructionValue::Constant(id) => constant(plan, state, id).map(|value| {
-                    environment.$push(value);
-                }),
-                InstructionValue::Call {
-                    function,
-                    origin,
-                    inputs,
-                } => crate::runtime::function::$run(plan, state, function, origin, inputs).map(
-                    |value| {
-                        environment.$push(value);
-                    },
-                ),
-            }
-        }};
-    }
-
-    match value {
-        ListInstructionValue::Parameter(value) => {
-            resolve_value!(value, run_parameter_list, push_parameter_list)
-        }
-        ListInstructionValue::ParameterList(value) => {
-            resolve_value!(value, run_parameter_list_list, push_parameter_list_list)
-        }
-        ListInstructionValue::Int(value) => resolve_value!(value, run_int_list, push_int_list),
-        ListInstructionValue::String(value) => {
-            resolve_value!(value, run_string_list, push_string_list)
-        }
-        ListInstructionValue::BitArray(value) => {
-            resolve_value!(value, run_bit_array_list, push_bit_array_list)
-        }
-        ListInstructionValue::UtfCodepoint(value) => {
-            resolve_value!(value, run_utf_codepoint_list, push_utf_codepoint_list)
-        }
-        ListInstructionValue::Custom(value) => {
-            resolve_value!(value, run_custom_list, push_custom_list)
-        }
-        ListInstructionValue::Float(value) => {
-            resolve_value!(value, run_float_list, push_float_list)
-        }
-        ListInstructionValue::Bool(value) => resolve_value!(value, run_bool_list, push_bool_list),
-        ListInstructionValue::Nil(value) => resolve_value!(value, run_nil_list, push_nil_list),
-        ListInstructionValue::Tuple(value) => {
-            resolve_value!(value, run_tuple_list, push_tuple_list)
-        }
-        ListInstructionValue::List(value) => resolve_value!(value, run_list_list, push_list_list),
-        ListInstructionValue::Function(value) => {
-            resolve_value!(value, run_function_list, push_function_list)
-        }
-    }
 }
 
 fn parameter<Plan, State>(
@@ -1123,7 +1024,7 @@ mod tests {
     use super::{
         BitArrayFamily, BoolFamily, CustomFamily, ExternalFamily, FloatFamily, FunctionFamily,
         IntFamily, ListFamily, NilFamily, ParameterListFamily, RuntimeTypedList, StringFamily,
-        TupleFamily, UtfCodepointFamily, execute, list_function_mismatch, parameter, typed,
+        TupleFamily, UtfCodepointFamily, evaluate, list_function_mismatch, parameter, typed,
     };
     use crate::frontend::compile_typed_host_program;
     use crate::host::{HostComponentProfile, HostFutureStore, HostProfile, HostProviderSet};
@@ -1143,7 +1044,7 @@ mod tests {
         CustomType, CustomTypeName, FunctionType, LibraryEntry, LibraryValueType, TypeParameterId,
         ValueType,
     };
-    use crate::runtime::function::run_custom;
+
     use crate::runtime::state::RuntimeState;
     use crate::runtime::state::list::ListValueId;
     use crate::runtime::{
@@ -1296,7 +1197,7 @@ pub fn main() {
         let type_id = plan.parameter_list_list_function_id(0).type_id();
         let mut retained = RetainedValues::empty();
         retained.push_evaluated(EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]));
-        let mut environment = BlockEnvironment::from_retained(retained);
+        let environment = BlockEnvironment::from_retained(retained);
         let instruction = ListInstruction::ParameterList(
             type_id,
             TypedListInstruction::TupleIndex {
@@ -1309,13 +1210,14 @@ pub fn main() {
         )))));
 
         assert_eq!(
-            execute(
+            evaluate(
                 &plan,
                 &mut RuntimeState::new(&mut Vec::new()),
-                &mut environment,
+                &environment,
                 &instruction,
                 &expected,
-            ),
+            )
+            .map(|_| ()),
             Err(ExecutionError::Invariant(
                 InvariantError::TupleIndexFamilyMismatch {
                     expected,
@@ -1331,7 +1233,7 @@ pub fn main() {
         let type_id = plan.parameter_list_function_id(0).type_id();
         let mut retained = RetainedValues::empty();
         retained.push_evaluated(EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]));
-        let mut environment = BlockEnvironment::from_retained(retained);
+        let environment = BlockEnvironment::from_retained(retained);
         let instruction = ListInstruction::Parameter(
             type_id,
             ParameterListInstruction::TupleIndex {
@@ -1342,13 +1244,14 @@ pub fn main() {
         let expected = ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(0))));
 
         assert_eq!(
-            execute(
+            evaluate(
                 &plan,
                 &mut RuntimeState::new(&mut Vec::new()),
-                &mut environment,
+                &environment,
                 &instruction,
                 &expected,
-            ),
+            )
+            .map(|_| ()),
             Err(ExecutionError::Invariant(
                 InvariantError::TupleIndexFamilyMismatch {
                     expected,
@@ -1720,21 +1623,34 @@ pub fn boxed() -> CounterListBox {
             ProjectionProfile::component_stores(&stores),
             &stores,
         ));
-        let mut driver = crate::runtime::work::driver::Driver::new(
-            &execution,
+        let executor = crate::execution_fixture::TestHost::default();
+        let execution = std::sync::Arc::new(execution);
+        let domain = crate::runtime::execution::Domain::new(
+            std::sync::Arc::clone(&execution),
+            &executor,
             &mut host,
             &mut stores,
             &mut echo,
+            std::num::NonZeroUsize::MIN,
         );
-        driver.call(|_, state| {
-            let custom = run_custom(
-                &execution,
-                state,
+        let context = domain.context();
+        let custom = executor
+            .block_on(domain.drive(context.call(
                 function,
                 crate::runtime::error::HostCallOrigin::Entry,
                 RetainedValues::empty(),
-            )
+            )))
+            .expect("host cleanup")
+            .expect("active entry")
             .expect("boxed external List should evaluate");
+        let work = crate::runtime::work::execution::ExecutionWork::new();
+        let mut runtime = RuntimeState::with_host_and_lists(
+            &mut echo,
+            crate::runtime::state::RuntimeHost::<ProjectionProfile>::new(&mut host, &stores, &work),
+            Default::default(),
+        );
+        {
+            let state = &mut runtime;
             let constructor = custom.constructor();
             assert_eq!(custom.fields().len(), 1);
             let mut fields = RetainedValues::empty();
@@ -1762,7 +1678,7 @@ pub fn boxed() -> CounterListBox {
             assert_eq!(
                 execution_error(
                     typed::<ExternalFamily, _, _>(
-                        &execution,
+                        execution.as_ref(),
                         state,
                         &tuple_environment,
                         list_type,
@@ -1792,7 +1708,7 @@ pub fn boxed() -> CounterListBox {
             assert_eq!(
                 execution_error(
                     typed::<ExternalFamily, _, _>(
-                        &execution,
+                        execution.as_ref(),
                         state,
                         &custom_environment,
                         list_type,
@@ -1810,8 +1726,7 @@ pub fn boxed() -> CounterListBox {
                     actual: ValueType::Int,
                 }),
             );
-        });
-        drop(driver);
+        }
     }
 
     struct ProjectionContext<'a> {

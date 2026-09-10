@@ -185,6 +185,17 @@ where
         &mut self.call
     }
 
+    /// Ends native conversion and returns the original typed call and its
+    /// registered construction permissions for an owned continuation.
+    pub fn into_call(
+        self,
+    ) -> (
+        HostCall<'call, Profile, Provider, Return>,
+        HostConstructions<'call, Targets>,
+    ) {
+        (self.call, HostConstructions::new())
+    }
+
     /// Retains the original value for structural native access.
     pub fn source<Type: HostType>(&self, value: Type::Value<'call>) -> NativeValue {
         NativeValue::from_stored(self.call.retain_value::<Type>(value))
@@ -311,6 +322,7 @@ mod tests {
     type CallbackSource = HostTypeParameter<1>;
     type CallbackTarget = HostTypeParameter<2>;
     type CallbackTargets = HostTypeList<CallbackTarget, HostTypeListEnd>;
+    type Owned<Type> = crate::provider::Value<Type, crate::provider::ProviderValueContext<Type>>;
 
     fn equal_native<'call, Profile: HostProfile, Extra: HostTypeSequence>(
         mut call: NativeCall<'call, Profile, Converter, bool, HostTypeList<Target, Extra>>,
@@ -342,13 +354,34 @@ mod tests {
         source: HostValue<'call, CallbackSource>,
         callback: HostCallable<'call, CallbackTargets, Output>,
         fallback: HostValue<'call, Output>,
-    ) -> Result<HostCallCompletion<'call, Output>, HostCallError> {
+    ) -> Result<crate::host::HostCallContinuation<'call, Output>, HostCallError> {
         let source = call.source::<CallbackSource>(source);
-        let result = match call.convert::<HostTypeIndex0>(&source) {
-            Some(value) => call.call().invoke(callback, (value, ()))?,
-            None => fallback,
-        };
-        Ok(call.finish(result))
+        let input = call
+            .convert::<HostTypeIndex0>(&source)
+            .map(|value| Owned::<CallbackTarget>::from_host(call.call(), value));
+        let fallback = Owned::<Output>::from_host(call.call(), fallback);
+        let (call, constructions) = call.into_call();
+        let callback = call.owned_callable(callback, &constructions);
+        Ok(call.resume(constructions, move |context| {
+            Box::pin(async move {
+                let result = match input {
+                    Some(value) => {
+                        callback
+                            .invoke(
+                                &context,
+                                move |mut call, _| (value.into_host(&mut call), ()),
+                                |call, _, value| Ok(Owned::<Output>::from_host(&call, value)),
+                            )
+                            .await?
+                    }
+                    None => fallback,
+                };
+                Ok(crate::host::HostOwnedCompletion::new(move |mut call, _| {
+                    let value = result.into_host(&mut call);
+                    Ok(call.return_value(value))
+                }))
+            })
+        }))
     }
 
     fn run<Extra: HostTypeSequence>(source: &str) -> crate::Value {
@@ -360,7 +393,7 @@ mod tests {
                 equal_native::<StatelessHostProfile, Extra>,
             )
             .unwrap()
-            .with_native_function::<Converter, (
+            .with_resumable_native_function::<Converter, (
                 CallbackSource,
                 HostFunctionType<CallbackTargets, Output>,
                 Output,
@@ -389,10 +422,14 @@ mod tests {
             HostProviderSet::from_providers([provider]).unwrap(),
         )
         .unwrap();
-        let execution =
+        let mut execution =
             crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
                 .unwrap();
-        execution.run_main(&mut Profile::RunState::default(), &mut Vec::new())
+        crate::execution_fixture::run(
+            &mut execution,
+            &mut Profile::RunState::default(),
+            &mut Vec::new(),
+        )
     }
 
     #[test]
@@ -567,7 +604,7 @@ pub fn main() {
     fn native_conversion_preserves_a_source_callback_failure() {
         let provider = HostProviderModule::new("application", "main")
             .unwrap()
-            .with_native_function::<Converter, (
+            .with_resumable_native_function::<Converter, (
                 CallbackSource,
                 HostFunctionType<CallbackTargets, Output>,
                 Output,
@@ -612,7 +649,7 @@ pub fn main() {
             mut call: NativeCall<'call, StatelessHostProfile, Converter, Output, Targets>,
             source: HostValue<'call, CallbackSource>,
             callback: HostCallable<'call, Targets, Output>,
-        ) -> Result<HostCallCompletion<'call, Output>, HostCallError> {
+        ) -> Result<crate::host::HostCallContinuation<'call, Output>, HostCallError> {
             let source = NativeValue::tuple([
                 NativeValue::symbol("packet"),
                 call.source::<CallbackSource>(source),
@@ -620,13 +657,29 @@ pub fn main() {
             let packet = call
                 .convert::<HostTypeIndex0>(&source)
                 .expect("declared envelope should preserve its exact generic payload");
-            let result = call.call().invoke(callback, (packet, ()))?;
-            Ok(call.finish(result))
+            let packet = Owned::<Packet>::from_host(call.call(), packet);
+            let (call, constructions) = call.into_call();
+            let callback = call.owned_callable(callback, &constructions);
+            Ok(call.resume(constructions, move |context| {
+                Box::pin(async move {
+                    let result = callback
+                        .invoke(
+                            &context,
+                            move |mut call, _| (packet.into_host(&mut call), ()),
+                            |call, _, value| Ok(Owned::<Output>::from_host(&call, value)),
+                        )
+                        .await?;
+                    Ok(crate::host::HostOwnedCompletion::new(move |mut call, _| {
+                        let value = result.into_host(&mut call);
+                        Ok(call.return_value(value))
+                    }))
+                })
+            }))
         }
 
         let provider = HostProviderModule::new("application", "main")
             .unwrap()
-            .with_native_function::<
+            .with_resumable_native_function::<
                 Converter,
                 (CallbackSource, HostFunctionType<Targets, Output>),
                 Output,
@@ -634,6 +687,25 @@ pub fn main() {
                 _,
             >("wrap", NativeRules::default(), wrap)
             .unwrap();
+        for name in ["Bad", "wrap"] {
+            let result = HostProviderModule::new("application", "main")
+                .unwrap()
+                .with_resumable_native_function::<Converter, (CallbackSource, HostFunctionType<Targets, Output>), Output, Targets, _>("wrap", NativeRules::default(), wrap)
+                .unwrap()
+                .with_resumable_native_function::<Converter, (CallbackSource, HostFunctionType<Targets, Output>), Output, Targets, _>(name, NativeRules::default(), wrap);
+            let expected = if name == "Bad" {
+                crate::HostRegistrationError::InvalidFunctionName {
+                    module: "main".into(),
+                    function: name.into(),
+                }
+            } else {
+                crate::HostRegistrationError::DuplicateFunction {
+                    module: "main".into(),
+                    function: name.into(),
+                }
+            };
+            assert_eq!(result.err(), Some(expected));
+        }
         let value = execute(
             provider,
             r#"
@@ -661,7 +733,7 @@ pub fn main() {
         assert_eq!(value.inspect().to_string(), "#(True, True)");
 
         let provider = HostProviderModule::new("application", "main").unwrap()
-            .with_native_function::<Converter, (
+            .with_resumable_native_function::<Converter, (
                 CallbackSource, HostFunctionType<Targets, Output>,
             ), Output, Targets, _>("wrap", NativeRules::default(), wrap).unwrap();
         let error = execute(
@@ -1066,13 +1138,34 @@ pub fn main() {
         source: HostValue<'call, CallbackSource>,
         callback: HostCallable<'call, CallbackTargets, Output>,
         fallback: HostValue<'call, Output>,
-    ) -> Result<HostCallCompletion<'call, Output>, HostCallError> {
+    ) -> Result<crate::host::HostCallContinuation<'call, Output>, HostCallError> {
         let source = call.source::<CallbackSource>(source);
-        let result = match call.convert::<HostTypeIndex0>(&source) {
-            Some(value) => call.call().invoke(callback, (value, ()))?,
-            None => fallback,
-        };
-        Ok(call.finish(result))
+        let input = call
+            .convert::<HostTypeIndex0>(&source)
+            .map(|value| Owned::<CallbackTarget>::from_host(call.call(), value));
+        let fallback = Owned::<Output>::from_host(call.call(), fallback);
+        let (call, constructions) = call.into_call();
+        let callback = call.owned_callable(callback, &constructions);
+        Ok(call.resume(constructions, move |context| {
+            Box::pin(async move {
+                let result = match input {
+                    Some(value) => {
+                        callback
+                            .invoke(
+                                &context,
+                                move |mut call, _| (value.into_host(&mut call), ()),
+                                |call, _, value| Ok(Owned::<Output>::from_host(&call, value)),
+                            )
+                            .await?
+                    }
+                    None => fallback,
+                };
+                Ok(crate::host::HostOwnedCompletion::new(move |mut call, _| {
+                    let value = result.into_host(&mut call);
+                    Ok(call.return_value(value))
+                }))
+            })
+        }))
     }
 
     fn ready<'call, Targets: HostTypeSequence>(
@@ -1217,7 +1310,7 @@ pub fn main() { ready(1, 2) }
 
     #[test]
     fn native_rules_register_nested_recursive_custom_construction_schemas() {
-        let execution = prepare_ready(
+        let mut execution = prepare_ready(
             NativeRules::default().external::<EnvelopeSchema, HostTypeList<
                 HostCustomType<TreeSchema, HostTypeList<EcoString, HostTypeListEnd>>,
                 HostTypeListEnd,
@@ -1232,8 +1325,7 @@ pub fn main() { ready(1, "two") }
         )
         .expect("custom schemas referenced only by a native rule must also seal");
         assert_eq!(
-            execution
-                .run_main(&mut Vec::new(), &mut Vec::new())
+            crate::execution_fixture::run(&mut execution, &mut Vec::new(), &mut Vec::new())
                 .unwrap(),
             crate::Value::Bool(true)
         );
@@ -1295,19 +1387,18 @@ pub fn main() { restore_previous(name("key")) }
         }
 
         let previous = std::sync::Arc::new(std::sync::Mutex::new(None));
-        let original = execution(previous.clone());
-        let other = execution(previous);
-        for (execution, expected) in [
-            (&original, false),
-            (&original, true),
-            (&other, false),
-            (&other, true),
-            (&original, false),
+        let mut original = execution(previous.clone());
+        let mut other = execution(previous);
+        for (first, expected) in [
+            (true, false),
+            (true, true),
+            (false, false),
+            (false, true),
+            (true, false),
         ] {
+            let execution = if first { &mut original } else { &mut other };
             assert_eq!(
-                execution
-                    .run_main(&mut Vec::new(), &mut Vec::new())
-                    .unwrap(),
+                crate::execution_fixture::run(execution, &mut Vec::new(), &mut Vec::new()).unwrap(),
                 crate::Value::Bool(expected),
                 "exact payload access must stay with the original hosted execution and stores",
             );
@@ -1397,12 +1488,11 @@ pub fn main() { check(make_opaque("item"), make_opaque("item")) }
             HostProviderSet::from_providers([provider]).unwrap(),
         )
         .unwrap();
-        let execution =
+        let mut execution =
             crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
                 .unwrap();
         assert_eq!(
-            execution
-                .run_main(&mut Vec::new(), &mut Vec::new())
+            crate::execution_fixture::run(&mut execution, &mut Vec::new(), &mut Vec::new())
                 .unwrap(),
             crate::Value::Bool(true)
         );
@@ -1456,7 +1546,7 @@ pub fn main() { check(make_opaque("item"), make_opaque("item")) }
                     "boxed", boxed,
                 )
                 .unwrap()
-                .with_native_function::<Converter, (
+                .with_resumable_native_function::<Converter, (
                     CallbackSource,
                     HostFunctionType<CallbackTargets, Output>,
                     Output,
@@ -1530,12 +1620,13 @@ pub fn main() {
                 HostProviderSet::from_providers([provider]).unwrap(),
             )
             .unwrap();
-            let execution = crate::HostedExecution::try_from_module_plan(
+            let mut execution = crate::HostedExecution::try_from_module_plan(
                 crate::plan_host_program(typed).unwrap(),
             )
             .unwrap();
             let mut state = Vec::new();
-            let returned = execution.run_main(&mut state, &mut Vec::new());
+            let returned =
+                crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new());
             if fails {
                 assert_eq!(
                     returned.unwrap_err().to_string(),

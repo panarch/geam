@@ -494,7 +494,28 @@ failure. Pending work cannot restart with a later execution's state, including
 work retained inside external payloads. Preserving completion does not extend
 the execution lifetime of any work contained in that result.
 
-The [embedding boundary](embedding-boundary.md#explicit-future-execution)
+The [embedding boundary](embedding-boundary.md#explicit-future-values)
 defines visible scope ownership and shared results. The
 [provider boundary](provider-boundary.md#explicit-async-functions) defines
 native construction, callback and state capabilities.
+
+## Host-Driven Calls
+
+An ordinary Gleam function returns its declared value even when its native
+implementation waits or invokes another Gleam function. A resumable native
+callback preserves its Rust locals and resumes with the callback result; it
+does not rerun the enclosing source invocation. This is distinct from a
+function that returns explicit `Future(a)` work.
+
+The Rust host selects the execution service. Owned evaluations yield after a
+bounded instruction budget, and requests for provider state or Echo are served
+inside their original execution domain. Host state borrows end before native
+waits or callback re-entry. The domain can service entries while its Rust body
+waits for an unrelated event.
+
+Dropping a pending entry call cancels that entry. Cancellation closes new
+effects but does not roll back effects already performed or interrupt arbitrary
+synchronous Rust code. Normal domain completion waits for worker cleanup;
+dropping its Rust Future closes endpoints and requests cancellation without a
+blocking destructor. The loaded module remains available for another domain,
+but scoped work and opaque values cannot be reattached to it.

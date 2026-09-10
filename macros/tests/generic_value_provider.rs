@@ -1,3 +1,6 @@
+#[path = "../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 use ecow::EcoString;
 use geam_core::provider::{Call, Value};
 use geam_core::{
@@ -324,10 +327,13 @@ fn generic_schema_uses_return_first_parameter_order_and_recursive_shapes() {
 
 #[test]
 fn generic_values_pass_through_every_runtime_family_without_reconstruction() {
-    let execution = execution(SOURCE).expect("matching generic provider should plan");
-    let returned = execution
-        .run_main(&mut ProfileState { component: () }, &mut Vec::new())
-        .expect("generic provider should execute");
+    let mut execution = execution(SOURCE).expect("matching generic provider should plan");
+    let returned = crate::execution_fixture::run(
+        &mut execution,
+        &mut ProfileState { component: () },
+        &mut Vec::new(),
+    )
+    .expect("generic provider should execute");
     let RuntimeValue::Tuple(values) = returned else {
         panic!("main should return the complete generic result");
     };

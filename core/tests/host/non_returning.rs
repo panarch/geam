@@ -65,10 +65,9 @@ pub fn main() -> Int {
         )
         .expect("host program should compile");
         let plan = plan_host_program(typed).expect("host program should plan");
-        let execution =
+        let mut execution =
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
-        let error = execution
-            .run_main(&mut (), &mut Vec::new())
+        let error = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
             .expect_err("stop should fail");
         let ExecutionError::Host(error) = error else {
             panic!("stop should produce a host error");
@@ -127,10 +126,9 @@ pub fn main() {
     )
     .expect("scoped diverging source should compile");
     let plan = plan_host_program(typed).expect("scoped diverging source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("scoped diverging execution should seal");
-    let error = execution
-        .run_main(&mut (), &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect_err("scoped diverging host should fail");
     let ExecutionError::Host(error) = error else {
         panic!("scoped diverging host should preserve its host failure");
@@ -172,11 +170,11 @@ pub fn main() {
     )
     .expect("host program should compile");
     let plan = plan_host_program(typed).expect("host program should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
 
     assert_eq!(
-        execution.run_main(&mut (), &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Bool(true)),
     );
 }
@@ -337,10 +335,9 @@ pub fn main() {
         )
         .expect("host program should compile");
         let plan = plan_host_program(typed).expect("host program should plan");
-        let execution =
+        let mut execution =
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
-        let error = execution
-            .run_main(&mut (), &mut Vec::new())
+        let error = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
             .expect_err("stop should fail");
 
         assert!(matches!(
@@ -396,10 +393,9 @@ pub fn main() -> fn(Int) -> Int {
         )
         .expect("host program should compile");
         let plan = plan_host_program(typed).expect("host program should plan");
-        let execution =
+        let mut execution =
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
-        let error = execution
-            .run_main(&mut (), &mut Vec::new())
+        let error = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
             .expect_err("stop should fail");
         let ExecutionError::Host(error) = error else {
             panic!("stop should produce a host error");
@@ -445,7 +441,7 @@ pub fn main() {
     )
     .expect("host program should compile");
     let plan = plan_host_program(typed).expect("host program should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("non-returning provider should seal without return storage");
     let expected_explanation = r#"
 module main
@@ -463,8 +459,7 @@ function never#1
     .trim();
 
     assert_eq!(execution.explain().to_string().trim(), expected_explanation);
-    let error = execution
-        .run_main(&mut (), &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect_err("stop should fail");
     let ExecutionError::Host(error) = error else {
         panic!("stop should produce a host error");

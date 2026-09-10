@@ -25,7 +25,7 @@ pub(in crate::runtime) fn values_equal(
                 && left
                     .fields
                     .iter()
-                    .zip(&right.fields)
+                    .zip(right.fields.iter())
                     .all(|(left, right)| values_equal(storage, left, right))
         }
         (EvaluatedValue::External(left), EvaluatedValue::External(right)) => {

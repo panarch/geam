@@ -32,12 +32,22 @@ impl HostProvider<StatelessHostProfile> for StatelessProvider {
 }
 
 fn apply<'call>(
-    mut call: HostCall<'call, StatelessHostProfile, StatelessProvider, BigInt>,
+    call: HostCall<'call, StatelessHostProfile, StatelessProvider, BigInt>,
+    constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
     function: HostCallable<'call, IntArguments, BigInt>,
     value: BigInt,
-) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
-    let returned = call.invoke(function, (value, ()))?;
-    Ok(call.return_value(returned))
+) -> Result<geam_core::HostCallContinuation<'call, BigInt>, HostCallError> {
+    let function = call.owned_callable(function, &constructions);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            let returned = function
+                .invoke(&context, move |_, _| (value, ()), |_, _, value| Ok(value))
+                .await?;
+            Ok(geam_core::HostOwnedCompletion::new(move |call, _| {
+                Ok(call.return_value(returned))
+            }))
+        })
+    }))
 }
 
 fn forward<'call>(
@@ -82,7 +92,7 @@ fn stop_with_generic_callable<'call>(
 fn invokes_and_returns_typed_gleam_callables() {
     let host = HostModule::new("host_support", "host/function")
         .expect("host module should be valid")
-        .with_scoped_function::<StatelessProvider, (IntCallable, BigInt), BigInt, _>("apply", apply)
+        .with_resumable_function::<StatelessProvider, (IntCallable, BigInt), BigInt, geam_core::HostTypeListEnd, _>("apply", apply)
         .expect("callback application should register")
         .with_scoped_function::<StatelessProvider, (IntCallable,), IntCallable, _>(
             "forward", forward,
@@ -116,11 +126,11 @@ pub fn main() {
     )
     .expect("host callback source should compile");
     let plan = plan_host_program(typed).expect("host callback source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("host callback execution should seal");
 
     assert_eq!(
-        execution.run_main(&mut (), &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Tuple(vec![
             Value::Int(42.into()),
             Value::Int(42.into()),
@@ -161,11 +171,11 @@ pub fn main() {
     )
     .expect("opaque callback source should compile");
     let plan = plan_host_program(typed).expect("opaque callback source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("opaque callback execution should seal");
 
     assert_eq!(
-        execution.run_main(&mut (), &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Int(1.into())),
     );
 }
@@ -296,12 +306,11 @@ pub fn main() {
     )
     .expect("opaque symbolic value source should compile");
     let plan = plan_host_program(typed).expect("opaque symbolic value source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("opaque symbolic values should not grant callback invocation");
 
     assert_eq!(
-        execution
-            .run_main(&mut (), &mut Vec::new())
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
             .expect("opaque symbolic value should round-trip")
             .inspect()
             .to_string(),
@@ -353,12 +362,22 @@ impl HostProvider<CallbackProfile> for StopProvider {
 
 fn apply_with_state<'call>(
     mut call: HostCall<'call, CallbackProfile, OuterProvider, BigInt>,
+    constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
     function: HostCallable<'call, IntArguments, BigInt>,
     value: BigInt,
-) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+) -> Result<geam_core::HostCallContinuation<'call, BigInt>, HostCallError> {
     *call.state() += 1;
-    let returned = call.invoke(function, (value, ()))?;
-    Ok(call.return_value(returned))
+    let function = call.owned_callable(function, &constructions);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            let returned = function
+                .invoke(&context, move |_, _| (value, ()), |_, _, value| Ok(value))
+                .await?;
+            Ok(geam_core::HostOwnedCompletion::new(move |call, _| {
+                Ok(call.return_value(returned))
+            }))
+        })
+    }))
 }
 
 fn increment_with_state<'call>(
@@ -373,7 +392,7 @@ fn increment_with_state<'call>(
 fn reenters_gleam_and_a_nested_host_with_independent_run_state() {
     let outer = HostModule::<CallbackProfile>::new_for_profile("host_support", "host/outer")
         .expect("outer host module should be valid")
-        .with_scoped_function::<OuterProvider, (IntCallable, BigInt), BigInt, _>(
+        .with_resumable_function::<OuterProvider, (IntCallable, BigInt), BigInt, geam_core::HostTypeListEnd, _>(
             "apply",
             apply_with_state,
         )
@@ -412,7 +431,7 @@ pub fn main() {
     )
     .expect("nested host source should compile");
     let plan = plan_host_program(typed).expect("nested host source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("nested host execution should seal");
     let mut first_state = CallbackState::default();
     let mut first_echo = Vec::new();
@@ -420,15 +439,15 @@ pub fn main() {
     let mut second_echo = Vec::new();
 
     assert_eq!(
-        execution.run_main(&mut first_state, &mut first_echo),
+        crate::execution_fixture::run(&mut execution, &mut first_state, &mut first_echo),
         Ok(Value::Int(42.into())),
     );
     assert_eq!(
-        execution.run_main(&mut first_state, &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut first_state, &mut Vec::new()),
         Ok(Value::Int(42.into())),
     );
     assert_eq!(
-        execution.run_main(&mut second_state, &mut second_echo),
+        crate::execution_fixture::run(&mut execution, &mut second_state, &mut second_echo),
         Ok(Value::Int(42.into())),
     );
     assert_eq!(
@@ -482,19 +501,27 @@ fn fail(_: BigInt) -> Result<BigInt, HostFailure> {
 
 fn stop_after_callback<'call>(
     mut call: HostCall<'call, CallbackProfile, OuterProvider, BigInt>,
+    constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
     function: HostCallable<'call, IntArguments, BigInt>,
     value: BigInt,
-) -> Result<Infallible, HostCallError> {
+) -> Result<geam_core::HostCallContinuation<'call, BigInt>, HostCallError> {
     *call.state() += 1;
-    let _ = call.invoke(function, (value, ()))?;
-    Err(HostFailure::new("callback unexpectedly returned").into())
+    let function = call.owned_callable(function, &constructions);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            function
+                .invoke(&context, move |_, _| (value, ()), |_, _, _| Ok(()))
+                .await?;
+            Err(HostFailure::new("callback unexpectedly returned").into())
+        })
+    }))
 }
 
 #[test]
 fn preserves_a_nested_host_failure_from_a_diverging_outer_host() {
     let outer = HostModule::<CallbackProfile>::new_for_profile("host_support", "host/outer")
         .expect("outer host module should be valid")
-        .with_scoped_diverging_function::<OuterProvider, (IntCallable, BigInt), BigInt, _>(
+        .with_resumable_function::<OuterProvider, (IntCallable, BigInt), BigInt, geam_core::HostTypeListEnd, _>(
             "stop",
             stop_after_callback,
         )
@@ -523,11 +550,10 @@ pub fn main() {
     )
     .expect("diverging nested host failure source should compile");
     let plan = plan_host_program(typed).expect("diverging nested host failure source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("diverging nested host failure execution should seal");
     let mut state = CallbackState::default();
-    let error = execution
-        .run_main(&mut state, &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect_err("inner host should fail before the outer host can return");
     let ExecutionError::Host(error) = error else {
         panic!("nested host failure should remain a host error");
@@ -579,11 +605,10 @@ pub fn main() {
     )
     .expect("diverging host source should compile");
     let plan = plan_host_program(typed).expect("diverging host source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("diverging execution should seal");
     let mut state = CallbackState::default();
-    let error = execution
-        .run_main(&mut state, &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect_err("diverging host should fail");
     let ExecutionError::Host(error) = error else {
         panic!("diverging host failure should remain a host error");
@@ -600,7 +625,7 @@ pub fn main() {
 fn preserves_a_source_provider_failure_and_its_host_caller_origin() {
     let outer = HostModule::<CallbackProfile>::new_for_profile("host_support", "host/outer")
         .expect("outer host module should be valid")
-        .with_scoped_function::<OuterProvider, (IntCallable, BigInt), BigInt, _>(
+        .with_resumable_function::<OuterProvider, (IntCallable, BigInt), BigInt, geam_core::HostTypeListEnd, _>(
             "apply",
             apply_with_state,
         )
@@ -635,11 +660,10 @@ pub fn main() {
     )
     .expect("source provider callback should compile");
     let plan = plan_host_program(typed).expect("source provider callback should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("source provider callback should seal");
     let mut state = CallbackState::default();
-    let error = execution
-        .run_main(&mut state, &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect_err("source provider should fail");
     let ExecutionError::Host(error) = error else {
         panic!("source provider failure should remain a host error");

@@ -48,6 +48,12 @@ impl<'run, Profile: crate::HostProfile> RuntimeHost<'run, Profile> {
     pub(in crate::runtime) fn work(&self) -> crate::runtime::work::execution::WorkContext<Profile> {
         self.work.context()
     }
+
+    pub(in crate::runtime) fn execution(
+        &self,
+    ) -> crate::runtime::execution::ExecutionContext<Profile> {
+        self.work.execution()
+    }
 }
 
 impl<Profile: crate::HostProfile> RuntimeHostState for RuntimeHost<'_, Profile> {
@@ -78,14 +84,6 @@ impl<'run> RuntimeState<'run, ()> {
 }
 
 impl<'run, Host> RuntimeState<'run, Host> {
-    pub(super) fn with_host(echo: &'run mut dyn crate::runtime::EchoSink, host: Host) -> Self {
-        Self {
-            echo,
-            host,
-            lists: Default::default(),
-        }
-    }
-
     pub(super) fn with_host_and_lists(
         echo: &'run mut dyn crate::runtime::EchoSink,
         host: Host,
@@ -133,7 +131,8 @@ mod tests {
 
         let mut host = (num_bigint::BigInt::from(41), true);
         let mut echo = Vec::new();
-        let mut hosted: RuntimeState<'_, _> = RuntimeState::with_host(&mut echo, &mut host);
+        let mut hosted: RuntimeState<'_, _> =
+            RuntimeState::with_host_and_lists(&mut echo, &mut host, Default::default());
         hosted.host_state().0 += 1;
 
         assert!(hosted.host_state().1);

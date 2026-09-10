@@ -145,7 +145,7 @@ impl ManagedProject {
         source.push_str("geam = { version = ");
         source.push_str(&quoted(&format!("={}", env!("CARGO_PKG_VERSION"))));
         source
-            .push_str(", default-features = false, features = [\"builtins\"] }\ntoml = \"0.9\"\ntokio = { version = \"1.53.1\", default-features = false, features = [\"rt-multi-thread\", \"net\", \"time\"] }\n");
+            .push_str(", default-features = false, features = [\"builtins\", \"tokio\"] }\ntoml = \"0.9\"\ntokio = { version = \"1.53.1\", default-features = false, features = [\"rt-multi-thread\", \"net\", \"time\"] }\n");
         for provider in self.providers.values() {
             source.push_str(&provider.alias());
             source.push_str(" = { package = ");
@@ -369,7 +369,7 @@ mod tests {
             .expect("managed manifest should be readable");
         assert!(source.starts_with("# Managed by Geam."));
         assert!(source.contains(&format!(
-            "geam = {{ version = \"={}\", default-features = false, features = [\"builtins\"] }}",
+            "geam = {{ version = \"={}\", default-features = false, features = [\"builtins\", \"tokio\"] }}",
             env!("CARGO_PKG_VERSION"),
         )));
         assert!(source.contains(

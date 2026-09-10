@@ -7,13 +7,11 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use std::task::{Context, Poll, Wake, Waker};
 
-mod callback;
 mod composition;
 mod dependency;
 mod drain;
-pub(crate) mod driver;
 pub(crate) mod execution;
-mod request;
+pub(in crate::runtime) mod request;
 
 pub(crate) use dependency::Dependencies;
 use drain::DrainQueue;
@@ -97,8 +95,8 @@ impl<Value> WorkScope<Value> {
     }
 }
 
-impl<Value> Drop for WorkScope<Value> {
-    fn drop(&mut self) {
+impl<Value> WorkScope<Value> {
+    pub(in crate::runtime) fn close(&self) {
         let operations = {
             let mut registry = self.registry.lock();
             registry.accepting = false;
@@ -107,6 +105,12 @@ impl<Value> Drop for WorkScope<Value> {
         for operation in operations.into_values().filter_map(|value| value.upgrade()) {
             operation.cancel();
         }
+    }
+}
+
+impl<Value> Drop for WorkScope<Value> {
+    fn drop(&mut self) {
+        self.close();
     }
 }
 
@@ -194,19 +198,9 @@ impl<Value> Future for Observer<Value> {
     type Output = Result<Shared<Value>, Cancelled>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.get_mut().poll_with(cx, || false)
-    }
-}
-
-impl<Value> Observer<Value> {
-    fn poll_with(
-        &mut self,
-        cx: &mut Context<'_>,
-        service: impl FnMut() -> bool,
-    ) -> Poll<Result<Shared<Value>, Cancelled>> {
         let operation = &self.work.operation;
         operation.wake.register(self.ticket, cx.waker().clone());
-        let result = operation.poll_graph(service);
+        let result = operation.poll_graph();
         if result.is_ready() {
             operation.wake.remove(self.ticket);
         }
@@ -348,12 +342,6 @@ impl Observers {
         let waiters = std::mem::take(&mut *self.waiters.lock());
         self.deliveries
             .deliver(waiters.into_values(), |waiter| waiter.wake_by_ref());
-    }
-}
-
-impl Default for Observers {
-    fn default() -> Self {
-        Self::new(Arc::new(DrainQueue::new()))
     }
 }
 

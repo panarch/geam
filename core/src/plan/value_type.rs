@@ -94,7 +94,8 @@ impl GenericFunctionType {
 }
 
 impl FunctionType {
-    pub(crate) fn new(arguments: Vec<ValueType>, return_: ValueType) -> Self {
+    /// Describes a source function type; callable permission is sealed separately.
+    pub fn new(arguments: Vec<ValueType>, return_: ValueType) -> Self {
         Self {
             arguments,
             return_: Box::new(return_),
@@ -214,7 +215,8 @@ impl FunctionFunctionType {
 }
 
 impl CustomTypeName {
-    pub(crate) fn new(package: EcoString, module: EcoString, name: EcoString) -> Self {
+    /// Describes a nominal source identity, checked when a binding is loaded.
+    pub fn new(package: EcoString, module: EcoString, name: EcoString) -> Self {
         Self {
             package,
             module,
@@ -236,7 +238,8 @@ impl CustomTypeName {
 }
 
 impl CustomType {
-    pub(crate) fn new(name: CustomTypeName, arguments: Vec<ValueType>) -> Self {
+    /// Describes a concrete custom type without granting construction access.
+    pub fn new(name: CustomTypeName, arguments: Vec<ValueType>) -> Self {
         Self {
             name: Box::new(name),
             arguments: arguments.into_boxed_slice(),

@@ -1,19 +1,15 @@
-use super::super::GraphValue;
 use super::super::RuntimeGraphState;
 use super::super::environment::BlockEnvironment;
 use crate::plan::ValueType;
-use crate::plan::execution::constant::{ConstantId, ConstantValue};
+use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::graph::{
     BitArrayInstruction, BoolInstruction, CustomInstruction, FloatInstruction, IntInstruction,
     NilInstruction, ParamLocal, StringInstruction, TupleInstruction, UtfCodepointInstruction,
 };
-use crate::runtime::constant::evaluate as evaluate_constant;
-use crate::runtime::error::ExecutionResult;
+use crate::runtime::InvariantError;
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedValue, values_equal,
 };
-use crate::runtime::state::RuntimeStateFor;
-use crate::runtime::{ExecutableRuntimePlan, InvariantError};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -827,18 +823,6 @@ where
         )
         .map(V::Ready),
     }
-}
-
-pub(super) fn constant<Plan, Value>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    id: ConstantId<Value>,
-) -> ExecutionResult<Value::Evaluated>
-where
-    Plan: ExecutableRuntimePlan,
-    Value: ConstantValue + GraphValue,
-{
-    evaluate_constant(plan, state, plan.constant(id))
 }
 
 pub(in crate::runtime) fn tuple_projection<Value, Error>(

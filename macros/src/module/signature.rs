@@ -1,11 +1,11 @@
 use super::custom_value::{CustomFieldValueType, CustomModel};
 use super::list::list_decoder_ident;
 use super::{
-    CallbackType, DeclaredInput, FunctionArgumentType, FunctionFlavor, FunctionInputType,
-    FunctionInputValueType, FunctionOutputLeafType, FunctionOutputValueType, FunctionReturnType,
+    CallbackType, DeclaredInput, FunctionArgumentType, FunctionInputType, FunctionInputValueType,
+    FunctionOutputLeafType, FunctionOutputValueType, FunctionReturnType,
     FunctionRootOutputValueType, GeneratedNames, GeneratedValue, GenericExternalStorage,
-    GenericExternalType, GenericHostType, GenericInputSource, GenericValueType, ListType,
-    ProviderValueType, StaticValueType,
+    GenericExternalType, GenericHostType, GenericInputSource, GenericValueType, InputOwnership,
+    ListType, ProviderValueType, StaticValueType,
 };
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -15,33 +15,33 @@ fn static_list_item_type(
     type_: &StaticValueType,
     customs: &[CustomModel],
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> TokenStream {
     match type_ {
         StaticValueType::Scalar(type_) => quote!(#type_),
         StaticValueType::Declared { type_, .. } => match flavor {
-            FunctionFlavor::Immediate => {
+            InputOwnership::Borrowed => {
                 quote!(<#type_ as #support::ProviderValueForms>::ImmediateListInput)
             }
-            FunctionFlavor::Async => {
+            InputOwnership::Owned => {
                 quote!(<#type_ as #support::ProviderValueForms>::OwnedListInput)
             }
         },
         StaticValueType::External { payload, .. } => match flavor {
-            FunctionFlavor::Immediate => {
+            InputOwnership::Borrowed => {
                 quote!(#support::ProviderExternalView<#payload>)
             }
-            FunctionFlavor::Async => {
+            InputOwnership::Owned => {
                 quote!(#support::ProviderOwnedExternal<#payload>)
             }
         },
         StaticValueType::Custom { index, .. } => {
             let type_ = &customs[*index].ident;
             match flavor {
-                FunctionFlavor::Immediate => {
+                InputOwnership::Borrowed => {
                     quote!(<#type_ as #support::ProviderValueForms>::ImmediateListInput)
                 }
-                FunctionFlavor::Async => {
+                InputOwnership::Owned => {
                     quote!(<#type_ as #support::ProviderValueForms>::OwnedListInput)
                 }
             }
@@ -69,7 +69,7 @@ pub(super) fn list_signature_type(
     list: &ListType,
     customs: &[CustomModel],
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> Type {
     let item = static_list_item_type(&list.collection.value, customs, support, flavor);
     let host_item = host_static_value_type(&list.collection.value, customs, support);
@@ -86,7 +86,7 @@ pub(super) fn provider_input_signature_type(
     type_: &ProviderValueType,
     customs: &[CustomModel],
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> Type {
     match type_ {
         ProviderValueType::Scalar(type_) => type_.clone(),
@@ -96,10 +96,10 @@ pub(super) fn provider_input_signature_type(
             input: DeclaredInput::Owned,
             ..
         } => match flavor {
-            FunctionFlavor::Immediate => syn::parse_quote!(
+            InputOwnership::Borrowed => syn::parse_quote!(
                 <#type_ as #support::ProviderValueForms>::ImmediateInput
             ),
-            FunctionFlavor::Async => syn::parse_quote!(
+            InputOwnership::Owned => syn::parse_quote!(
                 <#type_ as #support::ProviderValueForms>::OwnedInput
             ),
         },
@@ -108,28 +108,28 @@ pub(super) fn provider_input_signature_type(
             input: DeclaredInput::BorrowedExternal,
             ..
         } => match flavor {
-            FunctionFlavor::Immediate => syn::parse_quote!(
+            InputOwnership::Borrowed => syn::parse_quote!(
                 <#type_ as #support::ProviderValueForms>::ImmediateInput
             ),
-            FunctionFlavor::Async => syn::parse_quote!(
+            InputOwnership::Owned => syn::parse_quote!(
                 <#type_ as #support::ProviderValueForms>::OwnedInput
             ),
         },
         ProviderValueType::External { payload, .. } => match flavor {
-            FunctionFlavor::Immediate => {
+            InputOwnership::Borrowed => {
                 syn::parse_quote!(#support::ProviderExternalView<#payload>)
             }
-            FunctionFlavor::Async => {
+            InputOwnership::Owned => {
                 syn::parse_quote!(#support::ProviderOwnedExternal<#payload>)
             }
         },
         ProviderValueType::Custom { index, .. } => {
             let type_ = &customs[*index].ident;
             match flavor {
-                FunctionFlavor::Immediate => {
+                InputOwnership::Borrowed => {
                     syn::parse_quote!(<#type_ as #support::ProviderValueForms>::ImmediateInput)
                 }
-                FunctionFlavor::Async => {
+                InputOwnership::Owned => {
                     syn::parse_quote!(<#type_ as #support::ProviderValueForms>::OwnedInput)
                 }
             }
@@ -248,7 +248,7 @@ pub(super) fn generic_external_input_signature_type(
     customs: &[CustomModel],
     support: &TokenStream,
     source: GenericInputSource,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> Type {
     let mut arguments = match source {
         GenericInputSource::Declared => external.source_arguments.clone(),
@@ -269,10 +269,10 @@ pub(super) fn generic_external_input_signature_type(
         GenericExternalStorage::ManualPayload { payload, .. } => quote!(#payload),
     };
     let context = match flavor {
-        FunctionFlavor::Immediate => quote! {
+        InputOwnership::Borrowed => quote! {
             #support::ProviderExternalInputContext<#payload, #host_arguments>
         },
-        FunctionFlavor::Async => quote! {
+        InputOwnership::Owned => quote! {
             #support::ProviderOwnedExternalInputContext<#payload, #host_arguments>
         },
     };
@@ -315,25 +315,14 @@ pub(super) fn callback_signature_type(
     callback: &CallbackType,
     generics: &[Ident],
     profile: &TokenStream,
-    return_type: &TokenStream,
     support: &TokenStream,
-    flavor: FunctionFlavor,
 ) -> Type {
     let signature = &callback.signature;
     let codec = callback_codec_type(
         &callback.codec,
         generics.iter().map(|ident| quote!(#ident)).collect(),
     );
-    let context = match flavor {
-        FunctionFlavor::Immediate => quote!(
-            #support::ProviderCallbackContext<
-                '__geam_call, #profile, __GeamProvider, #return_type, #codec
-            >
-        ),
-        FunctionFlavor::Async => quote!(
-            #support::ProviderFutureCallbackContext<#profile, __GeamProvider, #codec>
-        ),
-    };
+    let context = quote!(#support::ProviderOwnedCallbackContext<#profile, __GeamProvider, #codec>);
     let mut path = callback.path.clone();
     for segment in path.path.segments.iter_mut().rev().take(1) {
         segment.arguments = PathArguments::AngleBracketed(syn::parse_quote! {
@@ -347,7 +336,7 @@ pub(super) fn callback_output_signature_type(
     type_: &FunctionReturnType,
     customs: &[CustomModel],
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> Type {
     match type_ {
         FunctionReturnType::Value(value) => {
@@ -374,7 +363,7 @@ pub(super) fn callback_input_signature_type(
     type_: &FunctionInputType,
     customs: &[CustomModel],
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
     profile: &TokenStream,
 ) -> Type {
     match type_ {
@@ -409,7 +398,7 @@ pub(super) fn future_input_signature_type(
         &input.value,
         customs,
         support,
-        FunctionFlavor::Async,
+        InputOwnership::Owned,
         profile,
     );
     let context =

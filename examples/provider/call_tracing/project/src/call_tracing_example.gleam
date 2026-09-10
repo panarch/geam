@@ -1,7 +1,7 @@
 import example_call_tracing as tracing
 
 fn work() {
-  tracing.record("inside")
+  tracing.record_later("inside")
   42
 }
 

@@ -50,10 +50,11 @@ impl<Profile: HostWorkProfile> HostedEntry<Profile> {
     /// Executes main once, then completes only its returned outer work.
     pub async fn run(
         &mut self,
+        host: &dyn crate::execution::ExecutionHost,
         state: &mut Profile::RunState,
-        echo: &mut dyn crate::EchoSink,
-    ) -> Result<(), crate::runtime::ObservationError> {
-        crate::runtime::run_hosted_entry(self, state, echo).await
+        echo: &mut (dyn crate::EchoSink + Send),
+    ) -> Result<(), crate::execution::RunError> {
+        crate::runtime::run_hosted_entry(self, host, state, echo).await
     }
 }
 
@@ -62,12 +63,11 @@ mod tests {
     use super::{EntryCompletion, HostedEntry};
     use crate::host::{
         HostCall, HostCallCompletion, HostCallError, HostCallable, HostComponentProfile,
-        HostConstructions, HostFunctionType, HostFutureError, HostFutureStore, HostProfile,
+        HostConstructions, HostExecutionError, HostFunctionType, HostFutureStore, HostProfile,
         HostProviderModule, HostProviderSet, HostTypeListEnd, HostTypeParameter, HostWorkProfile,
     };
     use crate::work_fixture::{WorkComponent, WorkHostType};
     use crate::{EchoOutput, EchoSink, ModuleSource, PackageSource};
-    use futures_util::FutureExt;
     use num_bigint::BigInt;
 
     struct Profile;
@@ -139,6 +139,8 @@ pub fn all(values: List(Work(a))) -> Work(List(a))
 
     #[test]
     fn completes_the_outer_nominal_work_for_every_return_family() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         for value in [
             "42",
             "1.5",
@@ -169,10 +171,8 @@ pub fn main() {{
             let mut entry = entry(&source, Vec::new()).expect("sealed entry");
             assert!(returns_work(&entry));
             let mut echo = Echo::default();
-            entry
-                .run(&mut (), &mut echo)
-                .now_or_never()
-                .expect("ready composition")
+            execution_host
+                .block_on(entry.run(&execution_host, &mut (), &mut echo))
                 .expect("completed entry");
             assert_eq!(
                 echo.0,
@@ -186,6 +186,8 @@ pub fn main() {{
 
     #[test]
     fn ordinary_containers_and_returned_inner_work_are_not_driven() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         for (outer, work) in [
             ("pending", true),
             ("[pending]", false),
@@ -210,10 +212,8 @@ pub fn main() {{
             let mut entry = entry(&source, Vec::new()).expect("sealed entry");
             assert_eq!(returns_work(&entry), work);
             let mut echo = Echo::default();
-            entry
-                .run(&mut (), &mut echo)
-                .now_or_never()
-                .expect("ready entry")
+            execution_host
+                .block_on(entry.run(&execution_host, &mut (), &mut echo))
                 .expect("entry result");
             let expected = if outer == "pending" {
                 vec!["src/main.gleam:4\n\"main\"", "src/main.gleam:6\n\"inner\""]
@@ -226,6 +226,8 @@ pub fn main() {{
 
     #[test]
     fn resolved_aliases_use_the_registered_nominal_schema() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let mut entry = entry(
             r#"import fixture/work
 pub type Response = work.Work(Int)
@@ -236,16 +238,16 @@ pub fn main() -> Response { work.ready(42) }
         .expect("sealed alias");
         assert!(returns_work(&entry));
         let mut echo = Echo::default();
-        entry
-            .run(&mut (), &mut echo)
-            .now_or_never()
-            .expect("ready alias")
+        execution_host
+            .block_on(entry.run(&execution_host, &mut (), &mut echo))
             .expect("result");
         assert!(echo.0.is_empty());
     }
 
     #[test]
     fn a_foreign_nominal_work_return_remains_ordinary_data() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         use crate::host::{
             HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
             HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType,
@@ -302,23 +304,23 @@ pub fn main() -> Response { work.ready(42) }
         .expect("sealed ordinary entry");
         assert!(!returns_work(&entry));
         let mut echo = Echo::default();
-        entry
-            .run(&mut (), &mut echo)
-            .now_or_never()
-            .expect("ordinary entry completes")
+        execution_host
+            .block_on(entry.run(&execution_host, &mut (), &mut echo))
             .expect("foreign Work is not driven");
         assert_eq!(echo.0, ["src/main.gleam:4\nWork(41)"]);
     }
 
     #[test]
     fn native_cancellation_is_an_entry_lifecycle_outcome() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         fn cancel<'call>(
             mut call: HostCall<'call, Profile, WorkComponent, WorkHostType<BigInt>>,
             constructions: HostConstructions<'call, HostTypeListEnd>,
         ) -> Result<HostCallCompletion<'call, WorkHostType<BigInt>>, HostCallError> {
             assert_eq!(call.state(), &());
             Ok(call.return_future(constructions, |_| {
-                Box::pin(async { Err(HostFutureError::Cancelled) })
+                Box::pin(async { Err(HostExecutionError::Cancelled) })
             }))
         }
         let native = HostProviderModule::new("application", "main")
@@ -330,10 +332,8 @@ pub fn main() -> Response { work.ready(42) }
             "import fixture/work\n@external(erlang, \"native\", \"cancel\")\nfn cancel() -> work.Work(Int)\npub fn main() { cancel() }",
             vec![native],
         ).expect("sealed work entry");
-        let error = entry
-            .run(&mut (), &mut Vec::new())
-            .now_or_never()
-            .expect("cancelled operation resolves")
+        let error = execution_host
+            .block_on(entry.run(&execution_host, &mut (), &mut Vec::new()))
             .expect_err("native cancellation");
         assert_eq!(format!("{error:?}"), "Cancelled");
         assert!(execution_failure(&error).is_none());
@@ -341,6 +341,8 @@ pub fn main() -> Response { work.ready(42) }
 
     #[test]
     fn sealing_rejects_an_unrepresentable_native_return_before_running_main() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         fn produce<'call>(
             _call: HostCall<'call, Profile, WorkComponent, HostTypeParameter<0>>,
         ) -> Result<HostCallCompletion<'call, HostTypeParameter<0>>, HostCallError> {
@@ -359,10 +361,8 @@ pub fn main() -> Response { work.ready(42) }
             match entry(&source, vec![native]) {
                 Ok(mut entry) => {
                     assert!(sealed);
-                    let error = entry
-                        .run(&mut (), &mut Vec::new())
-                        .now_or_never()
-                        .expect("immediate native failure")
+                    let error = execution_host
+                        .block_on(entry.run(&execution_host, &mut (), &mut Vec::new()))
                         .expect_err("producer failure");
                     assert_eq!(
                         error.to_string(),
@@ -382,25 +382,110 @@ pub fn main() -> Response { work.ready(42) }
     }
 
     #[test]
+    fn a_resumable_native_call_can_cancel_before_main_produces_its_result() {
+        fn cancel<'call, Return: crate::HostType>(
+            call: HostCall<'call, Profile, WorkComponent, Return>,
+            constructions: HostConstructions<'call, HostTypeListEnd>,
+        ) -> Result<crate::HostCallContinuation<'call, Return>, HostCallError> {
+            Ok(call.resume(constructions, |_| {
+                Box::pin(std::future::ready(Err(HostExecutionError::Cancelled)))
+            }))
+        }
+        for (return_, provider) in [
+            ("Int", HostProviderModule::new("application", "main").unwrap()
+                .with_resumable_function::<WorkComponent, (), BigInt, HostTypeListEnd, _>("cancel", cancel::<BigInt>).unwrap()),
+            ("work.Work(Int)", HostProviderModule::new("application", "main").unwrap()
+                .with_resumable_function::<WorkComponent, (), WorkHostType<BigInt>, HostTypeListEnd, _>("cancel", cancel::<WorkHostType<BigInt>>).unwrap()),
+        ] {
+            let source = format!(r#"import fixture/work
+@external(erlang, "native", "cancel")
+fn cancel() -> {return_}
+pub fn main() {{ echo "before" cancel() }}
+"#);
+            let mut entry = entry(&source, vec![provider]).unwrap();
+            let host = crate::execution_fixture::TestHost::default();
+            let mut echo = Echo::default();
+            let error = host.block_on(entry.run(&host, &mut (), &mut echo)).unwrap_err();
+            assert_eq!(error.to_string(), "the Gleam entry was cancelled");
+            assert_eq!(echo.0, ["src/main.gleam:4\n\"before\""]);
+        }
+    }
+
+    #[cfg(feature = "tokio")]
+    #[test]
+    fn a_shutdown_executor_rejects_entries_without_running_source_effects() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let host = crate::execution::TokioHost::new(runtime.handle().clone());
+        drop(runtime);
+        let driver = crate::execution_fixture::TestHost::default();
+        for source in [
+            "pub fn main() { echo \"entered\" 42 }",
+            "import fixture/work pub fn main() { echo \"entered\" work.ready(42) }",
+        ] {
+            let mut entry = entry(source, Vec::new()).unwrap();
+            let mut echo = Echo::default();
+            let error = driver
+                .block_on(entry.run(&host, &mut (), &mut echo))
+                .unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                "the host executor cancelled an active worker"
+            );
+            let error = driver
+                .block_on(entry.execution.run_main(&host, &mut (), &mut echo))
+                .unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                "the host executor cancelled an active worker"
+            );
+            assert!(echo.0.is_empty());
+        }
+    }
+
+    #[test]
     fn native_work_failure_keeps_the_host_callback_caller() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         fn fail<'call>(
             call: HostCall<'call, Profile, WorkComponent, WorkHostType<BigInt>>,
             constructions: HostConstructions<'call, HostTypeListEnd>,
         ) -> Result<HostCallCompletion<'call, WorkHostType<BigInt>>, HostCallError> {
             Ok(call.return_future(constructions, |_| {
                 Box::pin(async {
-                    Ok(crate::host::HostFutureCompletion::new(|_, _| {
+                    Ok(crate::host::HostOwnedCompletion::new(|_, _| {
                         Err(crate::HostFailure::new("native failed").into())
                     }))
                 })
             }))
         }
         fn bridge<'call>(
-            mut call: HostCall<'call, Profile, WorkComponent, WorkHostType<BigInt>>,
+            call: HostCall<'call, Profile, WorkComponent, WorkHostType<BigInt>>,
+            constructions: HostConstructions<'call, HostTypeListEnd>,
             callback: HostCallable<'call, HostTypeListEnd, WorkHostType<BigInt>>,
-        ) -> Result<HostCallCompletion<'call, WorkHostType<BigInt>>, HostCallError> {
-            let work = call.invoke(callback, ())?;
-            Ok(call.return_value(work))
+        ) -> Result<crate::host::HostCallContinuation<'call, WorkHostType<BigInt>>, HostCallError>
+        {
+            type Owned = crate::provider::Value<
+                WorkHostType<BigInt>,
+                crate::provider::ProviderValueContext<WorkHostType<BigInt>>,
+            >;
+            let callback = call.owned_callable(callback, &constructions);
+            Ok(call.resume(constructions, move |context| {
+                Box::pin(async move {
+                    let work = callback
+                        .invoke(
+                            &context,
+                            |_, _| (),
+                            |call, _, value| Ok(Owned::from_host(&call, value)),
+                        )
+                        .await?;
+                    Ok(crate::host::HostOwnedCompletion::new(move |mut call, _| {
+                        let value = work.into_host(&mut call);
+                        Ok(call.return_value(value))
+                    }))
+                })
+            }))
         }
         for (body, native_failure) in [
             ("bridge(fail)", true),
@@ -409,7 +494,7 @@ pub fn main() -> Response { work.ready(42) }
             let native = HostProviderModule::new("application", "main").expect("native module")
             .with_scoped_function_and_constructions::<WorkComponent, (), WorkHostType<BigInt>, HostTypeListEnd, _>("fail", fail)
             .expect("failing work")
-            .with_scoped_function::<WorkComponent, (HostFunctionType<HostTypeListEnd, WorkHostType<BigInt>>,), WorkHostType<BigInt>, _>("bridge", bridge)
+            .with_resumable_function::<WorkComponent, (HostFunctionType<HostTypeListEnd, WorkHostType<BigInt>>,), WorkHostType<BigInt>, HostTypeListEnd, _>("bridge", bridge)
             .expect("native callback");
             let source = format!(
                 r#"import fixture/work
@@ -421,26 +506,28 @@ pub fn main() {{ {body} }}
 "#
             );
             let mut entry = entry(&source, vec![native]).expect("sealed native callback");
-            let error = entry
-                .run(&mut (), &mut Vec::new())
-                .now_or_never()
-                .expect("native work completes")
+            let error = execution_host
+                .block_on(entry.run(&execution_host, &mut (), &mut Vec::new()))
                 .expect_err("native work failure");
-            execution_failure(&error).expect("provider execution failure").read(|error| {
+            let error = execution_failure(&error).expect("provider execution failure");
             if !native_failure {
                 assert_eq!(error.to_string(), "panic: construction");
-                return;
+                continue;
             }
-            assert_eq!(error.to_string(), "host function application::main.fail failed: native failed");
+            assert_eq!(
+                error.to_string(),
+                "host function application::main.fail failed: native failed"
+            );
             assert!(matches!(error, crate::ExecutionError::Host(host)
                 if host.location().caller().map(|caller| (caller.package().as_str(), caller.module().as_str(), caller.function().as_str()))
                     == Some(("application", "main", "bridge"))));
-        });
         }
     }
 
     #[test]
     fn construction_and_completion_keep_source_failure_origins() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         for (body, label) in [
             ("panic as \"original\"", "panic in main.main"),
             (
@@ -452,13 +539,12 @@ pub fn main() {{ {body} }}
                 format!("import fixture/work\npub fn main() -> work.Work(Int) {{\n  {body}\n}}\n");
             let mut entry = entry(&source, Vec::new()).expect("sealed entry");
             let mut echo = Echo::default();
-            let error = entry
-                .run(&mut (), &mut echo)
-                .now_or_never()
-                .expect("source failure completes")
+            let error = execution_host
+                .block_on(entry.run(&execution_host, &mut (), &mut echo))
                 .expect_err("source panic");
             let execution = execution_failure(&error).expect("execution failure");
-            execution.read(|error| {
+            {
+                let error = execution;
                 use miette::Diagnostic;
                 assert_eq!(error.to_string(), "panic: original");
                 assert_eq!(error.code().expect("panic code").to_string(), "geam::panic");
@@ -470,7 +556,7 @@ pub fn main() {{ {body} }}
                 );
                 assert_eq!(labels[0].len(), "panic as \"original\"".len());
                 assert_eq!(labels[0].label(), Some(label));
-            });
+            }
             assert!(echo.0.is_empty());
         }
     }
@@ -479,12 +565,10 @@ pub fn main() {{ {body} }}
         matches!(entry.completion, EntryCompletion::Work(_))
     }
 
-    fn execution_failure(
-        error: &crate::runtime::ObservationError,
-    ) -> Option<&crate::runtime::SharedExecutionError> {
+    fn execution_failure(error: &crate::execution::RunError) -> Option<&crate::ExecutionError> {
         match error {
-            crate::runtime::ObservationError::Execution(error) => Some(error),
-            crate::runtime::ObservationError::Cancelled => None,
+            crate::execution::RunError::Execution(error) => Some(error),
+            crate::execution::RunError::Cancelled | crate::execution::RunError::Driver(_) => None,
         }
     }
 }

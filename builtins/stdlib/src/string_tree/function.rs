@@ -119,7 +119,7 @@ mod tests {
 
     #[test]
     fn executes_every_string_tree_provider_through_the_hosted_pipeline() {
-        let execution = execution(
+        let mut execution = execution(
             r#"
 pub fn main() {
   let segmented = from_strings(["a", "b"])
@@ -143,12 +143,12 @@ pub fn main() {
 }
 "#,
         );
-        let value = execution
-            .run_main(
-                &mut GleamStdlibRunState::from_seed([0; 32]),
-                &mut Vec::new(),
-            )
-            .expect("string tree providers should run");
+        let value = crate::execution_fixture::run(
+            &mut execution,
+            &mut GleamStdlibRunState::from_seed([0; 32]),
+            &mut Vec::new(),
+        )
+        .expect("string tree providers should run");
 
         assert_eq!(
             value.inspect().to_string(),

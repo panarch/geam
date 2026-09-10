@@ -188,10 +188,10 @@ mod tests {
         HostExternalSchema, HostExternalStorage, HostExternalStore, HostProfile, HostProvider,
     };
     use super::{HostStoredDynamic, HostStoredValue};
-    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
+    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder};
     use crate::frontend::compile_typed_host_program;
     use crate::host::{
-        HostCall, HostComponentProfile, HostConstructions, HostFutureCompletion, HostFutureStore,
+        HostCall, HostComponentProfile, HostConstructions, HostFutureStore, HostOwnedCompletion,
         HostProviderModule, HostProviderSet,
     };
     use crate::runtime::StoredRuntimeValue;
@@ -202,7 +202,7 @@ mod tests {
         ModuleSource, PackageSource,
     };
     use ecow::EcoString;
-    use futures_util::FutureExt;
+
     use num_bigint::BigInt;
     use std::cell::Cell;
     use std::future::{Future, poll_fn};
@@ -411,6 +411,8 @@ mod tests {
 
     #[test]
     fn direct_calls_create_read_and_retain_send_only_external_payloads() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         fn read<'call>(
             call: HostCall<'call, Profile, Provider, BigInt>,
             value: HostExternal<'call, HostExternalType<Counter>>,
@@ -482,15 +484,19 @@ pub fn run() {
             &state.1,
         ));
         let mut echo = Echo::default();
-        with_execution_scope(async |guard| {
-            let mut scope = module.attach(guard, &mut state, &mut echo);
-            assert_eq!(
-                scope.call(&run, ()).expect("source call"),
-                (41.into(), true)
-            );
-        })
-        .now_or_never()
-        .expect("direct calls");
+        execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    assert_eq!(
+                        scope.call(&run, ()).await.expect("source call"),
+                        (41.into(), true)
+                    );
+                },
+            ))
+            .expect("direct calls");
         assert!(echo.0[0].ends_with("Envelope(Counter(41))"));
         assert_eq!(drops.load(Ordering::SeqCst), 2);
         drop(module);
@@ -499,6 +505,8 @@ pub fn run() {
 
     #[test]
     fn owned_external_input_survives_pending_and_drops_with_the_work_not_its_waiter() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         fn read_later<'call>(
             call: HostCall<'call, Profile, Provider, WorkHostType<BigInt>>,
             constructions: HostConstructions<'call, HostTypeListEnd>,
@@ -519,7 +527,7 @@ pub fn run() {
                     })
                     .await;
                     let value = value.with(|payload| BigInt::from(payload.value.get()));
-                    Ok(HostFutureCompletion::new(move |call, _| {
+                    Ok(HostOwnedCompletion::new(move |call, _| {
                         Ok(call.return_value(value))
                     }))
                 })
@@ -546,52 +554,52 @@ pub fn run() { read_later(make()) }
         let drops = Arc::new(AtomicUsize::new(0));
         let mut state = (Arc::clone(&drops), ());
         let mut echo = Echo::default();
-        let mut task = Box::pin(with_execution_scope(async |guard| {
-            let mut scope = module.attach(guard, &mut state, &mut echo);
-            let abandoned = scope.call(&run, ()).expect("unpolled work");
-            assert_eq!(drops.load(Ordering::SeqCst), 0);
-            drop(abandoned);
-            assert_eq!(drops.load(Ordering::SeqCst), 1);
-            let work = scope.call(&run, ()).expect("work");
-            {
-                let mut observer = Box::pin(scope.observe(&work));
-                assert!(
-                    observer
-                        .as_mut()
-                        .poll(&mut Context::from_waker(Waker::noop()))
-                        .is_pending()
-                );
-            }
-            assert_eq!(drops.load(Ordering::SeqCst), 1);
-            let result = scope
-                .observe(&work)
-                .await
-                .expect("redrive existing operation");
-            assert_eq!(result.read(Clone::clone), BigInt::from(41));
-            assert_eq!(drops.load(Ordering::SeqCst), 2);
-            let cancelled = scope.call(&run, ()).expect("cancelled work");
-            {
-                let mut observer = Box::pin(scope.observe(&cancelled));
-                assert!(
-                    observer
-                        .as_mut()
-                        .poll(&mut Context::from_waker(Waker::noop()))
-                        .is_pending()
-                );
-            }
-            drop(cancelled);
-            assert_eq!(drops.load(Ordering::SeqCst), 3);
-        }));
+        let mut task = Box::pin(module.with_execution(
+            &execution_host,
+            &mut state,
+            &mut echo,
+            async |scope| {
+                let abandoned = scope.call(&run, ()).await.expect("unpolled work");
+                assert_eq!(drops.load(Ordering::SeqCst), 0);
+                drop(abandoned);
+                assert_eq!(drops.load(Ordering::SeqCst), 1);
+                let work = scope.call(&run, ()).await.expect("work");
+                {
+                    let mut observer = Box::pin(scope.observe(&work));
+                    assert!(
+                        observer
+                            .as_mut()
+                            .poll(&mut Context::from_waker(Waker::noop()))
+                            .is_pending()
+                    );
+                }
+                assert_eq!(drops.load(Ordering::SeqCst), 1);
+                let result = scope
+                    .observe(&work)
+                    .await
+                    .expect("redrive existing operation");
+                assert_eq!(result.read(Clone::clone), BigInt::from(41));
+                assert_eq!(drops.load(Ordering::SeqCst), 2);
+                let cancelled = scope.call(&run, ()).await.expect("cancelled work");
+                {
+                    let mut observer = Box::pin(scope.observe(&cancelled));
+                    assert!(
+                        observer
+                            .as_mut()
+                            .poll(&mut Context::from_waker(Waker::noop()))
+                            .is_pending()
+                    );
+                }
+                drop(cancelled);
+                assert_eq!(drops.load(Ordering::SeqCst), 3);
+            },
+        ));
         fn require_send<T: Send>(_: &T) {}
         require_send(&task);
         std::thread::scope(|threads| {
             threads
                 .spawn(|| {
-                    assert!(
-                        task.as_mut()
-                            .poll(&mut Context::from_waker(Waker::noop()))
-                            .is_ready()
-                    );
+                    assert!(execution_host.poll(task.as_mut()).is_ready());
                 })
                 .join()
                 .expect("work and non-Sync payload move together");
@@ -603,6 +611,8 @@ pub fn run() { read_later(make()) }
 
     #[test]
     fn external_returns_compose_with_every_direct_scalar_family() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let provider = HostProviderModule::new("application", "library")
             .expect("identity")
             .with_external_type::<Provider, Counter>()
@@ -672,15 +682,22 @@ pub fn run(i: Int, f: Float, s: String, b: BitArray, c: UtfCodepoint, flag: Bool
         );
         let mut state = (Arc::new(AtomicUsize::new(0)), ());
         let mut echo = Echo::default();
-        with_execution_scope(async |guard| {
-            let mut scope = module.attach(guard, &mut state, &mut echo);
-            assert_eq!(
-                scope.call(&run, values.clone()).expect("scalar returns"),
-                values
-            );
-        })
-        .now_or_never()
-        .expect("immediate scalar call");
+        execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    assert_eq!(
+                        scope
+                            .call(&run, values.clone())
+                            .await
+                            .expect("scalar returns"),
+                        values
+                    );
+                },
+            ))
+            .expect("immediate scalar call");
         assert_eq!(echo.0.len(), 1);
         assert!(echo.0[0].ends_with("Counter(41)"));
         assert_eq!(state.0.load(Ordering::SeqCst), 1);
@@ -688,12 +705,34 @@ pub fn run(i: Int, f: Float, s: String, b: BitArray, c: UtfCodepoint, flag: Bool
 
     #[test]
     fn external_returns_preserve_provider_failures_and_source_panics() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         fn bridge<'call>(
-            mut call: HostCall<'call, Profile, Provider, HostExternalType<Counter>>,
+            call: HostCall<'call, Profile, Provider, HostExternalType<Counter>>,
+            constructions: crate::HostConstructions<'call, HostTypeListEnd>,
             callback: crate::HostCallable<'call, HostTypeListEnd, HostExternalType<Counter>>,
-        ) -> Result<HostCallCompletion<'call, HostExternalType<Counter>>, HostCallError> {
-            let value = call.invoke(callback, ())?;
-            Ok(call.return_value(value))
+        ) -> Result<crate::HostCallContinuation<'call, HostExternalType<Counter>>, HostCallError>
+        {
+            type Owned = crate::provider::Value<
+                HostExternalType<Counter>,
+                crate::provider::ProviderValueContext<HostExternalType<Counter>>,
+            >;
+            let callback = call.owned_callable(callback, &constructions);
+            Ok(call.resume(constructions, move |context| {
+                Box::pin(async move {
+                    let value = callback
+                        .invoke(
+                            &context,
+                            |_, _| (),
+                            |call, _, value| Ok(Owned::from_host(&call, value)),
+                        )
+                        .await?;
+                    Ok(crate::HostOwnedCompletion::new(move |mut call, _| {
+                        let value = value.into_host(&mut call);
+                        Ok(call.return_value(value))
+                    }))
+                })
+            }))
         }
         fn fail(
             _: HostCall<'_, Profile, Provider, HostExternalType<Counter>>,
@@ -711,7 +750,7 @@ pub fn run(i: Int, f: Float, s: String, b: BitArray, c: UtfCodepoint, flag: Bool
             .expect("schema")
             .with_scoped_function::<Provider, (), HostExternalType<Counter>, _>("make", make_counter)
             .expect("constructor")
-            .with_scoped_function::<Provider, (crate::HostFunctionType<HostTypeListEnd, HostExternalType<Counter>>,), HostExternalType<Counter>, _>("bridge", bridge)
+            .with_resumable_function::<Provider, (crate::HostFunctionType<HostTypeListEnd, HostExternalType<Counter>>,), HostExternalType<Counter>, HostTypeListEnd, _>("bridge", bridge)
             .expect("external callback")
             .with_scoped_function::<Provider, (), HostExternalType<Counter>, _>("fail", fail)
             .expect("fallible")
@@ -760,8 +799,7 @@ pub fn nested(fail: Bool) {
         let mut module = bindings.seal().expect("seal");
         let mut state = (Arc::new(AtomicUsize::new(0)), ());
         let mut echo = Echo::default();
-        with_execution_scope(async |guard| {
-            let mut scope = module.attach(guard, &mut state, &mut echo);
+        execution_host.block_on(module.with_execution(&execution_host, &mut state, &mut echo, async |scope| {
             for (entry, message) in [
                 (
                     &run,
@@ -775,7 +813,7 @@ pub fn nested(fail: Bool) {
             ] {
                 assert_eq!(
                     scope
-                        .call(entry, ())
+                        .call(entry, ()).await
                         .expect_err("original failure")
                         .to_string(),
                     message
@@ -783,16 +821,15 @@ pub fn nested(fail: Bool) {
             }
             assert_eq!(
                 scope
-                    .call(&nested, (true,))
+                    .call(&nested, (true,)).await
                     .expect_err("nested source failure")
                     .to_string(),
                 "panic: external callback stopped"
             );
             scope
-                .call(&nested, (false,))
+                .call(&nested, (false,)).await
                 .expect("external callback success");
-        })
-        .now_or_never()
+        }))
         .expect("failures are direct");
         assert_eq!(echo.0.len(), 1);
         assert!(echo.0[0].ends_with("Counter(41)"));

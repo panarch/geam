@@ -100,14 +100,14 @@ pub fn main() {
             .iter()
             .all(|function| function.host_template().is_some()),
     );
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
     let mut state = RunState {
         total: BigInt::from(0),
         audit_enabled: false,
     };
     assert_eq!(
-        execution.run_main(&mut state, &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new()),
         Ok(Value::Tuple(vec![
             Value::Int(1.into()),
             Value::Float(2.5),
@@ -147,14 +147,13 @@ pub fn main() {
     )
     .expect("host program should compile");
     let plan = plan_host_program(typed).expect("host program should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
     let mut state = RunState {
         total: BigInt::from(9),
         audit_enabled: false,
     };
-    let error = execution
-        .run_main(&mut state, &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect_err("fallible Bool host function should fail");
     let ExecutionError::Host(error) = error else {
         panic!("fallible Bool host function should produce a host error");
@@ -246,14 +245,13 @@ pub fn main() {
     )
     .expect("host program should compile");
     let plan = plan_host_program(typed).expect("host program should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
     let mut state = RunState {
         total: BigInt::from(9),
         audit_enabled: true,
     };
-    let value = execution
-        .run_main(&mut state, &mut Vec::new())
+    let value = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect("generic list program should execute");
     let Value::List(value) = value else {
         panic!("main should return a list");
@@ -328,7 +326,7 @@ pub fn main() {
     );
     assert!(functions[0].gleam_body().is_some());
     assert!(functions[1].host_template().is_some());
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
     let mut state = RunState {
         total: BigInt::from(0),
@@ -337,7 +335,7 @@ pub fn main() {
     let mut echoes = Vec::new();
 
     assert_eq!(
-        execution.run_main(&mut state, &mut echoes),
+        crate::execution_fixture::run(&mut execution, &mut state, &mut echoes),
         Ok(Value::Tuple(vec![
             Value::Int(3.into()),
             Value::Int(12.into()),
@@ -354,7 +352,7 @@ pub fn main() {
         audit_enabled: true,
     };
     assert_eq!(
-        execution.run_main(&mut independent_state, &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut independent_state, &mut Vec::new()),
         Ok(Value::Tuple(vec![
             Value::Int(103.into()),
             Value::Int(112.into()),

@@ -2,7 +2,6 @@ use camino::Utf8Path;
 use geam_builtin::FutureComponent;
 use geam_core::embedding::{
     CallError, Function, FunctionDeclaration, HostedModule, HostedModuleBuilder,
-    with_execution_scope,
 };
 use geam_core::frontend::HostedTypedProgram;
 use geam_core::host::HostComponentProfile;
@@ -11,10 +10,9 @@ use geam_core::{
     compile_typed_host_project,
 };
 use std::fs;
-use std::future::Future;
 use std::path::Path;
-use std::pin::pin;
-use std::task::{Context, Poll, Waker};
+
+use crate::execution_fixture;
 
 #[path = "../../core/tests/support/fixture_observation.rs"]
 mod fixture_observation;
@@ -48,14 +46,14 @@ where
         state: &mut Profile::RunState,
         echo: &mut (dyn EchoSink + Send),
     ) -> Result<(), CallError> {
-        let mut task = pin!(with_execution_scope(async |guard| {
-            self.module.attach(guard, state, echo).call(&self.entry, ())
-        }));
-        let Poll::Ready(result) = task.as_mut().poll(&mut Context::from_waker(Waker::noop()))
-        else {
-            panic!("ordinary source fixture must complete without polling native work");
-        };
-        result
+        let host = execution_fixture::TestHost::default();
+        host.block_on(
+            self.module
+                .with_execution(&host, state, echo, async |scope| {
+                    scope.call(&self.entry, ()).await
+                }),
+        )
+        .expect("controlled source fixture execution")
     }
 }
 

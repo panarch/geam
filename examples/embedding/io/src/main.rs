@@ -7,17 +7,24 @@ use geam::gleam_stdlib::{GleamStdlibRunState, IoStream};
 use std::io::{self, Write};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let executor = tokio::runtime::Builder::new_current_thread().build()?;
+    let host = geam::execution::TokioHost::new(executor.handle().clone());
     let program = geam_bindings::project().compile()?;
     let builder = HostedModuleBuilder::new(program)?;
     let (bindings, functions) = geam_bindings::bind(builder)?;
-    let module = bindings.seal()?;
+    let mut module = bindings.seal()?;
     let mut state = geam_bindings::RunStateInputs {
         stdlib: GleamStdlibRunState::from_seed([7; 32]),
     }
     .initialize();
     let mut echo = Vec::new();
 
-    let message = module.call(&functions.announce, ("Rust".into(),), &mut state, &mut echo)?;
+    let message = executor.block_on(module.with_execution(
+        &host,
+        &mut state,
+        &mut echo,
+        async |scope| scope.call(&functions.announce, ("Rust".into(),)).await,
+    ))??;
 
     let mut stdout = io::stdout().lock();
     let mut stderr = io::stderr().lock();

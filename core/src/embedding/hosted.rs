@@ -1,13 +1,10 @@
 use super::binding::{BindingBuilder, BindingParts, Bindings};
-use super::input::{ArgumentsInput, InputShape};
-use super::{
-    Arguments, BindingError, CallError, EmbeddingValue, Function, FunctionDeclaration, ReturnValue,
-};
+use super::{Arguments, BindingError, EmbeddingValue, Function, FunctionDeclaration};
+use crate::PlanError;
 use crate::frontend::HostedTypedProgram;
 use crate::host::HostProfile;
 use crate::plan::HostedLibraryModulePlan;
 use crate::plan::execution::{HostSpecializationError, HostedExecution, LibraryFunctionEntries};
-use crate::{EchoSink, PlanError};
 use std::sync::Arc;
 
 /// Plans a hosted Gleam project before selecting its first embedded function.
@@ -97,49 +94,6 @@ impl<Profile: HostProfile> HostedModuleBindings<Profile> {
     }
 }
 
-impl<Profile: HostProfile> HostedModule<Profile> {
-    /// Calls a bound function with explicit caller-owned provider state.
-    #[allow(private_bounds)]
-    pub fn call<ArgumentsType, Return, Input, Shape>(
-        &self,
-        function: &Function<ArgumentsType, Return, Shape>,
-        arguments: Input,
-        state: &mut Profile::RunState,
-        echo: &mut dyn EchoSink,
-    ) -> Result<Return, CallError>
-    where
-        ArgumentsType: ArgumentsInput<Input>,
-        Return: ReturnValue,
-        Shape: InputShape<Input>,
-    {
-        self.check_owner(&function.owner).and_then(|()| {
-            if !ArgumentsType::owners_match(&arguments, &self.owner) {
-                return Err(CallError::ForeignValue);
-            }
-            let constructions = Return::input_constructions(&self.entries, function.slot);
-            let inputs = ArgumentsType::into_inputs(arguments, constructions);
-            Return::call_hosted(
-                &self.execution,
-                &self.entries,
-                function.slot,
-                inputs,
-                state,
-                echo,
-                &self.owner,
-            )
-            .map_err(CallError::Execution)
-        })
-    }
-
-    fn check_owner(&self, owner: &Arc<()>) -> Result<(), CallError> {
-        if Arc::ptr_eq(&self.owner, owner) {
-            Ok(())
-        } else {
-            Err(CallError::ForeignFunction)
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{HostedModuleBindings, HostedModuleBuilder};
@@ -199,23 +153,37 @@ mod tests {
     type IntCallback = HostFunctionType<HostTypeListEnd, BigInt>;
 
     fn around<'call>(
-        mut call: HostCall<'call, StatefulProfile, Counter, BigInt>,
+        call: HostCall<'call, StatefulProfile, Counter, BigInt>,
+        constructions: crate::HostConstructions<'call, HostTypeListEnd>,
         callback: HostCallable<'call, HostTypeListEnd, BigInt>,
-    ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
-        let value = call.invoke(callback, ())?;
-        Ok(call.return_value(value))
+    ) -> Result<crate::HostCallContinuation<'call, BigInt>, HostCallError> {
+        let callback = call.owned_callable(callback, &constructions);
+        Ok(call.resume(constructions, move |context| {
+            Box::pin(async move {
+                let value = callback
+                    .invoke(&context, |_, _| (), |_, _, value| Ok(value))
+                    .await?;
+                Ok(crate::HostOwnedCompletion::new(move |call, _| {
+                    Ok(call.return_value(value))
+                }))
+            })
+        }))
     }
 
     fn stateful_hosts() -> HostProviderSet<StatefulProfile> {
-        let counter =
-            HostModule::<StatefulProfile>::new_for_profile("host_support", "host/counter")
-                .expect("counter module should be valid")
-                .with_scoped_function::<Counter, (), BigInt, _>("next", next)
-                .expect("next should register")
-                .with_scoped_diverging_function::<Counter, (), BigInt, _>("stop", stop)
-                .expect("stop should register")
-                .with_scoped_function::<Counter, (IntCallback,), BigInt, _>("around", around)
-                .expect("around should register");
+        let counter = HostModule::<StatefulProfile>::new_for_profile(
+            "host_support",
+            "host/counter",
+        )
+        .expect("counter module should be valid")
+        .with_scoped_function::<Counter, (), BigInt, _>("next", next)
+        .expect("next should register")
+        .with_scoped_diverging_function::<Counter, (), BigInt, _>("stop", stop)
+        .expect("stop should register")
+        .with_resumable_function::<Counter, (IntCallback,), BigInt, geam_core::HostTypeListEnd, _>(
+            "around", around,
+        )
+        .expect("around should register");
         HostProviderSet::new([counter]).expect("counter module should be unique")
     }
 
@@ -326,6 +294,8 @@ mod tests {
 
     #[test]
     fn calls_every_scalar_family_through_the_shared_typed_contract() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let builder = stateless_builder(
             r#"
 pub fn keep_int(value: Int) { value }
@@ -362,52 +332,113 @@ pub fn mixed(
             &mut bindings,
             "mixed",
         );
-        let module = bindings.seal().expect("hosted entries should seal");
+        let mut module = bindings.seal().expect("hosted entries should seal");
         let mut state = ();
         let mut echo = Vec::new();
         let bits_value = BitArrayValue::try_from_parts(vec![0b1010_0000], 3)
             .expect("three bits should fit in one byte");
 
         assert_eq!(
-            module.call(&int, (BigInt::from(3),), &mut state, &mut echo),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut state,
+                    &mut echo,
+                    async |scope| scope.call(&int, (BigInt::from(3),)).await
+                ))
+                .expect("controlled execution"),
             Ok(BigInt::from(3)),
         );
         assert_eq!(
-            module.call(&float, (1.25,), &mut state, &mut echo),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut state,
+                    &mut echo,
+                    async |scope| scope.call(&float, (1.25,)).await
+                ))
+                .expect("controlled execution"),
             Ok(1.25)
         );
         assert_eq!(
-            module.call(&string, ("value".into(),), &mut state, &mut echo),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut state,
+                    &mut echo,
+                    async |scope| scope.call(&string, ("value".into(),)).await
+                ))
+                .expect("controlled execution"),
             Ok("value".into()),
         );
         assert_eq!(
-            module.call(&bits, (bits_value.clone(),), &mut state, &mut echo,),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut state,
+                    &mut echo,
+                    async |scope| scope.call(&bits, (bits_value.clone(),)).await
+                ))
+                .expect("controlled execution"),
             Ok(bits_value.clone()),
         );
         assert_eq!(
-            module.call(&codepoint, ('한',), &mut state, &mut echo),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut state,
+                    &mut echo,
+                    async |scope| scope.call(&codepoint, ('한',)).await
+                ))
+                .expect("controlled execution"),
             Ok('한')
         );
         assert_eq!(
-            module.call(&bool_, (true,), &mut state, &mut echo),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut state,
+                    &mut echo,
+                    async |scope| scope.call(&bool_, (true,)).await
+                ))
+                .expect("controlled execution"),
             Ok(true)
         );
-        assert_eq!(module.call(&nil, ((),), &mut state, &mut echo), Ok(()));
         assert_eq!(
-            module.call(
-                &mixed,
-                (
-                    BigInt::from(1),
-                    2.0,
-                    "three".into(),
-                    bits_value,
-                    '四',
-                    false,
-                    (),
-                ),
-                &mut state,
-                &mut echo,
-            ),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut state,
+                    &mut echo,
+                    async |scope| scope.call(&nil, ((),)).await
+                ))
+                .expect("controlled execution"),
+            Ok(())
+        );
+        assert_eq!(
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut state,
+                    &mut echo,
+                    async |scope| {
+                        scope
+                            .call(
+                                &mixed,
+                                (
+                                    BigInt::from(1),
+                                    2.0,
+                                    "three".into(),
+                                    bits_value,
+                                    '四',
+                                    false,
+                                    (),
+                                ),
+                            )
+                            .await
+                    }
+                ))
+                .expect("controlled execution"),
             Ok(false),
         );
         assert!(echo.is_empty());
@@ -415,6 +446,8 @@ pub fn mixed(
 
     #[test]
     fn reuses_one_execution_with_caller_owned_mutable_state() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let builder = stateful_builder(
             r#"
 import host/counter
@@ -425,20 +458,41 @@ pub fn next() { counter.next() }
         let (bindings, next) = builder
             .function(FunctionDeclaration::<(), BigInt>::new("next"))
             .expect("next should bind");
-        let module = bindings.seal().expect("next should seal");
+        let mut module = bindings.seal().expect("next should seal");
         let mut first = RunState::default();
         let mut second = RunState::default();
 
         assert_eq!(
-            module.call(&next, (), &mut first, &mut Vec::new()),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut first,
+                    &mut Vec::new(),
+                    async |scope| scope.call(&next, ()).await
+                ))
+                .expect("controlled execution"),
             Ok(BigInt::from(1)),
         );
         assert_eq!(
-            module.call(&next, (), &mut first, &mut Vec::new()),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut first,
+                    &mut Vec::new(),
+                    async |scope| scope.call(&next, ()).await
+                ))
+                .expect("controlled execution"),
             Ok(BigInt::from(2)),
         );
         assert_eq!(
-            module.call(&next, (), &mut second, &mut Vec::new()),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut second,
+                    &mut Vec::new(),
+                    async |scope| scope.call(&next, ()).await
+                ))
+                .expect("controlled execution"),
             Ok(BigInt::from(1)),
         );
         assert_eq!(first.calls, 2);
@@ -447,6 +501,8 @@ pub fn next() { counter.next() }
 
     #[test]
     fn retains_lists_after_host_state_drop_and_rejects_foreign_inputs_before_mutation() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         use crate::embedding::List;
 
         let source = r#"
@@ -464,50 +520,78 @@ pub fn inspect(values: List(Result(#(String, Int), String))) {
 }
 "#;
         type Row = Result<(EcoString, BigInt), EcoString>;
+        let collect_rows = |list: &crate::embedding::SharedList<Row>| {
+            (0..list.len())
+                .map(|index| {
+                    list.read_item(index, |row| {
+                        row.map(|(label, value)| (label.clone(), value.clone()))
+                            .map_err(Clone::clone)
+                    })
+                    .expect("row in bounds")
+                })
+                .collect::<Vec<_>>()
+        };
         let rows: Vec<Row> = vec![Ok(("A".into(), 4.into())), Err("invalid".into())];
         let retained = {
             let (mut bindings, batch) = stateful_builder(source)
                 .function(FunctionDeclaration::<(List<Row>,), List<Row>>::new("batch"))
                 .expect("hosted List entry");
             let inspect = bind::<_, (List<Row>,), BigInt>(&mut bindings, "inspect");
-            let module = bindings.seal().expect("hosted List seal");
+            let mut module = bindings.seal().expect("hosted List seal");
             let mut state = RunState::default();
             let mut echo = Vec::new();
-            let retained = module
-                .call(&batch, (rows.clone(),), &mut state, &mut echo)
+            let retained = execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut state,
+                    &mut echo,
+                    async |scope| scope.call(&batch, (rows.clone(),)).await,
+                ))
+                .expect("controlled execution")
                 .expect("new rows");
             assert_eq!(state.calls, 1);
             assert_eq!(
-                module.call(&inspect, (&retained,), &mut state, &mut echo),
+                execution_host
+                    .block_on(module.with_execution(
+                        &execution_host,
+                        &mut state,
+                        &mut echo,
+                        async |scope| scope.call(&inspect, (&retained,)).await
+                    ))
+                    .expect("controlled execution"),
                 Ok(BigInt::from(2))
             );
             assert_eq!(state.calls, 2);
-            assert_eq!(retained.to_vec(), rows);
+            assert_eq!(collect_rows(&retained), rows);
 
             let (bindings, other_inspect) = stateful_builder(source)
                 .function(FunctionDeclaration::<(List<Row>,), BigInt>::new("inspect"))
                 .expect("independent owner");
-            let other = bindings.seal().expect("independent seal");
+            let mut other = bindings.seal().expect("independent seal");
             let mut other_state = RunState::default();
             let mut other_echo = Vec::new();
             assert_eq!(
-                other.call(
-                    &other_inspect,
-                    (&retained,),
-                    &mut other_state,
-                    &mut other_echo
-                ),
+                execution_host
+                    .block_on(other.with_execution(
+                        &execution_host,
+                        &mut other_state,
+                        &mut other_echo,
+                        async |scope| scope.call(&other_inspect, (&retained,)).await
+                    ))
+                    .expect("controlled execution"),
                 Err(CallError::ForeignValue)
             );
             assert_eq!(other_state.calls, 0);
             assert!(other_echo.is_empty());
             assert_eq!(
-                other.call(
-                    &other_inspect,
-                    (retained.to_vec(),),
-                    &mut other_state,
-                    &mut other_echo
-                ),
+                execution_host
+                    .block_on(other.with_execution(
+                        &execution_host,
+                        &mut other_state,
+                        &mut other_echo,
+                        async |scope| scope.call(&other_inspect, (collect_rows(&retained),)).await
+                    ))
+                    .expect("controlled execution"),
                 Ok(BigInt::from(1))
             );
             assert_eq!(other_state.calls, 1);
@@ -515,11 +599,13 @@ pub fn inspect(values: List(Result(#(String, Int), String))) {
             assert_eq!(echo.len(), 2);
             retained
         };
-        assert_eq!(retained.to_vec(), rows);
+        assert_eq!(collect_rows(&retained), rows);
     }
 
     #[test]
     fn moves_recursive_values_with_caller_owned_state_and_echo() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let builder = stateful_builder(
             r#"
 import host/counter
@@ -543,7 +629,7 @@ pub fn keep_result(value: Result(#(Int, String), #(Bool, Nil))) {
             ))
             .expect("recursive hosted entry should bind");
         let keep_result = bind::<_, (Input,), Input>(&mut bindings, "keep_result");
-        let module = bindings.seal().expect("recursive hosted entry should seal");
+        let mut module = bindings.seal().expect("recursive hosted entry should seal");
         let mut first_state = RunState::default();
         let mut second_state = RunState::default();
         let mut first_echo = Vec::new();
@@ -551,31 +637,37 @@ pub fn keep_result(value: Result(#(Int, String), #(Bool, Nil))) {
 
         let success = Ok((BigInt::from(3), "three".into()));
         assert_eq!(
-            module.call(
-                &inspect,
-                (success.clone(),),
-                &mut first_state,
-                &mut first_echo,
-            ),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut first_state,
+                    &mut first_echo,
+                    async |scope| scope.call(&inspect, (success.clone(),)).await
+                ))
+                .expect("controlled execution"),
             Ok((success, BigInt::from(1))),
         );
         let failure = Err((true, ()));
         assert_eq!(
-            module.call(
-                &inspect,
-                (failure.clone(),),
-                &mut first_state,
-                &mut first_echo,
-            ),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut first_state,
+                    &mut first_echo,
+                    async |scope| scope.call(&inspect, (failure.clone(),)).await
+                ))
+                .expect("controlled execution"),
             Ok((failure, BigInt::from(2))),
         );
         assert_eq!(
-            module.call(
-                &inspect,
-                (Err((false, ())),),
-                &mut second_state,
-                &mut second_echo,
-            ),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut second_state,
+                    &mut second_echo,
+                    async |scope| scope.call(&inspect, (Err((false, ())),)).await
+                ))
+                .expect("controlled execution"),
             Ok((Err((false, ())), BigInt::from(1))),
         );
         assert_eq!(first_state.calls, 2);
@@ -587,12 +679,18 @@ pub fn keep_result(value: Result(#(Int, String), #(Bool, Nil))) {
         assert_eq!(first_echo[1].value(), &Value::Int(BigInt::from(2)));
         assert_eq!(second_echo[0].value(), &Value::Int(BigInt::from(1)));
         assert_eq!(
-            module.call(
-                &keep_result,
-                (Ok((BigInt::from(4), "four".into())),),
-                &mut first_state,
-                &mut Vec::new(),
-            ),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut first_state,
+                    &mut Vec::new(),
+                    async |scope| {
+                        scope
+                            .call(&keep_result, (Ok((BigInt::from(4), "four".into())),))
+                            .await
+                    }
+                ))
+                .expect("controlled execution"),
             Ok(Ok((BigInt::from(4), "four".into()))),
         );
         assert_eq!(first_state.calls, 3);
@@ -600,6 +698,8 @@ pub fn keep_result(value: Result(#(Int, String), #(Bool, Nil))) {
 
     #[test]
     fn moves_exact_option_values_through_the_hosted_custom_family() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let builder = stateless_option_builder(
             r#"
 import gleam/option.{type Option as Maybe}
@@ -611,25 +711,36 @@ pub fn keep(value: Maybe(Result(Int, String))) { value }
         let (bindings, keep) = builder
             .function(FunctionDeclaration::<(Value,), Value>::new("keep"))
             .expect("hosted Option entry should bind");
-        let module = bindings.seal().expect("hosted Option entry should seal");
+        let mut module = bindings.seal().expect("hosted Option entry should seal");
 
         assert_eq!(
-            module.call(
-                &keep,
-                (Some(Ok(BigInt::from(5))),),
-                &mut (),
-                &mut Vec::new(),
-            ),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut (),
+                    &mut Vec::new(),
+                    async |scope| scope.call(&keep, (Some(Ok(BigInt::from(5))),)).await
+                ))
+                .expect("controlled execution"),
             Ok(Some(Ok(BigInt::from(5)))),
         );
         assert_eq!(
-            module.call(&keep, (None,), &mut (), &mut Vec::new()),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut (),
+                    &mut Vec::new(),
+                    async |scope| scope.call(&keep, (None,)).await
+                ))
+                .expect("controlled execution"),
             Ok(None),
         );
     }
 
     #[test]
     fn calls_a_public_root_provider_without_a_gleam_wrapper() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let provider = HostProviderModule::<StatelessHostProfile>::new("application", "library")
             .expect("provider module should be valid")
             .with_function("increment", |value: BigInt| value + 1)
@@ -658,16 +769,25 @@ pub fn increment(value: Int) -> Int
         let (bindings, increment) = builder
             .function(FunctionDeclaration::<(BigInt,), BigInt>::new("increment"))
             .expect("public provider should bind");
-        let module = bindings.seal().expect("public provider should seal");
+        let mut module = bindings.seal().expect("public provider should seal");
 
         assert_eq!(
-            module.call(&increment, (BigInt::from(3),), &mut (), &mut Vec::new(),),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut (),
+                    &mut Vec::new(),
+                    async |scope| scope.call(&increment, (BigInt::from(3),)).await
+                ))
+                .expect("controlled execution"),
             Ok(BigInt::from(4)),
         );
     }
 
     #[test]
     fn invokes_a_successful_callback_with_caller_owned_state() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let builder = stateful_builder(
             r#"
 import host/counter
@@ -678,11 +798,18 @@ pub fn around_next() { counter.around(counter.next) }
         let (bindings, around_next) = builder
             .function(FunctionDeclaration::<(), BigInt>::new("around_next"))
             .expect("callback entry should bind");
-        let module = bindings.seal().expect("callback entry should seal");
+        let mut module = bindings.seal().expect("callback entry should seal");
         let mut state = RunState::default();
 
         assert_eq!(
-            module.call(&around_next, (), &mut state, &mut Vec::new()),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut state,
+                    &mut Vec::new(),
+                    async |scope| scope.call(&around_next, ()).await
+                ))
+                .expect("controlled execution"),
             Ok(BigInt::from(1)),
         );
         assert_eq!(state.calls, 1);
@@ -733,6 +860,8 @@ pub fn around_next() { counter.around(counter.next) }
 
     #[test]
     fn rejects_a_reachable_unrepresentable_provider_while_sealing() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let before = PRODUCE_CALLS.load(Ordering::SeqCst);
         let concrete = generic_producer_builder(
             r#"
@@ -747,9 +876,15 @@ pub fn concrete() -> Int {
         let (bindings, concrete) = concrete
             .function(FunctionDeclaration::<(), BigInt>::new("concrete"))
             .expect("concrete root should bind");
-        let module = bindings.seal().expect("concrete provider should seal");
-        let error = module
-            .call(&concrete, (), &mut (), &mut Vec::new())
+        let mut module = bindings.seal().expect("concrete provider should seal");
+        let error = execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut (),
+                &mut Vec::new(),
+                async |scope| scope.call(&concrete, ()).await,
+            ))
+            .expect("controlled execution")
             .expect_err("concrete provider should return its failure");
 
         assert_eq!(
@@ -785,6 +920,8 @@ pub fn selected() {
 
     #[test]
     fn rejects_a_foreign_handle_before_invoking_its_provider() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let source = r#"
 import host/counter
 
@@ -794,31 +931,54 @@ pub fn next() { counter.next() }
         let (first, first_next) = first
             .function(FunctionDeclaration::<(), BigInt>::new("next"))
             .expect("first next should bind");
-        let first = first.seal().expect("first module should seal");
+        let mut first = first.seal().expect("first module should seal");
         let second = stateful_builder(source);
         let (second, second_next) = second
             .function(FunctionDeclaration::<(), BigInt>::new("next"))
             .expect("second next should bind");
-        let second = second.seal().expect("second module should seal");
+        let mut second = second.seal().expect("second module should seal");
         let mut state = RunState::default();
 
         assert_eq!(
-            second.call(&first_next, (), &mut state, &mut Vec::new()),
+            execution_host
+                .block_on(second.with_execution(
+                    &execution_host,
+                    &mut state,
+                    &mut Vec::new(),
+                    async |scope| scope.call(&first_next, ()).await
+                ))
+                .expect("controlled execution"),
             Err(CallError::ForeignFunction),
         );
         assert_eq!(state.calls, 0);
         assert_eq!(
-            first.call(&first_next, (), &mut state, &mut Vec::new()),
+            execution_host
+                .block_on(first.with_execution(
+                    &execution_host,
+                    &mut state,
+                    &mut Vec::new(),
+                    async |scope| scope.call(&first_next, ()).await
+                ))
+                .expect("controlled execution"),
             Ok(BigInt::from(1)),
         );
         assert_eq!(
-            second.call(&second_next, (), &mut state, &mut Vec::new()),
+            execution_host
+                .block_on(second.with_execution(
+                    &execution_host,
+                    &mut state,
+                    &mut Vec::new(),
+                    async |scope| scope.call(&second_next, ()).await
+                ))
+                .expect("controlled execution"),
             Ok(BigInt::from(2)),
         );
     }
 
     #[test]
     fn preserves_source_panic_identity() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let source = r#"
 pub fn explode(_value: String) -> String { panic as "stopped" }
 "#;
@@ -828,14 +988,21 @@ pub fn explode(_value: String) -> String { panic as "stopped" }
                 "explode",
             ))
             .expect("explode should bind");
-        let module = bindings.seal().expect("explode should seal");
+        let mut module = bindings.seal().expect("explode should seal");
         let expression = "panic as \"stopped\"";
         let start = source
             .find(expression)
             .expect("fixture should contain panic expression");
 
         assert_eq!(
-            module.call(&explode, ("value".into(),), &mut (), &mut Vec::new(),),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut (),
+                    &mut Vec::new(),
+                    async |scope| scope.call(&explode, ("value".into(),)).await
+                ))
+                .expect("controlled execution"),
             Err(CallError::Execution(ExecutionError::source_panic(
                 Some(&crate::SourceContext::new("src/library.gleam", source)),
                 PanicKind::Panic,
@@ -851,6 +1018,8 @@ pub fn explode(_value: String) -> String { panic as "stopped" }
 
     #[test]
     fn preserves_provider_failure_identity_and_source_call_site() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let source = r#"
 import host/counter
 
@@ -860,10 +1029,16 @@ pub fn fail() { counter.stop() }
         let (bindings, fail) = builder
             .function(FunctionDeclaration::<(), BigInt>::new("fail"))
             .expect("fail should bind");
-        let module = bindings.seal().expect("fail should seal");
+        let mut module = bindings.seal().expect("fail should seal");
         let mut state = RunState::default();
-        let error = module
-            .call(&fail, (), &mut state, &mut Vec::new())
+        let error = execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut Vec::new(),
+                async |scope| scope.call(&fail, ()).await,
+            ))
+            .expect("controlled execution")
             .expect_err("provider failure should cross the embedding boundary");
 
         assert!(matches!(
@@ -895,6 +1070,8 @@ pub fn fail() { counter.stop() }
 
     #[test]
     fn preserves_nested_host_call_origin_identity() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let source = r#"
 import host/counter
 
@@ -904,9 +1081,15 @@ pub fn nested() { counter.around(counter.stop) }
         let (bindings, nested) = builder
             .function(FunctionDeclaration::<(), BigInt>::new("nested"))
             .expect("nested should bind");
-        let module = bindings.seal().expect("nested should seal");
-        let error = module
-            .call(&nested, (), &mut RunState::default(), &mut Vec::new())
+        let mut module = bindings.seal().expect("nested should seal");
+        let error = execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut RunState::default(),
+                &mut Vec::new(),
+                async |scope| scope.call(&nested, ()).await,
+            ))
+            .expect("controlled execution")
             .expect_err("nested provider failure should cross the embedding boundary");
 
         assert!(matches!(
@@ -948,6 +1131,8 @@ pub fn nested() { counter.around(counter.stop) }
 
     #[test]
     fn creates_one_external_store_owner_for_all_selected_functions() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let before = STORE_DEFAULTS.load(Ordering::SeqCst);
         let hosts = HostProviderSet::new(Vec::<HostModule<CountingProfile>>::new())
             .expect("empty host set should be valid");
@@ -971,15 +1156,29 @@ pub fn nested() { counter.around(counter.stop) }
             .function(FunctionDeclaration::<(BigInt,), BigInt>::new("first"))
             .expect("first should bind");
         let second = bind::<_, (BigInt,), BigInt>(&mut bindings, "second");
-        let module = bindings.seal().expect("counting module should seal");
+        let mut module = bindings.seal().expect("counting module should seal");
 
         assert_eq!(STORE_DEFAULTS.load(Ordering::SeqCst), before + 1);
         assert_eq!(
-            module.call(&first, (BigInt::from(1),), &mut (), &mut Vec::new()),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut (),
+                    &mut Vec::new(),
+                    async |scope| scope.call(&first, (BigInt::from(1),)).await
+                ))
+                .expect("controlled execution"),
             Ok(BigInt::from(1)),
         );
         assert_eq!(
-            module.call(&second, (BigInt::from(1),), &mut (), &mut Vec::new()),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut (),
+                    &mut Vec::new(),
+                    async |scope| scope.call(&second, (BigInt::from(1),)).await
+                ))
+                .expect("controlled execution"),
             Ok(BigInt::from(2)),
         );
         assert_eq!(STORE_DEFAULTS.load(Ordering::SeqCst), before + 1);
@@ -987,6 +1186,8 @@ pub fn nested() { counter.around(counter.stop) }
 
     #[test]
     fn keeps_shared_binding_diagnostics_for_hosted_roots() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let builder = stateless_builder(
             r#"
 fn private(value: String) { value }
@@ -1047,9 +1248,16 @@ pub fn words(value: String) { value }
                 name: "number".into(),
             }),
         );
-        let module = bindings.seal().expect("valid binding should still seal");
+        let mut module = bindings.seal().expect("valid binding should still seal");
         assert_eq!(
-            module.call(&number, (BigInt::from(7),), &mut (), &mut Vec::new()),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut (),
+                    &mut Vec::new(),
+                    async |scope| scope.call(&number, (BigInt::from(7),)).await
+                ))
+                .expect("controlled execution"),
             Ok(BigInt::from(7)),
         );
     }

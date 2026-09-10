@@ -49,9 +49,11 @@ mod tests {
 
         assert_eq!(<f64 as HostReturn>::descriptor(), HostTypeDescriptor::Float);
         assert_eq!(
-            expect_value_implementation(&implementation)
-                .call(&mut runtime)
-                .map(|token| token.family),
+            crate::host::expect_immediate_call(
+                expect_value_implementation(&implementation),
+                &mut runtime
+            )
+            .map(|token| token.family),
             Ok(HostValueFamily::Float),
         );
         assert_eq!(runtime.completed(), Some(&HostScopedValue::Float(1.5)));

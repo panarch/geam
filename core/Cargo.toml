@@ -8,6 +8,9 @@ license.workspace = true
 repository.workspace = true
 publish = ["crates-io"]
 
+[features]
+tokio = ["dep:tokio"]
+
 [dependencies]
 bitvec.workspace = true
 camino.workspace = true
@@ -22,8 +25,10 @@ num-bigint.workspace = true
 parking_lot.workspace = true
 thiserror.workspace = true
 toml.workspace = true
+tokio = { workspace = true, optional = true }
 vec1.workspace = true
 
 [dev-dependencies]
 miette = { workspace = true, features = ["fancy-no-backtrace"] }
 tempfile.workspace = true
+tokio = { workspace = true, features = ["test-util"] }

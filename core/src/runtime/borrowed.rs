@@ -77,6 +77,10 @@ impl<'value> BorrowedValue<'value> {
         Self::from_value(&self.customs[0].fields()[index])
     }
 
+    pub(crate) fn retained_custom(&self) -> crate::runtime::EmbeddingCustomInput {
+        crate::runtime::EmbeddingCustomInput::retained(self.customs[0].clone())
+    }
+
     pub(in crate::runtime) fn stored_list(&self) -> &'value StoredListValueId {
         &self.lists[0]
     }
@@ -181,11 +185,10 @@ mod tests {
 
     #[test]
     fn source_list_families_select_only_their_borrowed_column() {
-        use crate::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
+        use crate::embedding::{FunctionDeclaration, HostedModuleBuilder};
         use crate::host::{HostListType, HostProviderModule, HostProviderSet, HostTypeParameter};
         use crate::work_fixture::WorkComponent;
         use crate::{ModuleSource, PackageSource};
-        use futures_util::FutureExt;
 
         let mut providers = WorkComponent::providers::<Profile>().expect("Future module");
         providers.push(HostProviderModule::new("application", "library")
@@ -244,16 +247,19 @@ pub fn run() {
             .function(FunctionDeclaration::<(), ()>::new("run"))
             .expect("entry");
         let mut module = bindings.seal().expect("sealed entry");
-        with_execution_scope(async |guard| {
-            let mut state = ();
-            let mut echo = drop;
-            module
-                .attach(guard, &mut state, &mut echo)
-                .call(&run, ())
-                .expect("column assertions");
-        })
-        .now_or_never()
-        .expect("direct source execution");
+        let execution_host = crate::execution_fixture::TestHost::default();
+        let mut state = ();
+        let mut echo = drop;
+        execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    scope.call(&run, ()).await.expect("column assertions");
+                },
+            ))
+            .expect("hosted source execution");
     }
 
     fn check_list<'call>(

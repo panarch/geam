@@ -23,9 +23,11 @@
 
 mod binding;
 mod error;
+mod execution;
 mod hosted;
 mod input;
 mod list;
+mod opaque;
 mod project;
 mod value;
 mod work;
@@ -34,15 +36,17 @@ pub use crate::BitArrayValue;
 pub use binding::{BindingError, FunctionDeclaration, ModuleBindings, ModuleBuilder};
 pub use ecow::EcoString;
 pub use error::CallError;
+pub use execution::ExecutionScope;
 pub use hosted::{HostedModule, HostedModuleBindings, HostedModuleBuilder};
 #[doc(hidden)]
 pub use input::InputShape;
 pub use list::{Iter, List};
 pub use num_bigint::BigInt;
+pub use opaque::{Custom, CustomType, External, ExternalType, NamedTypeSchema};
 pub use project::{HostedProject, HostedProjectError, Project};
 pub use work::{
-    Completed, ExecutionGuard, ExecutionScope, Future, FutureType, ObservationError, ReadValue,
-    SharedExecutionError, SharedList, SourceType, with_execution_scope,
+    Completed, Future, FutureType, ObservationError, ReadValue, SharedExecutionError, SharedList,
+    SourceType,
 };
 
 use self::input::ArgumentsInput;

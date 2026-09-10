@@ -32,7 +32,7 @@ error: lifetime may not live long enough
   |
   = help: consider adding the following bound: `'b: 'a`
   = note: requirement occurs because of the type `ExecutionScope<'_, '_, P>`, which makes the generic argument `'_` invariant
-  = note: the struct `ExecutionScope<'scope, 'host, Profile>` is invariant over the parameter `'scope`
+  = note: the struct `ExecutionScope<'scope, 'module, Profile>` is invariant over the parameter `'scope`
   = help: see <https://doc.rust-lang.org/nomicon/subtyping.html> for more information about variance
 help: consider reusing a named lifetime parameter
   |

@@ -1,3 +1,6 @@
+#[path = "../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 use ecow::EcoString;
 use geam_core::provider::advanced::{
     Equality, Hashing, Inspection, NativeValue, RetainedExternalPayload,
@@ -141,21 +144,22 @@ mod native {
         call.inspect(&value)
     }
 
-    #[geam_macros::function]
-    fn reenter(
+    #[geam_macros::function(resumable)]
+    async fn reenter(
         #[geam_macros::call] call: &mut Call<State>,
         value: geam_core::provider::advanced::External<Envelope>,
         callback: Callback<fn(EcoString) -> EcoString>,
     ) -> HostResult<EcoString> {
-        let value_view = value.value.clone();
+        let value_view = value.with(|value| value.value.clone());
         drop(value);
         call.invoke(
-            callback,
+            &callback,
             (value_view
                 .index(0)
                 .and_then(|value| value.as_symbol())
                 .unwrap_or_default(),),
         )
+        .await
     }
 
     #[geam_macros::function]
@@ -246,12 +250,12 @@ pub fn main() {
         HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), providers).unwrap(),
     )
     .unwrap();
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan_host_program(program).unwrap()).unwrap();
     let mut state = State::default();
     let mut echo = Vec::new();
     assert_eq!(
-        execution.run_main(&mut state, &mut echo),
+        crate::execution_fixture::run(&mut execution, &mut state, &mut echo),
         Ok(geam_core::Value::Nil)
     );
     assert!(echo.is_empty());

@@ -1,8 +1,10 @@
 use ecow::EcoString;
-use futures_util::FutureExt;
+#[path = "../../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 use geam_builtin::embedding::FutureType;
 use geam_builtin::{FutureComponent, HostFutureSchema, HostFutureStorage, HostFutureType};
-use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
+use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder};
 use geam_core::frontend::compile_typed_host_program;
 use geam_core::host::{
     HostCall, HostComponentProfile, HostProfile, HostProvider, HostProviderModule, HostProviderSet,
@@ -75,6 +77,8 @@ fn recall(
 
 #[test]
 fn source_hash_and_inspection_survive_completion_and_scope_cancellation() {
+    let execution_host = crate::execution_fixture::TestHost::default();
+
     let mut providers = FutureComponent::providers::<Profile>().expect("Future registration");
     providers.push(
         HostProviderModule::new("application", "library")
@@ -140,36 +144,47 @@ pub fn check() { let work = recall() snapshot(work) work }
         ));
         let mut outputs = Vec::new();
         let mut echo = |output: geam_core::EchoOutput| outputs.push(output.to_string());
-        with_execution_scope(async |guard| {
-            let mut scope = module.attach(guard, &mut state, &mut echo);
-            let work = scope.call(&work, ()).expect("created work");
-            if complete {
-                scope
-                    .observe(&work)
-                    .await
-                    .expect("completion")
-                    .read(|value| assert_eq!(value, &BigInt::from(42)));
-            }
-        })
-        .now_or_never()
-        .expect("caller drives ready dependencies");
+        execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    let work = scope.call(&work, ()).await.expect("created work");
+                    if complete {
+                        scope
+                            .observe(&work)
+                            .await
+                            .expect("completion")
+                            .read(|value| assert_eq!(value, &BigInt::from(42)));
+                    }
+                },
+            ))
+            .expect("caller drives ready dependencies");
         assert_eq!(state.observations.len(), 1);
-        with_execution_scope(async |guard| {
-            let mut scope = module.attach(guard, &mut state, &mut echo);
-            let original = scope
-                .call(&check, ())
-                .expect("source semantics after scope exit");
-            match scope.observe(&original).await {
-                Ok(result) => {
-                    assert!(complete);
-                    result.read(|value| assert_eq!(value, &BigInt::from(42)));
-                }
-                Err(geam_core::embedding::ObservationError::Cancelled) => assert!(!complete),
-                Err(error) => panic!("unexpected observation: {error}"),
-            }
-        })
-        .now_or_never()
-        .expect("no work is restarted");
+        execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    let original = scope
+                        .call(&check, ())
+                        .await
+                        .expect("source semantics after scope exit");
+                    match scope.observe(&original).await {
+                        Ok(result) => {
+                            assert!(complete);
+                            result.read(|value| assert_eq!(value, &BigInt::from(42)));
+                        }
+                        Err(geam_core::embedding::ObservationError::Cancelled) => {
+                            assert!(!complete)
+                        }
+                        Err(error) => panic!("unexpected observation: {error}"),
+                    }
+                },
+            ))
+            .expect("no work is restarted");
         assert_eq!(state.observations.len(), 2);
         let (before_hash, before_inspection) = &state.observations[0];
         let (after_hash, after_inspection) = &state.observations[1];

@@ -41,11 +41,6 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile>: HostTokenRuntime {
     fn custom_constructor(&self, value: HostCustomToken) -> usize;
     fn custom_fields(&mut self, value: HostCustomToken) -> Box<[HostValueToken]>;
     fn take_custom_fields(&mut self, value: HostCustomToken) -> Box<[HostValueToken]>;
-    fn invoke(
-        &mut self,
-        function: HostFunctionToken,
-        arguments: Box<[HostScopedValue]>,
-    ) -> Result<HostValueToken, crate::HostCallError>;
     fn equal(&self, left: HostScopedValue, right: HostScopedValue) -> bool;
     fn source_hash(&self, value: HostScopedValue) -> u64;
     fn inspect(&self, value: HostScopedValue) -> ecow::EcoString;
@@ -88,6 +83,7 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile>: HostTokenRuntime {
     fn owns_stored(&self, value: &StoredRuntimeValue) -> bool;
 
     fn work(&self) -> crate::runtime::work::execution::WorkContext<Profile>;
+    fn execution(&self) -> crate::runtime::execution::ExecutionContext<Profile>;
     fn origin(&self) -> crate::runtime::HostCallOrigin;
     fn callable(&self, function: HostFunctionToken) -> crate::runtime::RetainedCallable;
     fn codec_scope(&self) -> HostCodecScope;

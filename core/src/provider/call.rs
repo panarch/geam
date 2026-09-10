@@ -1,10 +1,12 @@
 use super::{
-    Callback, ProviderCallbackCodec, ProviderCallbackContext, ProviderExternalCodec,
-    ProviderExternalView, ProviderFutureCallbackContext, ProviderOwnedStoredInput,
-    ProviderStoredInput, ProviderStoredOutput, ProviderStoredOwner, ProviderValueContext,
-    ProviderValueForms, Stored, Value,
+    Callback, ProviderCallbackCodec, ProviderExternalCodec, ProviderExternalView,
+    ProviderOwnedCallbackContext, ProviderOwnedStoredInput, ProviderStoredInput,
+    ProviderStoredOutput, ProviderStoredOwner, ProviderValueContext, ProviderValueForms, Stored,
+    Value,
 };
-use crate::host::{HostFutureContext, HostFutureError, HostTypeListEnd, HostTypeSequence};
+use crate::host::{
+    HostExecutionContext, HostExecutionError, HostFutureContext, HostTypeListEnd, HostTypeSequence,
+};
 use crate::provider::advanced::{
     NativeValue, ProviderDynamicInput, ProviderDynamicValue, Retained, StoredDynamic,
 };
@@ -44,15 +46,25 @@ where
     call: HostCall<'call, Profile, Provider, Return>,
 }
 
-/// Request capability supplied to a macro-authored async provider function.
+/// Request capability shared by owned native operations.
 #[doc(hidden)]
-pub struct ProviderFutureCall<'work, Profile, Provider>
+pub struct ProviderExecutionCall<'run, Profile, Provider, Observation = ()>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
 {
-    call: HostFutureContext<'work, Profile, Provider, HostTypeListEnd>,
+    execution: HostExecutionContext<'run, Profile, Provider, HostTypeListEnd>,
+    observation: Observation,
 }
+
+#[doc(hidden)]
+pub struct ProviderWorkObservation {
+    dependencies: crate::runtime::work::Dependencies<crate::runtime::work::execution::Completion>,
+}
+
+#[doc(hidden)]
+pub type ProviderFutureCall<'run, Profile, Provider> =
+    ProviderExecutionCall<'run, Profile, Provider, ProviderWorkObservation>;
 
 impl<'state, State> Call<State, ProviderSharedCall<'state, State>> {
     pub fn state(&self) -> &State {
@@ -281,21 +293,6 @@ where
             .then(|| Value::from_stored(value.stored().clone_retained()))
     }
 
-    /// Invokes one typed Gleam callback during an immediate transferable call.
-    pub fn invoke<Signature, Codec>(
-        &mut self,
-        callback: Callback<
-            Signature,
-            ProviderCallbackContext<'call, Profile, Provider, Return, Codec>,
-        >,
-        arguments: Codec::Arguments,
-    ) -> Result<Codec::Returned, crate::HostCallError>
-    where
-        Codec: ProviderCallbackCodec<Profile, Provider, Return>,
-    {
-        callback.invoke(&mut self.context.call, arguments)
-    }
-
     #[doc(hidden)]
     pub fn from_host_call(call: HostCall<'call, Profile, Provider, Return>) -> Self {
         Self {
@@ -310,11 +307,31 @@ where
     }
 }
 
-impl<'work, Profile, Provider> Call<Provider::State, ProviderFutureCall<'work, Profile, Provider>>
+impl<'run, Profile, Provider, Observation>
+    Call<Provider::State, ProviderExecutionCall<'run, Profile, Provider, Observation>>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
 {
+    /// Runs a bounded value operation through the original typed call context.
+    /// Its borrowed views cannot cross the next await point.
+    pub fn with_call<'request, Operation, Output>(
+        &'request self,
+        operation: Operation,
+    ) -> impl std::future::Future<Output = Result<Output, HostExecutionError>> + Send + 'request
+    where
+        Operation: for<'call> FnOnce(
+                &mut Call<Provider::State, ProviderActiveCall<'call, Profile, Provider, ()>>,
+            ) -> Output
+            + Send
+            + 'static,
+        Output: Send + 'static,
+    {
+        self.context
+            .execution
+            .with_call(move |call| operation(&mut Call::from_host_call(call)))
+    }
+
     /// Retains one owned generic value for an external payload returned after
     /// this async provider call completes.
     pub fn store<Type, Host, Owner, Index>(
@@ -344,31 +361,55 @@ where
     pub async fn with_state<Operation, Output>(
         &mut self,
         operation: Operation,
-    ) -> Result<Output, HostFutureError>
+    ) -> Result<Output, HostExecutionError>
     where
-        Profile::RunState: Send,
         Operation: FnOnce(&mut Provider::State) -> Output + Send + 'static,
         Output: Send + 'static,
     {
-        self.context.call.with_state(operation).await
+        self.context.execution.with_state(operation).await
     }
 
     /// Invokes a retained callback on its original execution, without implicitly driving its result.
     pub async fn invoke<Signature, Codec>(
         &mut self,
-        callback: &Callback<Signature, ProviderFutureCallbackContext<Profile, Provider, Codec>>,
+        callback: &Callback<Signature, ProviderOwnedCallbackContext<Profile, Provider, Codec>>,
         arguments: Codec::Arguments,
-    ) -> Result<Codec::Returned, HostFutureError>
+    ) -> Result<Codec::Returned, HostExecutionError>
     where
-        Profile::RunState: Send,
-        Profile::ExternalStores: Send,
         Codec: ProviderCallbackCodec<Profile, Provider, ()> + 'static,
         Codec::Arguments: Send + 'static,
         Codec::Returned: Send + 'static,
     {
-        callback.invoke_future(&self.context.call, arguments).await
+        callback
+            .invoke_owned(&self.context.execution, arguments)
+            .await
     }
+}
 
+impl<'run, Profile, Provider> Call<Provider::State, ProviderExecutionCall<'run, Profile, Provider>>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+{
+    #[doc(hidden)]
+    pub fn from_execution_context<Constructions: HostTypeSequence>(
+        execution: HostExecutionContext<'run, Profile, Provider, Constructions>,
+    ) -> Self {
+        Self {
+            context: ProviderExecutionCall {
+                execution: execution.without_constructions(),
+                observation: (),
+            },
+            state: PhantomData,
+        }
+    }
+}
+
+impl<'work, Profile, Provider> Call<Provider::State, ProviderFutureCall<'work, Profile, Provider>>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+{
     /// Explicitly observes a Future returned by Gleam, sharing its original work.
     pub async fn observe<Value, Host, Output>(
         &mut self,
@@ -376,21 +417,23 @@ where
             Value,
             super::ProviderFutureValueContext<Profile, Provider, Host, Output>,
         >,
-    ) -> Result<Output, HostFutureError>
+    ) -> Result<Output, HostExecutionError>
     where
         Host: HostType,
         Output: Send + 'static,
     {
-        work.observe(&self.context.call).await
+        work.observe(&self.context.observation.dependencies).await
     }
 
     #[doc(hidden)]
     pub fn from_future_context<Constructions: HostTypeSequence>(
         call: HostFutureContext<'work, Profile, Provider, Constructions>,
     ) -> Self {
+        let (execution, dependencies) = call.into_parts();
         Self {
-            context: ProviderFutureCall {
-                call: call.without_constructions(),
+            context: ProviderExecutionCall {
+                execution: execution.without_constructions(),
+                observation: ProviderWorkObservation { dependencies },
             },
             state: PhantomData,
         }
@@ -403,13 +446,10 @@ mod tests {
     use crate::host::CallArguments;
     use crate::host::HostCallErrorKind;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
-    use crate::host::{
-        HostCallable, HostFunctionToken, HostScopedValue, HostTypeList, HostTypeListEnd,
-        HostTypeParameter,
-    };
+    use crate::host::{HostCallable, HostTypeList, HostTypeListEnd, HostTypeParameter};
     use crate::provider::{
-        Callback, ProviderCallbackCodec, ProviderCallbackContext, ProviderConstructions,
-        ProviderNoConstructions, ProviderValueContext, Value,
+        Callback, ProviderCallbackCodec, ProviderConstructions, ProviderNoConstructions,
+        ProviderOwnedCallbackContext, ProviderValueContext, Value,
     };
     use crate::{HostCall, HostFailure, HostProvider};
     use num_bigint::BigInt;
@@ -426,7 +466,7 @@ mod tests {
 
     struct IntCallbackCodec;
 
-    impl ProviderCallbackCodec<TestHostProfile, Provider, BigInt> for IntCallbackCodec {
+    impl ProviderCallbackCodec<TestHostProfile, Provider, ()> for IntCallbackCodec {
         type HostArguments = HostTypeList<BigInt, HostTypeListEnd>;
         type HostReturn = BigInt;
         type Arguments = (BigInt,);
@@ -435,7 +475,7 @@ mod tests {
 
         fn into_host_arguments<'call>(
             arguments: Self::Arguments,
-            _call: &mut HostCall<'call, TestHostProfile, Provider, BigInt>,
+            _call: &mut HostCall<'call, TestHostProfile, Provider, ()>,
             _constructions: &ProviderConstructions<'call, Self::Requirements>,
         ) -> <Self::HostArguments as crate::HostTypeSequence>::Values<'call> {
             (arguments.0, ())
@@ -443,7 +483,7 @@ mod tests {
 
         fn from_host_return<'call>(
             value: <Self::HostReturn as crate::HostType>::Value<'call>,
-            _call: &mut HostCall<'call, TestHostProfile, Provider, BigInt>,
+            _call: &mut HostCall<'call, TestHostProfile, Provider, ()>,
         ) -> Self::Returned {
             value
         }
@@ -518,26 +558,107 @@ mod tests {
     }
 
     #[test]
-    fn active_call_invokes_one_static_callback_codec() {
-        type Context<'call> =
-            ProviderCallbackContext<'call, TestHostProfile, Provider, BigInt, IntCallbackCodec>;
-        let mut state = TestRunState::default();
-        let mut runtime =
-            TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
-        let host_call = HostCall::<TestHostProfile, Provider, BigInt>::new(&mut runtime);
-        let mut call = Call::from_host_call(host_call);
-        let constructions = ProviderConstructions::none();
-        let constructions = Clone::clone(&constructions);
-        let callback = Callback::<fn(BigInt) -> BigInt, Context<'_>>::from_host(
-            HostCallable::new(HostFunctionToken(3)),
-            constructions,
-        );
-        let callback = Clone::clone(&callback);
-
-        let returned = call
-            .invoke(callback, (BigInt::from(7),))
-            .expect("typed callback should invoke through the active call");
-        assert_eq!(returned, BigInt::from(0));
-        assert_eq!(runtime.completed(), Some(&HostScopedValue::Int(7.into())));
+    fn owned_call_invokes_one_static_callback_codec_and_reenters_state() {
+        type Context = ProviderOwnedCallbackContext<TestHostProfile, Provider, IntCallbackCodec>;
+        type Arguments = HostTypeList<BigInt, HostTypeListEnd>;
+        fn invoke<'call>(
+            call: HostCall<'call, TestHostProfile, Provider, BigInt>,
+            constructions: crate::HostConstructions<'call, HostTypeListEnd>,
+            callback: HostCallable<'call, Arguments, BigInt>,
+        ) -> Result<crate::HostCallContinuation<'call, BigInt>, crate::HostCallError> {
+            let proof = ProviderConstructions::none();
+            let callback =
+                Callback::<fn(BigInt) -> BigInt, Context>::from_owned_host(&call, callback, proof);
+            let alias = callback.clone();
+            Ok(call.resume(constructions, move |context| {
+                Box::pin(async move {
+                    let mut call = Call::from_execution_context(context);
+                    call.with_state(|state| state.counter += 1)
+                        .await
+                        .expect("the live entry services its state request");
+                    let first = call.invoke(&callback, (BigInt::from(7),)).await?;
+                    let second = call.invoke(&alias, (first,)).await?;
+                    let counter = call
+                        .with_call(|call| call.state().counter)
+                        .await
+                        .expect("the live entry services its value request");
+                    assert_eq!(counter, 1);
+                    Ok(crate::HostOwnedCompletion::new(move |call, _| {
+                        Ok(call.return_value(second))
+                    }))
+                })
+            }))
+        }
+        for (callback, expected, expected_echo) in [
+            ("fn(value) { echo value value + 1 }", Ok(9), vec!["7", "8"]),
+            (
+                "fn(value) { echo value panic as \"first callback\" }",
+                Err("first callback"),
+                vec!["7"],
+            ),
+            (
+                "fn(value) { echo value case value { 7 -> 8 _ -> panic as \"second callback\" } }",
+                Err("second callback"),
+                vec!["7", "8"],
+            ),
+        ] {
+            let provider = crate::HostProviderModule::new("application", "main")
+            .unwrap()
+            .with_resumable_function::<
+                Provider,
+                (crate::HostFunctionType<Arguments, BigInt>,),
+                BigInt,
+                HostTypeListEnd,
+                _,
+            >("invoke", invoke)
+            .unwrap();
+            let source = format!(
+                r#"
+@external(erlang, "native", "invoke")
+fn invoke(callback: fn(Int) -> Int) -> Int
+pub fn main() {{ invoke({callback}) }}
+"#
+            );
+            let typed = crate::compile_typed_host_program(
+                "application",
+                "main",
+                [crate::PackageSource::new(
+                    "application",
+                    Vec::<String>::new(),
+                    [crate::ModuleSource::new("main", "main.gleam", source)],
+                )],
+                crate::HostProviderSet::from_providers([provider]).unwrap(),
+            )
+            .unwrap();
+            let mut execution = crate::HostedExecution::try_from_module_plan(
+                crate::plan_host_program(typed).unwrap(),
+            )
+            .unwrap();
+            let mut state = TestRunState {
+                counter: 0,
+                unrelated: true,
+            };
+            let mut echo = Vec::new();
+            let result = crate::execution_fixture::run(&mut execution, &mut state, &mut echo);
+            match expected {
+                Ok(value) => assert_eq!(result, Ok(crate::Value::Int(value.into()))),
+                Err(message) => {
+                    let error = result.unwrap_err();
+                    assert_eq!(error.to_string(), format!("panic: {message}"));
+                    let labels = miette::Diagnostic::labels(&error)
+                        .unwrap()
+                        .collect::<Vec<_>>();
+                    assert_eq!(labels[0].label(), Some("panic in main.<anonymous:0>"));
+                }
+            }
+            assert_eq!(state.counter, 1);
+            assert!(state.unrelated);
+            assert_eq!(
+                echo.iter()
+                    .map(|output| output.value().inspect().to_string())
+                    .collect::<Vec<_>>(),
+                expected_echo
+            );
+        }
     }
 }

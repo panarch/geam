@@ -14,6 +14,10 @@ pub(crate) use geam_core::{
 };
 use std::marker::PhantomData;
 
+#[cfg(test)]
+#[path = "../../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 mod bit_array;
 mod dict;
 mod dynamic;

@@ -1,3 +1,6 @@
+#[path = "../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 use ecow::EcoString;
 use geam_core::{
     HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
@@ -402,10 +405,15 @@ fn execution(source: &str) -> Result<HostedExecution<Profile>, PlanError> {
 
 #[test]
 fn source_result_and_option_values_link_and_execute_through_generated_codecs() {
-    let execution = execution(SOURCE).expect("matching Result and Option providers should plan");
+    let mut execution =
+        execution(SOURCE).expect("matching Result and Option providers should plan");
 
     assert_eq!(
-        execution.run_main(&mut ProfileState { component: () }, &mut Vec::new()),
+        crate::execution_fixture::run(
+            &mut execution,
+            &mut ProfileState { component: () },
+            &mut Vec::new()
+        ),
         Ok(Value::Bool(true)),
     );
 }

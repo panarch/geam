@@ -552,11 +552,14 @@ pub fn main() {
         let plan = plan_host_program(typed).expect("source should plan");
 
         assert_eq!(plan.modules()[0].external_types().len(), 1);
-        let execution = crate::HostedExecution::try_from_module_plan(plan)
+        let mut execution = crate::HostedExecution::try_from_module_plan(plan)
             .expect("external execution should seal");
-        let returned = execution
-            .run_main(&mut ExternalTestRunState::default(), &mut Vec::new())
-            .expect("external source should execute");
+        let returned = crate::execution_fixture::run(
+            &mut execution,
+            &mut ExternalTestRunState::default(),
+            &mut Vec::new(),
+        )
+        .expect("external source should execute");
 
         assert_eq!(returned.inspect().to_string(), "#(Boxed(Thing), True)");
     }

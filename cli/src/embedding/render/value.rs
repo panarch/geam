@@ -60,6 +60,13 @@ pub(super) fn push_input_shapes(output: &mut String, bindings: &PlainBindings) {
         );
         if relation.can_inline() && line.trim_end().len() <= 100 {
             output.push_str(&line);
+        } else if relation.can_inline()
+            && format!("impl{generics} {}", relation.inline()).len() <= 100
+        {
+            output.push_str(&format!(
+                "impl{generics} {}\n    for Function{index}Input\n{{\n}}\n",
+                relation.inline()
+            ));
         } else {
             if 4 + generics.len() <= 100 {
                 output.push_str(&format!("impl{generics}\n    "));
@@ -99,12 +106,13 @@ impl DataType {
             Self::Option(item) => TypeExpression::Apply("Option", vec![item.rust_type()]),
             Self::List(item) => TypeExpression::Apply("List", vec![item.rust_type()]),
             Self::Future(item) => TypeExpression::Apply("FutureType", vec![item.rust_type()]),
+            Self::Named(index) => TypeExpression::Name(format!("Type{index}")),
         }
     }
 
     fn input_type(&self, parameters: &mut Vec<String>) -> TypeExpression {
         match self {
-            Self::List(_) | Self::Future(_) => {
+            Self::List(_) | Self::Future(_) | Self::Named(_) => {
                 let name = format!("Input{}", parameters.len());
                 parameters.push(name.clone());
                 TypeExpression::Name(name)
@@ -245,6 +253,7 @@ mod tests {
         assert_eq!(TypeExpression::Tuple(Vec::new()).inline(), "()");
 
         let bindings = PlainBindings {
+            named_types: Vec::new(),
             geam_alias: RustIdentifier::parse("runtime").expect("fixture alias"),
             root_module: "boundary".to_owned(),
             first: FunctionBinding {
@@ -492,6 +501,7 @@ mod tests {
     #[test]
     fn keeps_recursive_fields_and_long_input_shapes_formatted() {
         let bindings = PlainBindings {
+            named_types: Vec::new(),
             geam_alias: RustIdentifier::parse("runtime").expect("fixture alias"),
             root_module: "boundary".to_owned(),
             first: FunctionBinding {
@@ -583,6 +593,7 @@ impl<Input0, Input1, Input2, Input3, Input4, Input5, Input6>
     #[test]
     fn formats_independent_list_carriers_across_nested_tuples() {
         let bindings = PlainBindings {
+            named_types: Vec::new(),
             geam_alias: RustIdentifier::parse("runtime").expect("fixture alias"),
             root_module: "boundary".to_owned(),
             first: FunctionBinding {
@@ -634,6 +645,7 @@ impl<
     #[test]
     fn wraps_wide_fixed_inputs_with_the_owner_suffix() {
         let bindings = PlainBindings {
+            named_types: Vec::new(),
             geam_alias: RustIdentifier::parse("runtime").expect("fixture alias"),
             root_module: "boundary".to_owned(),
             first: FunctionBinding {

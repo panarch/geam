@@ -4,6 +4,8 @@ use thiserror::Error;
 /// A failure while calling a previously bound function.
 #[derive(Debug, Error, Clone, PartialEq)]
 pub enum CallError<Subject = crate::PanicValue> {
+    #[error("the execution was cancelled before completing")]
+    Cancelled,
     #[error("the function belongs to a different embedding module")]
     ForeignFunction,
     #[error("the retained value belongs to a different embedding module")]
@@ -16,6 +18,7 @@ impl CallError {
     /// Converts the diagnostic to the local error representation on request.
     pub fn into_materialized(self) -> CallError<crate::Value> {
         match self {
+            Self::Cancelled => CallError::Cancelled,
             Self::ForeignFunction => CallError::ForeignFunction,
             Self::ForeignValue => CallError::ForeignValue,
             Self::Execution(error) => CallError::Execution(error.into_materialized()),
@@ -63,6 +66,7 @@ mod tests {
     #[test]
     fn transferable_call_errors_keep_the_same_ownership_and_execution_failures() {
         for (error, expected) in [
+            (CallError::Cancelled, CallError::Cancelled),
             (CallError::ForeignFunction, CallError::ForeignFunction),
             (CallError::ForeignValue, CallError::ForeignValue),
             (

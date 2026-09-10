@@ -42,7 +42,19 @@ enum HostValueFunctionKind<Profile: HostProfile> {
     Bool(HostBoolFunction<Profile>),
     Nil(HostNilFunction<Profile>),
     Scoped(Arc<HostScopedCallback<Profile>>),
+    Continuing(Arc<HostContinuingCallback<Profile>>),
 }
+
+pub(crate) enum HostCallReturn {
+    Immediate(HostValueToken),
+    Continuing(crate::runtime::execution::Continuation),
+}
+
+type HostContinuingCallback<Profile> = dyn Fn(
+        &mut dyn HostCallRuntime<Profile>,
+    ) -> Result<crate::runtime::execution::Continuation, HostCallError>
+    + Send
+    + Sync;
 
 pub(crate) type HostCallback<Profile, Return> = dyn Fn(
         &mut <Profile as HostProfile>::RunState,
@@ -180,12 +192,28 @@ impl<Profile: HostProfile> Clone for HostValueFunction<Profile> {
                 HostValueFunctionKind::Scoped(function) => {
                     HostValueFunctionKind::Scoped(Arc::clone(function))
                 }
+                HostValueFunctionKind::Continuing(function) => {
+                    HostValueFunctionKind::Continuing(Arc::clone(function))
+                }
             },
         }
     }
 }
 
 impl<Profile: HostProfile> HostFunctionImplementation<Profile> {
+    pub(super) fn continuing(
+        function: impl Fn(
+            &mut dyn HostCallRuntime<Profile>,
+        ) -> Result<crate::runtime::execution::Continuation, HostCallError>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        Self::Value(HostValueFunction {
+            kind: HostValueFunctionKind::Continuing(Arc::new(function)),
+        })
+    }
+
     pub(super) fn scoped(
         function: impl Fn(&mut dyn HostCallRuntime<Profile>) -> Result<HostValueToken, HostCallError>
         + Send
@@ -252,10 +280,10 @@ impl<Profile: HostProfile> HostValueFunction<Profile> {
         }
     }
 
-    pub(crate) fn call(
+    pub(crate) fn start(
         &self,
         runtime: &mut dyn HostCallRuntime<Profile>,
-    ) -> Result<HostValueToken, HostCallError> {
+    ) -> Result<HostCallReturn, HostCallError> {
         let value = match &self.kind {
             HostValueFunctionKind::Int(function) => {
                 HostScopedValue::Int(function.call_runtime(runtime)?)
@@ -279,9 +307,27 @@ impl<Profile: HostProfile> HostValueFunction<Profile> {
                 function.call_runtime(runtime)?;
                 HostScopedValue::Nil
             }
-            HostValueFunctionKind::Scoped(function) => return function(runtime),
+            HostValueFunctionKind::Scoped(function) => {
+                return function(runtime).map(HostCallReturn::Immediate);
+            }
+            HostValueFunctionKind::Continuing(function) => {
+                return function(runtime).map(HostCallReturn::Continuing);
+            }
         };
-        Ok(runtime.complete(value))
+        Ok(HostCallReturn::Immediate(runtime.complete(value)))
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn expect_immediate_call<Profile: HostProfile>(
+    function: &HostValueFunction<Profile>,
+    runtime: &mut dyn HostCallRuntime<Profile>,
+) -> Result<HostValueToken, HostCallError> {
+    match function.start(runtime)? {
+        HostCallReturn::Immediate(value) => Ok(value),
+        HostCallReturn::Continuing(_) => {
+            panic!("the registered native leaf should complete immediately")
+        }
     }
 }
 
@@ -315,8 +361,26 @@ mod tests {
             TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
 
         assert_eq!(
-            implementation.call(&mut runtime),
+            crate::host::expect_immediate_call(implementation, &mut runtime),
             Err(HostCallError::from(HostFailure::new("bool unavailable"))),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "the registered native leaf should complete immediately")]
+    fn immediate_fixture_rejects_a_resumable_implementation() {
+        let implementation =
+            super::HostFunctionImplementation::<TestHostProfile>::continuing(|_| {
+                Ok(crate::runtime::execution::Continuation::new(
+                    std::future::ready(Err(crate::runtime::work::Cancelled)),
+                ))
+            });
+        let mut state = TestRunState::default();
+        let mut runtime =
+            TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
+        let _ = super::expect_immediate_call(
+            expect_value_implementation(&implementation),
+            &mut runtime,
         );
     }
 

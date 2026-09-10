@@ -84,16 +84,16 @@ mod records {
         geam::gleam_stdlib::Dynamic::from_native(value)
     }
 
-    #[geam::function]
-    fn map<Output>(
+    #[geam::function(resumable)]
+    async fn map<Output>(
         #[geam::call] call: &mut Call<()>,
         value: geam::provider::advanced::External<geam::gleam_stdlib::Dynamic>,
         transform: Callback<fn(EcoString, BigInt) -> Value<Output>>,
     ) -> HostResult<Result<Value<Output>, ()>> {
-        let native = value.native_value().clone();
+        let native = value.with(|value| value.native_value().clone());
         drop(value);
         match record_fields(&native) {
-            Some(fields) => call.invoke(transform, fields).map(Ok),
+            Some(fields) => call.invoke(&transform, fields).await.map(Ok),
             None => Ok(Err(())),
         }
     }

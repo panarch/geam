@@ -3,8 +3,8 @@ use super::custom_value::{
 };
 use super::list_model::static_value_key;
 use super::{
-    FunctionArgumentType, FunctionFlavor, FunctionInputType, FunctionModel, FunctionReturnType,
-    GeneratedNames, GeneratedValue, ListDeclaredAccess, ListDecoderModel, ListExternalAccess,
+    FunctionArgumentType, FunctionInputType, FunctionModel, FunctionReturnType, GeneratedNames,
+    GeneratedValue, InputOwnership, ListDeclaredAccess, ListDecoderModel, ListExternalAccess,
     StaticValueType,
 };
 use proc_macro2::TokenStream;
@@ -37,7 +37,7 @@ pub(super) fn generate_list_decoders(
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
 ) -> TokenStream {
-    [FunctionFlavor::Immediate, FunctionFlavor::Async]
+    [InputOwnership::Borrowed, InputOwnership::Owned]
         .into_iter()
         .map(|flavor| generate_list_decoder(decoder, customs, custom_inputs, support, flavor))
         .collect()
@@ -48,7 +48,7 @@ fn generate_list_decoder(
     customs: &[CustomModel],
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> TokenStream {
     let ident = list_decoder_ident(&decoder.ident, flavor);
     let item = validated_list_item_type(&decoder.value, custom_inputs, support, flavor);
@@ -119,7 +119,7 @@ fn validated_list_item_type(
     type_: &StaticValueType,
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> TokenStream {
     match type_ {
         StaticValueType::Scalar(type_) => quote!(#type_),
@@ -127,10 +127,10 @@ fn validated_list_item_type(
             list_input_associated_type(type_, support, flavor)
         }
         StaticValueType::External { payload, .. } => match flavor {
-            FunctionFlavor::Immediate => {
+            InputOwnership::Borrowed => {
                 quote!(#support::ProviderExternalView<#payload>)
             }
-            FunctionFlavor::Async => {
+            InputOwnership::Owned => {
                 quote!(#support::ProviderOwnedExternal<#payload>)
             }
         },
@@ -157,23 +157,23 @@ fn validated_list_item_type(
     }
 }
 
-pub(super) fn list_decoder_ident(ident: &Ident, flavor: FunctionFlavor) -> Ident {
+pub(super) fn list_decoder_ident(ident: &Ident, flavor: InputOwnership) -> Ident {
     match flavor {
-        FunctionFlavor::Immediate => format_ident!("__GeamImmediate{}", ident),
-        FunctionFlavor::Async => format_ident!("__GeamOwned{}", ident),
+        InputOwnership::Borrowed => format_ident!("__GeamImmediate{}", ident),
+        InputOwnership::Owned => format_ident!("__GeamOwned{}", ident),
     }
 }
 
 fn list_input_associated_type(
     type_: &Type,
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> TokenStream {
     match flavor {
-        FunctionFlavor::Immediate => {
+        InputOwnership::Borrowed => {
             quote!(<#type_ as #support::ProviderValueForms>::ImmediateListInput)
         }
-        FunctionFlavor::Async => {
+        InputOwnership::Owned => {
             quote!(<#type_ as #support::ProviderValueForms>::OwnedListInput)
         }
     }
@@ -184,7 +184,7 @@ pub(super) fn list_decoder_value(
     value: &StaticValueType,
     customs: &[CustomModel],
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
     provider: &TokenStream,
     call: &TokenStream,
 ) -> TokenStream {
@@ -361,7 +361,7 @@ fn decode_list_item(
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
     names: &mut GeneratedNames,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> GeneratedValue {
     match type_ {
         StaticValueType::Scalar(type_) => GeneratedValue {
@@ -378,10 +378,10 @@ fn decode_list_item(
         }
         StaticValueType::External { store_field, .. } => {
             let value = match flavor {
-                FunctionFlavor::Async => {
+                InputOwnership::Owned => {
                     quote!(#input.into_external(&self.#store_field))
                 }
-                FunctionFlavor::Immediate => {
+                InputOwnership::Borrowed => {
                     quote!(#input.into_external_view(&self.#store_field))
                 }
             };
@@ -519,7 +519,7 @@ fn decode_list_custom_field(
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
     names: &mut GeneratedNames,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> GeneratedValue {
     match type_ {
         CustomFieldValueType::Value(type_) => {
@@ -543,15 +543,15 @@ fn decode_list_custom(
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
     names: &mut GeneratedNames,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> GeneratedValue {
     let custom = &customs[custom_index];
     let input_type = match flavor {
-        FunctionFlavor::Immediate => {
-            custom_input_ident(&custom_inputs[&custom_index], FunctionFlavor::Immediate)
+        InputOwnership::Borrowed => {
+            custom_input_ident(&custom_inputs[&custom_index], InputOwnership::Borrowed)
         }
-        FunctionFlavor::Async => {
-            custom_input_ident(&custom_inputs[&custom_index], FunctionFlavor::Async)
+        InputOwnership::Owned => {
+            custom_input_ident(&custom_inputs[&custom_index], InputOwnership::Owned)
         }
     };
     let custom_value = names.next("list_custom");
@@ -611,11 +611,11 @@ fn nested_list_decoder_value(
     ident: &Ident,
     value: &StaticValueType,
     customs: &[CustomModel],
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> TokenStream {
     let ident = match flavor {
-        FunctionFlavor::Immediate => list_decoder_ident(ident, FunctionFlavor::Immediate),
-        FunctionFlavor::Async => list_decoder_ident(ident, FunctionFlavor::Async),
+        InputOwnership::Borrowed => list_decoder_ident(ident, InputOwnership::Borrowed),
+        InputOwnership::Owned => list_decoder_ident(ident, InputOwnership::Owned),
     };
     let accesses = list_external_accesses(value, customs);
     let declared = list_declared_accesses(value, customs);
@@ -664,39 +664,39 @@ fn list_item_view_type_with_flavor(
     type_: &StaticValueType,
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> TokenStream {
     match type_ {
         StaticValueType::Scalar(type_) => quote!(#type_),
         StaticValueType::Declared { type_, .. } => match flavor {
-            FunctionFlavor::Immediate => {
-                let input = list_input_associated_type(type_, support, FunctionFlavor::Immediate);
+            InputOwnership::Borrowed => {
+                let input = list_input_associated_type(type_, support, InputOwnership::Borrowed);
                 quote!(
                     <#input as #support::ProviderListInputValue>::View
                 )
             }
-            FunctionFlavor::Async => {
-                let input = list_input_associated_type(type_, support, FunctionFlavor::Async);
+            InputOwnership::Owned => {
+                let input = list_input_associated_type(type_, support, InputOwnership::Owned);
                 quote!(
                     <#input as #support::ProviderListInputValue>::View
                 )
             }
         },
         StaticValueType::External { payload, .. } => match flavor {
-            FunctionFlavor::Immediate => {
+            InputOwnership::Borrowed => {
                 quote!(#support::ProviderExternalView<#payload>)
             }
-            FunctionFlavor::Async => {
+            InputOwnership::Owned => {
                 quote!(#support::ProviderOwnedExternal<#payload>)
             }
         },
         StaticValueType::Custom { index, .. } => {
             let input = match flavor {
-                FunctionFlavor::Immediate => {
-                    custom_input_ident(&custom_inputs[index], FunctionFlavor::Immediate)
+                InputOwnership::Borrowed => {
+                    custom_input_ident(&custom_inputs[index], InputOwnership::Borrowed)
                 }
-                FunctionFlavor::Async => {
-                    custom_input_ident(&custom_inputs[index], FunctionFlavor::Async)
+                InputOwnership::Owned => {
+                    custom_input_ident(&custom_inputs[index], InputOwnership::Owned)
                 }
             };
             quote!(#input)
@@ -722,17 +722,17 @@ fn list_item_view_type_with_flavor(
     }
 }
 
-pub(super) fn custom_input_ident(input: &Ident, flavor: FunctionFlavor) -> Ident {
+pub(super) fn custom_input_ident(input: &Ident, flavor: InputOwnership) -> Ident {
     match flavor {
-        FunctionFlavor::Immediate => format_ident!("__GeamImmediate{}", input),
-        FunctionFlavor::Async => format_ident!("__GeamOwned{}", input),
+        InputOwnership::Borrowed => format_ident!("__GeamImmediate{}", input),
+        InputOwnership::Owned => format_ident!("__GeamOwned{}", input),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::list_item_view_type_with_flavor;
-    use crate::module::{FunctionFlavor, StaticValueType};
+    use crate::module::{InputOwnership, StaticValueType};
     use quote::quote;
 
     #[test]
@@ -751,7 +751,7 @@ mod tests {
                 &input,
                 &std::collections::BTreeMap::new(),
                 &quote!(geam_core),
-                FunctionFlavor::Immediate,
+                InputOwnership::Borrowed,
             )
             .to_string(),
             ":: core :: result :: Result < :: core :: option :: Option < BigInt > , :: core :: option :: Option < EcoString > >",

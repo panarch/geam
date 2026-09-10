@@ -207,10 +207,6 @@ impl FunctionEntryTemplate {
         }
     }
 
-    pub(super) fn parameter_shapes(&self) -> &[crate::plan::ValueShape] {
-        &self.params
-    }
-
     pub(super) fn stored_parameters(
         &self,
         substitution: &SpecializedTypeSubstitution,

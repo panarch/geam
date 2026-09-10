@@ -29,6 +29,7 @@ pub(crate) struct EmbeddingInputStorage(
 );
 
 pub(crate) struct EmbeddingTupleInput(Vec<EvaluatedValue>);
+#[derive(Clone)]
 pub(crate) struct EmbeddingCustomInput(EvaluatedCustomValue);
 pub(crate) struct EmbeddingListInput(pub(in crate::runtime::embedding) StoredListValueId);
 
@@ -47,6 +48,15 @@ impl EmbeddingTupleInput {
 }
 
 impl EmbeddingCustomInput {
+    pub(in crate::runtime) fn retained(value: EvaluatedCustomValue) -> Self {
+        Self(value)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn same_allocation(&self, other: &Self) -> bool {
+        std::ptr::eq(self.0.fields(), other.0.fields())
+    }
+
     pub(crate) fn new(
         constructor: CustomConstructorId,
         fields: impl IntoIterator<Item = EmbeddingInput>,

@@ -117,14 +117,13 @@ mod native {
         value.into_value()
     }
 
-    #[geam_macros::function]
-    #[allow(clippy::clone_on_copy)]
-    fn manual_callback<Item>(
+    #[geam_macros::function(resumable)]
+    async fn manual_callback<Item>(
         #[geam_macros::call] call: &mut Call<BigInt>,
         value: ManualInput<Item>,
         callback: Callback<fn(ManualValue<Item>) -> bool>,
     ) -> HostResult<bool> {
-        call.invoke(callback.clone(), (value.into_value(),))
+        call.invoke(&callback, (value.into_value(),)).await
     }
 
     #[geam_macros::function]
@@ -398,13 +397,13 @@ mod native {
         (before, call.state().clone())
     }
 
-    #[geam_macros::function]
-    fn invoke_immediate(
+    #[geam_macros::function(resumable)]
+    async fn invoke_immediate(
         #[geam_macros::call] call: &mut Call<BigInt>,
         callback: Callback<fn(BigInt) -> BigInt>,
         value: BigInt,
     ) -> HostResult<BigInt> {
-        call.invoke(callback, (value,))
+        call.invoke(&callback, (value,)).await
     }
 
     #[geam_macros::function]

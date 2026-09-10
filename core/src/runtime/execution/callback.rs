@@ -1,19 +1,36 @@
-use super::execution::WorkContext;
+use super::ExecutionContext;
 use crate::host::{
-    HostCallError, HostCallRuntime, HostCodecScope, HostFutureError, HostProfile, HostValueToken,
+    HostCallError, HostCallRuntime, HostCodecScope, HostExecutionError, HostProfile, HostValueToken,
 };
 use crate::runtime::host::RuntimeHostCall;
 use crate::runtime::{CallbackInputs, HostCallOrigin, RetainedCallable};
 use std::future::Future;
 
-impl<Profile: HostProfile> WorkContext<Profile> {
+impl<Profile: HostProfile> ExecutionContext<Profile> {
+    pub(crate) fn with_codec<Output: Send + 'static, Operation>(
+        &self,
+        codec: HostCodecScope,
+        origin: HostCallOrigin,
+        operation: Operation,
+    ) -> impl Future<Output = Result<Output, crate::runtime::work::Cancelled>>
+    + Send
+    + use<Profile, Output, Operation>
+    where
+        Operation: FnOnce(&mut dyn HostCallRuntime<Profile>) -> Output + Send + 'static,
+    {
+        self.with_runtime(move |plan, state| {
+            let mut runtime = RuntimeHostCall::new_codec(plan, state, &codec, origin);
+            operation(&mut runtime)
+        })
+    }
+
     pub(crate) fn decode_completion<Output: Send + 'static, Decode>(
         &self,
-        value: super::Shared<crate::runtime::StoredRuntimeValue>,
+        value: crate::runtime::shared::Shared<crate::runtime::StoredRuntimeValue>,
         codec: HostCodecScope,
         origin: HostCallOrigin,
         decode: Decode,
-    ) -> impl Future<Output = Result<Output, HostFutureError>> + Send + use<Profile, Output, Decode>
+    ) -> impl Future<Output = Result<Output, HostExecutionError>> + Send + use<Profile, Output, Decode>
     where
         Decode: FnOnce(
                 &mut dyn HostCallRuntime<Profile>,
@@ -37,7 +54,7 @@ impl<Profile: HostProfile> WorkContext<Profile> {
         origin: HostCallOrigin,
         inputs: Inputs,
         decode: Decode,
-    ) -> impl Future<Output = Result<Output, HostFutureError>>
+    ) -> impl Future<Output = Result<Output, HostExecutionError>>
     + Send
     + use<Profile, Output, Inputs, Decode>
     where

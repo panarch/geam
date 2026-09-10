@@ -57,102 +57,260 @@ type IntCallableList = HostListType<IntCallable>;
 type FunctionArgumentArguments = HostTypeList<IntCallable, HostTypeListEnd>;
 type FunctionArgumentCallable = HostFunctionType<FunctionArgumentArguments, BigInt>;
 
+type Owned<Type> =
+    geam_core::provider::Value<Type, geam_core::provider::ProviderValueContext<Type>>;
+
 fn invoke_float<'call>(
-    mut call: HostCall<'call, StatelessHostProfile, Provider, f64>,
+    call: HostCall<'call, StatelessHostProfile, Provider, f64>,
+    constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
     function: HostCallable<'call, NoArguments, f64>,
-) -> Result<HostCallCompletion<'call, f64>, HostCallError> {
-    let value = call.invoke(function, ())?;
-    Ok(call.return_value(value))
+) -> Result<geam_core::HostCallContinuation<'call, f64>, HostCallError> {
+    let function = call.owned_callable(function, &constructions);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            let value = function
+                .invoke(&context, |_, _| (), |_, _, value| Ok(value))
+                .await?;
+            Ok(geam_core::HostOwnedCompletion::new(move |call, _| {
+                Ok(call.return_value(value))
+            }))
+        })
+    }))
 }
 
 fn invoke_string<'call>(
-    mut call: HostCall<'call, StatelessHostProfile, Provider, EcoString>,
+    call: HostCall<'call, StatelessHostProfile, Provider, EcoString>,
+    constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
     function: HostCallable<'call, NoArguments, EcoString>,
-) -> Result<HostCallCompletion<'call, EcoString>, HostCallError> {
-    let value = call.invoke(function, ())?;
-    Ok(call.return_value(value))
+) -> Result<geam_core::HostCallContinuation<'call, EcoString>, HostCallError> {
+    let function = call.owned_callable(function, &constructions);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            let value = function
+                .invoke(&context, |_, _| (), |_, _, value| Ok(value))
+                .await?;
+            Ok(geam_core::HostOwnedCompletion::new(move |call, _| {
+                Ok(call.return_value(value))
+            }))
+        })
+    }))
 }
 
 fn invoke_bit_array<'call>(
-    mut call: HostCall<'call, StatelessHostProfile, Provider, BitArrayValue>,
+    call: HostCall<'call, StatelessHostProfile, Provider, BitArrayValue>,
+    constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
     function: HostCallable<'call, NoArguments, BitArrayValue>,
-) -> Result<HostCallCompletion<'call, BitArrayValue>, HostCallError> {
-    let value = call.invoke(function, ())?;
-    Ok(call.return_value(value))
+) -> Result<geam_core::HostCallContinuation<'call, BitArrayValue>, HostCallError> {
+    let function = call.owned_callable(function, &constructions);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            let value = function
+                .invoke(&context, |_, _| (), |_, _, value| Ok(value))
+                .await?;
+            Ok(geam_core::HostOwnedCompletion::new(move |call, _| {
+                Ok(call.return_value(value))
+            }))
+        })
+    }))
 }
 
 fn invoke_utf_codepoint<'call>(
-    mut call: HostCall<'call, StatelessHostProfile, Provider, char>,
+    call: HostCall<'call, StatelessHostProfile, Provider, char>,
+    constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
     function: HostCallable<'call, NoArguments, char>,
-) -> Result<HostCallCompletion<'call, char>, HostCallError> {
-    let value = call.invoke(function, ())?;
-    Ok(call.return_value(value))
+) -> Result<geam_core::HostCallContinuation<'call, char>, HostCallError> {
+    let function = call.owned_callable(function, &constructions);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            let value = function
+                .invoke(&context, |_, _| (), |_, _, value| Ok(value))
+                .await?;
+            Ok(geam_core::HostOwnedCompletion::new(move |call, _| {
+                Ok(call.return_value(value))
+            }))
+        })
+    }))
 }
 
 fn invoke_bool<'call>(
-    mut call: HostCall<'call, StatelessHostProfile, Provider, bool>,
+    call: HostCall<'call, StatelessHostProfile, Provider, bool>,
+    constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
     function: HostCallable<'call, NoArguments, bool>,
-) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
-    let value = call.invoke(function, ())?;
-    Ok(call.return_value(value))
+) -> Result<geam_core::HostCallContinuation<'call, bool>, HostCallError> {
+    let function = call.owned_callable(function, &constructions);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            let value = function
+                .invoke(&context, |_, _| (), |_, _, value| Ok(value))
+                .await?;
+            Ok(geam_core::HostOwnedCompletion::new(move |call, _| {
+                Ok(call.return_value(value))
+            }))
+        })
+    }))
 }
 
 fn invoke_nil<'call>(
-    mut call: HostCall<'call, StatelessHostProfile, Provider, ()>,
+    call: HostCall<'call, StatelessHostProfile, Provider, ()>,
+    constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
     function: HostCallable<'call, NoArguments, ()>,
-) -> Result<HostCallCompletion<'call, ()>, HostCallError> {
-    call.invoke(function, ())?;
-    Ok(call.return_value(()))
+) -> Result<geam_core::HostCallContinuation<'call, ()>, HostCallError> {
+    let function = call.owned_callable(function, &constructions);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            function
+                .invoke(&context, |_, _| (), |_, _, value| Ok(value))
+                .await?;
+            Ok(geam_core::HostOwnedCompletion::new(move |call, _| {
+                Ok(call.return_value(()))
+            }))
+        })
+    }))
 }
 
 fn invoke_tuple<'call>(
-    mut call: HostCall<'call, StatelessHostProfile, Provider, Pair>,
+    call: HostCall<'call, StatelessHostProfile, Provider, Pair>,
+    constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
     function: HostCallable<'call, NoArguments, Pair>,
-) -> Result<HostCallCompletion<'call, Pair>, HostCallError> {
-    let value = call.invoke(function, ())?;
-    Ok(call.return_value(value))
+) -> Result<geam_core::HostCallContinuation<'call, Pair>, HostCallError> {
+    let function = call.owned_callable(function, &constructions);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            let value = function
+                .invoke(
+                    &context,
+                    |_, _| (),
+                    |call, _, value| Ok(Owned::<Pair>::from_host(&call, value)),
+                )
+                .await?;
+            Ok(geam_core::HostOwnedCompletion::new(move |mut call, _| {
+                let value = value.into_host(&mut call);
+                Ok(call.return_value(value))
+            }))
+        })
+    }))
 }
 
 fn invoke_list<'call>(
-    mut call: HostCall<'call, StatelessHostProfile, Provider, IntList>,
+    call: HostCall<'call, StatelessHostProfile, Provider, IntList>,
+    constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
     function: HostCallable<'call, NoArguments, IntList>,
-) -> Result<HostCallCompletion<'call, IntList>, HostCallError> {
-    let value = call.invoke(function, ())?;
-    Ok(call.return_value(value))
+) -> Result<geam_core::HostCallContinuation<'call, IntList>, HostCallError> {
+    let function = call.owned_callable(function, &constructions);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            let value = function
+                .invoke(
+                    &context,
+                    |_, _| (),
+                    |call, _, value| Ok(Owned::<IntList>::from_host(&call, value)),
+                )
+                .await?;
+            Ok(geam_core::HostOwnedCompletion::new(move |mut call, _| {
+                let value = value.into_host(&mut call);
+                Ok(call.return_value(value))
+            }))
+        })
+    }))
 }
 
 fn invoke_custom<'call>(
-    mut call: HostCall<'call, StatelessHostProfile, Provider, Marker>,
+    call: HostCall<'call, StatelessHostProfile, Provider, Marker>,
+    constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
     function: HostCallable<'call, NoArguments, Marker>,
-) -> Result<HostCallCompletion<'call, Marker>, HostCallError> {
-    let value = call.invoke(function, ())?;
-    Ok(call.return_value(value))
+) -> Result<geam_core::HostCallContinuation<'call, Marker>, HostCallError> {
+    let function = call.owned_callable(function, &constructions);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            let value = function
+                .invoke(
+                    &context,
+                    |_, _| (),
+                    |call, _, value| Ok(Owned::<Marker>::from_host(&call, value)),
+                )
+                .await?;
+            Ok(geam_core::HostOwnedCompletion::new(move |mut call, _| {
+                let value = value.into_host(&mut call);
+                Ok(call.return_value(value))
+            }))
+        })
+    }))
 }
 
 fn invoke_constructor<'call>(
-    mut call: HostCall<'call, StatelessHostProfile, Provider, Marker>,
+    call: HostCall<'call, StatelessHostProfile, Provider, Marker>,
+    constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
     function: HostCallable<'call, IntArguments, Marker>,
-) -> Result<HostCallCompletion<'call, Marker>, HostCallError> {
-    let value = call.invoke(function, (BigInt::from(11), ()))?;
-    Ok(call.return_value(value))
+) -> Result<geam_core::HostCallContinuation<'call, Marker>, HostCallError> {
+    let function = call.owned_callable(function, &constructions);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            let value = function
+                .invoke(
+                    &context,
+                    |_, _| (BigInt::from(11), ()),
+                    |call, _, value| Ok(Owned::<Marker>::from_host(&call, value)),
+                )
+                .await?;
+            Ok(geam_core::HostOwnedCompletion::new(move |mut call, _| {
+                let value = value.into_host(&mut call);
+                Ok(call.return_value(value))
+            }))
+        })
+    }))
 }
 
 fn invoke_function<'call>(
-    mut call: HostCall<'call, StatelessHostProfile, Provider, BigInt>,
+    call: HostCall<'call, StatelessHostProfile, Provider, BigInt>,
+    constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
     function: HostCallable<'call, NoArguments, IntCallable>,
-) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
-    let returned = call.invoke(function, ())?;
-    let value = call.invoke(returned, (BigInt::from(41), ()))?;
-    Ok(call.return_value(value))
+) -> Result<geam_core::HostCallContinuation<'call, BigInt>, HostCallError> {
+    let function = call.owned_callable(function, &constructions);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            let returned = function
+                .invoke(
+                    &context,
+                    |_, _| (),
+                    |call, constructions, value| Ok(call.owned_callable(value, &constructions)),
+                )
+                .await?;
+            let value = returned
+                .invoke(
+                    &context,
+                    |_, _| (BigInt::from(41), ()),
+                    |_, _, value| Ok(value),
+                )
+                .await?;
+            Ok(geam_core::HostOwnedCompletion::new(move |call, _| {
+                Ok(call.return_value(value))
+            }))
+        })
+    }))
 }
 
 fn invoke_with_function_argument<'call>(
-    mut call: HostCall<'call, StatelessHostProfile, Provider, BigInt>,
+    call: HostCall<'call, StatelessHostProfile, Provider, BigInt>,
+    constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
     function: HostCallable<'call, FunctionArgumentArguments, BigInt>,
     argument: HostCallable<'call, IntArguments, BigInt>,
-) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
-    let value = call.invoke(function, (argument, ()))?;
-    Ok(call.return_value(value))
+) -> Result<geam_core::HostCallContinuation<'call, BigInt>, HostCallError> {
+    let function = call.owned_callable(function, &constructions);
+    let argument = Owned::<IntCallable>::from_host(&call, argument);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            let value = function
+                .invoke(
+                    &context,
+                    move |mut call, _| (argument.into_host(&mut call), ()),
+                    |_, _, value| Ok(value),
+                )
+                .await?;
+            Ok(geam_core::HostOwnedCompletion::new(move |call, _| {
+                Ok(call.return_value(value))
+            }))
+        })
+    }))
 }
 
 fn wrap_callable<'call>(
@@ -164,84 +322,94 @@ fn wrap_callable<'call>(
 
 fn invoke_first<'call>(
     mut call: HostCall<'call, StatelessHostProfile, Provider, BigInt>,
+    constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
     functions: HostList<'call, IntCallable>,
     value: BigInt,
-) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+) -> Result<geam_core::HostCallContinuation<'call, BigInt>, HostCallError> {
     let function = call
         .list_item(functions, 0)
         .ok_or_else(|| geam_core::HostFailure::new("callback list should contain one function"))?;
-    let returned = call.invoke(function, (value, ()))?;
-    Ok(call.return_value(returned))
+    let function = call.owned_callable(function, &constructions);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            let returned = function
+                .invoke(&context, move |_, _| (value, ()), |_, _, value| Ok(value))
+                .await?;
+            Ok(geam_core::HostOwnedCompletion::new(move |call, _| {
+                Ok(call.return_value(returned))
+            }))
+        })
+    }))
 }
 
 #[test]
 fn invokes_every_successful_callback_return_family() {
     let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_scoped_function::<Provider, (HostFunctionType<NoArguments, f64>,), f64, _>(
+        .with_resumable_function::<Provider, (HostFunctionType<NoArguments, f64>,), f64, geam_core::HostTypeListEnd, _>(
             "invoke_float",
             invoke_float,
         )
         .expect("Float callback should register")
-        .with_scoped_function::<Provider, (HostFunctionType<NoArguments, EcoString>,), EcoString, _>(
+        .with_resumable_function::<Provider, (HostFunctionType<NoArguments, EcoString>,), EcoString, geam_core::HostTypeListEnd, _>(
             "invoke_string",
             invoke_string,
         )
         .expect("String callback should register")
-        .with_scoped_function::<
+        .with_resumable_function::<
             Provider,
             (HostFunctionType<NoArguments, BitArrayValue>,),
             BitArrayValue,
-            _,
+            geam_core::HostTypeListEnd, _,
         >("invoke_bit_array", invoke_bit_array)
         .expect("BitArray callback should register")
-        .with_scoped_function::<Provider, (HostFunctionType<NoArguments, char>,), char, _>(
+        .with_resumable_function::<Provider, (HostFunctionType<NoArguments, char>,), char, geam_core::HostTypeListEnd, _>(
             "invoke_utf_codepoint",
             invoke_utf_codepoint,
         )
         .expect("UtfCodepoint callback should register")
-        .with_scoped_function::<Provider, (HostFunctionType<NoArguments, bool>,), bool, _>(
+        .with_resumable_function::<Provider, (HostFunctionType<NoArguments, bool>,), bool, geam_core::HostTypeListEnd, _>(
             "invoke_bool",
             invoke_bool,
         )
         .expect("Bool callback should register")
-        .with_scoped_function::<Provider, (HostFunctionType<NoArguments, ()>,), (), _>(
+        .with_resumable_function::<Provider, (HostFunctionType<NoArguments, ()>,), (), geam_core::HostTypeListEnd, _>(
             "invoke_nil",
             invoke_nil,
         )
         .expect("Nil callback should register")
-        .with_scoped_function::<Provider, (HostFunctionType<NoArguments, Pair>,), Pair, _>(
+        .with_resumable_function::<Provider, (HostFunctionType<NoArguments, Pair>,), Pair, geam_core::HostTypeListEnd, _>(
             "invoke_tuple",
             invoke_tuple,
         )
         .expect("tuple callback should register")
-        .with_scoped_function::<Provider, (HostFunctionType<NoArguments, IntList>,), IntList, _>(
+        .with_resumable_function::<Provider, (HostFunctionType<NoArguments, IntList>,), IntList, geam_core::HostTypeListEnd, _>(
             "invoke_list",
             invoke_list,
         )
         .expect("list callback should register")
-        .with_scoped_function::<Provider, (HostFunctionType<NoArguments, Marker>,), Marker, _>(
+        .with_resumable_function::<Provider, (HostFunctionType<NoArguments, Marker>,), Marker, geam_core::HostTypeListEnd, _>(
             "invoke_custom",
             invoke_custom,
         )
         .expect("custom callback should register")
-        .with_scoped_function::<Provider, (HostFunctionType<IntArguments, Marker>,), Marker, _>(
+        .with_resumable_function::<Provider, (HostFunctionType<IntArguments, Marker>,), Marker, geam_core::HostTypeListEnd, _>(
             "invoke_constructor",
             invoke_constructor,
         )
         .expect("constructor callback should register")
-        .with_scoped_function::<
+        .with_resumable_function::<
             Provider,
             (HostFunctionType<NoArguments, IntCallable>,),
             BigInt,
-            _,
+            geam_core::HostTypeListEnd, _,
         >("invoke_function", invoke_function)
         .expect("function callback should register")
-        .with_scoped_function::<
+        .with_resumable_function::<
             Provider,
             (FunctionArgumentCallable, IntCallable),
             BigInt,
-            _,
+            geam_core::HostTypeListEnd, _,
         >(
             "invoke_with_function_argument",
             invoke_with_function_argument,
@@ -337,12 +505,11 @@ pub fn main() {
     )
     .expect("callback family source should compile");
     let plan = plan_host_program(typed).expect("callback family source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("callback family execution should seal");
 
     assert_eq!(
-        execution
-            .run_main(&mut (), &mut Vec::new())
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
             .expect("every successful callback family should execute")
             .inspect()
             .to_string(),
@@ -359,7 +526,7 @@ fn returns_and_invokes_callables_nested_in_lists() {
             wrap_callable,
         )
         .expect("callback list return should register")
-        .with_scoped_function::<Provider, (IntCallableList, BigInt), BigInt, _>(
+        .with_resumable_function::<Provider, (IntCallableList, BigInt), BigInt, geam_core::HostTypeListEnd, _>(
             "invoke_first",
             invoke_first,
         )
@@ -394,12 +561,11 @@ pub fn main() {
     )
     .expect("callback list source should compile");
     let plan = plan_host_program(typed).expect("callback list source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("callback list execution should seal");
 
     assert_eq!(
-        execution
-            .run_main(&mut (), &mut Vec::new())
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
             .expect("callback list should preserve invocation and identity")
             .inspect()
             .to_string(),
@@ -411,18 +577,28 @@ type NeverReturn = HostTypeParameter<0>;
 type NeverCallable = HostFunctionType<NoArguments, NeverReturn>;
 
 fn invoke_never<'call>(
-    mut call: HostCall<'call, StatelessHostProfile, Provider, BigInt>,
+    call: HostCall<'call, StatelessHostProfile, Provider, BigInt>,
+    constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
     function: HostCallable<'call, NoArguments, NeverReturn>,
-) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
-    let _ = call.invoke(function, ())?;
-    Ok(call.return_value(0.into()))
+) -> Result<geam_core::HostCallContinuation<'call, BigInt>, HostCallError> {
+    let function = call.owned_callable(function, &constructions);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            function
+                .invoke(&context, |_, _| (), |_, _, _| Ok(()))
+                .await?;
+            Ok(geam_core::HostOwnedCompletion::new(move |call, _| {
+                Ok(call.return_value(0.into()))
+            }))
+        })
+    }))
 }
 
 #[test]
 fn preserves_a_nested_failure_from_a_never_callback() {
     let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_scoped_function::<Provider, (NeverCallable,), BigInt, _>("invoke_never", invoke_never)
+        .with_resumable_function::<Provider, (NeverCallable,), BigInt, geam_core::HostTypeListEnd, _>("invoke_never", invoke_never)
         .expect("Never callback should register");
     let source = r#"
 @external(erlang, "host", "invoke_never")
@@ -449,10 +625,9 @@ pub fn main() {
     )
     .expect("Never callback source should compile");
     let plan = plan_host_program(typed).expect("Never callback source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("Never callback execution should seal");
-    let error = execution
-        .run_main(&mut (), &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect_err("nested Never callback should preserve its panic");
     let ExecutionError::Panic(error) = error else {
         panic!("nested Never callback should remain a source panic");

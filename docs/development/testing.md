@@ -15,6 +15,7 @@ default distribution:
 
 ```sh
 cargo check --package geam --no-default-features --features embedding --all-targets --locked
+cargo check --package geam --no-default-features --features embedding,tokio --all-targets --locked
 cargo check --package geam --no-default-features --features provider --all-targets --locked
 cargo check --package geam --no-default-features --features embedding,gleam-stdlib --all-targets --locked
 cargo check --package geam --no-default-features --features embedding,geam-builtin --all-targets --locked
@@ -98,7 +99,7 @@ failure, observer removal, last-owner release, re-entry, and scope shutdown.
 The `core/tests/work_embedding.rs` target exercises the public typed boundary,
 including existing work passed through functions and nested containers. Transfer
 tests cover both pending work and shared completion with caller-borrowed state.
-These tests establish the [work execution contract](review-policy.md#explicit-work-execution-rules)
+These tests establish the [work execution contract](review-policy.md#execution-and-explicit-work-rules)
 independently of executor-specific examples.
 
 Multi-module execution cases live under
@@ -196,7 +197,8 @@ for example in \
   package \
   io \
   provider \
-  async_host
+  async_host \
+  session
 do
   (
     cd "examples/embedding/$example"
@@ -212,9 +214,28 @@ done
 
 The `async_host` example owns the generated explicit-Future user workflow.
 It loads an independently locked macro-authored file provider, creates work
-through ordinary Gleam source, drives it using the application's `futures`
+through ordinary Gleam source, drives it using the application's Tokio
 executor, and observes its completion again. Its binary test fixes stdout and
-stderr alongside an ordinary direct call.
+stderr alongside an ordinary value-returning call in the same execution.
+
+The `session` example returns an opaque source value with a private closure,
+retains it in Rust, and passes it back through generated bindings. It requires
+neither a provider nor a source Future. Exact owner/type/lifetime rejection,
+hidden work and non-Clone/non-Sync payload retention remain core and CLI owner
+test obligations.
+
+The `execution` example uses the manual hosted API to run pure Gleam, observe
+its first Echo, cancel the running entry, and successfully call another entry
+in the same module. Its integration test fixes the complete output; core owner
+tests establish budget and cancellation behavior with controlled scheduling.
+The same Rust embedding CI job checks it:
+
+```sh
+(cd examples/embedding/execution/gleam && gleam format --check)
+cargo fmt --manifest-path examples/embedding/execution/Cargo.toml --check
+CARGO_TARGET_DIR=target/embedding cargo test --manifest-path examples/embedding/execution/Cargo.toml --locked
+CARGO_TARGET_DIR=target/embedding cargo clippy --manifest-path examples/embedding/execution/Cargo.toml --all-targets --locked -- -D warnings
+```
 
 Core owners and `geam-macros`'s `async_provider` target exercise deterministic
 Pending, shared completion, bounded state access, rich callbacks, cancellation,
@@ -373,7 +394,7 @@ Provider SDK fixture remains the canonical low-level typed-host ABI acceptance
 owner.
 
 The [Acceptance workflow](../../.github/workflows/acceptance.yml) runs a matrix
-for the ten synchronous providers. Each job selects its exact `provider_examples`
+for the ten provider examples other than `async_files`. Each job selects its exact `provider_examples`
 test, runs the independent provider's tests, verifies its Cargo package, and
 exports its Gleam package. A failed example does not cancel the other matrix
 jobs. The parallel `Published provider` job has no repository checkout and
@@ -392,7 +413,7 @@ those isolated runner artifacts are not shared or cached between jobs.
 
 The normal suite executes the full generated runner with the fixture's locked
 Gleam and Rust dependencies. CI exports the standalone fixture's three local
-Gleam dependencies and all ten synchronous example Gleam packages. It also packages the
+Gleam dependencies and the same ten example Gleam packages. It also packages the
 two standalone fixture providers and every example provider. No test-only
 fixture package is published. The text-pattern provider and matching Hex package
 are release-coupled public documentation artifacts and share every Geam release
@@ -520,12 +541,15 @@ to retain that closure's profiles.
 
 The core and macro closure uses only those packages' owner tests. Both reports
 must independently reach 100% without relying on built-in or CLI consumers.
+It includes the optional Tokio adapter. The separate Acceptance `Host execution`
+matrix also exercises that adapter and the public resumable embedding boundary
+on Linux, macOS, and Windows; those platform checks do not replace owner coverage.
 
 Run the core and macro closure:
 
 ```sh
 cargo llvm-cov clean --workspace
-cargo llvm-cov --no-report --package geam-core --package geam-macros --locked
+cargo llvm-cov --no-report --package geam-core --package geam-macros --features geam-core/tokio --locked
 cargo llvm-cov report --package geam-core --summary-only --fail-under-lines 100 --fail-under-regions 100
 cargo llvm-cov report --package geam-macros --summary-only --fail-under-lines 100 --fail-under-regions 100
 ```

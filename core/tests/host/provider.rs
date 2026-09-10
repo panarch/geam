@@ -34,11 +34,11 @@ pub fn main() {
     .expect("host program should compile");
     let plan = plan_host_program(typed).expect("fallback body should plan");
     assert!(plan.modules()[0].functions()[0].gleam_body().is_some());
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
 
     assert_eq!(
-        execution.run_main(&mut (), &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Int(42.into())),
     );
 }

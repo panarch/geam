@@ -1,3 +1,6 @@
+#[path = "../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 use ecow::EcoString;
 use geam_core::{
     HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
@@ -273,10 +276,14 @@ fn sibling_modules_share_static_custom_and_external_codecs() {
     )
     .expect("cross-module source should compile");
     let plan = plan_host_program(typed).expect("cross-module codecs should link");
-    let execution = HostedExecution::try_from_module_plan(plan).expect("plan should seal");
+    let mut execution = HostedExecution::try_from_module_plan(plan).expect("plan should seal");
 
     assert_eq!(
-        execution.run_main(&mut RunState { component: () }, &mut Vec::new()),
+        crate::execution_fixture::run(
+            &mut execution,
+            &mut RunState { component: () },
+            &mut Vec::new()
+        ),
         Ok(Value::Bool(true)),
     );
 }

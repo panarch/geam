@@ -1,11 +1,12 @@
-use super::{HostFutureContext, HostFutureError, HostFutureType, HostWorkProfile};
+use super::{HostFutureContext, HostFutureType, HostWorkProfile};
 use crate::host::{
-    HostCall, HostCallError, HostCodecScope, HostExternal, HostProfile, HostProvider, HostType,
-    HostTypeSequence,
+    HostCall, HostCallError, HostCodecScope, HostExecutionError, HostExternal, HostProfile,
+    HostProvider, HostType, HostTypeSequence,
 };
 use crate::runtime::HostCallOrigin;
 use crate::runtime::SharedExecutionError;
-use crate::runtime::work::execution::{SourceWork, WorkContext};
+use crate::runtime::execution::ExecutionContext;
+use crate::runtime::work::execution::SourceWork;
 use std::future::Future;
 use std::marker::PhantomData;
 
@@ -21,7 +22,7 @@ where
     Value: HostType,
 {
     work: SourceWork,
-    context: WorkContext<Profile>,
+    context: ExecutionContext<Profile>,
     codec: HostCodecScope,
     origin: HostCallOrigin,
     signature: PhantomData<fn(Provider) -> Value>,
@@ -41,7 +42,7 @@ where
         let lease = self.runtime.external_lease(value.token);
         HostFutureValue {
             work: crate::host::work_store::<Profile>(self.runtime.external_stores()).work(&lease),
-            context: self.runtime.work(),
+            context: self.runtime.execution(),
             codec: self.runtime.codec_scope(),
             origin: self.runtime.origin(),
             signature: PhantomData,
@@ -63,7 +64,7 @@ where
         &'request self,
         context: &'request HostFutureContext<'_, Profile, Provider, Constructions>,
         decode: Decode,
-    ) -> impl Future<Output = Result<Output, HostFutureError>> + Send + 'request
+    ) -> impl Future<Output = Result<Output, HostExecutionError>> + Send + 'request
     where
         Constructions: HostTypeSequence,
         Output: Send + 'static,
@@ -74,13 +75,31 @@ where
             + Send
             + 'static,
     {
-        let observer = context.dependencies.observe(&self.work);
+        self.observe_dependencies(&context.dependencies, decode)
+    }
+
+    pub(crate) fn observe_dependencies<'request, Output, Decode>(
+        &'request self,
+        dependencies: &'request crate::runtime::work::Dependencies<
+            crate::runtime::work::execution::Completion,
+        >,
+        decode: Decode,
+    ) -> impl Future<Output = Result<Output, HostExecutionError>> + Send + 'request
+    where
+        Output: Send + 'static,
+        Decode: for<'call> FnOnce(
+                HostCall<'call, Profile, Provider, ()>,
+                Value::Value<'call>,
+            ) -> Result<Output, HostCallError>
+            + Send
+            + 'static,
+    {
+        let observer = dependencies.observe(&self.work);
         async move {
-            let _scope = context;
             let completion = observer.await?;
             let value = completion
                 .read(Clone::clone)
-                .map_err(|error| HostFutureError::Execution(SharedExecutionError(error)))?;
+                .map_err(|error| HostExecutionError::Execution(SharedExecutionError(error)))?;
             self.context
                 .decode_completion(
                     value,

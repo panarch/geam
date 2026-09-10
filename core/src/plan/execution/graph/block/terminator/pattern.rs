@@ -185,6 +185,31 @@ pub fn main() {
     }
 
     #[test]
+    fn writes_nil_inside_a_refutable_tuple_pattern() {
+        assert_explanation(
+            "pub fn main() { let assert #(1, Nil) = #(1, Nil) 42 }",
+            "#(1, Nil)",
+        );
+    }
+
+    #[test]
+    fn writes_scalar_discard_and_binary_patterns_inside_a_tuple() {
+        for (pattern, value, expected) in [
+            ("_", "Nil", "_"),
+            ("True", "True", "True"),
+            ("False", "False", "False"),
+            ("1.5", "1.5", "1.5"),
+            ("\"text\"", "\"text\"", "\"text\""),
+            ("<<42>>", "<<42>>", "<<int(42, size=8*1, big, unsigned)>>"),
+        ] {
+            assert_explanation(
+                &format!("pub fn main() {{ let assert #(1, {pattern}) = #(1, {value}) 42 }}"),
+                &format!("#(1, {expected})"),
+            );
+        }
+    }
+
+    #[test]
     #[should_panic(expected = "let assert should lower to a match terminator")]
     fn match_pattern_shape_guard_is_visible() {
         explain::with_execution_plan("pub fn main() { 1 }", |plan| {

@@ -1,3 +1,7 @@
+#[cfg(test)]
+#[path = "../../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 mod function;
 mod schema;
 

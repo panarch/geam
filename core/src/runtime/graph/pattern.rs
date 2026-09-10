@@ -907,8 +907,11 @@ pub fn main() {
             EvaluatedValue::Int(2.into()),
         );
         assert_pattern_miss(
-            "pub fn main() { let assert Nil = Nil 1 }",
-            EvaluatedValue::Int(1.into()),
+            "pub fn main() { let assert #(1, Nil) = #(1, Nil) 1 }",
+            EvaluatedValue::Tuple(vec![
+                EvaluatedValue::Int(1.into()),
+                EvaluatedValue::Int(1.into()),
+            ]),
         );
         assert_pattern_miss(
             "fn flag() { True } pub fn main() { let value = case flag() { True -> 1 False -> 2 } let assert 1 = value 1 }",

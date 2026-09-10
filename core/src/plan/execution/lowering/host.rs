@@ -310,7 +310,7 @@ impl HostedEntries for library::Entries {
 #[cfg(test)]
 mod tests {
     use super::lower_hosted_library;
-    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
+    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder};
     use crate::frontend::HostedTypedProgram;
     use crate::host::{
         HostCall, HostCallCompletion, HostCallError, HostCallable, HostComponentProfile,
@@ -324,7 +324,7 @@ mod tests {
     use crate::{
         HostModule, HostProviderSet, ModuleSource, PackageSource, compile_typed_host_program,
     };
-    use futures_util::FutureExt;
+
     use num_bigint::BigInt;
     use std::convert::Infallible;
 
@@ -384,7 +384,10 @@ mod tests {
                 LibraryValueType::Custom(
                     StandardVariant::Result.custom_type(vec![ValueType::Int, ValueType::String]),
                 ),
-                vec![StandardVariant::Result],
+                vec![crate::plan::LibraryVariant::new(
+                    StandardVariant::Result,
+                    vec![ValueType::Int, ValueType::String],
+                )],
                 Vec::new(),
             ),
             (
@@ -642,17 +645,20 @@ pub fn run() { let _ = accept_never 42 }
             .expect("uninhabited specialization is erased");
         let mut state = ();
         let mut echo = drop;
-        with_execution_scope(async |guard| {
-            assert_eq!(
-                module
-                    .attach(guard, &mut state, &mut echo)
-                    .call(&run, ())
-                    .expect("direct entry"),
-                BigInt::from(42)
-            );
-        })
-        .now_or_never()
-        .expect("direct call is immediate");
+        let execution_host = crate::execution_fixture::TestHost::default();
+        execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    assert_eq!(
+                        scope.call(&run, ()).await.expect("direct entry"),
+                        BigInt::from(42)
+                    );
+                },
+            ))
+            .expect("hosted call completes");
     }
 
     #[test]
@@ -773,16 +779,17 @@ pub fn run() { ready(1, "two") }
                 );
             } else {
                 let mut module = bindings.seal().expect("distinct specialized rules");
-                with_execution_scope(async |guard| {
-                    assert!(
-                        module
-                            .attach(guard, &mut (), &mut drop)
-                            .call(&run, ())
-                            .unwrap()
-                    );
-                })
-                .now_or_never()
-                .expect("direct entry");
+                let execution_host = crate::execution_fixture::TestHost::default();
+                execution_host
+                    .block_on(module.with_execution(
+                        &execution_host,
+                        &mut (),
+                        &mut drop,
+                        async |scope| {
+                            assert!(scope.call(&run, ()).await.unwrap());
+                        },
+                    ))
+                    .expect("direct entry");
             }
         }
     }
@@ -830,6 +837,8 @@ pub fn run() { accept(generic) }
 
     #[test]
     fn inhabited_specializations_execute_the_registered_value_and_diverging_callbacks() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let host = HostProviderModule::new("application", "library")
             .expect("provider")
             .with_scoped_function::<Provider, (BigInt,), BigInt, _>(
@@ -872,34 +881,45 @@ pub fn stopped() { stop(concrete) }
             .expect("diverging provider");
         let mut module = bindings.seal().expect("inhabited source types");
         let mut state = ();
+        let stores = HostFutureStore::default();
+        assert!(std::ptr::eq(Profile::component_stores(&stores), &stores));
         assert!(std::ptr::eq(
             <WorkComponent as HostProvider<Profile>>::project(&mut state),
             &state
         ));
         let mut echo = drop;
-        with_execution_scope(async |guard| {
-            let mut execution = module.attach(guard, &mut state, &mut echo);
-            assert_eq!(
-                execution.call(&accepted, ()).expect("accepted values"),
-                BigInt::from(2)
-            );
-            assert_eq!(
-                execution
-                    .call(&failed, ())
-                    .expect_err("native producer fails")
-                    .to_string(),
-                "host function application::library.produce failed: native producer failed"
-            );
-            assert_eq!(
-                execution
-                    .call(&stopped, ())
-                    .expect_err("native callback fails")
-                    .to_string(),
-                "host function application::library.stop failed: native callback failed"
-            );
-        })
-        .now_or_never()
-        .expect("direct executions");
+        execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |execution| {
+                    assert_eq!(
+                        execution
+                            .call(&accepted, ())
+                            .await
+                            .expect("accepted values"),
+                        BigInt::from(2)
+                    );
+                    assert_eq!(
+                        execution
+                            .call(&failed, ())
+                            .await
+                            .expect_err("native producer fails")
+                            .to_string(),
+                        "host function application::library.produce failed: native producer failed"
+                    );
+                    assert_eq!(
+                        execution
+                            .call(&stopped, ())
+                            .await
+                            .expect_err("native callback fails")
+                            .to_string(),
+                        "host function application::library.stop failed: native callback failed"
+                    );
+                },
+            ))
+            .expect("direct executions");
     }
 
     #[test]
@@ -923,17 +943,23 @@ pub fn run() { let _ = stop() 42 }
             .expect("diverging target has no returned value");
         let mut state = ();
         let mut echo = drop;
-        with_execution_scope(async |guard| {
-            assert_eq!(
-                module
-                    .attach(guard, &mut state, &mut echo)
-                    .call(&run, ())
-                    .expect_err("no fabricated Never value")
-                    .to_string(),
-                "host function application::library.stop failed: native execution stopped"
-            );
-        })
-        .now_or_never()
-        .expect("direct failure");
+        let execution_host = crate::execution_fixture::TestHost::default();
+        execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    assert_eq!(
+                        scope
+                            .call(&run, ())
+                            .await
+                            .expect_err("no fabricated Never value")
+                            .to_string(),
+                        "host function application::library.stop failed: native execution stopped"
+                    );
+                },
+            ))
+            .expect("direct failure");
     }
 }

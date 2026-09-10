@@ -5,7 +5,11 @@ mod geam_bindings;
 
 #[test]
 fn file_failures_remain_source_results_and_do_not_change_the_direct_call() {
-    use geam::embedding::{HostedModuleBuilder, with_execution_scope};
+    use geam::embedding::HostedModuleBuilder;
+    let executor = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .expect("executor");
+    let host = geam::execution::TokioHost::new(executor.handle().clone());
     let directory = tempfile::tempdir().expect("file owner");
     let path = directory.path().join("missing.txt");
     let program = geam_bindings::project().compile().expect("project");
@@ -18,38 +22,44 @@ fn file_failures_remain_source_results_and_do_not_change_the_direct_call() {
     .initialize()
     .expect("provider state");
     let mut echo = |value: geam::EchoOutput| panic!("unexpected Echo: {value}");
-    futures::executor::block_on(with_execution_scope(async |guard| {
-        let mut scope = module.attach(guard, &mut state, &mut echo);
-        let work = scope
-            .call(
-                &functions.greeting,
-                (path.to_str().expect("UTF-8 path").into(),),
-            )
-            .expect("work");
-        let failed = scope
-            .observe(&work)
-            .await
-            .expect("source Error is an ordinary completion");
-        failed.read(|result| assert!(!result.expect_err("missing file").is_empty()));
-        std::fs::write(&path, [0xff]).expect("non-UTF-8 file");
-        let work = scope
-            .call(
-                &functions.greeting,
-                (path.to_str().expect("UTF-8 path").into(),),
-            )
-            .expect("independent work");
-        scope
-            .observe(&work)
-            .await
-            .expect("ordinary completion")
-            .read(|result| assert!(result.is_err()));
-        assert_eq!(
-            scope
-                .call(&functions.double, (21.into(),))
-                .expect("unrelated direct entry"),
-            42.into()
-        );
-    }));
+    executor
+        .block_on(
+            module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                let work = scope
+                    .call(
+                        &functions.greeting,
+                        (path.to_str().expect("UTF-8 path").into(),),
+                    )
+                    .await
+                    .expect("work");
+                let failed = scope
+                    .observe(&work)
+                    .await
+                    .expect("source Error is an ordinary completion");
+                failed.read(|result| assert!(!result.expect_err("missing file").is_empty()));
+                std::fs::write(&path, [0xff]).expect("non-UTF-8 file");
+                let work = scope
+                    .call(
+                        &functions.greeting,
+                        (path.to_str().expect("UTF-8 path").into(),),
+                    )
+                    .await
+                    .expect("independent work");
+                scope
+                    .observe(&work)
+                    .await
+                    .expect("ordinary completion")
+                    .read(|result| assert!(result.is_err()));
+                assert_eq!(
+                    scope
+                        .call(&functions.double, (21.into(),))
+                        .await
+                        .expect("unrelated direct entry"),
+                    42.into()
+                );
+            }),
+        )
+        .expect("controlled execution");
 }
 
 #[test]

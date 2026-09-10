@@ -204,7 +204,7 @@ fn bit_array_to_int_and_size(value: BitArray) -> #(Int, Int)
 
     #[test]
     fn executes_every_bit_array_provider_through_the_hosted_pipeline() {
-        let execution = execution(
+        let mut execution = execution(
             r#"
 pub fn main() {
   assert from_string("AB") == <<65, 66>>
@@ -232,25 +232,25 @@ pub fn main() {
 }
 "#,
         );
-        let value = execution
-            .run_main(
-                &mut GleamStdlibRunState::from_seed([0; 32]),
-                &mut Vec::new(),
-            )
-            .expect("bit array providers should run");
+        let value = crate::execution_fixture::run(
+            &mut execution,
+            &mut GleamStdlibRunState::from_seed([0; 32]),
+            &mut Vec::new(),
+        )
+        .expect("bit array providers should run");
 
         assert_eq!(value.inspect().to_string(), "#(5, 3)");
     }
 
     #[test]
     fn preserves_invalid_utf8_through_the_bit_array_host_adapter() {
-        let execution = execution("pub fn main() { unsafe_to_string(<<255>>) }");
-        let error = execution
-            .run_main(
-                &mut GleamStdlibRunState::from_seed([0; 32]),
-                &mut Vec::new(),
-            )
-            .expect_err("invalid UTF-8 should fail");
+        let mut execution = execution("pub fn main() { unsafe_to_string(<<255>>) }");
+        let error = crate::execution_fixture::run(
+            &mut execution,
+            &mut GleamStdlibRunState::from_seed([0; 32]),
+            &mut Vec::new(),
+        )
+        .expect_err("invalid UTF-8 should fail");
         let error = expect_bit_array_host_error(error);
 
         assert_eq!(error.package(), "gleam_stdlib");

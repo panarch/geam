@@ -267,7 +267,8 @@ __STATE_INITIALIZERS__    };
     let plan = geam::plan_host_program(typed)?;
     let mut execution = geam::HostedEntry::try_from_module_plan(plan)?;
     let mut echo = output.echo_sink();
-    let execution_result = runtime.block_on(execution.run(&mut state, &mut echo));
+    let host = geam::execution::TokioHost::new(runtime.handle().clone());
+    let execution_result = runtime.block_on(execution.run(&host, &mut state, &mut echo));
     output.finish()?;
     execution_result?;
     Ok(())
@@ -581,7 +582,7 @@ mod tests {
         assert!(source.contains("let state_json = ();"));
         assert!(source.contains("let state_time = geam::gleam_time::SystemTimeSource;"));
         assert!(source.contains(
-            "let execution_result = runtime.block_on(execution.run(&mut state, &mut echo));"
+            "let execution_result = runtime.block_on(execution.run(&host, &mut state, &mut echo));"
         ));
         assert_eq!(
             source,

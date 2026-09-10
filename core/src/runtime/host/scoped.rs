@@ -1284,11 +1284,14 @@ pub fn main() {
         )
         .expect("host source should compile");
         let plan = plan_host_program(typed).expect("host source should plan");
-        let execution =
+        let mut execution =
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         let expected = Value::Bool(true);
 
-        assert_eq!(execution.run_main(&mut (), &mut Vec::new()), Ok(expected),);
+        assert_eq!(
+            crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
+            Ok(expected),
+        );
     }
     fn int_target(
         value: &crate::runtime::function::InvocableFunctionValue,
@@ -1366,11 +1369,12 @@ pub fn main() {
                 .expect("providers"),
         )
         .expect("source");
-        let plan = HostedExecution::try_from_module_plan(plan_host_program(program).expect("plan"))
-            .expect("symbolic functions are stored, not invoked");
+        let mut plan =
+            HostedExecution::try_from_module_plan(plan_host_program(program).expect("plan"))
+                .expect("symbolic functions are stored, not invoked");
         let mut echo = Vec::new();
         assert_eq!(
-            plan.run_main(&mut (), &mut echo).expect("source execution"),
+            crate::execution_fixture::run(&mut plan, &mut (), &mut echo).expect("source execution"),
             Value::Bool(true)
         );
         assert!(echo.is_empty());

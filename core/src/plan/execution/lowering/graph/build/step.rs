@@ -1026,12 +1026,6 @@ fn assert_subject(subject: &module::AssertSubject, cursor: &DraftCursor) -> Draf
                 local.0,
             ))
             .erase(),
-        module::AssertSubject::Nil(local) => scope
-            .nil(super::local::LocalKey::new(
-                super::local::LocalKind::Nil,
-                local.0,
-            ))
-            .erase(),
         module::AssertSubject::Tuple(local) => scope
             .tuple(super::local::LocalKey::new(
                 super::local::LocalKind::Tuple,

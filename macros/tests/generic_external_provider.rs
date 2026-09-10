@@ -1,3 +1,6 @@
+#[path = "../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 use ecow::EcoString;
 use geam_core::provider::{Call, Callback, HostResult, Stored, Value};
 use geam_core::{
@@ -88,21 +91,21 @@ mod generic_box {
         call.equal(&value, &expected)
     }
 
-    #[geam_macros::function]
-    fn map<Input, Output>(
+    #[geam_macros::function(resumable)]
+    async fn map<Input, Output>(
         #[geam_macros::call] call: &mut Call<()>,
         boxed: BoxInput<Input>,
         mapper: Callback<fn(Value<Input>) -> Value<Output>>,
     ) -> HostResult<BoxValue<Output>> {
         let value = call.restore(boxed.value());
-        let mapped = call.invoke(mapper, (value,))?;
+        let mapped = call.invoke(&mapper, (value,)).await?;
         Ok(BoxValue {
             value: call.store(mapped),
         })
     }
 
-    #[geam_macros::function]
-    fn with_box<Input, Output>(
+    #[geam_macros::function(resumable)]
+    async fn with_box<Input, Output>(
         #[geam_macros::call] call: &mut Call<()>,
         value: Value<Input>,
         callback: Callback<fn(BoxValue<Input>) -> Value<Output>>,
@@ -110,15 +113,15 @@ mod generic_box {
         let boxed = BoxValue {
             value: call.store(value),
         };
-        call.invoke(callback, (boxed,))
+        call.invoke(&callback, (boxed,)).await
     }
 
-    #[geam_macros::function]
-    fn from_box_callback<Item>(
+    #[geam_macros::function(resumable)]
+    async fn from_box_callback<Item>(
         #[geam_macros::call] call: &mut Call<()>,
         callback: Callback<fn() -> BoxInput<Item>>,
     ) -> HostResult<Value<Item>> {
-        let boxed = call.invoke(callback, ())?;
+        let boxed = call.invoke(&callback, ()).await?;
         Ok(call.restore(boxed.value()))
     }
 
@@ -339,11 +342,14 @@ fn generic_external_values_retain_specialized_values_persistently() {
     )
     .expect("complete generic external source should compile");
     let plan = plan_host_program(typed).expect("generic external provider should link");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("generic external execution should seal");
-    let returned = execution
-        .run_main(&mut ProfileState { component: () }, &mut Vec::new())
-        .expect("generic external provider should execute");
+    let returned = crate::execution_fixture::run(
+        &mut execution,
+        &mut ProfileState { component: () },
+        &mut Vec::new(),
+    )
+    .expect("generic external provider should execute");
 
     assert_eq!(
         returned,

@@ -84,7 +84,7 @@ jobs:
         run: cargo fetch --locked --config net.offline=false
 
       - name: Run clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        run: cargo clippy --workspace --all-targets --features geam-core/tokio --locked -- -D warnings
 
       - name: Run standalone provider clippy
         working-directory: cli/tests/fixtures/standalone_cli/providers
@@ -179,12 +179,13 @@ jobs:
       - name: Check root feature profiles
         run: |
           cargo check --package geam --no-default-features --features embedding --all-targets --locked
+          cargo check --package geam --no-default-features --features embedding,tokio --all-targets --locked
           cargo check --package geam --no-default-features --features provider --all-targets --locked
           cargo check --package geam --no-default-features --features embedding,gleam-stdlib --all-targets --locked
           cargo check --package geam --no-default-features --features embedding,geam-builtin --all-targets --locked
 
       - name: Test workspace packages
-        run: cargo test --workspace --exclude geam --locked
+        run: cargo test --workspace --exclude geam --features geam-core/tokio --locked
 
       - name: Assemble workspace packages
         run: cargo package --workspace --locked --no-verify

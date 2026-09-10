@@ -1,11 +1,11 @@
 use super::Module;
 use super::input::{ListFamily, add_list_counts};
 use crate::plan::execution::{LibraryFunctionEntries, LibraryInputConstructions};
-use crate::plan::{LibraryValueType, StandardVariant, ValueType};
+use crate::plan::{LibraryValueType, LibraryVariant, StandardVariant, ValueType};
 use crate::runtime::{
     EmbeddingCustomInput, EmbeddingInputValue, EmbeddingOutput, EmbeddingTupleInput, RetainedValues,
 };
-use crate::{EchoSink, ExecutionError, HostProfile, HostedExecution};
+use crate::{EchoSink, ExecutionError};
 use std::sync::Arc;
 
 pub(super) trait EmbeddingValue: Sized {
@@ -21,9 +21,7 @@ pub(super) trait EmbeddingValue: Sized {
 
     fn collect_variants(variants: &mut Vec<StandardVariant>);
 
-    fn collect_input_variants(variants: &mut Vec<StandardVariant>) {
-        Self::collect_variants(variants);
-    }
+    fn collect_input_variants(_: &mut Vec<LibraryVariant>) {}
 
     fn collect_lists(lists: &mut Vec<LibraryValueType>);
 
@@ -49,7 +47,7 @@ pub(super) trait Arguments {
 
     fn standard_variants() -> Vec<StandardVariant>;
 
-    fn input_variants() -> Vec<StandardVariant>;
+    fn input_variants() -> Vec<LibraryVariant>;
 
     fn input_lists() -> Vec<LibraryValueType>;
 }
@@ -65,16 +63,6 @@ pub(super) trait ReturnValue: OutputValue {
         slot: usize,
         inputs: RetainedValues,
         echo: &mut dyn EchoSink,
-    ) -> Result<Self, ExecutionError>;
-
-    fn call_hosted<Profile: HostProfile>(
-        execution: &HostedExecution<Profile>,
-        entries: &LibraryFunctionEntries,
-        slot: usize,
-        inputs: RetainedValues,
-        state: &mut Profile::RunState,
-        echo: &mut dyn EchoSink,
-        owner: &Arc<()>,
     ) -> Result<Self, ExecutionError>;
 }
 
@@ -141,7 +129,7 @@ macro_rules! tuple_value {
                 $($type::collect_variants(variants);)+
             }
 
-            fn collect_input_variants(variants: &mut Vec<StandardVariant>) {
+            fn collect_input_variants(variants: &mut Vec<LibraryVariant>) {
                 $($type::collect_input_variants(variants);)+
             }
 
@@ -196,8 +184,11 @@ impl<Success: EmbeddingValue, Failure: EmbeddingValue> EmbeddingValue for Result
         Failure::collect_variants(variants);
     }
 
-    fn collect_input_variants(variants: &mut Vec<StandardVariant>) {
-        variants.push(StandardVariant::Result);
+    fn collect_input_variants(variants: &mut Vec<LibraryVariant>) {
+        variants.push(LibraryVariant::new(
+            StandardVariant::Result,
+            vec![Success::value_type(), Failure::value_type()],
+        ));
         Success::collect_input_variants(variants);
         Failure::collect_input_variants(variants);
     }
@@ -248,8 +239,11 @@ impl<Value: EmbeddingValue> EmbeddingValue for Option<Value> {
         Value::collect_variants(variants);
     }
 
-    fn collect_input_variants(variants: &mut Vec<StandardVariant>) {
-        variants.push(StandardVariant::Option);
+    fn collect_input_variants(variants: &mut Vec<LibraryVariant>) {
+        variants.push(LibraryVariant::new(
+            StandardVariant::Option,
+            vec![Value::value_type()],
+        ));
         Value::collect_input_variants(variants);
     }
 
@@ -284,7 +278,7 @@ impl Arguments for () {
         Vec::new()
     }
 
-    fn input_variants() -> Vec<StandardVariant> {
+    fn input_variants() -> Vec<LibraryVariant> {
         Vec::new()
     }
 
@@ -307,7 +301,7 @@ macro_rules! arguments {
                 vec![$($type::value_type()),+]
             }
 
-            fn input_variants() -> Vec<StandardVariant> {
+            fn input_variants() -> Vec<LibraryVariant> {
                 let mut variants = Vec::with_capacity(0 $(+ $type::VARIANT_COUNT)+);
                 $($type::collect_input_variants(&mut variants);)+
                 variants
@@ -337,7 +331,7 @@ arguments!(A, B, C, D, E, F);
 arguments!(A, B, C, D, E, F, G);
 
 macro_rules! scalar_return {
-    ($type:ty, $entries:ident, $run:ident, $run_hosted:ident) => {
+    ($type:ty, $entries:ident, $run:ident) => {
         impl ReturnValue for $type {
             fn input_constructions<
                 Graph: crate::plan::execution::function::ExecutionGraphProfile,
@@ -357,50 +351,17 @@ macro_rules! scalar_return {
                 let entry = &module.entries.$entries[slot];
                 crate::runtime::$run(&module.execution, *entry.function(), inputs, echo)
             }
-
-            fn call_hosted<Profile: HostProfile>(
-                execution: &HostedExecution<Profile>,
-                entries: &LibraryFunctionEntries,
-                slot: usize,
-                inputs: RetainedValues,
-                state: &mut Profile::RunState,
-                echo: &mut dyn EchoSink,
-                _owner: &Arc<()>,
-            ) -> Result<Self, ExecutionError> {
-                let entry = &entries.$entries[slot];
-                crate::runtime::$run_hosted(execution, *entry.function(), inputs, state, echo)
-            }
         }
     };
 }
 
-scalar_return!(
-    super::BigInt,
-    ints,
-    run_embedded_int,
-    run_hosted_embedded_int
-);
-scalar_return!(f64, floats, run_embedded_float, run_hosted_embedded_float);
-scalar_return!(
-    super::EcoString,
-    strings,
-    run_embedded_string,
-    run_hosted_embedded_string
-);
-scalar_return!(
-    super::BitArrayValue,
-    bit_arrays,
-    run_embedded_bit_array,
-    run_hosted_embedded_bit_array
-);
-scalar_return!(
-    char,
-    utf_codepoints,
-    run_embedded_utf_codepoint,
-    run_hosted_embedded_utf_codepoint
-);
-scalar_return!(bool, bools, run_embedded_bool, run_hosted_embedded_bool);
-scalar_return!((), nils, run_embedded_nil, run_hosted_embedded_nil);
+scalar_return!(super::BigInt, ints, run_embedded_int);
+scalar_return!(f64, floats, run_embedded_float);
+scalar_return!(super::EcoString, strings, run_embedded_string);
+scalar_return!(super::BitArrayValue, bit_arrays, run_embedded_bit_array);
+scalar_return!(char, utf_codepoints, run_embedded_utf_codepoint);
+scalar_return!(bool, bools, run_embedded_bool);
+scalar_return!((), nils, run_embedded_nil);
 
 macro_rules! tuple_return {
     ($($type:ident),+) => {
@@ -433,25 +394,6 @@ macro_rules! tuple_return {
                 })
             }
 
-            fn call_hosted<Profile: HostProfile>(
-                execution: &HostedExecution<Profile>,
-                entries: &LibraryFunctionEntries,
-                slot: usize,
-                inputs: RetainedValues,
-                state: &mut Profile::RunState,
-                echo: &mut dyn EchoSink,
-                owner: &std::sync::Arc<()>,
-            ) -> Result<Self, ExecutionError> {
-                let entry = &entries.tuples[slot];
-                crate::runtime::run_hosted_embedded_tuple(
-                    execution,
-                    *entry.function(),
-                    inputs,
-                    state,
-                    echo,
-                )
-                .map(|mut output| <Self as OutputValue>::take(&mut output, owner))
-            }
         }
     };
 }
@@ -495,26 +437,6 @@ macro_rules! custom_return {
                 )
                 .map(|mut output| <Self as OutputValue>::take(&mut output, &module.owner))
             }
-
-            fn call_hosted<Profile: HostProfile>(
-                execution: &HostedExecution<Profile>,
-                entries: &LibraryFunctionEntries,
-                slot: usize,
-                inputs: RetainedValues,
-                state: &mut Profile::RunState,
-                echo: &mut dyn EchoSink,
-                owner: &std::sync::Arc<()>,
-            ) -> Result<Self, ExecutionError> {
-                let entry = &entries.customs[slot];
-                crate::runtime::run_hosted_embedded_custom(
-                    execution,
-                    *entry.function(),
-                    inputs,
-                    state,
-                    echo,
-                )
-                .map(|mut output| <Self as OutputValue>::take(&mut output, owner))
-            }
         }
     };
 }
@@ -541,25 +463,5 @@ where
         let entry = &module.entries.customs[slot];
         crate::runtime::run_embedded_custom(&module.execution, *entry.function(), inputs, echo)
             .map(|mut output| <Self as OutputValue>::take(&mut output, &module.owner))
-    }
-
-    fn call_hosted<Profile: HostProfile>(
-        execution: &HostedExecution<Profile>,
-        entries: &LibraryFunctionEntries,
-        slot: usize,
-        inputs: RetainedValues,
-        state: &mut Profile::RunState,
-        echo: &mut dyn EchoSink,
-        owner: &std::sync::Arc<()>,
-    ) -> Result<Self, ExecutionError> {
-        let entry = &entries.customs[slot];
-        crate::runtime::run_hosted_embedded_custom(
-            execution,
-            *entry.function(),
-            inputs,
-            state,
-            echo,
-        )
-        .map(|mut output| <Self as OutputValue>::take(&mut output, owner))
     }
 }

@@ -31,11 +31,12 @@ pub fn main() {
 
   let numbers = [1, 2, 3]
   assert lists.identity(numbers) == numbers
-  assert lists.reverse(["first", "second", "third"]) == [
-    "third",
-    "second",
-    "first",
-  ]
+  assert lists.reverse(["first", "second", "third"])
+    == [
+      "third",
+      "second",
+      "first",
+    ]
   assert lists.labels([#("alpha", 1), #("beta", 2)]) == ["alpha", "beta"]
 
   assert customs.describe(customs.pending()) == "pending"

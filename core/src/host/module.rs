@@ -134,6 +134,31 @@ impl<Profile: HostProfile> HostModule<Profile> {
             .map(|()| self)
     }
 
+    /// Registers an ordinary native body that can resume after waiting.
+    pub fn with_resumable_function<Provider, Arguments, Return, Constructions, Function>(
+        mut self,
+        name: impl Into<EcoString>,
+        function: Function,
+    ) -> Result<Self, HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Constructions: crate::host::HostTypeSequence,
+        Function:
+            crate::host::ResumableHostFunction<Profile, Provider, Arguments, Return, Constructions>,
+    {
+        self.functions
+            .register(&self.identity.module, name.into(), |name| {
+                HostFunctionDefinition::new_resumable::<
+                    Provider,
+                    Arguments,
+                    Return,
+                    Constructions,
+                    Function,
+                >(name, function)
+            })?;
+        Ok(self)
+    }
+
     pub fn with_scoped_diverging_function<Provider, Arguments, Return, Function>(
         mut self,
         name: impl Into<EcoString>,
@@ -252,6 +277,31 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
             .map(|()| self)
     }
 
+    /// Registers an ordinary native body that can resume after waiting.
+    pub fn with_resumable_function<Provider, Arguments, Return, Constructions, Function>(
+        mut self,
+        name: impl Into<EcoString>,
+        function: Function,
+    ) -> Result<Self, HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Constructions: crate::host::HostTypeSequence,
+        Function:
+            crate::host::ResumableHostFunction<Profile, Provider, Arguments, Return, Constructions>,
+    {
+        self.functions
+            .register(&self.identity.module, name.into(), |name| {
+                HostFunctionDefinition::new_resumable::<
+                    Provider,
+                    Arguments,
+                    Return,
+                    Constructions,
+                    Function,
+                >(name, function)
+            })?;
+        Ok(self)
+    }
+
     /// Registers native conversion targets, external rules, and their callback together.
     pub fn with_native_function<Provider, Arguments, Return, Targets, Function>(
         mut self,
@@ -276,6 +326,31 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
                     Targets,
                     _,
                 >(name, function)
+                .and_then(|definition| definition.enable_native(registration))
+            })?;
+        Ok(self)
+    }
+
+    /// Registers native conversion followed by an ordinary resumable body.
+    pub fn with_resumable_native_function<Provider, Arguments, Return, Targets, Function>(
+        mut self,
+        name: impl Into<EcoString>,
+        rules: crate::host::native::NativeRules<Profile, Provider, Return>,
+        function: Function,
+    ) -> Result<Self, HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Return: crate::host::HostType,
+        Targets: crate::host::HostTypeSequence,
+        crate::host::native::NativeFunction<Profile, Provider, Return, Targets, Function>:
+            crate::host::ResumableHostFunction<Profile, Provider, Arguments, Return, Targets>,
+    {
+        let (function, registration) = crate::host::native::NativeFunction::new(rules, function);
+        self.functions
+            .register(&self.identity.module, name.into(), |name| {
+                HostFunctionDefinition::new_resumable::<Provider, Arguments, Return, Targets, _>(
+                    name, function,
+                )
                 .and_then(|definition| definition.enable_native(registration))
             })?;
         Ok(self)
@@ -639,7 +714,7 @@ impl<Profile: HostProfile> RegisteredHostImplementations<Profile> {
 #[cfg(test)]
 mod tests {
     use super::{HostModule, HostProviderModule, HostProviderSet, RegisteredFunctions};
-    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
+    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder};
     use crate::frontend::compile_typed_host_program;
     use crate::host::function::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
@@ -657,7 +732,6 @@ mod tests {
     use crate::work_fixture::{WorkComponent, WorkSchema, WorkType};
     use crate::{ModuleSource, PackageSource};
     use ecow::EcoString;
-    use futures_util::FutureExt;
     use num_bigint::BigInt;
     use std::cell::Cell;
     use std::collections::BTreeSet;
@@ -1011,8 +1085,7 @@ mod tests {
         let arguments = CallArguments::new(Vec::new(), Vec::new());
         let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
 
-        let token = implementation
-            .call(&mut runtime)
+        let token = crate::host::expect_immediate_call(implementation, &mut runtime)
             .expect("scoped function should succeed");
         assert_eq!(token.family, crate::host::HostValueFamily::Int);
         drop(runtime);
@@ -1101,8 +1174,7 @@ mod tests {
         let mut runtime =
             TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
         assert_eq!(
-            checked
-                .call(&mut runtime)
+            crate::host::expect_immediate_call(checked, &mut runtime)
                 .expect("fallible function should succeed")
                 .family,
             crate::host::HostValueFamily::Int,
@@ -1114,8 +1186,7 @@ mod tests {
         drop(runtime);
         let mut runtime =
             TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
-        let token = increment
-            .call(&mut runtime)
+        let token = crate::host::expect_immediate_call(increment, &mut runtime)
             .expect("scoped function should succeed");
         assert_eq!(token.family, crate::host::HostValueFamily::Int);
         drop(runtime);
@@ -1343,23 +1414,30 @@ pub fn answer() { future.ready(identity(42)) }
             .function(FunctionDeclaration::<(), WorkType<BigInt>>::new("answer"))
             .expect("entry");
         let mut module = bindings.seal().expect("sealed execution");
-        with_execution_scope(async |guard| {
-            let mut state = ();
-            let mut echo = drop;
-            let mut execution = module.attach(guard, &mut state, &mut echo);
-            let work = execution.call(&answer, ()).expect("constructed work");
-            execution
-                .observe(&work)
-                .await
-                .expect("completion")
-                .read(|value| assert_eq!(value, &BigInt::from(42)));
-        })
-        .now_or_never()
-        .expect("ready work");
+        let execution_host = crate::execution_fixture::TestHost::default();
+        let mut state = ();
+        let mut echo = drop;
+        execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |execution| {
+                    let work = execution.call(&answer, ()).await.expect("constructed work");
+                    execution
+                        .observe(&work)
+                        .await
+                        .expect("completion")
+                        .read(|value| assert_eq!(value, &BigInt::from(42)));
+                },
+            ))
+            .expect("ready work");
     }
 
     #[test]
     fn constructing_and_never_functions_validate_names_before_their_bodies_run() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         use crate::host::{HostConstructions, HostTypeListEnd};
         fn construct<'call>(
             call: HostCall<'call, Profile, WorkComponent, BigInt>,
@@ -1441,22 +1519,27 @@ pub fn run(fails: Bool) { case fails { True -> stop() False -> construct() } }
         let mut module = bindings.seal().expect("host specializations");
         let mut state = ();
         let mut echo = drop;
-        with_execution_scope(async |guard| {
-            let mut scope = module.attach(guard, &mut state, &mut echo);
-            assert_eq!(
-                scope.call(&run, (false,)).expect("direct result"),
-                BigInt::from(42)
-            );
-            assert!(
-                scope
-                    .call(&run, (true,))
-                    .expect_err("diverging result")
-                    .to_string()
-                    .contains("native stopped")
-            );
-        })
-        .now_or_never()
-        .expect("ordinary calls need no suspension");
+        execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    assert_eq!(
+                        scope.call(&run, (false,)).await.expect("direct result"),
+                        BigInt::from(42)
+                    );
+                    assert!(
+                        scope
+                            .call(&run, (true,))
+                            .await
+                            .expect_err("diverging result")
+                            .to_string()
+                            .contains("native stopped")
+                    );
+                },
+            ))
+            .expect("ordinary calls need no suspension");
     }
 
     #[test]
@@ -1528,24 +1611,74 @@ pub fn run(fails: Bool) { case fails { True -> stop() False -> construct() } }
 
     #[test]
     fn external_return_callbacks_preserve_nested_source_failures() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         use crate::host::{HostCallable, HostFunctionType, HostTypeListEnd};
         use crate::work_fixture::WorkHostType;
 
         fn bridge<'call>(
-            mut call: HostCall<'call, Profile, WorkComponent, WorkHostType<BigInt>>,
+            call: HostCall<'call, Profile, WorkComponent, WorkHostType<BigInt>>,
+            constructions: crate::HostConstructions<'call, HostTypeListEnd>,
             callback: HostCallable<'call, HostTypeListEnd, WorkHostType<BigInt>>,
-        ) -> Result<HostCallCompletion<'call, WorkHostType<BigInt>>, HostCallError> {
-            let value = call.invoke(callback, ())?;
-            Ok(call.return_value(value))
+        ) -> Result<crate::HostCallContinuation<'call, WorkHostType<BigInt>>, HostCallError>
+        {
+            type Owned = crate::provider::Value<
+                WorkHostType<BigInt>,
+                crate::provider::ProviderValueContext<WorkHostType<BigInt>>,
+            >;
+            let callback = call.owned_callable(callback, &constructions);
+            Ok(call.resume(constructions, move |context| {
+                Box::pin(async move {
+                    let value = callback
+                        .invoke(
+                            &context,
+                            |_, _| (),
+                            |call, _, value| Ok(Owned::from_host(&call, value)),
+                        )
+                        .await?;
+                    Ok(crate::HostOwnedCompletion::new(move |mut call, _| {
+                        let value = value.into_host(&mut call);
+                        Ok(call.return_value(value))
+                    }))
+                })
+            }))
         }
         fn reject<'call>(
             _: HostCall<'call, Profile, WorkComponent, WorkHostType<BigInt>>,
         ) -> Result<HostCallCompletion<'call, WorkHostType<BigInt>>, HostCallError> {
             Err(crate::HostFailure::new("native rejected").into())
         }
+        for name in ["Bad", "bridge"] {
+            type Arguments = (HostFunctionType<HostTypeListEnd, WorkHostType<BigInt>>,);
+            let error = crate::HostModule::<Profile>::new_for_profile("application", "library")
+                .unwrap()
+                .with_resumable_function::<WorkComponent, Arguments, WorkHostType<BigInt>, HostTypeListEnd, _>("bridge", bridge)
+                .unwrap()
+                .with_resumable_function::<WorkComponent, Arguments, WorkHostType<BigInt>, HostTypeListEnd, _>(name, bridge)
+                .err();
+            let provider_error = HostProviderModule::<Profile>::new("application", "library")
+                .unwrap()
+                .with_resumable_function::<WorkComponent, Arguments, WorkHostType<BigInt>, HostTypeListEnd, _>("bridge", bridge)
+                .unwrap()
+                .with_resumable_function::<WorkComponent, Arguments, WorkHostType<BigInt>, HostTypeListEnd, _>(name, bridge)
+                .err();
+            let expected = if name == "Bad" {
+                HostRegistrationError::InvalidFunctionName {
+                    module: "library".into(),
+                    function: name.into(),
+                }
+            } else {
+                HostRegistrationError::DuplicateFunction {
+                    module: "library".into(),
+                    function: name.into(),
+                }
+            };
+            assert_eq!(error.as_ref(), Some(&expected));
+            assert_eq!(provider_error.as_ref(), Some(&expected));
+        }
         let mut providers = WorkComponent::providers::<Profile>().expect("Future module");
         providers.push(HostProviderModule::new("application", "library").expect("native module")
-            .with_scoped_function::<WorkComponent, (HostFunctionType<HostTypeListEnd, WorkHostType<BigInt>>,), WorkHostType<BigInt>, _>("bridge", bridge).expect("callback")
+            .with_resumable_function::<WorkComponent, (HostFunctionType<HostTypeListEnd, WorkHostType<BigInt>>,), WorkHostType<BigInt>, HostTypeListEnd, _>("bridge", bridge).expect("callback")
             .with_scoped_function::<WorkComponent, (), WorkHostType<BigInt>, _>("reject", reject).expect("failure"));
         let source = r#"import fixture/work as future
 @external(erlang, "native", "bridge")
@@ -1595,28 +1728,32 @@ pub fn run(mode: Int) {
         let mut module = bindings.seal().expect("sealed functions");
         let mut state = ();
         let mut echo = drop;
-        with_execution_scope(async |guard| {
-            let mut scope = module.attach(guard, &mut state, &mut echo);
-            for mode in 0..3 {
-                match scope.call(&run, (mode.into(),)) {
-                    Ok(work) => {
-                        assert_eq!(mode, 0);
-                        scope
-                            .observe(&work)
-                            .await
-                            .expect("ready work")
-                            .read(|value| assert_eq!(value, &BigInt::from(42)));
+        execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    for mode in 0..3 {
+                        match scope.call(&run, (mode.into(),)).await {
+                            Ok(work) => {
+                                assert_eq!(mode, 0);
+                                scope
+                                    .observe(&work)
+                                    .await
+                                    .expect("ready work")
+                                    .read(|value| assert_eq!(value, &BigInt::from(42)));
+                            }
+                            Err(error) => assert!(error.to_string().contains(if mode == 1 {
+                                "source rejected"
+                            } else {
+                                "native rejected"
+                            })),
+                        }
                     }
-                    Err(error) => assert!(error.to_string().contains(if mode == 1 {
-                        "source rejected"
-                    } else {
-                        "native rejected"
-                    })),
-                }
-            }
-        })
-        .now_or_never()
-        .expect("all source calls finish immediately");
+                },
+            ))
+            .expect("all source calls finish immediately");
     }
 
     #[test]

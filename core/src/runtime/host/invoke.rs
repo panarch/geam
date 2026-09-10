@@ -1,8 +1,10 @@
 use super::RuntimeHostCall;
+use crate::host::{HostCallReturn, HostCallRuntime};
 use crate::plan::execution::function::{ExecutionFunctionBody, FunctionBodyOwner};
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::runtime::ExecutionError;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
+use crate::runtime::execution::invocation::NativeReturn;
 use crate::runtime::graph::{GraphValue, RetainedValues};
 use crate::runtime::state::RuntimeStateFor;
 
@@ -12,7 +14,7 @@ pub(in crate::runtime) fn invoke_value<'run, Profile, Body>(
     origin: HostCallOrigin,
     target: &crate::plan::execution::host::HostFunctionId<Body>,
     inputs: RetainedValues,
-) -> ExecutionResult<<<Body as FunctionBodyOwner>::Return as GraphValue>::Evaluated>
+) -> ExecutionResult<NativeReturn<<<Body as FunctionBodyOwner>::Return as GraphValue>::Evaluated>>
 where
     Profile: crate::HostProfile,
     Body: ExecutionFunctionBody,
@@ -21,8 +23,29 @@ where
 {
     let function = plan.host_value_function(target);
     let mut call = RuntimeHostCall::new(plan, state, function, inputs, origin.clone());
-    match function.implementation().call(&mut call) {
-        Ok(returned) => Ok(call.finish(returned, target.return_())),
+    match function.implementation().start(&mut call) {
+        Ok(HostCallReturn::Immediate(returned)) => Ok(NativeReturn::Immediate(
+            call.finish(returned, target.return_()),
+        )),
+        Ok(HostCallReturn::Continuing(continuation)) => {
+            let execution = call.execution();
+            let codec = call.codec_scope();
+            let target = target.clone();
+            drop(call);
+            Ok(NativeReturn::Continuing(Box::pin(async move {
+                let returned = match continuation.complete().await? {
+                    Ok(returned) => returned,
+                    Err(error) => return Ok(Err(error)),
+                };
+                execution
+                    .with_runtime(move |plan, state| {
+                        let mut call = RuntimeHostCall::new_codec(plan, state, &codec, origin);
+                        let token = call.restore_stored(&returned);
+                        Ok(call.finish(token, target.return_()))
+                    })
+                    .await
+            })))
+        }
         Err(error) => {
             drop(call);
             Err(host_call_error(plan, origin, function.metadata(), error))
@@ -61,15 +84,7 @@ pub(in crate::runtime) fn host_call_error(
     match error.into_kind() {
         crate::host::HostCallErrorKind::Nested(error) => error,
         crate::host::HostCallErrorKind::Failure(failure) => {
-            match origin.into_source_site(function.site()) {
-                Ok(site) => ExecutionError::from_host_call(
-                    function,
-                    site.clone(),
-                    plan.source_context_for(site.module()),
-                    failure,
-                ),
-                Err(caller) => ExecutionError::from_host_origin(function, caller, failure),
-            }
+            ExecutionError::host_failure(plan, origin, function, failure)
         }
     }
 }
@@ -87,6 +102,70 @@ mod tests {
     };
     use ecow::EcoString;
     use std::convert::Infallible;
+
+    #[test]
+    fn an_immediate_provider_can_propagate_a_retained_callback_failure_unchanged() {
+        struct Profile;
+        impl crate::HostProfile for Profile {
+            type RunState = Option<HostCallError>;
+            type ExternalStores = ();
+        }
+        struct Provider;
+        impl crate::HostProvider<Profile> for Provider {
+            type State = Option<HostCallError>;
+            fn project(state: &mut Self::State) -> &mut Self::State {
+                state
+            }
+        }
+        fn rethrow<'call>(
+            mut call: HostCall<'call, Profile, Provider, num_bigint::BigInt>,
+        ) -> Result<crate::HostCallCompletion<'call, num_bigint::BigInt>, HostCallError> {
+            Err(call.state().take().expect("retained callback failure"))
+        }
+        let original =
+            crate::runtime::run_src_error("pub fn main() { panic as \"callback stopped\" }");
+        let mut state = Some(HostCallError::nested(original.clone()));
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    r#"
+@external(erlang, "native", "rethrow")
+fn rethrow() -> Int
+pub fn main() { let value = rethrow() echo "unreachable" value }
+"#,
+                )],
+            )],
+            HostProviderSet::from_providers([HostProviderModule::new("application", "main")
+                .unwrap()
+                .with_scoped_function::<Provider, (), num_bigint::BigInt, _>("rethrow", rethrow)
+                .unwrap()])
+            .unwrap(),
+        )
+        .unwrap();
+        let mut execution =
+            HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+        let mut echo = Vec::new();
+        let result = crate::execution_fixture::run(&mut execution, &mut state, &mut echo);
+        assert_eq!(result, Err(original));
+        assert!(state.is_none());
+        assert!(echo.is_empty());
+
+        state = Some(HostFailure::new("native stopped").into());
+        let error =
+            crate::execution_fixture::run(&mut execution, &mut state, &mut echo).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "host function application::main.rethrow failed: native stopped"
+        );
+        assert!(state.is_none());
+        assert!(echo.is_empty());
+    }
 
     #[test]
     fn hosted_runtime_routes_diverging_external_return_families() {
@@ -244,11 +323,14 @@ pub fn main() {
             )
             .expect("diverging external source should compile");
             let plan = plan_host_program(typed).expect("diverging external source should plan");
-            let execution = HostedExecution::try_from_module_plan(plan)
+            let mut execution = HostedExecution::try_from_module_plan(plan)
                 .expect("diverging external execution should seal");
-            let error = execution
-                .run_main(&mut ExternalTestRunState::default(), &mut Vec::new())
-                .expect_err("diverging external target should fail");
+            let error = crate::execution_fixture::run(
+                &mut execution,
+                &mut ExternalTestRunState::default(),
+                &mut Vec::new(),
+            )
+            .expect_err("diverging external target should fail");
 
             assert_eq!(error.to_string(), expected_error);
         }

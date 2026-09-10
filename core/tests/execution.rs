@@ -1,4 +1,4 @@
-use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
+use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder};
 use geam_core::host::{HostComponentProfile, HostFutureStore, HostProfile, HostProviderSet};
 use geam_core::planner::InvalidTypedAstReason;
 use geam_core::{EchoOutput, EchoSink, PackageSource};
@@ -9,9 +9,9 @@ use geam_core::{
 };
 use gleam_compiler_core::ast::Constant;
 use miette::{GraphicalReportHandler, GraphicalTheme};
-use std::future::Future;
-use std::pin::pin;
-use std::task::{Context, Poll, Waker};
+
+#[path = "../../tests/support/execution_host.rs"]
+mod execution_fixture;
 
 #[path = "support/fixture_observation.rs"]
 mod fixture_observation;
@@ -1273,15 +1273,15 @@ fn assert_transfer_fixture(modules: Vec<ModuleSource>) {
     let mut module = bindings.seal().expect("transferable execution should seal");
     let mut state = ();
     let mut echo = TransferFixtureEcho::default();
-    let result = {
-        let mut future = pin!(with_execution_scope(async |guard| {
-            module.attach(guard, &mut state, &mut echo).call(&entry, ())
-        }));
-        future
-            .as_mut()
-            .poll(&mut Context::from_waker(Waker::noop()))
-            .map(|result| result.map_err(geam_core::embedding::CallError::into_materialized))
-    };
+    let host = execution_fixture::TestHost::default();
+    let result = host
+        .block_on(
+            module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                scope.call(&entry, ()).await
+            }),
+        )
+        .expect("controlled execution")
+        .map_err(geam_core::embedding::CallError::into_materialized);
     assert_eq!(
         echo.effects,
         expected_echo
@@ -1291,7 +1291,7 @@ fn assert_transfer_fixture(modules: Vec<ModuleSource>) {
     );
     match expected {
         Ok(value) => {
-            assert_eq!(result, Poll::Ready(Ok(())));
+            assert_eq!(result, Ok(()));
             assert_eq!(
                 echo.result,
                 Some((value.value_type(), render_value(&value)))
@@ -1300,9 +1300,7 @@ fn assert_transfer_fixture(modules: Vec<ModuleSource>) {
         Err(error) => {
             assert_eq!(
                 result,
-                Poll::Ready(Err(
-                    geam_core::embedding::CallError::from(error).into_materialized()
-                ))
+                Err(geam_core::embedding::CallError::from(error).into_materialized())
             );
             assert_eq!(echo.result, None);
         }

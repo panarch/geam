@@ -78,14 +78,13 @@ pub(super) fn fixture(root_module: &str) -> TransferFixture<Profile> {
 
 #[test]
 fn non_finite_json_preserves_the_host_failure_and_allows_the_next_call() {
+    let execution_host = crate::execution_fixture::TestHost::default();
+
     use ecow::EcoString;
     use geam_core::ExecutionError;
-    use geam_core::embedding::{
-        CallError, FunctionDeclaration, HostedModuleBuilder, with_execution_scope,
-    };
-    use std::future::Future;
+    use geam_core::embedding::{CallError, FunctionDeclaration, HostedModuleBuilder};
     use std::pin::pin;
-    use std::task::{Context, Poll, Waker};
+    use std::task::Poll;
 
     let mut providers =
         geam_stdlib::host_providers::<Profile>().expect("stdlib transfer registration");
@@ -109,27 +108,33 @@ fn non_finite_json_preserves_the_host_failure_and_allows_the_next_call() {
         work: (),
     };
     let mut echo = super::transfer_fixture::ObservedEcho::default();
-    let mut task = pin!(with_execution_scope(async |guard| {
-        let mut scope = module.attach(guard, &mut state, &mut echo);
-        for value in [f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
-            let error = scope
-                .call(&entry, (value,))
-                .expect_err("non-finite JSON number");
-            assert!(
-                matches!(error, CallError::Execution(ExecutionError::Host(ref error))
+    let mut task =
+        pin!(
+            module.with_execution(&execution_host, &mut state, &mut echo, async |scope| {
+                for value in [f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
+                    let error = scope
+                        .call(&entry, (value,))
+                        .await
+                        .expect_err("non-finite JSON number");
+                    assert!(
+                        matches!(error, CallError::Execution(ExecutionError::Host(ref error))
                 if error.package() == "gleam_json"
                     && error.module() == "gleam/json"
                     && error.function() == "do_float"
                     && error.failure().message() == "JSON cannot encode a non-finite Float")
-            );
-        }
-        assert_eq!(
-            scope.call(&entry, (1.5,)).expect("later finite number"),
-            "1.5"
+                    );
+                }
+                assert_eq!(
+                    scope
+                        .call(&entry, (1.5,))
+                        .await
+                        .expect("later finite number"),
+                    "1.5"
+                );
+            })
         );
-    }));
     assert!(matches!(
-        task.as_mut().poll(&mut Context::from_waker(Waker::noop())),
-        Poll::Ready(())
+        execution_host.poll(task.as_mut()),
+        Poll::Ready(Ok(()))
     ));
 }

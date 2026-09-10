@@ -10,6 +10,9 @@ use geam_core::{
 };
 use num_bigint::BigInt;
 
+type Owned<Type> =
+    geam_core::provider::Value<Type, geam_core::provider::ProviderValueContext<Type>>;
+
 #[test]
 fn preserves_external_values_through_lists_customs_captures_and_calls() {
     fn new_counter<'call>(
@@ -49,12 +52,27 @@ fn preserves_external_values_through_lists_customs_captures_and_calls() {
     type CounterCallable = HostFunctionType<IntArguments, HostCounter>;
 
     fn invoke_counter<'call>(
-        mut call: HostCall<'call, ExternalProfile, CounterProvider, HostCounter>,
+        call: HostCall<'call, ExternalProfile, CounterProvider, HostCounter>,
+        constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
         function: HostCallable<'call, IntArguments, HostCounter>,
         value: BigInt,
-    ) -> Result<HostCallCompletion<'call, HostCounter>, HostCallError> {
-        let counter = call.invoke(function, (value, ()))?;
-        Ok(call.return_value(counter))
+    ) -> Result<geam_core::HostCallContinuation<'call, HostCounter>, HostCallError> {
+        let function = call.owned_callable(function, &constructions);
+        Ok(call.resume(constructions, move |context| {
+            Box::pin(async move {
+                let counter = function
+                    .invoke(
+                        &context,
+                        move |_, _| (value, ()),
+                        |call, _, value| Ok(Owned::<HostCounter>::from_host(&call, value)),
+                    )
+                    .await?;
+                Ok(geam_core::HostOwnedCompletion::new(move |mut call, _| {
+                    let counter = counter.into_host(&mut call);
+                    Ok(call.return_value(counter))
+                }))
+            })
+        }))
     }
 
     fn forward_counter_function<'call>(
@@ -99,7 +117,7 @@ fn preserves_external_values_through_lists_customs_captures_and_calls() {
             duplicate_counter,
         )
         .expect("external list builder provider should be valid")
-        .with_scoped_function::<CounterProvider, (CounterCallable, BigInt), HostCounter, _>(
+        .with_resumable_function::<CounterProvider, (CounterCallable, BigInt), HostCounter, geam_core::HostTypeListEnd, _>(
             "invoke_counter",
             invoke_counter,
         )
@@ -333,13 +351,16 @@ pub fn main() {
     )
     .expect("external source should compile");
     let plan = plan_host_program(typed).expect("external source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("external execution should seal");
 
     let mut echoes = Vec::new();
-    let returned = execution
-        .run_main(&mut ExternalRunState::default(), &mut echoes)
-        .expect("external source should execute");
+    let returned = crate::execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut echoes,
+    )
+    .expect("external source should execute");
     drop(execution);
     assert_eq!(echoes.len(), 1);
     assert_eq!(
@@ -475,24 +496,58 @@ fn passes_external_values_and_lists_through_scoped_callbacks() {
     }
 
     fn invoke_reader<'call>(
-        mut call: HostCall<'call, ExternalProfile, CounterProvider, BigInt>,
+        call: HostCall<'call, ExternalProfile, CounterProvider, BigInt>,
+        constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
         function: HostCallable<'call, CounterArguments, BigInt>,
         counter: HostExternal<'call, HostCounter>,
-    ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
-        let value = call.invoke(function, (counter, ()))?;
-        Ok(call.return_value(value))
+    ) -> Result<geam_core::HostCallContinuation<'call, BigInt>, HostCallError> {
+        let function = call.owned_callable(function, &constructions);
+        let counter = Owned::<HostCounter>::from_host(&call, counter);
+        Ok(call.resume(constructions, move |context| {
+            Box::pin(async move {
+                let value = function
+                    .invoke(
+                        &context,
+                        move |mut call, _| (counter.into_host(&mut call), ()),
+                        |_, _, value| Ok(value),
+                    )
+                    .await?;
+                Ok(geam_core::HostOwnedCompletion::new(move |call, _| {
+                    Ok(call.return_value(value))
+                }))
+            })
+        }))
     }
 
     fn invoke_list<'call>(
-        mut call: HostCall<'call, ExternalProfile, CounterProvider, HostListType<HostCounter>>,
+        call: HostCall<'call, ExternalProfile, CounterProvider, HostListType<HostCounter>>,
+        constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
         function: HostCallable<'call, CounterArguments, HostListType<HostCounter>>,
         counter: HostExternal<'call, HostCounter>,
-    ) -> Result<HostCallCompletion<'call, HostListType<HostCounter>>, HostCallError> {
-        let values = call.invoke(function, (counter, ()))?;
-        let first = call
-            .list_item(values, 0)
-            .ok_or_else(|| HostFailure::new("callback list should not be empty"))?;
-        Ok(call.return_list([first]))
+    ) -> Result<geam_core::HostCallContinuation<'call, HostListType<HostCounter>>, HostCallError>
+    {
+        let function = call.owned_callable(function, &constructions);
+        let counter = Owned::<HostCounter>::from_host(&call, counter);
+        Ok(call.resume(constructions, move |context| {
+            Box::pin(async move {
+                let first = function
+                    .invoke(
+                        &context,
+                        move |mut call, _| (counter.into_host(&mut call), ()),
+                        |mut call, _, values| {
+                            let first = call.list_item(values, 0).ok_or_else(|| {
+                                HostFailure::new("callback list should not be empty")
+                            })?;
+                            Ok(Owned::<HostCounter>::from_host(&call, first))
+                        },
+                    )
+                    .await?;
+                Ok(geam_core::HostOwnedCompletion::new(move |mut call, _| {
+                    let first = first.into_host(&mut call);
+                    Ok(call.return_list([first]))
+                }))
+            })
+        }))
     }
 
     fn forward_list_function<'call>(
@@ -523,16 +578,16 @@ fn passes_external_values_and_lists_through_scoped_callbacks() {
         .expect("counter list builder should be valid")
         .with_scoped_function::<CounterProvider, (HostCounter,), CounterTuple, _>("wrap", wrap)
         .expect("counter tuple builder should be valid")
-        .with_scoped_function::<CounterProvider, (CounterReader, HostCounter), BigInt, _>(
+        .with_resumable_function::<CounterProvider, (CounterReader, HostCounter), BigInt, geam_core::HostTypeListEnd, _>(
             "invoke_reader",
             invoke_reader,
         )
         .expect("counter reader callback should be valid")
-        .with_scoped_function::<
+        .with_resumable_function::<
             CounterProvider,
             (CounterListFunction, HostCounter),
             HostListType<HostCounter>,
-            _,
+            geam_core::HostTypeListEnd, _,
         >("invoke_list", invoke_list)
         .expect("counter list callback should be valid")
         .with_scoped_function::<
@@ -604,15 +659,18 @@ pub fn main() {
     )
     .expect("external callback source should compile");
     let plan = plan_host_program(typed).expect("external callback source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("external callback source should seal");
 
     assert_eq!(
-        execution
-            .run_main(&mut ExternalRunState::default(), &mut Vec::new())
-            .expect("external callback source should execute")
-            .inspect()
-            .to_string(),
+        crate::execution_fixture::run(
+            &mut execution,
+            &mut ExternalRunState::default(),
+            &mut Vec::new()
+        )
+        .expect("external callback source should execute")
+        .inspect()
+        .to_string(),
         "#(7, [Counter(7)], [Counter(7), Counter(7)], [Counter(7), Counter(7)], [Counter(7), Counter(7)])",
     );
 }
@@ -675,12 +733,11 @@ pub fn main() -> fn(Int) -> Counter {
     .expect("captured external function source should compile");
     let plan = plan_host_program(typed).expect("captured external function source should plan");
     let returned = {
-        let execution = HostedExecution::try_from_module_plan(plan)
+        let mut execution = HostedExecution::try_from_module_plan(plan)
             .expect("captured external function execution should seal");
         let mut state = ExternalRunState::default();
 
-        execution
-            .run_main(&mut state, &mut Vec::new())
+        crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
             .expect("captured external function source should execute")
     };
     assert_eq!(returned.inspect().to_string(), "//fn(a) { ... }");

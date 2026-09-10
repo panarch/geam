@@ -11,7 +11,7 @@ use crate::runtime::{
     EmbeddingInputStorage, EmbeddingInputValue, EmbeddingList, EmbeddingListInput, EmbeddingOutput,
     RetainedValues,
 };
-use crate::{EchoSink, ExecutionError, HostProfile, HostedExecution};
+use crate::{EchoSink, ExecutionError};
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -129,7 +129,7 @@ impl<T: EmbeddingValue> EmbeddingValue for List<T> {
         T::collect_variants(variants);
     }
 
-    fn collect_input_variants(variants: &mut Vec<StandardVariant>) {
+    fn collect_input_variants(variants: &mut Vec<crate::plan::LibraryVariant>) {
         T::collect_input_variants(variants);
     }
 
@@ -269,20 +269,6 @@ where
         let entry = &module.entries.lists[slot];
         crate::runtime::run_embedded_list(&module.execution, entry.function(), inputs, echo)
             .map(|mut output| Self::take(&mut output, &module.owner))
-    }
-
-    fn call_hosted<Profile: HostProfile>(
-        execution: &HostedExecution<Profile>,
-        entries: &LibraryFunctionEntries,
-        slot: usize,
-        inputs: RetainedValues,
-        state: &mut Profile::RunState,
-        echo: &mut dyn EchoSink,
-        owner: &Arc<()>,
-    ) -> Result<Self, ExecutionError> {
-        let entry = &entries.lists[slot];
-        crate::runtime::run_hosted_embedded_list(execution, entry.function(), inputs, state, echo)
-            .map(|mut output| Self::take(&mut output, owner))
     }
 }
 

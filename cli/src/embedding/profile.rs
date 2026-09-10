@@ -14,11 +14,10 @@ pub(super) struct HostedBindings {
     pub(super) components: HostedComponents,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(super) struct HostedComponents {
     pub(super) future_source: bool,
-    first: ComponentBinding,
-    remaining: Vec<ComponentBinding>,
+    components: Vec<ComponentBinding>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,8 +89,7 @@ impl HostedComponents {
     fn new(first: ComponentBinding) -> Self {
         let mut components = Self {
             future_source: first == ComponentBinding::Future,
-            first,
-            remaining: Vec::new(),
+            components: vec![first],
         };
         components.insert(ComponentBinding::Future);
         components.assign_external_fields();
@@ -99,39 +97,37 @@ impl HostedComponents {
     }
 
     fn insert(&mut self, component: ComponentBinding) {
-        if component == self.first || self.remaining.contains(&component) {
+        if self.components.contains(&component) {
             return;
         }
-        if component < self.first {
-            let previous = std::mem::replace(&mut self.first, component);
-            self.remaining.insert(0, previous);
-        } else {
-            let index = self
-                .remaining
-                .partition_point(|current| current < &component);
-            self.remaining.insert(index, component);
-        }
+        let index = self
+            .components
+            .partition_point(|current| current < &component);
+        self.components.insert(index, component);
         self.assign_external_fields();
     }
 
     pub(super) fn extend(&mut self, components: Self) {
         self.future_source |= components.future_source;
-        self.insert(components.first);
-        for component in components.remaining {
+        for component in components.components {
             self.insert(component);
         }
     }
 
     pub(super) fn iter(&self) -> impl Iterator<Item = &ComponentBinding> {
-        std::iter::once(&self.first).chain(self.remaining.iter())
+        self.components.iter()
     }
 
-    pub(super) fn first(&self) -> &ComponentBinding {
-        &self.first
+    pub(super) fn is_empty(&self) -> bool {
+        self.components.is_empty()
     }
 
-    pub(super) fn has_multiple(&self) -> bool {
-        !self.remaining.is_empty()
+    pub(super) fn has_work(&self) -> bool {
+        self.components.contains(&ComponentBinding::Future)
+    }
+
+    pub(super) fn only_work(&self) -> bool {
+        self.components == [ComponentBinding::Future]
     }
 
     pub(super) fn capabilities(&self) -> HostedCapabilities {
@@ -167,8 +163,9 @@ impl HostedComponents {
             "time".to_owned(),
             "future".to_owned(),
         ]);
-        let mut external = std::iter::once(&mut self.first)
-            .chain(self.remaining.iter_mut())
+        let mut external = self
+            .components
+            .iter_mut()
             .filter_map(|component| match component {
                 ComponentBinding::External(component) => Some(component),
                 ComponentBinding::Future
@@ -1050,6 +1047,7 @@ resolver = "3"
             HostedBindings::resolve(
                 &package,
                 PlainBindings {
+                    named_types: Vec::new(),
                     geam_alias: package.geam_alias().clone(),
                     root_module: "boundary".to_owned(),
                     first: FunctionBinding {

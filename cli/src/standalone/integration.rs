@@ -80,7 +80,7 @@ fn selects_locks_builds_and_runs_explicit_path_providers() {
                 "name = \"geam-runner\"\n",
                 "path = \"build/geam/runner.rs\"\n\n",
                 "[dependencies]\n",
-                "geam = {{ version = \"={}\", default-features = false, features = [\"builtins\"] }}\n",
+                "geam = {{ version = \"={}\", default-features = false, features = [\"builtins\", \"tokio\"] }}\n",
                 "toml = \"0.9\"\n",
                 "tokio = {{ version = \"1.53.1\", default-features = false, features = [\"rt-multi-thread\", \"net\", \"time\"] }}\n",
                 "geam_provider_catalog = {{ package = \"geam-catalog\", path = {} }}\n",

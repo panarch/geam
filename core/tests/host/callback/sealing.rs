@@ -184,10 +184,9 @@ pub fn main() {
     )
     .expect("uninhabited callback tuple source should compile");
     let plan = plan_host_program(typed).expect("uninhabited callback tuple source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("an uninhabited tuple must not expose its callback");
-    let value = execution
-        .run_main(&mut (), &mut Vec::new())
+    let value = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect("uninhabited callback tuple reference should materialize");
 
     assert_eq!(value.inspect().to_string(), "//fn(a) { ... }");

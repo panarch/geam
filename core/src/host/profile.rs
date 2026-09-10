@@ -345,65 +345,6 @@ where
             .resolve_host_type(&crate::host::HostTypeDescriptor::of::<Type>())
     }
 
-    /// Invokes a Gleam callable while this host call owns the active runtime.
-    ///
-    /// A provider-state borrow must end before re-entry.
-    ///
-    /// ```compile_fail
-    /// use geam_core::{
-    ///     HostCall, HostCallCompletion, HostCallError, HostCallable, HostProfile, HostProvider,
-    ///     HostTypeList, HostTypeListEnd,
-    /// };
-    /// use num_bigint::BigInt;
-    ///
-    /// struct Profile;
-    /// struct Provider;
-    ///
-    /// impl HostProfile for Profile {
-    ///     type RunState = usize;
-    ///     type ExternalStores = ();
-    /// }
-    ///
-    /// impl HostProvider<Profile> for Provider {
-    ///     type State = usize;
-    ///
-    ///     fn project(state: &mut usize) -> &mut Self::State {
-    ///         state
-    ///     }
-    /// }
-    ///
-    /// type Arguments = HostTypeList<BigInt, HostTypeListEnd>;
-    ///
-    /// fn reenter_with_live_state<'call>(
-    ///     mut call: HostCall<'call, Profile, Provider, BigInt>,
-    ///     callable: HostCallable<'call, Arguments, BigInt>,
-    /// ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
-    ///     let state = call.state();
-    ///     let returned = call.invoke(callable, (BigInt::from(1), ()))?;
-    ///     *state += 1;
-    ///     Ok(call.return_value(returned))
-    /// }
-    /// ```
-    pub fn invoke<Arguments, FunctionReturn>(
-        &mut self,
-        function: crate::host::HostCallable<'call, Arguments, FunctionReturn>,
-        arguments: Arguments::Values<'call>,
-    ) -> Result<FunctionReturn::Value<'call>, crate::HostCallError>
-    where
-        Arguments: HostTypeSequence,
-        FunctionReturn: HostType,
-    {
-        let mut values = Vec::new();
-        crate::host::type_::into_scoped_values::<Arguments>(arguments, &mut values);
-        let returned = self
-            .runtime
-            .invoke(function.token, values.into_boxed_slice())?;
-        Ok(crate::host::type_::from_token::<FunctionReturn, Profile>(
-            self.runtime,
-            returned,
-        ))
-    }
-
     /// Constructs an intermediate external payload authorized by one registered type token.
     pub fn construct_external<Schema, Arguments>(
         &mut self,
@@ -863,7 +804,7 @@ where
 mod tests {
     use super::{HostCall, HostProvider};
     use crate::BitArrayValue;
-    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
+    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder};
     use crate::frontend::compile_typed_host_program;
     use crate::host::function::CallArguments;
     use crate::host::test::{
@@ -888,7 +829,6 @@ mod tests {
     use crate::work_fixture::{WorkComponent, WorkHostType, WorkSchema};
     use crate::{HostCallCompletion, HostCallError, HostExternal, ModuleSource, PackageSource};
     use ecow::EcoString;
-    use futures_util::FutureExt;
     use num_bigint::BigInt;
 
     struct Counter;
@@ -1165,7 +1105,7 @@ mod tests {
     }
 
     #[test]
-    fn host_call_invokes_and_completes_typed_function_handles() {
+    fn host_call_completes_typed_function_handles_without_reconstruction() {
         type Arguments = HostTypeList<BigInt, HostTypeListEnd>;
         type Function = HostFunctionType<Arguments, BigInt>;
 
@@ -1173,16 +1113,6 @@ mod tests {
         let arguments = CallArguments::new(Vec::new(), Vec::new());
         let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
         let callable = HostCallable::<Arguments, BigInt>::new(HostFunctionToken(0));
-        let returned = HostCall::<TestHostProfile, Counter, BigInt>::new(&mut runtime)
-            .invoke(callable, (BigInt::from(7), ()))
-            .expect("test runtime should return the first callback argument");
-
-        assert_eq!(returned, BigInt::from(0));
-        assert_eq!(
-            runtime.completed(),
-            Some(&HostScopedValue::Int(BigInt::from(7))),
-        );
-
         let completion = HostCall::<TestHostProfile, Counter, Function>::new(&mut runtime)
             .return_value(callable)
             .token;
@@ -1193,9 +1123,17 @@ mod tests {
         );
 
         let empty = HostCallable::<HostTypeListEnd, ()>::new(HostFunctionToken(1));
-        HostCall::<TestHostProfile, Counter, ()>::new(&mut runtime)
-            .invoke(empty, ())
-            .expect("zero-argument test callback should return Nil");
+        let completion =
+            HostCall::<TestHostProfile, Counter, HostFunctionType<HostTypeListEnd, ()>>::new(
+                &mut runtime,
+            )
+            .return_value(empty)
+            .token;
+        assert_eq!(completion.family, HostValueFamily::Function);
+        assert_eq!(
+            runtime.completed(),
+            Some(&HostScopedValue::Function(HostFunctionToken(1)))
+        );
     }
 
     struct Profile;
@@ -1324,14 +1262,17 @@ pub fn run() {
         let mut state = ();
         let mut outputs = Vec::new();
         let mut echo = |output: crate::EchoOutput| outputs.push(output.to_string());
-        with_execution_scope(async |guard| {
-            assert_eq!(
-                module.attach(guard, &mut state, &mut echo).call(&run, ()),
-                Ok(true)
-            );
-        })
-        .now_or_never()
-        .expect("direct native calls do not need an executor");
+        let execution_host = crate::execution_fixture::TestHost::default();
+        execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    assert_eq!(scope.call(&run, ()).await, Ok(true));
+                },
+            ))
+            .expect("ordinary calls share the explicit execution host");
         assert_eq!(outputs, ["src/library.gleam:8\n42"]);
     }
 }

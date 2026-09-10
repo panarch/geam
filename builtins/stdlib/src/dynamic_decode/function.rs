@@ -102,8 +102,8 @@ pub(super) mod provider {
             .ok_or_else(|| geam_core::BitArrayValue::from_bytes(Vec::new()))
     }
 
-    #[geam_macros::function(profile = Profile)]
-    fn decode_list<Item, PathKey>(
+    #[geam_macros::function(profile = Profile, resumable)]
+    async fn decode_list<Item, PathKey>(
         #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
         data: geam_core::provider::advanced::External<DynamicPayload>,
         item: Callback<fn(crate::dynamic::DynamicPayload) -> (Value<Item>, List<DecodeErrorInput>)>,
@@ -113,12 +113,21 @@ pub(super) mod provider {
         mut index: BigInt,
         accumulator: Value<List<Item>>,
     ) -> HostResult<(Vec<Value<Item>>, Vec<DecodeError>)> {
-        let representation = data.representation();
-        let values = data.native_value().clone();
+        let (representation, values) =
+            data.with(|data| (data.representation(), data.native_value().clone()));
         drop(data);
-        if !matches!(values.kind(), NativeKind::List | NativeKind::Tuple)
-            && call.list_len(&accumulator) == 0
-        {
+        let mut decoded = call
+            .with_call(move |call| {
+                let mut decoded = Vec::with_capacity(call.list_len(&accumulator));
+                let mut index = 0;
+                while let Some(value) = call.list_get::<_, Item, _>(&accumulator, index) {
+                    decoded.push(value);
+                    index += 1;
+                }
+                decoded
+            })
+            .await?;
+        if !matches!(values.kind(), NativeKind::List | NativeKind::Tuple) && decoded.is_empty() {
             return Ok((
                 Vec::new(),
                 vec![DecodeError::DecodeError {
@@ -129,17 +138,13 @@ pub(super) mod provider {
             ));
         }
 
-        let mut decoded = Vec::with_capacity(call.list_len(&accumulator));
-        let mut accumulator_index = 0;
-        while let Some(value) = call.list_get::<_, Item, _>(&accumulator, accumulator_index) {
-            decoded.push(value);
-            accumulator_index += 1;
-        }
         decoded.reverse();
 
         let mut value_index = 0;
         while let Some(value) = values.index(value_index) {
-            let (value, errors) = call.invoke(item, (DynamicPayload::from_native(value),))?;
+            let (value, errors) = call
+                .invoke(&item, (DynamicPayload::from_native(value),))
+                .await?;
             if errors.len() != 0 {
                 let mut updated_errors = Vec::with_capacity(errors.len());
                 let mut error_index = 0;
@@ -521,14 +526,14 @@ pub fn main() {
         )
         .expect("synthetic dynamic decode source should compile");
         let plan = plan_host_program(typed).expect("synthetic dynamic decode source should plan");
-        let execution = HostedExecution::try_from_module_plan(plan)
+        let mut execution = HostedExecution::try_from_module_plan(plan)
             .expect("synthetic dynamic decode execution should seal");
-        let actual = execution
-            .run_main(
-                &mut GleamStdlibRunState::from_seed([0; 32]),
-                &mut Vec::new(),
-            )
-            .expect("every dynamic decode provider should execute");
+        let actual = crate::execution_fixture::run(
+            &mut execution,
+            &mut GleamStdlibRunState::from_seed([0; 32]),
+            &mut Vec::new(),
+        )
+        .expect("every dynamic decode provider should execute");
 
         assert_eq!(actual, Value::Bool(true));
     }
@@ -569,14 +574,14 @@ pub fn main() {
         )
         .expect("callback failure source should compile");
         let plan = plan_host_program(typed).expect("callback failure source should plan");
-        let execution = HostedExecution::try_from_module_plan(plan)
+        let mut execution = HostedExecution::try_from_module_plan(plan)
             .expect("callback failure execution should seal");
-        let error = execution
-            .run_main(
-                &mut GleamStdlibRunState::from_seed([0; 32]),
-                &mut Vec::new(),
-            )
-            .expect_err("callback should preserve its source panic");
+        let error = crate::execution_fixture::run(
+            &mut execution,
+            &mut GleamStdlibRunState::from_seed([0; 32]),
+            &mut Vec::new(),
+        )
+        .expect_err("callback should preserve its source panic");
         assert!(matches!(
             error,
             ExecutionError::Panic(ref panic)

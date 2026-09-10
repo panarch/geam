@@ -118,6 +118,40 @@ before provider state is initialized or application code runs.
 Geam re-exports its author-facing value types from `geam::provider`, so this
 single dependency supplies types such as `EcoString`, `BigInt`, and `List`.
 
+## Call Gleam and resume
+
+A provider can call a Gleam function supplied by its caller. Mark that native
+function `#[geam::function(resumable)]` and await the typed callback:
+
+```rust
+#[geam::function(resumable)]
+async fn around<Item>(
+    #[geam::call] call: &mut Call<RunState>,
+    callback: Callback<fn() -> Value<Item>>,
+) -> HostResult<Value<Item>> {
+    call.with_state(|state| state.entries.push("before".into())).await?;
+    let returned = call.invoke(&callback, ()).await?;
+    call.with_state(|state| state.entries.push("after".into())).await?;
+    Ok(returned)
+}
+```
+
+The Gleam declaration still returns the callback's value:
+
+```gleam
+@external(erlang, "geam_example_call_tracing", "around")
+pub fn around(callback: fn() -> item) -> item
+```
+
+The native function resumes when the callback completes, including when that
+callback waits in another provider. State access uses bounded closures so the
+callback can enter the same provider again. The [call-tracing example](../examples/provider/call_tracing)
+does this with a delayed record operation on Tokio and preserves the
+`before`, `inside`, `after` order.
+
+`resumable` completes an ordinary source call. An unmarked Rust `async fn`
+instead creates an explicit source Future, as shown next.
+
 ## Return async Rust work
 
 An async provider function returns explicit work to Gleam. Its source

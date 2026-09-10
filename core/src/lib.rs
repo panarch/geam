@@ -2,6 +2,10 @@
 
 #[cfg(test)]
 extern crate self as geam_core;
+
+#[cfg(test)]
+#[path = "../../tests/support/execution_host.rs"]
+mod execution_fixture;
 #[cfg(test)]
 #[path = "../tests/support/work_fixture.rs"]
 mod work_fixture;
@@ -10,6 +14,7 @@ mod work_fixture;
 compile_error!("geam requires a 64-bit target");
 
 pub mod embedding;
+pub mod execution;
 pub mod frontend;
 pub mod host;
 pub mod plan;
@@ -28,24 +33,26 @@ pub use frontend::{
     compile_typed_package_program, compile_typed_program, compile_typed_project,
 };
 pub use host::{
-    FallibleHostFunction, HostCall, HostCallCompletion, HostCallError, HostCallable,
-    HostComponentProfile, HostConstruction, HostConstructions, HostCustom, HostCustomConstructor,
-    HostCustomConstructorAt, HostCustomConstructorDefinition, HostCustomConstructorList,
-    HostCustomConstructorListEnd, HostCustomConstructorSchema, HostCustomField,
-    HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema, HostCustomIndex0,
-    HostCustomIndexNext, HostCustomSchema, HostCustomType, HostCustomTypeArgument,
-    HostCustomTypeSchema, HostExternal, HostExternalBinding, HostExternalEquality,
-    HostExternalHashing, HostExternalInspection, HostExternalPayloadBuilder,
-    HostExternalPayloadView, HostExternalSchema, HostExternalStorage, HostExternalStore,
-    HostExternalType, HostExternalTypeSchema, HostFailure, HostFunction, HostFunctionSchema,
-    HostFunctionType, HostList, HostListType, HostModule, HostProfile, HostProvider,
-    HostProviderComponent, HostProviderComponentInitialization, HostProviderComponentRegistration,
-    HostProviderConfiguration, HostProviderConfigurationValue, HostProviderInitializationError,
-    HostProviderModule, HostProviderSet, HostRegistrationError, HostSchemaType, HostStoredDynamic,
-    HostStoredType, HostStoredValue, HostTuple, HostTupleType, HostType, HostTypeAt,
-    HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter,
-    HostTypeSequence, HostValue, ScopedConstructingHostFunction, ScopedDivergingHostFunction,
-    ScopedHostFunction, StatelessHostProfile,
+    FallibleHostFunction, HostCall, HostCallCompletion, HostCallContinuation, HostCallError,
+    HostCallable, HostComponentProfile, HostConstruction, HostConstructions, HostCustom,
+    HostCustomConstructor, HostCustomConstructorAt, HostCustomConstructorDefinition,
+    HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomConstructorSchema,
+    HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema,
+    HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType,
+    HostCustomTypeArgument, HostCustomTypeSchema, HostExecutionContext, HostExecutionError,
+    HostExternal, HostExternalBinding, HostExternalEquality, HostExternalHashing,
+    HostExternalInspection, HostExternalPayloadBuilder, HostExternalPayloadView,
+    HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType,
+    HostExternalTypeSchema, HostFailure, HostFunction, HostFunctionSchema, HostFunctionType,
+    HostList, HostListType, HostModule, HostOwnedCallable, HostOwnedCompletion, HostProfile,
+    HostProvider, HostProviderComponent, HostProviderComponentInitialization,
+    HostProviderComponentRegistration, HostProviderConfiguration, HostProviderConfigurationValue,
+    HostProviderInitializationError, HostProviderModule, HostProviderSet, HostRegistrationError,
+    HostSchemaType, HostStoredDynamic, HostStoredType, HostStoredValue, HostTuple, HostTupleType,
+    HostType, HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
+    HostTypeParameter, HostTypeSequence, HostValue, ResumableHostFunction,
+    ScopedConstructingHostFunction, ScopedDivergingHostFunction, ScopedHostFunction,
+    StatelessHostProfile,
 };
 pub use plan::execution::{
     ExecutionPlan, ExecutionPlanExplanation, HostSpecializationError,

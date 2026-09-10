@@ -115,14 +115,12 @@ pub fn main() {
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
 //     %bool#0:shape#0(Bool) = bool.value True
-//     match %bool#0 pattern=True success=b1() failure=b10(%bool#0)
+//     match %bool#0 pattern=True success=b1() failure=b8(%bool#0)
 //   block b1 params=[]
 //     %bool#0:shape#0(Bool) = bool.value False
-//     match %bool#0 pattern=False success=b2() failure=b9(%bool#0)
+//     match %bool#0 pattern=False success=b2() failure=b7(%bool#0)
 //   block b2 params=[]
 //     %nil#0:shape#1(Nil) = nil.value
-//     match %nil#0 pattern=Nil success=b3() failure=b8(%nil#0)
-//   block b3 params=[]
 //     %int#0:shape#2(Int) = int.value 1
 //     %float#0:shape#3(Float) = float.value 1.5
 //     %string#0:shape#4(String) = string.value "ready"
@@ -139,8 +137,8 @@ pub fn main() {
 //     %list.int#2:shape#5(list_type#0) = list.int[type#0] value elements=[%int#6]
 //     %custom#0:shape#6(custom_type#0) = custom.construct custom_type#0.constructor#0 fields=[%int#5, %string#1, %list.int#2]
 //     %tuple#0:shape#7(#(Int, Float, String, Bool, list_type#0, list_type#0, custom_type#0)) = tuple.value elements=[%int#0, %float#0, %string#0, %bool#0, %list.int#0, %list.int#1, %custom#0]
-//     match %tuple#0 pattern=alias(#(alias(1, binding#0), 1.5, "ready", _, [binding#1, .._], [binding#2, ..binding#3], custom_type#0.constructor#0(binding#4, string_prefix("pre", left=binding#5, right=binding#6), [binding#7])), binding#8) success=b4(binding#0, binding#1, binding#2, binding#3, binding#4, binding#5, binding#6, binding#7, binding#8) failure=b7(%tuple#0)
-//   block b4 params=[%int#0:shape#2(Int), %int#1:shape#2(Int), %int#2:shape#2(Int), %list.int#0:shape#5(list_type#0), %int#3:shape#2(Int), %string#0:shape#4(String), %string#1:shape#4(String), %int#4:shape#2(Int), %tuple#0:shape#7(#(Int, Float, String, Bool, list_type#0, list_type#0, custom_type#0))]
+//     match %tuple#0 pattern=alias(#(alias(1, binding#0), 1.5, "ready", _, [binding#1, .._], [binding#2, ..binding#3], custom_type#0.constructor#0(binding#4, string_prefix("pre", left=binding#5, right=binding#6), [binding#7])), binding#8) success=b3(binding#0, binding#1, binding#2, binding#3, binding#4, binding#5, binding#6, binding#7, binding#8) failure=b6(%tuple#0)
+//   block b3 params=[%int#0:shape#2(Int), %int#1:shape#2(Int), %int#2:shape#2(Int), %list.int#0:shape#5(list_type#0), %int#3:shape#2(Int), %string#0:shape#4(String), %string#1:shape#4(String), %int#4:shape#2(Int), %tuple#0:shape#7(#(Int, Float, String, Bool, list_type#0, list_type#0, custom_type#0))]
 //     %int#5:shape#2(Int) = int.value 8
 //     %int#6:shape#2(Int) = int.value -2
 //     %int#7:shape#2(Int) = int.value 564
@@ -169,17 +167,15 @@ pub fn main() {
 //     %int#19:shape#2(Int) = int.value 8
 //     %int#20:shape#2(Int) = int.value 4
 //     %bit_array#0:shape#8(BitArray) = bit_array.value [int(%int#6, bits=12, big), int(%int#7, bits=12, little), int(%int#8, bits=8, big), int(%int#9, bits=8, big), int(%int#10, bits=8, big), int(%int#11, bits=8, big), int(%int#12, bits=8, big), float(%float#0, bits=16, big), float(%float#1, bits=32, little), float(%float#2, bits=64, big), string(%string#2, utf8), string(%string#3, utf16.big), string(%string#4, utf16.little), string(%string#5, utf32.big), string(%string#6, utf32.little), string(%string#7, utf8), string(%string#8, utf16.little), string(%string#9, utf32.big), int(%int#13, bits=8, big), int(%int#14, bits=8, big), int(%int#15, bits=8, big), int(%int#16, bits=8, big), int(%int#17, bits=8, big), int(%int#18, bits=8, big), int(%int#19, bits=8, big), int(%int#20, bits=8, big)]
-//     match %bit_array#0 pattern=alias(<<int(alias(-2, binding#0), size=12*1, big, signed), int(binding#1, size=12*1, little, unsigned), int(16, size=8*1, big, unsigned), int(binding#2, size=%int#5*1, big, unsigned), int(_, size=8*1, big, unsigned), int(binding#3, size=8*1, big, unsigned), int(binding#4, size=binding#3*1, big, unsigned), float(alias(1.5, binding#5), size=16*1, big), float(binding#6, size=32*1, little), float(_, size=64*1, big), string("A", utf8), string(_, utf16.big), string("B", utf16.little), string(_, utf32.big), string("C", utf32.little), utf_codepoint(binding#7, utf8), utf_codepoint(alias(_, binding#8), utf16.little), utf_codepoint(_, utf32.big), bits(binding#9, size=8*1, unit=1), bits(_, size=%int#5*1, unit=1), bits(alias(_, binding#10), size=(%int#5 + 0)*1, unit=1), bits(_, size=(%int#5 - 0)*1, unit=1), bits(_, size=(%int#5 * 1)*1, unit=1), bits(_, size=(%int#5 / 1)*1, unit=1), bits(_, size=(%int#5 % 5)*1, unit=1), bits(binding#11, size=rest, unit=1)>>, binding#12) success=b5(binding#0, binding#1, binding#2, binding#4, binding#5, binding#6, binding#7, binding#8, binding#9, binding#10, binding#11, binding#12, %int#0, %int#1, %int#2, %list.int#0, %int#3, %string#0, %string#1, %int#4, %tuple#0) failure=b6(%bit_array#0)
-//   block b5 params=[%int#0:shape#2(Int), %int#1:shape#2(Int), %int#2:shape#2(Int), %int#3:shape#2(Int), %float#0:shape#3(Float), %float#1:shape#3(Float), %utf_codepoint#0:shape#9(UtfCodepoint), %utf_codepoint#1:shape#9(UtfCodepoint), %bit_array#0:shape#8(BitArray), %bit_array#1:shape#8(BitArray), %bit_array#2:shape#8(BitArray), %bit_array#3:shape#8(BitArray), %int#4:shape#2(Int), %int#5:shape#2(Int), %int#6:shape#2(Int), %list.int#0:shape#5(list_type#0), %int#7:shape#2(Int), %string#0:shape#4(String), %string#1:shape#4(String), %int#8:shape#2(Int), %tuple#0:shape#7(#(Int, Float, String, Bool, list_type#0, list_type#0, custom_type#0))]
+//     match %bit_array#0 pattern=alias(<<int(alias(-2, binding#0), size=12*1, big, signed), int(binding#1, size=12*1, little, unsigned), int(16, size=8*1, big, unsigned), int(binding#2, size=%int#5*1, big, unsigned), int(_, size=8*1, big, unsigned), int(binding#3, size=8*1, big, unsigned), int(binding#4, size=binding#3*1, big, unsigned), float(alias(1.5, binding#5), size=16*1, big), float(binding#6, size=32*1, little), float(_, size=64*1, big), string("A", utf8), string(_, utf16.big), string("B", utf16.little), string(_, utf32.big), string("C", utf32.little), utf_codepoint(binding#7, utf8), utf_codepoint(alias(_, binding#8), utf16.little), utf_codepoint(_, utf32.big), bits(binding#9, size=8*1, unit=1), bits(_, size=%int#5*1, unit=1), bits(alias(_, binding#10), size=(%int#5 + 0)*1, unit=1), bits(_, size=(%int#5 - 0)*1, unit=1), bits(_, size=(%int#5 * 1)*1, unit=1), bits(_, size=(%int#5 / 1)*1, unit=1), bits(_, size=(%int#5 % 5)*1, unit=1), bits(binding#11, size=rest, unit=1)>>, binding#12) success=b4(binding#0, binding#1, binding#2, binding#4, binding#5, binding#6, binding#7, binding#8, binding#9, binding#10, binding#11, binding#12, %int#0, %int#1, %int#2, %list.int#0, %int#3, %string#0, %string#1, %int#4, %tuple#0) failure=b5(%bit_array#0)
+//   block b4 params=[%int#0:shape#2(Int), %int#1:shape#2(Int), %int#2:shape#2(Int), %int#3:shape#2(Int), %float#0:shape#3(Float), %float#1:shape#3(Float), %utf_codepoint#0:shape#9(UtfCodepoint), %utf_codepoint#1:shape#9(UtfCodepoint), %bit_array#0:shape#8(BitArray), %bit_array#1:shape#8(BitArray), %bit_array#2:shape#8(BitArray), %bit_array#3:shape#8(BitArray), %int#4:shape#2(Int), %int#5:shape#2(Int), %int#6:shape#2(Int), %list.int#0:shape#5(list_type#0), %int#7:shape#2(Int), %string#0:shape#4(String), %string#1:shape#4(String), %int#8:shape#2(Int), %tuple#0:shape#7(#(Int, Float, String, Bool, list_type#0, list_type#0, custom_type#0))]
 //     %tuple#1:shape#10(#(Int, Int, Int, list_type#0, Int, String, String, Int, #(Int, Float, String, Bool, list_type#0, list_type#0, custom_type#0), Int, Int, Int, Int, Float, Float, UtfCodepoint, UtfCodepoint, BitArray, BitArray, BitArray, BitArray)) = tuple.value elements=[%int#4, %int#5, %int#6, %list.int#0, %int#7, %string#0, %string#1, %int#8, %tuple#0, %int#0, %int#1, %int#2, %int#3, %float#0, %float#1, %utf_codepoint#0, %utf_codepoint#1, %bit_array#0, %bit_array#1, %bit_array#2, %bit_array#3]
 //     return %tuple#1
-//   block b6 params=[%bit_array#0:shape#8(BitArray)]
+//   block b5 params=[%bit_array#0:shape#8(BitArray)]
 //     let_assert_panic subject=%bit_array#0 message=none
-//   block b7 params=[%tuple#0:shape#7(#(Int, Float, String, Bool, list_type#0, list_type#0, custom_type#0))]
+//   block b6 params=[%tuple#0:shape#7(#(Int, Float, String, Bool, list_type#0, list_type#0, custom_type#0))]
 //     let_assert_panic subject=%tuple#0 message=none
-//   block b8 params=[%nil#0:shape#1(Nil)]
-//     let_assert_panic subject=%nil#0 message=none
-//   block b9 params=[%bool#0:shape#0(Bool)]
+//   block b7 params=[%bool#0:shape#0(Bool)]
 //     let_assert_panic subject=%bool#0 message=none
-//   block b10 params=[%bool#0:shape#0(Bool)]
+//   block b8 params=[%bool#0:shape#0(Bool)]
 //     let_assert_panic subject=%bool#0 message=none

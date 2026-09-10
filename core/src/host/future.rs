@@ -2,8 +2,7 @@ mod context;
 mod native;
 mod value;
 
-pub use context::{HostFutureCallable, HostFutureContext, HostFutureError, SharedExecutionError};
-pub use native::HostFutureCompletion;
+pub use context::HostFutureContext;
 pub use value::HostFutureValue;
 
 use super::{

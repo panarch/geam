@@ -92,13 +92,12 @@ pub fn main() {
         )
         .expect("synthetic IO source should compile");
         let plan = plan_host_program(typed).expect("synthetic IO source should plan");
-        let execution =
+        let mut execution =
             HostedExecution::try_from_module_plan(plan).expect("synthetic IO source should seal");
         let mut state = GleamStdlibRunState::from_seed([2; 32]);
 
         assert_eq!(
-            execution
-                .run_main(&mut state, &mut Vec::new())
+            crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
                 .expect("synthetic IO source should run"),
             Value::Nil,
         );

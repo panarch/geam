@@ -102,7 +102,7 @@ pub fn main() {
         )
         .expect("host source should compile");
         let plan = plan_host_program(typed).expect("host source should plan");
-        let execution =
+        let mut execution =
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         let function = &execution.execution.host_functions.value_functions()[0];
 
@@ -115,7 +115,7 @@ pub fn main() {
             ],
         );
         assert_eq!(
-            execution.run_main(&mut (), &mut Vec::new()),
+            crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
             Ok(crate::Value::Bool(true)),
         );
     }

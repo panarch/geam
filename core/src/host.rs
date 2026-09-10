@@ -1,6 +1,7 @@
 mod component;
 mod construction;
 mod error;
+mod execution;
 mod external;
 mod failure;
 mod function;
@@ -18,6 +19,10 @@ pub use component::{
 };
 pub use construction::{HostConstruction, HostConstructions};
 pub use error::HostRegistrationError;
+pub use execution::{
+    HostCallContinuation, HostExecutionContext, HostExecutionError, HostOwnedCallable,
+    HostOwnedCompletion, SharedExecutionError,
+};
 pub(crate) use external::{ExternalPayloadLease, ExternalPayloadView, HostStoredValueFamily};
 pub use external::{
     HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
@@ -29,14 +34,13 @@ pub(crate) use external::{RetainedValueEquality, RetainedValueHashing, RetainedV
 pub(crate) use failure::HostCallErrorKind;
 pub use failure::{HostCallError, HostFailure};
 pub use function::{
-    FallibleHostFunction, HostFunction, HostFunctionSchema, ScopedConstructingHostFunction,
-    ScopedDivergingHostFunction, ScopedHostFunction,
+    FallibleHostFunction, HostFunction, HostFunctionSchema, ResumableHostFunction,
+    ScopedConstructingHostFunction, ScopedDivergingHostFunction, ScopedHostFunction,
 };
 pub(crate) use future::work_store;
 pub use future::{
-    HostFutureCallable, HostFutureCompletion, HostFutureContext, HostFutureError,
-    HostFuturePayload, HostFutureStore, HostFutureType, HostFutureValue, HostWorkProfile,
-    HostWorkRepresentation, HostWorkSchema, HostWorkStorage, SharedExecutionError,
+    HostFutureContext, HostFuturePayload, HostFutureStore, HostFutureType, HostFutureValue,
+    HostWorkProfile, HostWorkRepresentation, HostWorkSchema, HostWorkStorage,
 };
 pub use module::{HostModule, HostProviderModule, HostProviderSet};
 pub use profile::{HostCall, HostProfile, HostProvider, StatelessHostProfile};
@@ -57,6 +61,7 @@ pub use value::{
 pub(crate) use external::{ExternalTestProfile, ExternalTestRunState, ExternalTestStores};
 #[cfg(test)]
 pub(crate) use function::CallArguments;
+pub(crate) use function::HostCallReturn;
 #[cfg(test)]
 pub(crate) use function::HostParameterLayout;
 pub(crate) use function::RegisteredHostConstructions;
@@ -68,7 +73,9 @@ pub(crate) use function::{
     HostTupleArgumentSlot, HostUtfCodepointArgumentSlot, HostValueArgumentSlot, HostValueFunction,
 };
 #[cfg(test)]
-pub(crate) use function::{expect_never_implementation, expect_value_implementation};
+pub(crate) use function::{
+    expect_immediate_call, expect_never_implementation, expect_value_implementation,
+};
 pub(crate) use module::{
     RegisteredHostFunction, RegisteredHostImplementationId, RegisteredHostImplementations,
     RegisteredHostModule, RegisteredHostProviderModule,

@@ -157,16 +157,28 @@ pub(crate) struct LibraryModulePlan {
 pub(crate) struct LibraryEntry<External = super::ExternalType> {
     template: FunctionTemplateId,
     return_: LibraryValueType<External>,
-    input_variants: Box<[super::StandardVariant]>,
+    input_variants: Box<[LibraryVariant]>,
     input_lists: Box<[LibraryValueType]>,
 }
 
 pub(crate) type LibraryEntryParts<External> = (
     FunctionTemplateId,
     LibraryValueType<External>,
-    Box<[super::StandardVariant]>,
+    Box<[LibraryVariant]>,
     Box<[LibraryValueType]>,
 );
+
+#[derive(Clone)]
+pub(crate) struct LibraryVariant {
+    pub(crate) kind: super::StandardVariant,
+    pub(crate) arguments: Vec<super::ValueType>,
+}
+
+impl LibraryVariant {
+    pub(crate) fn new(kind: super::StandardVariant, arguments: Vec<super::ValueType>) -> Self {
+        Self { kind, arguments }
+    }
+}
 
 #[derive(Clone)]
 pub(crate) enum LibraryValueType<External = super::ExternalType> {
@@ -206,7 +218,7 @@ impl<External> LibraryEntry<External> {
     pub(crate) fn new(
         template: FunctionTemplateId,
         return_: LibraryValueType<External>,
-        input_variants: Vec<super::StandardVariant>,
+        input_variants: Vec<LibraryVariant>,
         input_lists: Vec<LibraryValueType>,
     ) -> Self {
         Self {

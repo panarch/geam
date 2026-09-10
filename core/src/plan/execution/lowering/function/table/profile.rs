@@ -1008,7 +1008,7 @@ impl FunctionTableBuilder {
 }
 
 trait SealFunctionBody<Profile: ExecutionProfile> {
-    type Sealed: ExecutionFunctionBody;
+    type Sealed: ExecutionFunctionBody<Return: 'static>;
 
     fn seal(self) -> Representability<Self::Sealed>;
 }
@@ -1072,7 +1072,8 @@ where
 impl<Return, TailCall> SealFunctionBody<Infallible>
     for ProfiledFunctionBody<Return, TailCall, HostedExecutionGraph>
 where
-    TailCall: ProfileIndependentTailCall,
+    Return: Clone + Send + Sync + 'static,
+    TailCall: ProfileIndependentTailCall + 'static,
 {
     type Sealed = ProfiledFunctionBody<Return, TailCall, Infallible>;
 

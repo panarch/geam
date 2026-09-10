@@ -1,3 +1,6 @@
+#[path = "../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 use ecow::EcoString;
 use geam_core::BitArrayValue;
 use geam_core::provider::{Call, HostResult};
@@ -392,12 +395,11 @@ fn macro_authored_list_schema_preserves_item_shapes() {
 fn macro_authored_lists_execute_lazily_and_construct_vec_returns() {
     PAYLOAD_CLONES.store(0, Ordering::SeqCst);
     let (value, state_selections) = {
-        let execution = execution(LIST_SOURCE).expect("matching List provider should plan");
+        let mut execution = execution(LIST_SOURCE).expect("matching List provider should plan");
         let mut state = ProfileState {
             component: RunState::default(),
         };
-        let value = execution
-            .run_main(&mut state, &mut Vec::new())
+        let value = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
             .expect("List provider should execute");
         (value, state.component.selections)
     };

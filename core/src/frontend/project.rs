@@ -745,10 +745,10 @@ pub fn answer() -> Int
             ],
         );
 
-        let execution = HostedExecution::try_from_module_plan(plan)
+        let mut execution = HostedExecution::try_from_module_plan(plan)
             .expect("hosted project execution should seal");
         assert_eq!(
-            execution.run_main(&mut (), &mut Vec::new()),
+            crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
             Ok(Value::Int(42.into())),
         );
     }
@@ -800,11 +800,11 @@ pub fn value() -> Int
         )
         .expect("unselected source providers should not enter the hosted program");
         let plan = plan_host_program(typed).expect("selected provider should plan");
-        let execution = HostedExecution::try_from_module_plan(plan)
+        let mut execution = HostedExecution::try_from_module_plan(plan)
             .expect("selected provider should seal for execution");
 
         assert_eq!(
-            execution.run_main(&mut (), &mut Vec::new()),
+            crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
             Ok(Value::Int(42.into())),
         );
     }
@@ -954,15 +954,27 @@ pub fn value() -> Int
         let mut state = ();
         let mut stores = ();
         let mut echo = drop;
-        let mut driver =
-            crate::runtime::work::driver::Driver::new(&plan, &mut state, &mut stores, &mut echo);
+        use crate::runtime::EmbeddingEntry;
+        let host = crate::execution_fixture::TestHost::default();
+        let domain = crate::runtime::execution::Domain::new(
+            std::sync::Arc::new(plan),
+            &host,
+            &mut state,
+            &mut stores,
+            &mut echo,
+            std::num::NonZeroUsize::MIN,
+        );
+        let context = domain.context();
         assert_eq!(
-            driver
-                .run_int(
-                    *entries.ints[0].function(),
-                    crate::runtime::RetainedInputs::empty()
+            host.block_on(
+                domain.drive(
+                    entries.ints[0]
+                        .function()
+                        .call(&context, crate::runtime::RetainedInputs::empty())
                 )
-                .expect("selected provider executes"),
+            )
+            .expect("host cleanup")
+            .expect("selected provider executes"),
             BigInt::from(42)
         );
         for (path, source) in files {

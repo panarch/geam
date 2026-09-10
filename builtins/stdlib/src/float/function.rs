@@ -180,7 +180,7 @@ pub fn main() {
   )
 }
 "#;
-        let execution = execution(source, Vec::<HostModule<GleamStdlibProfile>>::new());
+        let mut execution = execution(source, Vec::<HostModule<GleamStdlibProfile>>::new());
         let mut expected_state = GleamStdlibRunState::from_seed([5; 32]);
         let expected_random = expected_state.random_float();
         let expected = format!(
@@ -189,15 +189,15 @@ pub fn main() {
         let mut first_state = GleamStdlibRunState::from_seed([5; 32]);
         let mut second_state = GleamStdlibRunState::from_seed([5; 32]);
 
-        let first = execution
-            .run_main(&mut first_state, &mut Vec::new())
-            .expect("float providers should run");
-        let second = execution
-            .run_main(&mut second_state, &mut Vec::new())
-            .expect("the same seed should reproduce float providers");
-        let advanced = execution
-            .run_main(&mut first_state, &mut Vec::new())
-            .expect("reusing state should advance its random stream");
+        let first =
+            crate::execution_fixture::run(&mut execution, &mut first_state, &mut Vec::new())
+                .expect("float providers should run");
+        let second =
+            crate::execution_fixture::run(&mut execution, &mut second_state, &mut Vec::new())
+                .expect("the same seed should reproduce float providers");
+        let advanced =
+            crate::execution_fixture::run(&mut execution, &mut first_state, &mut Vec::new())
+                .expect("reusing state should advance its random stream");
 
         assert_eq!(first.inspect().to_string(), expected);
         assert_eq!(second, first);
@@ -231,13 +231,13 @@ pub fn main() {
             .expect("NaN function should be valid")
             .with_function("infinity", || f64::INFINITY)
             .expect("infinity function should be valid");
-            let execution = execution(source, [values]);
-            let error = execution
-                .run_main(
-                    &mut GleamStdlibRunState::from_seed([0; 32]),
-                    &mut Vec::new(),
-                )
-                .expect_err("checked conversion should fail");
+            let mut execution = execution(source, [values]);
+            let error = crate::execution_fixture::run(
+                &mut execution,
+                &mut GleamStdlibRunState::from_seed([0; 32]),
+                &mut Vec::new(),
+            )
+            .expect_err("checked conversion should fail");
 
             assert_eq!(error.to_string(), expected);
         }

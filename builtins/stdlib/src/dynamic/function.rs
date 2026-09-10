@@ -431,7 +431,7 @@ pub fn main() {
                 .unwrap(),
             )
             .unwrap();
-            let execution =
+            let mut execution =
                 HostedExecution::try_from_module_plan(plan_host_program(source).unwrap()).unwrap();
             let mut state = GleamStdlibRunState::from_seed([0; 32]);
             let state_address = std::ptr::from_mut(&mut state);
@@ -443,7 +443,8 @@ pub fn main() {
                 state_address,
                 <Profile as HostComponentProfile<Component>>::component_state(&mut state),
             ));
-            let value = execution.run_main(&mut state, &mut Vec::new()).unwrap();
+            let value =
+                crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new()).unwrap();
             drop(execution);
             assert_eq!(value.inspect().to_string(), "Alpha");
         }
@@ -562,12 +563,12 @@ pub fn main() {
   )
 }
 "#;
-        let actual = execution(source, Vec::<HostModule<GleamStdlibProfile>>::new())
-            .run_main(
-                &mut GleamStdlibRunState::from_seed([0; 32]),
-                &mut Vec::new(),
-            )
-            .expect("generic dynamic casts should run");
+        let actual = crate::execution_fixture::run(
+            &mut execution(source, Vec::<HostModule<GleamStdlibProfile>>::new()),
+            &mut GleamStdlibRunState::from_seed([0; 32]),
+            &mut Vec::new(),
+        )
+        .expect("generic dynamic casts should run");
 
         assert_eq!(
             actual,
@@ -643,12 +644,12 @@ pub fn main() {
   )
 }
 "#;
-        let actual = execution(source, [hash])
-            .run_main(
-                &mut GleamStdlibRunState::from_seed([0; 32]),
-                &mut Vec::new(),
-            )
-            .expect("public dynamic constructors should run");
+        let actual = crate::execution_fixture::run(
+            &mut execution(source, [hash]),
+            &mut GleamStdlibRunState::from_seed([0; 32]),
+            &mut Vec::new(),
+        )
+        .expect("public dynamic constructors should run");
 
         assert_eq!(
             actual.inspect().to_string(),

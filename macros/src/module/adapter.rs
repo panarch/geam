@@ -8,9 +8,9 @@ use super::signature::{
     wrapper_argument_type_with_lifetime,
 };
 use super::{
-    AsyncCallAccess, CallAccess, CustomModel, FunctionArgumentType, FunctionFlavor, FunctionModel,
-    GeneratedConstruction, GeneratedFunction, GeneratedNames, GenericInputSource, InputEnvironment,
-    ProviderFunction,
+    CallAccess, CustomModel, FunctionArgumentType, FunctionModel, GeneratedConstruction,
+    GeneratedFunction, GeneratedNames, GenericInputSource, InputEnvironment, InputOwnership,
+    OwnedCallAccess, ProviderFunction, SourceCompletion,
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -21,22 +21,26 @@ pub(super) fn generate_function_adapter(
     support: &TokenStream,
     module_external_bounds: &[TokenStream],
 ) -> GeneratedFunction {
-    let (function, flavor, call_is_mutable) = match declaration {
+    let (function, flavor, call_is_mutable, source_completion) = match declaration {
         ProviderFunction::Immediate { model, call } => (
             model,
-            FunctionFlavor::Immediate,
+            InputOwnership::Borrowed,
             matches!(call, CallAccess::Mutable),
+            SourceCompletion::Ordinary,
         ),
-        ProviderFunction::Async { model, call } => (
+        ProviderFunction::Owned {
             model,
-            FunctionFlavor::Async,
-            matches!(call, AsyncCallAccess::Mutable),
+            call,
+            completion,
+        } => (
+            model,
+            InputOwnership::Owned,
+            matches!(call, OwnedCallAccess::Mutable),
+            *completion,
         ),
     };
     let ident = &function.ident;
     let wrapper = format_ident!("__geam_host_{}", ident);
-    let is_async = matches!(flavor, FunctionFlavor::Async);
-    let function_flavor = flavor;
     let argument_names = (0..function.arguments.len())
         .map(|index| format_ident!("__geam_argument_{index}"))
         .collect::<Vec<_>>();
@@ -46,13 +50,8 @@ pub(super) fn generate_function_adapter(
         .map(|argument| host_argument_type(argument, customs, support))
         .collect::<Vec<_>>();
     let return_type = host_return_type(&function.return_, customs, support);
-    let registered_return = if is_async {
+    let registered_return = if source_completion == SourceCompletion::Work {
         quote!(#support::HostFutureType<#return_type, #support::HostWorkSchema<Profile>>)
-    } else {
-        return_type.clone()
-    };
-    let callback_return = if is_async {
-        quote!(())
     } else {
         return_type.clone()
     };
@@ -66,8 +65,6 @@ pub(super) fn generate_function_adapter(
                 &function.generics,
                 customs,
                 support,
-                &callback_return,
-                function_flavor,
             )),
             FunctionArgumentType::Input(_) => None,
         })
@@ -103,7 +100,7 @@ pub(super) fn generate_function_adapter(
         return_type: &registered_return,
         function_generics: &function.generics,
         generic_source: GenericInputSource::Instantiated,
-        flavor: function_flavor,
+        flavor,
     };
     let decoded_arguments = function
         .arguments
@@ -149,12 +146,7 @@ pub(super) fn generate_function_adapter(
             .flatten()
             .flat_map(|callback| callback.bounds.iter().cloned()),
     );
-    if is_async && generated_callbacks.iter().any(Option::is_some) {
-        bounds.push(quote! {
-            Profile::ExternalStores: ::core::marker::Send
-        });
-    }
-    if is_async {
+    if source_completion == SourceCompletion::Work {
         bounds.push(quote! {
             Profile: #support::HostWorkProfile
         });
@@ -201,10 +193,26 @@ pub(super) fn generate_function_adapter(
         .collect::<Vec<_>>();
 
     match declaration {
-        ProviderFunction::Async {
-            call: call_access, ..
+        ProviderFunction::Owned {
+            call: call_access,
+            completion: source_completion,
+            ..
         } => {
             let call_access = *call_access;
+            let (completion_type, start, register, call_context) = match source_completion {
+                SourceCompletion::Ordinary => (
+                    quote!(#support::HostCallContinuation),
+                    quote!(resume),
+                    quote!(with_resumable_function),
+                    quote!(from_execution_context),
+                ),
+                SourceCompletion::Work => (
+                    quote!(#support::HostCallCompletion),
+                    quote!(return_future),
+                    quote!(with_scoped_function_and_constructions),
+                    quote!(from_future_context),
+                ),
+            };
             let argument_types = function
                 .arguments
                 .iter()
@@ -231,11 +239,11 @@ pub(super) fn generate_function_adapter(
                 }
             };
             let (call_setup, call_argument) = match call_access {
-                AsyncCallAccess::None => (TokenStream::new(), None),
-                AsyncCallAccess::Mutable => (
+                OwnedCallAccess::None => (TokenStream::new(), None),
+                OwnedCallAccess::Mutable => (
                     quote! {
                         let mut __geam_provider_call =
-                            #support::Call::from_future_context(__geam_future_context);
+                            #support::Call::#call_context(__geam_execution_context);
                     },
                     Some(quote!(&mut __geam_provider_call)),
                 ),
@@ -259,20 +267,19 @@ pub(super) fn generate_function_adapter(
                     >,
                     #(#argument_names: #argument_types,)*
                 ) -> ::core::result::Result<
-                    #support::HostCallCompletion<'__geam_runtime, #registered_return>,
+                    #completion_type<'__geam_runtime, #registered_return>,
                     #support::HostCallError,
                 >
                 where
                     Profile: __GeamModuleProfile,
-                    Profile::RunState: ::core::marker::Send,
                     #(#bounds,)*
                 {
                     #decoded_arguments
-                    ::core::result::Result::Ok(call.return_future(__geam_constructions, move |__geam_future_context| ::std::boxed::Box::pin(async move {
+                    ::core::result::Result::Ok(call.#start(__geam_constructions, move |__geam_execution_context| ::std::boxed::Box::pin(async move {
                         #call_setup
                         let returned = #function_path(#(#call_arguments),*).await;
                         #host_result_unwrap
-                        ::core::result::Result::Ok(#support::HostFutureCompletion::<
+                        ::core::result::Result::Ok(#support::HostOwnedCompletion::<
                             Profile, __GeamProvider, #return_type, #construction_types,
                         >::new(move |mut call, __geam_constructions| {
                             #construction_setup
@@ -283,7 +290,7 @@ pub(super) fn generate_function_adapter(
                 }
             };
             let registration = quote! {
-                let provider = provider.with_scoped_function_and_constructions::<
+                let provider = provider.#register::<
                     __GeamProvider,
                     (#(#host_arguments,)*),
                     #registered_return,

@@ -119,6 +119,21 @@ Synchronous and async provider crates can serve both workflows. The standalone
 runner owns a Tokio runtime and drives the outer Future returned by `main`.
 Rust embedding applications supply their own executor and observe work explicitly.
 
+### Host-Driven Execution
+
+A hosted execution domain borrows the application's state, capabilities, and
+Echo while owned workers evaluate Gleam. The evaluator preserves typed
+activations across instruction-budget yields and native callback waits. The
+domain services requests against the original host state; workers do not take
+that borrowed state with them.
+
+Rust selects an `ExecutionHost` for scheduling, cancellation acknowledgement,
+and a monotonic clock. The optional `TokioHost` adapts an existing runtime
+handle. `with_execution` keeps the domain active across calls and unrelated
+Rust awaits, then waits for worker cleanup. Ordinary native results and
+explicit Future values share this execution path without sharing their
+completion meaning.
+
 ### Owned Work And Runtime APIs
 
 Core owns work construction, callback and capture lifetimes, observation, shared

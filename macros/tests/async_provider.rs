@@ -1,8 +1,10 @@
+#[path = "../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 use geam_builtin::FutureComponent;
 use geam_builtin::embedding::FutureType;
 use geam_core::embedding::{
     BigInt, CallError, FunctionDeclaration, HostedModuleBuilder, List, ObservationError,
-    with_execution_scope,
 };
 use geam_core::frontend::{HostedTypedProgram, compile_typed_host_program};
 use geam_core::host::{
@@ -14,7 +16,7 @@ use geam_core::{
 };
 use std::future::Future;
 use std::pin::pin;
-use std::task::{Context, Poll, Waker};
+use std::task::{Context, Waker};
 
 include!("support/future_families.rs");
 
@@ -147,6 +149,8 @@ fn manual_payloads_retain_rich_values_and_work_across_native_suspension() {
 }
 
 fn assert_work_checks(entry: &str) {
+    let execution_host = crate::execution_fixture::TestHost::default();
+
     let (bindings, function) = HostedModuleBuilder::new(program())
         .expect("plan")
         .function(FunctionDeclaration::<(), FutureType<bool>>::new(entry))
@@ -154,22 +158,27 @@ fn assert_work_checks(entry: &str) {
     let mut module = bindings.seal().expect("typed source callbacks");
     let mut state = State::default();
     let mut echo = Echo::default();
-    poll_ready(with_execution_scope(async |guard| {
-        let mut scope = module.attach(guard, &mut state, &mut echo);
-        let work = scope.call(&function, ()).expect("construct checks");
-        let first = scope.observe(&work).await.expect("complete checks");
-        assert!(first.read(|value| value));
-        let again = scope
-            .observe(&work)
-            .await
-            .expect("same completed operation");
-        assert!(again.read(|value| value));
-    }));
+    execution_host
+        .block_on(
+            module.with_execution(&execution_host, &mut state, &mut echo, async |scope| {
+                let work = scope.call(&function, ()).await.expect("construct checks");
+                let first = scope.observe(&work).await.expect("complete checks");
+                assert!(first.read(|value| value));
+                let again = scope
+                    .observe(&work)
+                    .await
+                    .expect("same completed operation");
+                assert!(again.read(|value| value));
+            }),
+        )
+        .expect("controlled execution");
     assert_eq!(echo.0, 0);
 }
 
 #[test]
 fn direct_scalar_generic_and_lazy_values_keep_their_ordinary_call_path() {
+    let execution_host = crate::execution_fixture::TestHost::default();
+
     let (bindings, function) = HostedModuleBuilder::new(program())
         .expect("plan")
         .function(FunctionDeclaration::<(), bool>::new("direct_families"))
@@ -177,10 +186,13 @@ fn direct_scalar_generic_and_lazy_values_keep_their_ordinary_call_path() {
     let mut module = bindings.seal().expect("sealed");
     let mut state = State::default();
     let mut echo = Echo::default();
-    poll_ready(with_execution_scope(async |guard| {
-        let mut scope = module.attach(guard, &mut state, &mut echo);
-        assert!(scope.call(&function, ()).expect("direct checks"));
-    }));
+    execution_host
+        .block_on(
+            module.with_execution(&execution_host, &mut state, &mut echo, async |scope| {
+                assert!(scope.call(&function, ()).await.expect("direct checks"));
+            }),
+        )
+        .expect("controlled execution");
     assert_eq!(echo.0, 0);
 }
 
@@ -212,6 +224,8 @@ fn external_and_stored_values_keep_original_identity_after_native_suspension() {
 
 #[test]
 fn direct_calls_and_pending_work_share_one_caller_owned_state() {
+    let execution_host = crate::execution_fixture::TestHost::default();
+
     let (mut bindings, direct) = HostedModuleBuilder::new(program())
         .expect("plan")
         .function(FunctionDeclaration::<(BigInt,), BigInt>::new("direct"))
@@ -237,52 +251,63 @@ fn direct_calls_and_pending_work_share_one_caller_owned_state() {
         future: (),
     };
     let mut echo = Echo::default();
-    let mut task = pin!(with_execution_scope(async |guard| {
-        let mut scope = module.attach(guard, &mut state, &mut echo);
-        assert_eq!(
-            scope.call(&direct, (21.into(),)).expect("direct result"),
-            BigInt::from(42)
+    let mut task =
+        pin!(
+            module.with_execution(&execution_host, &mut state, &mut echo, async |scope| {
+                assert_eq!(
+                    scope
+                        .call(&direct, (21.into(),))
+                        .await
+                        .expect("direct result"),
+                    BigInt::from(42)
+                );
+                assert_eq!(
+                    scope
+                        .call(&stateful_direct, (2.into(),))
+                        .await
+                        .expect("state access"),
+                    (BigInt::from(10), BigInt::from(12))
+                );
+                let value = scope.call(&awaited, (41.into(),)).await.expect("construct");
+                let value = scope.observe(&value).await.expect("native wait");
+                assert_eq!(value.read(Clone::clone), BigInt::from(42));
+                let value = scope
+                    .call(&stateful, (5.into(),))
+                    .await
+                    .expect("state construction");
+                // Construction has not applied the queued mutation.
+                assert_eq!(
+                    scope
+                        .call(&stateful_direct, (0.into(),))
+                        .await
+                        .expect("before driving"),
+                    (BigInt::from(12), BigInt::from(12))
+                );
+                let first = scope.observe(&value).await.expect("state request");
+                let second = scope.observe(&value).await.expect("cached state result");
+                assert_eq!(first.read(Clone::clone), BigInt::from(17));
+                first.read(|a| second.read(|b| assert!(std::ptr::eq(a, b))));
+                assert_eq!(
+                    scope
+                        .call(&stateful_direct, (0.into(),))
+                        .await
+                        .expect("after driving"),
+                    (BigInt::from(17), BigInt::from(17))
+                );
+            })
         );
-        assert_eq!(
-            scope
-                .call(&stateful_direct, (2.into(),))
-                .expect("state access"),
-            (BigInt::from(10), BigInt::from(12))
-        );
-        let value = scope.call(&awaited, (41.into(),)).expect("construct");
-        let value = scope.observe(&value).await.expect("native wait");
-        assert_eq!(value.read(Clone::clone), BigInt::from(42));
-        let value = scope
-            .call(&stateful, (5.into(),))
-            .expect("state construction");
-        // Construction has not applied the queued mutation.
-        assert_eq!(
-            scope
-                .call(&stateful_direct, (0.into(),))
-                .expect("before driving"),
-            (BigInt::from(12), BigInt::from(12))
-        );
-        let first = scope.observe(&value).await.expect("state request");
-        let second = scope.observe(&value).await.expect("cached state result");
-        assert_eq!(first.read(Clone::clone), BigInt::from(17));
-        first.read(|a| second.read(|b| assert!(std::ptr::eq(a, b))));
-        assert_eq!(
-            scope
-                .call(&stateful_direct, (0.into(),))
-                .expect("after driving"),
-            (BigInt::from(17), BigInt::from(17))
-        );
-    }));
     assert!(
         task.as_mut()
             .poll(&mut Context::from_waker(Waker::noop()))
             .is_pending()
     );
-    poll_ready(task);
+    execution_host.block_on(task).expect("controlled execution");
 }
 
 #[test]
 fn retained_list_results_pass_back_to_native_work_without_materialization() {
+    let execution_host = crate::execution_fixture::TestHost::default();
+
     let (mut bindings, direct) = HostedModuleBuilder::new(program())
         .expect("plan")
         .function(FunctionDeclaration::<(List<BigInt>,), List<BigInt>>::new(
@@ -298,30 +323,36 @@ fn retained_list_results_pass_back_to_native_work_without_materialization() {
     let mut module = bindings.seal().expect("sealed");
     let mut state = State::default();
     let mut echo = Echo::default();
-    poll_ready(with_execution_scope(async |guard| {
-        let mut scope = module.attach(guard, &mut state, &mut echo);
-        let list = scope
-            .call(&direct, (vec![BigInt::from(1), BigInt::from(2)],))
-            .expect("list");
-        let work = scope.call(&work, (&list,)).expect("retain input");
-        let result = scope.observe(&work).await.expect("list completion");
-        result.read(|result| {
-            assert_eq!(result.len(), 2);
-            for index in 0..2 {
-                list.read_item(index, |left| {
-                    result.read_item(index, |right| {
-                        assert_eq!(left, right);
-                        assert!(std::ptr::eq(left, right));
-                    })
-                })
-                .expect("retained item");
-            }
-        });
-    }));
+    execution_host
+        .block_on(
+            module.with_execution(&execution_host, &mut state, &mut echo, async |scope| {
+                let list = scope
+                    .call(&direct, (vec![BigInt::from(1), BigInt::from(2)],))
+                    .await
+                    .expect("list");
+                let work = scope.call(&work, (&list,)).await.expect("retain input");
+                let result = scope.observe(&work).await.expect("list completion");
+                result.read(|result| {
+                    assert_eq!(result.len(), 2);
+                    for index in 0..2 {
+                        list.read_item(index, |left| {
+                            result.read_item(index, |right| {
+                                assert_eq!(left, right);
+                                assert!(std::ptr::eq(left, right));
+                            })
+                        })
+                        .expect("retained item");
+                    }
+                });
+            }),
+        )
+        .expect("controlled execution");
 }
 
 #[test]
 fn direct_failures_keep_the_provider_or_source_origin() {
+    let execution_host = crate::execution_fixture::TestHost::default();
+
     let (mut bindings, direct) = HostedModuleBuilder::new(program())
         .expect("plan")
         .function(FunctionDeclaration::<(), BigInt>::new("direct_failure"))
@@ -337,37 +368,40 @@ fn direct_failures_keep_the_provider_or_source_origin() {
     let mut module = bindings.seal().expect("sealed");
     let mut state = State::default();
     let mut echo = Echo::default();
-    poll_ready(with_execution_scope(async |guard| {
-        let mut scope = module.attach(guard, &mut state, &mut echo);
-        let CallError::Execution(ExecutionError::Host(error)) =
-            scope.call(&direct, ()).expect_err("direct failure")
-        else {
-            panic!("host origin");
-        };
-        assert_eq!(error.package(), "async_provider");
-        assert_eq!(error.module(), "async_provider/native");
-        assert_eq!(error.function(), "fail_direct");
-        assert_eq!(error.failure().message(), "immediate provider failed");
-        let CallError::Execution(ExecutionError::Host(error)) =
-            scope.call(&nil, ()).expect_err("Nil failure")
-        else {
-            panic!("Nil host origin");
-        };
-        assert_eq!(error.function(), "fail_nil");
-        assert_eq!(error.failure().message(), "immediate Nil provider failed");
-        let CallError::Execution(ExecutionError::Panic(error)) =
-            scope.call(&panic, ()).expect_err("callback panic")
-        else {
-            panic!("source origin");
-        };
-        assert_eq!(error.kind(), PanicKind::Panic);
-        assert_eq!(error.site().module(), "main");
-        assert_eq!(error.site().function(), "panic_immediately");
-        assert_eq!(
-            error.message(),
-            &PanicMessage::Explicit("immediate callback panic".into())
-        );
-    }));
+    execution_host
+        .block_on(
+            module.with_execution(&execution_host, &mut state, &mut echo, async |scope| {
+                let CallError::Execution(ExecutionError::Host(error)) =
+                    scope.call(&direct, ()).await.expect_err("direct failure")
+                else {
+                    panic!("host origin");
+                };
+                assert_eq!(error.package(), "async_provider");
+                assert_eq!(error.module(), "async_provider/native");
+                assert_eq!(error.function(), "fail_direct");
+                assert_eq!(error.failure().message(), "immediate provider failed");
+                let CallError::Execution(ExecutionError::Host(error)) =
+                    scope.call(&nil, ()).await.expect_err("Nil failure")
+                else {
+                    panic!("Nil host origin");
+                };
+                assert_eq!(error.function(), "fail_nil");
+                assert_eq!(error.failure().message(), "immediate Nil provider failed");
+                let CallError::Execution(ExecutionError::Panic(error)) =
+                    scope.call(&panic, ()).await.expect_err("callback panic")
+                else {
+                    panic!("source origin");
+                };
+                assert_eq!(error.kind(), PanicKind::Panic);
+                assert_eq!(error.site().module(), "main");
+                assert_eq!(error.site().function(), "panic_immediately");
+                assert_eq!(
+                    error.message(),
+                    &PanicMessage::Explicit("immediate callback panic".into())
+                );
+            }),
+        )
+        .expect("controlled execution");
 }
 
 #[test]
@@ -416,6 +450,8 @@ fn delayed_source_panics_keep_their_function_and_never_return_family() {
 }
 
 fn assert_work_failure(entry: &str, inspect: impl Fn(&ExecutionError)) {
+    let execution_host = crate::execution_fixture::TestHost::default();
+
     let (bindings, function) = HostedModuleBuilder::new(program())
         .expect("plan")
         .function(FunctionDeclaration::<(), FutureType<BigInt>>::new(entry))
@@ -423,32 +459,22 @@ fn assert_work_failure(entry: &str, inspect: impl Fn(&ExecutionError)) {
     let mut module = bindings.seal().expect("sealed");
     let mut state = State::default();
     let mut echo = Echo::default();
-    poll_ready(with_execution_scope(async |guard| {
-        let mut scope = module.attach(guard, &mut state, &mut echo);
-        let work = scope.call(&function, ()).expect("construct failure");
-        let Err(ObservationError::Execution(first)) = scope.observe(&work).await else {
-            panic!("original execution error");
-        };
-        let Err(ObservationError::Execution(second)) = scope.observe(&work).await else {
-            panic!("cached execution error");
-        };
-        first.read(|a| {
-            inspect(a);
-            second.read(|b| assert!(std::ptr::eq(a, b)));
-        });
-    }));
+    execution_host
+        .block_on(
+            module.with_execution(&execution_host, &mut state, &mut echo, async |scope| {
+                let work = scope.call(&function, ()).await.expect("construct failure");
+                let Err(ObservationError::Execution(first)) = scope.observe(&work).await else {
+                    panic!("original execution error");
+                };
+                let Err(ObservationError::Execution(second)) = scope.observe(&work).await else {
+                    panic!("cached execution error");
+                };
+                first.read(|a| {
+                    inspect(a);
+                    second.read(|b| assert!(std::ptr::eq(a, b)));
+                });
+            }),
+        )
+        .expect("controlled execution");
     assert_eq!(echo.0, 0);
-}
-
-fn poll_ready<Output>(future: impl Future<Output = Output>) -> Output {
-    let mut future = pin!(future);
-    for _ in 0..128 {
-        if let Poll::Ready(value) = future
-            .as_mut()
-            .poll(&mut Context::from_waker(Waker::noop()))
-        {
-            return value;
-        }
-    }
-    panic!("controlled work did not finish")
 }

@@ -1,9 +1,9 @@
-mod attached;
-mod hosted;
+mod entry;
 mod input;
 mod list;
 mod output;
 
+pub(crate) use entry::EmbeddingEntry;
 pub(crate) use input::{
     EmbeddingCustomInput, EmbeddingInput, EmbeddingInputStorage, EmbeddingInputValue,
     EmbeddingListInput, EmbeddingTupleInput,
@@ -21,12 +21,6 @@ use crate::plan::execution::function::{
     BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, IntFunctionId,
     LibraryListFunctionId, NilFunctionId, StringFunctionId, TupleFunctionId,
     UtfCodepointFunctionId,
-};
-pub(crate) use hosted::{
-    run_hosted_embedded_bit_array, run_hosted_embedded_bool, run_hosted_embedded_custom,
-    run_hosted_embedded_float, run_hosted_embedded_int, run_hosted_embedded_list,
-    run_hosted_embedded_nil, run_hosted_embedded_string, run_hosted_embedded_tuple,
-    run_hosted_embedded_utf_codepoint,
 };
 
 pub(crate) fn run_embedded_int(
@@ -132,7 +126,7 @@ pub(crate) fn run_embedded_list(
     function::run_list(
         plan,
         &mut state,
-        function.runtime_id(),
+        function.profiled_runtime_id(),
         HostCallOrigin::Entry,
         inputs,
     )

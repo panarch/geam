@@ -14,10 +14,13 @@ tests.
 | [`provider`](provider) | Call Gleam code backed by a configured Rust provider |
 | [`application`](application) | Combine packages, IO, a provider, structured data, and repeated calls |
 | [`async_host`](async_host) | Return explicit Future values and drive them on the application's executor |
+| [`session`](session) | Retain opaque Gleam data and pass it to later calls |
+| [`execution`](execution) | Drive and cancel a running Gleam entry without blocking the Rust host |
 
 Start with [`first_call`](first_call) and follow each README's next step through
 [`application`](application). Continue with [`async_host`](async_host) when a
-Rust capability needs to suspend and resume a Gleam call. Every example keeps
+Rust capability returns explicit work, or [`session`](session) to keep opaque
+application values between calls. Every example keeps
 its file tour, run commands, and expected output together. See [Rust
 embedding](../../docs/embedding.md) for the initial project setup,
 synchronization workflow, and supported data.
