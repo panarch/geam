@@ -365,7 +365,8 @@ fn collect_function_input_bounds(
     bounds: &mut Vec<TokenStream>,
 ) {
     match type_ {
-        ProviderValueType::Declared { type_, .. } => {
+        ProviderValueType::Declared { type_, .. }
+        | ProviderValueType::Custom { rust: type_, .. } => {
             let input = match flavor {
                 InputOwnership::Borrowed => quote!(ImmediateInput),
                 InputOwnership::Owned => quote!(OwnedInput),
@@ -378,22 +379,6 @@ fn collect_function_input_bounds(
                         #return_type,
                         Host = <#type_ as #support::ProviderValue>::Host,
                     >
-            });
-        }
-        ProviderValueType::Custom { index, .. } => {
-            let input = customs[*index]
-                .input
-                .as_ref()
-                .expect("accepted custom input must have a generated input type");
-            let input = super::list::custom_input_ident(&input.ident, flavor);
-            let host = host_value_type(type_, customs, support);
-            bounds.push(quote! {
-                #input: #support::ProviderInputValue<
-                    Profile,
-                    __GeamProvider,
-                    #return_type,
-                    Host = #host,
-                >
             });
         }
         ProviderValueType::List(list) => collect_function_list_input_bounds(
@@ -797,7 +782,8 @@ fn decode_value_argument(
             type_,
             input: DeclaredInput::Owned,
             ..
-        } => {
+        }
+        | ProviderValueType::Custom { rust: type_, .. } => {
             let value = names.next("declared_input");
             let statements = match flavor {
                 InputOwnership::Borrowed => quote! {
@@ -881,50 +867,6 @@ fn decode_value_argument(
                     },
                     value: quote!(#view),
                 },
-            }
-        }
-        ProviderValueType::Custom {
-            index,
-            rust: _input_type,
-        } => {
-            let value = names.next("custom_input");
-            let (input_type, input_trait, provider) = match flavor {
-                InputOwnership::Borrowed => {
-                    let input = customs[*index]
-                        .input
-                        .as_ref()
-                        .expect("accepted custom input must have a generated input type");
-                    let input =
-                        super::list::custom_input_ident(&input.ident, InputOwnership::Borrowed);
-                    (
-                        quote!(#input),
-                        quote!(#support::ProviderInputValue),
-                        quote!(__GeamProvider),
-                    )
-                }
-                InputOwnership::Owned => {
-                    let input = customs[*index]
-                        .input
-                        .as_ref()
-                        .expect("accepted custom input must have a generated input type");
-                    let input =
-                        super::list::custom_input_ident(&input.ident, InputOwnership::Owned);
-                    (
-                        quote!(#input),
-                        quote!(#support::ProviderInputValue),
-                        quote!(__GeamProvider),
-                    )
-                }
-            };
-            GeneratedValue {
-                statements: quote! {
-                    let #value = <#input_type as #input_trait<
-                        Profile,
-                        #provider,
-                        #return_type,
-                    >>::from_host(&mut call, #input);
-                },
-                value: quote!(#value),
             }
         }
         ProviderValueType::List(list) => {

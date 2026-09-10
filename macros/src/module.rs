@@ -2120,6 +2120,40 @@ mod tests {
     }
 
     #[test]
+    fn custom_input_wrappers_use_the_declared_forms_for_each_completion() {
+        for (attribute, keyword, form) in [
+            (quote!(#[geam::function]), quote!(), quote!(ImmediateInput)),
+            (quote!(#[geam::function]), quote!(async), quote!(OwnedInput)),
+            (
+                quote!(#[geam::function(resumable)]),
+                quote!(async),
+                quote!(OwnedInput),
+            ),
+        ] {
+            let expansion = expand(
+                quote!(path = "native", crate_path = geam_core),
+                quote! {
+                    mod native {
+                        #[geam::custom(input = PacketInput)]
+                        enum Packet { Enabled(bool) }
+
+                        #attribute
+                        #keyword fn read(value: PacketInput) -> bool {
+                            let PacketInput::Enabled(value) = value;
+                            value
+                        }
+                    }
+                },
+            )
+            .expect("declared custom input should expand");
+            let expected = quote!(
+                : <PacketInput as geam_core::__macro_support::ProviderValueForms>::#form =
+            );
+            assert!(expansion.to_string().contains(&expected.to_string()));
+        }
+    }
+
+    #[test]
     fn manual_retained_callback_outputs_use_the_same_payload_owner() {
         let expansion = expand(
             quote!(path = "manual", crate_path = geam_core),
