@@ -92,6 +92,7 @@ mod tests {
     impl HostProfile for Profile {
         type RunState = Option<HostExecutionError>;
         type ExternalStores = ();
+        type ExecutionState = ();
     }
     struct Provider;
     impl HostProvider<Profile> for Provider {

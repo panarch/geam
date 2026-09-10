@@ -58,6 +58,10 @@ where
         }
     }
 
+    pub(crate) fn execution(&self) -> &ExecutionContext<Profile> {
+        &self.execution
+    }
+
     /// Runs one bounded typed value operation. Call-scoped views cannot escape.
     pub fn with_call<'request, Output: Send + 'static, Operation>(
         &'request self,
@@ -89,6 +93,7 @@ where
     /// impl HostProfile for Profile {
     ///     type RunState = String;
     ///     type ExternalStores = ();
+    ///     type ExecutionState = ();
     /// }
     /// struct Provider;
     /// impl HostProvider<Profile> for Provider {
@@ -161,6 +166,18 @@ where
     Provider: HostProvider<Profile>,
     Return: HostType,
 {
+    /// Starts an independent logical invocation owned by the execution domain.
+    /// Its source return value is discarded; source failure is reported to the
+    /// domain's execution services. It does not inherit the caller's lifetime.
+    pub fn spawn<CallbackReturn: HostType>(
+        &mut self,
+        callback: HostCallable<'call, crate::host::HostTypeListEnd, CallbackReturn>,
+    ) -> crate::execution::ExecutionUnit {
+        let callable = self.runtime.callable(callback.token);
+        let origin = HostCallOrigin::host(self.runtime.codec_scope().function());
+        self.runtime.spawn(callable, origin)
+    }
+
     /// Retains an invocable callback, not merely an opaque function value.
     pub fn owned_callable<
         Arguments: HostTypeSequence,
@@ -174,7 +191,7 @@ where
         let codec = self.runtime.codec_scope();
         let origin = HostCallOrigin::host(codec.function());
         HostOwnedCallable {
-            execution: self.runtime.execution(),
+            execution: self.runtime.execution().with_unit(None),
             codec,
             origin,
             callable: self.runtime.callable(callback.token),
@@ -218,22 +235,24 @@ where
             + Send
             + 'static,
     {
-        let invocation = self.execution.invoke_owned(
-            self.callable.clone(),
-            self.codec.clone(),
-            self.origin.clone(),
-            move |runtime| {
-                let values = inputs(HostCall::new(runtime), HostConstructions::new());
-                let mut scoped = Vec::new();
-                crate::host::type_::into_scoped_values::<Arguments>(values, &mut scoped);
-                runtime.callback_inputs(scoped.into_boxed_slice())
-            },
-            move |runtime, token| {
-                let value = crate::host::type_::from_runtime_token::<Return, _>(runtime, token);
-                decode(HostCall::new(runtime), HostConstructions::new(), value)
-            },
-        );
+        let execution = self.execution.for_invocation(&context.execution);
         async move {
+            let execution = execution?;
+            let invocation = execution.invoke_owned(
+                self.callable.clone(),
+                self.codec.clone(),
+                self.origin.clone(),
+                move |runtime| {
+                    let values = inputs(HostCall::new(runtime), HostConstructions::new());
+                    let mut scoped = Vec::new();
+                    crate::host::type_::into_scoped_values::<Arguments>(values, &mut scoped);
+                    runtime.callback_inputs(scoped.into_boxed_slice())
+                },
+                move |runtime, token| {
+                    let value = crate::host::type_::from_runtime_token::<Return, _>(runtime, token);
+                    decode(HostCall::new(runtime), HostConstructions::new(), value)
+                },
+            );
             let _scope = &context.scope;
             invocation.await
         }

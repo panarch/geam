@@ -3,7 +3,7 @@
 Each Geam release publishes the workspace crates, the
 `geam-example-text-pattern` reference provider on crates.io, and the
 `example_text_pattern` package on Hex. The workspace crates are `geam-core`,
-`geam-macros`, `geam-stdlib`, `geam-json`, `geam-time`, `geam-builtin`, `geam-cli`, and the root
+`geam-macros`, `geam-stdlib`, `geam-json`, `geam-time`, `geam-erlang`, `geam-builtin`, `geam-cli`, and the root
 `geam` facade. The root owns the installable `geam` binary.
 
 `Cargo.toml` owns the release version; this guide does not repeat the current
@@ -213,7 +213,7 @@ The workspace crates use this Trusted Publisher configuration:
 - workflow: `publish.yml`
 - environment: `crates-io`
 
-New workspace crates, including `geam-builtin`, need their own Trusted
+New workspace crates, including `geam-erlang`, need their own Trusted
 Publisher registration before their first automated publication.
 
 The reference provider needs two configurations with the same repository and

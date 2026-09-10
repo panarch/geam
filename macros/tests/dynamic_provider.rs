@@ -351,6 +351,7 @@ struct ProfileState {
 impl HostProfile for Profile {
     type RunState = ProfileState;
     type ExternalStores = ProfileStores;
+    type ExecutionState = ();
 }
 
 impl geam_core::host::HostWorkProfile for Profile {
@@ -401,6 +402,7 @@ impl EchoSink for AsyncEcho {
 impl HostProfile for AsyncProfile {
     type RunState = <Component as HostProviderComponent>::RunState;
     type ExternalStores = FutureStores;
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<Component> for AsyncProfile {

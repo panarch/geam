@@ -24,6 +24,7 @@ impl geam_core::EchoSink for Echo {
 impl HostProfile for Profile {
     type RunState = ();
     type ExternalStores = HostFutureStore;
+    type ExecutionState = ();
 }
 
 impl geam_core::host::HostWorkProfile for Profile {
@@ -396,6 +397,7 @@ struct NativeState {
 impl HostProfile for NativeProfile {
     type RunState = NativeState;
     type ExternalStores = HostFutureStore;
+    type ExecutionState = ();
 }
 
 impl geam_core::HostProvider<NativeProfile> for NativeProvider {

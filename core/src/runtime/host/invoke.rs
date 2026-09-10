@@ -109,6 +109,7 @@ mod tests {
         impl crate::HostProfile for Profile {
             type RunState = Option<HostCallError>;
             type ExternalStores = ();
+            type ExecutionState = ();
         }
         struct Provider;
         impl crate::HostProvider<Profile> for Provider {

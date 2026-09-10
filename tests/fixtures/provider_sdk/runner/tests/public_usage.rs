@@ -25,6 +25,7 @@ struct RunState {
 impl HostProfile for Profile {
     type RunState = RunState;
     type ExternalStores = Stores;
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<Component> for Profile {

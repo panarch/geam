@@ -415,6 +415,10 @@ pub(crate) struct OwnedRuntimeValueMetadata {
 }
 
 impl<'plan> RuntimeValueMetadata<'plan> {
+    pub(crate) fn native_constructor_tags(self) -> impl Iterator<Item = &'plan EcoString> {
+        self.custom_types.native_constructor_tags()
+    }
+
     fn new<Graph: super::function::ExecutionGraphProfile>(
         common: &'plan super::ExecutionProgramCommon<Graph>,
     ) -> Self {

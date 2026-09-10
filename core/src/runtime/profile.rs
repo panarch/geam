@@ -643,6 +643,7 @@ fn exercise() {
         impl HostProfile for Profile {
             type RunState = Cell<usize>;
             type ExternalStores = ();
+            type ExecutionState = ();
         }
         impl HostProvider<Profile> for Provider {
             type State = Cell<usize>;

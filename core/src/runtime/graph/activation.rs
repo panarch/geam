@@ -665,6 +665,7 @@ pub fn main() {{ let stop = forward stop() }}
         impl HostProfile for Profile {
             type RunState = usize;
             type ExternalStores = ();
+            type ExecutionState = ();
         }
         struct Provider;
         impl HostProvider<Profile> for Provider {

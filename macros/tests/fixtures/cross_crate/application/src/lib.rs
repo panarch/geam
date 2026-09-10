@@ -22,6 +22,7 @@ pub struct Stores {
 impl HostProfile for Profile {
     type RunState = ();
     type ExternalStores = Stores;
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<DeclarationsComponent> for Profile {

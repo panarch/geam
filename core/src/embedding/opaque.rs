@@ -299,6 +299,7 @@ mod tests {
     impl HostProfile for Profile {
         type RunState = ();
         type ExternalStores = ();
+        type ExecutionState = ();
     }
 
     struct Session;
@@ -623,6 +624,7 @@ pub fn keep(value: Session(Int)) { echo "entered" value }
         impl HostProfile for WorkProfile {
             type RunState = ();
             type ExternalStores = HostFutureStore;
+            type ExecutionState = ();
         }
         impl HostWorkProfile for WorkProfile {
             type Work = WorkComponent;
@@ -730,6 +732,7 @@ pub fn package(value: Session) { work.ready([value]) }
     impl HostProfile for ResourceProfile {
         type RunState = std::sync::Arc<std::sync::atomic::AtomicUsize>;
         type ExternalStores = crate::HostExternalStore<ResourcePayload>;
+        type ExecutionState = ();
     }
 
     struct Resource;

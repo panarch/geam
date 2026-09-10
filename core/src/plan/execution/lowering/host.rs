@@ -335,6 +335,7 @@ mod tests {
         impl crate::HostProfile for Profile {
             type RunState = ();
             type ExternalStores = crate::host::HostFutureStore;
+            type ExecutionState = ();
         }
         impl crate::host::HostWorkProfile for Profile {
             type Work = crate::work_fixture::WorkComponent;
@@ -540,6 +541,7 @@ pub fn second(value: Int) { math.add(value, 2) }
     impl HostProfile for Profile {
         type RunState = ();
         type ExternalStores = HostFutureStore;
+        type ExecutionState = ();
     }
     impl crate::host::HostWorkProfile for Profile {
         type Work = crate::work_fixture::WorkComponent;

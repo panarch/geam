@@ -20,6 +20,7 @@ integration path described here.
 | `gleam_http` | `v4.3.0` |
 | `gleam_json` | `v3.1.0` |
 | `gleam_time` | `v1.8.0` |
+| `gleam_erlang` | `v1.3.0` |
 
 `geam-gleam-core` packages the matching compiler source for this integration.
 Geam pins it exactly and updates the baseline deliberately. It does not follow
@@ -53,18 +54,16 @@ generic, retained, and callback forms documented in the
 Generated Rust function bindings currently support this recursive data grammar:
 
 ```text
-Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data) | Future(Data)
+Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data) | Future(Data) | Opaque
 ```
 
 The Future case is the `geam` package's nominal `geam/future.Future`.
-Records, domain custom types, other external values, callbacks, and generic types
-cannot currently appear in generated Rust function signatures. The built-in requires the
-`geam-builtin` feature; other external types remain unsupported in generated
-signatures. Gleam modules
-may still use them internally. Rust can reach such logic through generated
-bindings only when the same-name root module exposes a public function with
-supported arguments and return values. See [Rust embedding](embedding-boundary.md)
-for the exact recursive type map.
+It requires the `geam-builtin` feature. Concrete custom and external types use
+opaque handles with their exact nominal specialization and execution lifetime.
+Rust can retain and pass them back, including Pid and Subject values, without
+constructing or decoding their private fields. Public generic functions and
+bare callback signatures remain outside generated bindings. See
+[Rust embedding](embedding-boundary.md) for the exact recursive type map.
 
 ## Geam Runtime APIs
 
@@ -126,6 +125,20 @@ UTC offset through caller-owned state.
 
 This integration does not provide timezone history, a monotonic clock, timers,
 sleep, or an implicit system-clock fallback after provider failure.
+
+### Gleam Erlang
+
+Geam implements all seven public modules and 48 bodyless externals in unchanged
+`gleam_erlang v1.3.0`: application, atom, charlist, node, port, process, and
+reference. The package's ordinary Gleam wrappers run on Geam's runtime.
+
+Process operations include spawning, typed Subjects, selective receive,
+request/reply, links, monitors, exit signals, timers, and registered names.
+The Rust host supplies worker scheduling and a monotonic clock. The local
+non-distributed node and package-resource behavior are defined in
+[native process semantics](runtime-semantics.md#processes-and-native-environment).
+`gleam_otp` has additional native implementations and is not included by this
+package integration.
 
 ## Runtime And Deployment Limits
 

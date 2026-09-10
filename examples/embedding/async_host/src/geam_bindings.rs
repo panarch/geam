@@ -60,6 +60,7 @@ pub struct RunState {
 impl HostProfile for Profile {
     type ExternalStores = Stores;
     type RunState = RunState;
+    type ExecutionState = ();
 }
 
 impl HostWorkProfile for Profile {

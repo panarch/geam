@@ -42,7 +42,7 @@ where
         let lease = self.runtime.external_lease(value.token);
         HostFutureValue {
             work: crate::host::work_store::<Profile>(self.runtime.external_stores()).work(&lease),
-            context: self.runtime.execution(),
+            context: self.runtime.execution().with_unit(None),
             codec: self.runtime.codec_scope(),
             origin: self.runtime.origin(),
             signature: PhantomData,

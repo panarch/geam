@@ -150,6 +150,7 @@ mod tests {
     impl HostProfile for Profile {
         type RunState = Cell<usize>;
         type ExternalStores = ();
+        type ExecutionState = ();
     }
 
     #[test]

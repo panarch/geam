@@ -81,6 +81,7 @@ struct Echo(Arc<Mutex<Vec<RecordedEvent>>>);
 impl HostProfile for Profile {
     type RunState = State;
     type ExternalStores = Stores;
+    type ExecutionState = ();
 }
 impl GleamStdlibHostProfile for Profile {
     type Io = Sink;

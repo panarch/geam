@@ -103,6 +103,7 @@ pub struct GleamStdlibProfile;
 impl HostProfile for GleamStdlibProfile {
     type RunState = GleamStdlibRunState;
     type ExternalStores = GleamStdlibStores;
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<Component> for GleamStdlibProfile {
@@ -199,6 +200,7 @@ mod tests {
     impl HostProfile for CustomProfile {
         type RunState = CustomRunState;
         type ExternalStores = CustomStores;
+        type ExecutionState = ();
     }
 
     impl HostComponentProfile<Component<RecordingSink>> for CustomProfile {

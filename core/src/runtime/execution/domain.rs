@@ -1,5 +1,8 @@
-use super::{ExecutionContext, Request};
-use crate::execution::{DriverError, ExecutionHost, HostTask, TaskExit, Worker};
+use super::{ExecutionContext, Request, Units};
+use crate::execution::{
+    DriverError, ExecutionClock, ExecutionHost, HostExecutionState, HostTask, TaskExit,
+    UnitFinished, UnitOwner, Worker,
+};
 use crate::host::HostProfile;
 use crate::plan::execution::HostedProgram;
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
@@ -26,16 +29,24 @@ pub(crate) struct Domain<'host, Profile: HostProfile> {
     echo: &'host mut (dyn EchoSink + Send),
     lists: RuntimeListStorage,
     work: ExecutionWork<Profile>,
-    entries: Requests<Worker>,
+    entries: Requests<Entry<Profile>>,
     tasks: FuturesUnordered<Box<dyn HostTask>>,
+    units: Units<Profile>,
+    closed: bool,
     budget: NonZeroUsize,
 }
 
 pub(crate) struct EntryContext<Profile: HostProfile> {
     plan: Arc<HostedProgram<Profile>>,
     execution: ExecutionContext<Profile>,
-    entries: Sender<Worker>,
+    entries: Sender<Entry<Profile>>,
+    completion: futures_channel::mpsc::UnboundedSender<UnitFinished>,
     budget: NonZeroUsize,
+}
+
+struct Entry<Profile: HostProfile> {
+    owner: UnitOwner,
+    start: Box<dyn FnOnce(ExecutionContext<Profile>, super::unit::Root) -> Worker + Send>,
 }
 
 impl<'host, Profile: HostProfile> Domain<'host, Profile> {
@@ -49,6 +60,9 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
         echo: &'host mut (dyn EchoSink + Send),
         budget: NonZeroUsize,
     ) -> Self {
+        let mut services = Profile::initialize_execution(state);
+        services.initialize(crate::execution::ExecutionMetadata(plan.value_metadata()));
+        let units = Units::new(services);
         Self {
             plan,
             host,
@@ -60,6 +74,8 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
             work: ExecutionWork::new(),
             entries: Requests::new(),
             tasks: FuturesUnordered::new(),
+            units,
+            closed: false,
         }
     }
 
@@ -68,6 +84,7 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
             plan: Arc::clone(&self.plan),
             execution: self.work.execution(),
             entries: self.entries.sender(),
+            completion: self.units.completion(),
             budget: self.budget,
         }
     }
@@ -98,6 +115,7 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
         mut body: Pin<&mut impl Future<Output = Output>>,
         cx: &mut Context<'_>,
     ) -> Poll<Result<Output, DriverError>> {
+        self.finish_units(cx);
         let output = body.as_mut().poll(cx);
         if output.is_pending() {
             self.service(cx);
@@ -108,21 +126,43 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
         output.map(Ok)
     }
 
-    fn close(&self) {
+    fn close(&mut self) {
+        if self.closed {
+            return;
+        }
+        self.closed = true;
         self.entries.close();
         self.work.close();
+        self.units.close();
         for task in self.tasks.iter() {
             task.cancel();
         }
     }
 
     fn service(&mut self, cx: &mut Context<'_>) {
-        // Both queues receive a bounded turn, including while the Rust body waits.
+        // Bound each service turn, including while the Rust body waits.
         for _ in 0..self.budget.get() {
+            let finished = self.units.finish_next(cx);
+            let progress = self
+                .units
+                .state()
+                .poll(cx, ExecutionClock::new(self.host))
+                .is_ready();
             let entry = self.entries.next(cx);
+            let spawned = self.units.next_spawn();
             let request = self.work.next(cx);
-            let empty = entry.is_none() && request.is_none();
-            if let Some(worker) = entry {
+            let empty =
+                !finished && !progress && entry.is_none() && spawned.is_none() && request.is_none();
+            if let Some(entry) = entry
+                && entry.owner.handle().is_active()
+            {
+                let (context, root) = self.begin(entry.owner);
+                self.tasks
+                    .push(self.host.spawn((entry.start)(context, root)));
+            }
+            if let Some(spawned) = spawned {
+                let worker =
+                    spawned.into_worker(Arc::clone(&self.plan), self.work.execution(), self.budget);
                 self.tasks.push(self.host.spawn(worker));
             }
             if let Some(request) = request {
@@ -138,10 +178,18 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
     fn dispatch(&mut self, request: Request<Profile>) {
         match request {
             Request::Service(request) => {
+                let context = self.work.execution().with_unit(request.unit().cloned());
                 let delivery = {
                     let mut runtime = RuntimeState::with_host_and_lists(
                         &mut *self.echo,
-                        RuntimeHost::<Profile>::new(&mut *self.state, &*self.stores, &self.work),
+                        RuntimeHost::<Profile>::new(
+                            &mut *self.state,
+                            &*self.stores,
+                            &self.work,
+                            &mut self.units,
+                            context,
+                            ExecutionClock::new(self.host),
+                        ),
                         self.lists.clone(),
                     );
                     request.service(&self.plan, &mut runtime)
@@ -151,11 +199,34 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
                 }
             }
             Request::Callback(request) => {
+                let (context, root) = match request.unit() {
+                    Some(unit) if !unit.is_active() => return,
+                    Some(unit) => (self.work.execution().with_unit(Some(unit.clone())), None),
+                    None => {
+                        let (context, root) = self.begin(UnitOwner::new(self.units.completion()));
+                        (context, Some(root))
+                    }
+                };
                 let worker =
-                    request.into_worker(Arc::clone(&self.plan), self.work.execution(), self.budget);
+                    request.into_worker(Arc::clone(&self.plan), context, self.budget, root);
                 self.tasks.push(self.host.spawn(worker));
             }
         }
+    }
+
+    fn begin(&mut self, owner: UnitOwner) -> (ExecutionContext<Profile>, super::unit::Root) {
+        let unit = owner.handle();
+        let root = self.units.begin(owner);
+        (self.work.execution().with_unit(Some(unit)), root)
+    }
+
+    fn finish_units(&mut self, cx: &mut Context<'_>) {
+        for _ in 0..self.budget.get() {
+            if !self.units.finish_next(cx) {
+                return;
+            }
+        }
+        cx.waker().wake_by_ref();
     }
 
     fn reap(&mut self, cx: &mut Context<'_>) -> Option<DriverError> {
@@ -190,22 +261,29 @@ impl<Profile: HostProfile> EntryContext<Profile> {
         &self,
     ) -> Result<crate::Value, crate::execution::RunError> {
         let plan = Arc::clone(&self.plan);
-        let context = self.execution.clone();
         let budget = self.budget;
+        let owner = UnitOwner::new(self.completion.clone());
+        let _cancel = super::unit::CancelOnDrop(owner.handle());
         self.entries
-            .submit(|reply| {
-                super::worker::completing(reply, async move {
-                    let returned = crate::runtime::function::prepare_main(&plan)
-                        .submit(context.services(), budget)
-                        .await?;
-                    Ok(returned.map(|value| {
-                        crate::runtime::materialize::value(
-                            plan.value_metadata(),
-                            &RuntimeListStorage::default(),
-                            value,
-                        )
-                    }))
-                })
+            .submit(|reply| Entry {
+                owner,
+                start: Box::new(move |context, root| {
+                    super::worker::completing(
+                        reply,
+                        root.run(async move {
+                            let returned = crate::runtime::function::prepare_main(&plan)
+                                .submit(context.services(), budget)
+                                .await?;
+                            Ok(returned.map(|value| {
+                                crate::runtime::materialize::value(
+                                    plan.value_metadata(),
+                                    &RuntimeListStorage::default(),
+                                    value,
+                                )
+                            }))
+                        }),
+                    )
+                }),
             })
             .await
             .map_err(|_| crate::execution::RunError::Cancelled)?
@@ -234,17 +312,25 @@ impl<Profile: HostProfile> EntryContext<Profile> {
         Id: EntryTarget<HostedProgram<Profile>> + 'static,
     {
         let plan = Arc::clone(&self.plan);
-        let context = self.execution.clone();
         let budget = self.budget;
         let entries = self.entries.clone();
+        let completion = self.completion.clone();
         async move {
+            let owner = UnitOwner::new(completion);
+            let _cancel = super::unit::CancelOnDrop(owner.handle());
             entries
-                .submit(|reply| {
-                    super::worker::completing(reply, async move {
-                        Execution::new(function, origin, inputs)
-                            .drive(&plan, context.services(), budget)
-                            .await
-                    })
+                .submit(|reply| Entry {
+                    owner,
+                    start: Box::new(move |context, root| {
+                        super::worker::completing(
+                            reply,
+                            root.run(async move {
+                                Execution::new(function, origin, inputs)
+                                    .drive(&plan, context.services(), budget)
+                                    .await
+                            }),
+                        )
+                    }),
                 })
                 .await
         }
@@ -276,6 +362,7 @@ mod tests {
     impl HostProfile for Profile {
         type RunState = Cell<usize>;
         type ExternalStores = Cell<()>;
+        type ExecutionState = ();
     }
 
     #[derive(Default)]
@@ -829,6 +916,142 @@ pub fn main() { #(fn() { echo 41 count(2_000, 0) - 1958 }) }
         assert_eq!(host.released.load(Ordering::SeqCst), 2);
     }
 
+    #[test]
+    fn cancellation_rejects_already_queued_state_access_and_callbacks() {
+        use crate::execution::UnitOwner;
+        use crate::plan::{FunctionType, ValueType};
+        use crate::runtime::CallbackInputs;
+
+        let (plan, functions) = program(
+            "pub fn main() { #(fn() { echo 42 42 }) }",
+            LibraryValueType::Tuple(vec![ValueType::Function(Box::new(FunctionType::new(
+                Vec::new(),
+                ValueType::Int,
+            )))]),
+        );
+        let host = ManualHost::default();
+        let mut state = Cell::new(7);
+        let mut stores = Cell::new(());
+        let mut echo = Vec::new();
+        let mut domain = Domain::new(
+            plan,
+            &host,
+            &mut state,
+            &mut stores,
+            &mut echo,
+            NonZeroUsize::MIN,
+        );
+        let context = domain.context();
+        let mut entry = std::pin::pin!(context.call(
+            *functions.tuples[0].function(),
+            HostCallOrigin::Entry,
+            RetainedValues::empty(),
+        ));
+        let tuple = host
+            .finish(poll_fn(|cx| domain.poll_body(entry.as_mut(), cx)))
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        let callable = int_callback(&tuple.as_slice()[0]);
+        let mut successful = std::pin::pin!(context.execution.with_state(set_state));
+        host.finish(poll_fn(|cx| domain.poll_body(successful.as_mut(), cx)))
+            .unwrap()
+            .unwrap();
+        assert_eq!(domain.state.get(), 99);
+        domain.state.set(7);
+        let (context, root) = domain.begin(UnitOwner::new(domain.units.completion()));
+        let unit = context.unit().unwrap().clone();
+        let mut request = std::pin::pin!(context.with_state(set_state));
+        let mut callback =
+            std::pin::pin!(context.invoke(callable, HostCallOrigin::Entry, CallbackInputs::new(),));
+        let mut cx = Context::from_waker(Waker::noop());
+        assert!(request.as_mut().poll(&mut cx).is_pending());
+        assert!(callback.as_mut().poll(&mut cx).is_pending());
+        assert!(unit.cancel());
+        domain.service(&mut cx);
+        domain.service(&mut cx);
+        assert_eq!(request.as_mut().poll(&mut cx), Poll::Ready(Err(Cancelled)));
+        assert_eq!(
+            callback.as_mut().poll(&mut cx).map(|result| result.err()),
+            Poll::Ready(Some(Cancelled))
+        );
+        assert_eq!(host.started.load(Ordering::SeqCst), 1);
+        drop(root);
+        host.finish(domain.drive(std::future::ready(()))).unwrap();
+        assert_eq!(state.get(), 7);
+        assert!(echo.is_empty());
+    }
+
+    fn set_state(state: &mut Cell<usize>) {
+        state.set(99);
+    }
+
+    #[test]
+    fn spawned_and_nested_callbacks_share_service_turns_without_sharing_lifetimes() {
+        use crate::execution::UnitOwner;
+        use crate::plan::{FunctionType, ValueType};
+        use crate::runtime::{CallbackInputs, EvaluatedValue};
+
+        let (plan, functions) = program(
+            "pub fn main() { #(fn() { echo 42 42 }) }",
+            LibraryValueType::Tuple(vec![ValueType::Function(Box::new(FunctionType::new(
+                Vec::new(),
+                ValueType::Int,
+            )))]),
+        );
+        let host = ManualHost::default();
+        let mut state = Cell::new(7);
+        let mut stores = Cell::new(());
+        let mut echo = Vec::new();
+        let mut domain = Domain::new(
+            plan,
+            &host,
+            &mut state,
+            &mut stores,
+            &mut echo,
+            NonZeroUsize::MIN,
+        );
+        let context = domain.context();
+        let mut entry = std::pin::pin!(context.call(
+            *functions.tuples[0].function(),
+            HostCallOrigin::Entry,
+            RetainedValues::empty(),
+        ));
+        let tuple = host
+            .finish(poll_fn(|cx| domain.poll_body(entry.as_mut(), cx)))
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        let callable = int_callback(&tuple.as_slice()[0]);
+        let spawned = domain.units.spawn(callable.clone(), HostCallOrigin::Entry);
+        let (context, root) = domain.begin(UnitOwner::new(domain.units.completion()));
+        let caller = context.unit().unwrap().clone();
+        let mut callback =
+            std::pin::pin!(context.invoke(callable, HostCallOrigin::Entry, CallbackInputs::new(),));
+        let value = host
+            .finish(poll_fn(|cx| domain.poll_body(callback.as_mut(), cx)))
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(value.value(), &EvaluatedValue::Int(42.into()));
+        assert!(caller.is_active());
+        assert!(!spawned.is_active());
+        assert_ne!(caller.id(), spawned.id());
+        host.finish(root.run(std::future::ready(Ok(Ok(())))))
+            .unwrap()
+            .unwrap();
+        assert!(!caller.is_active());
+        host.finish(domain.drive(std::future::ready(()))).unwrap();
+        assert_eq!(host.started.load(Ordering::SeqCst), 3);
+        assert_eq!(host.released.load(Ordering::SeqCst), 3);
+        assert_eq!(
+            echo.iter()
+                .map(|output| output.value().inspect().to_string())
+                .collect::<Vec<_>>(),
+            ["42", "42"]
+        );
+    }
+
     fn int_callback(value: &crate::runtime::EvaluatedValue) -> crate::runtime::RetainedCallable {
         use crate::runtime::evaluated::{EvaluatedFunctionValueKind, EvaluatedValue};
         use crate::runtime::function::InvocableFunctionValue;
@@ -946,6 +1169,7 @@ mod source_work {
     impl HostProfile for Profile {
         type RunState = Cell<usize>;
         type ExternalStores = Cell<()>;
+        type ExecutionState = ();
     }
 
     #[derive(Default)]
@@ -1360,6 +1584,7 @@ mod source_work {
     impl HostProfile for NativeProfile {
         type RunState = NativeState;
         type ExternalStores = crate::host::HostFutureStore;
+        type ExecutionState = ();
     }
 
     impl crate::HostProvider<NativeProfile> for NativeProvider {
@@ -2203,6 +2428,7 @@ pub fn make() {{ echo 7 #({expression}, future.ready(7)) }}
     impl HostProfile for FutureProfile {
         type RunState = FutureState;
         type ExternalStores = crate::host::HostFutureStore;
+        type ExecutionState = ();
     }
 
     impl crate::host::HostWorkProfile for FutureProfile {
@@ -2729,6 +2955,7 @@ pub fn make() {
         impl HostProfile for RetainedProfile {
             type RunState = State;
             type ExternalStores = Stores;
+            type ExecutionState = ();
         }
         impl HostProvider<RetainedProfile> for Provider {
             type State = State;
@@ -3317,6 +3544,7 @@ mod work_requests {
     impl HostProfile for Profile {
         type RunState = Cell<usize>;
         type ExternalStores = ();
+        type ExecutionState = ();
     }
 
     #[derive(Default)]

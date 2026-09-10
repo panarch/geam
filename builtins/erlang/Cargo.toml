@@ -1,0 +1,29 @@
+[package]
+name = "geam-erlang"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Built-in Rust implementation of the gleam_erlang package"
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+publish = ["crates-io"]
+include = ["/src/**", "/README.md", "/LICENSE"]
+
+[dependencies]
+geam-core.workspace = true
+geam-stdlib.workspace = true
+ecow.workspace = true
+futures-channel.workspace = true
+futures-util.workspace = true
+num-bigint.workspace = true
+num-traits.workspace = true
+im.workspace = true
+priority-queue.workspace = true
+
+[dev-dependencies]
+camino.workspace = true
+gleam-compiler-core.workspace = true
+tempfile.workspace = true
+toml.workspace = true
+serde_json.workspace = true

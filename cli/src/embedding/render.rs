@@ -128,6 +128,9 @@ pub(super) fn hosted(bindings: &HostedBindings, project_path: &Utf8Path) -> Stri
     if components.has_time() {
         push_time_profile(&mut output, alias, components);
     }
+    if components.has_erlang() {
+        push_erlang_profile(&mut output, alias, components);
+    }
     push_host_providers(&mut output, alias, components);
     push_hosted_project(&mut output, alias, components, project_path);
 
@@ -227,7 +230,14 @@ fn push_stores(output: &mut String, alias: &str, components: &HostedComponents) 
     output.push_str(&format!("pub struct Stores{}", generics(components)));
     push_bounds_open(output, alias, components);
     for component in components.iter() {
-        push_component_field(output, alias, component, "HostProviderComponent", "Stores");
+        push_component_field(
+            output,
+            alias,
+            components,
+            component,
+            "HostProviderComponent",
+            "Stores",
+        );
     }
     output.push_str("}\n\n");
 
@@ -279,6 +289,9 @@ fn push_run_state_inputs(output: &mut String, alias: &str, components: &HostedCo
             )),
             ComponentBinding::Json => {}
             ComponentBinding::Time => output.push_str("    pub time: Source,\n"),
+            ComponentBinding::Erlang => output.push_str(&format!(
+                "    pub erlang: {alias}::gleam_erlang::Configuration,\n"
+            )),
             ComponentBinding::External(component) => output.push_str(&format!(
                 "    pub {}: HostProviderConfiguration,\n",
                 component.input_field.as_str(),
@@ -308,8 +321,9 @@ fn push_run_state_inputs(output: &mut String, alias: &str, components: &HostedCo
             ComponentBinding::Stdlib => output.push_str("            stdlib: self.stdlib,\n"),
             ComponentBinding::Json => output.push_str("            json: (),\n"),
             ComponentBinding::Time => output.push_str("            time: self.time,\n"),
+            ComponentBinding::Erlang => output.push_str("            erlang: self.erlang,\n"),
             ComponentBinding::External(component) => {
-                push_external_initialization(output, alias, component)
+                push_external_initialization(output, alias, components, component)
             }
         }
     }
@@ -332,6 +346,7 @@ fn push_run_state(output: &mut String, alias: &str, components: &HostedComponent
         push_component_field(
             output,
             alias,
+            components,
             component,
             "HostProviderComponent",
             "RunState",
@@ -360,8 +375,13 @@ fn push_host_profile(output: &mut String, alias: &str, components: &HostedCompon
         generics(components),
     ));
     push_bounds_open(output, alias, components);
+    let execution_state = if components.has_erlang() {
+        format!("{alias}::gleam_erlang::ErlangExecution")
+    } else {
+        "()".to_owned()
+    };
     output.push_str(&format!(
-        "    type ExternalStores = Stores{};\n    type RunState = RunState{};\n}}\n\n",
+        "    type ExternalStores = Stores{};\n    type RunState = RunState{};\n    type ExecutionState = {execution_state};\n}}\n\n",
         generics(components),
         generics(components),
     ));
@@ -384,7 +404,7 @@ fn push_component_profile(
     components: &HostedComponents,
     component: &ComponentBinding,
 ) {
-    let component_type = component_type(alias, component);
+    let component_type = component_type(alias, components, component);
     let field = component_field(component);
     let implementation = format!(
         "impl{} {}<{component_type}> for {}",
@@ -471,6 +491,18 @@ fn push_time_profile(output: &mut String, alias: &str, components: &HostedCompon
     output.push_str("    type Source = Source;\n}\n\n");
 }
 
+fn push_erlang_profile(output: &mut String, alias: &str, components: &HostedComponents) {
+    output.push_str(&format!(
+        "impl{} {alias}::gleam_erlang::GleamErlangHostProfile for {}",
+        generics(components),
+        profile_type(components),
+    ));
+    push_bounds_open(output, alias, components);
+    output.push_str(&format!(
+        "    fn erlang_execution(\n        state: &mut Self::ExecutionState,\n    ) -> &mut {alias}::gleam_erlang::ErlangExecution {{\n        state\n    }}\n}}\n\n"
+    ));
+}
+
 fn push_host_providers(output: &mut String, alias: &str, components: &HostedComponents) {
     let profile = profile_type(components);
     output.push_str(&format!(
@@ -488,7 +520,7 @@ fn push_host_providers(output: &mut String, alias: &str, components: &HostedComp
         return;
     }
     for (index, component) in registered.iter().enumerate() {
-        let component = component_type(alias, component);
+        let component = component_type(alias, components, component);
         let declaration = if index == 0 {
             if registered.len() == 1 {
                 "let providers"
@@ -588,6 +620,7 @@ fn push_binding_result(output: &mut String, bindings: &PlainBindings, functions:
 fn push_component_field(
     output: &mut String,
     alias: &str,
+    components: &HostedComponents,
     component: &ComponentBinding,
     component_trait: &str,
     associated_type: &str,
@@ -595,7 +628,7 @@ fn push_component_field(
     let prefix = format!("    {}:", component_field(component));
     let type_path = format!(
         "<{} as {component_trait}>::{associated_type},",
-        component_type(alias, component),
+        component_type(alias, components, component),
     );
     if prefix.len() + 1 + type_path.len() <= 100 {
         output.push_str(&format!("{prefix} {type_path}\n"));
@@ -607,10 +640,15 @@ fn push_component_field(
 fn push_external_initialization(
     output: &mut String,
     alias: &str,
+    components: &HostedComponents,
     component: &super::profile::ExternalComponent,
 ) {
     let field = component.state_field.as_str();
-    let type_path = component_type(alias, &ComponentBinding::External(component.clone()));
+    let type_path = component_type(
+        alias,
+        components,
+        &ComponentBinding::External(component.clone()),
+    );
     let initialization =
         format!("<{type_path} as HostProviderComponentInitialization>::initialize(");
     let statement = format!(
@@ -641,16 +679,25 @@ fn component_field(component: &ComponentBinding) -> &str {
         ComponentBinding::Stdlib => "stdlib",
         ComponentBinding::Json => "json",
         ComponentBinding::Time => "time",
+        ComponentBinding::Erlang => "erlang",
         ComponentBinding::External(component) => component.state_field.as_str(),
     }
 }
 
-fn component_type(alias: &str, component: &ComponentBinding) -> String {
+fn component_type(
+    alias: &str,
+    components: &HostedComponents,
+    component: &ComponentBinding,
+) -> String {
     match component {
         ComponentBinding::Future => format!("{alias}::FutureComponent"),
         ComponentBinding::Stdlib => format!("{alias}::gleam_stdlib::Component<Io>"),
         ComponentBinding::Json => format!("{alias}::gleam_json::Component"),
         ComponentBinding::Time => format!("{alias}::gleam_time::Component<Source>"),
+        ComponentBinding::Erlang => format!(
+            "{alias}::gleam_erlang::Component<{}>",
+            profile_type(components)
+        ),
         ComponentBinding::External(component) => {
             format!("{}::Component", component.crate_alias.as_str())
         }
@@ -931,6 +978,7 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
                 BuiltInProvider::Stdlib,
                 BuiltInProvider::Json,
                 BuiltInProvider::Time,
+                BuiltInProvider::Erlang,
             ] {
                 let mut components = HostedComponents::from_builtin(builtin);
                 if source_required {
@@ -1065,11 +1113,27 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         assert!(json_and_time.contains("gleam_json::Component"));
         assert!(json_and_time.contains("gleam_time::Component<Source>"));
 
+        let erlang = hosted_source(HostedComponents::from_builtin(BuiltInProvider::Erlang));
+        assert!(erlang.contains("pub struct Profile<Io>"));
+        assert!(erlang.contains("type ExecutionState = runtime::gleam_erlang::ErlangExecution;"));
+        assert!(erlang.contains("pub erlang: runtime::gleam_erlang::Configuration,"));
+        assert!(erlang.contains("erlang: self.erlang,"));
+        assert!(erlang.contains("GleamErlangHostProfile for Profile<Io>"));
+        let mut all = HostedComponents::from_builtin(BuiltInProvider::Erlang);
+        all.extend(HostedComponents::from_builtin(BuiltInProvider::Time));
+        all.extend(HostedComponents::from_builtin(BuiltInProvider::Json));
+        all.extend(HostedComponents::from_builtin(BuiltInProvider::Geam));
+        all.extend(external_components());
+        let all = hosted_source(all);
+        assert!(all.contains("gleam_erlang::Component<Profile<Io, Source>>"));
+
         for (label, source) in [
             ("stdlib", stdlib),
             ("json", json),
             ("time", time),
             ("json and time", json_and_time),
+            ("erlang", erlang),
+            ("all built-ins and external", all),
         ] {
             assert_rustfmt_stable(label, &source);
         }

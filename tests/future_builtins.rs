@@ -1,6 +1,7 @@
 use camino::Utf8Path;
 use geam::builtin::FutureComponent;
 use geam::embedding::{BigInt, FunctionDeclaration, FutureType, HostedModule, HostedModuleBuilder};
+use geam::gleam_erlang::{Component as ErlangComponent, Configuration, ErlangExecution};
 use geam::gleam_json::{Component as JsonComponent, GleamJsonStores};
 use geam::gleam_stdlib::{
     Component as StdlibComponent, GleamStdlibHostProfile, GleamStdlibRunState, GleamStdlibStores,
@@ -19,6 +20,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 mod execution_fixture;
 #[path = "support/workspace_dependencies.rs"]
 mod workspace_dependencies;
+
+#[path = "future_builtins/processes.rs"]
+mod processes;
 
 #[derive(Default)]
 pub struct NativeState {
@@ -59,6 +63,7 @@ struct State {
     native: NativeState,
     work: (),
     json: (),
+    erlang: Configuration,
 }
 #[derive(Default)]
 struct HostStores {
@@ -67,6 +72,7 @@ struct HostStores {
     native: Stores,
     work: HostFutureStore,
     time: (),
+    erlang: geam::gleam_erlang::Stores<Profile>,
 }
 struct Clock(Cell<u64>);
 impl TimeSource for Clock {
@@ -82,6 +88,20 @@ impl TimeSource for Clock {
 impl HostProfile for Profile {
     type RunState = State;
     type ExternalStores = HostStores;
+    type ExecutionState = ErlangExecution;
+}
+impl geam::gleam_erlang::GleamErlangHostProfile for Profile {
+    fn erlang_execution(state: &mut ErlangExecution) -> &mut ErlangExecution {
+        state
+    }
+}
+impl HostComponentProfile<ErlangComponent<Profile>> for Profile {
+    fn component_stores(stores: &HostStores) -> &geam::gleam_erlang::Stores<Profile> {
+        &stores.erlang
+    }
+    fn component_state(state: &mut State) -> &mut Configuration {
+        &mut state.erlang
+    }
 }
 impl GleamStdlibHostProfile for Profile {
     type Io = Vec<IoOutput>;
@@ -147,7 +167,7 @@ struct Fixture {
     later: geam::embedding::Function<(), BigInt>,
 }
 
-fn fixture() -> Fixture {
+fn project_root() -> camino::Utf8PathBuf {
     let root =
         Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/projects/future_builtins");
     static PREPARED: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
@@ -158,19 +178,25 @@ fn fixture() -> Fixture {
         &["deps", "download"],
         "`gleam deps download`",
     );
+    root
+}
+
+fn providers() -> HostProviderSet<Profile> {
     let mut providers = geam::gleam_stdlib::host_providers::<Profile>().expect("stdlib");
     providers.extend(geam::gleam_json::host_providers::<Profile>().expect("JSON"));
     providers.extend(geam::gleam_time::host_providers::<Profile>().expect("Time"));
+    providers.extend(geam::gleam_erlang::host_providers::<Profile>().expect("Erlang"));
     providers.extend(FutureComponent::providers::<Profile>().expect("Future"));
     providers.extend(
         <Component as HostProviderComponentRegistration<Profile>>::providers().expect("native"),
     );
-    let program = geam::frontend::compile_typed_host_project(
-        root,
-        "future_builtins",
-        HostProviderSet::from_providers(providers).expect("provider set"),
-    )
-    .expect("official source with explicit Future package");
+    HostProviderSet::from_providers(providers).expect("provider set")
+}
+
+fn fixture() -> Fixture {
+    let program =
+        geam::frontend::compile_typed_host_project(project_root(), "future_builtins", providers())
+            .expect("official source with explicit Future package");
     let (mut bindings, work) = HostedModuleBuilder::new(program)
         .expect("plan")
         .function(FunctionDeclaration::<(), FutureType<BigInt>>::new("work"))
@@ -204,6 +230,7 @@ fn builtins_and_retained_values_survive_pending_and_repeated_native_callbacks() 
         },
         work: (),
         json: (),
+        erlang: Configuration::default(),
     };
     let mut echo = Echo::default();
     let mut task =
@@ -279,6 +306,7 @@ fn dropping_the_execution_cancels_pending_callbacks_without_replacing_builtin_st
         },
         work: (),
         json: (),
+        erlang: Configuration::default(),
     };
     let mut echo = Echo::default();
     let mut task =

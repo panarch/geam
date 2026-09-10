@@ -446,6 +446,7 @@ mod tests {
         impl HostProfile for Profile {
             type RunState = State;
             type ExternalStores = Stores;
+            type ExecutionState = ();
         }
         impl GleamStdlibHostProfile for Profile {
             type Io = Vec<IoOutput>;
@@ -697,6 +698,7 @@ fn transient_update_with(
     impl HostProfile for CollisionProfile {
         type RunState = CollisionRunState;
         type ExternalStores = CollisionStores;
+        type ExecutionState = ();
     }
 
     impl HostComponentProfile<GleamStdlibComponent> for CollisionProfile {

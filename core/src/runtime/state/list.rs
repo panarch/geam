@@ -1433,6 +1433,7 @@ mod tests {
     impl crate::HostProfile for LeaseProfile {
         type RunState = Option<super::RuntimeListStorage>;
         type ExternalStores = ();
+        type ExecutionState = ();
     }
     impl crate::HostProvider<LeaseProfile> for LeaseProvider {
         type State = Option<super::RuntimeListStorage>;

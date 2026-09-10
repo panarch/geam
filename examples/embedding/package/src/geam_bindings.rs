@@ -91,6 +91,7 @@ where
 {
     type ExternalStores = Stores<Io>;
     type RunState = RunState<Io>;
+    type ExecutionState = ();
 }
 
 impl<Io> HostWorkProfile for Profile<Io>

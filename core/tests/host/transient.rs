@@ -94,6 +94,7 @@ impl Drop for TokenDrop {
 impl HostProfile for TransientProfile {
     type RunState = TransientRunState;
     type ExternalStores = TransientStores;
+    type ExecutionState = ();
 }
 
 impl HostProvider<TransientProfile> for TransientProvider {

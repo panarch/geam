@@ -109,7 +109,7 @@ jobs:
           for package in geam-core geam-macros geam-stdlib geam-builtin; do
             grep -Eq "^${package} v" "$RUNNER_TEMP/geam-embedding-graph"
           done
-          if grep -Eq '^geam-(cli|json|time) v' "$RUNNER_TEMP/geam-embedding-graph"; then
+          if grep -Eq '^geam-(cli|json|time|erlang) v' "$RUNNER_TEMP/geam-embedding-graph"; then
             echo "unexpected Geam dependency in the Rust embedding profile" >&2
             exit 1
           fi
@@ -128,7 +128,8 @@ jobs:
             io \
             provider \
             async_host \
-            session
+            session \
+            processes
           do
             echo "::group::$example"
             (
@@ -256,6 +257,24 @@ jobs:
 
       - name: Verify resumable native callbacks
         run: cargo test --package geam-core --features tokio --test resumable_embedding --locked
+
+      - name: Install Gleam toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          gleam-version: "1.18.1"
+          rebar3-version: "3"
+
+      - name: Verify native process semantics
+        run: cargo test --package geam-erlang --locked
+
+      - name: Download process example dependencies
+        working-directory: examples/embedding/processes/gleam
+        run: gleam deps download
+
+      - name: Verify generated process handles
+        working-directory: examples/embedding/processes
+        run: cargo test --locked
 
   published-provider:
     name: Published provider

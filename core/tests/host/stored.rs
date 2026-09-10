@@ -73,6 +73,7 @@ impl Drop for PayloadDrop {
 impl HostProfile for StoredProfile {
     type RunState = StoredRunState;
     type ExternalStores = StoredStores;
+    type ExecutionState = ();
 }
 
 impl HostProvider<StoredProfile> for StoredProvider {

@@ -525,6 +525,7 @@ mod tests {
     impl HostProfile for Profile {
         type RunState = ();
         type ExternalStores = HostFutureStore;
+        type ExecutionState = ();
     }
     impl crate::host::HostWorkProfile for Profile {
         type Work = crate::work_fixture::WorkComponent;

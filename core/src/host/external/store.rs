@@ -447,6 +447,7 @@ mod tests {
         impl crate::HostProfile for Profile {
             type RunState = State;
             type ExternalStores = ();
+            type ExecutionState = ();
         }
         impl HostProvider<Profile> for Observer {
             type State = State;

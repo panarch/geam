@@ -386,6 +386,7 @@ mod tests {
         impl HostProfile for Profile {
             type RunState = ();
             type ExternalStores = HostExternalStore<BridgePayload>;
+            type ExecutionState = ();
         }
         impl HostProvider<Profile> for Provider {
             type State = ();
@@ -598,6 +599,7 @@ pub fn run() {
         impl HostProfile for Profile {
             type RunState = Arc<AtomicUsize>;
             type ExternalStores = HostExternalStore<OwnedPayload>;
+            type ExecutionState = ();
         }
         impl HostProvider<Profile> for Provider {
             type State = Arc<AtomicUsize>;

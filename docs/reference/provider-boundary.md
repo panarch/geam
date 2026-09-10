@@ -646,6 +646,7 @@ struct RunState {
 
 impl HostProfile for Profile {
     type ExternalStores = Stores;
+    type ExecutionState = ();
     type RunState = RunState;
 }
 

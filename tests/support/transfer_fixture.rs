@@ -141,6 +141,7 @@ fn observes_a_locked_project_without_mutating_its_sources() {
     impl HostProfile for Profile {
         type RunState = ();
         type ExternalStores = HostFutureStore;
+        type ExecutionState = ();
     }
 
     impl geam_core::host::HostWorkProfile for Profile {

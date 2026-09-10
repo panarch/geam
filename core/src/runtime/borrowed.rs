@@ -168,6 +168,7 @@ mod tests {
     impl crate::HostProfile for Profile {
         type RunState = ();
         type ExternalStores = crate::host::HostFutureStore;
+        type ExecutionState = ();
     }
 
     impl crate::host::HostWorkProfile for Profile {

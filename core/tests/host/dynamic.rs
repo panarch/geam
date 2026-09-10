@@ -50,6 +50,7 @@ impl Drop for PayloadDrop {
 impl HostProfile for DynamicProfile {
     type RunState = DynamicRunState;
     type ExternalStores = DynamicStores;
+    type ExecutionState = ();
 }
 
 impl HostProvider<DynamicProfile> for DynamicProvider {

@@ -33,6 +33,7 @@ pub(super) enum ComponentBinding {
     Stdlib,
     Json,
     Time,
+    Erlang,
     External(ExternalComponent),
 }
 
@@ -150,17 +151,23 @@ impl HostedComponents {
             .any(|component| component == &ComponentBinding::Time)
     }
 
+    pub(super) fn has_erlang(&self) -> bool {
+        self.components.contains(&ComponentBinding::Erlang)
+    }
+
     pub(super) fn has_external(&self) -> bool {
         self.iter()
             .any(|component| matches!(component, ComponentBinding::External(_)))
     }
 
     fn assign_external_fields(&mut self) {
-        let mut used_inputs = BTreeSet::from(["stdlib".to_owned(), "time".to_owned()]);
+        let mut used_inputs =
+            BTreeSet::from(["stdlib".to_owned(), "time".to_owned(), "erlang".to_owned()]);
         let mut used_state = BTreeSet::from([
             "stdlib".to_owned(),
             "json".to_owned(),
             "time".to_owned(),
+            "erlang".to_owned(),
             "future".to_owned(),
         ]);
         let mut external = self
@@ -171,6 +178,7 @@ impl HostedComponents {
                 ComponentBinding::Future
                 | ComponentBinding::Stdlib
                 | ComponentBinding::Json
+                | ComponentBinding::Erlang
                 | ComponentBinding::Time => None,
             })
             .collect::<Vec<_>>();
@@ -218,7 +226,7 @@ impl HostedComponents {
 
 fn input_field_candidate(package: &str) -> (u8, RustIdentifier) {
     let field = RustIdentifier::from_compiled_package(package);
-    if matches!(field.as_str(), "stdlib" | "time") {
+    if matches!(field.as_str(), "stdlib" | "time" | "erlang") {
         return (0, field.with_prefix("provider_"));
     }
     if field.as_str() == package {
@@ -255,6 +263,7 @@ impl From<BuiltInProvider> for ComponentBinding {
             BuiltInProvider::Stdlib => Self::Stdlib,
             BuiltInProvider::Json => Self::Json,
             BuiltInProvider::Time => Self::Time,
+            BuiltInProvider::Erlang => Self::Erlang,
             BuiltInProvider::Geam => Self::Future,
         }
     }
@@ -266,6 +275,7 @@ impl ComponentBinding {
             Self::Stdlib => Some(BuiltInProvider::Stdlib),
             Self::Json => Some(BuiltInProvider::Json),
             Self::Time => Some(BuiltInProvider::Time),
+            Self::Erlang => Some(BuiltInProvider::Erlang),
             Self::Future => Some(BuiltInProvider::Geam),
             Self::External(_) => None,
         }
@@ -495,6 +505,28 @@ mod tests {
             ],
         );
         assert_eq!(time.capabilities(), HostedCapabilities::IoAndTime);
+
+        let erlang = HostedComponents::from_builtin(BuiltInProvider::Erlang);
+        assert_eq!(
+            erlang.iter().collect::<Vec<_>>(),
+            [
+                &ComponentBinding::Future,
+                &ComponentBinding::Stdlib,
+                &ComponentBinding::Erlang
+            ],
+        );
+        assert_eq!(erlang.capabilities(), HostedCapabilities::Io);
+        assert_eq!(
+            erlang
+                .iter()
+                .filter_map(ComponentBinding::built_in)
+                .collect::<Vec<_>>(),
+            [
+                BuiltInProvider::Geam,
+                BuiltInProvider::Stdlib,
+                BuiltInProvider::Erlang
+            ],
+        );
     }
 
     #[test]

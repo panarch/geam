@@ -1280,6 +1280,7 @@ resolver = "3"
                 .root
                 .join("gleam/src/generated_future_builtins.gleam"),
             r#"import geam/future
+import gleam/erlang/process
 import gleam/io
 import gleam/json
 import gleam/time/timestamp
@@ -1287,7 +1288,9 @@ import gleam/time/timestamp
 pub fn double(value: Int) { value * 2 }
 
 pub fn answer() -> future.Future(String) {
+  let creator = process.self()
   use _ <- future.map(future.ready(Nil))
+  let assert False = creator == process.self()
   io.println("finished")
   let #(seconds, _) = timestamp.system_time() |> timestamp.to_unix_seconds_and_nanoseconds
   json.object([#("answer", json.int(seconds))]) |> json.to_string
@@ -1318,12 +1321,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let executor = tokio::runtime::Builder::new_current_thread().build()?;
     let host = runtime::execution::TokioHost::new(executor.handle().clone());
     let program = geam_bindings::project::<Vec<IoOutput>, Clock>().compile()?;
+    let resources = program.package_resources().clone();
     let builder = HostedModuleBuilder::new(program)?;
     let (bindings, functions) = geam_bindings::bind(builder)?;
     let mut module = bindings.seal()?;
     let mut state = geam_bindings::RunStateInputs {
         stdlib: GleamStdlibRunState::from_seed([7; 32]),
         time: Clock(Cell::new(42)),
+        erlang: runtime::gleam_erlang::Configuration { resources },
     }.initialize();
     assert!(state.stdlib().io_outputs().is_empty());
     let mut echo = |value: runtime::EchoOutput| panic!("unexpected Echo: {value}");

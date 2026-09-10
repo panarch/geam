@@ -91,6 +91,34 @@ The module retains its sealed code and function identity across scopes.
 `scope.call(...).await` evaluates the source function and returns its declared
 value; returning an existing Future preserves that work.
 
+### Process Entries
+
+With the `gleam-erlang` component, each Rust `scope.call` starts a fresh logical
+process. Nested Gleam calls and ordinary native callbacks retain that process
+identity. Source-spawned processes belong to the execution domain; an unlinked
+process may remain active after its creating call returns.
+
+Generated Pid and Subject values are scoped opaque handles. Keeping or cloning
+a handle retains its identity, not its mailbox or execution domain. A dead Pid
+remains the same value; it cannot reactivate a process or attach to another
+scope. A named Subject resolves its name when sending, so a later registration
+can receive subsequent messages.
+
+Project-based hosts initialize the generated `erlang` input from the loader's
+resource catalog before consuming the program:
+
+```rust
+let erlang = geam::gleam_erlang::Configuration {
+    resources: program.package_resources().clone(),
+};
+```
+
+Pass it together with the required stdlib input to `RunStateInputs`. Source-only
+hosts supply an explicit catalog of their own. The catalog is configuration,
+not mutable process state; a new execution scope creates a new process domain.
+See the [service example](../../examples/embedding/processes) for the complete
+load, bind, initialize, call, and shutdown sequence.
+
 ### Explicit Future Values
 
 The core embedding layer supplies generic work-value adapters, while

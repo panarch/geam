@@ -10,6 +10,11 @@ use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+mod callback;
+
+pub use crate::runtime::NativeValues;
+pub use callback::NativeCallable;
+
 /// Native external conversions paired with a single host registration.
 ///
 /// Exact retained values pass through unchanged. A conversion creates the
@@ -185,6 +190,22 @@ where
         &mut self.call
     }
 
+    /// Requires an invocation while retaining this call's sealed conversions.
+    pub fn with_execution_unit<Output>(
+        self,
+        operation: impl FnOnce(
+            Self,
+            crate::execution::ExecutionUnit,
+        ) -> Result<Output, crate::host::HostCallError>,
+    ) -> Result<Output, crate::host::HostCallError> {
+        let Self {
+            call,
+            rules,
+            targets: _,
+        } = self;
+        call.with_execution_unit(move |call, unit| operation(Self::new(call, rules), unit))
+    }
+
     /// Ends native conversion and returns the original typed call and its
     /// registered construction permissions for an owned continuation.
     pub fn into_call(
@@ -198,7 +219,7 @@ where
 
     /// Retains the original value for structural native access.
     pub fn source<Type: HostType>(&self, value: Type::Value<'call>) -> NativeValue {
-        NativeValue::from_stored(self.call.retain_value::<Type>(value))
+        self.call.native_value::<Type>(value)
     }
 
     /// Converts incoming data to the preselected registered target.
@@ -885,6 +906,7 @@ pub fn main() {
     impl HostProfile for NativeProfile {
         type RunState = Vec<EcoString>;
         type ExternalStores = NativeStores;
+        type ExecutionState = ();
     }
 
     impl HostProvider<NativeProfile> for Converter {

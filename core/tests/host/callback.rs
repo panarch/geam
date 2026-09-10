@@ -334,6 +334,7 @@ struct StopProvider;
 impl HostProfile for CallbackProfile {
     type RunState = CallbackState;
     type ExternalStores = ();
+    type ExecutionState = ();
 }
 
 impl HostProvider<CallbackProfile> for OuterProvider {

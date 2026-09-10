@@ -16,6 +16,7 @@ struct Profile;
 impl HostProfile for Profile {
     type RunState = ();
     type ExternalStores = HostFutureStore;
+    type ExecutionState = ();
 }
 impl HostWorkProfile for Profile {
     type Work = FutureComponent;

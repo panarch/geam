@@ -170,6 +170,39 @@ where
         self.state.host_state()
     }
 
+    fn execution_state(&mut self) -> &mut Profile::ExecutionState {
+        self.state.host_mut().execution_state()
+    }
+
+    fn execution_with_native_values(
+        &mut self,
+    ) -> (
+        &mut Profile::ExecutionState,
+        crate::runtime::NativeValues<'_>,
+    ) {
+        let (host, lists) = self.state.host_and_lists();
+        (
+            host.execution_state(),
+            crate::runtime::NativeValues::new(lists, self.plan.value_metadata()),
+        )
+    }
+
+    fn native_values(&self) -> crate::runtime::NativeValues<'_> {
+        crate::runtime::NativeValues::new(self.state.lists(), self.plan.value_metadata())
+    }
+
+    fn clock(&self) -> crate::execution::ExecutionClock<'_> {
+        self.state.host().clock()
+    }
+
+    fn spawn(
+        &mut self,
+        callable: crate::runtime::RetainedCallable,
+        origin: crate::runtime::HostCallOrigin,
+    ) -> crate::execution::ExecutionUnit {
+        self.state.host_mut().spawn(callable, origin)
+    }
+
     fn work(&self) -> crate::runtime::work::execution::WorkContext<Profile> {
         self.state.host().work()
     }
@@ -302,18 +335,6 @@ where
 
     fn stored_equal(&self, left: &StoredRuntimeValue, right: &StoredRuntimeValue) -> bool {
         crate::runtime::evaluated::values_equal(self.state.lists(), left.value(), right.value())
-    }
-
-    fn native_equal(
-        &self,
-        left: &crate::runtime::NativeValue,
-        right: &crate::runtime::NativeValue,
-    ) -> bool {
-        crate::runtime::native::values_equal(self.state.lists(), left, right)
-    }
-
-    fn native_hash(&self, value: &crate::runtime::NativeValue) -> u64 {
-        crate::runtime::native::value_hash(self.state.lists(), value)
     }
 
     fn native_tuple(&self, value: HostListToken) -> crate::runtime::NativeValue {

@@ -84,6 +84,7 @@ mod tests {
     impl HostProfile for Profile {
         type RunState = ();
         type ExternalStores = ();
+        type ExecutionState = ();
     }
     impl HostProvider<Profile> for Provider {
         type State = ();

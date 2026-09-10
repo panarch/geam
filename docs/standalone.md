@@ -129,12 +129,15 @@ packages imported by the selected module or its imports are included. This
 keeps unused dependencies and their native requirements out of the executable.
 
 Geam includes explicit support for the verified `gleam_stdlib`, `gleam_json`,
-and `gleam_time` integrations. These built-in components do not require an
+`gleam_time`, and `gleam_erlang` integrations. These built-in components do not require an
 external provider selection. `gleam_http` uses its unchanged Gleam source and
 the stdlib support required by its imported code.
 
 See [compatibility](reference/compatibility.md) for the exact package baselines
 and supported effects.
+
+The [process guide](processes.md) shows concurrent Gleam code using Subjects
+and mailboxes. Standalone execution supplies its executor and clock.
 
 ## Use a Gleam package with a Rust provider
 

@@ -220,6 +220,7 @@ mod tests {
         impl HostProfile for Profile {
             type RunState = GleamStdlibRunState;
             type ExternalStores = (GleamStdlibStores, HostExternalStore<DynamicPayload>);
+            type ExecutionState = ();
         }
 
         impl HostComponentProfile<Component> for Profile {

@@ -120,6 +120,7 @@ mod tests {
     impl HostProfile for Profile {
         type RunState = Cell<usize>;
         type ExternalStores = Cell<()>;
+        type ExecutionState = ();
     }
 
     fn program(source: &str) -> HostedModuleBuilder<Profile> {
@@ -256,6 +257,7 @@ mod plain_outputs {
     impl HostProfile for Profile {
         type RunState = ();
         type ExternalStores = ();
+        type ExecutionState = ();
     }
     #[derive(Default)]
     struct Echo(Vec<String>);

@@ -52,7 +52,7 @@ pub(crate) use host::{
     StoredRuntimeList, StoredRuntimeListCustomFields, StoredRuntimeListItem,
     StoredRuntimeListTupleItems, StoredRuntimeValue,
 };
-pub use native::{NativeKind, NativeMap, NativeMapEntry, NativeValue};
+pub use native::{NativeKind, NativeMap, NativeMapEntry, NativeValue, NativeValues};
 pub(crate) use value::{
     BitArrayFunctionValue, BoolFunctionValue, CaptureListValue, CaptureValue, CustomFunctionValue,
     CustomFunctionValueTarget, ExternalFunctionValue, FloatFunctionValue, FunctionFunctionValue,

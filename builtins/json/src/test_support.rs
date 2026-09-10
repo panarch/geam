@@ -25,6 +25,7 @@ pub(super) struct CustomRunState {
 impl HostProfile for CustomProfile {
     type RunState = CustomRunState;
     type ExternalStores = CustomStores;
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<GleamStdlibComponent> for CustomProfile {

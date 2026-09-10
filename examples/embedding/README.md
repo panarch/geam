@@ -16,6 +16,7 @@ tests.
 | [`async_host`](async_host) | Return explicit Future values and drive them on the application's executor |
 | [`session`](session) | Retain opaque Gleam data and pass it to later calls |
 | [`execution`](execution) | Drive and cancel a running Gleam entry without blocking the Rust host |
+| [`processes`](processes) | Retain a live Gleam service's Pid and Subject across Rust calls |
 
 Start with [`first_call`](first_call) and follow each README's next step through
 [`application`](application). Continue with [`async_host`](async_host) when a

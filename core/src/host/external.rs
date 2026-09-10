@@ -286,6 +286,7 @@ mod tests {
     impl HostProfile for Profile {
         type RunState = (State, ());
         type ExternalStores = Stores;
+        type ExecutionState = ();
     }
 
     impl crate::host::HostWorkProfile for Profile {
@@ -858,4 +859,5 @@ pub(crate) struct ExternalTestStores {
 impl HostProfile for ExternalTestProfile {
     type RunState = ExternalTestRunState;
     type ExternalStores = ExternalTestStores;
+    type ExecutionState = ();
 }

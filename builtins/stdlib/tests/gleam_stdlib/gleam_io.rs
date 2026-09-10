@@ -237,6 +237,7 @@ enum RecordedEvent {
 impl HostProfile for RecordingProfile {
     type RunState = RecordingRunState;
     type ExternalStores = RecordingStores;
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<Component<RecordingIoSink>> for RecordingProfile {

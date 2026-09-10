@@ -163,6 +163,7 @@ struct RunState {
 impl HostProfile for Profile {
     type RunState = RunState;
     type ExternalStores = ProfileStores;
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<Component> for Profile {

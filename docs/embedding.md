@@ -109,6 +109,7 @@ application that can be run and tested on its own:
 | Async Rust host | Return explicit work and drive it on the application's executor | [`async_host`](../examples/embedding/async_host) |
 | Opaque session | Keep Gleam-owned private data between calls | [`session`](../examples/embedding/session) |
 | Execution control | Cancel a running Gleam call and continue using its module | [`execution`](../examples/embedding/execution) |
+| Process service | Retain Pid and Subject handles and call a running Gleam service | [`processes`](../examples/embedding/processes) |
 
 Follow the stages in order when learning the API, or open the smallest example
 that contains the feature your application needs. The application example
@@ -181,8 +182,9 @@ tests, and package commands there as usual; return to the Cargo package root for
 Internal Gleam modules can live below `gleam/src/inventory_app/`. Only public
 functions from the same-name root module become Rust bindings. Their arguments
 and returns must use the generated binding types described below. Imported
-modules may use records, custom types, and provider-backed values, but those
-values cannot cross the generated binding boundary directly.
+modules may use records, custom types, and provider-backed values. Concrete
+custom and external types cross this boundary as opaque handles: Rust can
+retain them and pass them back without reconstructing their fields.
 
 Commit the Cargo and Gleam manifests and lockfiles, handwritten Gleam and Rust
 source, and generated `src/geam_bindings.rs`. Ignore Cargo's `target/` and
@@ -204,8 +206,11 @@ geam embedding sync
 ```
 
 Sync enables only the built-in Geam support used by imported Gleam code. Geam's
-stdlib, JSON, and Time integrations are added explicitly; unused Gleam
+stdlib, JSON, Time, and Erlang integrations are added explicitly; unused Gleam
 dependencies do not add Rust components.
+
+For a concurrent Gleam service, see [Gleam processes](processes.md). Generated
+Pid and Subject handles remain usable across calls in the same execution scope.
 
 Most packages need nothing else. If an imported package has native functions
 implemented for Geam, its Hex package remains the Gleam dependency and a

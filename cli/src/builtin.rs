@@ -3,6 +3,7 @@ pub(super) enum BuiltInProvider {
     Stdlib,
     Json,
     Time,
+    Erlang,
     Geam,
 }
 
@@ -12,13 +13,20 @@ pub(super) struct BuiltInProviderClosure {
 }
 
 impl BuiltInProvider {
-    pub(super) const ALL: [Self; 4] = [Self::Stdlib, Self::Json, Self::Time, Self::Geam];
+    pub(super) const ALL: [Self; 5] = [
+        Self::Stdlib,
+        Self::Json,
+        Self::Time,
+        Self::Erlang,
+        Self::Geam,
+    ];
 
     pub(super) fn from_package(package: &str) -> Option<Self> {
         match package {
             "gleam_stdlib" => Some(Self::Stdlib),
             "gleam_json" => Some(Self::Json),
             "gleam_time" => Some(Self::Time),
+            "gleam_erlang" => Some(Self::Erlang),
             "geam" => Some(Self::Geam),
             _ => None,
         }
@@ -29,6 +37,7 @@ impl BuiltInProvider {
             Self::Stdlib => "gleam_stdlib",
             Self::Json => "gleam_json",
             Self::Time => "gleam_time",
+            Self::Erlang => "gleam_erlang",
             Self::Geam => "geam",
         }
     }
@@ -38,6 +47,7 @@ impl BuiltInProvider {
             Self::Stdlib => "gleam-stdlib",
             Self::Json => "gleam-json",
             Self::Time => "gleam-time",
+            Self::Erlang => "gleam-erlang",
             Self::Geam => "geam-builtin",
         }
     }
@@ -55,6 +65,10 @@ impl BuiltInProvider {
             Self::Time => BuiltInProviderClosure {
                 first: Self::Stdlib,
                 remaining: &[Self::Time],
+            },
+            Self::Erlang => BuiltInProviderClosure {
+                first: Self::Stdlib,
+                remaining: &[Self::Erlang],
             },
             Self::Geam => BuiltInProviderClosure {
                 first: Self::Geam,
@@ -80,17 +94,36 @@ mod tests {
 
     #[test]
     fn owns_exact_package_identity_and_component_dependencies() {
-        assert_eq!(BuiltInProvider::ALL.len(), 4);
+        assert_eq!(BuiltInProvider::ALL.len(), 5);
         assert_eq!(
             BuiltInProvider::ALL.map(BuiltInProvider::package),
-            ["gleam_stdlib", "gleam_json", "gleam_time", "geam"],
+            [
+                "gleam_stdlib",
+                "gleam_json",
+                "gleam_time",
+                "gleam_erlang",
+                "geam"
+            ],
         );
         assert_eq!(
             BuiltInProvider::ALL.map(BuiltInProvider::geam_feature),
-            ["gleam-stdlib", "gleam-json", "gleam-time", "geam-builtin"],
+            [
+                "gleam-stdlib",
+                "gleam-json",
+                "gleam-time",
+                "gleam-erlang",
+                "geam-builtin"
+            ],
         );
         assert_eq!(
-            ["gleam_stdlib", "gleam_json", "gleam_time", "geam"].map(BuiltInProvider::from_package),
+            [
+                "gleam_stdlib",
+                "gleam_json",
+                "gleam_time",
+                "gleam_erlang",
+                "geam"
+            ]
+            .map(BuiltInProvider::from_package),
             BuiltInProvider::ALL.map(Some),
         );
         assert_eq!(
@@ -109,6 +142,12 @@ mod tests {
         assert_eq!(
             time.remaining().collect::<Vec<_>>(),
             [BuiltInProvider::Time]
+        );
+        let erlang = BuiltInProvider::Erlang.component_closure();
+        assert_eq!(erlang.first(), BuiltInProvider::Stdlib);
+        assert_eq!(
+            erlang.remaining().collect::<Vec<_>>(),
+            [BuiltInProvider::Erlang]
         );
     }
 }

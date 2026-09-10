@@ -37,6 +37,7 @@ impl Drop for NativeLifetime {
 impl HostProfile for Profile {
     type RunState = State;
     type ExternalStores = Cell<()>;
+    type ExecutionState = ();
 }
 
 impl HostProvider<Profile> for Provider {

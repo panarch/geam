@@ -19,6 +19,7 @@ struct Counter;
 impl HostProfile for StatefulProfile {
     type RunState = RunState;
     type ExternalStores = ();
+    type ExecutionState = ();
 }
 
 impl HostProvider<StatefulProfile> for Counter {

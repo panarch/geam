@@ -141,6 +141,7 @@ mod tests {
     impl HostProfile for AggregateProfile {
         type RunState = AggregateState;
         type ExternalStores = AggregateStores;
+        type ExecutionState = ();
     }
 
     impl HostComponentProfile<FirstComponent> for AggregateProfile {

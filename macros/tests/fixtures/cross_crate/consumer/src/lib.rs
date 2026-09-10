@@ -218,6 +218,7 @@ mod tests {
     impl HostProfile for Profile {
         type RunState = RunState;
         type ExternalStores = ProfileStores;
+        type ExecutionState = ();
     }
 
     impl HostWorkProfile for Profile {

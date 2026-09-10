@@ -21,6 +21,8 @@ pub(crate) struct TestRunState {
 
 pub(crate) struct TestHostCallRuntime<'state> {
     state: &'state mut TestRunState,
+    units: crate::runtime::execution::Units<TestHostProfile>,
+    clock: crate::execution_fixture::TestHost,
     arguments: Box<dyn HostCallArguments>,
     completed: Option<HostScopedValue>,
     external_leases: Vec<crate::host::ExternalPayloadLease>,
@@ -34,6 +36,7 @@ pub(crate) struct TestHostCallRuntime<'state> {
 impl HostProfile for TestHostProfile {
     type RunState = TestRunState;
     type ExternalStores = ();
+    type ExecutionState = ();
 }
 
 impl HostProvider<StatelessHostProfile> for StatelessTestProvider {
@@ -93,6 +96,8 @@ impl<'state> TestHostCallRuntime<'state> {
         ));
         Self {
             state,
+            units: crate::runtime::execution::Units::new(()),
+            clock: crate::execution_fixture::TestHost::default(),
             arguments: Box::new(arguments),
             completed: None,
             external_leases: Vec::new(),
@@ -116,6 +121,36 @@ impl<'state> TestHostCallRuntime<'state> {
 impl HostCallRuntime<TestHostProfile> for TestHostCallRuntime<'_> {
     fn state(&mut self) -> &mut TestRunState {
         self.state
+    }
+
+    fn execution_state(&mut self) -> &mut () {
+        self.units.state()
+    }
+
+    fn execution_with_native_values(&mut self) -> (&mut (), crate::runtime::NativeValues<'_>) {
+        (
+            self.units.state(),
+            crate::runtime::NativeValues::new(
+                &self.lists,
+                self.execution.execution().value_metadata(),
+            ),
+        )
+    }
+
+    fn native_values(&self) -> crate::runtime::NativeValues<'_> {
+        crate::runtime::NativeValues::new(&self.lists, self.execution.execution().value_metadata())
+    }
+
+    fn clock(&self) -> crate::execution::ExecutionClock<'_> {
+        crate::execution::ExecutionClock::new(&self.clock)
+    }
+
+    fn spawn(
+        &mut self,
+        callable: crate::runtime::RetainedCallable,
+        origin: crate::runtime::HostCallOrigin,
+    ) -> crate::execution::ExecutionUnit {
+        self.units.spawn(callable, origin)
     }
 
     fn external_stores(&self) -> &() {
@@ -343,18 +378,6 @@ impl HostCallRuntime<TestHostProfile> for TestHostCallRuntime<'_> {
         crate::runtime::evaluated::values_equal(&self.lists, left.value(), right.value())
     }
 
-    fn native_equal(
-        &self,
-        left: &crate::runtime::NativeValue,
-        right: &crate::runtime::NativeValue,
-    ) -> bool {
-        crate::runtime::native::values_equal(&self.lists, left, right)
-    }
-
-    fn native_hash(&self, value: &crate::runtime::NativeValue) -> u64 {
-        crate::runtime::native::value_hash(&self.lists, value)
-    }
-
     fn native_tuple(&self, value: HostListToken) -> crate::runtime::NativeValue {
         crate::runtime::NativeValue::tuple_from_list(
             self.scoped.list_value(value),
@@ -499,6 +522,8 @@ mod tests {
         let first = runtime.callable(HostFunctionToken(0));
         let second = runtime.callable(HostFunctionToken(0));
         first.with_value(|first| second.with_value(|second| assert!(std::ptr::eq(first, second))));
+        let unit = runtime.spawn(first, runtime.origin());
+        assert!(unit.is_active());
         let work = runtime
             .work()
             .ready(StoredRuntimeValue::test_int(42.into()));
@@ -523,6 +548,8 @@ mod tests {
             Some(crate::runtime::work::Cancelled),
         );
         assert_eq!(runtime.state.counter, 0);
+        drop(runtime);
+        assert!(!unit.is_active());
     }
 
     #[test]
@@ -634,7 +661,7 @@ mod tests {
                 assert_eq!(alias.len(), Some(2));
                 assert_eq!(alias.index(1).unwrap().as_int(), Some(9.into()));
                 assert!(alias.index(2).is_none());
-                assert!(runtime.native_equal(&alias, &alias));
+                assert!(runtime.native_values().equal(&alias, &alias));
             }
             let custom = match entry {
                 ProfiledRuntimeFunctionId::Core(ProfiledCoreRuntimeFunctionId::List(

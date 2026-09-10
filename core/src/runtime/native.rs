@@ -13,8 +13,10 @@ use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
+mod context;
 mod map;
 
+pub use context::NativeValues;
 pub use map::{NativeMap, NativeMapEntry};
 
 /// An immutable native representation over retained source values.
@@ -32,6 +34,12 @@ enum Representation {
         metadata: OwnedRuntimeValueMetadata,
     },
     Map(NativeMap),
+    Closure(Arc<NativeClosure>),
+}
+
+struct NativeClosure {
+    definition: &'static str,
+    captures: Box<[NativeValue]>,
 }
 
 /// A native structural kind, before source-specific decoding.
@@ -58,6 +66,7 @@ enum Node<'value> {
     Map(&'value NativeMap),
     External(RetainedValueRef<'value>),
     Function(RetainedValueRef<'value>, RuntimeValueMetadata<'value>),
+    Closure(&'value NativeClosure),
 }
 
 enum Sequence<'value> {
@@ -110,6 +119,7 @@ impl Clone for NativeValue {
                 metadata: metadata.clone(),
             },
             Representation::Map(value) => Representation::Map(value.clone()),
+            Representation::Closure(value) => Representation::Closure(Arc::clone(value)),
         })
     }
 }
@@ -128,6 +138,22 @@ impl NativeValue {
     /// Declares a map view without traversing or changing its retained entries.
     pub fn map(value: NativeMap) -> Self {
         Self(Representation::Map(value))
+    }
+
+    /// Declares an immutable one-argument native closure's symbolic representation.
+    ///
+    /// `definition` identifies one provider-owned closure body and must be
+    /// globally qualified. Equal definitions and captures describe equal
+    /// closures. This view does not grant typed Gleam invocation permission;
+    /// invocation remains with the provider's sealed callable implementation.
+    pub fn unary_closure(
+        definition: &'static str,
+        captures: impl IntoIterator<Item = Self>,
+    ) -> Self {
+        Self(Representation::Closure(Arc::new(NativeClosure {
+            definition,
+            captures: captures.into_iter().collect(),
+        })))
     }
 
     pub(in crate::runtime) fn tuple_from_list(
@@ -263,6 +289,7 @@ impl NativeValue {
                 with_source_node(value.value(), value.metadata(), read)
             }
             Representation::Symbol(value) => read(Node::Symbol(value)),
+            Representation::Closure(value) => read(Node::Closure(value)),
             Representation::Tuple(values) => read(Node::Tuple(Sequence::Declared(values))),
             Representation::ListTuple { list, metadata } => read(Node::Tuple(Sequence::List(
                 RetainedList::new(list.clone()),
@@ -526,7 +553,7 @@ impl Node<'_> {
             Self::List(_) => NativeKind::List,
             Self::Map(_) => NativeKind::Map,
             Self::External(_) => NativeKind::External,
-            Self::Function(..) => NativeKind::Function,
+            Self::Function(..) | Self::Closure(_) => NativeKind::Function,
         }
     }
 }
@@ -564,6 +591,15 @@ fn nodes_equal(left: Node<'_>, right: Node<'_>, context: &HostExternalEquality<'
         (Node::Function(left, left_owner), Node::Function(right, right_owner)) => {
             left_owner.shares_owner(right_owner) && context.0.stored_values_equal(&left, &right)
         }
+        (Node::Closure(left), Node::Closure(right)) => {
+            left.definition == right.definition
+                && left.captures.len() == right.captures.len()
+                && left
+                    .captures
+                    .iter()
+                    .zip(right.captures.iter())
+                    .all(|(left, right)| left.source_equal(context, right))
+        }
         _ => false,
     }
 }
@@ -586,6 +622,13 @@ fn hash_node(node: Node<'_>, context: &HostExternalHashing<'_>) -> u64 {
         }
         Node::External(value) | Node::Function(value, _) => {
             context.0.stored_value_hash(&value).hash(&mut hash)
+        }
+        Node::Closure(value) => {
+            value.definition.hash(&mut hash);
+            value.captures.len().hash(&mut hash);
+            for value in &value.captures {
+                value.source_hash(context).hash(&mut hash);
+            }
         }
         Node::Map(value) => {
             let mut sum = 0u64;
@@ -671,6 +714,7 @@ fn inspect_node(node: Node<'_>, context: &HostExternalInspection<'_>) -> EcoStri
             format!("dict.from_list([{}])", entries.join(", ")).into()
         }
         Node::External(value) | Node::Function(value, _) => context.0.inspect_stored_value(&value),
+        Node::Closure(_) => "//fn(a) { ... }".into(),
     }
 }
 
@@ -1023,6 +1067,41 @@ pub fn main() {
             super::value_hash(&storage, &first),
             super::value_hash(&storage, &alias)
         );
+    }
+
+    #[test]
+    fn declared_native_closures_keep_definition_and_capture_semantics_without_invocation() {
+        let equality = RetainedValueEquality::new(&opaque_equal);
+        let hashing = RetainedValueHashing::new(&opaque_hash);
+        let inspection = RetainedValueInspection::new(&opaque_inspection);
+        let equality = HostExternalEquality(&equality);
+        let hashing = HostExternalHashing(&hashing);
+        let inspection = HostExternalInspection(&inspection);
+        let value = NativeValue::unary_closure("provider/module:map", [NativeValue::symbol("one")]);
+        let alias = value.clone();
+        let same = NativeValue::unary_closure("provider/module:map", [NativeValue::symbol("one")]);
+        let different_capture =
+            NativeValue::unary_closure("provider/module:map", [NativeValue::symbol("two")]);
+        let different_body =
+            NativeValue::unary_closure("provider/module:other", [NativeValue::symbol("one")]);
+        let no_capture = NativeValue::unary_closure("provider/module:map", []);
+        let function = source("pub fn main() { fn(value: Int) { value } }");
+        assert_eq!(value.kind(), NativeKind::Function);
+        assert_eq!(value.inspect(&inspection), "//fn(a) { ... }");
+        for same in [&alias, &same] {
+            assert!(value.source_equal(&equality, same));
+            assert!(same.source_equal(&equality, &value));
+            assert_eq!(value.source_hash(&hashing), same.source_hash(&hashing));
+        }
+        for different in [&different_capture, &different_body, &no_capture, &function] {
+            assert!(!value.source_equal(&equality, different));
+            assert!(!different.source_equal(&equality, &value));
+        }
+        let source_type = |value: &crate::runtime::StoredRuntimeValue| Some(value.type_().clone());
+        assert_eq!(value.find_source(source_type), None);
+        assert!(function.find_source(source_type).is_some());
+        assert!(value.index(0).is_none());
+        assert_eq!(value.len(), None);
     }
 
     #[test]

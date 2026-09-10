@@ -24,6 +24,20 @@ pub(crate) trait HostTokenRuntime {
 
 pub(crate) trait HostCallRuntime<Profile: HostProfile>: HostTokenRuntime {
     fn state(&mut self) -> &mut Profile::RunState;
+    fn execution_state(&mut self) -> &mut Profile::ExecutionState;
+    fn execution_with_native_values(
+        &mut self,
+    ) -> (
+        &mut Profile::ExecutionState,
+        crate::runtime::NativeValues<'_>,
+    );
+    fn native_values(&self) -> crate::runtime::NativeValues<'_>;
+    fn clock(&self) -> crate::execution::ExecutionClock<'_>;
+    fn spawn(
+        &mut self,
+        callable: crate::runtime::RetainedCallable,
+        origin: crate::runtime::HostCallOrigin,
+    ) -> crate::execution::ExecutionUnit;
     fn external_stores(&self) -> &Profile::ExternalStores;
     fn arguments(&self) -> &dyn HostCallArguments;
     fn scalar_context(&mut self) -> (&mut Profile::RunState, &dyn HostCallArguments);
@@ -88,12 +102,6 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile>: HostTokenRuntime {
     fn callable(&self, function: HostFunctionToken) -> crate::runtime::RetainedCallable;
     fn codec_scope(&self) -> HostCodecScope;
     fn stored_equal(&self, left: &StoredRuntimeValue, right: &StoredRuntimeValue) -> bool;
-    fn native_equal(
-        &self,
-        left: &crate::runtime::NativeValue,
-        right: &crate::runtime::NativeValue,
-    ) -> bool;
-    fn native_hash(&self, value: &crate::runtime::NativeValue) -> u64;
     fn native_tuple(&self, value: HostListToken) -> crate::runtime::NativeValue;
     fn stored_source_hash(&self, value: &StoredRuntimeValue) -> u64;
     fn stored_inspect(&self, value: &StoredRuntimeValue) -> ecow::EcoString;

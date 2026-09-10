@@ -1530,6 +1530,7 @@ pub fn main() {
     impl HostProfile for ProjectionProfile {
         type RunState = ();
         type ExternalStores = HostFutureStore;
+        type ExecutionState = ();
     }
     impl crate::host::HostWorkProfile for ProjectionProfile {
         type Work = crate::work_fixture::WorkComponent;
@@ -1644,9 +1645,17 @@ pub fn boxed() -> CounterListBox {
             .expect("active entry")
             .expect("boxed external List should evaluate");
         let work = crate::runtime::work::execution::ExecutionWork::new();
+        let mut units = crate::runtime::execution::Units::new(());
         let mut runtime = RuntimeState::with_host_and_lists(
             &mut echo,
-            crate::runtime::state::RuntimeHost::<ProjectionProfile>::new(&mut host, &stores, &work),
+            crate::runtime::state::RuntimeHost::<ProjectionProfile>::new(
+                &mut host,
+                &stores,
+                &work,
+                &mut units,
+                work.execution(),
+                crate::execution::ExecutionClock::new(&executor),
+            ),
             Default::default(),
         );
         {

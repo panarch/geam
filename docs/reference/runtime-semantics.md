@@ -180,8 +180,50 @@ component state. `run` reads explicit dependency configuration, initializes
 selected Cargo components, constructs built-in runner capabilities, and then
 plans, seals, and executes. Configuration and credentials do not enter generated
 source, Cargo metadata, global state, canonical plans, or runtime values.
-Built-in stdlib, JSON, and Time components use the same static composition and
+Built-in stdlib, JSON, Time, and Erlang components use the same static composition and
 registration path without requiring an external provider selection.
+
+### Processes And Native Environment
+
+The `geam-erlang` built-in supplies the native meaning of the unchanged
+`gleam_erlang` package. Core owns typed execution units, suspension,
+cancellation, and host scheduling; the built-in owns process identities,
+mailboxes, selectors, links, monitors, timers, and names.
+
+Messages retain immutable values, including captured closures and external
+values. Pids and Subjects identify a process without owning its mailbox or
+domain. Native projection and exact typed restoration remain separate, so
+`Dynamic` sees the declared native representation without relabeling a value's
+original source type.
+
+Each Rust entry starts a fresh logical process. Ordinary nested callbacks
+continue in the caller's process. Each deferred Gleam callback invocation from
+shared Future work starts a fresh process, independent of the work's creator or
+observer. Future composition does not define process parentage or links.
+
+Normal source return ends that process. Source or provider failure ends it with
+an abnormal reason whose native representation contains `geam_execution_error`
+and the original diagnostic. Explicit native reasons retain their values.
+Cancellation of an active process uses `Killed`; the executor's physical worker
+cleanup remains a separate acknowledgement. Monitors observe one logical exit,
+not an additional exit when cleanup finishes. Unlinked background failure alone
+does not fail the root entry.
+
+Each execution domain owns an atom table, initially containing native source
+constructor tags and the built-in's scalar, selector, node, and signal tags.
+Names created by `atom.create` and `process.new_name` have at most 255 Unicode
+codepoints. Creating a new name at 1,048,576 entries fails as a host operation;
+existing atoms remain available until domain shutdown.
+
+The native node is `nonode@nohost`. `node.visible()` returns an empty list, and
+`node.connect()` returns `LocalNodeIsNotAlive`. `Port` retains the package's
+opaque schema; this package does not provide a port constructor.
+
+`application.priv_directory` looks up an exact package name in the host's
+resource catalog. Project loading records root and dependency `priv` paths,
+including non-Gleam dependencies. Known paths are returned even when the
+directory does not exist; unknown names return `Error(Nil)`. Source-only hosts
+provide their own catalog. Resource locations stay outside canonical plans.
 
 ### Time Sources
 

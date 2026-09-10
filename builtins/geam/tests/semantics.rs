@@ -27,6 +27,7 @@ struct State {
 impl HostProfile for Profile {
     type RunState = State;
     type ExternalStores = HostFutureStore;
+    type ExecutionState = ();
 }
 
 impl HostWorkProfile for Profile {

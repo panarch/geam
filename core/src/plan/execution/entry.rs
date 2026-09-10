@@ -74,6 +74,7 @@ mod tests {
     impl HostProfile for Profile {
         type RunState = ();
         type ExternalStores = (HostFutureStore, crate::HostExternalStore<u64>);
+        type ExecutionState = ();
     }
     impl HostWorkProfile for Profile {
         type Work = WorkComponent;

@@ -215,16 +215,89 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::{Progress, TestHost};
+    use geam_core::execution::ExecutionHost;
     use geam_core::host::{
         HostCall, HostCallContinuation, HostCallError, HostConstructions, HostExecutionError,
         HostProfile, HostProvider, HostProviderModule, HostProviderSet, HostTypeListEnd,
     };
     use geam_core::{HostedExecution, ModuleSource, PackageSource};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::task::{Context, Waker};
+    use std::time::Duration;
+
+    #[test]
+    fn cancelled_workers_drop_without_polling_and_completion_needs_no_waiter() {
+        use geam_core::execution::TaskExit;
+        use std::pin::Pin;
+
+        let host = TestHost::default();
+        let polled = Arc::new(AtomicBool::new(false));
+        let worker = |captured: Arc<AtomicBool>| -> geam_core::execution::Worker {
+            Box::pin(async move {
+                captured.store(true, Ordering::Release);
+            })
+        };
+        let mut task = host.spawn(worker(Arc::clone(&polled)));
+        task.cancel();
+        host.step();
+        assert!(!polled.load(Ordering::Acquire));
+        assert_eq!(Arc::strong_count(&polled), 1);
+        let mut cx = Context::from_waker(Waker::noop());
+        assert_eq!(
+            Pin::new(&mut *task)
+                .poll(&mut cx)
+                .map(|exit| std::mem::discriminant(&exit)),
+            std::task::Poll::Ready(std::mem::discriminant(&TaskExit::Cancelled))
+        );
+
+        let mut task = host.spawn(worker(Arc::clone(&polled)));
+        host.step();
+        assert!(polled.load(Ordering::Acquire));
+        assert_eq!(Arc::strong_count(&polled), 1);
+        assert_eq!(
+            Pin::new(&mut *task)
+                .poll(&mut cx)
+                .map(|exit| std::mem::discriminant(&exit)),
+            std::task::Poll::Ready(std::mem::discriminant(&TaskExit::Completed))
+        );
+        assert!(host.workers.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn clock_waiters_are_deduplicated_and_woken_before_rechecking_the_deadline() {
+        let host = TestHost::default();
+        let deadline = host.now() + Duration::from_millis(10);
+        let mut sleep = host.sleep_until(deadline);
+        let first = Arc::new(Progress(AtomicBool::new(false)));
+        let second = Arc::new(Progress(AtomicBool::new(false)));
+        for progress in [&first, &first, &second] {
+            let waker = Waker::from(Arc::clone(progress));
+            assert!(
+                sleep
+                    .as_mut()
+                    .poll(&mut Context::from_waker(&waker))
+                    .is_pending()
+            );
+        }
+        assert_eq!(host.clock.lock().unwrap().waiters.len(), 2);
+        host.advance(Duration::from_millis(9));
+        assert!(first.0.load(Ordering::Acquire));
+        assert!(second.0.load(Ordering::Acquire));
+        assert!(host.clock.lock().unwrap().waiters.is_empty());
+        let mut cx = Context::from_waker(Waker::noop());
+        assert!(sleep.as_mut().poll(&mut cx).is_pending());
+        host.advance(Duration::from_millis(1));
+        assert!(sleep.as_mut().poll(&mut cx).is_ready());
+        assert!(host.clock.lock().unwrap().waiters.is_empty());
+    }
 
     struct Profile;
     impl HostProfile for Profile {
         type RunState = ();
         type ExternalStores = ();
+        type ExecutionState = ();
     }
 
     struct Provider;
@@ -247,6 +320,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "the controlled test host failed: the Gleam entry was cancelled")]
     fn execution_only_fixture_rejects_cancelled_entries() {
+        assert_eq!(*<Provider as HostProvider<Profile>>::project(&mut ()), ());
         let providers =
             HostProviderSet::from_providers([HostProviderModule::new("application", "main")
                 .unwrap()
@@ -275,5 +349,28 @@ pub fn main() { cancel() }
         let plan = geam_core::plan_host_program(program).unwrap();
         let mut execution = HostedExecution::try_from_module_plan(plan).unwrap();
         let _ = super::run(&mut execution, &mut (), &mut Vec::new());
+    }
+
+    #[test]
+    fn execution_only_fixture_preserves_a_source_failure() {
+        let program = geam_core::compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    "pub fn main() { panic as \"source failure\" }",
+                )],
+            )],
+            HostProviderSet::<Profile>::from_providers([]).unwrap(),
+        )
+        .unwrap();
+        let plan = geam_core::plan_host_program(program).unwrap();
+        let mut execution = HostedExecution::try_from_module_plan(plan).unwrap();
+        let error = super::run(&mut execution, &mut (), &mut Vec::new()).unwrap_err();
+        assert_eq!(error.to_string(), "panic: source failure");
     }
 }

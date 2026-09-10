@@ -2,9 +2,12 @@
 
 #[cfg(feature = "tokio")]
 mod tokio;
+mod unit;
 
 #[cfg(feature = "tokio")]
 pub use tokio::TokioHost;
+pub use unit::{ExecutionUnit, ExecutionUnitId, HostExecutionState, UnitExit};
+pub(crate) use unit::{UnitFinished, UnitOwner, UnitRecord};
 
 use std::future::Future;
 use std::pin::Pin;
@@ -76,10 +79,122 @@ pub trait ExecutionHost: Send + Sync + 'static {
     fn sleep_until(&self, deadline: Instant) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
 }
 
+/// Immutable value metadata available when a domain initializes its services.
+pub struct ExecutionMetadata<'plan>(
+    pub(crate) crate::plan::execution::runtime::RuntimeValueMetadata<'plan>,
+);
+
+impl<'plan> ExecutionMetadata<'plan> {
+    /// Native tags of constructors retained in the sealed execution catalog.
+    /// Multiple specializations may contain the same tag.
+    pub fn native_constructor_tags(self) -> impl Iterator<Item = &'plan ecow::EcoString> {
+        self.0.native_constructor_tags()
+    }
+}
+
+/// Borrowed access to the host's monotonic clock, without worker admission.
+#[derive(Clone, Copy)]
+pub struct ExecutionClock<'host>(&'host dyn ExecutionHost);
+
+impl<'host> ExecutionClock<'host> {
+    pub(crate) fn new(host: &'host dyn ExecutionHost) -> Self {
+        Self(host)
+    }
+
+    pub fn now(self) -> Instant {
+        self.0.now()
+    }
+
+    /// The returned wait owns no host or provider-state borrow.
+    pub fn sleep_until(self, deadline: Instant) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+        self.0.sleep_until(deadline)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{DriverError, RunError};
     use std::error::Error;
+
+    #[test]
+    fn domain_initialization_observes_sealed_native_tags_before_any_unit_starts() {
+        use super::{
+            ExecutionMetadata, ExecutionUnit, ExecutionUnitId, HostExecutionState, UnitExit,
+        };
+        use crate::{HostProfile, HostedExecution};
+        use std::collections::BTreeSet;
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Default)]
+        struct Tags(Arc<Mutex<BTreeSet<ecow::EcoString>>>);
+        impl HostExecutionState for Tags {
+            fn initialize(&mut self, metadata: ExecutionMetadata<'_>) {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .extend(metadata.native_constructor_tags().cloned());
+            }
+            fn started(&mut self, _: ExecutionUnit) {
+                assert_eq!(
+                    *self.0.lock().unwrap(),
+                    BTreeSet::from(["before_first".into(), "has_data".into()])
+                );
+            }
+            fn finished(&mut self, _: ExecutionUnitId, _: &UnitExit) {}
+            fn close(&mut self) {}
+        }
+        struct Profile;
+        impl HostProfile for Profile {
+            type RunState = Arc<Mutex<BTreeSet<ecow::EcoString>>>;
+            type ExternalStores = ();
+            type ExecutionState = Tags;
+            fn initialize_execution(state: &mut Self::RunState) -> Tags {
+                Tags(Arc::clone(state))
+            }
+        }
+        let program = crate::compile_typed_host_program(
+            "application", "main",
+            [crate::PackageSource::new("application", Vec::<String>::new(), [crate::ModuleSource::new(
+                "main", "synthetic/main.gleam",
+                "pub type Marker { BeforeFirst HasData(Int) }\npub fn main() { #(BeforeFirst, HasData(42)) }",
+            )])],
+            crate::HostProviderSet::<Profile>::from_providers([]).unwrap(),
+        ).unwrap();
+        assert!(program.package_resources().is_empty());
+        let mut execution =
+            HostedExecution::try_from_module_plan(crate::plan_host_program(program).unwrap())
+                .unwrap();
+        let host = crate::execution_fixture::TestHost::default();
+        let mut observed = Arc::default();
+        let value = host
+            .block_on(execution.run_main(&host, &mut observed, &mut Vec::new()))
+            .unwrap();
+        assert_eq!(value.inspect().to_string(), "#(BeforeFirst, HasData(42))");
+        assert_eq!(
+            *observed.lock().unwrap(),
+            BTreeSet::from(["before_first".into(), "has_data".into()])
+        );
+    }
+
+    #[test]
+    fn borrowed_clock_uses_the_hosts_time_and_wait_without_spawning() {
+        use super::{ExecutionClock, ExecutionHost, HostExecutionState};
+        use crate::execution_fixture::TestHost;
+        use std::task::{Context, Poll, Waker};
+        use std::time::Duration;
+
+        let host = TestHost::default();
+        let clock = ExecutionClock::new(&host);
+        assert_eq!(clock.now(), host.now());
+        let mut wait = clock.sleep_until(clock.now() + Duration::from_secs(2));
+        let mut cx = Context::from_waker(Waker::noop());
+        assert!(wait.as_mut().poll(&mut cx).is_pending());
+        host.advance(Duration::from_secs(1));
+        assert!(wait.as_mut().poll(&mut cx).is_pending());
+        host.advance(Duration::from_secs(1));
+        assert_eq!(wait.as_mut().poll(&mut cx), Poll::Ready(()));
+        assert_eq!(().poll(&mut cx, clock), Poll::Pending);
+    }
 
     #[test]
     fn driver_diagnostics_preserve_the_executor_failure_source() {

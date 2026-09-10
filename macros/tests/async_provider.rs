@@ -35,6 +35,7 @@ struct HostStores {
 impl HostProfile for Profile {
     type RunState = State;
     type ExternalStores = HostStores;
+    type ExecutionState = ();
 }
 impl HostComponentProfile<Component> for Profile {
     fn component_stores(stores: &HostStores) -> &Stores {

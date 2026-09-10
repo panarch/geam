@@ -68,6 +68,7 @@ struct Profile;
 impl HostProfile for Profile {
     type RunState = ScriptedSource;
     type ExternalStores = ();
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<Component<ScriptedSource>> for Profile {
@@ -158,6 +159,7 @@ fn transferable_builtin_profile_keeps_the_same_caller_owned_source() {
     impl HostProfile for TransferProfile {
         type RunState = (ScriptedSource, ());
         type ExternalStores = Stores;
+        type ExecutionState = ();
     }
     impl CounterProfile for TransferProfile {
         type Source = ScriptedSource;

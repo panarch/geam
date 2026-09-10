@@ -4,7 +4,7 @@ Geam uses Rust unit tests for compiler-boundary, lowering, and runtime
 milestones.
 
 The root Cargo workspace contains the `geam` facade and binary, `geam-core`,
-`geam-stdlib`, `geam-json`, `geam-time`, `geam-builtin`, `geam-cli`, and `geam-macros`. Each
+`geam-stdlib`, `geam-json`, `geam-time`, `geam-erlang`, `geam-builtin`, `geam-cli`, and `geam-macros`. Each
 extracted package owns tests for its production protocols. Root integration
 targets own the public `geam::...` facade, cross-crate compatibility, and
 standalone distribution behavior; they do not replace package-local owner
@@ -19,6 +19,8 @@ cargo check --package geam --no-default-features --features embedding,tokio --al
 cargo check --package geam --no-default-features --features provider --all-targets --locked
 cargo check --package geam --no-default-features --features embedding,gleam-stdlib --all-targets --locked
 cargo check --package geam --no-default-features --features embedding,geam-builtin --all-targets --locked
+cargo check --package geam --no-default-features --features embedding,gleam-erlang --all-targets --locked
+cargo check --package geam --no-default-features --features embedding,gleam-erlang,geam-builtin,tokio --all-targets --locked
 ```
 
 Default workspace tests and installation still use the complete `full`
@@ -162,6 +164,15 @@ the complete public surfaces of `gleam/time/duration`, `gleam/time/calendar`,
 and `gleam/time/timestamp`, executes every public function, and supplies a
 deterministic caller-owned clock for system effects.
 
+The tracked `builtins/erlang/tests/fixtures/project` pins `gleam_erlang v1.3.0`
+and `gleam_stdlib v1.0.3`. Its independent surface inventory freezes all seven
+public modules and 48 bodyless externals against the original package source.
+Compatibility cases exercise Subjects, native Dynamic views, selectors and
+suspended callbacks, process lifecycle, names, timers, and package resources.
+Its deterministic host and clock keep timer and callback ordering reproducible.
+The root standalone process case also runs the maintained Gleam service on
+Erlang as an independent behavioral oracle.
+
 The independent `tests/fixtures/provider_sdk` Cargo workspace verifies the
 public path-provider boundary without adding its crates to Geam's development
 dependencies. Its `runner/tests/public_usage.rs` keeps the complete Gleam
@@ -198,7 +209,8 @@ for example in \
   io \
   provider \
   async_host \
-  session
+  session \
+  processes
 do
   (
     cd "examples/embedding/$example"
@@ -223,6 +235,13 @@ retains it in Rust, and passes it back through generated bindings. It requires
 neither a provider nor a source Future. Exact owner/type/lifetime rejection,
 hidden work and non-Clone/non-Sync payload retention remain core and CLI owner
 test obligations.
+
+The `processes` example uses actual generated Pid and Subject handles to retain
+a running Gleam service between Rust calls, issue multiple requests, and await
+its termination. Its public binary test fixes the complete output. Core and
+built-in owners separately prove cancellation, routing, lifetime and scheduling
+behavior. The `Host execution` CI matrix runs the package and example on Linux,
+macOS, and Windows as well as the guided-example checks below.
 
 The `execution` example uses the manual hosted API to run pure Gleam, observe
 its first Echo, cancel the running entry, and successfully call another entry
@@ -300,7 +319,7 @@ stale, requires `embedding check` to fail, and runs production sync to restore
 the exact committed file before formatting, testing, linting, and running the
 application with the exact inventory report and its captured Gleam IO. The same
 job requires one Geam package identity, the exact core/macros/stdlib/builtin application
-profile, the text-pattern provider, and no CLI/JSON/Time dependency.
+profile, the text-pattern provider, and no CLI/JSON/Time/Erlang dependency.
 Provider-example jobs remain separate because they own provider authoring and
 standalone consumption rather than Rust-first application composition.
 
@@ -433,7 +452,9 @@ The root package keeps five explicit acceptance targets:
 - `standalone_distribution` combines built-ins and two independent providers
   in one canonical managed-project flow. Its Future cases verify exact outer
   entry completion and a generated Tokio host using controlled timers, loopback
-  I/O, state initialization, repeated calls, and bounded shutdown.
+  I/O, state initialization, repeated calls, and bounded shutdown. Process cases
+  run the maintained service on Erlang and Geam, retain the generated profile
+  across source changes, and fix ordinary and outer-Future domain termination.
 
 Detailed project loading, provider selection validation, explicit provider
 resolution, manifest, lock, and runner behavior remain in `geam-cli`; the root
@@ -481,6 +502,7 @@ cargo test --package geam-stdlib --test gleam_stdlib --locked
 cargo test --package geam-json --test gleam_json --locked
 cargo test --package geam-time --test gleam_time --locked
 cargo test --package geam-builtin --locked
+cargo test --package geam-erlang --locked
 ```
 
 Run the root acceptance targets independently:
@@ -558,11 +580,12 @@ Run the built-in closure with Gleam `v1.18.1` available:
 
 ```sh
 cargo llvm-cov clean --workspace
-cargo llvm-cov --no-report --package geam-stdlib --package geam-json --package geam-time --package geam-builtin --locked
+cargo llvm-cov --no-report --package geam-stdlib --package geam-json --package geam-time --package geam-builtin --package geam-erlang --locked
 cargo llvm-cov report --package geam-stdlib --summary-only --fail-under-lines 100 --fail-under-regions 100
 cargo llvm-cov report --package geam-json --summary-only --fail-under-lines 100 --fail-under-regions 100
 cargo llvm-cov report --package geam-time --summary-only --fail-under-lines 100 --fail-under-regions 100
 cargo llvm-cov report --package geam-builtin --summary-only --fail-under-lines 100 --fail-under-regions 100
+cargo llvm-cov report --package geam-erlang --summary-only --fail-under-lines 100 --fail-under-regions 100
 ```
 
 Run the CLI and binary closure with Gleam `v1.18.1` available:

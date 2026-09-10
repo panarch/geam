@@ -1219,6 +1219,7 @@ struct TransferFixtureProfile;
 impl HostProfile for TransferFixtureProfile {
     type RunState = ();
     type ExternalStores = HostFutureStore;
+    type ExecutionState = ();
 }
 
 impl geam_core::host::HostWorkProfile for TransferFixtureProfile {

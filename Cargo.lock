@@ -1014,9 +1014,11 @@ dependencies = [
  "camino",
  "ecow",
  "futures-channel",
+ "futures-util",
  "geam-builtin",
  "geam-cli",
  "geam-core",
+ "geam-erlang",
  "geam-gleam-core",
  "geam-json",
  "geam-macros",
@@ -1087,6 +1089,26 @@ dependencies = [
  "tokio",
  "toml 0.9.12+spec-1.1.0",
  "vec1",
+]
+
+[[package]]
+name = "geam-erlang"
+version = "0.2.3"
+dependencies = [
+ "camino",
+ "ecow",
+ "futures-channel",
+ "futures-util",
+ "geam-core",
+ "geam-gleam-core",
+ "geam-stdlib",
+ "im",
+ "num-bigint",
+ "num-traits",
+ "priority-queue",
+ "serde_json",
+ "tempfile",
+ "toml 0.9.12+spec-1.1.0",
 ]
 
 [[package]]

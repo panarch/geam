@@ -96,6 +96,10 @@ impl<Request> Drop for Requests<Request> {
 }
 
 impl<Request> Sender<Request> {
+    pub(crate) fn same_queue(&self, other: &Self) -> bool {
+        self.queue.ptr_eq(&other.queue)
+    }
+
     pub(crate) fn submit<Output>(
         &self,
         request: impl FnOnce(Reply<Output>) -> Request,

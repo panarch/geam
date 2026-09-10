@@ -197,6 +197,7 @@ mod tests {
     impl HostProfile for Profile {
         type RunState = GleamStdlibRunState;
         type ExternalStores = (GleamStdlibStores, HostExternalStore<DictPayload>);
+        type ExecutionState = ();
     }
 
     impl HostComponentProfile<Component> for Profile {

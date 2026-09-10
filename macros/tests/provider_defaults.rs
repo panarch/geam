@@ -60,6 +60,7 @@ fn default_state_component_still_registers_its_declared_module() {
     impl geam_core::HostProfile for Profile {
         type RunState = State;
         type ExternalStores = Stores;
+        type ExecutionState = ();
     }
 
     impl geam_core::HostComponentProfile<Component> for Profile {

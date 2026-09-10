@@ -6,6 +6,7 @@ struct Profile;
 impl HostProfile for Profile {
     type RunState = ();
     type ExternalStores = ();
+    type ExecutionState = ();
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

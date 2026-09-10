@@ -125,6 +125,7 @@ mod tests {
     impl HostProfile for StatefulProfile {
         type RunState = RunState;
         type ExternalStores = ();
+        type ExecutionState = ();
     }
 
     impl HostProvider<StatefulProfile> for Counter {
@@ -1127,6 +1128,7 @@ pub fn nested() { counter.around(counter.stop) }
     impl HostProfile for CountingProfile {
         type RunState = ();
         type ExternalStores = CountingStores;
+        type ExecutionState = ();
     }
 
     #[test]

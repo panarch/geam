@@ -101,6 +101,7 @@ pub(super) type GenericIntCallback = HostFunctionType<IntArguments, GenericValue
 impl HostProfile for ExternalProfile {
     type RunState = ExternalRunState;
     type ExternalStores = ExternalStores;
+    type ExecutionState = ();
 }
 
 impl HostExternalSchema for CounterSchema {

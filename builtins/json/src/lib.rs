@@ -90,6 +90,7 @@ impl GleamJsonRunState {
 impl HostProfile for GleamJsonProfile {
     type RunState = GleamJsonRunState;
     type ExternalStores = GleamJsonProfileStores;
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<GleamStdlibComponent> for GleamJsonProfile {

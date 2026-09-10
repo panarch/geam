@@ -62,6 +62,15 @@ impl CustomConstructorId {
 }
 
 impl CustomTypeTable {
+    pub(crate) fn native_constructor_tags(&self) -> impl Iterator<Item = &EcoString> {
+        self.types.iter().flat_map(|type_| {
+            type_
+                .constructors
+                .values()
+                .map(|constructor| &constructor.native_tag)
+        })
+    }
+
     pub(in crate::plan::execution) fn new(types: Vec<CustomTypeDescriptor>) -> Self {
         Self { types }
     }
