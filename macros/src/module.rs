@@ -53,7 +53,7 @@ enum ModuleProfile {
 #[derive(Clone, Default)]
 struct FunctionArguments {
     profile: Option<Ident>,
-    resumable: Option<Ident>,
+    await_: Option<Ident>,
 }
 
 struct ExternalArguments {
@@ -798,11 +798,11 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
         } else {
             InputOwnership::Borrowed
         };
-        let completion = match (&function_arguments.resumable, flavor) {
+        let completion = match (&function_arguments.await_, flavor) {
             (Some(marker), InputOwnership::Borrowed) => {
                 return Err(syn::Error::new_spanned(
                     marker,
-                    "resumable provider functions must be async",
+                    "`#[geam::function(await)]` requires an async function",
                 ));
             }
             (Some(_), InputOwnership::Owned) | (None, InputOwnership::Borrowed) => {
@@ -2083,6 +2083,62 @@ mod tests {
     }
 
     #[test]
+    fn await_keyword_selects_ordinary_completion_without_changing_unmarked_async() {
+        for (arguments, continuation) in [
+            (quote!(), false),
+            (quote!(await), true),
+            (quote!(await,), true),
+        ] {
+            let expansion = expand(
+                quote!(path = "waiter", crate_path = geam_core),
+                quote! {
+                    mod waiter {
+                        #[geam::function(#arguments)]
+                        async fn next() -> bool { true }
+                    }
+                },
+            )
+            .expect("async completion declaration should expand")
+            .to_string();
+
+            assert_eq!(expansion.contains("HostCallContinuation"), continuation);
+            assert_eq!(expansion.contains("with_resumable_function"), continuation);
+            assert_eq!(expansion.contains("HostCallCompletion"), !continuation);
+            assert_eq!(expansion.contains("return_future"), !continuation);
+        }
+    }
+
+    #[test]
+    fn await_keyword_combines_with_explicit_profiles_in_either_order() {
+        for arguments in [
+            quote!(await, profile = Profile),
+            quote!(profile = Profile, await),
+            quote!(profile = Profile, await,),
+        ] {
+            let expansion = expand(
+                quote!(
+                    path = "waiter",
+                    crate_path = geam_core,
+                    profile = crate::BuiltInProfile,
+                    component = crate::Component
+                ),
+                quote! {
+                    mod waiter {
+                        #[geam::function(#arguments)]
+                        async fn next() -> bool { true }
+                    }
+                },
+            )
+            .expect("await with an explicit profile should expand")
+            .to_string();
+
+            assert!(expansion.contains("with_resumable_function"));
+            assert!(expansion.contains("next :: < Profile >"));
+            assert!(!expansion.contains("return_future"));
+        }
+    }
+
+    #[test]
     fn manual_payloads_keep_custom_inputs_under_one_profile() {
         for profile in [
             quote!(),
@@ -2125,7 +2181,7 @@ mod tests {
             (quote!(#[geam::function]), quote!(), quote!(ImmediateInput)),
             (quote!(#[geam::function]), quote!(async), quote!(OwnedInput)),
             (
-                quote!(#[geam::function(resumable)]),
+                quote!(#[geam::function(await)]),
                 quote!(async),
                 quote!(OwnedInput),
             ),
@@ -2165,7 +2221,7 @@ mod tests {
                     )]
                     struct BoxValue<Item>;
 
-                    #[geam::function(resumable)]
+                    #[geam::function(await)]
                     async fn send<Item>(
                         #[geam::call] call: &mut Call<()>,
                         value: BoxInput<Item>,
@@ -2188,7 +2244,7 @@ mod tests {
             quote!(path = "native", crate_path = geam_core),
             quote! {
                 mod native {
-                    #[geam::function(resumable)]
+                    #[geam::function(await)]
                     async fn receive(
                         #[geam::call] call: &mut Call<()>,
                         callback: Callback<fn() -> Future<BigInt>>,
@@ -2245,7 +2301,7 @@ mod tests {
                     #[geam::function]
                     fn direct(value: BigInt) -> BigInt { value }
 
-                    #[geam::function(resumable)]
+                    #[geam::function(await)]
                     async fn construct(
                         #[geam::call] call: &mut Call<()>,
                         callback: Callback<fn() -> Future<BigInt>>,
@@ -2374,7 +2430,7 @@ mod tests {
                         Some(value)
                     }
 
-                    #[geam::function(resumable)]
+                    #[geam::function(await)]
                     async fn invoke_declared_immediate(
                         #[geam::call] call: &mut Call<BigInt>,
                         callback: Callback<fn(BigInt) -> declarations::Token>,
@@ -2384,7 +2440,7 @@ mod tests {
                         Ok(0.into())
                     }
 
-                    #[geam::function(resumable)]
+                    #[geam::function(await)]
                     async fn invoke_nested_generic_immediate<Item>(
                         #[geam::call] call: &mut Call<BigInt>,
                         callback: Callback<fn(BigInt) -> Option<Value<Item>>>,
@@ -2940,20 +2996,20 @@ mod tests {
             (
                 quote! {
                     mod counter {
-                        #[geam::function(resumable)]
+                        #[geam::function(await)]
                         fn next() -> bool { true }
                     }
                 },
-                "resumable provider functions must be async",
+                "`#[geam::function(await)]` requires an async function",
             ),
             (
                 quote! {
                     mod counter {
-                        #[geam::function(resumable, resumable)]
+                        #[geam::function(await, await)]
                         async fn next() -> bool { true }
                     }
                 },
-                "duplicate function argument `resumable`",
+                "duplicate function argument `await`",
             ),
             (
                 quote! {
@@ -2965,12 +3021,12 @@ mod tests {
                         ) -> bool { true }
                     }
                 },
-                "Callback arguments require an async function; use #[geam::function(resumable)] for an ordinary Gleam result",
+                "Callback arguments require an async function; use #[geam::function(await)] for an ordinary Gleam result",
             ),
             (
                 quote! {
                     mod counter {
-                        #[geam::function(resumable)]
+                        #[geam::function(await)]
                         async fn invoke(callback: Callback<fn() -> bool>) -> bool { true }
                     }
                 },
@@ -2979,7 +3035,7 @@ mod tests {
             (
                 quote! {
                     mod counter {
-                        #[geam::function(resumable)]
+                        #[geam::function(await)]
                         async fn invoke(
                             #[geam::call] call: &Call<RunState>,
                             callback: Callback<fn() -> bool>,
@@ -2991,7 +3047,7 @@ mod tests {
             (
                 quote! {
                     mod counter {
-                        #[geam::function(resumable)]
+                        #[geam::function(await)]
                         async fn invoke(
                             #[geam::call] call: &mut Call<RunState>,
                             callback: &Callback<fn() -> bool>,
@@ -3003,7 +3059,7 @@ mod tests {
             (
                 quote! {
                     mod counter {
-                        #[geam::function(resumable)]
+                        #[geam::function(await)]
                         async fn invoke(
                             #[geam::call] call: &mut Call<RunState>,
                             callback: Callback<bool>,
@@ -3015,7 +3071,7 @@ mod tests {
             (
                 quote! {
                     mod counter {
-                        #[geam::function(resumable)]
+                        #[geam::function(await)]
                         async fn invoke(
                             #[geam::call] call: &mut Call<RunState>,
                             callback: Callback<unsafe fn() -> bool>,
@@ -3027,7 +3083,7 @@ mod tests {
             (
                 quote! {
                     mod counter {
-                        #[geam::function(resumable)]
+                        #[geam::function(await)]
                         async fn invoke(
                             #[geam::call] call: &mut Call<RunState>,
                             callback: Callback<fn(
@@ -3041,7 +3097,7 @@ mod tests {
             (
                 quote! {
                     mod counter {
-                        #[geam::function(resumable)]
+                        #[geam::function(await)]
                         async fn invoke(
                             #[geam::call] call: &mut Call<RunState>,
                             callback: Callback<fn() -> Callback<fn() -> bool>>,
@@ -3053,7 +3109,7 @@ mod tests {
             (
                 quote! {
                     mod counter {
-                        #[geam::function(resumable)]
+                        #[geam::function(await)]
                         async fn invoke(
                             #[geam::call] call: &mut Call<RunState>,
                             callback: Callback<fn(Callback<fn() -> bool>) -> bool>,
@@ -3065,7 +3121,7 @@ mod tests {
             (
                 quote! {
                     mod counter {
-                        #[geam::function(resumable)]
+                        #[geam::function(await)]
                         async fn invoke(
                             #[geam::call] call: &mut Call<RunState>,
                             callback: Callback<bool, bool>,
@@ -3077,7 +3133,7 @@ mod tests {
             (
                 quote! {
                     mod counter {
-                        #[geam::function(resumable)]
+                        #[geam::function(await)]
                         async fn invoke(
                             #[geam::call] call: &mut Call<RunState>,
                             callback: Callback<fn() -> List>,
@@ -3089,7 +3145,7 @@ mod tests {
             (
                 quote! {
                     mod counter {
-                        #[geam::function(resumable)]
+                        #[geam::function(await)]
                         async fn invoke(
                             #[geam::call] call: &mut Call<RunState>,
                             callback: Callback<fn(Vec) -> bool>,
@@ -3101,7 +3157,7 @@ mod tests {
             (
                 quote! {
                     mod counter {
-                        #[geam::function(resumable)]
+                        #[geam::function(await)]
                         async fn invoke<Item>(
                             #[geam::call] call: &mut Call<RunState>,
                             callback: Callback<fn() -> Item>,
@@ -3113,7 +3169,7 @@ mod tests {
             (
                 quote! {
                     mod counter {
-                        #[geam::function(resumable)]
+                        #[geam::function(await)]
                         async fn invoke<Item>(
                             #[geam::call] call: &mut Call<RunState>,
                             callback: Callback<fn(Item) -> bool>,
@@ -3143,7 +3199,7 @@ mod tests {
                         Ready(String),
                     }
 
-                    #[geam::function(resumable)]
+                    #[geam::function(await)]
                     async fn around<Item>(
                         #[geam::call] call: &mut Call<RunState>,
                         callback: Callback<fn(Value<Item>, Token, Status) -> Value<Item>>,
@@ -3189,7 +3245,7 @@ mod tests {
                         Ready(String),
                     }
 
-                    #[geam::function(resumable)]
+                    #[geam::function(await)]
                     async fn invoke(
                         #[geam::call] call: &mut Call<RunState>,
                         callback: Callback<fn(
@@ -3205,7 +3261,7 @@ mod tests {
                         todo!()
                     }
 
-                    #[geam::function(resumable)]
+                    #[geam::function(await)]
                     async fn notify(
                         #[geam::call] call: &mut Call<RunState>,
                         callback: Callback<fn()>,
@@ -3232,6 +3288,25 @@ mod tests {
 
     #[test]
     fn function_marker_and_arity_diagnostics_are_exact() {
+        for (arguments, message) in [
+            (quote!(resumable), "unknown function argument `resumable`"),
+            (quote!(async), "unknown function argument `async`"),
+            (quote!(r#await), "unknown function argument `r#await`"),
+            (quote!(await = true), "expected `,`"),
+            (quote!(await profile = Profile), "expected `,`"),
+        ] {
+            assert_eq!(
+                expansion_error(quote!(
+                    mod counter {
+                        #[geam::function(#arguments)]
+                        async fn next() -> bool {
+                            true
+                        }
+                    }
+                )),
+                message,
+            );
+        }
         assert_eq!(
             expansion_error(quote!(
                 mod counter {
@@ -3285,7 +3360,7 @@ mod tests {
                     }
                 }
             )),
-            "expected identifier",
+            "expected ident",
         );
         assert_eq!(
             expansion_error(quote!(
@@ -3318,7 +3393,7 @@ mod tests {
                     }
                 }
             )),
-            "`#[geam::function]` accepts only `profile = Name`",
+            "`#[geam::function]` accepts only `await` and `profile = Name` arguments",
         );
         assert_eq!(
             expansion_error(quote!(
@@ -4516,14 +4591,14 @@ mod tests {
                     #[geam::function]
                     fn output_only<Item>() -> BoxValue<Item> { todo!() }
 
-                    #[geam::function(resumable)]
+                    #[geam::function(await)]
                     async fn send<Input, Output>(
                         #[geam::call] call: &mut Call<()>,
                         value: Value<Input>,
                         callback: Callback<fn(BoxValue<Input>) -> Value<Output>>,
                     ) -> HostResult<Value<Output>> { todo!() }
 
-                    #[geam::function(resumable)]
+                    #[geam::function(await)]
                     async fn receive<Item>(
                         #[geam::call] call: &mut Call<()>,
                         callback: Callback<fn() -> BoxInput<Item>>,

@@ -117,7 +117,7 @@ mod native {
         value.into_value()
     }
 
-    #[geam_macros::function(resumable)]
+    #[geam_macros::function(await)]
     async fn manual_callback<Item>(
         #[geam_macros::call] call: &mut Call<BigInt>,
         value: ManualInput<Item>,
@@ -397,7 +397,7 @@ mod native {
         (before, call.state().clone())
     }
 
-    #[geam_macros::function(resumable)]
+    #[geam_macros::function(await)]
     async fn invoke_immediate(
         #[geam_macros::call] call: &mut Call<BigInt>,
         callback: Callback<fn(BigInt) -> BigInt>,

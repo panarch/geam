@@ -53,7 +53,7 @@ mod generic_box {
         call.equal(&value, &expected)
     }
 
-    #[geam::function(resumable)]
+    #[geam::function(await)]
     async fn map<Input, Output>(
         #[geam::call] call: &mut Call<()>,
         boxed: BoxInput<Input>,

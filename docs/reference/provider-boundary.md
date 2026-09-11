@@ -304,12 +304,12 @@ typed callbacks. Existential retained values use the explicit
 [`call_tracing`](../../examples/provider/call_tracing)
 separates opaque function
 pass-through from invocation. `Value<fn(...) -> ...>` remains an opaque source
-handle; `Callback<fn(...) -> ...>` supplies a typed invocation target. A
-resumable native function can await that target and then continue its own Rust
-body:
+handle; `Callback<fn(...) -> ...>` supplies a typed invocation target. Mark an
+async native function with `#[geam::function(await)]` to await that target and
+return the result through the current Gleam call:
 
 ```rust
-#[geam::function(resumable)]
+#[geam::function(await)]
 async fn around<Item>(
     #[geam::call] call: &mut Call<RunState>,
     callback: Callback<fn() -> Value<Item>>,
@@ -326,12 +326,14 @@ input views. The generated adapter registers any required constructions once,
 then invokes the existing typed host ABI without materializing generic values.
 `Call::invoke` preserves nested source panics and provider failures. Bounded
 `with_state` access releases the state before callback re-entry or another
-await. The callback can call the same provider or wait in another resumable
-native implementation; the outer Rust body resumes with its result.
+await. The callback can call the same provider or await another native
+implementation; the outer Rust body resumes with its result.
 
-`#[geam::function(resumable)] async fn ... -> T` implements an ordinary Gleam
-function returning `T`. It does not construct a source Future. This differs
-from the unmarked async function below, which returns explicit work to Gleam.
+`#[geam::function(await)] async fn ... -> T` implements an ordinary Gleam
+function returning `T`. The current Gleam execution is suspended while the
+Rust future is pending; the caller's executor drives its completion. It does
+not construct or implicitly observe a source Future. This differs from the
+unmarked async function below, which returns explicit work to Gleam.
 
 ## Explicit Async Functions
 
@@ -385,8 +387,8 @@ callback uses `Callback<fn(...) -> Future<T>>`. Receive that work, then use
 
 Functions accepting `Future<T>`, including a Future returned by a callback,
 receive work without polling it even when the Rust function itself is
-synchronous. An ordinary or resumable function does not implicitly construct
-or observe source Future values.
+synchronous. Neither an immediate Rust function nor an async function marked
+`await` implicitly constructs or observes source Future values.
 
 Work follows the [shared completion and cancellation
 semantics](runtime-semantics.md#explicit-work). Ending the execution scope closes

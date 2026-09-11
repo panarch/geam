@@ -48,7 +48,7 @@ mod callback_provider {
         call.state().entries.join("/").into()
     }
 
-    #[geam_macros::function(resumable)]
+    #[geam_macros::function(await)]
     async fn around<Item>(
         #[geam_macros::call] call: &mut Call<RunState>,
         callback: Callback<fn() -> Value<Item>>,
@@ -61,7 +61,7 @@ mod callback_provider {
         Ok(returned)
     }
 
-    #[geam_macros::function(resumable)]
+    #[geam_macros::function(await)]
     async fn apply<Item>(
         #[geam_macros::call] call: &mut Call<RunState>,
         callback: Callback<fn(Value<Item>) -> Value<Item>>,
@@ -70,7 +70,7 @@ mod callback_provider {
         call.invoke(&callback, (value,)).await
     }
 
-    #[geam_macros::function(resumable)]
+    #[geam_macros::function(await)]
     async fn rotate(
         #[geam_macros::call] call: &mut Call<RunState>,
         callback: Callback<fn(EcoString, BigInt) -> (BigInt, EcoString)>,
@@ -80,7 +80,7 @@ mod callback_provider {
         call.invoke(&callback, (label, number)).await
     }
 
-    #[geam_macros::function(resumable)]
+    #[geam_macros::function(await)]
     async fn decide(
         #[geam_macros::call] call: &mut Call<RunState>,
         callback: Callback<fn(Token, Decision) -> DecisionInput>,
@@ -95,7 +95,7 @@ mod callback_provider {
         })
     }
 
-    #[geam_macros::function(resumable)]
+    #[geam_macros::function(await)]
     async fn list_total(
         #[geam_macros::call] call: &mut Call<RunState>,
         callback: Callback<fn(Vec<((BigInt, EcoString), self::Token)>) -> geam_core::List<BigInt>>,
@@ -117,7 +117,7 @@ mod callback_provider {
         Ok(total)
     }
 
-    #[geam_macros::function(resumable)]
+    #[geam_macros::function(await)]
     async fn classify(
         #[geam_macros::call] call: &mut Call<RunState>,
         callback: Callback<
@@ -135,7 +135,7 @@ mod callback_provider {
         .await
     }
 
-    #[geam_macros::function(resumable)]
+    #[geam_macros::function(await)]
     async fn inspect_callback<Item>(
         #[geam_macros::call] call: &mut Call<RunState>,
         callback: Callback<fn() -> (Value<Item>, List<EcoString>)>,

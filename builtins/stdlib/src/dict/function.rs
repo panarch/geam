@@ -166,7 +166,7 @@ pub(super) mod provider {
         })
     }
 
-    #[geam_macros::function(profile = Profile, resumable)]
+    #[geam_macros::function(profile = Profile, await)]
     async fn do_map_values<Key, Mapped, Item>(
         #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
         function: Callback<fn(Value<Key>, Value<Item>) -> Value<Mapped>>,
@@ -225,7 +225,7 @@ pub(super) mod provider {
         })
     }
 
-    #[geam_macros::function(profile = Profile, resumable)]
+    #[geam_macros::function(profile = Profile, await)]
     async fn do_fold<Accumulator, Key, Item>(
         #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
         function: Callback<fn(Value<Key>, Value<Item>, Value<Accumulator>) -> Value<Accumulator>>,
@@ -245,7 +245,7 @@ pub(super) mod provider {
         Ok(accumulator)
     }
 
-    #[geam_macros::function(profile = Profile, resumable)]
+    #[geam_macros::function(profile = Profile, await)]
     async fn transient_update_with<Key, Item>(
         #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
         key: Value<Key>,

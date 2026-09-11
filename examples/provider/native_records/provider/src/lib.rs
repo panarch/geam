@@ -84,7 +84,7 @@ mod records {
         geam::gleam_stdlib::Dynamic::from_native(value)
     }
 
-    #[geam::function(resumable)]
+    #[geam::function(await)]
     async fn map<Output>(
         #[geam::call] call: &mut Call<()>,
         value: geam::provider::advanced::External<geam::gleam_stdlib::Dynamic>,

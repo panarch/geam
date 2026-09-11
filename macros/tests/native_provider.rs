@@ -144,7 +144,7 @@ mod native {
         call.inspect(&value)
     }
 
-    #[geam_macros::function(resumable)]
+    #[geam_macros::function(await)]
     async fn reenter(
         #[geam_macros::call] call: &mut Call<State>,
         value: geam_core::provider::advanced::External<Envelope>,

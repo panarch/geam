@@ -13,7 +13,7 @@ pub struct Component;
 mod native {
     use super::{BigInt, Call, Callback, require_static};
 
-    #[geam_macros::function(resumable)]
+    #[geam_macros::function(await)]
     async fn retain(
         #[geam_macros::call] _call: &mut Call<()>,
         callback: Callback<fn(BigInt) -> BigInt>,

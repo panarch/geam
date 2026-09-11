@@ -21,7 +21,7 @@ mod call_tracing {
         call.state_mut().entries.push(entry);
     }
 
-    #[geam::function(resumable)]
+    #[geam::function(await)]
     async fn record_later(
         #[geam::call] call: &mut Call<RunState>,
         entry: EcoString,
@@ -32,7 +32,7 @@ mod call_tracing {
         Ok(())
     }
 
-    #[geam::function(resumable)]
+    #[geam::function(await)]
     async fn around<Item>(
         #[geam::call] call: &mut Call<RunState>,
         callback: Callback<fn() -> Value<Item>>,

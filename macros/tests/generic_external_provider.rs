@@ -91,7 +91,7 @@ mod generic_box {
         call.equal(&value, &expected)
     }
 
-    #[geam_macros::function(resumable)]
+    #[geam_macros::function(await)]
     async fn map<Input, Output>(
         #[geam_macros::call] call: &mut Call<()>,
         boxed: BoxInput<Input>,
@@ -104,7 +104,7 @@ mod generic_box {
         })
     }
 
-    #[geam_macros::function(resumable)]
+    #[geam_macros::function(await)]
     async fn with_box<Input, Output>(
         #[geam_macros::call] call: &mut Call<()>,
         value: Value<Input>,
@@ -116,7 +116,7 @@ mod generic_box {
         call.invoke(&callback, (boxed,)).await
     }
 
-    #[geam_macros::function(resumable)]
+    #[geam_macros::function(await)]
     async fn from_box_callback<Item>(
         #[geam_macros::call] call: &mut Call<()>,
         callback: Callback<fn() -> BoxInput<Item>>,

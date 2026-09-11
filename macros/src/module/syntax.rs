@@ -169,13 +169,13 @@ impl Parse for FunctionArguments {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let mut arguments = Self::default();
         while !input.is_empty() {
-            let field = input.parse::<Ident>()?;
+            let field = input.call(Ident::parse_any)?;
             match field.to_string().as_str() {
-                "resumable" => {
-                    if arguments.resumable.replace(field.clone()).is_some() {
+                "await" => {
+                    if arguments.await_.replace(field.clone()).is_some() {
                         return Err(syn::Error::new(
                             field.span(),
-                            "duplicate function argument `resumable`",
+                            "duplicate function argument `await`",
                         ));
                     }
                 }
@@ -368,7 +368,7 @@ pub(super) fn take_function_marker(
             Meta::NameValue(_) => {
                 return Err(syn::Error::new_spanned(
                     attribute,
-                    "`#[geam::function]` accepts only `profile = Name`",
+                    "`#[geam::function]` accepts only `await` and `profile = Name` arguments",
                 ));
             }
         };
@@ -919,7 +919,7 @@ pub(super) fn validate_function(
     if !async_ && function_contains_callback(&model) {
         return Err(syn::Error::new_spanned(
             &function.sig,
-            "Callback arguments require an async function; use #[geam::function(resumable)] for an ordinary Gleam result",
+            "Callback arguments require an async function; use #[geam::function(await)] for an ordinary Gleam result",
         ));
     }
     if function_contains_callback(&model) && !call.is_mutable() {

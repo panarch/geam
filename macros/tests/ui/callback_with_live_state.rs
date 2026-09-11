@@ -22,7 +22,7 @@ mod callback_borrow {
     #[derive(PartialEq, Eq, Hash)]
     struct Token;
 
-    #[geam_macros::function(resumable)]
+    #[geam_macros::function(await)]
     async fn invoke<Item>(
         #[geam_macros::call] call: &mut Call<RunState>,
         callback: Callback<

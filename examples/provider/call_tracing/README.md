@@ -18,7 +18,7 @@ The provider receives a typed callback and invokes it through the active
 `Call`:
 
 ```rust
-#[geam::function(resumable)]
+#[geam::function(await)]
 async fn around<Item>(
     #[geam::call] call: &mut Call<RunState>,
     callback: Callback<fn() -> Value<Item>>,
@@ -58,8 +58,8 @@ pass.
 
 `record_later` awaits a Tokio timer before accessing state. The standalone
 runner supplies Tokio; a Rust embedding application uses its own Tokio runtime.
-Neither `around` nor `record_later` returns a source Future. Their Rust
-implementations complete the ordinary Gleam call through `resumable`.
+Both `around` and `record_later` use `#[geam::function(await)]`: Gleam receives
+the completed result, not a source Future.
 
 Continue with [generic box](../generic_box/README.md) to retain a typed Gleam
 value inside an external value across provider calls.

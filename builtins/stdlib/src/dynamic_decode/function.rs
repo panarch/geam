@@ -102,7 +102,7 @@ pub(super) mod provider {
             .ok_or_else(|| geam_core::BitArrayValue::from_bytes(Vec::new()))
     }
 
-    #[geam_macros::function(profile = Profile, resumable)]
+    #[geam_macros::function(profile = Profile, await)]
     async fn decode_list<Item, PathKey>(
         #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
         data: geam_core::provider::advanced::External<DynamicPayload>,
