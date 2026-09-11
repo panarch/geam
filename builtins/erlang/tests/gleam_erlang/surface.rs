@@ -81,7 +81,10 @@ fn official_public_surface_and_every_private_external_are_pinned() {
         .collect::<BTreeSet<_>>();
     assert_eq!(registered, externals);
     assert_eq!(
-        snapshot.trim(),
-        include_str!("../fixtures/gleam_erlang-1.3.0.surface").trim()
+        snapshot.trim().lines().collect::<Vec<_>>(),
+        include_str!("../fixtures/gleam_erlang-1.3.0.surface")
+            .trim()
+            .lines()
+            .collect::<Vec<_>>()
     );
 }
