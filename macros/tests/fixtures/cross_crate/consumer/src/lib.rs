@@ -10,6 +10,10 @@
 )]
 pub struct Component;
 
+#[cfg(test)]
+#[path = "../../../../../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 #[geam_macros::module(path = "macro_consumer/main", crate_path = geam_core)]
 mod main {
     use ecow::EcoString;
@@ -214,6 +218,7 @@ mod tests {
     impl HostProfile for Profile {
         type RunState = RunState;
         type ExternalStores = ProfileStores;
+        type ExecutionState = ();
     }
 
     impl HostWorkProfile for Profile {
@@ -405,16 +410,17 @@ pub fn main() {
         )
         .expect("cross-crate source should compile");
         let plan = plan_host_program(typed).expect("cross-crate codecs should link");
-        let execution = HostedExecution::try_from_module_plan(plan).expect("plan should seal");
+        let mut execution = HostedExecution::try_from_module_plan(plan).expect("plan should seal");
 
         assert_eq!(
-            execution.run_main(
+            crate::execution_fixture::run(
+                &mut execution,
                 &mut RunState {
                     future: (),
                     declarations: (),
                     consumer: (),
                 },
-                &mut Vec::new(),
+                &mut Vec::new()
             ),
             Ok(Value::Bool(true)),
         );

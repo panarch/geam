@@ -1,3 +1,6 @@
+#[path = "../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 use ecow::EcoString;
 use geam_core::provider::{Call, Configuration, HostResult, InitializationError};
 use geam_core::{
@@ -94,6 +97,7 @@ struct ProfileState {
 impl HostProfile for Profile {
     type RunState = ProfileState;
     type ExternalStores = ProfileStores;
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<Component> for Profile {
@@ -227,7 +231,7 @@ fn generated_initialization_adds_identity_to_owned_provider_failures() {
 
 #[test]
 fn macro_authored_scalar_provider_runs_with_repeated_and_independent_state() {
-    let execution = execution();
+    let mut execution = execution();
     let mut first = ProfileState {
         component: Component::initialize(&configuration(3)).expect("first state should initialize"),
     };
@@ -237,15 +241,15 @@ fn macro_authored_scalar_provider_runs_with_repeated_and_independent_state() {
     };
 
     assert_eq!(
-        execution.run_main(&mut first, &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut first, &mut Vec::new()),
         Ok(Value::String("count:4".into())),
     );
     assert_eq!(
-        execution.run_main(&mut first, &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut first, &mut Vec::new()),
         Ok(Value::String("count:5".into())),
     );
     assert_eq!(
-        execution.run_main(&mut second, &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut second, &mut Vec::new()),
         Ok(Value::String("count:4".into())),
     );
     assert_eq!(first.component.next, 5);
@@ -275,14 +279,13 @@ fn host_result_preserves_provider_failure_outside_the_source_shape() {
     )
     .expect("host failure source should compile");
     let plan = plan_host_program(typed).expect("HostResult must not alter the source scheme");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("host failure source should seal");
     let mut state = ProfileState {
         component: Component::initialize(&configuration(3)).expect("state should initialize"),
     };
 
-    let error = execution
-        .run_main(&mut state, &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect_err("HostResult failure should stop execution");
     let ExecutionError::Host(error) = error else {
         panic!("HostResult failure should remain a hosted execution error");

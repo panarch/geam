@@ -109,7 +109,7 @@ jobs:
           for package in geam-core geam-macros geam-stdlib geam-builtin; do
             grep -Eq "^${package} v" "$RUNNER_TEMP/geam-embedding-graph"
           done
-          if grep -Eq '^geam-(cli|json|time) v' "$RUNNER_TEMP/geam-embedding-graph"; then
+          if grep -Eq '^geam-(cli|json|time|erlang) v' "$RUNNER_TEMP/geam-embedding-graph"; then
             echo "unexpected Geam dependency in the Rust embedding profile" >&2
             exit 1
           fi
@@ -127,7 +127,9 @@ jobs:
             package \
             io \
             provider \
-            async_host
+            async_host \
+            session \
+            processes
           do
             echo "::group::$example"
             (
@@ -141,6 +143,14 @@ jobs:
             )
             echo "::endgroup::"
           done
+
+      - name: Verify host-driven execution control
+        working-directory: examples/embedding/execution
+        run: |
+          (cd gleam && gleam format --check)
+          cargo fmt --all --check
+          CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding" cargo test --locked
+          CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding" cargo clippy --all-targets --locked -- -D warnings
 
       - name: Verify the independent async provider
         working-directory: examples/provider/async_files/provider
@@ -215,6 +225,56 @@ jobs:
           EOF
           cargo run --quiet --manifest-path examples/embedding/application/Cargo.toml --locked > "$RUNNER_TEMP/actual-embedding-output"
           diff --unified "$RUNNER_TEMP/expected-embedding-output" "$RUNNER_TEMP/actual-embedding-output"
+
+  host-execution:
+    name: Host execution (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+          rustflags: ""
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: host-execution
+
+      - name: Verify caller-owned Tokio adapter
+        run: cargo test --package geam-core --features tokio --lib execution::tokio::tests --locked
+
+      - name: Verify host-driven embedding
+        run: cargo test --package geam-core --features tokio --lib embedding::execution::tests --locked
+
+      - name: Verify resumable native callbacks
+        run: cargo test --package geam-core --features tokio --test resumable_embedding --locked
+
+      - name: Install Gleam toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          gleam-version: "1.18.1"
+          rebar3-version: "3"
+
+      - name: Verify native process semantics
+        run: cargo test --package geam-erlang --locked
+
+      - name: Download process example dependencies
+        working-directory: examples/embedding/processes/gleam
+        run: gleam deps download
+
+      - name: Verify generated process handles
+        working-directory: examples/embedding/processes
+        run: cargo test --locked
 
   published-provider:
     name: Published provider
@@ -355,6 +415,8 @@ jobs:
             test: runs_the_documented_call_tracing_provider_with_fresh_callback_state
           - example: generic_box
             test: runs_the_documented_generic_box_provider_with_persistent_values
+          - example: native_records
+            test: runs_the_documented_native_records_provider_through_dynamic_and_callbacks
           - example: text_pattern
             test: runs_the_documented_text_pattern_on_erlang_and_geam
     env:

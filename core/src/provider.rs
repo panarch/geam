@@ -14,14 +14,12 @@ pub use crate::{BitArrayValue, HostFailure};
 pub use call::{Call, HostResult};
 #[doc(hidden)]
 pub use call::{
-    ProviderActiveCall, ProviderCallPlaceholder, ProviderFutureCall, ProviderSharedCall,
+    ProviderActiveCall, ProviderCallPlaceholder, ProviderExecutionCall, ProviderFutureCall,
+    ProviderSharedCall, ProviderWorkObservation,
 };
 pub use callback::Callback;
 #[doc(hidden)]
-pub use callback::{
-    MissingCallbackContext, ProviderCallbackCodec, ProviderCallbackContext,
-    ProviderFutureCallbackContext,
-};
+pub use callback::{MissingCallbackContext, ProviderCallbackCodec, ProviderOwnedCallbackContext};
 #[doc(hidden)]
 pub use codec::{
     ProviderConstruction, ProviderConstructionIndex0, ProviderConstructionIndexNext,

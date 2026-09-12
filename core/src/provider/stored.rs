@@ -373,8 +373,8 @@ mod tests {
         use crate::plan::execution::HostedProgram;
         use crate::plan::{LibraryEntry, LibraryValueType};
         use crate::provider::advanced::{Retained, StoredDynamic};
+        use crate::runtime::EmbeddingEntry;
         use crate::runtime::RetainedInputs;
-        use crate::runtime::work::driver::Driver;
         struct Profile;
         struct Provider;
         struct Schema;
@@ -386,6 +386,7 @@ mod tests {
         impl HostProfile for Profile {
             type RunState = ();
             type ExternalStores = HostExternalStore<BridgePayload>;
+            type ExecutionState = ();
         }
         impl HostProvider<Profile> for Provider {
             type State = ();
@@ -518,13 +519,27 @@ pub fn run() {
         let mut stores = HostExternalStore::default();
         let mut output = Vec::new();
         let mut echo = |value: crate::EchoOutput| output.push(value.to_string());
-        let mut driver = Driver::new(&plan, &mut state, &mut stores, &mut echo);
-        assert!(
-            driver
-                .run_bool(*entries.bools[0].function(), RetainedInputs::empty())
-                .expect("retained payload semantics")
+        let host = crate::execution_fixture::TestHost::default();
+        let domain = crate::runtime::execution::Domain::new(
+            Arc::new(plan),
+            &host,
+            &mut state,
+            &mut stores,
+            &mut echo,
+            std::num::NonZeroUsize::MIN,
         );
-        drop(driver);
+        let context = domain.context();
+        assert!(
+            host.block_on(
+                domain.drive(
+                    entries.bools[0]
+                        .function()
+                        .call(&context, RetainedInputs::empty())
+                )
+            )
+            .expect("host cleanup")
+            .expect("retained payload semantics")
+        );
         assert_eq!(output, ["src/library.gleam:9\nBox(7, 8)"]);
     }
 
@@ -584,6 +599,7 @@ pub fn run() {
         impl HostProfile for Profile {
             type RunState = Arc<AtomicUsize>;
             type ExternalStores = HostExternalStore<OwnedPayload>;
+            type ExecutionState = ();
         }
         impl HostProvider<Profile> for Provider {
             type State = Arc<AtomicUsize>;
@@ -713,17 +729,28 @@ pub fn run() {
         let mut stores = HostExternalStore::default();
         let mut output = Vec::new();
         let mut echo = |value: crate::EchoOutput| output.push(value.to_string());
-        let mut driver =
-            crate::runtime::work::driver::Driver::new(&plan, &mut drops, &mut stores, &mut echo);
-        assert!(
-            driver
-                .run_bool(
-                    *entries.bools[0].function(),
-                    crate::runtime::RetainedInputs::empty()
-                )
-                .expect("source call")
+        use crate::runtime::EmbeddingEntry;
+        let host = crate::execution_fixture::TestHost::default();
+        let domain = crate::runtime::execution::Domain::new(
+            Arc::new(plan),
+            &host,
+            &mut drops,
+            &mut stores,
+            &mut echo,
+            std::num::NonZeroUsize::MIN,
         );
-        drop(driver);
+        let context = domain.context();
+        assert!(
+            host.block_on(
+                domain.drive(
+                    entries.bools[0]
+                        .function()
+                        .call(&context, crate::runtime::RetainedInputs::empty())
+                )
+            )
+            .expect("host cleanup")
+            .expect("source call")
+        );
         assert_eq!(output, ["src/library.gleam:12\nOwned(42)"]);
         assert_eq!(drops.load(Ordering::Relaxed), 2);
     }

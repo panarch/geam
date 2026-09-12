@@ -40,6 +40,12 @@ pub enum HostRegistrationError {
         parameters: Box<[usize]>,
     },
 
+    #[error("host function {function} registers native conversion for {type_:?} more than once")]
+    DuplicateNativeConversion {
+        function: EcoString,
+        type_: crate::plan::ValueType,
+    },
+
     #[error(
         "host module {module} was registered by both package {first_package} and package {second_package}"
     )]
@@ -48,4 +54,25 @@ pub enum HostRegistrationError {
         first_package: EcoString,
         second_package: EcoString,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::HostRegistrationError;
+    use crate::plan::{ExternalType, ExternalTypeName, ValueType};
+
+    #[test]
+    fn duplicate_native_conversion_identifies_the_declared_target() {
+        let error = HostRegistrationError::DuplicateNativeConversion {
+            function: "convert".into(),
+            type_: ValueType::External(ExternalType::new(
+                ExternalTypeName::new("host_support".into(), "host/native".into(), "Name".into()),
+                Vec::new(),
+            )),
+        };
+        assert_eq!(
+            error.to_string(),
+            "host function convert registers native conversion for External(ExternalType { name: ExternalTypeName { package: \"host_support\", module: \"host/native\", name: \"Name\" }, arguments: [] }) more than once"
+        );
+    }
 }

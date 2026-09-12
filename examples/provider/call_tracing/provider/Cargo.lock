@@ -990,6 +990,7 @@ name = "geam-example-call-tracing"
 version = "0.1.0"
 dependencies = [
  "geam",
+ "tokio",
 ]
 
 [[package]]
@@ -2667,6 +2668,15 @@ dependencies = [
  "displaydoc",
  "serde_core",
  "zerovec",
+]
+
+[[package]]
+name = "tokio"
+version = "1.53.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "202caea871b69668250d242070849eb495be178ed697a3e98aebce5bc81a0bed"
+dependencies = [
+ "pin-project-lite",
 ]
 
 [[package]]

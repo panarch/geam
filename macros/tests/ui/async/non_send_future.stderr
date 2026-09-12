@@ -12,5 +12,5 @@ note: future is not `Send` as this value is used across an await
    |             ----- has type `Rc<i32>` which is not `Send`
 17 |         std::future::pending::<()>().await;
    |                                      ^^^^^ await occurs here, with `value` maybe used later
-   = note: required for the cast from `Pin<Box<{async block@$DIR/tests/ui/async/non_send_future.rs:10:1: 10:64}>>` to `Pin<Box<dyn std::future::Future<Output = Result<HostFutureCompletion<Profile, __GeamProvider, BigInt, HostTypeListEnd>, HostFutureError>> + Send>>`
+   = note: required for the cast from `Pin<Box<{async block@$DIR/tests/ui/async/non_send_future.rs:10:1: 10:64}>>` to `Pin<Box<dyn std::future::Future<Output = Result<HostOwnedCompletion<Profile, __GeamProvider, BigInt, HostTypeListEnd>, HostExecutionError>> + Send>>`
    = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)

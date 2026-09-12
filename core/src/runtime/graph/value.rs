@@ -4,8 +4,8 @@ use ecow::EcoString;
 use num_bigint::BigInt;
 use std::convert::Infallible;
 
-pub(in crate::runtime) trait GraphValue {
-    type Evaluated;
+pub(in crate::runtime) trait GraphValue: Sync {
+    type Evaluated: Send + 'static;
 
     fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated;
 }

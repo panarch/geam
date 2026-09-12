@@ -1,3 +1,6 @@
+#[path = "../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 use ecow::EcoString;
 use geam_core::provider::advanced::{
     Equality, Hashing, Index0, Inspection, Retained, RetainedExternalPayload,
@@ -178,6 +181,7 @@ struct ProfileState {
 impl HostProfile for Profile {
     type RunState = ProfileState;
     type ExternalStores = ProfileStores;
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<Component> for Profile {
@@ -285,11 +289,14 @@ fn retained_external_payloads_share_old_entries_and_restore_exact_specialization
     )
     .expect("complete retained external source should compile");
     let plan = plan_host_program(typed).expect("retained external provider should link");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("retained external execution should seal");
-    let returned = execution
-        .run_main(&mut ProfileState { component: () }, &mut Vec::new())
-        .expect("retained external provider should execute");
+    let returned = crate::execution_fixture::run(
+        &mut execution,
+        &mut ProfileState { component: () },
+        &mut Vec::new(),
+    )
+    .expect("retained external provider should execute");
 
     assert_eq!(
         returned,

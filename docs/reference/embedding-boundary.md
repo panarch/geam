@@ -67,27 +67,63 @@ The application should retain the sealed module and `Functions` for repeated
 calls. A handle or retained runtime value belongs to one loaded owner even when
 another load uses identical source and signatures.
 
-## Explicit Future Execution
+## Host-Driven Execution
 
 Hosted synchronization generates `HostedProject`, `HostedModuleBuilder`, and
 one `Functions` aggregate. There is one `Send` execution and provider contract,
 with no local/transferable storage selection. Old `storage` metadata is rejected
 with an instruction to remove it and synchronize again.
 
-`HostedModule` owns the loaded execution; `ExecutionScope` attaches it to the
-host's resources. The core embedding layer supplies the generic Future value
-adapters, while `geam-builtin` fixes their source identity to
-`geam/future.Future`. Ordinary and work-valued functions share the same module.
+`HostedModule` owns the loaded execution; `ExecutionScope` connects it to the
+host's resources. Generated bindings also use this form for opaque custom and
+external values, even when the source does not require a provider.
 
-The same owner supports direct calls and scoped work. Generated bindings do not
-infer hidden effects or generate separate sync/async entry sets. Source `Int`
-returns a value; source `Future(Int)` returns an operation.
+The same hosted owner supports ordinary values and scoped work. Generated
+bindings do not infer hidden effects or generate separate sync/async entry sets.
+Source `Int` returns a value; source `Future(Int)` returns an operation.
 
-The Rust host uses `with_execution_scope` and `module.attach` to borrow the
-sealed module, mutable provider state, and Echo sink for an execution scope.
+The Rust host uses `module.with_execution(&host, &mut state, &mut echo, body)`
+to borrow the sealed module, mutable provider state, and Echo sink for an
+execution scope. Its `ExecutionHost` supplies owned worker scheduling,
+cancellation acknowledgement, and a monotonic clock. The optional `TokioHost`
+adapter uses a caller-supplied Tokio runtime handle.
 The module retains its sealed code and function identity across scopes.
-`scope.call` evaluates the source function and returns its declared value;
-returning an existing Future preserves that work. `scope.observe(&work).await`
+`scope.call(...).await` evaluates the source function and returns its declared
+value; returning an existing Future preserves that work.
+
+### Process Entries
+
+With the `gleam-erlang` component, each Rust `scope.call` starts a fresh logical
+process. Nested Gleam calls and ordinary native callbacks retain that process
+identity. Source-spawned processes belong to the execution domain; an unlinked
+process may remain active after its creating call returns.
+
+Generated Pid and Subject values are scoped opaque handles. Keeping or cloning
+a handle retains its identity, not its mailbox or execution domain. A dead Pid
+remains the same value; it cannot reactivate a process or attach to another
+scope. A named Subject resolves its name when sending, so a later registration
+can receive subsequent messages.
+
+Project-based hosts initialize the generated `erlang` input from the loader's
+resource catalog before consuming the program:
+
+```rust
+let erlang = geam::gleam_erlang::Configuration {
+    resources: program.package_resources().clone(),
+};
+```
+
+Pass it together with the required stdlib input to `RunStateInputs`. Source-only
+hosts supply an explicit catalog of their own. The catalog is configuration,
+not mutable process state; a new execution scope creates a new process domain.
+See the [service example](../../examples/embedding/processes) for the complete
+load, bind, initialize, call, and shutdown sequence.
+
+### Explicit Future Values
+
+The core embedding layer supplies generic work-value adapters, while
+`geam-builtin` fixes their source identity to `geam/future.Future`.
+`scope.observe(&work).await`
 drives it using the caller's executor and returns `Completed<T>`. Its `read`
 callback borrows the shared result without requiring arbitrary payloads to
 implement `Clone` or `Sync`.
@@ -97,6 +133,13 @@ semantics](runtime-semantics.md#explicit-work). `ObservationError::Cancelled`
 reports work cancellation separately from `ObservationError::Execution` and
 from a source `Result` value. Shared execution errors retain the original source
 or provider failure and expose it through `SharedExecutionError::read`.
+
+Ordinary hosted calls can suspend while a native implementation waits or the
+evaluator yields. `CallError::Cancelled` describes a cancelled entry;
+`DriverError` describes host task failure. Normal scope completion awaits worker
+cleanup. Dropping the enclosing Future closes request endpoints and requests
+cancellation without waiting synchronously. Borrowed host state is never moved
+into those workers.
 
 Work carries its execution scope through recursive inputs and outputs,
 including `List(Future(T))` and `Future(Future(T))`. Completed plain data may
@@ -149,7 +192,9 @@ combines stdlib IO and the text-pattern provider in one lifecycle.
 Generated public function arguments and returns support this recursive grammar:
 
 ```text
-Data = Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data) | Future(Data)
+Data = Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data)
+     | List(Data) | Future(Data) | Named
+Named = a concrete custom or external type, including closed generic specializations
 ```
 
 | Gleam | Rust |
@@ -167,8 +212,10 @@ Data = Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data) 
 | `List(A)` input | consumed `Vec<A>` or retained `&List<A>` |
 | `List(A)` output | retained `List<A>` |
 | `geam/future.Future(A)` | `FutureType<A>` declaration; scoped `Future<A>` work |
+| custom type | generated `CustomType<Schema>` declaration; scoped opaque `Custom<Schema>` |
+| external type | generated `ExternalType<Schema>` declaration; scoped opaque `External<Schema>` |
 
-The List input/output rows describe direct module calls. An attached execution
+The List input/output rows describe direct module calls. A host-driven execution
 uses the same `List<A>` declaration with `SharedList<A>` values. Read shared list
 items through `read_item(index, |value| ...)`; `len` and `is_empty` remain
 constant-time. A borrowed shared List reuses its original storage.
@@ -185,22 +232,20 @@ Tuple, Result, or Option. Only the prelude Result and `gleam/option.Option` from
 types work; custom types with matching names or constructors do not.
 
 A source-visible Gleam `Error` remains an ordinary Rust `Err` inside a function
-return. It is separate from the outer `Result` returned by `module.call`, whose
+return. It is separate from the outer `Result` returned by a call, whose
 `CallError` reports a foreign handle or value, invalid call ownership, or an
 execution failure:
 
 ```rust
 let rows: Vec<(EcoString, BigInt)> = vec![("invalid".into(), 2.into())];
-let checked = module.call(
-    &functions.validate_batch,
-    (rows,),
-    &mut state,
-    &mut echo,
-)?;
-assert_eq!(checked.get(0), Some(Err("invalid code".into())));
+let checked = scope.call(&functions.validate_batch, (rows,)).await?;
+assert_eq!(
+    checked.read_item(0, |row| row.is_err()),
+    Some(true),
+);
 ```
 
-## Retained Lists in Direct Calls
+## Retained Lists
 
 A consumed `Vec` constructs a new Gleam List. A borrowed List from the same
 loaded module reuses its retained handle without traversing or reconstructing
@@ -211,29 +256,24 @@ let rows: Vec<(EcoString, BigInt)> = vec![
     ("AB-12".into(), 3.into()),
     ("invalid".into(), 2.into()),
 ];
-let checked = module.call(
-    &functions.validate_batch,
-    (rows,),
-    &mut state,
-    &mut echo,
-)?;
-
-let total = module.call(
-    &functions.total_quantity,
-    (&checked,),
-    &mut state,
-    &mut echo,
-)?;
+let checked = scope.call(&functions.validate_batch, (rows,)).await?;
+let total = scope.call(&functions.total_quantity, (&checked,)).await?;
 ```
 
-The read-only List API makes materialization explicit:
+Host-driven calls return `SharedList`. Its `read_item` callback borrows one item
+and returns `None` for an out-of-range index. Reading or passing the list back
+does not copy every item. `len` and `is_empty` are O(1).
+
+Provider-free direct calls return `List`, whose read-only API makes
+materialization explicit:
 
 - `len` and `is_empty` are O(1) and decode no items.
 - `get` decodes one item and returns `None` for an out-of-range index.
 - `iter` yields owned items lazily.
 - `to_vec` decodes every item into a new Vec.
 
-Retained Lists own immutable storage needed for reading. They remain readable
+Retained Lists of plain data own the immutable storage needed for reading.
+They remain readable
 after the call, state, Echo, and module are dropped. They do not borrow or
 recreate mutable provider state. Lists can move or be shared between threads
 when their Rust item type supports `Send` or `Sync`, respectively.
@@ -254,35 +294,58 @@ A fresh outer Vec cannot contain retained children. `Vec<List<T>>` and
 `Vec<&List<T>>` are not accepted because those children retain their original
 owner.
 
+## Opaque Values
+
+Generated named declarations preserve the package, module, type name, and
+complete generic specialization. Rust receives an opaque handle, not a second
+definition of the type's private fields. It can clone a handle and pass either
+the handle or a reference to another function in the same execution scope:
+
+```rust
+let original = scope.call(&functions.start, (40.into(),)).await?;
+let next = scope.call(&functions.next, (&original,)).await?;
+let total = scope.call(&functions.total, (next,)).await?;
+```
+
+Cloning the handle shares the original value; it does not clone an external
+payload or rebuild a private closure. Binding checks the exact named type
+before execution. A handle cannot escape its execution scope or be reused in
+another one, including when it is inside a List, Tuple, Result, Option, or
+Future completion. The same restriction applies when a private field contains
+scoped work. The [Session example](../../examples/embedding/session) shows a
+complete generated workflow.
+
+Rust does not inspect or construct arbitrary custom fields through these
+handles. Expose a Gleam function when Rust needs to create a value, read a
+field, or perform an update.
+
 ## Input Inference
 
-Generated bindings fix every non-List position and allow an independent input
-carrier for each List position. Callers pass Vecs or borrowed Lists directly;
-there is no public mode wrapper.
+Generated bindings fix ordinary data positions and permit the supported
+owned or borrowed carrier at each List, Future, custom, or external position.
+Callers pass Vecs or borrowed Lists directly; there is no public mode wrapper.
 
 An absent Option or Result branch may not give Rust enough information to
 select a List carrier. Use an ordinary local type annotation:
 
 ```rust
 let rows: Option<Vec<(EcoString, BigInt)>> = None;
-module.call(&functions.optional_batch, (rows,), &mut state, &mut echo)?;
+scope.call(&functions.optional_batch, (rows,)).await?;
 ```
 
 ## Types Outside Generated Bindings
 
 Generated bindings do not currently support public constants in the same-name
-root module. Public function arguments and returns also cannot use arbitrary
-records and custom enums, external values, callbacks, or generic types.
+root module. Public function arguments and returns also cannot expose callbacks
+or unbound generic type parameters.
 Imported Gleam modules may use all these declarations. Rust can reach logic
 that uses an unsupported type through generated bindings only when the root
 module exposes a public function whose arguments and return value use the
 supported data grammar.
 
-The canonical application demonstrates this current limit. Its internal module
-uses normalization, validation, and an opaque `Stock` type. The root module
-converts `Stock` to `#(String, Int)`, so the generated Rust bindings expose
-batch validation, total quantity, and first-valid-row operations using
-supported types.
+The application example exposes `Stock` as `#(String, Int)` so Rust can inspect
+its fields directly. Returning `Stock` itself would instead give Rust an opaque
+handle to pass back to Gleam.
 
 ## Echo And IO
 

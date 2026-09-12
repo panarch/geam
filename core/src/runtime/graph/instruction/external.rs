@@ -4,32 +4,9 @@ use super::value::{custom_projection, inputs_with_captures, list_element, tuple_
 use crate::plan::ValueType;
 use crate::plan::execution::function::ExecutionGraphProfile;
 use crate::plan::execution::graph::{ExternalInstructionRef, ExternalInstructionView};
-use crate::runtime::error::ExecutionResult;
+use crate::runtime::RuntimeGraph;
 use crate::runtime::evaluated::{EvaluatedExternalValue, EvaluatedValue};
 use crate::runtime::graph::RuntimeGraphState;
-use crate::runtime::state::RuntimeStateFor;
-use crate::runtime::{ExecutableRuntimePlan, RuntimeGraph};
-
-pub(super) fn evaluate<Plan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &BlockEnvironment,
-    instruction: &<RuntimeGraph<Plan> as ExecutionGraphProfile>::ExternalInstruction,
-    expected: &ValueType,
-) -> ExecutionResult<EvaluatedExternalValue>
-where
-    Plan: ExecutableRuntimePlan,
-{
-    evaluate_action(plan, state, environment, instruction, expected).and_then(|action| match action
-    {
-        InstructionValueWithoutConstant::Ready(value) => Ok(value),
-        InstructionValueWithoutConstant::Call {
-            function,
-            origin,
-            inputs,
-        } => crate::runtime::function::run_external(plan, state, function, origin, inputs),
-    })
-}
 
 pub(in crate::runtime) fn evaluate_action<Plan, State>(
     plan: &Plan,
@@ -137,6 +114,7 @@ mod tests {
             source_equal,
             source_hash,
             inspect,
+            |_| None,
         );
         let equal = store.insert(
             crate::host::HostStoredValue::new(crate::runtime::StoredRuntimeValue::test_int(
@@ -145,6 +123,7 @@ mod tests {
             source_equal,
             source_hash,
             inspect,
+            |_| None,
         );
         let stored_equal = |left: &crate::runtime::RetainedValueRef,
                             right: &crate::runtime::RetainedValueRef| {

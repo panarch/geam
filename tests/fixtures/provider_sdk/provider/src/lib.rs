@@ -1,12 +1,13 @@
 use geam::provider::{BigInt, EcoString};
 use geam::{
-    HostCall, HostCallCompletion, HostCallError, HostCallable, HostComponentProfile,
-    HostConstructions, HostCustomConstructorAt, HostCustomConstructorDefinition,
-    HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList,
-    HostCustomFieldListEnd, HostCustomIndex0, HostCustomSchema, HostCustomType, HostExternal,
-    HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
-    HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostFunctionType,
-    HostListType, HostProvider, HostProviderComponent, HostProviderComponentInitialization,
+    HostCall, HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
+    HostComponentProfile, HostConstructions, HostCustomConstructorAt,
+    HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
+    HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomIndex0,
+    HostCustomSchema, HostCustomType, HostExternal, HostExternalBinding, HostExternalEquality,
+    HostExternalHashing, HostExternalInspection, HostExternalSchema, HostExternalStorage,
+    HostExternalStore, HostExternalType, HostFunctionType, HostListType, HostOwnedCompletion,
+    HostProvider, HostProviderComponent, HostProviderComponentInitialization,
     HostProviderComponentRegistration, HostProviderConfiguration, HostProviderInitializationError,
     HostProviderModule, HostRegistrationError, HostTypeIndex0, HostTypeList, HostTypeListEnd,
 };
@@ -81,7 +82,7 @@ where
         HostProviderModule::new("provider_sdk_example", "provider/sdk")
             .and_then(HostProviderModule::with_external_type::<Provider, CatalogSchema>)
             .and_then(|provider| {
-                provider.with_scoped_function::<Provider, (EcoString, Transform), EcoString, _>(
+                provider.with_resumable_function::<Provider, (EcoString, Transform), EcoString, HostTypeListEnd, _>(
                     "decorate",
                     decorate::<Profile>,
                 )
@@ -107,7 +108,7 @@ where
                 )
             })
             .and_then(|provider| {
-                provider.with_scoped_function_and_constructions::<
+                provider.with_resumable_function::<
                     Provider,
                     (EcoString, Transform),
                     Summary,
@@ -223,9 +224,10 @@ impl RunState {
 
 fn decorate<'call, Profile>(
     mut call: HostCall<'call, Profile, Provider, EcoString>,
+    constructions: HostConstructions<'call, HostTypeListEnd>,
     value: EcoString,
     transform: HostCallable<'call, TransformArguments, EcoString>,
-) -> Result<HostCallCompletion<'call, EcoString>, HostCallError>
+) -> Result<HostCallContinuation<'call, EcoString>, HostCallError>
 where
     Profile: HostComponentProfile<Component>,
 {
@@ -234,8 +236,21 @@ where
         state.calls += 1;
         format!("{}{}", state.prefix, value)
     };
-    let transformed = call.invoke(transform, (decorated.into(), ()))?;
-    Ok(call.return_value(transformed))
+    let transform = call.owned_callable(transform, &constructions);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            let transformed = transform
+                .invoke(
+                    &context,
+                    move |_, _| (decorated.into(), ()),
+                    |_, _, value| Ok(value),
+                )
+                .await?;
+            Ok(HostOwnedCompletion::new(move |call, _| {
+                Ok(call.return_value(transformed))
+            }))
+        })
+    }))
 }
 
 fn catalog_new<'call, Profile>(
@@ -276,17 +291,26 @@ where
 }
 
 fn summarize<'call, Profile>(
-    mut call: HostCall<'call, Profile, Provider, Summary>,
+    call: HostCall<'call, Profile, Provider, Summary>,
     constructions: HostConstructions<'call, SummaryConstructions>,
     value: EcoString,
     transform: HostCallable<'call, TransformArguments, EcoString>,
-) -> Result<HostCallCompletion<'call, Summary>, HostCallError>
+) -> Result<HostCallContinuation<'call, Summary>, HostCallError>
 where
     Profile: HostComponentProfile<Component>,
 {
-    let item = call.invoke(transform, (value, ()))?;
-    let items = call.construct_list(constructions.at::<HostTypeIndex0>(), [item]);
-    Ok(call.return_custom::<SummaryConstructor>((BigInt::from(1), (items, ()))))
+    let transform = call.owned_callable(transform, &constructions);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            let item = transform
+                .invoke(&context, move |_, _| (value, ()), |_, _, value| Ok(value))
+                .await?;
+            Ok(HostOwnedCompletion::new(move |mut call, constructions| {
+                let items = call.construct_list(constructions.at::<HostTypeIndex0>(), [item]);
+                Ok(call.return_custom::<SummaryConstructor>((BigInt::from(1), (items, ()))))
+            }))
+        })
+    }))
 }
 
 #[cfg(test)]

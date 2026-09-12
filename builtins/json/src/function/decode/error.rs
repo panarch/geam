@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn maps_every_json_parse_error_without_turning_it_into_a_host_failure() {
-        let execution = execution(
+        let mut execution = execution(
             r#"
 pub fn main() {
   #(
@@ -147,9 +147,9 @@ pub fn main() {
 }
 "#,
         );
-        let value = execution
-            .run_main(&mut run_state([0; 32]), &mut Vec::new())
-            .expect("malformed JSON should remain source-level DecodeError values");
+        let value =
+            crate::execution_fixture::run(&mut execution, &mut run_state([0; 32]), &mut Vec::new())
+                .expect("malformed JSON should remain source-level DecodeError values");
 
         assert_eq!(
             value.inspect().to_string(),

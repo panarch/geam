@@ -29,6 +29,7 @@ members = [
     "builtins/json",
     "builtins/time",
     "builtins/geam",
+    "builtins/erlang",
     "macros",
 ]
 default-members = [
@@ -39,6 +40,7 @@ default-members = [
     "builtins/json",
     "builtins/time",
     "builtins/geam",
+    "builtins/erlang",
     "macros",
 ]
 resolver = "3"
@@ -62,6 +64,7 @@ ecow = "=0.2.6"
 futures-channel = "0.3.32"
 futures-util = { version = "0.3.32", default-features = false, features = ["std"] }
 geam-core = { path = "core", version = "=0.2.3" }
+geam-erlang = { path = "builtins/erlang", version = "=0.2.3" }
 geam-cli = { path = "cli", version = "=0.2.3" }
 geam-json = { path = "builtins/json", version = "=0.2.3" }
 geam-macros = { path = "macros", version = "=0.2.3" }
@@ -82,6 +85,7 @@ num-traits = "0.2"
 parking_lot = { version = "0.12.5", features = ["arc_lock"] }
 proc-macro-crate = "3"
 proc-macro2 = "1"
+priority-queue = "2.7"
 quote = "1"
 rand = { version = "=0.10.2", default-features = false, features = ["std", "chacha", "sys_rng"] }
 ryu = "1"
@@ -103,16 +107,19 @@ default = ["full"]
 full = ["cli", "embedding", "provider", "builtins"]
 cli = ["dep:geam-cli"]
 embedding = []
+tokio = ["geam-core/tokio"]
 provider = ["dep:geam-macros"]
-builtins = ["gleam-stdlib", "gleam-json", "gleam-time", "geam-builtin"]
+builtins = ["gleam-stdlib", "gleam-json", "gleam-time", "gleam-erlang", "geam-builtin"]
 geam-builtin = ["dep:geam-builtin"]
 gleam-stdlib = ["dep:geam-stdlib"]
 gleam-json = ["dep:geam-json", "gleam-stdlib"]
 gleam-time = ["dep:geam-time", "gleam-stdlib"]
+gleam-erlang = ["dep:geam-erlang", "gleam-stdlib"]
 
 [dependencies]
 geam-cli = { workspace = true, optional = true }
 geam-core.workspace = true
+geam-erlang = { workspace = true, optional = true }
 geam-json = { workspace = true, optional = true }
 geam-macros = { workspace = true, optional = true }
 geam-builtin = { workspace = true, optional = true }
@@ -159,6 +166,7 @@ geam-builtin.workspace = true
 camino.workspace = true
 ecow.workspace = true
 futures-channel.workspace = true
+futures-util.workspace = true
 gleam-core.workspace = true
 miette = { workspace = true, features = ["fancy-no-backtrace"] }
 num-bigint.workspace = true

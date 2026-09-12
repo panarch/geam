@@ -1,32 +1,19 @@
-use super::super::{EvaluatedFunctionExit, evaluate_entry};
+use super::super::run;
+use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::function::IntFunctionId;
-use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::graph::RetainedValues;
-use crate::runtime::state::RuntimeStateFor;
+use crate::runtime::state::RuntimeState;
 use num_bigint::BigInt;
 
-pub(in crate::runtime) fn run_int<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    mut function: IntFunctionId,
-    mut origin: HostCallOrigin,
-    mut inputs: RetainedValues,
+pub(in crate::runtime) fn run_int(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState<'_>,
+    function: IntFunctionId,
+    origin: HostCallOrigin,
+    inputs: RetainedValues,
 ) -> ExecutionResult<BigInt> {
-    loop {
-        let exit = evaluate_entry(plan, state, plan.int_function(function), origin, inputs)?;
-        match exit {
-            EvaluatedFunctionExit::Return(value) => return Ok(value),
-            EvaluatedFunctionExit::TailCall {
-                function: target,
-                args,
-            } => {
-                origin = HostCallOrigin::source(target.site().clone());
-                function = *target.function();
-                inputs = args;
-            }
-        }
-    }
+    run(plan, state, function, origin, inputs)
 }
 
 #[cfg(test)]
@@ -183,7 +170,7 @@ pub fn main() {
         )
         .expect("host source should compile");
         let plan = plan_host_program(typed).expect("host source should plan");
-        let execution =
+        let mut execution =
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         assert_eq!(
             execution
@@ -203,7 +190,7 @@ pub fn main() {
             ],
         );
         assert_eq!(
-            execution.run_main(&mut (), &mut Vec::new()),
+            crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
             Ok(Value::Int(42.into())),
         );
     }
@@ -241,42 +228,48 @@ pub fn main() {
         let mut state = ();
         let mut stores = ();
         let mut echo = SendEcho::default();
-        let mut driver = crate::runtime::work::driver::Driver::new(
-            &execution,
+        let host = crate::execution_fixture::TestHost::default();
+        let domain = crate::runtime::execution::Domain::new(
+            std::sync::Arc::new(execution),
+            &host,
             &mut state,
             &mut stores,
             &mut echo,
+            std::num::NonZeroUsize::MIN,
         );
-        driver.call(|plan, runtime| {
+        let context = domain.context();
+        host.block_on(domain.drive(async {
             let mut values = crate::runtime::graph::RetainedValues::empty();
             values.push_evaluated(crate::runtime::EvaluatedValue::Int(20.into()));
             values.push_evaluated(crate::runtime::EvaluatedValue::Int(22.into()));
             assert_eq!(
-                super::run_int(
-                    plan,
-                    runtime,
-                    *entries.ints[0].function(),
-                    crate::runtime::HostCallOrigin::Entry,
-                    values
-                ),
+                context
+                    .call(
+                        *entries.ints[0].function(),
+                        crate::runtime::HostCallOrigin::Entry,
+                        values
+                    )
+                    .await
+                    .expect("entry remains active"),
                 Ok(42.into())
             );
             let mut values = crate::runtime::graph::RetainedValues::empty();
             values.push_evaluated(crate::runtime::EvaluatedValue::Int(0.into()));
-            let error = super::run_int(
-                plan,
-                runtime,
-                *entries.ints[1].function(),
-                crate::runtime::HostCallOrigin::Entry,
-                values,
-            )
-            .expect_err("diverging host");
+            let error = context
+                .call(
+                    *entries.ints[1].function(),
+                    crate::runtime::HostCallOrigin::Entry,
+                    values,
+                )
+                .await
+                .expect("entry remains active")
+                .expect_err("diverging host");
             assert_eq!(
                 error.to_string(),
                 "host function application::library.stop failed: stopped"
             );
-        });
-        drop(driver);
+        }))
+        .expect("host cleanup");
         assert_eq!(echo.outputs, 1);
     }
 }

@@ -1,30 +1,30 @@
 pub use crate::host::{
-    HostCall, HostCallCompletion, HostCallError, HostCallable, HostComponentProfile,
-    HostConstruction, HostConstructions, HostCustom, HostCustomConstructorAt,
+    HostCall, HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
+    HostComponentProfile, HostConstruction, HostConstructions, HostCustom, HostCustomConstructorAt,
     HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
     HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomIndex0,
-    HostCustomIndexNext, HostCustomSchema, HostCustomType, HostExternal, HostExternalBinding,
-    HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalSchema,
-    HostExternalStorage, HostExternalStore, HostExternalType, HostFunctionType,
-    HostFutureCompletion, HostFutureError, HostFutureType, HostList, HostListType, HostProfile,
-    HostProvider, HostProviderComponent, HostProviderComponentInitialization,
-    HostProviderComponentRegistration, HostProviderConfiguration, HostProviderInitializationError,
-    HostProviderModule, HostRegistrationError, HostStoredType, HostStoredValue, HostTuple,
-    HostTupleType, HostType, HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeList,
-    HostTypeListEnd, HostTypeParameter, HostTypeSequence, HostWorkProfile, HostWorkSchema,
+    HostCustomIndexNext, HostCustomSchema, HostCustomType, HostExecutionError, HostExternal,
+    HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
+    HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostFunctionType,
+    HostFutureType, HostList, HostListType, HostOwnedCompletion, HostProfile, HostProvider,
+    HostProviderComponent, HostProviderComponentInitialization, HostProviderComponentRegistration,
+    HostProviderConfiguration, HostProviderInitializationError, HostProviderModule,
+    HostRegistrationError, HostStoredType, HostStoredValue, HostTuple, HostTupleType, HostType,
+    HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
+    HostTypeParameter, HostTypeSequence, HostWorkProfile, HostWorkSchema,
 };
 pub use crate::provider::ExternalPayload;
 pub use crate::provider::advanced::{
-    Equality, Hashing, Index0, Inspection, Next, ProviderDynamicInput, ProviderDynamicValue,
-    Retained, RetainedExternalPayload, StoredDynamic,
+    Equality, Hashing, Index0, Inspection, NativeValue, Next, ProviderDynamicInput,
+    ProviderDynamicValue, Retained, RetainedExternalPayload, StoredDynamic,
 };
 pub use crate::provider::{
     Call, Callback, HostResult, List, MissingCallbackContext, MissingExternalInputContext,
     MissingExternalOutputContext, MissingStoredContext, MissingValueContext, ProviderActiveCall,
-    ProviderCallPlaceholder, ProviderExternalInputContext, ProviderExternalListDecoder,
-    ProviderExternalOutput, ProviderExternalPayloadAccess, ProviderExternalReturn,
-    ProviderExternalView, ProviderFutureCall, ProviderInputListContext, ProviderListContext,
-    ProviderListCustomFields, ProviderListItemDecoder, ProviderListItemValue,
+    ProviderCallPlaceholder, ProviderExecutionCall, ProviderExternalInputContext,
+    ProviderExternalListDecoder, ProviderExternalOutput, ProviderExternalPayloadAccess,
+    ProviderExternalReturn, ProviderExternalView, ProviderFutureCall, ProviderInputListContext,
+    ProviderListContext, ProviderListCustomFields, ProviderListItemDecoder, ProviderListItemValue,
     ProviderListTupleItems, ProviderOwnedExternal, ProviderOwnedExternalInputContext,
     ProviderOwnedExternalListDecoder, ProviderOwnedStoredInput, ProviderScalarListDecoder,
     ProviderSharedCall, ProviderStoredInput, ProviderStoredOutput, ProviderStoredOwner,
@@ -32,14 +32,13 @@ pub use crate::provider::{
 };
 pub use crate::provider::{Future as ProviderFuture, ProviderFutureValueContext};
 pub use crate::provider::{
-    ProviderCallbackCodec, ProviderCallbackContext, ProviderConstruction,
-    ProviderConstructionIndex0, ProviderConstructionIndexNext, ProviderConstructionList,
-    ProviderConstructionRequirementAt, ProviderConstructionRequirements, ProviderConstructions,
-    ProviderError, ProviderExternalCodec, ProviderExternalDeclaration,
-    ProviderFutureCallbackContext, ProviderInputValue, ProviderListInputCodec,
+    ProviderCallbackCodec, ProviderConstruction, ProviderConstructionIndex0,
+    ProviderConstructionIndexNext, ProviderConstructionList, ProviderConstructionRequirementAt,
+    ProviderConstructionRequirements, ProviderConstructions, ProviderError, ProviderExternalCodec,
+    ProviderExternalDeclaration, ProviderInputValue, ProviderListInputCodec,
     ProviderListInputValue, ProviderNoConstructions, ProviderNone, ProviderOk, ProviderOption,
-    ProviderOutputValue, ProviderResult, ProviderRootOutputValue, ProviderSome, ProviderValue,
-    ProviderValueForms,
+    ProviderOutputValue, ProviderOwnedCallbackContext, ProviderResult, ProviderRootOutputValue,
+    ProviderSome, ProviderValue, ProviderValueForms,
 };
 pub use crate::provider::{
     retain_argument, retain_constructed_argument, retain_constructed_dynamic, retain_dynamic,

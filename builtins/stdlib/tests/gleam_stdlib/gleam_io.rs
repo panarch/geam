@@ -48,13 +48,12 @@ fn tracks_official_gleam_io_public_surface() {
 
 #[test]
 fn runs_official_gleam_io_with_caller_owned_output() {
-    let execution = execution::<GleamStdlibProfile>("gleam_io");
+    let mut execution = execution::<GleamStdlibProfile>("gleam_io");
     let mut repeated_state = GleamStdlibRunState::from_seed([7; 32]);
 
     for _ in 0..2 {
         assert_eq!(
-            execution
-                .run_main(&mut repeated_state, &mut Vec::new())
+            crate::execution_fixture::run(&mut execution, &mut repeated_state, &mut Vec::new())
                 .expect("official IO source should run"),
             Value::Nil,
         );
@@ -79,8 +78,7 @@ fn runs_official_gleam_io_with_caller_owned_output() {
 
     let mut independent_state = GleamStdlibRunState::from_seed([8; 32]);
     assert_eq!(
-        execution
-            .run_main(&mut independent_state, &mut Vec::new())
+        crate::execution_fixture::run(&mut execution, &mut independent_state, &mut Vec::new())
             .expect("official IO source should run with independent state"),
         Value::Nil,
     );
@@ -133,7 +131,7 @@ fn runs_official_gleam_io_with_caller_owned_output() {
 
 #[test]
 fn preserves_io_and_echo_order_before_a_later_panic() {
-    let execution = execution::<RecordingProfile>("gleam_io_order_and_panic");
+    let mut execution = execution::<RecordingProfile>("gleam_io_order_and_panic");
     let events = Arc::new(Mutex::new(Vec::new()));
     let mut state = RecordingRunState {
         stdlib: GleamStdlibRunState::from_seed_with_io(
@@ -147,8 +145,7 @@ fn preserves_io_and_echo_order_before_a_later_panic() {
         events: Arc::clone(&events),
     };
 
-    let error = execution
-        .run_main(&mut state, &mut echo)
+    let error = crate::execution_fixture::run(&mut execution, &mut state, &mut echo)
         .expect_err("fixture should panic after emitting its events");
     let ExecutionError::Panic(panic) = error else {
         panic!("fixture should preserve its source panic");
@@ -240,6 +237,7 @@ enum RecordedEvent {
 impl HostProfile for RecordingProfile {
     type RunState = RecordingRunState;
     type ExternalStores = RecordingStores;
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<Component<RecordingIoSink>> for RecordingProfile {

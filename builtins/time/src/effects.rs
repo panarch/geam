@@ -19,19 +19,17 @@ pub fn main() {
 
 #[test]
 fn executes_non_monotonic_time_and_changing_offsets_in_source_order() {
-    let execution = execution::<ScriptedSource>(MAIN_SOURCE, "main");
+    let mut execution = execution::<ScriptedSource>(MAIN_SOURCE, "main");
     let mut first_state = scripted_state();
     let mut independent_state = scripted_state();
 
-    let first = execution
-        .run_main(&mut first_state, &mut Vec::new())
+    let first = crate::execution_fixture::run(&mut execution, &mut first_state, &mut Vec::new())
         .expect("scripted Time source should run");
-    let repeated = execution
-        .run_main(&mut first_state, &mut Vec::new())
+    let repeated = crate::execution_fixture::run(&mut execution, &mut first_state, &mut Vec::new())
         .expect("scripted Time source should run repeatedly");
-    let independent = execution
-        .run_main(&mut independent_state, &mut Vec::new())
-        .expect("independent scripted Time source should run");
+    let independent =
+        crate::execution_fixture::run(&mut execution, &mut independent_state, &mut Vec::new())
+            .expect("independent scripted Time source should run");
 
     assert_eq!(
         first.inspect().to_string(),

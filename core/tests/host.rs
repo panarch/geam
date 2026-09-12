@@ -1,3 +1,6 @@
+#[path = "../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 #[path = "host/callback.rs"]
 mod callback;
 #[path = "host/compound.rs"]

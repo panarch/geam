@@ -19,9 +19,11 @@ pub(crate) use argument::{
     HostTupleArgumentSlot, HostUtfCodepointArgumentSlot, HostValueArgumentSlot,
 };
 pub(crate) use return_::HostNeverFunction;
-pub(crate) use return_::{HostFunctionImplementation, HostValueFunction};
+pub(crate) use return_::{HostCallReturn, HostFunctionImplementation, HostValueFunction};
 #[cfg(test)]
-pub(crate) use return_::{expect_never_implementation, expect_value_implementation};
+pub(crate) use return_::{
+    expect_immediate_call, expect_never_implementation, expect_value_implementation,
+};
 
 /// A Rust function that can be registered as a Geam host function.
 ///
@@ -111,6 +113,27 @@ where
 {
 }
 
+/// An ordinary native function whose owned body can await Gleam callbacks.
+pub trait ResumableHostFunction<Profile, Provider, Arguments, Return, Constructions>:
+    adapter::ResumableHostFunctionAdapter<Profile, Provider, Arguments, Return, Constructions>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Constructions: crate::host::HostTypeSequence,
+{
+}
+
+impl<Profile, Provider, Arguments, Return, Constructions, Function>
+    ResumableHostFunction<Profile, Provider, Arguments, Return, Constructions> for Function
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Constructions: crate::host::HostTypeSequence,
+    Function:
+        adapter::ResumableHostFunctionAdapter<Profile, Provider, Arguments, Return, Constructions>,
+{
+}
+
 impl<Function, Arguments, Return> HostFunction<Arguments, Return> for Function where
     Function: adapter::HostFunctionAdapter<Arguments, Return> + Send + Sync + 'static
 {
@@ -192,6 +215,7 @@ pub(crate) struct RegisteredHostConstructions {
     types: Box<[crate::host::HostTypeDescriptor]>,
     custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
     external_schemas: Box<[crate::host::HostExternalTypeSchema]>,
+    native_rules: Option<Box<[crate::host::HostTypeDescriptor]>>,
 }
 
 impl HostFunctionSchema {
@@ -286,11 +310,28 @@ impl RegisteredHostConstructions {
             types,
             custom_schemas,
             external_schemas: external_schemas.into_boxed_slice(),
+            native_rules: None,
         }
     }
 
     pub(crate) fn empty() -> Self {
         Self::new(Box::new([]), Box::new([]))
+    }
+
+    fn for_sequence<Constructions: crate::host::HostTypeSequence>() -> Self {
+        let types =
+            <Constructions as crate::host::HostAbiTypeSequence>::descriptors().into_boxed_slice();
+        let mut custom_schemas = Vec::new();
+        let mut visited = std::collections::HashSet::new();
+        <Constructions as crate::host::HostAbiTypeSequence>::collect_custom_schemas(
+            &mut custom_schemas,
+            &mut visited,
+        );
+        Self::new(types, custom_schemas.into_boxed_slice())
+    }
+
+    pub(crate) fn native_rules(&self) -> Option<&[crate::host::HostTypeDescriptor]> {
+        self.native_rules.as_deref()
     }
 
     pub(crate) fn types(&self) -> &[crate::host::HostTypeDescriptor] {
@@ -420,17 +461,57 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
             Return,
             Constructions,
         >>::register(function);
-        let construction_types =
-            <Constructions as crate::host::HostAbiTypeSequence>::descriptors().into_boxed_slice();
-        let mut custom_schemas = Vec::new();
-        let mut visited = std::collections::HashSet::new();
-        <Constructions as crate::host::HostAbiTypeSequence>::collect_custom_schemas(
-            &mut custom_schemas,
-            &mut visited,
-        );
-        let constructions =
-            RegisteredHostConstructions::new(construction_types, custom_schemas.into_boxed_slice());
+        let constructions = RegisteredHostConstructions::for_sequence::<Constructions>();
         Self::from_registration_with_constructions(name, registration, constructions)
+    }
+
+    pub(crate) fn new_resumable<Provider, Arguments, Return, Constructions, Function>(
+        name: EcoString,
+        function: Function,
+    ) -> Result<Self, crate::HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Constructions: crate::host::HostTypeSequence,
+        Function: ResumableHostFunction<Profile, Provider, Arguments, Return, Constructions>,
+    {
+        let registration = <Function as adapter::ResumableHostFunctionAdapter<
+            Profile,
+            Provider,
+            Arguments,
+            Return,
+            Constructions,
+        >>::register(function);
+        Self::from_registration_with_constructions(
+            name,
+            registration,
+            RegisteredHostConstructions::for_sequence::<Constructions>(),
+        )
+    }
+
+    pub(in crate::host) fn enable_native(
+        mut self,
+        registration: crate::host::native::NativeRegistration,
+    ) -> Result<Self, crate::HostRegistrationError> {
+        let rules = registration.descriptors;
+        for (index, descriptor) in rules.iter().enumerate() {
+            if rules[..index].contains(descriptor) {
+                return Err(crate::HostRegistrationError::DuplicateNativeConversion {
+                    function: self.schema.name().clone(),
+                    type_: descriptor.value_type(),
+                });
+            }
+        }
+        let mut types = self.constructions.types.into_vec();
+        types.extend(rules.iter().cloned());
+        let mut custom_schemas = self.constructions.custom_schemas.into_vec();
+        custom_schemas.extend(registration.custom_schemas);
+        self.constructions = RegisteredHostConstructions::new(
+            types.into_boxed_slice(),
+            custom_schemas.into_boxed_slice(),
+        );
+        self.constructions.native_rules = Some(rules);
+        self.constructions.validate_for(&self.schema)?;
+        Ok(self)
     }
 
     pub(crate) fn new_scoped_diverging<Provider, Arguments, Return, Function>(
@@ -563,7 +644,8 @@ mod tests {
         let arguments = CallArguments::new(vec![10.into(), 20.into()], vec![false]);
         let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
         assert_eq!(
-            implementation.call(&mut runtime).map(|token| token.family),
+            crate::host::expect_immediate_call(implementation, &mut runtime)
+                .map(|token| token.family),
             Ok(HostValueFamily::Int),
         );
         assert_eq!(
@@ -573,7 +655,8 @@ mod tests {
         let arguments = CallArguments::new(vec![10.into(), 20.into()], vec![true]);
         let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
         assert_eq!(
-            implementation.call(&mut runtime).map(|token| token.family),
+            crate::host::expect_immediate_call(implementation, &mut runtime)
+                .map(|token| token.family),
             Ok(HostValueFamily::Int),
         );
         assert_eq!(
@@ -602,7 +685,8 @@ mod tests {
         let arguments = CallArguments::new(vec![1.into()], Vec::new());
         let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
         assert_eq!(
-            implementation.call(&mut runtime).map(|token| token.family),
+            crate::host::expect_immediate_call(implementation, &mut runtime)
+                .map(|token| token.family),
             Ok(HostValueFamily::Bool),
         );
         assert_eq!(runtime.completed(), Some(&HostScopedValue::Bool(true)));
@@ -643,7 +727,8 @@ mod tests {
         let mut state = TestRunState::default();
         let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
         assert_eq!(
-            implementation.call(&mut runtime).map(|token| token.family),
+            crate::host::expect_immediate_call(implementation, &mut runtime)
+                .map(|token| token.family),
             Ok(HostValueFamily::Nil),
         );
         assert_eq!(runtime.completed(), Some(&HostScopedValue::Nil));
@@ -704,7 +789,8 @@ mod tests {
             let arguments = CallArguments::new(Vec::new(), Vec::new());
             let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
             assert_eq!(
-                implementation.call(&mut runtime).map(|token| token.family),
+                crate::host::expect_immediate_call(implementation, &mut runtime)
+                    .map(|token| token.family),
                 Ok(HostValueFamily::Bool),
             );
             assert_eq!(runtime.completed(), Some(&HostScopedValue::Bool(true)));
@@ -863,8 +949,8 @@ mod tests {
         use crate::host::{HostProviderModule, HostProviderSet};
         use crate::plan::execution::HostedProgram;
         use crate::plan::{LibraryEntry, LibraryValueType};
+        use crate::runtime::EmbeddingEntry;
         use crate::runtime::RetainedInputs;
-        use crate::runtime::work::driver::Driver;
         let provider = HostProviderModule::<TestHostProfile>::new("application", "library")
             .expect("provider")
             .with_scoped_function_and_constructions::<ConstructionProvider, (), bool,
@@ -893,13 +979,27 @@ mod tests {
         };
         let mut stores = ();
         let mut echo = drop;
-        let mut driver = Driver::new(&plan, &mut state, &mut stores, &mut echo);
-        assert!(
-            driver
-                .run_bool(*entries.bools[0].function(), RetainedInputs::empty())
-                .expect("native ready")
+        let host = crate::execution_fixture::TestHost::default();
+        let domain = crate::runtime::execution::Domain::new(
+            std::sync::Arc::new(plan),
+            &host,
+            &mut state,
+            &mut stores,
+            &mut echo,
+            std::num::NonZeroUsize::MIN,
         );
-        drop(driver);
+        let context = domain.context();
+        assert!(
+            host.block_on(
+                domain.drive(
+                    entries.bools[0]
+                        .function()
+                        .call(&context, RetainedInputs::empty())
+                )
+            )
+            .expect("host cleanup")
+            .expect("native ready")
+        );
         assert_eq!(state.counter, 5);
         assert!(state.unrelated);
     }

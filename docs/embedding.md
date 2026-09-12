@@ -107,6 +107,9 @@ application that can be run and tested on its own:
 | External provider | Call Gleam code backed by a configured Rust provider | [`provider`](../examples/embedding/provider) |
 | Application | Combine packages, IO, a provider, structured data, and repeated calls | [`application`](../examples/embedding/application) |
 | Async Rust host | Return explicit work and drive it on the application's executor | [`async_host`](../examples/embedding/async_host) |
+| Opaque session | Keep Gleam-owned private data between calls | [`session`](../examples/embedding/session) |
+| Execution control | Cancel a running Gleam call and continue using its module | [`execution`](../examples/embedding/execution) |
+| Process service | Retain Pid and Subject handles and call a running Gleam service | [`processes`](../examples/embedding/processes) |
 
 Follow the stages in order when learning the API, or open the smallest example
 that contains the feature your application needs. The application example
@@ -179,8 +182,9 @@ tests, and package commands there as usual; return to the Cargo package root for
 Internal Gleam modules can live below `gleam/src/inventory_app/`. Only public
 functions from the same-name root module become Rust bindings. Their arguments
 and returns must use the generated binding types described below. Imported
-modules may use records, custom types, and provider-backed values, but those
-values cannot cross the generated binding boundary directly.
+modules may use records, custom types, and provider-backed values. Concrete
+custom and external types cross this boundary as opaque handles: Rust can
+retain them and pass them back without reconstructing their fields.
 
 Commit the Cargo and Gleam manifests and lockfiles, handwritten Gleam and Rust
 source, and generated `src/geam_bindings.rs`. Ignore Cargo's `target/` and
@@ -202,8 +206,11 @@ geam embedding sync
 ```
 
 Sync enables only the built-in Geam support used by imported Gleam code. Geam's
-stdlib, JSON, and Time integrations are added explicitly; unused Gleam
+stdlib, JSON, Time, and Erlang integrations are added explicitly; unused Gleam
 dependencies do not add Rust components.
+
+For a concurrent Gleam service, see [Gleam processes](processes.md). Generated
+Pid and Subject handles remain usable across calls in the same execution scope.
 
 Most packages need nothing else. If an imported package has native functions
 implemented for Geam, its Hex package remains the Gleam dependency and a
@@ -251,6 +258,36 @@ provider](../examples/embedding/provider)
 separately. The [application example](../examples/embedding/application) then
 combines stdlib IO, an external provider, structured data, and repeated calls.
 
+## Drive hosted calls
+
+Hosted bindings use the Rust application's executor. This lets Gleam execution
+yield during long computations and resume after a native callback waits.
+The application keeps its provider state and Echo sink throughout the scope.
+
+For Tokio, enable Geam's `tokio` feature and connect the adapter to your existing
+runtime:
+
+```rust
+use geam::execution::TokioHost;
+
+let host = TokioHost::new(tokio::runtime::Handle::current());
+module.with_execution(&host, &mut state, &mut echo, async |scope| {
+    let first = scope.call(&functions.double, (21.into(),)).await?;
+    println!("{first}");
+    Ok::<_, Box<dyn std::error::Error>>(())
+}).await??;
+```
+
+The enclosing Rust Future services Gleam calls while the body runs. Returning
+from the body ends the scope and waits for its workers to release their inputs.
+Dropping a pending `scope.call` cancels that call; dropping the enclosing Future
+requests scope shutdown without blocking the dropping thread.
+
+`TokioHost` uses the runtime you provide; it does not create another runtime.
+Other executors can implement `geam::execution::ExecutionHost`, including its
+task cancellation and clock contracts. Pure bindings that use `ModuleBuilder`
+also retain the direct `module.call` API shown in the first example.
+
 ## Drive explicit Future values
 
 A Rust provider can expose an `async fn` as a Gleam function returning
@@ -276,9 +313,9 @@ pub fn greeting(path: String) -> Future(Result(String, String)) {
 ```
 
 Run `geam embedding sync` after adding the Gleam package and Rust provider.
-Sync enables `geam-builtin` on the application's Geam dependency for hosted
-bindings. Ordinary functions and Future functions share one loaded module and
-provider state.
+Sync enables the features needed by the selected packages and providers.
+Ordinary functions and Future functions share one loaded module and provider
+state.
 
 The generated project and bindings use the same loading sequence:
 
@@ -289,23 +326,22 @@ let (bindings, functions) = geam_bindings::bind(builder)?;
 let mut module = bindings.seal()?;
 ```
 
-After initializing the generated `RunStateInputs`, attach the module to an
-execution scope owned by the Rust application:
+After initializing the generated `RunStateInputs`, use the same host-driven
+scope for calls and Future observations:
 
 ```rust
-with_execution_scope(async |guard| {
-    let mut scope = module.attach(guard, &mut state, &mut echo);
-    let doubled = scope.call(&functions.double, (21.into(),))?;
-    let work = scope.call(&functions.greeting, (path.into(),))?;
+module.with_execution(&host, &mut state, &mut echo, async |scope| {
+    let doubled = scope.call(&functions.double, (21.into(),)).await?;
+    let work = scope.call(&functions.greeting, (path.into(),)).await?;
     let result = scope.observe(&work).await?;
     result.read(|value| println!("{value:?}"));
     Ok::<_, Box<dyn std::error::Error>>(())
 })
-.await?;
+.await??;
 ```
 
 The application drives this enclosing Rust Future with its own executor.
-`scope.call` evaluates the Gleam function and returns its value. For a function
+`scope.call(...).await` evaluates the Gleam function and returns its value. For a function
 returning `Future`, that value is work to observe, not its eventual result.
 `scope.observe` drives the work and returns shared access to its result.
 Observing the same work again reuses its completion rather than running its
@@ -315,7 +351,7 @@ The scope borrows the module, provider state, and Echo sink. Dropping one
 observation leaves separately retained work available for another observation
 in the same scope. Ending the scope cancels pending work; plain results already
 obtained with `observe` remain available. See the
-[embedding reference](reference/embedding-boundary.md#explicit-future-execution)
+[embedding reference](reference/embedding-boundary.md#explicit-future-values)
 for nested Future values and completion errors.
 
 The [async-host example](../examples/embedding/async_host) contains the complete
@@ -353,17 +389,26 @@ compilation and tests.
 Generated bindings currently support this recursive data grammar:
 
 ```text
-Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data) | Future(Data)
+Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data) | Future(Data) | Named
 ```
 
 This includes nested Lists and combinations of Tuple, Result, and Option.
 Bindings also recognize the nominal `geam/future.Future` type in
 these positions.
-Records, arbitrary custom types, external values, callbacks, and generic types
-cannot currently be used in generated Rust function signatures. Gleam code may
-use them internally. Through generated bindings, Rust can call such code only
-through a public function in the same-name root module whose arguments and
-return value use supported types.
+Concrete custom and external types, including generic specializations such as
+`Session(Int)`, map to opaque handles. Rust can keep a value and pass it back
+to Gleam in the same execution scope:
+
+```rust
+let session = scope.call(&functions.start, (40.into(),)).await?;
+let next = scope.call(&functions.next, (&session,)).await?;
+let total = scope.call(&functions.total, (next,)).await?;
+```
+
+The [Session example](../examples/embedding/session) includes the corresponding
+Gleam type, functions, and generated Rust bindings. Its private fields stay in
+Gleam. Expose a Gleam accessor when Rust needs to inspect them. Public callbacks
+and unbound generic parameters remain outside generated signatures.
 
 Lists returned from Gleam are retained, immutable handles. Rust can inspect
 them lazily or pass them back to the same loaded module without reconstructing
@@ -374,8 +419,8 @@ boundary](reference/embedding-boundary.md) for the complete type map, ownership
 rules, list transfer behavior, provider state, and lower-level manual binding
 API.
 
-Within an attached execution scope, `List<T>` declarations produce `SharedList`
-values with borrowed item access. Ordinary module calls return `List<T>` values
+Within a host-driven execution scope, `List<T>` declarations produce `SharedList`
+values with borrowed item access. Direct module calls return `List<T>` values
 with owned item access. Both retain their source storage. Nested Future values
 keep their execution scope; putting work inside a List does not erase its owner.
 

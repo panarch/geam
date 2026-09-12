@@ -21,6 +21,12 @@ pub(crate) use runtime::{HostCallRuntime, HostTokenRuntime};
 pub trait HostProfile: Send + Sync + 'static {
     type RunState: Send;
     type ExternalStores: Default + Send + 'static;
+    type ExecutionState: crate::execution::HostExecutionState;
+
+    /// Creates domain-local services from the caller's explicit configuration.
+    fn initialize_execution(_state: &mut Self::RunState) -> Self::ExecutionState {
+        Self::ExecutionState::default()
+    }
 }
 
 pub trait HostProvider<Profile: HostProfile>: Send + Sync + 'static {
@@ -53,6 +59,7 @@ where
 impl HostProfile for StatelessHostProfile {
     type RunState = ();
     type ExternalStores = ();
+    type ExecutionState = ();
 }
 
 impl<'call, Profile, Provider, Return> HostCall<'call, Profile, Provider, Return>
@@ -70,6 +77,55 @@ where
 
     pub fn state(&mut self) -> &mut Provider::State {
         Provider::project(self.runtime.state())
+    }
+
+    /// Accesses services owned by this execution domain, not by retained values.
+    pub fn execution_state(&mut self) -> &mut Profile::ExecutionState {
+        self.runtime.execution_state()
+    }
+
+    /// Borrows domain services and read-only native value operations separately.
+    /// Neither view can survive this call or admit nested source execution.
+    pub fn with_native_values<Output>(
+        &mut self,
+        operation: impl FnOnce(
+            &mut Profile::ExecutionState,
+            crate::host::native::NativeValues<'_>,
+        ) -> Output,
+    ) -> Output {
+        let (state, values) = self.runtime.execution_with_native_values();
+        operation(state, values)
+    }
+
+    /// Borrows native comparison and scalar-view operations without effect access.
+    pub fn native_values(&self) -> crate::host::native::NativeValues<'_> {
+        self.runtime.native_values()
+    }
+
+    /// Identifies the current source invocation, including nested native callbacks.
+    /// Value conversion outside a source invocation has no logical unit.
+    pub fn execution_unit(&self) -> Option<crate::execution::ExecutionUnit> {
+        self.runtime.execution().unit().cloned()
+    }
+
+    /// Runs an operation that requires a source invocation's identity.
+    /// Value codecs outside an invocation fail before the operation is called.
+    pub fn with_execution_unit<Output>(
+        self,
+        operation: impl FnOnce(
+            Self,
+            crate::execution::ExecutionUnit,
+        ) -> Result<Output, crate::host::HostCallError>,
+    ) -> Result<Output, crate::host::HostCallError> {
+        let unit = self.execution_unit().ok_or_else(|| {
+            crate::HostFailure::new("native operation requires a source invocation")
+        })?;
+        operation(self, unit)
+    }
+
+    /// Uses the execution host's clock, including a host-supplied virtual clock.
+    pub fn clock(&self) -> crate::execution::ExecutionClock<'_> {
+        self.runtime.clock()
     }
 
     pub fn return_value(self, value: Return::Value<'call>) -> HostCallCompletion<'call, Return> {
@@ -97,6 +153,24 @@ where
     pub fn source_hash<Type: HostType>(&self, value: Type::Value<'call>) -> u64 {
         self.runtime
             .source_hash(crate::host::type_::into_scoped::<Type>(value))
+    }
+
+    /// Hashes a source value through its native representation.
+    pub fn native_source_hash<Type: HostType>(&self, value: Type::Value<'call>) -> u64 {
+        self.native_hash(&self.native_value::<Type>(value))
+    }
+
+    /// Retains a native view without changing the value's exact source type.
+    pub fn native_value<Type: HostType>(
+        &self,
+        value: Type::Value<'call>,
+    ) -> crate::runtime::NativeValue {
+        crate::runtime::NativeValue::from_stored(self.retain_value::<Type>(value))
+    }
+
+    /// Views a typed List as a native tuple without traversing its elements.
+    pub fn native_tuple<Item>(&self, value: HostList<'call, Item>) -> crate::runtime::NativeValue {
+        self.runtime.native_tuple(value.token)
     }
 
     /// Returns the canonical Gleam-facing inspection of a call-scoped value.
@@ -333,65 +407,6 @@ where
             .resolve_host_type(&crate::host::HostTypeDescriptor::of::<Type>())
     }
 
-    /// Invokes a Gleam callable while this host call owns the active runtime.
-    ///
-    /// A provider-state borrow must end before re-entry.
-    ///
-    /// ```compile_fail
-    /// use geam_core::{
-    ///     HostCall, HostCallCompletion, HostCallError, HostCallable, HostProfile, HostProvider,
-    ///     HostTypeList, HostTypeListEnd,
-    /// };
-    /// use num_bigint::BigInt;
-    ///
-    /// struct Profile;
-    /// struct Provider;
-    ///
-    /// impl HostProfile for Profile {
-    ///     type RunState = usize;
-    ///     type ExternalStores = ();
-    /// }
-    ///
-    /// impl HostProvider<Profile> for Provider {
-    ///     type State = usize;
-    ///
-    ///     fn project(state: &mut usize) -> &mut Self::State {
-    ///         state
-    ///     }
-    /// }
-    ///
-    /// type Arguments = HostTypeList<BigInt, HostTypeListEnd>;
-    ///
-    /// fn reenter_with_live_state<'call>(
-    ///     mut call: HostCall<'call, Profile, Provider, BigInt>,
-    ///     callable: HostCallable<'call, Arguments, BigInt>,
-    /// ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
-    ///     let state = call.state();
-    ///     let returned = call.invoke(callable, (BigInt::from(1), ()))?;
-    ///     *state += 1;
-    ///     Ok(call.return_value(returned))
-    /// }
-    /// ```
-    pub fn invoke<Arguments, FunctionReturn>(
-        &mut self,
-        function: crate::host::HostCallable<'call, Arguments, FunctionReturn>,
-        arguments: Arguments::Values<'call>,
-    ) -> Result<FunctionReturn::Value<'call>, crate::HostCallError>
-    where
-        Arguments: HostTypeSequence,
-        FunctionReturn: HostType,
-    {
-        let mut values = Vec::new();
-        crate::host::type_::into_scoped_values::<Arguments>(arguments, &mut values);
-        let returned = self
-            .runtime
-            .invoke(function.token, values.into_boxed_slice())?;
-        Ok(crate::host::type_::from_token::<FunctionReturn, Profile>(
-            self.runtime,
-            returned,
-        ))
-    }
-
     /// Constructs an intermediate external payload authorized by one registered type token.
     pub fn construct_external<Schema, Arguments>(
         &mut self,
@@ -498,12 +513,9 @@ where
         HostExternalType<Schema, Arguments>: HostType,
     {
         BoundExternalStorage::<Profile, Binding, Schema>::store(self.runtime.external_stores())
-            .insert(
-                value,
-                BoundExternalStorage::<Profile, Binding, Schema>::source_equal,
-                BoundExternalStorage::<Profile, Binding, Schema>::source_hash,
-                BoundExternalStorage::<Profile, Binding, Schema>::inspect,
-            )
+            .insert_with_storage::<Profile, Schema, BoundExternalStorage<Profile, Binding, Schema>>(
+            value,
+        )
     }
 
     pub(crate) fn stored_equal(
@@ -512,6 +524,20 @@ where
         right: &StoredRuntimeValue,
     ) -> bool {
         self.runtime.stored_equal(left, right)
+    }
+
+    /// Compares declared native values using the current execution's semantics.
+    pub fn native_equal(
+        &self,
+        left: &crate::runtime::NativeValue,
+        right: &crate::runtime::NativeValue,
+    ) -> bool {
+        self.native_values().equal(left, right)
+    }
+
+    /// Hashes a declared native value consistently with native equality.
+    pub fn native_hash(&self, value: &crate::runtime::NativeValue) -> u64 {
+        self.native_values().hash(value)
     }
 
     pub(crate) fn stored_source_hash(&self, value: &StoredRuntimeValue) -> u64 {
@@ -693,6 +719,10 @@ where
             .is_some_and(|requested| value.type_() == &requested)
     }
 
+    pub(crate) fn native_has_type<Type: HostType>(&self, value: &StoredRuntimeValue) -> bool {
+        self.runtime.owns_stored(value) && self.stored_has_type::<Type>(value)
+    }
+
     pub(crate) fn retain_list_value<Item: HostType>(
         &self,
         value: HostList<'call, Item>,
@@ -838,7 +868,7 @@ where
 mod tests {
     use super::{HostCall, HostProvider};
     use crate::BitArrayValue;
-    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
+    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder};
     use crate::frontend::compile_typed_host_program;
     use crate::host::function::CallArguments;
     use crate::host::test::{
@@ -863,7 +893,6 @@ mod tests {
     use crate::work_fixture::{WorkComponent, WorkHostType, WorkSchema};
     use crate::{HostCallCompletion, HostCallError, HostExternal, ModuleSource, PackageSource};
     use ecow::EcoString;
-    use futures_util::FutureExt;
     use num_bigint::BigInt;
 
     struct Counter;
@@ -950,6 +979,106 @@ mod tests {
     }
 
     #[test]
+    fn required_execution_identity_distinguishes_source_calls_from_value_codecs() {
+        fn active<'call>(
+            mut call: HostCall<'call, TestHostProfile, Counter, bool>,
+        ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+            assert_eq!(*call.execution_state(), ());
+            let clock = call.clock();
+            let mut elapsed = clock.sleep_until(clock.now());
+            assert!(
+                elapsed
+                    .as_mut()
+                    .poll(&mut std::task::Context::from_waker(std::task::Waker::noop()))
+                    .is_ready()
+            );
+            call.with_execution_unit(|mut call, unit| {
+                let source = call.native_value::<BigInt>(42.into());
+                let state = std::ptr::from_mut(call.execution_state());
+                call.with_native_values(|actual, values| {
+                    assert_eq!(std::ptr::from_mut(actual), state);
+                    *actual = ();
+                    let native = values.integer(42.into());
+                    assert!(values.equal(&native, &source));
+                    assert_eq!(values.hash(&native), values.hash(&source));
+                    assert_eq!(
+                        values.string("native".into()).as_string().as_deref(),
+                        Some("native")
+                    );
+                });
+                *call.state() += 1;
+                Ok(call.return_value(unit.is_active()))
+            })
+        }
+        fn converted<'call>(
+            call: crate::host::native::NativeCall<
+                'call,
+                TestHostProfile,
+                Counter,
+                bool,
+                HostTypeList<BigInt, HostTypeListEnd>,
+            >,
+            input: BigInt,
+        ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+            let input = call.source::<BigInt>(input);
+            call.with_execution_unit(|mut call, unit| {
+                let value = call.convert::<HostTypeIndex0>(&input).unwrap();
+                *call.call().state() += 1;
+                Ok(call.finish(unit.is_active() && value == BigInt::from(42)))
+            })
+        }
+        let mut state = TestRunState::default();
+        {
+            let mut codec =
+                TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
+            assert_eq!(
+                active(HostCall::new(&mut codec)).err().unwrap().to_string(),
+                "native operation requires a source invocation"
+            );
+            let native =
+                crate::host::native::NativeCall::new(HostCall::new(&mut codec), Vec::new().into());
+            assert_eq!(
+                converted(native, 42.into()).err().unwrap().to_string(),
+                "native operation requires a source invocation"
+            );
+        }
+        assert_eq!(state.counter, 0);
+
+        let provider = HostProviderModule::new("application", "main").unwrap()
+            .with_scoped_function::<Counter, (), bool, _>("active", active).unwrap()
+            .with_native_function::<Counter, (BigInt,), bool, HostTypeList<BigInt, HostTypeListEnd>, _>(
+                "converted", crate::host::native::NativeRules::default(), converted,
+            ).unwrap();
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    r#"
+@external(erlang, "host", "active") fn active() -> Bool
+@external(erlang, "host", "converted") fn converted(input: Int) -> Bool
+pub fn main() { #(active(), converted(42), converted(0)) }
+"#,
+                )],
+            )],
+            HostProviderSet::from_providers([provider]).unwrap(),
+        )
+        .unwrap();
+        let mut execution =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let mut echo = Vec::new();
+        let result = crate::execution_fixture::run(&mut execution, &mut state, &mut echo).unwrap();
+        assert_eq!(result.inspect().to_string(), "#(True, True, False)");
+        assert_eq!(state.counter, 3);
+        assert!(echo.is_empty());
+    }
+
+    #[test]
     fn host_call_reads_and_compares_call_scoped_values() {
         type EmptyTuple = HostTupleType<HostTypeListEnd>;
 
@@ -990,6 +1119,17 @@ mod tests {
         assert!(!call.equal::<MarkerType>(custom, custom));
         assert_eq!(call.source_hash::<BigInt>(1.into()), 17);
         assert_eq!(call.inspect::<BigInt>(1.into()), "inspected");
+        let retained = call.retain_value::<BigInt>(1.into());
+        let native = crate::runtime::NativeValue::from_stored(retained);
+        assert_eq!(
+            call.native_source_hash::<BigInt>(1.into()),
+            call.native_hash(&native)
+        );
+        assert!(call.native_equal(&native, &native));
+        call.with_native_values(|state, values| {
+            assert_eq!(*state, ());
+            assert!(values.equal(&native, &native));
+        });
     }
 
     #[test]
@@ -1133,7 +1273,7 @@ mod tests {
     }
 
     #[test]
-    fn host_call_invokes_and_completes_typed_function_handles() {
+    fn host_call_completes_typed_function_handles_without_reconstruction() {
         type Arguments = HostTypeList<BigInt, HostTypeListEnd>;
         type Function = HostFunctionType<Arguments, BigInt>;
 
@@ -1141,16 +1281,6 @@ mod tests {
         let arguments = CallArguments::new(Vec::new(), Vec::new());
         let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
         let callable = HostCallable::<Arguments, BigInt>::new(HostFunctionToken(0));
-        let returned = HostCall::<TestHostProfile, Counter, BigInt>::new(&mut runtime)
-            .invoke(callable, (BigInt::from(7), ()))
-            .expect("test runtime should return the first callback argument");
-
-        assert_eq!(returned, BigInt::from(0));
-        assert_eq!(
-            runtime.completed(),
-            Some(&HostScopedValue::Int(BigInt::from(7))),
-        );
-
         let completion = HostCall::<TestHostProfile, Counter, Function>::new(&mut runtime)
             .return_value(callable)
             .token;
@@ -1161,15 +1291,24 @@ mod tests {
         );
 
         let empty = HostCallable::<HostTypeListEnd, ()>::new(HostFunctionToken(1));
-        HostCall::<TestHostProfile, Counter, ()>::new(&mut runtime)
-            .invoke(empty, ())
-            .expect("zero-argument test callback should return Nil");
+        let completion =
+            HostCall::<TestHostProfile, Counter, HostFunctionType<HostTypeListEnd, ()>>::new(
+                &mut runtime,
+            )
+            .return_value(empty)
+            .token;
+        assert_eq!(completion.family, HostValueFamily::Function);
+        assert_eq!(
+            runtime.completed(),
+            Some(&HostScopedValue::Function(HostFunctionToken(1)))
+        );
     }
 
     struct Profile;
     impl HostProfile for Profile {
         type RunState = ();
         type ExternalStores = HostFutureStore;
+        type ExecutionState = ();
     }
     impl crate::host::HostWorkProfile for Profile {
         type Work = crate::work_fixture::WorkComponent;
@@ -1292,14 +1431,17 @@ pub fn run() {
         let mut state = ();
         let mut outputs = Vec::new();
         let mut echo = |output: crate::EchoOutput| outputs.push(output.to_string());
-        with_execution_scope(async |guard| {
-            assert_eq!(
-                module.attach(guard, &mut state, &mut echo).call(&run, ()),
-                Ok(true)
-            );
-        })
-        .now_or_never()
-        .expect("direct native calls do not need an executor");
+        let execution_host = crate::execution_fixture::TestHost::default();
+        execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    assert_eq!(scope.call(&run, ()).await, Ok(true));
+                },
+            ))
+            .expect("ordinary calls share the explicit execution host");
         assert_eq!(outputs, ["src/library.gleam:8\n42"]);
     }
 }

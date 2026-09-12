@@ -1,29 +1,27 @@
-use super::{evaluate_entry, run_tail};
+use super::run;
+use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::function::{
     BitArrayFunctionFunctionId, BoolFunctionFunctionId, CustomFunctionFunctionId,
-    ExternalFunctionFunctionId, ExternalListFunctionFunctionId, FloatFunctionFunctionId,
-    FunctionFunctionFunctionId, GenericFunctionFunctionId, IntFunctionFunctionId,
-    NeverFunctionFunctionId, NilFunctionFunctionId, ProfiledFunctionFunctionId,
-    ProfiledListFunctionFunctionId, StringFunctionFunctionId, TupleFunctionFunctionId,
-    UtfCodepointFunctionFunctionId,
+    FloatFunctionFunctionId, FunctionFunctionFunctionId, GenericFunctionFunctionId,
+    IntFunctionFunctionId, NeverFunctionFunctionId, NilFunctionFunctionId,
+    ProfiledFunctionFunctionId, ProfiledListFunctionFunctionId, StringFunctionFunctionId,
+    TupleFunctionFunctionId, UtfCodepointFunctionFunctionId,
 };
-use crate::plan::execution::graph::ExternalFunctionCallTarget;
-use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::evaluated::{
     EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCustomFunction,
-    EvaluatedExternalFunction, EvaluatedFloatFunction, EvaluatedFunctionFunction,
-    EvaluatedFunctionValue, EvaluatedGenericFunction, EvaluatedIntFunction, EvaluatedListFunction,
-    EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedFunctionValue,
+    EvaluatedGenericFunction, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNeverFunction,
+    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
     EvaluatedUtfCodepointFunction,
 };
 use crate::runtime::graph::RetainedValues;
-use crate::runtime::state::RuntimeStateFor;
+use crate::runtime::state::RuntimeState;
 use std::convert::Infallible;
 
-pub(in crate::runtime) fn run_core_function<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
+pub(in crate::runtime) fn run_core_function(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState<'_>,
     function: ProfiledFunctionFunctionId<Infallible>,
     origin: HostCallOrigin,
     inputs: RetainedValues,
@@ -70,484 +68,132 @@ pub(in crate::runtime) fn run_core_function<Plan: ExecutableRuntimePlan>(
     }
 }
 
-pub(in crate::runtime) fn run_external_function_function<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    function: ExternalFunctionCallTarget,
-    origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedFunctionValue> {
-    match function {
-        ExternalFunctionCallTarget::Function(function) => {
-            run_external_function(plan, state, function, origin, inputs).map(Into::into)
-        }
-        ExternalFunctionCallTarget::ListFunction { id, .. } => {
-            run_external_list_function(plan, state, id, origin, inputs).map(Into::into)
-        }
-    }
-}
-
-pub(in crate::runtime) fn run_generic_function<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
+pub(in crate::runtime) fn run_generic_function(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState<'_>,
     function: GenericFunctionFunctionId,
     origin: HostCallOrigin,
     inputs: RetainedValues,
 ) -> ExecutionResult<EvaluatedGenericFunction> {
-    run_tail(
-        plan,
-        state,
-        function,
-        origin,
-        inputs,
-        |plan, state, function, origin, inputs| {
-            evaluate_entry(
-                plan,
-                state,
-                plan.generic_function_function(function),
-                origin,
-                inputs,
-            )
-        },
-        |_, _, target| {
-            (
-                target.function().clone(),
-                HostCallOrigin::source(target.site().clone()),
-            )
-        },
-    )
+    run(plan, state, function, origin, inputs)
 }
 
-pub(in crate::runtime) fn run_never_function<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
+pub(in crate::runtime) fn run_never_function(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState<'_>,
     function: NeverFunctionFunctionId,
     origin: HostCallOrigin,
     inputs: RetainedValues,
 ) -> ExecutionResult<EvaluatedNeverFunction> {
-    run_tail(
-        plan,
-        state,
-        function,
-        origin,
-        inputs,
-        |plan, state, function, origin, inputs| {
-            evaluate_entry(
-                plan,
-                state,
-                plan.never_function_function(function),
-                origin,
-                inputs,
-            )
-        },
-        |_, _, target| {
-            (
-                target.function().clone(),
-                HostCallOrigin::source(target.site().clone()),
-            )
-        },
-    )
+    run(plan, state, function, origin, inputs)
 }
 
-pub(in crate::runtime) fn run_int_function<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
+pub(in crate::runtime) fn run_int_function(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState<'_>,
     function: IntFunctionFunctionId,
     origin: HostCallOrigin,
     inputs: RetainedValues,
 ) -> ExecutionResult<EvaluatedIntFunction> {
-    run_tail(
-        plan,
-        state,
-        function,
-        origin,
-        inputs,
-        |plan, state, function, origin, inputs| {
-            evaluate_entry(
-                plan,
-                state,
-                plan.int_function_function(*function),
-                origin,
-                inputs,
-            )
-        },
-        |_, _, target| {
-            (
-                *target.function(),
-                HostCallOrigin::source(target.site().clone()),
-            )
-        },
-    )
+    run(plan, state, function, origin, inputs)
 }
 
-pub(in crate::runtime) fn run_float_function<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
+pub(in crate::runtime) fn run_float_function(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState<'_>,
     function: FloatFunctionFunctionId,
     origin: HostCallOrigin,
     inputs: RetainedValues,
 ) -> ExecutionResult<EvaluatedFloatFunction> {
-    run_tail(
-        plan,
-        state,
-        function,
-        origin,
-        inputs,
-        |plan, state, function, origin, inputs| {
-            evaluate_entry(
-                plan,
-                state,
-                plan.float_function_function(*function),
-                origin,
-                inputs,
-            )
-        },
-        |_, _, target| {
-            (
-                *target.function(),
-                HostCallOrigin::source(target.site().clone()),
-            )
-        },
-    )
+    run(plan, state, function, origin, inputs)
 }
 
-pub(in crate::runtime) fn run_string_function<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
+pub(in crate::runtime) fn run_string_function(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState<'_>,
     function: StringFunctionFunctionId,
     origin: HostCallOrigin,
     inputs: RetainedValues,
 ) -> ExecutionResult<EvaluatedStringFunction> {
-    run_tail(
-        plan,
-        state,
-        function,
-        origin,
-        inputs,
-        |plan, state, function, origin, inputs| {
-            evaluate_entry(
-                plan,
-                state,
-                plan.string_function_function(*function),
-                origin,
-                inputs,
-            )
-        },
-        |_, _, target| {
-            (
-                *target.function(),
-                HostCallOrigin::source(target.site().clone()),
-            )
-        },
-    )
+    run(plan, state, function, origin, inputs)
 }
 
-pub(in crate::runtime) fn run_bit_array_function<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
+pub(in crate::runtime) fn run_bit_array_function(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState<'_>,
     function: BitArrayFunctionFunctionId,
     origin: HostCallOrigin,
     inputs: RetainedValues,
 ) -> ExecutionResult<EvaluatedBitArrayFunction> {
-    run_tail(
-        plan,
-        state,
-        function,
-        origin,
-        inputs,
-        |plan, state, function, origin, inputs| {
-            evaluate_entry(
-                plan,
-                state,
-                plan.bit_array_function_function(*function),
-                origin,
-                inputs,
-            )
-        },
-        |_, _, target| {
-            (
-                *target.function(),
-                HostCallOrigin::source(target.site().clone()),
-            )
-        },
-    )
+    run(plan, state, function, origin, inputs)
 }
 
-pub(in crate::runtime) fn run_utf_codepoint_function<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
+pub(in crate::runtime) fn run_utf_codepoint_function(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState<'_>,
     function: UtfCodepointFunctionFunctionId,
     origin: HostCallOrigin,
     inputs: RetainedValues,
 ) -> ExecutionResult<EvaluatedUtfCodepointFunction> {
-    run_tail(
-        plan,
-        state,
-        function,
-        origin,
-        inputs,
-        |plan, state, function, origin, inputs| {
-            evaluate_entry(
-                plan,
-                state,
-                plan.utf_codepoint_function_function(*function),
-                origin,
-                inputs,
-            )
-        },
-        |_, _, target| {
-            (
-                *target.function(),
-                HostCallOrigin::source(target.site().clone()),
-            )
-        },
-    )
+    run(plan, state, function, origin, inputs)
 }
 
-pub(in crate::runtime) fn run_custom_function<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
+pub(in crate::runtime) fn run_custom_function(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState<'_>,
     function: CustomFunctionFunctionId,
     origin: HostCallOrigin,
     inputs: RetainedValues,
 ) -> ExecutionResult<EvaluatedCustomFunction> {
-    run_tail(
-        plan,
-        state,
-        function,
-        origin,
-        inputs,
-        |plan, state, function, origin, inputs| {
-            evaluate_entry(
-                plan,
-                state,
-                plan.custom_function_function(function),
-                origin,
-                inputs,
-            )
-        },
-        |_, function, target| {
-            (
-                function.with_index(*target.function()),
-                HostCallOrigin::source(target.site().clone()),
-            )
-        },
-    )
+    run(plan, state, function, origin, inputs)
 }
 
-pub(in crate::runtime) fn run_external_function<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    function: ExternalFunctionFunctionId,
-    origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedExternalFunction> {
-    run_tail(
-        plan,
-        state,
-        function,
-        origin,
-        inputs,
-        |plan, state, function, origin, inputs| {
-            evaluate_entry(
-                plan,
-                state,
-                plan.external_function_function(function),
-                origin,
-                inputs,
-            )
-        },
-        |_, function, target| {
-            (
-                function.with_index(*target.function()),
-                HostCallOrigin::source(target.site().clone()),
-            )
-        },
-    )
-}
-
-pub(in crate::runtime) fn run_bool_function<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
+pub(in crate::runtime) fn run_bool_function(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState<'_>,
     function: BoolFunctionFunctionId,
     origin: HostCallOrigin,
     inputs: RetainedValues,
 ) -> ExecutionResult<EvaluatedBoolFunction> {
-    run_tail(
-        plan,
-        state,
-        function,
-        origin,
-        inputs,
-        |plan, state, function, origin, inputs| {
-            evaluate_entry(
-                plan,
-                state,
-                plan.bool_function_function(*function),
-                origin,
-                inputs,
-            )
-        },
-        |_, _, target| {
-            (
-                *target.function(),
-                HostCallOrigin::source(target.site().clone()),
-            )
-        },
-    )
+    run(plan, state, function, origin, inputs)
 }
 
-pub(in crate::runtime) fn run_nil_function<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
+pub(in crate::runtime) fn run_nil_function(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState<'_>,
     function: NilFunctionFunctionId,
     origin: HostCallOrigin,
     inputs: RetainedValues,
 ) -> ExecutionResult<EvaluatedNilFunction> {
-    run_tail(
-        plan,
-        state,
-        function,
-        origin,
-        inputs,
-        |plan, state, function, origin, inputs| {
-            evaluate_entry(
-                plan,
-                state,
-                plan.nil_function_function(*function),
-                origin,
-                inputs,
-            )
-        },
-        |_, _, target| {
-            (
-                *target.function(),
-                HostCallOrigin::source(target.site().clone()),
-            )
-        },
-    )
+    run(plan, state, function, origin, inputs)
 }
 
-pub(in crate::runtime) fn run_tuple_function<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
+pub(in crate::runtime) fn run_tuple_function(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState<'_>,
     function: TupleFunctionFunctionId,
     origin: HostCallOrigin,
     inputs: RetainedValues,
 ) -> ExecutionResult<EvaluatedTupleFunction> {
-    run_tail(
-        plan,
-        state,
-        function,
-        origin,
-        inputs,
-        |plan, state, function, origin, inputs| {
-            evaluate_entry(
-                plan,
-                state,
-                plan.tuple_function_function(*function),
-                origin,
-                inputs,
-            )
-        },
-        |_, _, target| {
-            (
-                *target.function(),
-                HostCallOrigin::source(target.site().clone()),
-            )
-        },
-    )
+    run(plan, state, function, origin, inputs)
 }
 
-fn run_core_list_function<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
+fn run_core_list_function(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState<'_>,
     function: ProfiledListFunctionFunctionId<Infallible>,
     origin: HostCallOrigin,
     inputs: RetainedValues,
 ) -> ExecutionResult<EvaluatedListFunction> {
-    run_tail(
-        plan,
-        state,
-        function,
-        origin,
-        inputs,
-        |plan, state, function, origin, inputs| {
-            evaluate_entry(
-                plan,
-                state,
-                plan.core_list_function_function(function),
-                origin,
-                inputs,
-            )
-        },
-        |_, _, target| {
-            (
-                target.function().clone(),
-                HostCallOrigin::source(target.site().clone()),
-            )
-        },
-    )
+    run(plan, state, function, origin, inputs)
 }
 
-fn run_external_list_function<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    function: ExternalListFunctionFunctionId,
-    origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedListFunction> {
-    run_tail(
-        plan,
-        state,
-        function,
-        origin,
-        inputs,
-        |plan, state, function, origin, inputs| {
-            evaluate_entry(
-                plan,
-                state,
-                plan.external_list_function_function(*function),
-                origin,
-                inputs,
-            )
-        },
-        |_, _, target| {
-            (
-                *target.function(),
-                HostCallOrigin::source(target.site().clone()),
-            )
-        },
-    )
-}
-
-pub(in crate::runtime) fn run_function_function<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
+pub(in crate::runtime) fn run_function_function(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState<'_>,
     function: FunctionFunctionFunctionId,
     origin: HostCallOrigin,
     inputs: RetainedValues,
 ) -> ExecutionResult<EvaluatedFunctionFunction> {
-    run_tail(
-        plan,
-        state,
-        function,
-        origin,
-        inputs,
-        |plan, state, function, origin, inputs| {
-            evaluate_entry(
-                plan,
-                state,
-                plan.function_function_function(function),
-                origin,
-                inputs,
-            )
-        },
-        |_, function, target| {
-            (
-                function.with_index(*target.function()),
-                HostCallOrigin::source(target.site().clone()),
-            )
-        },
-    )
+    run(plan, state, function, origin, inputs)
 }

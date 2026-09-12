@@ -65,17 +65,16 @@ impl<Profile: HostProfile> HostedProject<Profile> {
 #[cfg(test)]
 mod tests {
     use super::{HostedProject, HostedProjectError, Project};
-    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
+    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder};
     use crate::host::{
-        HostCall, HostCallCompletion, HostComponentProfile, HostFutureStore, HostProfile,
-        HostProvider, HostProviderModule, HostProviderSet,
+        HostCall, HostCallCompletion, HostProfile, HostProvider, HostProviderModule,
+        HostProviderSet,
     };
-    use crate::work_fixture::WorkComponent;
     use crate::{
         EchoOutput, EchoSink, HostModule, HostRegistrationError, ProjectError, StatelessHostProfile,
     };
     use camino::{Utf8Path, Utf8PathBuf};
-    use futures_util::FutureExt;
+
     use num_bigint::BigInt;
     use std::fs;
     use tempfile::{TempDir, tempdir};
@@ -84,18 +83,8 @@ mod tests {
     struct Provider;
     impl HostProfile for Profile {
         type RunState = ();
-        type ExternalStores = HostFutureStore;
-    }
-    impl crate::host::HostWorkProfile for Profile {
-        type Work = crate::work_fixture::WorkComponent;
-    }
-    impl HostComponentProfile<WorkComponent> for Profile {
-        fn component_stores(stores: &HostFutureStore) -> &HostFutureStore {
-            stores
-        }
-        fn component_state(state: &mut ()) -> &mut () {
-            state
-        }
+        type ExternalStores = ();
+        type ExecutionState = ();
     }
     impl HostProvider<Profile> for Provider {
         type State = ();
@@ -153,6 +142,8 @@ mod tests {
 
     #[test]
     fn registers_host_providers_during_project_compilation() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let project = project();
         write_file(
             &project,
@@ -184,16 +175,25 @@ pub fn quantity() -> Int
         let (bindings, quantity) = builder
             .function(FunctionDeclaration::<(), BigInt>::new("quantity"))
             .expect("quantity should bind");
-        let module = bindings.seal().expect("quantity should seal");
+        let mut module = bindings.seal().expect("quantity should seal");
 
         assert_eq!(
-            module.call(&quantity, (), &mut (), &mut Vec::new()),
+            execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut (),
+                    &mut Vec::new(),
+                    async |scope| scope.call(&quantity, ()).await
+                ))
+                .expect("controlled execution"),
             Ok(BigInt::from(42)),
         );
     }
 
     #[test]
     fn registers_scoped_providers_at_compile_without_changing_source_return_types() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let project = project();
         write_file(
             &project,
@@ -222,17 +222,17 @@ pub fn quantity(value: Int) -> Int {
             .expect("binding");
         let mut module = bindings.seal().expect("sealing");
         let mut state = ();
-        assert!(std::ptr::eq(
-            <WorkComponent as HostProvider<Profile>>::project(&mut state),
-            &state,
-        ));
         let mut echo = SendEcho::default();
-        with_execution_scope(async |guard| {
-            let mut scope = module.attach(guard, &mut state, &mut echo);
-            assert_eq!(scope.call(&quantity, (41.into(),)), Ok(42.into()));
-        })
-        .now_or_never()
-        .expect("ordinary result stays immediate");
+        execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    assert_eq!(scope.call(&quantity, (41.into(),)).await, Ok(42.into()));
+                },
+            ))
+            .expect("ordinary result stays immediate");
         assert_eq!(echo.outputs, 1);
     }
 

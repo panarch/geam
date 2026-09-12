@@ -1,16 +1,13 @@
 use super::{ProviderConstructionRequirements, ProviderConstructions};
 use crate::host::{
-    HostFutureCallable, HostFutureContext, HostFutureError, HostProfile, HostProvider, HostType,
-    HostTypeListEnd, HostTypeSequence,
+    HostExecutionContext, HostExecutionError, HostOwnedCallable, HostProfile, HostProvider,
+    HostType, HostTypeListEnd, HostTypeSequence,
 };
-use crate::{HostCall, HostCallError, HostCallable};
+use crate::{HostCall, HostCallable};
 use std::future::Future;
 use std::marker::PhantomData;
 
-type CallbackContextMarker<Profile, Provider, Return> =
-    PhantomData<fn() -> (Profile, Provider, Return)>;
-
-/// A call-scoped Gleam function that may be invoked by an active provider call.
+/// An owned Gleam function invoked through a resumable or Future provider call.
 ///
 /// The macro replaces the placeholder context with one exact static callback
 /// codec. Opaque function values use [`super::Value`] instead when they only
@@ -50,32 +47,18 @@ where
     ) -> Self::Returned;
 }
 
-/// Exact callable and construction proof for one immediate transferable call.
+/// Owned callable and construction proof for a native operation.
 #[doc(hidden)]
-pub struct ProviderCallbackContext<'call, Profile, Provider, Return, Codec>
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-    Codec: ProviderCallbackCodec<Profile, Provider, Return>,
-{
-    callable: HostCallable<'call, Codec::HostArguments, Codec::HostReturn>,
-    constructions: ProviderConstructions<'call, Codec::Requirements>,
-    context: CallbackContextMarker<Profile, Provider, Return>,
-}
-
-/// Owned callable and construction proof for one native Future.
-#[doc(hidden)]
-pub struct ProviderFutureCallbackContext<Profile, Provider, Codec>
+pub struct ProviderOwnedCallbackContext<Profile, Provider, Codec>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Codec: ProviderCallbackCodec<Profile, Provider, ()>,
 {
-    callable: FutureCallback<Profile, Provider, Codec>,
+    callable: OwnedCallback<Profile, Provider, Codec>,
 }
 
-type FutureCallback<Profile, Provider, Codec> = HostFutureCallable<
+type OwnedCallback<Profile, Provider, Codec> = HostOwnedCallable<
     Profile,
     Provider,
     <Codec as ProviderCallbackCodec<Profile, Provider, ()>>::HostArguments,
@@ -84,7 +67,7 @@ type FutureCallback<Profile, Provider, Codec> = HostFutureCallable<
         ProviderConstructionRequirements>::Types<HostTypeListEnd>,
 >;
 
-impl<Profile, Provider, Codec> Clone for ProviderFutureCallbackContext<Profile, Provider, Codec>
+impl<Profile, Provider, Codec> Clone for ProviderOwnedCallbackContext<Profile, Provider, Codec>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
@@ -97,69 +80,33 @@ where
     }
 }
 
-impl<'call, Signature, Profile, Provider, Return, Codec>
-    Callback<Signature, ProviderCallbackContext<'call, Profile, Provider, Return, Codec>>
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-    Codec: ProviderCallbackCodec<Profile, Provider, Return>,
-{
-    #[doc(hidden)]
-    pub fn from_host(
-        callable: HostCallable<'call, Codec::HostArguments, Codec::HostReturn>,
-        constructions: ProviderConstructions<'call, Codec::Requirements>,
-    ) -> Self {
-        Self {
-            context: ProviderCallbackContext {
-                callable,
-                constructions,
-                context: PhantomData,
-            },
-            signature: PhantomData,
-        }
-    }
-
-    pub(crate) fn invoke(
-        self,
-        call: &mut HostCall<'call, Profile, Provider, Return>,
-        arguments: Codec::Arguments,
-    ) -> Result<Codec::Returned, HostCallError> {
-        let arguments = Codec::into_host_arguments(arguments, call, &self.context.constructions);
-        let returned = call.invoke(self.context.callable, arguments)?;
-        Ok(Codec::from_host_return(returned, call))
-    }
-}
-
 impl<Signature, Profile, Provider, Codec>
-    Callback<Signature, ProviderFutureCallbackContext<Profile, Provider, Codec>>
+    Callback<Signature, ProviderOwnedCallbackContext<Profile, Provider, Codec>>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Codec: ProviderCallbackCodec<Profile, Provider, ()>,
 {
     #[doc(hidden)]
-    pub fn from_future_host<'call, Return: HostType>(
+    pub fn from_owned_host<'call, Return: HostType>(
         call: &HostCall<'call, Profile, Provider, Return>,
         callable: HostCallable<'call, Codec::HostArguments, Codec::HostReturn>,
         constructions: ProviderConstructions<'call, Codec::Requirements>,
     ) -> Self {
         Self {
-            context: ProviderFutureCallbackContext {
-                callable: call.future_callable(callable, &constructions.host()),
+            context: ProviderOwnedCallbackContext {
+                callable: call.owned_callable(callable, &constructions.host()),
             },
             signature: PhantomData,
         }
     }
 
-    pub(crate) fn invoke_future<'request>(
+    pub(crate) fn invoke_owned<'request>(
         &'request self,
-        context: &'request HostFutureContext<'_, Profile, Provider, HostTypeListEnd>,
+        context: &'request HostExecutionContext<'_, Profile, Provider, HostTypeListEnd>,
         arguments: Codec::Arguments,
-    ) -> impl Future<Output = Result<Codec::Returned, HostFutureError>> + Send + 'request
+    ) -> impl Future<Output = Result<Codec::Returned, HostExecutionError>> + Send + 'request
     where
-        Profile::RunState: Send,
-        Profile::ExternalStores: Send,
         Codec: 'static,
         Codec::Arguments: Send + 'static,
         Codec::Returned: Send + 'static,
@@ -173,32 +120,9 @@ where
                     &ProviderConstructions::new(&constructions),
                 )
             },
-            |mut call, value| Ok(Codec::from_host_return(value, &mut call)),
+            |mut call, _, value| Ok(Codec::from_host_return(value, &mut call)),
         )
     }
-}
-
-impl<'call, Profile, Provider, Return, Codec> Clone
-    for ProviderCallbackContext<'call, Profile, Provider, Return, Codec>
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-    Codec: ProviderCallbackCodec<Profile, Provider, Return>,
-{
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<'call, Profile, Provider, Return, Codec> Copy
-    for ProviderCallbackContext<'call, Profile, Provider, Return, Codec>
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-    Codec: ProviderCallbackCodec<Profile, Provider, Return>,
-{
 }
 
 impl<Signature, Context> Clone for Callback<Signature, Context>

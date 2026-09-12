@@ -1,3 +1,6 @@
+#[path = "../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 use geam_core::provider::{Call, HostResult};
 use geam_core::{
     HostComponentProfile, HostFailure, HostModule, HostProfile, HostProviderComponent,
@@ -65,6 +68,7 @@ struct Profile;
 impl HostProfile for Profile {
     type RunState = ScriptedSource;
     type ExternalStores = ();
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<Component<ScriptedSource>> for Profile {
@@ -120,30 +124,31 @@ fn builtin_profile_functions_compile_register_and_project_caller_state() {
     )
     .expect("built-in profile source should compile");
     let plan = plan_host_program(typed).expect("built-in profile source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("built-in profile source should seal");
     let mut source = ScriptedSource { next: 4 };
 
     assert_eq!(
-        execution.run_main(&mut source, &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut source, &mut Vec::new()),
         Ok(Value::Int(BigInt::from(4))),
     );
     assert_eq!(
-        execution.run_main(&mut source, &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut source, &mut Vec::new()),
         Ok(Value::Int(BigInt::from(5))),
     );
 }
 
 #[test]
 fn transferable_builtin_profile_keeps_the_same_caller_owned_source() {
+    let execution_host = crate::execution_fixture::TestHost::default();
+
     use geam_builtin::FutureComponent;
     use geam_core::HostComponentProfile;
-    use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
+    use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder};
     use geam_core::frontend::compile_typed_host_program;
     use geam_core::host::{HostFutureStore, HostProviderSet};
-    use std::future::Future;
     use std::pin::pin;
-    use std::task::{Context, Poll, Waker};
+    use std::task::Poll;
 
     #[derive(Default)]
     struct Stores {
@@ -154,6 +159,7 @@ fn transferable_builtin_profile_keeps_the_same_caller_owned_source() {
     impl HostProfile for TransferProfile {
         type RunState = (ScriptedSource, ());
         type ExternalStores = Stores;
+        type ExecutionState = ();
     }
     impl CounterProfile for TransferProfile {
         type Source = ScriptedSource;
@@ -212,13 +218,21 @@ fn transferable_builtin_profile_keeps_the_same_caller_owned_source() {
     let mut module = bindings.seal().expect("transfer module");
     let mut source = (ScriptedSource { next: 4 }, ());
     let mut echo = Echo;
-    let mut run = pin!(with_execution_scope(async |guard| {
-        let mut scope = module.attach(guard, &mut source, &mut echo);
-        assert_eq!(scope.call(&next, ()).expect("first call"), BigInt::from(4));
-        assert_eq!(scope.call(&next, ()).expect("second call"), BigInt::from(5));
-    }));
+    let mut run =
+        pin!(
+            module.with_execution(&execution_host, &mut source, &mut echo, async |scope| {
+                assert_eq!(
+                    scope.call(&next, ()).await.expect("first call"),
+                    BigInt::from(4)
+                );
+                assert_eq!(
+                    scope.call(&next, ()).await.expect("second call"),
+                    BigInt::from(5)
+                );
+            })
+        );
     assert!(matches!(
-        run.as_mut().poll(&mut Context::from_waker(Waker::noop())),
-        Poll::Ready(())
+        execution_host.poll(run.as_mut()),
+        Poll::Ready(Ok(()))
     ));
 }

@@ -18,6 +18,7 @@ gleam-version = ">= 1.0.0 and < 2.0.0"
 
 [dependencies]
 geam = { version = "=0.2.3", default-features = false, features = ["provider"] }
+tokio = { version = "1", features = ["time"] }
 
 [workspace]
 resolver = "3"

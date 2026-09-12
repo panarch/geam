@@ -123,11 +123,15 @@ pub fn main() {
     )
     .expect("source hash source should compile");
     let plan = plan_host_program(typed).expect("source hash source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("source hash execution should seal");
 
     assert_eq!(
-        execution.run_main(&mut ExternalRunState::default(), &mut Vec::new()),
+        crate::execution_fixture::run(
+            &mut execution,
+            &mut ExternalRunState::default(),
+            &mut Vec::new()
+        ),
         Ok(Value::Tuple(vec![Value::Bool(true); 17])),
     );
 }
@@ -200,12 +204,11 @@ pub fn main() {
     assert_eq!(planned_external.name().name(), "Counter");
     assert!(planned_external.parameters().is_empty());
     let (external, echoes, read, identity_equal, source_equal) = {
-        let execution =
+        let mut execution =
             HostedExecution::try_from_module_plan(plan).expect("external execution should seal");
         let mut state = ExternalRunState::default();
         let mut echoes = Vec::new();
-        let returned = execution
-            .run_main(&mut state, &mut echoes)
+        let returned = crate::execution_fixture::run(&mut execution, &mut state, &mut echoes)
             .expect("external source should execute");
         let Value::Tuple(mut values) = returned else {
             panic!("main should return an external value tuple");
@@ -543,12 +546,15 @@ pub fn main() {
     )
     .expect("external source should compile");
     let plan = plan_host_program(typed).expect("external source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("external execution should seal");
     let mut echoes = Vec::new();
-    let returned = execution
-        .run_main(&mut ExternalRunState::default(), &mut echoes)
-        .expect("external source should execute");
+    let returned = crate::execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut echoes,
+    )
+    .expect("external source should execute");
     let Value::External(counter) = returned else {
         panic!("main should return an external value");
     };
@@ -791,12 +797,15 @@ pub fn main() -> Counter {
     )
     .expect("external source should compile");
     let plan = plan_host_program(typed).expect("external source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("external execution should seal");
 
-    let returned = execution
-        .run_main(&mut ExternalRunState::default(), &mut Vec::new())
-        .expect("external source should execute");
+    let returned = crate::execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut Vec::new(),
+    )
+    .expect("external source should execute");
     let Value::External(counter) = returned else {
         panic!("main should return an external value");
     };

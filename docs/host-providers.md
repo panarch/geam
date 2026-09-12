@@ -118,6 +118,42 @@ before provider state is initialized or application code runs.
 Geam re-exports its author-facing value types from `geam::provider`, so this
 single dependency supplies types such as `EcoString`, `BigInt`, and `List`.
 
+## Await Rust in a Gleam call
+
+Use `#[geam::function(await)]` when an async Rust implementation should return
+its completed result to Gleam. The Gleam call waits for that result while the
+executor can run other work. For example, a provider can await a Gleam callback:
+
+```rust
+#[geam::function(await)]
+async fn around<Item>(
+    #[geam::call] call: &mut Call<RunState>,
+    callback: Callback<fn() -> Value<Item>>,
+) -> HostResult<Value<Item>> {
+    call.with_state(|state| state.entries.push("before".into())).await?;
+    let returned = call.invoke(&callback, ()).await?;
+    call.with_state(|state| state.entries.push("after".into())).await?;
+    Ok(returned)
+}
+```
+
+The Gleam declaration still returns the callback's value:
+
+```gleam
+@external(erlang, "geam_example_call_tracing", "around")
+pub fn around(callback: fn() -> item) -> item
+```
+
+The native function resumes when the callback completes, including when that
+callback waits in another provider. State access uses bounded closures so the
+callback can enter the same provider again. The [call-tracing example](../examples/provider/call_tracing)
+does this with a delayed record operation on Tokio and preserves the
+`before`, `inside`, `after` order.
+
+The `await` marker returns the completed result through the ordinary Gleam
+call. Without this marker, a Rust `async fn` returns an explicit source Future
+instead, as shown next.
+
 ## Return async Rust work
 
 An async provider function returns explicit work to Gleam. Its source
@@ -166,6 +202,11 @@ Provider state, retained payloads, and native Futures must be `Send`. They do no
 need to be `Sync`: an async `Call` gives bounded access to the original mutable
 state. A provider using Tokio can use the standalone runner's I/O and time
 drivers; an embedding application supplies the runtime its providers require.
+
+For Rust-owned values that need to work with Gleam Dynamic decoders, see
+[native representations](reference/provider-boundary.md#native-representations).
+The [native records example](../examples/provider/native_records) shows a record
+decoded from Gleam and passed to a typed callback.
 
 ## Declare which Gleam versions it supports
 

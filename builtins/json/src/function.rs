@@ -274,7 +274,7 @@ mod tests {
     #[test]
     fn escaped_json_remains_self_contained_after_execution_and_state_drop() {
         let value = {
-            let execution = execution(
+            let mut execution = execution(
                 r#"
 pub fn main() {
   do_object([#("items", do_preprocessed_array([do_int(1), do_int(2)]))])
@@ -282,8 +282,7 @@ pub fn main() {
 "#,
             );
             let mut state = run_state([0; 32]);
-            let value = execution
-                .run_main(&mut state, &mut Vec::new())
+            let value = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
                 .expect("JSON value should escape the run");
             drop(state);
             drop(execution);
@@ -296,7 +295,7 @@ pub fn main() {
 
     #[test]
     fn json_values_use_structural_hashing_as_dict_keys() {
-        let execution = execution(
+        let mut execution = execution(
             r#"
 pub fn main() {
   let segmented = do_preprocessed_array([do_int(1)])
@@ -308,16 +307,16 @@ pub fn main() {
 }
 "#,
         );
-        let value = execution
-            .run_main(&mut run_state([0; 32]), &mut Vec::new())
-            .expect("JSON values should expose their structural source hash");
+        let value =
+            crate::execution_fixture::run(&mut execution, &mut run_state([0; 32]), &mut Vec::new())
+                .expect("JSON values should expose their structural source hash");
 
         assert_eq!(value.inspect().to_string(), r#""[1]""#);
     }
 
     #[test]
     fn repeated_execution_is_independent_of_the_caller_owned_run_state() {
-        let execution = execution(
+        let mut execution = execution(
             r#"
 pub fn main() {
   do_object([#("items", do_preprocessed_array([do_int(1), do_int(2)]))])
@@ -327,15 +326,15 @@ pub fn main() {
         let mut first_state = run_state([1; 32]);
         let mut second_state = run_state([2; 32]);
 
-        let first = execution
-            .run_main(&mut first_state, &mut Vec::new())
-            .expect("first JSON execution should run");
-        let repeated = execution
-            .run_main(&mut first_state, &mut Vec::new())
-            .expect("repeated JSON execution should run");
-        let independent = execution
-            .run_main(&mut second_state, &mut Vec::new())
-            .expect("independent JSON execution should run");
+        let first =
+            crate::execution_fixture::run(&mut execution, &mut first_state, &mut Vec::new())
+                .expect("first JSON execution should run");
+        let repeated =
+            crate::execution_fixture::run(&mut execution, &mut first_state, &mut Vec::new())
+                .expect("repeated JSON execution should run");
+        let independent =
+            crate::execution_fixture::run(&mut execution, &mut second_state, &mut Vec::new())
+                .expect("independent JSON execution should run");
 
         let first_inspection = first.inspect().to_string();
         assert_ne!(first, repeated);

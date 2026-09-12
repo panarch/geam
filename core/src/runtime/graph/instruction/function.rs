@@ -1,7 +1,7 @@
 use super::super::RuntimeGraphState;
 use super::super::environment::BlockEnvironment;
 use super::value::{
-    InstructionValue, InstructionValueWithoutConstant, constant, custom_projection, list_element,
+    InstructionValue, InstructionValueWithoutConstant, custom_projection, list_element,
     tuple_projection,
 };
 use crate::plan::ValueType;
@@ -12,13 +12,11 @@ use crate::plan::execution::graph::{
     FunctionLocal, FunctionTarget, ParamLocal,
 };
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
-use crate::runtime::error::ExecutionResult;
+use crate::runtime::InvariantError;
 use crate::runtime::evaluated::{
     EvaluatedCapture, EvaluatedCustomFunction, EvaluatedFunction, EvaluatedFunctionFunction,
     EvaluatedFunctionValue, EvaluatedListCapture, EvaluatedValue, FunctionReferenceId,
 };
-use crate::runtime::state::RuntimeStateFor;
-use crate::runtime::{ExecutableRuntimePlan, InvariantError};
 use std::convert::Infallible;
 
 #[derive(Clone, Copy)]
@@ -55,7 +53,7 @@ where
     use FunctionInstructionKind as I;
     use InstructionValue as V;
 
-    match instruction.kind() {
+    let value: Result<_, State::Error> = match instruction.kind() {
         I::Constant(id) => Ok(V::Constant(*id)),
         I::Reference(target) => Ok(V::Ready(target_value(
             plan,
@@ -129,40 +127,13 @@ where
                 .function_values(&environment.function_list(*list)),
         )
         .map(V::Ready),
-    }
-}
-
-pub(super) fn evaluate<Plan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &BlockEnvironment,
-    instruction: &FunctionInstruction,
-    expected: &ValueType,
-) -> ExecutionResult<EvaluatedFunctionValue>
-where
-    Plan: ExecutableRuntimePlan,
-{
-    let value = evaluate_action(plan, state, environment, instruction, expected)
-        .and_then(|value| resolve(plan, state, value));
-    validate_execution_return_family(value, instruction.family(), instruction.type_().clone())
-}
-
-fn resolve<Plan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    value: CoreFunctionInstructionValue,
-) -> ExecutionResult<EvaluatedFunctionValue>
-where
-    Plan: ExecutableRuntimePlan,
-{
-    match value {
-        InstructionValue::Ready(value) => Ok(value),
-        InstructionValue::Constant(id) => constant(plan, state, id),
-        InstructionValue::Call {
-            function,
-            origin,
-            inputs,
-        } => crate::runtime::function::run_core_function(plan, state, function, origin, inputs),
+    };
+    match value? {
+        V::Ready(value) => {
+            validate_return_family(value, instruction.family(), instruction.type_().clone())
+                .map(V::Ready)
+        }
+        value => Ok(value),
     }
 }
 
@@ -217,44 +188,6 @@ where
             }
         }
     }
-}
-
-pub(super) fn evaluate_external<Plan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &BlockEnvironment,
-    instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
-) -> ExecutionResult<EvaluatedFunctionValue>
-where
-    Plan: ExecutableRuntimePlan<Profile = crate::plan::execution::host::HostedExecutionProfile>,
-{
-    let metadata = instruction.instruction();
-    let value = match evaluate_external_action(plan, environment, instruction) {
-        InstructionValueWithoutConstant::Ready(value) => value,
-        InstructionValueWithoutConstant::Call {
-            function,
-            origin,
-            inputs,
-        } => crate::runtime::function::run_external_function_function(
-            plan, state, function, origin, inputs,
-        )?,
-    };
-    validate_return_family(value, metadata.family(), metadata.type_().clone())
-}
-
-fn validate_execution_return_family(
-    value: ExecutionResult<EvaluatedFunctionValue>,
-    expected: crate::plan::execution::function::FunctionReturnFamily,
-    type_: crate::plan::execution::type_::FunctionType,
-) -> ExecutionResult<EvaluatedFunctionValue> {
-    match value {
-        Ok(value) => validate_return_family(value, expected, type_),
-        Err(error) => Err(error),
-    }
-}
-
-pub(super) fn push(environment: &mut BlockEnvironment, value: EvaluatedFunctionValue) {
-    environment.push_function_value(value);
 }
 
 fn target_value<Plan>(
@@ -609,7 +542,7 @@ fn capture_values(
 #[cfg(test)]
 mod tests {
     use super::super::super::environment::{BlockEnvironment, RetainedValues};
-    use super::evaluate;
+    use super::{CoreFunctionInstructionValue, InstructionValue, evaluate_action};
     use crate::plan::ValueType;
     use crate::plan::execution::function::{
         CoreRuntimeFunctionId, FunctionReturnFamily, RuntimeFunctionId, TupleFunctionId,
@@ -617,13 +550,55 @@ mod tests {
     use crate::plan::execution::graph::{
         FunctionInstructionKind, FunctionTarget, ListInstruction, ProfiledInstructionKind,
     };
-    use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedValue};
+    use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedValue};
     use crate::runtime::state::RuntimeState;
     use crate::runtime::state::list::StoredListValueId;
     use crate::runtime::{BitArrayValue, ExecutionError, InvariantError, ListValue, Value};
     use std::convert::Infallible;
 
     type InstructionKind = ProfiledInstructionKind<Infallible>;
+
+    fn reference_function(value: CoreFunctionInstructionValue) -> EvaluatedFunctionValue {
+        match value {
+            InstructionValue::Ready(value) => value,
+            _ => panic!("the source reference is immediate"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "the source reference is immediate")]
+    fn reference_fixture_rejects_a_function_producing_call() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn make() { fn(value: Int) { value } }
+pub fn main() { #(42, fn(value: Int) { value }, make()) }
+"#,
+        );
+        let graph = plan
+            .tuple_function(tuple_main_id(&plan))
+            .body()
+            .block_graph();
+        let function = graph
+            .blocks()
+            .iter()
+            .flat_map(|block| block.instructions())
+            .find_map(|instruction| match instruction.kind() {
+                InstructionKind::Function(function)
+                    if matches!(function.kind(), FunctionInstructionKind::Call { .. }) =>
+                {
+                    Some(function)
+                }
+                _ => None,
+            })
+            .expect("source calls its function constructor");
+        let expected = ValueType::Function(Box::new(plan.function_type(function.type_())));
+        let mut echo = Vec::new();
+        let state = RuntimeState::new(&mut echo);
+        let environment = BlockEnvironment::from_retained(RetainedValues::empty());
+        reference_function(
+            evaluate_action(&plan, &state, &environment, function, &expected).unwrap(),
+        );
+    }
 
     #[test]
     fn function_projections_stop_corruption_at_their_owning_invariant() {
@@ -675,11 +650,13 @@ pub fn main() {
             })
             .expect("tuple main should contain its Float function reference");
         let mut echo = Vec::new();
-        let mut state = RuntimeState::new(&mut echo);
+        let state = RuntimeState::new(&mut echo);
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
         let expected = ValueType::Function(Box::new(plan.function_type(float_reference.type_())));
-        let float_function = evaluate(&plan, &mut state, &environment, float_reference, &expected)
-            .expect("a typed function reference should evaluate");
+        let float_function =
+            evaluate_action(&plan, &state, &environment, float_reference, &expected)
+                .expect("a typed function reference should evaluate");
+        let float_function = reference_function(float_function);
 
         assert_eq!(float_function.kind().family(), FunctionReturnFamily::Float,);
 
@@ -700,9 +677,9 @@ pub fn main() {
                         )]));
                         let environment = BlockEnvironment::from_retained(malformed);
                         let mut echo = Vec::new();
-                        let mut state = RuntimeState::new(&mut echo);
+                        let state = RuntimeState::new(&mut echo);
                         assert_eq!(
-                            evaluate(&plan, &mut state, &environment, function, &expected,)
+                            evaluate_action(&plan, &state, &environment, function, &expected,)
                                 .map(|_| ()),
                             Err(ExecutionError::Invariant(
                                 InvariantError::TupleIndexFamilyMismatch {
@@ -720,7 +697,7 @@ pub fn main() {
                         ]));
                         let environment = BlockEnvironment::from_retained(wrong_family);
                         assert_eq!(
-                            evaluate(&plan, &mut state, &environment, function, &expected,)
+                            evaluate_action(&plan, &state, &environment, function, &expected,)
                                 .map(|_| ()),
                             Err(ExecutionError::Invariant(
                                 InvariantError::FunctionReturnFamilyMismatch {
@@ -742,10 +719,10 @@ pub fn main() {
                         malformed.push_evaluated(EvaluatedValue::Custom(value));
                         let environment = BlockEnvironment::from_retained(malformed);
                         let mut echo = Vec::new();
-                        let mut state = RuntimeState::new(&mut echo);
+                        let state = RuntimeState::new(&mut echo);
 
                         assert_eq!(
-                            evaluate(&plan, &mut state, &environment, function, &expected,)
+                            evaluate_action(&plan, &state, &environment, function, &expected,)
                                 .map(|_| ()),
                             Err(ExecutionError::Invariant(
                                 InvariantError::CustomFieldFamilyMismatch {
@@ -770,7 +747,7 @@ pub fn main() {
                         let environment = BlockEnvironment::from_retained(values);
 
                         assert_eq!(
-                            evaluate(&plan, &mut state, &environment, function, &expected,)
+                            evaluate_action(&plan, &state, &environment, function, &expected,)
                                 .map(|_| ()),
                             Err(ExecutionError::Invariant(
                                 InvariantError::ListIndexOutOfBounds {

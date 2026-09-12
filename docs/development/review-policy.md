@@ -343,13 +343,21 @@ Typed decode compares that recursive shape, not Rust payload identity, and a
 shape mismatch remains ordinary provider-level absence rather than a runtime
 error, invariant, panic, or fallback.
 
+Exact restoration and native representation conversion are distinct contracts.
+Native views preserve retained source identity; opaque payloads expose structure
+only through an explicit immutable projection. Seal conversion targets, rules,
+construction permissions, and callback adapters together. Incoming native data
+may be checked against those targets, but runtime must not rediscover their ABI
+or relabel an original value to satisfy a different source type. Native kind,
+equality, hashing, inspection, and decoding must agree through nested views.
+
 Providers that model transient-style builders must use immutable persistent
 payload versions. Operations may share acyclic retained entries, but must not
 mutate published payloads or introduce consumed-token validation, general
 external references, or cycle collection as hidden runtime margins.
 
 Call-borrowed host views and callable capabilities cannot escape their
-invocation. Owned work follows the [execution lifetime rules](#explicit-work-execution-rules)
+invocation. Owned work follows the [execution lifetime rules](#execution-and-explicit-work-rules)
 below. Callable invocation must retain the actual specialized target and
 inhabited argument storage established at sealing; an opaque function value may
 pass through generic storage without becoming invocable. Keep symbolic and
@@ -361,12 +369,30 @@ suspension or nested Gleam execution. Owned typed handles may remain live
 without retaining those borrows. Before invoking user code or a Waker, release
 runtime locks that the invocation may reacquire directly or through re-entry.
 
-## Explicit Work Execution Rules
+## Execution And Explicit Work Rules
+
+Execution domains borrow the host's original state, stores, capabilities, and
+Echo while workers own their inputs and continuation state. Preserve typed
+activations, captures, return destinations, and source origins across yields
+and native callback waits. Bound evaluator and request-service progress; pure
+execution must not require one global mutable-runtime lock.
+
+An ordinary native implementation may complete immediately or resume after a
+wait without changing its source return type. Resumption must continue the
+existing invocation, not replay it or report Pending as a source error. Keep
+this completion behavior independent of explicit source work construction.
+
+The Rust host selects worker scheduling and the monotonic clock. Core may
+provide an optional adapter, but must not construct an executor or implicitly
+choose one. Logical cancellation closes effect admission; normal shutdown
+awaits worker cleanup, while Drop requests cancellation without blocking.
+Do not detach access to borrowed resources or force-preempt arbitrary native
+Rust. Cancellation and host task failures remain distinct from source failures.
 
 Gleam work uses an ordinary nominal generic type supplied by an explicit package
 dependency, not an injected prelude or compiler effect. A source function
 returning `Future(a)` returns work, not an implicitly awaited `a`. Ordinary calls
-remain direct. Adding unrelated async implementations must not change an
+return their declared values. Adding unrelated async implementations must not change an
 ordinary entry's call contract.
 
 Each work construction creates one operation with shared completion. Passing or
@@ -396,8 +422,8 @@ capabilities carried by execution satisfy one `Send` contract. Do not preserve
 local/transferable modes or introduce internal thread affinity. This does not
 require `Sync` for exclusively accessed data or `'static` for borrowed host
 resources. Call-local views may be non-`Send` when they cannot escape. Ordinary
-calls must not acquire Future allocation or polling costs merely because
-work-valued calls coexist.
+calls must not construct or poll source work merely because work-valued calls
+coexist; an execution continuation is not a source Future value.
 
 The generated standalone runner is an explicit Rust host and may own its
 executor. It selects ordinary or outer-work completion at typed entry sealing,
@@ -431,8 +457,8 @@ do not hide cycles behind a collector or ever-growing registry.
 Owner tests must deterministically prove these work contracts, including
 transfer of pending and completed work. Executor-specific integration does not
 replace those proofs.
-Explicit work does not grant actors, parallel Gleam roots, preemption, detached
-execution, or scheduler ownership; those need separate contracts.
+Explicit work alone does not grant actor semantics, forced native preemption,
+detached execution, or scheduler ownership; those need separate contracts.
 
 ## Rust Embedding Rules
 
@@ -478,6 +504,9 @@ invariant, fallback, or panic is a blocking representation defect.
   contract through nested values, including work retained in external payloads.
   A completed result may outlive active execution only when its contained values
   permit it; nesting scoped work does not erase its execution lifetime.
+  Opaque custom and external handles retain exact nominal specialization and
+  invariant domain lifetime, including hidden scoped fields. Do not infer their
+  lifetime from runtime field scans or special-case particular source types.
 - Keep the public surface to Rust-native values and narrow embedding wrappers.
   Static adapter implementations should scale with supported value families
   and the established Rust function arity boundary, not with the Cartesian

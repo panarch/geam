@@ -1,7 +1,9 @@
-use futures_util::FutureExt;
+#[path = "../../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 use geam_builtin::embedding::FutureType;
 use geam_builtin::{FutureComponent, HostFutureSchema};
-use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder, List, with_execution_scope};
+use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder, List};
 use geam_core::frontend::compile_typed_host_program;
 use geam_core::host::{
     HostComponentProfile, HostExternalSchema, HostFutureStore, HostProfile, HostProvider,
@@ -14,6 +16,7 @@ struct Profile;
 impl HostProfile for Profile {
     type RunState = ();
     type ExternalStores = HostFutureStore;
+    type ExecutionState = ();
 }
 impl HostWorkProfile for Profile {
     type Work = FutureComponent;
@@ -91,6 +94,8 @@ fn package_surface_has_one_nominal_type_and_four_public_combinators() {
 
 #[test]
 fn ordinary_package_api_preserves_composition_identity_order_and_shared_completion() {
+    let execution_host = crate::execution_fixture::TestHost::default();
+
     assert_eq!(FutureComponent::ID, "geam");
     assert_eq!(HostFutureSchema::PACKAGE, "geam");
     assert_eq!(HostFutureSchema::MODULE, "geam/future");
@@ -159,42 +164,47 @@ pub fn empty() -> future.Future(List(Int)) { future.all([]) }
     ));
     let mut output = Vec::new();
     let mut echo = |value: EchoOutput| output.push(value.to_string());
-    with_execution_scope(async |guard| {
-        let mut scope = module.attach(guard, &mut state, &mut echo);
-        let work = scope
-            .call(&composed, (21.into(),))
-            .expect("construct composition");
-        let first = scope.observe(&work).await.expect("first result");
-        let again = scope.observe(&work).await.expect("same operation");
-        first.read(|a| {
-            again.read(|b| {
-                assert!(std::ptr::eq(a, b));
-                assert_eq!(a, &BigInt::from(42));
-            })
-        });
-        let work = scope.call(&batch, ()).expect("construct ordered batch");
-        scope
-            .observe(&work)
-            .await
-            .expect("batch completion")
-            .read(|values| {
-                assert_eq!(values.len(), 3);
-                assert_eq!(
-                    (0..3)
-                        .map(|i| values.read_item(i, Clone::clone).expect("item"))
-                        .collect::<Vec<_>>(),
-                    [8.into(), 9.into(), 8.into()]
-                );
-            });
-        let work = scope.call(&empty, ()).expect("empty batch");
-        scope
-            .observe(&work)
-            .await
-            .expect("empty completion")
-            .read(|values| assert!(values.is_empty()));
-    })
-    .now_or_never()
-    .expect("caller drives all ready work");
+    execution_host
+        .block_on(
+            module.with_execution(&execution_host, &mut state, &mut echo, async |scope| {
+                let work = scope
+                    .call(&composed, (21.into(),))
+                    .await
+                    .expect("construct composition");
+                let first = scope.observe(&work).await.expect("first result");
+                let again = scope.observe(&work).await.expect("same operation");
+                first.read(|a| {
+                    again.read(|b| {
+                        assert!(std::ptr::eq(a, b));
+                        assert_eq!(a, &BigInt::from(42));
+                    })
+                });
+                let work = scope
+                    .call(&batch, ())
+                    .await
+                    .expect("construct ordered batch");
+                scope
+                    .observe(&work)
+                    .await
+                    .expect("batch completion")
+                    .read(|values| {
+                        assert_eq!(values.len(), 3);
+                        assert_eq!(
+                            (0..3)
+                                .map(|i| values.read_item(i, Clone::clone).expect("item"))
+                                .collect::<Vec<_>>(),
+                            [8.into(), 9.into(), 8.into()]
+                        );
+                    });
+                let work = scope.call(&empty, ()).await.expect("empty batch");
+                scope
+                    .observe(&work)
+                    .await
+                    .expect("empty completion")
+                    .read(|values| assert!(values.is_empty()));
+            }),
+        )
+        .expect("caller drives all ready work");
     assert_eq!(
         output,
         [

@@ -10,6 +10,9 @@ mod workspace_dependencies;
 #[path = "standalone_distribution/future.rs"]
 mod future;
 
+#[path = "standalone_distribution/processes.rs"]
+mod processes;
+
 #[test]
 fn runs_the_canonical_standalone_project_with_independent_path_providers() {
     let fixture = standalone_fixture();

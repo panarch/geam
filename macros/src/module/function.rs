@@ -11,11 +11,11 @@ use super::signature::{
     instantiated_generic_source_type, provider_value_from_input_root,
 };
 use super::{
-    CallbackType, DeclaredInput, FunctionArgumentType, FunctionFlavor, FunctionGeneric,
-    FunctionInputType, FunctionModel, FunctionOutputLeafType, FunctionOutputValueType,
-    FunctionReturnType, FunctionRootOutputValueType, GeneratedCallback, GeneratedConstruction,
-    GeneratedNames, GeneratedReturn, GeneratedValue, GenericExternalStorage, GenericInputSource,
-    InputEnvironment, OutputEnvironment, OutputState, ProviderValueType, StaticValueType,
+    CallbackType, DeclaredInput, FunctionArgumentType, FunctionGeneric, FunctionInputType,
+    FunctionModel, FunctionOutputLeafType, FunctionOutputValueType, FunctionReturnType,
+    FunctionRootOutputValueType, GeneratedCallback, GeneratedConstruction, GeneratedNames,
+    GeneratedReturn, GeneratedValue, GenericExternalStorage, GenericInputSource, InputEnvironment,
+    InputOwnership, OutputEnvironment, OutputState, ProviderValueType, StaticValueType,
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -27,9 +27,9 @@ pub(super) fn generate_callback_codec(
     generics: &[FunctionGeneric],
     customs: &[CustomModel],
     support: &TokenStream,
-    outer_return: &TokenStream,
-    flavor: FunctionFlavor,
 ) -> GeneratedCallback {
+    let outer_return = &quote!(());
+    let flavor = InputOwnership::Owned;
     let codec = &callback.codec;
     let generic_idents = generics
         .iter()
@@ -119,7 +119,7 @@ pub(super) fn generate_callback_codec(
         for argument in &callback.arguments {
             collect_callback_argument_bounds(argument, support, outer_return, &mut bounds);
         }
-        collect_callback_return_bounds(
+        collect_function_input_type_bounds(
             &callback.return_,
             customs,
             support,
@@ -279,136 +279,13 @@ fn collect_output_bounds(
     }
 }
 
-fn collect_callback_return_bounds(
-    type_: &FunctionInputType,
-    customs: &[CustomModel],
-    support: &TokenStream,
-    return_type: &TokenStream,
-    flavor: FunctionFlavor,
-    bounds: &mut Vec<TokenStream>,
-) {
-    match type_ {
-        FunctionInputType::Future(value) => {
-            bounds.push(quote!(Profile: #support::HostWorkProfile));
-            collect_callback_return_bounds(
-                &value.value,
-                customs,
-                support,
-                &quote!(()),
-                FunctionFlavor::Async,
-                bounds,
-            );
-        }
-        FunctionInputType::Value(value) => collect_callback_input_bounds(
-            &provider_value_from_input_root(value),
-            customs,
-            support,
-            return_type,
-            flavor,
-            bounds,
-        ),
-        FunctionInputType::List(list) => {
-            collect_callback_list_bounds(list, customs, support, flavor, bounds)
-        }
-        FunctionInputType::Generic(_) | FunctionInputType::External(_) => {}
-    }
-}
-
-fn collect_callback_input_bounds(
-    type_: &ProviderValueType,
-    customs: &[CustomModel],
-    support: &TokenStream,
-    return_type: &TokenStream,
-    flavor: FunctionFlavor,
-    bounds: &mut Vec<TokenStream>,
-) {
-    match type_ {
-        ProviderValueType::Declared { type_, .. } => {
-            let input = match flavor {
-                FunctionFlavor::Immediate => quote!(ImmediateInput),
-                FunctionFlavor::Async => quote!(OwnedInput),
-            };
-            bounds.push(quote! {
-                <#type_ as #support::ProviderValueForms>::#input:
-                    #support::ProviderInputValue<
-                        Profile,
-                        __GeamProvider,
-                        #return_type,
-                        Host = <#type_ as #support::ProviderValue>::Host,
-                    >
-            });
-        }
-        ProviderValueType::Custom { index, .. } => {
-            let input = customs[*index]
-                .input
-                .as_ref()
-                .expect("accepted custom input must have a generated input type");
-            let input = super::list::custom_input_ident(&input.ident, flavor);
-            let host = host_value_type(type_, customs, support);
-            bounds.push(quote! {
-                #input: #support::ProviderInputValue<
-                    Profile,
-                    __GeamProvider,
-                    #return_type,
-                    Host = #host,
-                >
-            });
-        }
-        ProviderValueType::List(list) => {
-            collect_callback_list_bounds(list, customs, support, flavor, bounds)
-        }
-        ProviderValueType::Tuple(elements) => {
-            for element in elements {
-                collect_callback_input_bounds(
-                    element,
-                    customs,
-                    support,
-                    return_type,
-                    flavor,
-                    bounds,
-                );
-            }
-        }
-        ProviderValueType::Result { success, failure } => {
-            collect_callback_input_bounds(success, customs, support, return_type, flavor, bounds);
-            collect_callback_input_bounds(failure, customs, support, return_type, flavor, bounds);
-        }
-        ProviderValueType::Option { value } => {
-            collect_callback_input_bounds(value, customs, support, return_type, flavor, bounds)
-        }
-        ProviderValueType::Scalar(_)
-        | ProviderValueType::Generic(_)
-        | ProviderValueType::External { .. } => {}
-    }
-}
-
-fn collect_callback_list_bounds(
-    list: &super::ListType,
-    customs: &[CustomModel],
-    support: &TokenStream,
-    flavor: FunctionFlavor,
-    bounds: &mut Vec<TokenStream>,
-) {
-    let input = match flavor {
-        FunctionFlavor::Immediate => quote!(ImmediateListInput),
-        FunctionFlavor::Async => quote!(OwnedListInput),
-    };
-    for access in list_declared_accesses(&list.collection.value, customs) {
-        let type_ = access.type_;
-        bounds.push(quote! {
-            <#type_ as #support::ProviderValueForms>::#input:
-                #support::ProviderListInputCodec<Profile, __GeamProvider>
-        });
-    }
-}
-
 pub(super) fn function_codec_bounds(
     function: &FunctionModel,
     customs: &[CustomModel],
     support: &TokenStream,
     return_type: &TokenStream,
     input_return_type: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> Vec<TokenStream> {
     let mut bounds = Vec::new();
     for argument in &function.arguments {
@@ -443,7 +320,7 @@ fn collect_function_input_type_bounds(
     customs: &[CustomModel],
     support: &TokenStream,
     return_type: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
     bounds: &mut Vec<TokenStream>,
 ) {
     match type_ {
@@ -454,7 +331,7 @@ fn collect_function_input_type_bounds(
                 customs,
                 support,
                 &quote!(()),
-                FunctionFlavor::Async,
+                InputOwnership::Owned,
                 bounds,
             );
         }
@@ -484,14 +361,15 @@ fn collect_function_input_bounds(
     customs: &[CustomModel],
     support: &TokenStream,
     return_type: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
     bounds: &mut Vec<TokenStream>,
 ) {
     match type_ {
-        ProviderValueType::Declared { type_, .. } => {
+        ProviderValueType::Declared { type_, .. }
+        | ProviderValueType::Custom { rust: type_, .. } => {
             let input = match flavor {
-                FunctionFlavor::Immediate => quote!(ImmediateInput),
-                FunctionFlavor::Async => quote!(OwnedInput),
+                InputOwnership::Borrowed => quote!(ImmediateInput),
+                InputOwnership::Owned => quote!(OwnedInput),
             };
             bounds.push(quote! {
                 <#type_ as #support::ProviderValueForms>::#input:
@@ -501,22 +379,6 @@ fn collect_function_input_bounds(
                         #return_type,
                         Host = <#type_ as #support::ProviderValue>::Host,
                     >
-            });
-        }
-        ProviderValueType::Custom { index, .. } => {
-            let input = customs[*index]
-                .input
-                .as_ref()
-                .expect("accepted custom input must have a generated input type");
-            let input = super::list::custom_input_ident(&input.ident, flavor);
-            let host = host_value_type(type_, customs, support);
-            bounds.push(quote! {
-                #input: #support::ProviderInputValue<
-                    Profile,
-                    __GeamProvider,
-                    #return_type,
-                    Host = #host,
-                >
             });
         }
         ProviderValueType::List(list) => collect_function_list_input_bounds(
@@ -555,14 +417,14 @@ fn collect_function_list_input_bounds(
     type_: &StaticValueType,
     customs: &[CustomModel],
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
     bounds: &mut Vec<TokenStream>,
 ) {
     for access in list_declared_accesses(type_, customs) {
         let type_ = access.type_;
         let input = match flavor {
-            FunctionFlavor::Immediate => quote!(ImmediateListInput),
-            FunctionFlavor::Async => quote!(OwnedListInput),
+            InputOwnership::Borrowed => quote!(ImmediateListInput),
+            InputOwnership::Owned => quote!(OwnedListInput),
         };
         bounds.push(quote! {
             <#type_ as #support::ProviderValueForms>::#input:
@@ -694,9 +556,7 @@ pub(super) fn decode_argument(
         FunctionArgumentType::Callback(callback) => {
             let InputEnvironment {
                 support,
-                return_type,
                 function_generics,
-                flavor,
                 ..
             } = environment;
             let value = names.next("callback");
@@ -717,29 +577,15 @@ pub(super) fn decode_argument(
                     #support::ProviderNoConstructions,
                 >::none())
             };
-            let statements = match flavor {
-                FunctionFlavor::Immediate => quote! {
+            let statements = quote! {
                     let #value = #support::Callback::<
                         _,
-                        #support::ProviderCallbackContext<
-                            '__geam_call,
-                            Profile,
-                            __GeamProvider,
-                            #return_type,
-                            #codec,
-                        >,
-                    >::from_host(#input, #constructions);
-                },
-                FunctionFlavor::Async => quote! {
-                    let #value = #support::Callback::<
-                        _,
-                        #support::ProviderFutureCallbackContext<
+                        #support::ProviderOwnedCallbackContext<
                             Profile,
                             __GeamProvider,
                             #codec,
                         >,
-                    >::from_future_host(&call, #input, #constructions);
-                },
+                    >::from_owned_host(&call, #input, #constructions);
             };
             GeneratedValue {
                 statements,
@@ -771,7 +617,7 @@ pub(super) fn decode_input(
                 quote!(__geam_completed),
                 &InputEnvironment {
                     return_type: &quote!(()),
-                    flavor: FunctionFlavor::Async,
+                    flavor: InputOwnership::Owned,
                     ..*environment
                 },
                 names,
@@ -817,19 +663,19 @@ pub(super) fn decode_input(
             let value = names.next("external_input");
             let payload = names.next("external_payload");
             let input_type = match flavor {
-                FunctionFlavor::Immediate => generic_external_input_signature_type(
+                InputOwnership::Borrowed => generic_external_input_signature_type(
                     external,
                     customs,
                     support,
                     *generic_source,
-                    FunctionFlavor::Immediate,
+                    InputOwnership::Borrowed,
                 ),
-                FunctionFlavor::Async => generic_external_input_signature_type(
+                InputOwnership::Owned => generic_external_input_signature_type(
                     external,
                     customs,
                     support,
                     *generic_source,
-                    FunctionFlavor::Async,
+                    InputOwnership::Owned,
                 ),
             };
             let schema = &external.schema;
@@ -840,7 +686,7 @@ pub(super) fn decode_input(
                 .collect::<Vec<_>>();
             let arguments = host_type_token_sequence(&arguments, support);
             let statements = match flavor {
-                FunctionFlavor::Immediate => quote! {
+                InputOwnership::Borrowed => quote! {
                     let #payload = call.provider_external_view_with::<
                         __GeamProvider,
                         #schema,
@@ -850,7 +696,7 @@ pub(super) fn decode_input(
                         #support::ProviderExternalInputContext::from_host(#payload),
                     );
                 },
-                FunctionFlavor::Async => quote! {
+                InputOwnership::Owned => quote! {
                     let #payload = call.provider_external_item_with::<
                         __GeamProvider,
                         #schema,
@@ -868,21 +714,21 @@ pub(super) fn decode_input(
         }
         FunctionInputType::List(list) => {
             let decoder_value = match flavor {
-                FunctionFlavor::Immediate => list_decoder_value(
+                InputOwnership::Borrowed => list_decoder_value(
                     &list.decoder,
                     &list.collection.value,
                     customs,
                     support,
-                    FunctionFlavor::Immediate,
+                    InputOwnership::Borrowed,
                     &quote!(__GeamProvider),
                     &quote!(&call),
                 ),
-                FunctionFlavor::Async => list_decoder_value(
+                InputOwnership::Owned => list_decoder_value(
                     &list.decoder,
                     &list.collection.value,
                     customs,
                     support,
-                    FunctionFlavor::Async,
+                    InputOwnership::Owned,
                     &quote!(__GeamProvider),
                     &quote!(&call),
                 ),
@@ -936,10 +782,11 @@ fn decode_value_argument(
             type_,
             input: DeclaredInput::Owned,
             ..
-        } => {
+        }
+        | ProviderValueType::Custom { rust: type_, .. } => {
             let value = names.next("declared_input");
             let statements = match flavor {
-                FunctionFlavor::Immediate => quote! {
+                InputOwnership::Borrowed => quote! {
                     let #value: <#type_ as #support::ProviderValueForms>::ImmediateInput =
                         <<#type_ as #support::ProviderValueForms>::ImmediateInput as
                             #support::ProviderInputValue<
@@ -948,7 +795,7 @@ fn decode_value_argument(
                                 #return_type,
                             >>::from_host(&mut call, #input);
                 },
-                FunctionFlavor::Async => quote! {
+                InputOwnership::Owned => quote! {
                     let #value: <#type_ as #support::ProviderValueForms>::OwnedInput =
                         <<#type_ as #support::ProviderValueForms>::OwnedInput as
                             #support::ProviderInputValue<
@@ -970,7 +817,7 @@ fn decode_value_argument(
         } => {
             let value = names.next("declared_external_input");
             let (statements, value) = match flavor {
-                FunctionFlavor::Immediate => (
+                InputOwnership::Borrowed => (
                     quote! {
                         let #value: <#type_ as #support::ProviderValueForms>::ImmediateInput =
                             <<#type_ as #support::ProviderValueForms>::ImmediateInput as
@@ -982,7 +829,7 @@ fn decode_value_argument(
                     },
                     quote!(#value),
                 ),
-                FunctionFlavor::Async => (
+                InputOwnership::Owned => (
                     quote! {
                         let #value: <#type_ as #support::ProviderValueForms>::OwnedInput =
                             <<#type_ as #support::ProviderValueForms>::OwnedInput as
@@ -1000,7 +847,7 @@ fn decode_value_argument(
         ProviderValueType::External { schema, .. } => {
             let view = names.next("payload");
             match flavor {
-                FunctionFlavor::Immediate => GeneratedValue {
+                InputOwnership::Borrowed => GeneratedValue {
                     statements: quote! {
                         let #view = call.provider_external_view_with::<
                             __GeamProvider,
@@ -1010,7 +857,7 @@ fn decode_value_argument(
                     },
                     value: quote!(#view),
                 },
-                FunctionFlavor::Async => GeneratedValue {
+                InputOwnership::Owned => GeneratedValue {
                     statements: quote! {
                         let #view = call.provider_external_item_with::<
                             __GeamProvider,
@@ -1022,67 +869,23 @@ fn decode_value_argument(
                 },
             }
         }
-        ProviderValueType::Custom {
-            index,
-            rust: _input_type,
-        } => {
-            let value = names.next("custom_input");
-            let (input_type, input_trait, provider) = match flavor {
-                FunctionFlavor::Immediate => {
-                    let input = customs[*index]
-                        .input
-                        .as_ref()
-                        .expect("accepted custom input must have a generated input type");
-                    let input =
-                        super::list::custom_input_ident(&input.ident, FunctionFlavor::Immediate);
-                    (
-                        quote!(#input),
-                        quote!(#support::ProviderInputValue),
-                        quote!(__GeamProvider),
-                    )
-                }
-                FunctionFlavor::Async => {
-                    let input = customs[*index]
-                        .input
-                        .as_ref()
-                        .expect("accepted custom input must have a generated input type");
-                    let input =
-                        super::list::custom_input_ident(&input.ident, FunctionFlavor::Async);
-                    (
-                        quote!(#input),
-                        quote!(#support::ProviderInputValue),
-                        quote!(__GeamProvider),
-                    )
-                }
-            };
-            GeneratedValue {
-                statements: quote! {
-                    let #value = <#input_type as #input_trait<
-                        Profile,
-                        #provider,
-                        #return_type,
-                    >>::from_host(&mut call, #input);
-                },
-                value: quote!(#value),
-            }
-        }
         ProviderValueType::List(list) => {
             let decoder = match flavor {
-                FunctionFlavor::Immediate => list_decoder_value(
+                InputOwnership::Borrowed => list_decoder_value(
                     &list.decoder,
                     &list.collection.value,
                     customs,
                     support,
-                    FunctionFlavor::Immediate,
+                    InputOwnership::Borrowed,
                     &quote!(__GeamProvider),
                     &quote!(&call),
                 ),
-                FunctionFlavor::Async => list_decoder_value(
+                InputOwnership::Owned => list_decoder_value(
                     &list.decoder,
                     &list.collection.value,
                     customs,
                     support,
-                    FunctionFlavor::Async,
+                    InputOwnership::Owned,
                     &quote!(__GeamProvider),
                     &quote!(&call),
                 ),

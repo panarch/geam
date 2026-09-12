@@ -1,6 +1,6 @@
 use crate::host::{
-    HostCall, HostExternal, HostFutureContext, HostFutureError, HostFutureType, HostFutureValue,
-    HostProfile, HostProvider, HostType, HostTypeListEnd, HostWorkProfile,
+    HostCall, HostExecutionError, HostExternal, HostFutureType, HostFutureValue, HostProfile,
+    HostProvider, HostType, HostWorkProfile,
 };
 use std::marker::PhantomData;
 
@@ -60,15 +60,17 @@ where
 
     pub(crate) async fn observe(
         &self,
-        context: &HostFutureContext<'_, Profile, Provider, HostTypeListEnd>,
-    ) -> Result<Output, HostFutureError>
+        dependencies: &crate::runtime::work::Dependencies<
+            crate::runtime::work::execution::Completion,
+        >,
+    ) -> Result<Output, HostExecutionError>
     where
         Output: Send + 'static,
     {
         let decode = self.context.decode;
         self.context
             .work
-            .observe(context, move |call, value| Ok(decode(call, value)))
+            .observe_dependencies(dependencies, move |call, value| Ok(decode(call, value)))
             .await
     }
 }

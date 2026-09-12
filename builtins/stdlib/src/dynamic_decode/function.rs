@@ -1,5 +1,5 @@
 use crate::dict::DictDeclaration;
-use crate::dynamic::{DynamicPayload, DynamicRepresentation};
+use crate::dynamic::DynamicPayload;
 use crate::{Component, GleamStdlibRunState};
 use ecow::EcoString;
 use geam_core::provider::{Call, Callback, List, Value};
@@ -14,10 +14,11 @@ use num_traits::ToPrimitive;
 )]
 pub(super) mod provider {
     use super::{
-        BigInt, Call, Callback, DictDeclaration, DynamicPayload, DynamicRepresentation, EcoString,
-        GleamStdlibRunState, List, ToPrimitive, Value,
+        BigInt, Call, Callback, DictDeclaration, DynamicPayload, EcoString, GleamStdlibRunState,
+        List, ToPrimitive, Value,
     };
     use geam_core::provider::HostResult;
+    use geam_core::provider::advanced::NativeKind;
 
     #[geam_macros::custom(input = DecodeErrorInput)]
     pub enum DecodeError {
@@ -33,110 +34,100 @@ pub(super) mod provider {
         #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
         data: geam_core::provider::advanced::External<DynamicPayload>,
         key: Value<Key>,
-    ) -> Result<Option<geam_core::provider::advanced::External<DynamicPayload>>, EcoString> {
-        if let Some(dict) = call
-            .restore_dynamic::<DictDeclaration<DynamicPayload, DynamicPayload>, DynamicPayload>(
-                data.stored_value(),
-            )
-        {
-            for (key_hash, index) in dict.payload().coordinates() {
-                let dynamic_key =
-                    call.restore(dict.stored_key(|payload| payload.key(key_hash, index)));
-                let dynamic_key = call.external_payload(dynamic_key);
-                let Some(candidate) = call.restore_dynamic_value(dynamic_key.stored_value(), &key)
-                else {
-                    continue;
-                };
-                if !call.equal(&candidate, &key) {
-                    continue;
-                }
-
-                let dynamic_value =
-                    call.restore(dict.stored_item(|payload| payload.value(key_hash, index)));
-                let dynamic_value = call.external_payload(dynamic_value);
-                return Ok(Some(dynamic_value));
-            }
-            return Ok(None);
+    ) -> Result<Option<crate::dynamic::DynamicPayload>, EcoString> {
+        let value = data.native_value().clone();
+        drop(data);
+        let key = call.store_dynamic::<_, DynamicPayload>(key).native_view();
+        if let Some(dict) = value.as_map() {
+            return Ok(dict
+                .get(call.native_hash(&key), &key, |left, right| {
+                    call.native_equal(left, right)
+                })
+                .map(DynamicPayload::from_native));
         }
 
-        let key = call.store_dynamic::<_, DynamicPayload>(key);
-        let Some(index) = call.restore_dynamic::<BigInt, DynamicPayload>(&key) else {
+        let Some(index) = key.as_int() else {
             return Err("Dict".into());
         };
-        let Some(index) = index.to_usize() else {
-            return Err("Indexable".into());
-        };
-        let representation = data.representation();
-        let Some(values) =
-            call.restore_dynamic::<List<DynamicPayload>, DynamicPayload>(data.stored_value())
-        else {
-            return Err("Indexable".into());
-        };
-        if representation == DynamicRepresentation::List && index >= 8 {
+        let kind = value.kind();
+        if !matches!(kind, NativeKind::Tuple | NativeKind::List) {
             return Err("Indexable".into());
         }
-        match values.get(index) {
-            Some(value) => Ok(Some(value)),
-            None if representation == DynamicRepresentation::Array => Ok(None),
+        let Some(index) = index.to_usize() else {
+            return if kind == NativeKind::Tuple {
+                Ok(None)
+            } else {
+                Err("Indexable".into())
+            };
+        };
+        if kind == NativeKind::List && index >= 8 {
+            return Err("Indexable".into());
+        }
+        match value.index(index) {
+            Some(value) => Ok(Some(DynamicPayload::from_native(value))),
+            None if kind == NativeKind::Tuple => Ok(None),
             None => Err("Indexable".into()),
         }
     }
 
-    #[geam_macros::function(profile = Profile)]
+    #[geam_macros::function]
     fn dynamic_string(
-        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
         data: geam_core::provider::advanced::External<DynamicPayload>,
     ) -> Result<EcoString, EcoString> {
-        call.restore_dynamic::<EcoString, DynamicPayload>(data.stored_value())
+        data.native_value()
+            .as_string()
             .ok_or_else(EcoString::default)
     }
 
-    #[geam_macros::function(profile = Profile)]
+    #[geam_macros::function]
     fn dynamic_int(
-        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
         data: geam_core::provider::advanced::External<DynamicPayload>,
     ) -> Result<BigInt, BigInt> {
-        call.restore_dynamic::<BigInt, DynamicPayload>(data.stored_value())
-            .ok_or_else(|| BigInt::from(0))
+        data.native_value().as_int().ok_or_else(|| BigInt::from(0))
     }
 
-    #[geam_macros::function(profile = Profile)]
+    #[geam_macros::function]
     fn dynamic_float(
-        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
         data: geam_core::provider::advanced::External<DynamicPayload>,
     ) -> Result<f64, f64> {
-        call.restore_dynamic::<f64, DynamicPayload>(data.stored_value())
-            .ok_or(0.0)
+        data.native_value().as_float().ok_or(0.0)
     }
 
-    #[geam_macros::function(profile = Profile)]
+    #[geam_macros::function]
     fn dynamic_bit_array(
-        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
         data: geam_core::provider::advanced::External<DynamicPayload>,
     ) -> Result<geam_core::BitArrayValue, geam_core::BitArrayValue> {
-        call.restore_dynamic::<geam_core::BitArrayValue, DynamicPayload>(data.stored_value())
+        data.native_value()
+            .as_bit_array()
             .ok_or_else(|| geam_core::BitArrayValue::from_bytes(Vec::new()))
     }
 
-    #[geam_macros::function(profile = Profile)]
-    fn decode_list<Item, PathKey>(
+    #[geam_macros::function(profile = Profile, await)]
+    async fn decode_list<Item, PathKey>(
         #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
         data: geam_core::provider::advanced::External<DynamicPayload>,
-        item: Callback<
-            fn(
-                geam_core::provider::advanced::External<DynamicPayload>,
-            ) -> (Value<Item>, List<DecodeErrorInput>),
-        >,
+        item: Callback<fn(crate::dynamic::DynamicPayload) -> (Value<Item>, List<DecodeErrorInput>)>,
         _push_path: Value<
             fn((Item, List<DecodeErrorInput>), PathKey) -> (Item, List<DecodeErrorInput>),
         >,
         mut index: BigInt,
         accumulator: Value<List<Item>>,
     ) -> HostResult<(Vec<Value<Item>>, Vec<DecodeError>)> {
-        let representation = data.representation();
-        let Some(values) =
-            call.restore_dynamic::<List<DynamicPayload>, DynamicPayload>(data.stored_value())
-        else {
+        let (representation, values) =
+            data.with(|data| (data.representation(), data.native_value().clone()));
+        drop(data);
+        let mut decoded = call
+            .with_call(move |call| {
+                let mut decoded = Vec::with_capacity(call.list_len(&accumulator));
+                let mut index = 0;
+                while let Some(value) = call.list_get::<_, Item, _>(&accumulator, index) {
+                    decoded.push(value);
+                    index += 1;
+                }
+                decoded
+            })
+            .await?;
+        if !matches!(values.kind(), NativeKind::List | NativeKind::Tuple) && decoded.is_empty() {
             return Ok((
                 Vec::new(),
                 vec![DecodeError::DecodeError {
@@ -145,19 +136,15 @@ pub(super) mod provider {
                     path: Vec::new(),
                 }],
             ));
-        };
-
-        let mut decoded = Vec::with_capacity(call.list_len(&accumulator) + values.len());
-        let mut accumulator_index = 0;
-        while let Some(value) = call.list_get::<_, Item, _>(&accumulator, accumulator_index) {
-            decoded.push(value);
-            accumulator_index += 1;
         }
+
         decoded.reverse();
 
         let mut value_index = 0;
-        while let Some(value) = values.get(value_index) {
-            let (value, errors) = call.invoke(item, (value,))?;
+        while let Some(value) = values.index(value_index) {
+            let (value, errors) = call
+                .invoke(&item, (DynamicPayload::from_native(value),))
+                .await?;
             if errors.len() != 0 {
                 let mut updated_errors = Vec::with_capacity(errors.len());
                 let mut error_index = 0;
@@ -199,12 +186,17 @@ pub(super) mod provider {
         #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
         data: geam_core::provider::advanced::External<DynamicPayload>,
     ) -> Result<crate::dict::DynamicDictOutput, ()> {
-        let dict = call
-            .restore_dynamic::<DictDeclaration<DynamicPayload, DynamicPayload>, DynamicPayload>(
-                data.stored_value(),
-            )
-            .ok_or(())?;
-        Ok(DictDeclaration::from_payload(dict.payload().cloned()))
+        let value = data.native_value().clone();
+        drop(data);
+        if let Some(dict) =
+            call.restore_native::<DictDeclaration<DynamicPayload, DynamicPayload>>(&value)
+        {
+            return Ok(crate::dict::DynamicDictOutput::exact(dict.into_value()));
+        }
+        value
+            .as_map()
+            .map(crate::dict::DynamicDictOutput::native)
+            .ok_or(())
     }
 
     #[geam_macros::function(profile = Profile)]
@@ -215,13 +207,12 @@ pub(super) mod provider {
         DynamicPayload::stored(call.store_dynamic(value))
     }
 
-    #[geam_macros::function(profile = Profile)]
-    fn is_null(
-        #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
-        value: geam_core::provider::advanced::External<DynamicPayload>,
-    ) -> bool {
-        call.restore_dynamic::<(), DynamicPayload>(value.stored_value())
-            .is_some()
+    #[geam_macros::function]
+    fn is_null(value: geam_core::provider::advanced::External<DynamicPayload>) -> bool {
+        matches!(
+            value.native_value().as_symbol().as_deref(),
+            Some("nil" | "null" | "undefined")
+        )
     }
 }
 
@@ -441,6 +432,11 @@ pub fn main() {
   assert bare_index(dynamic_dict, 1) == Ok(option.None)
   assert decode_dict(dynamic_dict) == Ok(dict)
   assert decode_dict(one) == Error(Nil)
+  let raw_dict = dynamic.cast(dict.do_insert("key", 1, dict.new()))
+  assert bare_index(raw_dict, "key") == Ok(option.Some(one))
+    as "raw dict indexing"
+  assert decode_dict(raw_dict) == Ok(dict) as "raw dict decoding"
+  assert raw_dict == dynamic_dict as "native dictionary equality"
 
   let list = dynamic.list([one, two])
   let array = dynamic.array([one, two])
@@ -452,11 +448,20 @@ pub fn main() {
   assert bare_index(array, 2) == Ok(option.None)
   assert bare_index(one, 0) == Error("Indexable")
   assert bare_index(one, "key") == Error("Dict")
-  assert bare_index(dynamic.cast([1, 2]), 0) == Error("Indexable")
+  assert bare_index(dynamic.cast([1, 2]), 0) == Ok(option.Some(one))
+  assert bare_index(array, -1) == Ok(option.None)
+  assert bare_index(array, 999999999999999999999999999999999) == Ok(option.None)
+  assert bare_index(dynamic.cast(#(1, 2)), 1) == Ok(option.Some(two))
 
   assert decode_list(list, decode_int_item, keep_path, 0, []) == #([1, 2], [])
   assert decode_list(array, decode_int_item, keep_path, 5, [4, 3]) ==
     #([3, 4, 1, 2], [])
+  assert decode_list(dynamic.cast([1, 2]), decode_int_item, keep_path, 0, []) ==
+    #([1, 2], [])
+  assert decode_list(dynamic.cast(#(1, 2)), decode_int_item, keep_path, 0, []) ==
+    #([1, 2], [])
+  assert decode_list(one, decode_int_item, keep_path, 0, [4, 3]) ==
+    #([3, 4], [])
   assert decode_list(
     dynamic.list([one, text]),
     decode_int_item,
@@ -521,14 +526,14 @@ pub fn main() {
         )
         .expect("synthetic dynamic decode source should compile");
         let plan = plan_host_program(typed).expect("synthetic dynamic decode source should plan");
-        let execution = HostedExecution::try_from_module_plan(plan)
+        let mut execution = HostedExecution::try_from_module_plan(plan)
             .expect("synthetic dynamic decode execution should seal");
-        let actual = execution
-            .run_main(
-                &mut GleamStdlibRunState::from_seed([0; 32]),
-                &mut Vec::new(),
-            )
-            .expect("every dynamic decode provider should execute");
+        let actual = crate::execution_fixture::run(
+            &mut execution,
+            &mut GleamStdlibRunState::from_seed([0; 32]),
+            &mut Vec::new(),
+        )
+        .expect("every dynamic decode provider should execute");
 
         assert_eq!(actual, Value::Bool(true));
     }
@@ -569,14 +574,14 @@ pub fn main() {
         )
         .expect("callback failure source should compile");
         let plan = plan_host_program(typed).expect("callback failure source should plan");
-        let execution = HostedExecution::try_from_module_plan(plan)
+        let mut execution = HostedExecution::try_from_module_plan(plan)
             .expect("callback failure execution should seal");
-        let error = execution
-            .run_main(
-                &mut GleamStdlibRunState::from_seed([0; 32]),
-                &mut Vec::new(),
-            )
-            .expect_err("callback should preserve its source panic");
+        let error = crate::execution_fixture::run(
+            &mut execution,
+            &mut GleamStdlibRunState::from_seed([0; 32]),
+            &mut Vec::new(),
+        )
+        .expect_err("callback should preserve its source panic");
         assert!(matches!(
             error,
             ExecutionError::Panic(ref panic)

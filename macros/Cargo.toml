@@ -21,7 +21,8 @@ syn = { workspace = true, features = ["extra-traits"] }
 geam-builtin.workspace = true
 ecow.workspace = true
 futures-channel.workspace = true
-geam-core.workspace = true
+geam-core = { workspace = true, features = ["tokio"] }
 im.workspace = true
 num-bigint.workspace = true
 trybuild.workspace = true
+tokio.workspace = true

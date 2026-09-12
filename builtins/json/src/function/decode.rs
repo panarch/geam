@@ -277,7 +277,7 @@ mod tests {
 
     #[test]
     fn executes_scalar_decoding_through_the_hosted_pipeline() {
-        let execution = execution(
+        let mut execution = execution(
             r#"
 pub fn main() {
   #(
@@ -292,9 +292,9 @@ pub fn main() {
 }
 "#,
         );
-        let value = execution
-            .run_main(&mut run_state([0; 32]), &mut Vec::new())
-            .expect("scalar JSON decoding should run");
+        let value =
+            crate::execution_fixture::run(&mut execution, &mut run_state([0; 32]), &mut Vec::new())
+                .expect("scalar JSON decoding should run");
 
         assert_eq!(
             value.inspect().to_string(),
@@ -304,16 +304,16 @@ pub fn main() {
 
     #[test]
     fn constructs_nested_dynamic_collections_through_the_hosted_pipeline() {
-        let execution = execution(
+        let mut execution = execution(
             r#"
 pub fn main() {
   decode_to_dynamic(<<"[1,{\"a\":true,\"a\":false}]":utf8>>)
 }
 "#,
         );
-        let value = execution
-            .run_main(&mut run_state([0; 32]), &mut Vec::new())
-            .expect("nested JSON decoding should run");
+        let value =
+            crate::execution_fixture::run(&mut execution, &mut run_state([0; 32]), &mut Vec::new())
+                .expect("nested JSON decoding should run");
 
         assert_eq!(
             value.inspect().to_string(),
@@ -335,10 +335,10 @@ pub fn main() {{
 }}
 "#,
         );
-        let execution = execution(&source);
+        let mut execution = execution(&source);
 
         assert_eq!(
-            execution.run_main(&mut run_state([0; 32]), &mut Vec::new(),),
+            crate::execution_fixture::run(&mut execution, &mut run_state([0; 32]), &mut Vec::new()),
             Ok(crate::Value::Nil),
         );
     }

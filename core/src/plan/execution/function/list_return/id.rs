@@ -133,10 +133,6 @@ pub(crate) enum ProfiledListFunctionId<Graph: ExecutionGraphProfile> {
 pub(crate) type RuntimeListFunctionId = ProfiledListFunctionId<HostedExecutionGraph>;
 
 impl<Graph: ExecutionGraphProfile> LibraryListFunctionId<Graph> {
-    pub(crate) fn runtime_id(&self) -> RuntimeListFunctionId {
-        Graph::list_function(&self.profiled_runtime_id())
-    }
-
     pub(crate) fn profiled_runtime_id(&self) -> ProfiledListFunctionId<Graph> {
         match self {
             Self::Int(id) => ProfiledListFunctionId::Core(ListFunctionId::Int(*id)),
@@ -548,9 +544,94 @@ mod explain_tests {
 }
 
 #[cfg(test)]
-mod external_tests {
-    use super::ExternalListFunctionId;
-    use crate::plan::execution::type_::{ExternalListTypeId, ExternalTypeId, ListTypeId};
+mod tests {
+    use super::{
+        BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, ExternalListFunctionId,
+        FloatListFunctionId, IntListFunctionId, LibraryListFunctionId, ListFunctionId,
+        ListListFunctionId, NilListFunctionId, ProfiledListFunctionId, StringListFunctionId,
+        TupleListFunctionId, UtfCodepointListFunctionId,
+    };
+    use crate::plan::execution::type_::{
+        BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeId, ExternalListTypeId,
+        ExternalTypeId, FloatListTypeId, IntListTypeId, ListListTypeId, ListTypeId, NilListTypeId,
+        StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
+    };
+
+    #[test]
+    fn library_list_routing_preserves_the_function_and_item_type_ids() {
+        macro_rules! core {
+            ($variant:ident, $id:expr) => {{
+                let id = $id;
+                (
+                    LibraryListFunctionId::$variant(id),
+                    ProfiledListFunctionId::Core(ListFunctionId::$variant(id)),
+                )
+            }};
+        }
+        for (library, expected) in [
+            core!(
+                Int,
+                IntListFunctionId::new(11, IntListTypeId::new(ListTypeId::new(1)))
+            ),
+            core!(
+                String,
+                StringListFunctionId::new(12, StringListTypeId::new(ListTypeId::new(2)))
+            ),
+            core!(
+                BitArray,
+                BitArrayListFunctionId::new(13, BitArrayListTypeId::new(ListTypeId::new(3)))
+            ),
+            core!(
+                UtfCodepoint,
+                UtfCodepointListFunctionId::new(
+                    14,
+                    UtfCodepointListTypeId::new(ListTypeId::new(4))
+                )
+            ),
+            core!(
+                Custom,
+                CustomListFunctionId::new(
+                    15,
+                    CustomListTypeId::new(ListTypeId::new(5), CustomTypeId::new(2))
+                )
+            ),
+            core!(
+                Float,
+                FloatListFunctionId::new(16, FloatListTypeId::new(ListTypeId::new(6)))
+            ),
+            core!(
+                Bool,
+                BoolListFunctionId::new(17, BoolListTypeId::new(ListTypeId::new(7)))
+            ),
+            core!(
+                Nil,
+                NilListFunctionId::new(18, NilListTypeId::new(ListTypeId::new(8)))
+            ),
+            core!(
+                Tuple,
+                TupleListFunctionId::new(19, TupleListTypeId::new(ListTypeId::new(9), 3))
+            ),
+            core!(
+                List,
+                ListListFunctionId::new(
+                    20,
+                    ListListTypeId::new(ListTypeId::new(10), ListTypeId::new(1))
+                )
+            ),
+            {
+                let id = ExternalListFunctionId::new(
+                    21,
+                    ExternalListTypeId::new(ListTypeId::new(11), ExternalTypeId::new(4)),
+                );
+                (
+                    LibraryListFunctionId::<super::HostedExecutionGraph>::External(id),
+                    ProfiledListFunctionId::External(id),
+                )
+            },
+        ] {
+            assert_eq!(library.profiled_runtime_id(), expected);
+        }
+    }
 
     #[test]
     fn external_list_function_id_preserves_index_and_type() {

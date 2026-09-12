@@ -137,7 +137,7 @@ impl LibraryInputConstructions {
 }
 
 pub struct HostedExecution<Profile: HostProfile> {
-    execution: HostedProgram<Profile>,
+    execution: std::sync::Arc<HostedProgram<Profile>>,
     external_stores: Profile::ExternalStores,
 }
 
@@ -157,9 +157,9 @@ struct ExecutionProgramCommon<Graph: ExecutionGraphProfile> {
     main: ProfiledRuntimeFunctionId<Graph>,
     constants: ProfiledConstantTable<Graph>,
     function_parameters: std::sync::Arc<function::FunctionParameterCatalog>,
-    list_types: ListTypeTable,
-    custom_types: CustomTypeTable,
-    external_types: ExternalTypeTable,
+    list_types: std::sync::Arc<ListTypeTable>,
+    custom_types: std::sync::Arc<CustomTypeTable>,
+    external_types: std::sync::Arc<ExternalTypeTable>,
     value_shapes: ValueShapeTable,
 }
 
@@ -252,10 +252,10 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
     ) -> Result<Self, HostSpecializationError> {
         let (program, host_functions) = lowering::lower_hosted(module_plan)?;
         Ok(Self {
-            execution: HostedProgram {
+            execution: std::sync::Arc::new(HostedProgram {
                 program,
                 host_functions,
-            },
+            }),
             external_stores: Profile::ExternalStores::default(),
         })
     }
@@ -268,34 +268,37 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
         let (execution, entries) = HostedProgram::from_library_plan(module_plan, first, remaining)?;
         Ok((
             Self {
-                execution,
+                execution: std::sync::Arc::new(execution),
                 external_stores: Profile::ExternalStores::default(),
             },
             entries,
         ))
     }
 
-    pub fn run_main(
-        &self,
+    pub async fn run_main(
+        &mut self,
+        host: &dyn crate::execution::ExecutionHost,
         state: &mut Profile::RunState,
-        echo: &mut dyn crate::EchoSink,
-    ) -> Result<crate::Value, crate::ExecutionError> {
-        crate::runtime::run_hosted_main(self, state, echo)
+        echo: &mut (dyn crate::EchoSink + Send),
+    ) -> Result<crate::Value, crate::execution::RunError> {
+        crate::runtime::run_hosted_main(self, host, state, echo).await
     }
 
     pub fn explain(&self) -> ExecutionPlanExplanation<'_> {
         ExecutionPlanExplanation::new_hosted(&self.execution)
     }
 
+    #[cfg(test)]
     pub(crate) fn execution(&self) -> &HostedProgram<Profile> {
         &self.execution
     }
 
-    pub(crate) fn external_stores(&self) -> &Profile::ExternalStores {
-        &self.external_stores
-    }
-
-    pub(crate) fn parts_mut(&mut self) -> (&HostedProgram<Profile>, &mut Profile::ExternalStores) {
+    pub(crate) fn parts_mut(
+        &mut self,
+    ) -> (
+        &std::sync::Arc<HostedProgram<Profile>>,
+        &mut Profile::ExternalStores,
+    ) {
         (&self.execution, &mut self.external_stores)
     }
 

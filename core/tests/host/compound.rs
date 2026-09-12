@@ -210,10 +210,9 @@ pub fn main() {
     )
     .expect("recursive custom source should compile");
     let plan = plan_host_program(typed).expect("recursive custom source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("recursive custom execution should seal");
-    let value = execution
-        .run_main(&mut (), &mut Vec::new())
+    let value = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect("recursive custom host return should run");
 
     assert_eq!(value.inspect().to_string(), "Next(End)");
@@ -255,7 +254,7 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
     let expected_explanation = r#"
 module main
@@ -283,7 +282,7 @@ function tuple#0
 
     assert_eq!(execution.explain().to_string().trim(), expected_explanation);
     assert_eq!(
-        execution.run_main(&mut (), &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Tuple(vec![
             Value::Int(42.into()),
             Value::Int(2.into()),
@@ -333,11 +332,11 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
 
     assert_eq!(
-        execution.run_main(&mut (), &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Int(42.into())),
     );
 }
@@ -466,10 +465,9 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
-    let value = execution
-        .run_main(&mut (), &mut Vec::new())
+    let value = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect("every returned function family should execute");
 
     assert_eq!(
@@ -526,10 +524,9 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
-    let value = execution
-        .run_main(&mut (), &mut Vec::new())
+    let value = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect("symbolic host references should materialize");
 
     assert_eq!(
@@ -576,10 +573,9 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("uninhabited host callback should be erased");
-    let value = execution
-        .run_main(&mut (), &mut Vec::new())
+    let value = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect("uninhabited function reference should materialize");
 
     assert_eq!(value.inspect().to_string(), "//fn(a) { ... }");
@@ -626,11 +622,11 @@ pub fn main() {
     )
     .expect("partially inhabited source should compile");
     let plan = plan_host_program(typed).expect("partially inhabited source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("uninhabited custom alternative should not block sealing");
 
     assert_eq!(
-        execution.run_main(&mut (), &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Int(1.into())),
     );
 }
@@ -705,10 +701,9 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
-    let value = execution
-        .run_main(&mut (), &mut Vec::new())
+    let value = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect("unresolved empty lists should remain representable");
 
     assert_eq!(value.inspect().to_string(), "#([], [], 1)");
@@ -752,12 +747,11 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
 
     assert_eq!(
-        execution
-            .run_main(&mut (), &mut Vec::new())
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
             .expect("list tuple provider should run")
             .inspect()
             .to_string(),
@@ -809,7 +803,7 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
     let nested = ListValue::try_list(
         geam_core::ValueType::Int,
@@ -823,10 +817,13 @@ pub fn main() {
     ]);
 
     assert_eq!(
-        execution.run_main(&mut (), &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(expected.clone()),
     );
-    assert_eq!(execution.run_main(&mut (), &mut Vec::new()), Ok(expected),);
+    assert_eq!(
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
+        Ok(expected),
+    );
 }
 
 #[test]
@@ -865,11 +862,11 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
 
     assert_eq!(
-        execution.run_main(&mut (), &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::List(ListValue::int(vec![
             1.into(),
             2.into(),
@@ -936,11 +933,11 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
 
     assert_eq!(
-        execution.run_main(&mut (), &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Int(42.into())),
     );
 }
@@ -989,10 +986,9 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
-    let error = execution
-        .run_main(&mut (), &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect_err("empty generic list should fail");
     let geam_core::ExecutionError::Host(error) = error else {
         panic!("generic list provider should produce a host error");
@@ -1226,11 +1222,11 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("unused provider should not block sealing");
 
     assert_eq!(
-        execution.run_main(&mut (), &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Int(42.into())),
     );
 }
@@ -1363,11 +1359,11 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
 
     assert_eq!(
-        execution.run_main(&mut (), &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Int(42.into())),
     );
 }
@@ -1409,11 +1405,11 @@ pub fn main() {
     )
     .expect("source-less compound interface should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("source-less compound host should seal");
 
     assert_eq!(
-        execution.run_main(&mut (), &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Int(5.into())),
     );
 }
@@ -1488,11 +1484,11 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
 
     assert_eq!(
-        execution.run_main(&mut (), &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Tuple(vec![
             Value::Tuple(
                 [8, 7, 6, 5, 4, 3, 2, 1]
@@ -1572,11 +1568,11 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
 
     assert_eq!(
-        execution.run_main(&mut (), &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Bool(true)),
     );
 }
@@ -1656,10 +1652,9 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
-    let value = execution
-        .run_main(&mut (), &mut Vec::new())
+    let value = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect("custom host calls should run");
 
     assert_eq!(
@@ -1731,11 +1726,11 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
 
     assert_eq!(
-        execution.run_main(&mut (), &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Tuple(vec![
             Value::Bool(true),
             Value::Bool(true),

@@ -180,5 +180,5 @@ the Rust execution scope that supplies its state and capabilities.
 
 See [runtime semantics](reference/runtime-semantics.md#explicit-work) for the
 complete sharing and cancellation behavior, and the
-[embedding reference](reference/embedding-boundary.md#explicit-future-execution)
+[embedding reference](reference/embedding-boundary.md#explicit-future-values)
 for nested Future values and Rust completion errors.

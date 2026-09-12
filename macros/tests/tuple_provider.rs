@@ -1,3 +1,6 @@
+#[path = "../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 use ecow::EcoString;
 use geam_core::provider::{Call, Configuration};
 use geam_core::{
@@ -69,6 +72,7 @@ struct ProfileState {
 impl HostProfile for Profile {
     type RunState = ProfileState;
     type ExternalStores = ProfileStores;
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<Component> for Profile {
@@ -183,22 +187,22 @@ fn macro_authored_tuple_schema_preserves_nested_and_external_shapes() {
 #[test]
 fn macro_authored_tuples_execute_with_persistent_external_and_independent_state() {
     let (first, repeated, independent) = {
-        let execution = execution(TUPLE_SOURCE).expect("matching tuple provider should plan");
+        let mut execution = execution(TUPLE_SOURCE).expect("matching tuple provider should plan");
         let mut first_state = ProfileState {
             component: RunState::default(),
         };
         let mut second_state = ProfileState {
             component: RunState::default(),
         };
-        let first = execution
-            .run_main(&mut first_state, &mut Vec::new())
-            .expect("tuple provider should execute");
-        let repeated = execution
-            .run_main(&mut first_state, &mut Vec::new())
-            .expect("tuple provider should execute repeatedly");
-        let independent = execution
-            .run_main(&mut second_state, &mut Vec::new())
-            .expect("tuple provider should execute independently");
+        let first =
+            crate::execution_fixture::run(&mut execution, &mut first_state, &mut Vec::new())
+                .expect("tuple provider should execute");
+        let repeated =
+            crate::execution_fixture::run(&mut execution, &mut first_state, &mut Vec::new())
+                .expect("tuple provider should execute repeatedly");
+        let independent =
+            crate::execution_fixture::run(&mut execution, &mut second_state, &mut Vec::new())
+                .expect("tuple provider should execute independently");
         assert_eq!(first_state.component.transformations, 2);
         assert_eq!(second_state.component.transformations, 1);
         (first, repeated, independent)

@@ -4,5 +4,6 @@ struct NonSend;
 impl HostProfile for NonSend {
     type RunState = std::rc::Rc<()>;
     type ExternalStores = ();
+    type ExecutionState = ();
 }
 fn main() {}

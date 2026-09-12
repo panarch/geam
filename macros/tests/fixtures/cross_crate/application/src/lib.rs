@@ -1,4 +1,7 @@
 use geam_builtin::FutureComponent;
+#[cfg(test)]
+#[path = "../../../../../../tests/support/execution_host.rs"]
+mod execution_fixture;
 use geam_core::frontend::{HostedTypedProgram, compile_typed_host_program};
 use geam_core::host::{HostFutureStore, HostProviderComponentRegistration, HostProviderSet};
 use geam_core::{
@@ -19,6 +22,7 @@ pub struct Stores {
 impl HostProfile for Profile {
     type RunState = ();
     type ExternalStores = Stores;
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<DeclarationsComponent> for Profile {
@@ -265,9 +269,7 @@ mod tests {
     use super::program;
     use ecow::EcoString;
     use geam_builtin::embedding::FutureType;
-    use geam_core::embedding::{
-        FunctionDeclaration, HostedModuleBuilder, List, with_execution_scope,
-    };
+    use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder, List};
     use geam_core::{EchoOutput, EchoSink};
     use num_bigint::BigInt;
     use std::future::Future;
@@ -285,6 +287,8 @@ mod tests {
 
     #[test]
     fn public_typed_embedding_runs_a_separately_compiled_async_provider() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let (mut bindings, direct) = HostedModuleBuilder::new(program())
             .expect("cross-crate provider plan")
             .function(FunctionDeclaration::<(BigInt,), EcoString>::new("direct"))
@@ -307,23 +311,31 @@ mod tests {
         let mut echo = Echo::default();
 
         let result = {
-            let mut future = pin!(with_execution_scope(async |guard| {
-                let mut scope = module.attach(guard, &mut state, &mut echo);
-                assert_eq!(
-                    scope
-                        .call(&direct, (BigInt::from(5),))
-                        .expect("direct entry"),
-                    EcoString::from("one:count:5")
-                );
-                let work = scope
-                    .call(&run, (BigInt::from(7),))
-                    .expect("construct source work");
-                scope.observe(&work).await
-            }));
+            let mut future = pin!(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    assert_eq!(
+                        scope
+                            .call(&direct, (BigInt::from(5),))
+                            .await
+                            .expect("direct entry"),
+                        EcoString::from("one:count:5")
+                    );
+                    let work = scope
+                        .call(&run, (BigInt::from(7),))
+                        .await
+                        .expect("construct source work");
+                    scope.observe(&work).await
+                }
+            ));
             let waker = Waker::noop();
             let mut context = Context::from_waker(waker);
             assert!(matches!(future.as_mut().poll(&mut context), Poll::Pending));
-            poll_ready_pinned(future.as_mut(), &mut context)
+            execution_host
+                .block_on(future)
+                .expect("controlled execution")
                 .expect("cross-crate async call should complete")
         };
 
@@ -342,6 +354,8 @@ mod tests {
 
     #[test]
     fn foreign_custom_fields_select_transferable_payloads_before_construction() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let (bindings, saved) = HostedModuleBuilder::new(program())
             .expect("cross-crate provider plan")
             .function(FunctionDeclaration::<
@@ -353,16 +367,24 @@ mod tests {
         let mut state = ();
         let mut echo = Echo::default();
         let result = {
-            let mut future = pin!(with_execution_scope(async |guard| {
-                let mut scope = module.attach(guard, &mut state, &mut echo);
-                let work = scope
-                    .call(&saved, (EcoString::from("shared"),))
-                    .expect("construct custom work");
-                scope.observe(&work).await
-            }));
+            let mut future = pin!(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    let work = scope
+                        .call(&saved, (EcoString::from("shared"),))
+                        .await
+                        .expect("construct custom work");
+                    scope.observe(&work).await
+                }
+            ));
             let mut context = Context::from_waker(Waker::noop());
             assert!(matches!(future.as_mut().poll(&mut context), Poll::Pending));
-            poll_ready_pinned(future.as_mut(), &mut context).expect("custom completion")
+            execution_host
+                .block_on(future)
+                .expect("controlled execution")
+                .expect("custom completion")
         };
         std::thread::spawn(move || {
             result.read(|(direct, first, second)| {
@@ -374,17 +396,5 @@ mod tests {
         .join()
         .expect("transfer completed result");
         assert_eq!(echo.0, 0);
-    }
-
-    fn poll_ready_pinned<Output>(
-        mut future: std::pin::Pin<&mut impl Future<Output = Output>>,
-        context: &mut Context<'_>,
-    ) -> Output {
-        for _ in 0..32 {
-            if let Poll::Ready(value) = future.as_mut().poll(context) {
-                return value;
-            }
-        }
-        panic!("future did not become ready")
     }
 }

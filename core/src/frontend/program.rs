@@ -30,11 +30,13 @@ pub struct TypedProgram {
     root_module: EcoString,
     root_index: usize,
     modules: Vec<TypedProgramModule>,
+    pub(super) package_resources: BTreeMap<EcoString, std::path::PathBuf>,
 }
 
 pub struct HostedTypedProgram<Profile: HostProfile> {
     program: HostedProgram,
     implementations: RegisteredHostImplementations<Profile>,
+    pub(super) package_resources: BTreeMap<EcoString, std::path::PathBuf>,
 }
 
 struct HostedProgram {
@@ -59,6 +61,12 @@ pub(crate) enum HostedTypedProgramModule {
 }
 
 impl TypedProgram {
+    /// Resolved package resource directories, separate from executable source.
+    /// Source-only compilation has no physical package locations.
+    pub fn package_resources(&self) -> &BTreeMap<EcoString, std::path::PathBuf> {
+        &self.package_resources
+    }
+
     pub fn root_package(&self) -> &EcoString {
         &self.root_package
     }
@@ -82,6 +90,12 @@ impl TypedProgram {
 }
 
 impl<Profile: HostProfile> HostedTypedProgram<Profile> {
+    /// Resolved package resource directories for configuring host capabilities.
+    /// These loading paths are not part of the executable plan.
+    pub fn package_resources(&self) -> &BTreeMap<EcoString, std::path::PathBuf> {
+        &self.package_resources
+    }
+
     pub fn root_package(&self) -> &EcoString {
         &self.program.root_package
     }
@@ -210,6 +224,7 @@ pub(super) fn compile_parsed_host_package_program<Profile: HostProfile>(
     .map(|program| HostedTypedProgram {
         program,
         implementations,
+        package_resources: BTreeMap::new(),
     })
 }
 
@@ -341,6 +356,7 @@ pub(super) fn compile_parsed_package_program(
     }
 
     Ok(TypedProgram {
+        package_resources: BTreeMap::new(),
         root_package,
         root_module,
         root_index,

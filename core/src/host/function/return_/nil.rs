@@ -50,9 +50,11 @@ mod tests {
 
         assert_eq!(<() as HostReturn>::descriptor(), HostTypeDescriptor::Nil);
         assert_eq!(
-            expect_value_implementation(&implementation)
-                .call(&mut runtime)
-                .map(|token| token.family),
+            crate::host::expect_immediate_call(
+                expect_value_implementation(&implementation),
+                &mut runtime
+            )
+            .map(|token| token.family),
             Ok(HostValueFamily::Nil),
         );
         assert_eq!(runtime.completed(), Some(&HostScopedValue::Nil));

@@ -24,6 +24,20 @@ pub(crate) trait HostTokenRuntime {
 
 pub(crate) trait HostCallRuntime<Profile: HostProfile>: HostTokenRuntime {
     fn state(&mut self) -> &mut Profile::RunState;
+    fn execution_state(&mut self) -> &mut Profile::ExecutionState;
+    fn execution_with_native_values(
+        &mut self,
+    ) -> (
+        &mut Profile::ExecutionState,
+        crate::runtime::NativeValues<'_>,
+    );
+    fn native_values(&self) -> crate::runtime::NativeValues<'_>;
+    fn clock(&self) -> crate::execution::ExecutionClock<'_>;
+    fn spawn(
+        &mut self,
+        callable: crate::runtime::RetainedCallable,
+        origin: crate::runtime::HostCallOrigin,
+    ) -> crate::execution::ExecutionUnit;
     fn external_stores(&self) -> &Profile::ExternalStores;
     fn arguments(&self) -> &dyn HostCallArguments;
     fn scalar_context(&mut self) -> (&mut Profile::RunState, &dyn HostCallArguments);
@@ -41,11 +55,6 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile>: HostTokenRuntime {
     fn custom_constructor(&self, value: HostCustomToken) -> usize;
     fn custom_fields(&mut self, value: HostCustomToken) -> Box<[HostValueToken]>;
     fn take_custom_fields(&mut self, value: HostCustomToken) -> Box<[HostValueToken]>;
-    fn invoke(
-        &mut self,
-        function: HostFunctionToken,
-        arguments: Box<[HostScopedValue]>,
-    ) -> Result<HostValueToken, crate::HostCallError>;
     fn equal(&self, left: HostScopedValue, right: HostScopedValue) -> bool;
     fn source_hash(&self, value: HostScopedValue) -> u64;
     fn inspect(&self, value: HostScopedValue) -> ecow::EcoString;
@@ -56,6 +65,16 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile>: HostTokenRuntime {
         values: Box<[HostScopedValue]>,
     ) -> HostValueToken;
     fn build_tuple(&mut self, values: Box<[HostScopedValue]>) -> HostValueToken;
+    fn build_native_list(
+        &mut self,
+        type_: crate::plan::execution::type_::ListTypeId,
+        values: Box<[HostScopedValue]>,
+    ) -> HostValueToken;
+    fn build_native_custom(
+        &mut self,
+        constructor: crate::plan::execution::type_::CustomConstructorId,
+        fields: Box<[HostScopedValue]>,
+    ) -> HostValueToken;
     fn build_custom(
         &mut self,
         type_: &crate::host::HostTypeDescriptor,
@@ -75,12 +94,15 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile>: HostTokenRuntime {
     fn retain_stored(&self, value: HostScopedValue) -> crate::runtime::StoredRuntimeValue;
     fn retain_list(&self, value: HostListToken) -> crate::runtime::StoredRuntimeList;
     fn restore_stored(&mut self, value: &crate::runtime::StoredRuntimeValue) -> HostValueToken;
+    fn owns_stored(&self, value: &StoredRuntimeValue) -> bool;
 
     fn work(&self) -> crate::runtime::work::execution::WorkContext<Profile>;
+    fn execution(&self) -> crate::runtime::execution::ExecutionContext<Profile>;
     fn origin(&self) -> crate::runtime::HostCallOrigin;
     fn callable(&self, function: HostFunctionToken) -> crate::runtime::RetainedCallable;
     fn codec_scope(&self) -> HostCodecScope;
     fn stored_equal(&self, left: &StoredRuntimeValue, right: &StoredRuntimeValue) -> bool;
+    fn native_tuple(&self, value: HostListToken) -> crate::runtime::NativeValue;
     fn stored_source_hash(&self, value: &StoredRuntimeValue) -> u64;
     fn stored_inspect(&self, value: &StoredRuntimeValue) -> ecow::EcoString;
     fn stored_list_len(&self, value: &StoredRuntimeValue) -> usize;
@@ -116,9 +138,20 @@ mod tests {
             );
             format!("Resource({})", context.inspect_stored_value(&stored)).into()
         };
-        let lease = store.insert(7usize, |_, left, right| left == right, source_hash, inspect);
-        let equal_lease =
-            store.insert(7usize, |_, left, right| left == right, source_hash, inspect);
+        let lease = store.insert(
+            7usize,
+            |_, left, right| left == right,
+            source_hash,
+            inspect,
+            |_| None,
+        );
+        let equal_lease = store.insert(
+            7usize,
+            |_, left, right| left == right,
+            source_hash,
+            inspect,
+            |_| None,
+        );
         let identity = lease.identity();
         let mut state = TestRunState::default();
         let arguments = crate::host::function::CallArguments::new(Vec::new(), Vec::new());

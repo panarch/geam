@@ -14,11 +14,10 @@ pub(super) struct HostedBindings {
     pub(super) components: HostedComponents,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(super) struct HostedComponents {
     pub(super) future_source: bool,
-    first: ComponentBinding,
-    remaining: Vec<ComponentBinding>,
+    components: Vec<ComponentBinding>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +33,7 @@ pub(super) enum ComponentBinding {
     Stdlib,
     Json,
     Time,
+    Erlang,
     External(ExternalComponent),
 }
 
@@ -90,8 +90,7 @@ impl HostedComponents {
     fn new(first: ComponentBinding) -> Self {
         let mut components = Self {
             future_source: first == ComponentBinding::Future,
-            first,
-            remaining: Vec::new(),
+            components: vec![first],
         };
         components.insert(ComponentBinding::Future);
         components.assign_external_fields();
@@ -99,39 +98,37 @@ impl HostedComponents {
     }
 
     fn insert(&mut self, component: ComponentBinding) {
-        if component == self.first || self.remaining.contains(&component) {
+        if self.components.contains(&component) {
             return;
         }
-        if component < self.first {
-            let previous = std::mem::replace(&mut self.first, component);
-            self.remaining.insert(0, previous);
-        } else {
-            let index = self
-                .remaining
-                .partition_point(|current| current < &component);
-            self.remaining.insert(index, component);
-        }
+        let index = self
+            .components
+            .partition_point(|current| current < &component);
+        self.components.insert(index, component);
         self.assign_external_fields();
     }
 
     pub(super) fn extend(&mut self, components: Self) {
         self.future_source |= components.future_source;
-        self.insert(components.first);
-        for component in components.remaining {
+        for component in components.components {
             self.insert(component);
         }
     }
 
     pub(super) fn iter(&self) -> impl Iterator<Item = &ComponentBinding> {
-        std::iter::once(&self.first).chain(self.remaining.iter())
+        self.components.iter()
     }
 
-    pub(super) fn first(&self) -> &ComponentBinding {
-        &self.first
+    pub(super) fn is_empty(&self) -> bool {
+        self.components.is_empty()
     }
 
-    pub(super) fn has_multiple(&self) -> bool {
-        !self.remaining.is_empty()
+    pub(super) fn has_work(&self) -> bool {
+        self.components.contains(&ComponentBinding::Future)
+    }
+
+    pub(super) fn only_work(&self) -> bool {
+        self.components == [ComponentBinding::Future]
     }
 
     pub(super) fn capabilities(&self) -> HostedCapabilities {
@@ -154,26 +151,34 @@ impl HostedComponents {
             .any(|component| component == &ComponentBinding::Time)
     }
 
+    pub(super) fn has_erlang(&self) -> bool {
+        self.components.contains(&ComponentBinding::Erlang)
+    }
+
     pub(super) fn has_external(&self) -> bool {
         self.iter()
             .any(|component| matches!(component, ComponentBinding::External(_)))
     }
 
     fn assign_external_fields(&mut self) {
-        let mut used_inputs = BTreeSet::from(["stdlib".to_owned(), "time".to_owned()]);
+        let mut used_inputs =
+            BTreeSet::from(["stdlib".to_owned(), "time".to_owned(), "erlang".to_owned()]);
         let mut used_state = BTreeSet::from([
             "stdlib".to_owned(),
             "json".to_owned(),
             "time".to_owned(),
+            "erlang".to_owned(),
             "future".to_owned(),
         ]);
-        let mut external = std::iter::once(&mut self.first)
-            .chain(self.remaining.iter_mut())
+        let mut external = self
+            .components
+            .iter_mut()
             .filter_map(|component| match component {
                 ComponentBinding::External(component) => Some(component),
                 ComponentBinding::Future
                 | ComponentBinding::Stdlib
                 | ComponentBinding::Json
+                | ComponentBinding::Erlang
                 | ComponentBinding::Time => None,
             })
             .collect::<Vec<_>>();
@@ -221,7 +226,7 @@ impl HostedComponents {
 
 fn input_field_candidate(package: &str) -> (u8, RustIdentifier) {
     let field = RustIdentifier::from_compiled_package(package);
-    if matches!(field.as_str(), "stdlib" | "time") {
+    if matches!(field.as_str(), "stdlib" | "time" | "erlang") {
         return (0, field.with_prefix("provider_"));
     }
     if field.as_str() == package {
@@ -258,6 +263,7 @@ impl From<BuiltInProvider> for ComponentBinding {
             BuiltInProvider::Stdlib => Self::Stdlib,
             BuiltInProvider::Json => Self::Json,
             BuiltInProvider::Time => Self::Time,
+            BuiltInProvider::Erlang => Self::Erlang,
             BuiltInProvider::Geam => Self::Future,
         }
     }
@@ -269,6 +275,7 @@ impl ComponentBinding {
             Self::Stdlib => Some(BuiltInProvider::Stdlib),
             Self::Json => Some(BuiltInProvider::Json),
             Self::Time => Some(BuiltInProvider::Time),
+            Self::Erlang => Some(BuiltInProvider::Erlang),
             Self::Future => Some(BuiltInProvider::Geam),
             Self::External(_) => None,
         }
@@ -498,6 +505,28 @@ mod tests {
             ],
         );
         assert_eq!(time.capabilities(), HostedCapabilities::IoAndTime);
+
+        let erlang = HostedComponents::from_builtin(BuiltInProvider::Erlang);
+        assert_eq!(
+            erlang.iter().collect::<Vec<_>>(),
+            [
+                &ComponentBinding::Future,
+                &ComponentBinding::Stdlib,
+                &ComponentBinding::Erlang
+            ],
+        );
+        assert_eq!(erlang.capabilities(), HostedCapabilities::Io);
+        assert_eq!(
+            erlang
+                .iter()
+                .filter_map(ComponentBinding::built_in)
+                .collect::<Vec<_>>(),
+            [
+                BuiltInProvider::Geam,
+                BuiltInProvider::Stdlib,
+                BuiltInProvider::Erlang
+            ],
+        );
     }
 
     #[test]
@@ -1050,6 +1079,7 @@ resolver = "3"
             HostedBindings::resolve(
                 &package,
                 PlainBindings {
+                    named_types: Vec::new(),
                     geam_alias: package.geam_alias().clone(),
                     root_module: "boundary".to_owned(),
                     first: FunctionBinding {

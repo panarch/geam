@@ -136,6 +136,8 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
         let registered = &self.registered.functions[&template.id()];
         let implementation = Arc::clone(&registered.implementation);
         let return_ = context.representations.inhabitation(shape.return_());
+        let constructions =
+            sealing::seal_host_types(template, &registered.constructions, key, context)?;
 
         match implementation.as_ref() {
             RegisteredHostFunctionImplementation::Value(implementation) => {
@@ -148,8 +150,6 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
                     ));
                 };
                 sealing::seal_callbacks(template, key, &shape, &context.representations, true)?;
-                let constructions =
-                    sealing::seal_host_types(template, &registered.constructions, key, context);
                 let parameters =
                     parameter::lower_host_parameters(&parameters, template.layout(), context);
                 let type_ = context.lower_concrete_function_type(&shape);
@@ -177,8 +177,6 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
             }
             RegisteredHostFunctionImplementation::Never(implementation) => {
                 sealing::seal_callbacks(template, key, &shape, &context.representations, false)?;
-                let constructions =
-                    sealing::seal_host_types(template, &registered.constructions, key, context);
                 let parameters =
                     parameter::lower_host_parameters(&parameters, template.layout(), context);
                 let type_ = context.lower_concrete_function_type(&shape);

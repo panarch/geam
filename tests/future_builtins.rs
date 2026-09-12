@@ -1,9 +1,7 @@
 use camino::Utf8Path;
 use geam::builtin::FutureComponent;
-use geam::embedding::{
-    BigInt, FunctionDeclaration, FutureType, HostedModule, HostedModuleBuilder,
-    with_execution_scope,
-};
+use geam::embedding::{BigInt, FunctionDeclaration, FutureType, HostedModule, HostedModuleBuilder};
+use geam::gleam_erlang::{Component as ErlangComponent, Configuration, ErlangExecution};
 use geam::gleam_json::{Component as JsonComponent, GleamJsonStores};
 use geam::gleam_stdlib::{
     Component as StdlibComponent, GleamStdlibHostProfile, GleamStdlibRunState, GleamStdlibStores,
@@ -15,12 +13,16 @@ use geam::host::{
 };
 use geam::{EchoOutput, EchoSink, HostFailure, HostProfile};
 use std::cell::Cell;
-use std::future::Future;
-use std::task::{Context, Poll, Waker};
+use std::task::Poll;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+#[path = "support/execution_host.rs"]
+mod execution_fixture;
 #[path = "support/workspace_dependencies.rs"]
 mod workspace_dependencies;
+
+#[path = "future_builtins/processes.rs"]
+mod processes;
 
 #[derive(Default)]
 pub struct NativeState {
@@ -61,6 +63,7 @@ struct State {
     native: NativeState,
     work: (),
     json: (),
+    erlang: Configuration,
 }
 #[derive(Default)]
 struct HostStores {
@@ -69,6 +72,7 @@ struct HostStores {
     native: Stores,
     work: HostFutureStore,
     time: (),
+    erlang: geam::gleam_erlang::Stores<Profile>,
 }
 struct Clock(Cell<u64>);
 impl TimeSource for Clock {
@@ -84,6 +88,20 @@ impl TimeSource for Clock {
 impl HostProfile for Profile {
     type RunState = State;
     type ExternalStores = HostStores;
+    type ExecutionState = ErlangExecution;
+}
+impl geam::gleam_erlang::GleamErlangHostProfile for Profile {
+    fn erlang_execution(state: &mut ErlangExecution) -> &mut ErlangExecution {
+        state
+    }
+}
+impl HostComponentProfile<ErlangComponent<Profile>> for Profile {
+    fn component_stores(stores: &HostStores) -> &geam::gleam_erlang::Stores<Profile> {
+        &stores.erlang
+    }
+    fn component_state(state: &mut State) -> &mut Configuration {
+        &mut state.erlang
+    }
 }
 impl GleamStdlibHostProfile for Profile {
     type Io = Vec<IoOutput>;
@@ -149,7 +167,7 @@ struct Fixture {
     later: geam::embedding::Function<(), BigInt>,
 }
 
-fn fixture() -> Fixture {
+fn project_root() -> camino::Utf8PathBuf {
     let root =
         Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/projects/future_builtins");
     static PREPARED: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
@@ -160,19 +178,25 @@ fn fixture() -> Fixture {
         &["deps", "download"],
         "`gleam deps download`",
     );
+    root
+}
+
+fn providers() -> HostProviderSet<Profile> {
     let mut providers = geam::gleam_stdlib::host_providers::<Profile>().expect("stdlib");
     providers.extend(geam::gleam_json::host_providers::<Profile>().expect("JSON"));
     providers.extend(geam::gleam_time::host_providers::<Profile>().expect("Time"));
+    providers.extend(geam::gleam_erlang::host_providers::<Profile>().expect("Erlang"));
     providers.extend(FutureComponent::providers::<Profile>().expect("Future"));
     providers.extend(
         <Component as HostProviderComponentRegistration<Profile>>::providers().expect("native"),
     );
-    let program = geam::frontend::compile_typed_host_project(
-        root,
-        "future_builtins",
-        HostProviderSet::from_providers(providers).expect("provider set"),
-    )
-    .expect("official source with explicit Future package");
+    HostProviderSet::from_providers(providers).expect("provider set")
+}
+
+fn fixture() -> Fixture {
+    let program =
+        geam::frontend::compile_typed_host_project(project_root(), "future_builtins", providers())
+            .expect("official source with explicit Future package");
     let (mut bindings, work) = HostedModuleBuilder::new(program)
         .expect("plan")
         .function(FunctionDeclaration::<(), FutureType<BigInt>>::new("work"))
@@ -189,6 +213,8 @@ fn fixture() -> Fixture {
 
 #[test]
 fn builtins_and_retained_values_survive_pending_and_repeated_native_callbacks() {
+    let execution_host = crate::execution_fixture::TestHost::default();
+
     let Fixture {
         mut module,
         work,
@@ -204,32 +230,32 @@ fn builtins_and_retained_values_survive_pending_and_repeated_native_callbacks() 
         },
         work: (),
         json: (),
+        erlang: Configuration::default(),
     };
     let mut echo = Echo::default();
-    let mut task = Box::pin(with_execution_scope(async |guard| {
-        let mut scope = module.attach(guard, &mut state, &mut echo);
-        let work = scope.call(&work, ()).expect("construction");
-        let result = scope.observe(&work).await.expect("completion");
-        let shared = scope.observe(&work).await.expect("shared completion");
-        result.read(|left| shared.read(|right| assert!(std::ptr::eq(left, right))));
-        assert_eq!(
-            scope.call(&later, ()).expect("direct call after work"),
-            BigInt::from(103)
+    let mut task =
+        Box::pin(
+            module.with_execution(&execution_host, &mut state, &mut echo, async |scope| {
+                let work = scope.call(&work, ()).await.expect("construction");
+                let result = scope.observe(&work).await.expect("completion");
+                let shared = scope.observe(&work).await.expect("shared completion");
+                result.read(|left| shared.read(|right| assert!(std::ptr::eq(left, right))));
+                assert_eq!(
+                    scope
+                        .call(&later, ())
+                        .await
+                        .expect("direct call after work"),
+                    BigInt::from(103)
+                );
+                result
+            }),
         );
-        result
-    }));
-    assert!(
-        task.as_mut()
-            .poll(&mut Context::from_waker(Waker::noop()))
-            .is_pending()
-    );
+    assert!(execution_host.poll(task.as_mut()).is_pending());
     send.send(()).expect("release native work");
     let result = std::thread::scope(|threads| {
         threads
             .spawn(|| {
-                let Poll::Ready(result) =
-                    task.as_mut().poll(&mut Context::from_waker(Waker::noop()))
-                else {
+                let Poll::Ready(result) = execution_host.poll(task.as_mut()) else {
                     panic!("released work completes")
                 };
                 result
@@ -238,7 +264,10 @@ fn builtins_and_retained_values_survive_pending_and_repeated_native_callbacks() 
             .expect("different worker")
     });
     drop(task);
-    assert_eq!(result.read(Clone::clone), BigInt::from(82));
+    assert_eq!(
+        result.expect("controlled execution").read(Clone::clone),
+        BigInt::from(82)
+    );
     assert_eq!(state.native.starts.get(), 1);
     assert_eq!(state.clock.0.get(), 104);
     assert_eq!(echo.0, ["20", "21"]);
@@ -260,6 +289,8 @@ fn builtins_and_retained_values_survive_pending_and_repeated_native_callbacks() 
 
 #[test]
 fn dropping_the_execution_cancels_pending_callbacks_without_replacing_builtin_state() {
+    let execution_host = crate::execution_fixture::TestHost::default();
+
     let Fixture {
         mut module,
         work,
@@ -275,18 +306,17 @@ fn dropping_the_execution_cancels_pending_callbacks_without_replacing_builtin_st
         },
         work: (),
         json: (),
+        erlang: Configuration::default(),
     };
     let mut echo = Echo::default();
-    let mut task = Box::pin(with_execution_scope(async |guard| {
-        let mut scope = module.attach(guard, &mut state, &mut echo);
-        let work = scope.call(&work, ()).expect("construction");
-        scope.observe(&work).await
-    }));
-    assert!(
-        task.as_mut()
-            .poll(&mut Context::from_waker(Waker::noop()))
-            .is_pending()
-    );
+    let mut task =
+        Box::pin(
+            module.with_execution(&execution_host, &mut state, &mut echo, async |scope| {
+                let work = scope.call(&work, ()).await.expect("construction");
+                scope.observe(&work).await
+            }),
+        );
+    assert!(execution_host.poll(task.as_mut()).is_pending());
     drop(task);
     assert_eq!(
         send.send(()),
@@ -297,14 +327,21 @@ fn dropping_the_execution_cancels_pending_callbacks_without_replacing_builtin_st
     assert_eq!(state.clock.0.get(), 101);
     assert!(echo.0.is_empty());
     {
-        let mut task = Box::pin(with_execution_scope(async |guard| {
-            module
-                .attach(guard, &mut state, &mut echo)
-                .call(&later, ())
-                .expect("direct call after cancellation")
-        }));
+        let mut task = Box::pin(module.with_execution(
+            &execution_host,
+            &mut state,
+            &mut echo,
+            async |scope| {
+                scope
+                    .call(&later, ())
+                    .await
+                    .expect("direct call after cancellation")
+            },
+        ));
         assert_eq!(
-            task.as_mut().poll(&mut Context::from_waker(Waker::noop())),
+            execution_host
+                .poll(task.as_mut())
+                .map(|result| result.expect("controlled execution")),
             Poll::Ready(BigInt::from(101))
         );
     }

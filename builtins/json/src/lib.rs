@@ -1,3 +1,7 @@
+#[cfg(test)]
+#[path = "../../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 mod function;
 mod schema;
 
@@ -86,6 +90,7 @@ impl GleamJsonRunState {
 impl HostProfile for GleamJsonProfile {
     type RunState = GleamJsonRunState;
     type ExternalStores = GleamJsonProfileStores;
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<GleamStdlibComponent> for GleamJsonProfile {

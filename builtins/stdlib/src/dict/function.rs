@@ -28,7 +28,6 @@ pub(super) mod provider {
         input = DictInput,
         payload = DictPayload,
         manual,
-
     )]
     pub struct DictValue<Key, Item>;
 
@@ -38,7 +37,6 @@ pub(super) mod provider {
         input = TransientDictInput,
         payload = DictPayload,
         manual,
-
     )]
     pub(super) struct TransientDictValue<Key, Item>;
 
@@ -67,7 +65,7 @@ pub(super) mod provider {
         key: Value<Key>,
         dict: DictInput<Key, Item>,
     ) -> bool {
-        let key_hash = call.source_hash(&key);
+        let key_hash = call.native_source_hash(&key);
         dict.payload()
             .storage
             .matching_index(key_hash, &mut |index| {
@@ -93,7 +91,7 @@ pub(super) mod provider {
         dict: DictInput<Key, Item>,
         key: Value<Key>,
     ) -> Result<Value<Item>, ()> {
-        let key_hash = call.source_hash(&key);
+        let key_hash = call.native_source_hash(&key);
         let Some(index) =
             dict.payload()
                 .storage
@@ -118,7 +116,7 @@ pub(super) mod provider {
         value: Value<Item>,
         dict: DictInput<Key, Item>,
     ) -> DictValue<Key, Item> {
-        let key_hash = call.source_hash(&key);
+        let key_hash = call.native_source_hash(&key);
         let index =
             dict.payload()
                 .storage
@@ -146,7 +144,7 @@ pub(super) mod provider {
         value: Value<Item>,
         transient: TransientDictInput<Key, Item>,
     ) -> TransientDictValue<Key, Item> {
-        let key_hash = call.source_hash(&key);
+        let key_hash = call.native_source_hash(&key);
         let index = transient
             .payload()
             .storage
@@ -168,13 +166,13 @@ pub(super) mod provider {
         })
     }
 
-    #[geam_macros::function(profile = Profile)]
-    fn do_map_values<Key, Mapped, Item>(
+    #[geam_macros::function(profile = Profile, await)]
+    async fn do_map_values<Key, Mapped, Item>(
         #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
         function: Callback<fn(Value<Key>, Value<Item>) -> Value<Mapped>>,
         dict: DictInput<Key, Item>,
     ) -> HostResult<DictValue<Key, Mapped>> {
-        let coordinates = dict.payload().coordinates();
+        let coordinates = dict.with_payload(DictPayload::coordinates);
         let mut buckets = im::HashMap::new();
         for (key_hash, index) in coordinates {
             let key = call.restore(
@@ -184,9 +182,11 @@ pub(super) mod provider {
                 call.restore(dict.stored_item(|payload| {
                     payload.storage.buckets[&key_hash][index].value.as_ref()
                 }));
-            let value = call.invoke(function, (key, value))?;
-            let entry = dict.payload().storage.buckets[&key_hash][index]
-                .with_value(call.store(value).into_retained());
+            let value = call.invoke(&function, (key, value)).await?;
+            let value = call.store(value).into_retained();
+            let entry = dict.with_payload(|payload| {
+                payload.storage.buckets[&key_hash][index].with_value(value)
+            });
             buckets
                 .entry(key_hash)
                 .or_insert_with(im::Vector::new)
@@ -195,7 +195,7 @@ pub(super) mod provider {
         Ok(DictValue::from_payload(DictPayload {
             storage: DictStorage {
                 buckets,
-                len: dict.payload().storage.len,
+                len: dict.with_payload(|payload| payload.storage.len),
             },
         }))
     }
@@ -206,7 +206,7 @@ pub(super) mod provider {
         key: Value<Key>,
         transient: TransientDictInput<Key, Item>,
     ) -> TransientDictValue<Key, Item> {
-        let key_hash = call.source_hash(&key);
+        let key_hash = call.native_source_hash(&key);
         let Some(index) = transient
             .payload()
             .storage
@@ -225,14 +225,14 @@ pub(super) mod provider {
         })
     }
 
-    #[geam_macros::function(profile = Profile)]
-    fn do_fold<Accumulator, Key, Item>(
+    #[geam_macros::function(profile = Profile, await)]
+    async fn do_fold<Accumulator, Key, Item>(
         #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
         function: Callback<fn(Value<Key>, Value<Item>, Value<Accumulator>) -> Value<Accumulator>>,
         mut accumulator: Value<Accumulator>,
         dict: DictInput<Key, Item>,
     ) -> HostResult<Value<Accumulator>> {
-        for (key_hash, index) in dict.payload().coordinates() {
+        for (key_hash, index) in dict.with_payload(DictPayload::coordinates) {
             let key = call.restore(
                 dict.stored_key(|payload| payload.storage.buckets[&key_hash][index].key.as_ref()),
             );
@@ -240,40 +240,57 @@ pub(super) mod provider {
                 call.restore(dict.stored_item(|payload| {
                     payload.storage.buckets[&key_hash][index].value.as_ref()
                 }));
-            accumulator = call.invoke(function, (key, value, accumulator))?;
+            accumulator = call.invoke(&function, (key, value, accumulator)).await?;
         }
         Ok(accumulator)
     }
 
-    #[geam_macros::function(profile = Profile)]
-    fn transient_update_with<Key, Item>(
+    #[geam_macros::function(profile = Profile, await)]
+    async fn transient_update_with<Key, Item>(
         #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
         key: Value<Key>,
         function: Callback<fn(Value<Item>) -> Value<Item>>,
         initial: Value<Item>,
         transient: TransientDictInput<Key, Item>,
     ) -> HostResult<TransientDictValue<Key, Item>> {
-        let key_hash = call.source_hash(&key);
-        let index = transient
-            .payload()
-            .storage
-            .matching_index(key_hash, &mut |index| {
-                let candidate =
-                    call.restore(transient.stored_key(|payload| {
-                        payload.storage.buckets[&key_hash][index].key.as_ref()
-                    }));
-                call.equal(&candidate, &key)
-            });
+        let (mut key, key_hash) = call
+            .with_call(move |call| {
+                let hash = call.native_source_hash(&key);
+                (key, hash)
+            })
+            .await?;
+        let candidates = transient.with_payload(|payload| {
+            payload
+                .storage
+                .buckets
+                .get(&key_hash)
+                .map_or(0, im::Vector::len)
+        });
+        let mut index = None;
+        for position in 0..candidates {
+            let candidate =
+                call.restore(transient.stored_key(|payload| {
+                    payload.storage.buckets[&key_hash][position].key.as_ref()
+                }));
+            let (equal, returned_key) = call
+                .with_call(move |call| (call.equal(&candidate, &key), key))
+                .await?;
+            key = returned_key;
+            if equal {
+                index = Some(position);
+                break;
+            }
+        }
         let value = match index {
             Some(index) => {
                 let value = call.restore(transient.stored_item(|payload| {
                     payload.storage.buckets[&key_hash][index].value.as_ref()
                 }));
-                call.invoke(function, (value,))?
+                call.invoke(&function, (value,)).await?
             }
             None => initial,
         };
-        let storage = transient.payload().storage.clone();
+        let storage = transient.with_payload(|payload| payload.storage.clone());
         let entry = DictEntry::new(
             key_hash,
             call.store(key).into_retained(),
@@ -307,9 +324,28 @@ where
     Provider: HostProvider<Profile>,
     Return: HostType,
 {
+    create_dynamic_dict_with(call, construction, entries, |_, entry| entry)
+}
+
+pub(super) fn create_dynamic_dict_with<'call, Profile, Provider, Return, Entry>(
+    call: &mut geam_core::host::HostCall<'call, Profile, Provider, Return>,
+    construction: HostConstruction<'call, DictOf<Dynamic, Dynamic>>,
+    entries: impl IntoIterator<Item = Entry>,
+    mut convert: impl FnMut(
+        &mut geam_core::host::HostCall<'call, Profile, Provider, Return>,
+        Entry,
+    ) -> (HostExternal<'call, Dynamic>, HostExternal<'call, Dynamic>),
+) -> HostExternal<'call, DictOf<Dynamic, Dynamic>>
+where
+    Profile: crate::GleamStdlibProviderProfile,
+    Profile::RunState: Send,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+{
     let mut buckets = HashMap::new();
-    for (key, value) in entries {
-        let key_hash = call.source_hash::<Dynamic>(key);
+    for entry in entries {
+        let (key, value) = convert(call, entry);
+        let key_hash = call.native_source_hash::<Dynamic>(key);
         insert_first(&mut buckets, key_hash, key, value, |stored, candidate| {
             call.equal::<Dynamic>(*stored, *candidate)
         });
@@ -376,33 +412,25 @@ mod tests {
             Component, GleamStdlibHostProfile, GleamStdlibRunState, GleamStdlibStores, IoOutput,
         };
         use ecow::EcoString;
-        use geam_builtin::FutureComponent;
-        use geam_core::embedding::{
-            FunctionDeclaration, HostedModuleBuilder, with_execution_scope,
-        };
+        use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder};
         use geam_core::frontend::compile_typed_host_program;
-        use geam_core::host::{
-            HostCall, HostComponentProfile, HostExternalBinding, HostFutureStore,
-        };
+        use geam_core::host::{HostCall, HostComponentProfile, HostExternalBinding};
         use geam_core::{
             HostCallCompletion, HostExternal, HostProfile, HostProvider, HostProviderSet,
             ModuleSource, PackageSource,
         };
         use num_bigint::BigInt;
-        use std::future::Future;
         use std::pin::pin;
         use std::sync::{Arc, Weak};
-        use std::task::{Context, Poll, Waker};
+        use std::task::Poll;
 
         struct Profile;
         #[derive(Default)]
         struct Stores {
             stdlib: GleamStdlibStores,
-            work: HostFutureStore,
         }
         struct State {
             stdlib: GleamStdlibRunState,
-            work: (),
             entries: Vec<Weak<DictEntry>>,
         }
         struct Observer;
@@ -418,6 +446,7 @@ mod tests {
         impl HostProfile for Profile {
             type RunState = State;
             type ExternalStores = Stores;
+            type ExecutionState = ();
         }
         impl GleamStdlibHostProfile for Profile {
             type Io = Vec<IoOutput>;
@@ -428,17 +457,6 @@ mod tests {
             }
             fn component_state(state: &mut State) -> &mut GleamStdlibRunState {
                 &mut state.stdlib
-            }
-        }
-        impl geam_core::host::HostWorkProfile for Profile {
-            type Work = FutureComponent;
-        }
-        impl HostComponentProfile<FutureComponent> for Profile {
-            fn component_stores(stores: &Stores) -> &HostFutureStore {
-                &stores.work
-            }
-            fn component_state(state: &mut State) -> &mut () {
-                &mut state.work
             }
         }
         impl HostProvider<Profile> for Observer {
@@ -529,27 +547,27 @@ pub fn run() -> Nil {
             let mut module = bindings.seal().expect("seal");
             let mut state = State {
                 stdlib: GleamStdlibRunState::from_seed([0; 32]),
-                work: (),
                 entries: Vec::new(),
             };
             assert!(std::ptr::eq(
                 <Profile as HostComponentProfile<Component>>::component_state(&mut state),
                 &state.stdlib,
             ));
-            assert!(std::ptr::eq(
-                <Profile as HostComponentProfile<FutureComponent>>::component_state(&mut state),
-                &state.work,
-            ));
             let mut echo = Echo::default();
             {
-                let mut task = pin!(with_execution_scope(async |guard| {
-                    module
-                        .attach(guard, &mut state, &mut echo)
-                        .call(&entry, ())
-                        .expect("direct update");
-                }));
+                let execution_host = crate::execution_fixture::TestHost::default();
+                let mut task = pin!(module.with_execution(
+                    &execution_host,
+                    &mut state,
+                    &mut echo,
+                    async |scope| {
+                        scope.call(&entry, ()).await.expect("direct update");
+                    }
+                ));
                 assert_eq!(
-                    task.as_mut().poll(&mut Context::from_waker(Waker::noop())),
+                    execution_host
+                        .poll(task.as_mut())
+                        .map(|result| result.expect("controlled execution")),
                     Poll::Ready(())
                 );
             }
@@ -680,6 +698,7 @@ fn transient_update_with(
     impl HostProfile for CollisionProfile {
         type RunState = CollisionRunState;
         type ExternalStores = CollisionStores;
+        type ExecutionState = ();
     }
 
     impl HostComponentProfile<GleamStdlibComponent> for CollisionProfile {
@@ -915,11 +934,14 @@ pub fn main() {
   final
 }
 "#;
-        let execution = execution(source, [float]);
+        let mut execution = execution(source, [float]);
         let mut echoes = Vec::new();
-        let actual = execution
-            .run_main(&mut GleamStdlibRunState::from_seed([0; 32]), &mut echoes)
-            .expect("dict operations should run");
+        let actual = crate::execution_fixture::run(
+            &mut execution,
+            &mut GleamStdlibRunState::from_seed([0; 32]),
+            &mut echoes,
+        )
+        .expect("dict operations should run");
 
         assert_eq!(
             actual.inspect().to_string(),
@@ -934,7 +956,7 @@ pub fn main() {
 
     #[test]
     fn collision_bucket_deletion_retains_other_entries_through_the_hosted_pipeline() {
-        let execution = collision_execution(
+        let mut execution = collision_execution(
             r#"
 import host/collision
 
@@ -965,8 +987,7 @@ pub fn main() {
             <CollisionProvider as HostProvider<CollisionProfile>>::project(&mut state) as *mut ();
         assert_eq!(projected_keys.cast_const(), expected_keys);
 
-        let actual = execution
-            .run_main(&mut state, &mut Vec::new())
+        let actual = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
             .expect("colliding dict key should be removed without dropping its bucket peer");
 
         assert_eq!(
@@ -995,13 +1016,13 @@ pub fn main() {
   do_map_values(failure.reject, values)
 }
 "#;
-        let execution = execution(source, [failure]);
-        let error = execution
-            .run_main(
-                &mut GleamStdlibRunState::from_seed([0; 32]),
-                &mut Vec::new(),
-            )
-            .expect_err("nested host callback should fail");
+        let mut execution = execution(source, [failure]);
+        let error = crate::execution_fixture::run(
+            &mut execution,
+            &mut GleamStdlibRunState::from_seed([0; 32]),
+            &mut Vec::new(),
+        )
+        .expect_err("nested host callback should fail");
         assert_eq!(
             error.to_string(),
             "host function gleam_stdlib::host/failure.reject failed: value is unavailable",
@@ -1027,13 +1048,13 @@ pub fn main() {
   do_fold(failure.reject, 0, do_insert("a", 1, new()))
 }
 "#;
-        let execution = execution(source, [failure]);
-        let error = execution
-            .run_main(
-                &mut GleamStdlibRunState::from_seed([0; 32]),
-                &mut Vec::new(),
-            )
-            .expect_err("nested fold callback should fail");
+        let mut execution = execution(source, [failure]);
+        let error = crate::execution_fixture::run(
+            &mut execution,
+            &mut GleamStdlibRunState::from_seed([0; 32]),
+            &mut Vec::new(),
+        )
+        .expect_err("nested fold callback should fail");
 
         assert_eq!(
             error.to_string(),
@@ -1059,13 +1080,13 @@ pub fn main() {
   Nil
 }
 "#;
-        let execution = execution(source, [failure]);
-        let error = execution
-            .run_main(
-                &mut GleamStdlibRunState::from_seed([0; 32]),
-                &mut Vec::new(),
-            )
-            .expect_err("nested update callback should fail");
+        let mut execution = execution(source, [failure]);
+        let error = crate::execution_fixture::run(
+            &mut execution,
+            &mut GleamStdlibRunState::from_seed([0; 32]),
+            &mut Vec::new(),
+        )
+        .expect_err("nested update callback should fail");
 
         assert_eq!(
             error.to_string(),
@@ -1085,13 +1106,13 @@ pub fn main() {
   do_map_values(reject, do_insert("a", 1, new()))
 }
 "#;
-        let execution = execution(source, Vec::<HostModule<GleamStdlibProfile>>::new());
-        let error = execution
-            .run_main(
-                &mut GleamStdlibRunState::from_seed([0; 32]),
-                &mut Vec::new(),
-            )
-            .expect_err("nested source callback should panic");
+        let mut execution = execution(source, Vec::<HostModule<GleamStdlibProfile>>::new());
+        let error = crate::execution_fixture::run(
+            &mut execution,
+            &mut GleamStdlibRunState::from_seed([0; 32]),
+            &mut Vec::new(),
+        )
+        .expect_err("nested source callback should panic");
         assert_eq!(
             error.to_string(),
             "let_assert: Pattern match failed, no pattern matched the value.",

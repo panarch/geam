@@ -16,6 +16,8 @@ mod calendar;
 mod duration;
 #[path = "gleam_time/effects.rs"]
 mod effects;
+#[path = "../../../tests/support/execution_host.rs"]
+mod execution_fixture;
 #[path = "gleam_time/surface.rs"]
 mod surface;
 #[path = "gleam_time/timestamp.rs"]
@@ -120,10 +122,9 @@ fn run_fixture(root_module: &str, source: ScriptedSource) -> Value {
     };
     let mut state = GleamTimeRunState::new(GleamStdlibRunState::from_seed([0; 32]), source);
     let expected = fixture_expected(root_module);
-    let execution = fixture_execution(root_module);
+    let mut execution = fixture_execution(root_module);
     let mut echo = Vec::new();
-    let actual = execution
-        .run_main(&mut state, &mut echo)
+    let actual = crate::execution_fixture::run(&mut execution, &mut state, &mut echo)
         .expect("official Time fixture should run");
 
     assert_eq!(actual.inspect().to_string(), expected);

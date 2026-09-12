@@ -71,7 +71,7 @@ pub fn main() {
             .collect::<Vec<_>>(),
         ["subtract", "add", "unused"],
     );
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
     let expected = Value::Tuple(vec![
         Value::Int(
@@ -87,7 +87,7 @@ pub fn main() {
 
     let mut first_echoes = Vec::new();
     assert_eq!(
-        execution.run_main(&mut (), &mut first_echoes),
+        crate::execution_fixture::run(&mut execution, &mut (), &mut first_echoes),
         Ok(expected.clone()),
     );
     assert_eq!(
@@ -100,7 +100,7 @@ pub fn main() {
 
     let mut second_echoes = Vec::new();
     assert_eq!(
-        execution.run_main(&mut (), &mut second_echoes),
+        crate::execution_fixture::run(&mut execution, &mut (), &mut second_echoes),
         Ok(expected),
     );
     assert_eq!(

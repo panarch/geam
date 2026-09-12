@@ -1,16 +1,16 @@
+#[path = "../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 use geam_builtin::FutureComponent;
 use geam_builtin::embedding::FutureType;
-use geam_core::embedding::{
-    BigInt, FunctionDeclaration, HostedModuleBuilder, with_execution_scope,
-};
+use geam_core::embedding::{BigInt, FunctionDeclaration, HostedModuleBuilder};
 use geam_core::frontend::compile_typed_host_program;
 use geam_core::host::{
     HostComponentProfile, HostFutureStore, HostProfile, HostProviderComponentRegistration,
     HostProviderSet,
 };
 use geam_core::{ModuleSource, PackageSource};
-use std::future::Future;
-use std::task::{Context, Poll, Waker};
+use std::task::Poll;
 
 #[derive(Default)]
 pub struct State {
@@ -70,6 +70,7 @@ struct HostStores {
 impl HostProfile for Profile {
     type RunState = HostState;
     type ExternalStores = HostStores;
+    type ExecutionState = ();
 }
 impl HostComponentProfile<Component> for Profile {
     fn component_stores(stores: &HostStores) -> &Stores {
@@ -101,6 +102,8 @@ impl geam_core::EchoSink for Echo {
 
 #[test]
 fn async_declarations_construct_source_work_and_only_the_rust_owner_drives_it() {
+    let execution_host = crate::execution_fixture::TestHost::default();
+
     let source = r#"
 import geam/future
 @external(erlang, "native", "double")
@@ -164,28 +167,35 @@ pub fn work(value: Int) {
         future: (),
     };
     let mut echo = Echo::default();
-    let mut task = Box::pin(with_execution_scope(async |guard| {
-        let mut scope = module.attach(guard, &mut state, &mut echo);
-        assert_eq!(
-            scope.call(&double, (21.into(),)).expect("ordinary call"),
-            BigInt::from(42)
+    let mut task =
+        Box::pin(
+            module.with_execution(&execution_host, &mut state, &mut echo, async |scope| {
+                assert_eq!(
+                    scope
+                        .call(&double, (21.into(),))
+                        .await
+                        .expect("ordinary call"),
+                    BigInt::from(42)
+                );
+                let value = scope
+                    .call(&work, (10.into(),))
+                    .await
+                    .expect("construct work");
+                let first = scope.observe(&value).await.expect("first observation");
+                let second = scope.observe(&value).await.expect("shared observation");
+                first.read(|a| second.read(|b| assert!(std::ptr::eq(a, b))));
+                first
+            }),
         );
-        let value = scope.call(&work, (10.into(),)).expect("construct work");
-        let first = scope.observe(&value).await.expect("first observation");
-        let second = scope.observe(&value).await.expect("shared observation");
-        first.read(|a| second.read(|b| assert!(std::ptr::eq(a, b))));
-        first
-    }));
-    assert!(
-        task.as_mut()
-            .poll(&mut Context::from_waker(Waker::noop()))
-            .is_pending()
-    );
+    assert!(execution_host.poll(task.as_mut()).is_pending());
     send.send(10.into()).expect("pending native operation");
-    let Poll::Ready(result) = task.as_mut().poll(&mut Context::from_waker(Waker::noop())) else {
+    let Poll::Ready(result) = execution_host.poll(task.as_mut()) else {
         panic!("released work completes")
     };
-    assert_eq!(result.read(Clone::clone), BigInt::from(22));
+    assert_eq!(
+        result.expect("execution completed").read(Clone::clone),
+        BigInt::from(22)
+    );
     drop(task);
     assert_eq!(state.provider.starts.get(), 1);
     assert_eq!(

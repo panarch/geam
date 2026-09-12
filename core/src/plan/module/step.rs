@@ -68,7 +68,6 @@ pub(crate) enum AssertSubject {
     BitArray(BitArrayLocalId),
     Custom(CustomLocal),
     Bool(BoolLocalId),
-    Nil(NilLocalId),
     Tuple(TupleLocalId),
     List(ListLocal),
 }

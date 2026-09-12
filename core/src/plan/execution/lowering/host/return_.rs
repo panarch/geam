@@ -599,7 +599,7 @@ pub fn main() {
         )
         .expect("host source should compile");
         let plan = plan_host_program(typed).expect("host source should plan");
-        let execution =
+        let mut execution =
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         let graph: &ValueFunctionEntry<IntFunctionBody, HostedFunctionTarget<IntFunctionBody>> =
             execution
@@ -628,7 +628,7 @@ pub fn main() {
                     == HostedFunctionTarget::value(HostFunctionId::new(0, IntLocalId(0)))
         ));
         assert_eq!(
-            execution.run_main(&mut (), &mut Vec::new()),
+            crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
             Ok(crate::Value::Int(3.into())),
         );
     }
@@ -663,7 +663,7 @@ pub fn main() {
         )
         .expect("host source should compile");
         let plan = plan_host_program(typed).expect("host source should plan");
-        let execution =
+        let mut execution =
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         let main: &ValueFunctionEntry<BoolFunctionBody, HostedFunctionTarget<BoolFunctionBody>> =
             execution
@@ -700,7 +700,7 @@ pub fn main() {
                     == HostedFunctionTarget::value(HostFunctionId::new(0, BoolLocalId(0)))
         ));
         assert_eq!(
-            execution.run_main(&mut (), &mut Vec::new()),
+            crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
             Ok(crate::Value::Bool(true)),
         );
     }

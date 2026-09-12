@@ -4,6 +4,9 @@ pub(in crate::runtime) struct RuntimeHost<'run, Profile: crate::HostProfile> {
     state: &'run mut Profile::RunState,
     stores: &'run Profile::ExternalStores,
     work: &'run crate::runtime::work::execution::ExecutionWork<Profile>,
+    units: &'run mut crate::runtime::execution::Units<Profile>,
+    execution: crate::runtime::execution::ExecutionContext<Profile>,
+    clock: crate::execution::ExecutionClock<'run>,
 }
 
 pub(in crate::runtime) trait RuntimeHostState {
@@ -33,11 +36,17 @@ impl<'run, Profile: crate::HostProfile> RuntimeHost<'run, Profile> {
         state: &'run mut Profile::RunState,
         stores: &'run Profile::ExternalStores,
         work: &'run crate::runtime::work::execution::ExecutionWork<Profile>,
+        units: &'run mut crate::runtime::execution::Units<Profile>,
+        execution: crate::runtime::execution::ExecutionContext<Profile>,
+        clock: crate::execution::ExecutionClock<'run>,
     ) -> Self {
         Self {
             state,
             stores,
             work,
+            units,
+            execution,
+            clock,
         }
     }
 
@@ -47,6 +56,28 @@ impl<'run, Profile: crate::HostProfile> RuntimeHost<'run, Profile> {
 
     pub(in crate::runtime) fn work(&self) -> crate::runtime::work::execution::WorkContext<Profile> {
         self.work.context()
+    }
+
+    pub(in crate::runtime) fn execution(
+        &self,
+    ) -> crate::runtime::execution::ExecutionContext<Profile> {
+        self.execution.clone()
+    }
+
+    pub(in crate::runtime) fn execution_state(&mut self) -> &mut Profile::ExecutionState {
+        self.units.state()
+    }
+
+    pub(in crate::runtime) fn clock(&self) -> crate::execution::ExecutionClock<'_> {
+        self.clock
+    }
+
+    pub(in crate::runtime) fn spawn(
+        &mut self,
+        callable: crate::runtime::RetainedCallable,
+        origin: crate::runtime::HostCallOrigin,
+    ) -> crate::execution::ExecutionUnit {
+        self.units.spawn(callable, origin)
     }
 }
 
@@ -78,14 +109,6 @@ impl<'run> RuntimeState<'run, ()> {
 }
 
 impl<'run, Host> RuntimeState<'run, Host> {
-    pub(super) fn with_host(echo: &'run mut dyn crate::runtime::EchoSink, host: Host) -> Self {
-        Self {
-            echo,
-            host,
-            lists: Default::default(),
-        }
-    }
-
     pub(super) fn with_host_and_lists(
         echo: &'run mut dyn crate::runtime::EchoSink,
         host: Host,
@@ -96,6 +119,14 @@ impl<'run, Host> RuntimeState<'run, Host> {
 
     pub(super) fn host(&self) -> &Host {
         &self.host
+    }
+
+    pub(super) fn host_mut(&mut self) -> &mut Host {
+        &mut self.host
+    }
+
+    pub(super) fn host_and_lists(&mut self) -> (&mut Host, &crate::runtime::RuntimeListStorage) {
+        (&mut self.host, &self.lists)
     }
 
     pub(super) fn emit_echo(&mut self, output: crate::runtime::EchoOutput) {
@@ -133,7 +164,8 @@ mod tests {
 
         let mut host = (num_bigint::BigInt::from(41), true);
         let mut echo = Vec::new();
-        let mut hosted: RuntimeState<'_, _> = RuntimeState::with_host(&mut echo, &mut host);
+        let mut hosted: RuntimeState<'_, _> =
+            RuntimeState::with_host_and_lists(&mut echo, &mut host, Default::default());
         hosted.host_state().0 += 1;
 
         assert!(hosted.host_state().1);

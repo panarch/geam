@@ -53,7 +53,7 @@ impl<Request> Requests<Request> {
     }
 
     pub(crate) fn next(&self, cx: &mut Context<'_>) -> Option<Request> {
-        loop {
+        for _ in 0..64 {
             let waker = Arc::new(cx.waker().clone());
             let (entry, previous) = {
                 let mut queue = self.queue.lock();
@@ -68,11 +68,11 @@ impl<Request> Requests<Request> {
                 }
             }
         }
+        cx.waker().wake_by_ref();
+        None
     }
-}
 
-impl<Request> Drop for Requests<Request> {
-    fn drop(&mut self) {
+    pub(crate) fn close(&self) {
         let (messages, driver) = {
             let mut queue = self.queue.lock();
             queue.accepting = false;
@@ -89,7 +89,17 @@ impl<Request> Drop for Requests<Request> {
     }
 }
 
+impl<Request> Drop for Requests<Request> {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
+
 impl<Request> Sender<Request> {
+    pub(crate) fn same_queue(&self, other: &Self) -> bool {
+        self.queue.ptr_eq(&other.queue)
+    }
+
     pub(crate) fn submit<Output>(
         &self,
         request: impl FnOnce(Reply<Output>) -> Request,
@@ -299,6 +309,36 @@ mod tests {
         assert!(input.is_none());
         reply.send(42).unwrap();
         assert_eq!(Pin::new(&mut live).poll(&mut cx), Poll::Ready(Ok(42)));
+        assert!(requests.next(&mut cx).is_none());
+    }
+
+    #[test]
+    fn a_full_turn_of_cancelling_requests_yields_before_servicing_the_live_tail() {
+        use std::sync::Barrier;
+
+        let requests = Requests::new();
+        let sender = requests.sender();
+        let barrier = Arc::new(Barrier::new(65));
+        let notifications = Arc::new(Notifications::default());
+        let waker = Waker::from(Arc::clone(&notifications));
+        let mut cx = Context::from_waker(&waker);
+        std::thread::scope(|threads| {
+            for _ in 0..64 {
+                let submitted = sender
+                    .submit(|reply: Reply<usize>| (Some(PauseDrop(Arc::clone(&barrier))), reply));
+                threads.spawn(move || drop(submitted));
+            }
+            let mut live = sender.submit(|reply| (None, reply));
+            barrier.wait();
+            // Every cancelled request is empty but still retained by its destructor.
+            assert!(requests.next(&mut cx).is_none());
+            assert_eq!(notifications.0.load(Ordering::Relaxed), 1);
+            let (input, reply) = requests.next(&mut cx).unwrap();
+            assert!(input.is_none());
+            reply.send(42).unwrap();
+            assert_eq!(Pin::new(&mut live).poll(&mut cx), Poll::Ready(Ok(42)));
+            barrier.wait();
+        });
         assert!(requests.next(&mut cx).is_none());
     }
 

@@ -10,10 +10,12 @@ use std::error::Error;
 use std::io::{self, Write};
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let executor = tokio::runtime::Builder::new_current_thread().build()?;
+    let host = geam::execution::TokioHost::new(executor.handle().clone());
     let program = geam_bindings::project().compile()?;
     let builder = HostedModuleBuilder::new(program)?;
     let (bindings, functions) = geam_bindings::bind(builder)?;
-    let module = bindings.seal()?;
+    let mut module = bindings.seal()?;
 
     let mut state = geam_bindings::RunStateInputs {
         stdlib: GleamStdlibRunState::from_seed([7; 32]),
@@ -28,7 +30,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         (" c-7 ".into(), 4.into()),
         ("D-1".into(), (-1).into()),
     ];
-    let review = inventory::review(&module, &functions, rows, &mut state, &mut echo)?;
+    let review = executor.block_on(module.with_execution(
+        &host,
+        &mut state,
+        &mut echo,
+        async |scope| inventory::review(&scope, &functions, rows).await,
+    ))??;
 
     let mut stdout = io::stdout().lock();
     let mut stderr = io::stderr().lock();

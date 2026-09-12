@@ -1,3 +1,7 @@
+#[cfg(test)]
+#[path = "../../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 mod calendar;
 mod source;
 mod timestamp;
@@ -116,6 +120,7 @@ where
 {
     type RunState = GleamTimeRunState<Source>;
     type ExternalStores = GleamTimeProfileStores;
+    type ExecutionState = ();
 }
 
 impl<Source> HostComponentProfile<GleamStdlibComponent> for GleamTimeProfile<Source>
@@ -217,6 +222,7 @@ mod tests {
     impl HostProfile for CustomProfile {
         type RunState = CustomRunState;
         type ExternalStores = CustomStores;
+        type ExecutionState = ();
     }
 
     impl HostComponentProfile<GleamStdlibComponent> for CustomProfile {

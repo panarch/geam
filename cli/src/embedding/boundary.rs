@@ -6,6 +6,10 @@ use gleam_core::type_::{Type, collapse_links};
 use std::collections::HashSet;
 use std::sync::Arc;
 
+mod named;
+use named::NamedTypes;
+pub(super) use named::{ClosedType, NamedKind, NamedType};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum DataType {
     Int,
@@ -20,6 +24,7 @@ pub(super) enum DataType {
     Option(Box<DataType>),
     List(Box<DataType>),
     Future(Box<DataType>),
+    Named(usize),
 }
 
 #[derive(Debug)]
@@ -36,6 +41,7 @@ pub(super) struct PlainBindings {
     pub(super) root_module: String,
     pub(super) first: FunctionBinding,
     pub(super) remaining: Vec<FunctionBinding>,
+    pub(super) named_types: Vec<NamedType>,
 }
 
 impl PlainBindings {
@@ -77,6 +83,7 @@ impl PlainBindings {
         functions.sort_by_key(|(function, _)| function.location.start);
 
         let mut bindings = Vec::new();
+        let mut named = NamedTypes::new(program);
         let mut identifiers = HashSet::new();
         let mut failures = Vec::new();
         for (function, name) in functions {
@@ -95,15 +102,21 @@ impl PlainBindings {
                 }
             };
 
-            let arguments = DataType::from_types(function.arguments.iter().enumerate().map(
-                |(index, argument)| {
-                    (
-                        &argument.type_,
-                        format!("public function `{name}` argument {}", index + 1),
-                    )
-                },
-            ));
+            let arguments = DataType::from_types(
+                &mut named,
+                function
+                    .arguments
+                    .iter()
+                    .enumerate()
+                    .map(|(index, argument)| {
+                        (
+                            &argument.type_,
+                            format!("public function `{name}` argument {}", index + 1),
+                        )
+                    }),
+            );
             let return_type = DataType::from_type(
+                &mut named,
                 &function.return_type,
                 &format!("public function `{name}` return value"),
             );
@@ -140,6 +153,7 @@ impl PlainBindings {
             root_module: root.name.to_string(),
             first,
             remaining: bindings.collect(),
+            named_types: named.finish(),
         })
     }
 
@@ -155,6 +169,10 @@ impl PlainBindings {
                 .chain(std::iter::once(&function.return_type))
                 .any(DataType::has_future)
         })
+    }
+
+    pub(super) fn needs_scope(&self) -> bool {
+        !self.named_types.is_empty() || self.has_future()
     }
 }
 
@@ -183,11 +201,16 @@ impl DataType {
             | Self::BitArray
             | Self::UtfCodepoint
             | Self::Bool
-            | Self::Nil => false,
+            | Self::Nil
+            | Self::Named(_) => false,
         }
     }
 
-    fn from_type(type_: &Arc<Type>, position: &str) -> Result<Self, Vec<String>> {
+    fn from_type(
+        named: &mut NamedTypes<'_>,
+        type_: &Arc<Type>,
+        position: &str,
+    ) -> Result<Self, Vec<String>> {
         if type_.is_int() {
             Ok(Self::Int)
         } else if type_.is_float() {
@@ -205,15 +228,16 @@ impl DataType {
         } else {
             let type_ = collapse_links(type_.clone());
             match type_.as_ref() {
-                Type::Tuple { elements } if (1..=7).contains(&elements.len()) => {
-                    Self::from_types(elements.iter().enumerate().map(|(index, element)| {
+                Type::Tuple { elements } if (1..=7).contains(&elements.len()) => Self::from_types(
+                    named,
+                    elements.iter().enumerate().map(|(index, element)| {
                         (
                             element,
                             format!("{position} -> Tuple element {}", index + 1),
                         )
-                    }))
-                    .map(Self::Tuple)
-                }
+                    }),
+                )
+                .map(Self::Tuple),
                 Type::Tuple { elements } => Err(vec![format!(
                     "{position} has Tuple arity {}, but embedding supports Tuple arity 1..=7",
                     elements.len(),
@@ -232,21 +256,27 @@ impl DataType {
                         arguments.as_slice(),
                     ) {
                         ("", "gleam", "List", [item]) => {
-                            Self::from_type(item, &format!("{position} -> List item"))
+                            Self::from_type(named, item, &format!("{position} -> List item"))
                                 .map(|item| Self::List(Box::new(item)))
                         }
                         ("gleam_stdlib", "gleam/option", "Option", [item]) => {
-                            Self::from_type(item, &format!("{position} -> Option value"))
+                            Self::from_type(named, item, &format!("{position} -> Option value"))
                                 .map(|item| Self::Option(Box::new(item)))
                         }
-                        ("geam", "geam/future", "Future", [item]) => {
-                            Self::from_type(item, &format!("{position} -> Future completion"))
-                                .map(|item| Self::Future(Box::new(item)))
-                        }
+                        ("geam", "geam/future", "Future", [item]) => Self::from_type(
+                            named,
+                            item,
+                            &format!("{position} -> Future completion"),
+                        )
+                        .map(|item| Self::Future(Box::new(item))),
                         ("", "gleam", "Result", [ok, error]) => {
-                            let ok = Self::from_type(ok, &format!("{position} -> Result Ok"));
-                            let error =
-                                Self::from_type(error, &format!("{position} -> Result Error"));
+                            let ok =
+                                Self::from_type(named, ok, &format!("{position} -> Result Ok"));
+                            let error = Self::from_type(
+                                named,
+                                error,
+                                &format!("{position} -> Result Error"),
+                            );
                             match (ok, error) {
                                 (Ok(ok), Ok(error)) => {
                                     Ok(Self::Result(Box::new(ok), Box::new(error)))
@@ -258,9 +288,9 @@ impl DataType {
                                 (Err(errors), Ok(_)) | (Ok(_), Err(errors)) => Err(errors),
                             }
                         }
-                        _ => Err(vec![format!(
-                            "{position} has an unsupported named type `{package}:{module}.{name}`",
-                        )]),
+                        _ => named
+                            .register(package, module, name, arguments, position)
+                            .map(Self::Named),
                     }
                 }
                 Type::Fn { .. } => {
@@ -274,12 +304,13 @@ impl DataType {
     }
 
     fn from_types<'a>(
+        named: &mut NamedTypes<'_>,
         types: impl Iterator<Item = (&'a Arc<Type>, String)>,
     ) -> Result<Vec<Self>, Vec<String>> {
         let mut values = Vec::new();
         let mut failures = Vec::new();
         for (type_, position) in types {
-            match Self::from_type(type_, &position) {
+            match Self::from_type(named, type_, &position) {
                 Ok(value) => values.push(value),
                 Err(errors) => failures.extend(errors),
             }
@@ -294,7 +325,9 @@ impl DataType {
 
 #[cfg(test)]
 mod tests {
-    use super::{DataType, PlainBindings, unique_rust_identifier};
+    use super::{
+        ClosedType, DataType, NamedKind, NamedType, PlainBindings, unique_rust_identifier,
+    };
     use crate::embedding::identifier::RustIdentifier;
     use crate::error::CliError;
     use geam_core::{
@@ -379,14 +412,6 @@ pub fn bool_value(value: Bool) -> Bool { value }
             (
                 "pub fn unsupported(value: #(Int, Int, Int, Int, Int, Int, Int, Int)) { value }",
                 "public function `unsupported` argument 1 has Tuple arity 8, but embedding supports Tuple arity 1..=7; public function `unsupported` return value has Tuple arity 8, but embedding supports Tuple arity 1..=7",
-            ),
-            (
-                "pub type Boxed { Boxed(Int) }\npub fn unsupported(value: Boxed) { value }",
-                "public function `unsupported` argument 1 has an unsupported named type `geam:boundary.Boxed`; public function `unsupported` return value has an unsupported named type `geam:boundary.Boxed`",
-            ),
-            (
-                "pub type External\npub fn unsupported(value: External) { value }",
-                "public function `unsupported` argument 1 has an unsupported named type `geam:boundary.External`; public function `unsupported` return value has an unsupported named type `geam:boundary.External`",
             ),
             (
                 "pub fn unsupported() { fn(value: Int) { value } }",
@@ -541,17 +566,8 @@ pub fn again(value: Future(Future(Int))) { value }
     }
 
     #[test]
-    fn rejects_lookalike_futures_and_unsupported_completion_shapes_early() {
-        for (package, reason) in [
-            (
-                "other",
-                "public function `work` argument 1 has an unsupported named type `other:geam/future.Future`",
-            ),
-            (
-                "geam",
-                "public function `work` argument 1 -> Future completion -> List item has an unsupported function type",
-            ),
-        ] {
+    fn retains_lookalike_futures_without_granting_observation_and_rejects_callable_completion() {
+        for package in ["other", "geam"] {
             let program = compile_typed_package_program("application", "boundary", [
                 PackageSource::new(package, Vec::<String>::new(), [ModuleSource::new(
                     "geam/future", "future.gleam", "pub type Future(value)",
@@ -560,19 +576,39 @@ pub fn again(value: Future(Future(Int))) { value }
                     "boundary", "boundary.gleam", "import geam/future.{type Future}\npub fn work(_value: Future(List(fn() -> Int))) { 42 }",
                 )]),
             ]).expect("valid nominal source");
-            let error = PlainBindings::from_program(
+            let result = PlainBindings::from_program(
                 RustIdentifier::parse("runtime").expect("alias"),
                 &program,
-            )
-            .expect_err("unsupported boundary");
+            );
+            if package == "other" {
+                let bindings = result.expect("ordinary external retention");
+                assert!(!bindings.has_future());
+                assert!(bindings.needs_scope());
+                assert_eq!(bindings.first.arguments, [DataType::Named(0)]);
+                assert_eq!(
+                    bindings.named_types,
+                    [NamedType {
+                        package: "other".into(),
+                        module: "geam/future".into(),
+                        name: "Future".into(),
+                        kind: NamedKind::External,
+                        arguments: vec![ClosedType::List(Box::new(ClosedType::Function(
+                            Vec::new(),
+                            Box::new(ClosedType::Int)
+                        )))],
+                    }]
+                );
+                continue;
+            }
+            let error = result.expect_err("callable work results are not Rust function bindings");
             assert!(
-                matches!(error, CliError::InvalidEmbeddingBoundary { module, reason: actual } if module == "boundary" && actual == reason)
+                matches!(error, CliError::InvalidEmbeddingBoundary { module, reason } if module == "boundary" && reason == "public function `work` argument 1 -> Future completion -> List item has an unsupported function type")
             );
         }
     }
 
     #[test]
-    fn rejects_lookalike_standard_types_and_nested_option_failures() {
+    fn retains_lookalike_standard_types_and_rejects_nested_option_callable_values() {
         for package in ["other_package", "gleam_stdlib"] {
             let program = compile_typed_package_program(
                 "application",
@@ -602,26 +638,128 @@ pub fn optional(_value: Option(List(fn() -> Int))) { 1 }
                 ],
             )
             .expect("Option source should compile");
-            let error = PlainBindings::from_program(
+            let result = PlainBindings::from_program(
                 RustIdentifier::parse("runtime").expect("fixture alias"),
                 &program,
-            )
-            .expect_err("nonstandard or unsupported Option should fail");
-            let expected = if package == "gleam_stdlib" {
-                "public function `optional` argument 1 -> Option value -> List item has an unsupported function type"
-            } else {
-                "public function `optional` argument 1 has an unsupported named type `other_package:gleam/option.Option`"
-            };
+            );
+            if package == "other_package" {
+                let bindings = result.expect("nominal custom retention");
+                assert_eq!(bindings.first.arguments, [DataType::Named(0)]);
+                assert_eq!(
+                    bindings.named_types,
+                    [NamedType {
+                        package: "other_package".into(),
+                        module: "gleam/option".into(),
+                        name: "Option".into(),
+                        kind: NamedKind::Custom,
+                        arguments: vec![ClosedType::List(Box::new(ClosedType::Function(
+                            Vec::new(),
+                            Box::new(ClosedType::Int)
+                        )))],
+                    }]
+                );
+                continue;
+            }
+            let error = result.expect_err("standard Option decodes its exposed content");
             assert!(
-                matches!(error, CliError::InvalidEmbeddingBoundary { reason, .. } if reason == expected)
+                matches!(error, CliError::InvalidEmbeddingBoundary { reason, .. } if reason == "public function `optional` argument 1 -> Option value -> List item has an unsupported function type")
             );
         }
-        let error = bindings("pub type Result(a, b) { Ok(a) Error(b) }\npub fn local(value: Result(Int, String)) { value }")
-            .expect_err("local Result identity must not become a standard result");
-        assert!(
-            matches!(error, CliError::InvalidEmbeddingBoundary { reason, .. }
-            if reason == "public function `local` argument 1 has an unsupported named type `geam:boundary.Result`; public function `local` return value has an unsupported named type `geam:boundary.Result`")
+        let bindings = bindings("pub type Result(a, b) { Ok(a) Error(b) }\npub fn local(value: Result(Int, String)) { value }")
+            .expect("local Result retains its original identity");
+        assert_eq!(bindings.first.arguments, [DataType::Named(0)]);
+        assert_eq!(bindings.first.return_type, DataType::Named(0));
+        assert_eq!(
+            bindings.named_types,
+            [NamedType {
+                package: "geam".into(),
+                module: "boundary".into(),
+                name: "Result".into(),
+                kind: NamedKind::Custom,
+                arguments: vec![ClosedType::Int, ClosedType::String],
+            }]
         );
+    }
+
+    #[test]
+    fn preserves_named_types_and_aliases_without_exposing_private_data() {
+        let bindings = bindings(
+            r#"
+pub opaque type Boxed(a) { Boxed(a, fn() -> Int) }
+pub type External(a)
+pub type Alias = Boxed(Int)
+pub fn boxed(value: Alias) { value }
+pub fn same(value: Boxed(Int)) { value }
+pub fn different(value: Boxed(String)) { value }
+pub fn resource(value: External(fn(List(Int)) -> Result(Int, String))) { value }
+"#,
+        )
+        .expect("exact named boundaries");
+        assert!(bindings.needs_scope());
+        assert!(!bindings.has_future());
+        assert_eq!(bindings.first.arguments, [DataType::Named(0)]);
+        assert_eq!(bindings.first.return_type, DataType::Named(0));
+        assert_eq!(bindings.remaining[0].arguments, [DataType::Named(0)]);
+        assert_eq!(bindings.remaining[1].return_type, DataType::Named(1));
+        assert_eq!(bindings.remaining[2].return_type, DataType::Named(2));
+        assert_eq!(
+            bindings.named_types,
+            [
+                NamedType {
+                    package: "geam".into(),
+                    module: "boundary".into(),
+                    name: "Boxed".into(),
+                    kind: NamedKind::Custom,
+                    arguments: vec![ClosedType::Int]
+                },
+                NamedType {
+                    package: "geam".into(),
+                    module: "boundary".into(),
+                    name: "Boxed".into(),
+                    kind: NamedKind::Custom,
+                    arguments: vec![ClosedType::String]
+                },
+                NamedType {
+                    package: "geam".into(),
+                    module: "boundary".into(),
+                    name: "External".into(),
+                    kind: NamedKind::External,
+                    arguments: vec![ClosedType::Function(
+                        vec![ClosedType::List(Box::new(ClosedType::Int))],
+                        Box::new(ClosedType::Named(NamedType {
+                            package: "".into(),
+                            module: "gleam".into(),
+                            name: "Result".into(),
+                            kind: NamedKind::Custom,
+                            arguments: vec![ClosedType::Int, ClosedType::String]
+                        })),
+                    )]
+                },
+            ]
+        );
+        for (source, expected) in [
+            (
+                "pub type Boxed { Boxed(Int) }\npub fn keep(value: Boxed) { value }",
+                NamedKind::Custom,
+            ),
+            (
+                "pub type External\npub fn keep(value: External) { value }",
+                NamedKind::External,
+            ),
+        ] {
+            let program = compile_typed_program(
+                "boundary",
+                [ModuleSource::new("boundary", "boundary.gleam", source)],
+            )
+            .expect("source");
+            let boundary = PlainBindings::from_program(
+                RustIdentifier::parse("runtime").expect("alias"),
+                &program,
+            )
+            .expect("retention");
+            assert_eq!(boundary.named_types[0].kind, expected);
+            assert!(boundary.named_types[0].arguments.is_empty());
+        }
     }
 
     #[test]

@@ -50,6 +50,7 @@ impl Drop for PayloadDrop {
 impl HostProfile for DynamicProfile {
     type RunState = DynamicRunState;
     type ExternalStores = DynamicStores;
+    type ExecutionState = ();
 }
 
 impl HostProvider<DynamicProfile> for DynamicProvider {
@@ -121,15 +122,26 @@ fn decode<'call>(
 
 fn invoke_dynamic<'call>(
     mut call: HostCall<'call, DynamicProfile, DynamicProvider, num_bigint::BigInt>,
+    constructions: geam_core::HostConstructions<'call, geam_core::HostTypeListEnd>,
     dynamic: HostExternal<'call, Dynamic>,
     value: num_bigint::BigInt,
-) -> Result<HostCallCompletion<'call, num_bigint::BigInt>, HostCallError> {
+) -> Result<geam_core::HostCallContinuation<'call, num_bigint::BigInt>, HostCallError> {
     let payload = call.external_payload(dynamic);
     let function = payload
         .decode::<_, _, _, IntFunction>(&mut call, |payload| &payload.value)
         .ok_or_else(|| HostFailure::new("dynamic value is not fn(Int) -> Int"))?;
-    let value = call.invoke(function, (value, ()))?;
-    Ok(call.return_value(value))
+    let function = call.owned_callable(function, &constructions);
+    drop(payload);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            let value = function
+                .invoke(&context, move |_, _| (value, ()), |_, _, value| Ok(value))
+                .await?;
+            Ok(geam_core::HostOwnedCompletion::new(move |call, _| {
+                Ok(call.return_value(value))
+            }))
+        })
+    }))
 }
 
 fn has_unresolved_type<'call>(
@@ -212,7 +224,7 @@ pub fn main() {
     )
     .expect("dynamic source should compile");
     let plan = plan_host_program(typed).expect("dynamic source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("dynamic execution should seal");
     let expected = Value::Tuple(vec![
         Value::Int(42.into()),
@@ -227,7 +239,7 @@ pub fn main() {
     ]);
     let mut state = DynamicRunState::default();
 
-    let actual = execution.run_main(&mut state, &mut Vec::new());
+    let actual = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new());
 
     assert_eq!(actual, Ok(expected));
     assert_eq!(state.drops.load(Ordering::Relaxed), 7);
@@ -302,7 +314,7 @@ pub fn main() {
     )
     .expect("dynamic compound source should compile");
     let plan = plan_host_program(typed).expect("dynamic compound source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("dynamic compound execution should seal");
     let expected = Value::Tuple(vec![
         Value::Int(3.into()),
@@ -315,7 +327,7 @@ pub fn main() {
     ]);
     let mut state = DynamicRunState::default();
 
-    let actual = execution.run_main(&mut state, &mut Vec::new());
+    let actual = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new());
 
     assert_eq!(actual, Ok(expected));
     assert_eq!(state.drops.load(Ordering::Relaxed), 8);
@@ -329,11 +341,11 @@ fn invokes_a_decoded_callable_through_nested_host_reentry() {
         .expect("dynamic type should be valid")
         .with_scoped_function::<DynamicProvider, (Parameter,), Dynamic, _>("encode", encode)
         .expect("encode provider should be valid")
-        .with_scoped_function::<
+        .with_resumable_function::<
             DynamicProvider,
             (Dynamic, num_bigint::BigInt),
             num_bigint::BigInt,
-            _,
+            geam_core::HostTypeListEnd, _,
         >("invoke_dynamic", invoke_dynamic)
         .expect("dynamic invocation provider should be valid")
         .with_function("increment", |value: num_bigint::BigInt| value + 1)
@@ -372,11 +384,11 @@ pub fn main() {
     )
     .expect("dynamic callback source should compile");
     let plan = plan_host_program(typed).expect("dynamic callback source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("dynamic callback execution should seal");
     let mut state = DynamicRunState::default();
 
-    let actual = execution.run_main(&mut state, &mut Vec::new());
+    let actual = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new());
 
     assert_eq!(actual, Ok(Value::Int(42.into())));
     assert_eq!(state.drops.load(Ordering::Relaxed), 1);
@@ -390,11 +402,11 @@ fn reports_decode_mismatch_as_provider_semantics() {
         .expect("dynamic type should be valid")
         .with_scoped_function::<DynamicProvider, (Parameter,), Dynamic, _>("encode", encode)
         .expect("encode provider should be valid")
-        .with_scoped_function::<
+        .with_resumable_function::<
             DynamicProvider,
             (Dynamic, num_bigint::BigInt),
             num_bigint::BigInt,
-            _,
+            geam_core::HostTypeListEnd, _,
         >("invoke_dynamic", invoke_dynamic)
         .expect("dynamic invocation provider should be valid");
     let source = r#"
@@ -424,12 +436,11 @@ pub fn main() {
     )
     .expect("dynamic mismatch source should compile");
     let plan = plan_host_program(typed).expect("dynamic mismatch source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("dynamic mismatch execution should seal");
     let mut state = DynamicRunState::default();
 
-    let error = execution
-        .run_main(&mut state, &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect_err("provider should reject the requested decode");
 
     assert_eq!(
@@ -491,11 +502,11 @@ pub fn main() {
     )
     .expect("unresolved dynamic source should compile");
     let plan = plan_host_program(typed).expect("unresolved dynamic source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("unresolved dynamic execution should seal");
     let mut state = DynamicRunState::default();
 
-    let actual = execution.run_main(&mut state, &mut Vec::new());
+    let actual = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new());
 
     assert_eq!(
         actual,
@@ -543,13 +554,12 @@ pub fn main() {
     )
     .expect("escaping dynamic source should compile");
     let plan = plan_host_program(typed).expect("escaping dynamic source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("dynamic execution should seal");
     let mut state = DynamicRunState::default();
     let drops = Arc::clone(&state.drops);
 
-    let result = execution
-        .run_main(&mut state, &mut Vec::new())
+    let result = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect("dynamic value should escape");
 
     assert_eq!(
@@ -600,12 +610,11 @@ pub fn main() {
     )
     .expect("dynamic panic source should compile");
     let plan = plan_host_program(typed).expect("dynamic panic source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("dynamic panic execution should seal");
     let mut state = DynamicRunState::default();
 
-    let error = execution
-        .run_main(&mut state, &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect_err("source panic should be returned");
     let ExecutionError::Panic(panic) = error else {
         panic!("let assert should remain a source panic");

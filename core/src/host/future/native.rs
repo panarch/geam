@@ -1,65 +1,11 @@
-use super::context::NativeScope;
-use super::{HostFutureContext, HostFutureError, HostFutureType, HostWorkProfile};
+use super::{HostFutureContext, HostFutureType, HostWorkProfile};
+use crate::host::execution::NativeScope;
 use crate::host::{
-    HostCall, HostCallCompletion, HostCallError, HostCallRuntime, HostConstructions, HostProfile,
-    HostProvider, HostType, HostTypeSequence, HostValueToken,
+    HostCall, HostCallCompletion, HostConstructions, HostExecutionError, HostOwnedCompletion,
+    HostProvider, HostType, HostTypeSequence,
 };
 use std::future::Future;
-use std::marker::PhantomData;
 use std::pin::Pin;
-
-type CompletionCodec<Profile> =
-    dyn FnOnce(&mut dyn HostCallRuntime<Profile>) -> Result<HostValueToken, HostCallError> + Send;
-
-/// An owned result and its exact codec, waiting for the originating execution.
-///
-/// The result may cross await points. Its codec receives fresh call-scoped views
-/// only when the Rust host drives this Future's completion.
-pub struct HostFutureCompletion<Profile, Provider, Output, Constructions>
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Output: HostType,
-    Constructions: HostTypeSequence,
-{
-    codec: Box<CompletionCodec<Profile>>,
-    signature: PhantomData<fn(Provider, Constructions) -> Output>,
-}
-
-impl<Profile, Provider, Output, Constructions>
-    HostFutureCompletion<Profile, Provider, Output, Constructions>
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Output: HostType,
-    Constructions: HostTypeSequence,
-{
-    /// Moves the native result into a codec for the registered output type.
-    pub fn new(
-        complete: impl for<'call> FnOnce(
-            HostCall<'call, Profile, Provider, Output>,
-            HostConstructions<'call, Constructions>,
-        )
-            -> Result<HostCallCompletion<'call, Output>, HostCallError>
-        + Send
-        + 'static,
-    ) -> Self {
-        Self {
-            codec: Box::new(move |runtime| {
-                complete(HostCall::new(runtime), HostConstructions::new())
-                    .map(|completion| completion.token)
-            }),
-            signature: PhantomData,
-        }
-    }
-
-    pub(crate) fn complete(
-        self,
-        runtime: &mut dyn HostCallRuntime<Profile>,
-    ) -> Result<HostValueToken, HostCallError> {
-        (self.codec)(runtime)
-    }
-}
 
 impl<'call, Profile, Provider, Output>
     HostCall<'call, Profile, Provider, HostFutureType<Output, crate::host::HostWorkSchema<Profile>>>
@@ -81,8 +27,8 @@ where
             Box<
                 dyn Future<
                         Output = Result<
-                            HostFutureCompletion<Profile, Provider, Output, Constructions>,
-                            HostFutureError,
+                            HostOwnedCompletion<Profile, Provider, Output, Constructions>,
+                            HostExecutionError,
                         >,
                     > + Send
                     + 'work,
@@ -92,9 +38,18 @@ where
     ) -> HostCallCompletion<'call, HostFutureType<Output, crate::host::HostWorkSchema<Profile>>>
     {
         let context = self.runtime.work();
+        let codec = self.runtime.codec_scope();
+        let origin = self.runtime.origin();
         let native = move |dependencies| async move {
             let mut scope = NativeScope;
-            start(HostFutureContext::new(&mut scope, context, dependencies)).await
+            start(HostFutureContext::new(
+                &mut scope,
+                context,
+                dependencies,
+                codec,
+                origin,
+            ))
+            .await
         };
         let work =
             self.runtime

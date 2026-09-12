@@ -1,9 +1,8 @@
-error[E0499]: cannot borrow `*call` as mutable more than once at a time
-  --> tests/ui/callback_with_live_state.rs:34:24
+error: lifetime may not live long enough
+  --> tests/ui/callback_with_live_state.rs:33:45
    |
-33 |         let state = call.state_mut();
-   |                     ---- first mutable borrow occurs here
-34 |         let returned = call.invoke(callback, (value, ((1.into(), Token), true)))?;
-   |                        ^^^^ second mutable borrow occurs here
-35 |         state.calls += 1;
-   |         ---------------- first borrow later used here
+33 |         let state = call.with_state(|state| state).await?;
+   |                                      ------ ^^^^^ returning this value requires that `'1` must outlive `'2`
+   |                                      |    |
+   |                                      |    return type of closure is &'2 mut RunState
+   |                                      has type `&'1 mut RunState`

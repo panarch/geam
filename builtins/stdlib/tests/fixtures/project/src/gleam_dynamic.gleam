@@ -15,7 +15,8 @@ pub fn main() {
   assert dynamic.classify(string) == "String"
   assert dynamic.classify(float) == "Float"
   assert dynamic.classify(int) == "Int"
-  assert dynamic.classify(bits) == "BitArray"
+  assert dynamic.classify(bits) == "String"
+  assert dynamic.classify(dynamic.bit_array(<<1:size(1)>>)) == "BitArray"
   assert dynamic.classify(list) == "List"
   assert dynamic.classify(array) == "Array"
   assert dynamic.classify(properties) == "Dict"
@@ -25,4 +26,4 @@ pub fn main() {
 
   #(bool, string, float, int, bits, list, array, properties, nil)
 }
-// @geam:expect #(True, "one", 1.5, 42, <<1, 2>>, [42, "one"], #(42, "one"), dict.from_list([#("one", 42)]), Nil)
+// @geam:expect #(True, "one", 1.5, 42, "\u{1}\u{2}", [42, "one"], #(42, "one"), dict.from_list([#("one", 42)]), Nil)

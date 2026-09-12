@@ -819,6 +819,7 @@ pub fn main() -> List(Counter) {
             transfer_external_equal,
             transfer_external_hash,
             transfer_external_inspect,
+            |_| None,
         );
         let external = EvaluatedExternalValue::new(item_type, lease);
         drop(store);

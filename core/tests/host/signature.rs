@@ -72,7 +72,7 @@ pub fn main() {
     )
     .expect("host program should compile");
     let plan = plan_host_program(typed).expect("host program should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
     let expected = Value::Tuple(vec![
         Value::Int(20.into()),
@@ -84,7 +84,10 @@ pub fn main() {
         Value::Bool(true),
     ]);
 
-    assert_eq!(execution.run_main(&mut (), &mut Vec::new()), Ok(expected));
+    assert_eq!(
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
+        Ok(expected)
+    );
 }
 
 #[test]
@@ -178,7 +181,7 @@ pub fn main() {
     )
     .expect("host program should compile");
     let plan = plan_host_program(typed).expect("host program should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
     let expected = Value::Tuple(vec![
         Value::Int(2.into()),
@@ -211,7 +214,10 @@ pub fn main() {
         Value::Bool(true),
     ]);
 
-    assert_eq!(execution.run_main(&mut (), &mut Vec::new()), Ok(expected));
+    assert_eq!(
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
+        Ok(expected)
+    );
 }
 
 #[test]
@@ -289,10 +295,9 @@ pub fn main() {
         )
         .expect("host program should compile");
         let plan = plan_host_program(typed).expect("host program should plan");
-        let execution =
+        let mut execution =
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
-        let error = execution
-            .run_main(&mut (), &mut Vec::new())
+        let error = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
             .expect_err("fallible host function should fail");
         let ExecutionError::Host(error) = error else {
             panic!("fallible host function should produce a host error");

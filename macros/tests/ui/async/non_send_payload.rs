@@ -45,6 +45,7 @@ struct Profile;
 impl HostProfile for Profile {
     type RunState = ();
     type ExternalStores = <Component as HostProviderComponent>::Stores;
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<Component> for Profile {

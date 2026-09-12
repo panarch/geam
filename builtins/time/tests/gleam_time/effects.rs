@@ -6,20 +6,18 @@ use std::time::{Duration, UNIX_EPOCH};
 
 #[test]
 fn preserves_time_source_order_backward_clocks_repeated_runs_and_independent_state() {
-    let execution = fixture_execution("gleam_time_effects");
+    let mut execution = fixture_execution("gleam_time_effects");
     let expected = fixture_expected("gleam_time_effects");
     let mut first_state = scripted_state();
     let mut independent_state = scripted_state();
 
-    let first = execution
-        .run_main(&mut first_state, &mut Vec::new())
+    let first = crate::execution_fixture::run(&mut execution, &mut first_state, &mut Vec::new())
         .expect("official Time effects fixture should run");
-    let repeated = execution
-        .run_main(&mut first_state, &mut Vec::new())
+    let repeated = crate::execution_fixture::run(&mut execution, &mut first_state, &mut Vec::new())
         .expect("official Time effects fixture should repeat");
-    let independent = execution
-        .run_main(&mut independent_state, &mut Vec::new())
-        .expect("official Time effects fixture should use independent state");
+    let independent =
+        crate::execution_fixture::run(&mut execution, &mut independent_state, &mut Vec::new())
+            .expect("official Time effects fixture should use independent state");
 
     let mut transferred = super::transfer::fixture("gleam_time_effects");
     let mut transfer_first = super::transfer::RunState {

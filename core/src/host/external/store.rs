@@ -32,6 +32,7 @@ struct StoredExternalPayload<Payload> {
     source_equal: for<'context> fn(&HostExternalEquality<'context>, &Payload, &Payload) -> bool,
     source_hash: for<'context> fn(&HostExternalHashing<'context>, &Payload) -> u64,
     inspect: for<'context> fn(&HostExternalInspection<'context>, &Payload) -> EcoString,
+    native_view: fn(&Payload) -> Option<crate::runtime::NativeValue>,
     source_hash_cache: OnceLock<u64>,
     inspection_cache: OnceLock<EcoString>,
 }
@@ -43,6 +44,7 @@ struct ExternalPayloadReleaseGuard<Payload> {
 
 trait ExternalPayload {
     fn id(&self) -> u64;
+    fn native_view(&self) -> Option<crate::runtime::NativeValue>;
     fn source_hash(&self, context: &RetainedValueHashing<'_>) -> u64;
     fn inspection(&self, context: &RetainedValueInspection<'_>) -> EcoString;
     fn source_equal(
@@ -86,6 +88,7 @@ where
             Storage::source_equal,
             Storage::source_hash,
             Storage::inspect,
+            Storage::native_view,
         )
     }
 
@@ -95,6 +98,7 @@ where
         source_equal: for<'context> fn(&HostExternalEquality<'context>, &Payload, &Payload) -> bool,
         source_hash: for<'context> fn(&HostExternalHashing<'context>, &Payload) -> u64,
         inspect: for<'context> fn(&HostExternalInspection<'context>, &Payload) -> EcoString,
+        native_view: fn(&Payload) -> Option<crate::runtime::NativeValue>,
     ) -> ExternalPayloadLease {
         let id = crate::runtime::ExternalValueIdentity::allocate_id();
         let value = Arc::new(StoredExternalPayload {
@@ -104,6 +108,7 @@ where
             source_equal,
             source_hash,
             inspect,
+            native_view,
             source_hash_cache: OnceLock::new(),
             inspection_cache: OnceLock::new(),
         });
@@ -143,6 +148,10 @@ impl<Payload> std::ops::Deref for ExternalPayloadView<Payload> {
 }
 
 impl ExternalPayloadLease {
+    pub(crate) fn native_view(&self) -> Option<crate::runtime::NativeValue> {
+        self.value.native_view()
+    }
+
     pub(crate) fn identity(&self) -> u64 {
         self.value.id()
     }
@@ -186,15 +195,29 @@ where
         self.id
     }
 
+    fn native_view(&self) -> Option<crate::runtime::NativeValue> {
+        (self.native_view)(&self.value.lock())
+    }
+
     fn source_hash(&self, context: &RetainedValueHashing<'_>) -> u64 {
-        *self
-            .source_hash_cache
-            .get_or_init(|| (self.source_hash)(&HostExternalHashing(context), &self.value.lock()))
+        *self.source_hash_cache.get_or_init(|| {
+            let context = HostExternalHashing(context);
+            match self.native_view() {
+                Some(value) => value.source_hash(&context),
+                None => (self.source_hash)(&context, &self.value.lock()),
+            }
+        })
     }
 
     fn inspection(&self, context: &RetainedValueInspection<'_>) -> EcoString {
         self.inspection_cache
-            .get_or_init(|| (self.inspect)(&HostExternalInspection(context), &self.value.lock()))
+            .get_or_init(|| {
+                let context = HostExternalInspection(context);
+                match self.native_view() {
+                    Some(value) => value.inspect(&context),
+                    None => (self.inspect)(&context, &self.value.lock()),
+                }
+            })
             .clone()
     }
 
@@ -203,6 +226,13 @@ where
         context: &RetainedValueEquality<'_>,
         other: &ExternalPayloadLease,
     ) -> bool {
+        match (self.native_view(), other.native_view()) {
+            (Some(left), Some(right)) => {
+                return left.source_equal(&HostExternalEquality(context), &right);
+            }
+            (Some(_), None) | (None, Some(_)) => return false,
+            (None, None) => {}
+        }
         if self.id == other.identity() {
             let value = self.value.lock();
             return (self.source_equal)(&HostExternalEquality(context), &value, &value);
@@ -290,7 +320,7 @@ mod tests {
     fn lease_controls_typed_index_and_payload_lifetime() {
         let drops = Arc::new(AtomicUsize::new(0));
         let store = HostExternalStore::default();
-        let lease = store.insert(payload(7, &drops), equal, source_hash, inspect);
+        let lease = store.insert(payload(7, &drops), equal, source_hash, inspect, |_| None);
         let clone = lease.clone();
 
         assert_eq!(lock(&store.values).len(), 1);
@@ -311,8 +341,8 @@ mod tests {
         let first_payload = payload(7, &drops);
         let first_hashes = Arc::clone(&first_payload.hashes);
         let first_inspections = Arc::clone(&first_payload.inspections);
-        let first = store.insert(first_payload, equal, source_hash, inspect);
-        let second = store.insert(payload(7, &drops), equal, source_hash, inspect);
+        let first = store.insert(first_payload, equal, source_hash, inspect, |_| None);
+        let second = store.insert(payload(7, &drops), equal, source_hash, inspect, |_| None);
 
         let stored_equal =
             |_: &crate::runtime::RetainedValueRef, _: &crate::runtime::RetainedValueRef| false;
@@ -347,14 +377,244 @@ mod tests {
         let drops = Arc::new(AtomicUsize::new(0));
         let first_store = HostExternalStore::default();
         let second_store = HostExternalStore::default();
-        let first = first_store.insert(payload(7, &drops), equal, source_hash, inspect);
-        let second = second_store.insert(payload(7, &drops), equal, source_hash, inspect);
+        let first = first_store.insert(payload(7, &drops), equal, source_hash, inspect, |_| None);
+        let second = second_store.insert(payload(7, &drops), equal, source_hash, inspect, |_| None);
 
         let stored_equal =
             |_: &crate::runtime::RetainedValueRef, _: &crate::runtime::RetainedValueRef| false;
         let equality = crate::host::RetainedValueEquality::new(&stored_equal);
 
         assert!(!first.source_equal(&equality, &second));
+    }
+
+    #[test]
+    fn native_semantics_release_payload_access_before_traversal_and_cache_on_demand() {
+        use crate::host::{
+            HostExternalEquality, HostExternalHashing, HostExternalInspection, HostProvider,
+            HostTypeParameter,
+        };
+        use crate::runtime::{NativeValue, RetainedValueRef};
+        use std::cell::Cell;
+
+        struct NativePayload {
+            value: NativeValue,
+            projected: bool,
+            fallback_calls: Cell<usize>,
+            drops: Arc<AtomicUsize>,
+        }
+
+        impl NativePayload {
+            fn equal(_: &HostExternalEquality<'_>, left: &Self, _: &Self) -> bool {
+                left.fallback_calls.set(left.fallback_calls.get() + 1);
+                true
+            }
+
+            fn hash(_: &HostExternalHashing<'_>, value: &Self) -> u64 {
+                value.fallback_calls.set(value.fallback_calls.get() + 1);
+                0
+            }
+
+            fn inspect(_: &HostExternalInspection<'_>, value: &Self) -> EcoString {
+                value.fallback_calls.set(value.fallback_calls.get() + 1);
+                "fallback".into()
+            }
+
+            fn native_view(&self) -> Option<NativeValue> {
+                self.projected.then(|| self.value.clone())
+            }
+        }
+
+        impl Drop for NativePayload {
+            fn drop(&mut self) {
+                self.drops.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        fn unlocked(value: &Arc<parking_lot::ReentrantMutex<NativePayload>>) -> bool {
+            let value = Arc::clone(value);
+            std::thread::spawn(move || value.try_lock_arc().is_some())
+                .join()
+                .expect("payload access probe must finish")
+        }
+
+        struct Profile;
+        struct Observer;
+        struct State {
+            store: HostExternalStore<NativePayload>,
+            captured: Option<super::ExternalPayloadLease>,
+            drops: Arc<AtomicUsize>,
+        }
+        impl crate::HostProfile for Profile {
+            type RunState = State;
+            type ExternalStores = ();
+            type ExecutionState = ();
+        }
+        impl HostProvider<Profile> for Observer {
+            type State = State;
+            fn project(state: &mut State) -> &mut State {
+                state
+            }
+        }
+        fn retain<'call>(
+            mut call: crate::HostCall<'call, Profile, Observer, ()>,
+            value: crate::HostValue<'call, HostTypeParameter<0>>,
+        ) -> Result<crate::HostCallCompletion<'call, ()>, crate::HostCallError> {
+            let value = NativeValue::from_stored(call.retain_value::<HostTypeParameter<0>>(value));
+            let state = call.state();
+            state.captured = Some(state.store.insert(
+                NativePayload {
+                    value,
+                    projected: true,
+                    fallback_calls: Cell::new(0),
+                    drops: Arc::clone(&state.drops),
+                },
+                NativePayload::equal,
+                NativePayload::hash,
+                NativePayload::inspect,
+                NativePayload::native_view,
+            ));
+            Ok(call.return_value(()))
+        }
+        let provider = crate::HostProviderModule::new("application", "main")
+            .unwrap()
+            .with_scoped_function::<Observer, (HostTypeParameter<0>,), (), _>("retain", retain)
+            .unwrap();
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "main",
+            [crate::PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [crate::ModuleSource::new(
+                    "main",
+                    "src/main.gleam",
+                    r#"
+@external(erlang, "native", "retain")
+fn retain(value: a) -> Nil
+pub fn main() { retain(fn(value) { value + 1 }) }
+"#,
+                )],
+            )],
+            crate::HostProviderSet::with_providers(
+                Vec::<crate::HostModule<Profile>>::new(),
+                [provider],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let mut execution =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let drops = Arc::new(AtomicUsize::new(0));
+        let store = HostExternalStore::default();
+        let mut state = State {
+            store: store.clone_handle(),
+            captured: None,
+            drops: Arc::clone(&drops),
+        };
+        assert_eq!(
+            crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new()).unwrap(),
+            crate::Value::Nil
+        );
+        drop(execution);
+        let lease = state.captured.take().unwrap();
+        let payload = Arc::clone(&lock(&store.values)[&lease.identity()].value);
+        let hashes = Cell::new(0);
+        let inspections = Cell::new(0);
+        let equalities = Cell::new(0);
+        let source_hash = |_: &RetainedValueRef| {
+            assert!(unlocked(&payload));
+            hashes.set(hashes.get() + 1);
+            17
+        };
+        let inspect = |_: &RetainedValueRef| {
+            assert!(unlocked(&payload));
+            inspections.set(inspections.get() + 1);
+            EcoString::from("fn(value) { ... }")
+        };
+        let equal = |_: &RetainedValueRef, _: &RetainedValueRef| {
+            assert!(unlocked(&payload));
+            equalities.set(equalities.get() + 1);
+            false
+        };
+        let hashing = crate::host::RetainedValueHashing::new(&source_hash);
+        let inspection = crate::host::RetainedValueInspection::new(&inspect);
+        let equality = crate::host::RetainedValueEquality::new(&equal);
+
+        assert_eq!(
+            (hashes.get(), inspections.get(), equalities.get()),
+            (0, 0, 0)
+        );
+        let first_hash = lease.source_hash(&hashing);
+        assert_eq!(lease.source_hash(&hashing), first_hash);
+        assert_eq!(hashes.get(), 1);
+        assert_eq!(lease.inspection(&inspection), "fn(value) { ... }");
+        assert_eq!(lease.inspection(&inspection), "fn(value) { ... }");
+        assert_eq!(inspections.get(), 1);
+        assert!(!lease.source_equal(&equality, &lease));
+        assert_eq!(equalities.get(), 1);
+        assert_eq!(payload.lock().fallback_calls.get(), 0);
+        let opaque = store.insert(
+            NativePayload {
+                value: payload.lock().value.clone(),
+                projected: false,
+                fallback_calls: Cell::new(0),
+                drops: Arc::clone(&drops),
+            },
+            NativePayload::equal,
+            NativePayload::hash,
+            NativePayload::inspect,
+            NativePayload::native_view,
+        );
+        assert!(!lease.source_equal(&equality, &opaque));
+        assert!(!opaque.source_equal(&equality, &lease));
+        assert!(opaque.source_equal(&equality, &opaque));
+        assert_eq!(opaque.source_hash(&hashing), 0);
+        assert_eq!(opaque.inspection(&inspection), "fallback");
+        assert_eq!(
+            store.with_view(&opaque, |value| value.fallback_calls.get()),
+            3
+        );
+        assert_eq!(
+            (hashes.get(), inspections.get(), equalities.get()),
+            (1, 1, 1)
+        );
+        assert_eq!(payload.lock().fallback_calls.get(), 0);
+        let other = store.insert(
+            NativePayload {
+                value: payload.lock().value.clone(),
+                projected: false,
+                fallback_calls: Cell::new(0),
+                drops: Arc::clone(&drops),
+            },
+            NativePayload::equal,
+            NativePayload::hash,
+            NativePayload::inspect,
+            NativePayload::native_view,
+        );
+        assert!(opaque.source_equal(&equality, &other));
+        assert!(other.source_equal(&equality, &opaque));
+        let unrelated_store = HostExternalStore::default();
+        let unrelated = unrelated_store.insert(
+            NativePayload {
+                value: payload.lock().value.clone(),
+                projected: false,
+                fallback_calls: Cell::new(0),
+                drops: Arc::clone(&drops),
+            },
+            NativePayload::equal,
+            NativePayload::hash,
+            NativePayload::inspect,
+            NativePayload::native_view,
+        );
+        assert!(!opaque.source_equal(&equality, &unrelated));
+        drop(unrelated);
+        drop(other);
+        drop(opaque);
+        drop(payload);
+        drop(lease);
+        assert!(lock(&store.values).is_empty());
+        assert_eq!(drops.load(Ordering::SeqCst), 4);
     }
 
     #[test]
@@ -381,6 +641,7 @@ mod tests {
             |context, left, right| context.stored_values_equal(left, right),
             source_hash,
             inspect,
+            |_| None,
         );
         let stored_equal =
             |_: &crate::runtime::RetainedValueRef, _: &crate::runtime::RetainedValueRef| false;
@@ -476,7 +737,13 @@ mod transfer_tests {
 
         let store = HostExternalStore::default();
         let drops = Arc::new(AtomicUsize::new(0));
-        let lease = store.insert(payload(7, Arc::clone(&drops)), equal, source_hash, inspect);
+        let lease = store.insert(
+            payload(7, Arc::clone(&drops)),
+            equal,
+            source_hash,
+            inspect,
+            |_| None,
+        );
         assert_eq!(store.with_view(&lease, |value| value.value.get()), 7);
         assert_eq!(drops.load(Ordering::Relaxed), 0);
     }
@@ -485,12 +752,29 @@ mod transfer_tests {
     fn escaped_lease_preserves_source_semantics_and_releases_once() {
         let store = HostExternalStore::default();
         let drops = Arc::new(AtomicUsize::new(0));
-        let first = store.insert(payload(7, Arc::clone(&drops)), equal, source_hash, inspect);
+        let first = store.insert(
+            payload(7, Arc::clone(&drops)),
+            equal,
+            source_hash,
+            inspect,
+            |_| None,
+        );
         let first_clone = first.clone();
-        let second = store.insert(payload(7, Arc::clone(&drops)), equal, source_hash, inspect);
+        let second = store.insert(
+            payload(7, Arc::clone(&drops)),
+            equal,
+            source_hash,
+            inspect,
+            |_| None,
+        );
         let other_store = HostExternalStore::default();
-        let foreign =
-            other_store.insert(payload(7, Arc::clone(&drops)), equal, source_hash, inspect);
+        let foreign = other_store.insert(
+            payload(7, Arc::clone(&drops)),
+            equal,
+            source_hash,
+            inspect,
+            |_| None,
+        );
         let stored_equal = |_: &RetainedValueRef, _: &RetainedValueRef| true;
         let equality = crate::host::RetainedValueEquality::new(&stored_equal);
         let stored_hash = |_: &RetainedValueRef| 7;
@@ -531,7 +815,13 @@ mod transfer_tests {
     fn pending_owner_preserves_payload_and_cancellation_releases_it_once() {
         let drops = Arc::new(AtomicUsize::new(0));
         let store = HostExternalStore::default();
-        let lease = store.insert(payload(7, Arc::clone(&drops)), equal, source_hash, inspect);
+        let lease = store.insert(
+            payload(7, Arc::clone(&drops)),
+            equal,
+            source_hash,
+            inspect,
+            |_| None,
+        );
         let mut first_poll = true;
         let mut pending_owner = Box::pin(async move {
             poll_fn(move |context| {
@@ -556,7 +846,13 @@ mod transfer_tests {
         drop(pending_owner);
 
         let store = HostExternalStore::default();
-        let lease = store.insert(payload(8, Arc::clone(&drops)), equal, source_hash, inspect);
+        let lease = store.insert(
+            payload(8, Arc::clone(&drops)),
+            equal,
+            source_hash,
+            inspect,
+            |_| None,
+        );
         let mut cancelled_owner = Box::pin(poll_fn(move |_| {
             let _lease = &lease;
             Poll::<()>::Pending
@@ -576,6 +872,7 @@ mod transfer_tests {
             equal,
             source_hash,
             inspect,
+            |_| None,
         );
         let payload = Arc::clone(&lock(&store.values)[&lease.identity()]);
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -590,8 +887,20 @@ mod transfer_tests {
     fn nested_semantic_reads_can_revisit_a_shared_send_only_payload() {
         let store = HostExternalStore::default();
         let drops = Arc::new(AtomicUsize::new(0));
-        let first = store.insert(payload(7, Arc::clone(&drops)), equal, source_hash, inspect);
-        let second = store.insert(payload(8, Arc::clone(&drops)), equal, source_hash, inspect);
+        let first = store.insert(
+            payload(7, Arc::clone(&drops)),
+            equal,
+            source_hash,
+            inspect,
+            |_| None,
+        );
+        let second = store.insert(
+            payload(8, Arc::clone(&drops)),
+            equal,
+            source_hash,
+            inspect,
+            |_| None,
+        );
 
         let values = store.with_view(&first, |first_value| {
             store.with_view(&second, |second_value| {

@@ -1,14 +1,16 @@
 mod borrowed;
-mod constant;
 mod echo;
 mod embedding;
+pub(crate) use embedding::EmbeddingEntry;
 mod entry;
 mod error;
 mod evaluated;
+pub(crate) mod execution;
 mod function;
 mod graph;
 mod host;
 mod materialize;
+mod native;
 mod profile;
 mod retained_list;
 pub(crate) mod shared;
@@ -25,10 +27,7 @@ pub(crate) use embedding::{
     EmbeddingList, EmbeddingListInput, EmbeddingOutput, EmbeddingTupleInput,
     run_embedded_bit_array, run_embedded_bool, run_embedded_custom, run_embedded_float,
     run_embedded_int, run_embedded_list, run_embedded_nil, run_embedded_string, run_embedded_tuple,
-    run_embedded_utf_codepoint, run_hosted_embedded_bit_array, run_hosted_embedded_bool,
-    run_hosted_embedded_custom, run_hosted_embedded_float, run_hosted_embedded_int,
-    run_hosted_embedded_list, run_hosted_embedded_nil, run_hosted_embedded_string,
-    run_hosted_embedded_tuple, run_hosted_embedded_utf_codepoint,
+    run_embedded_utf_codepoint,
 };
 pub(crate) use entry::run_hosted_entry;
 pub(crate) use error::HostCallOrigin;
@@ -53,6 +52,7 @@ pub(crate) use host::{
     StoredRuntimeList, StoredRuntimeListCustomFields, StoredRuntimeListItem,
     StoredRuntimeListTupleItems, StoredRuntimeValue,
 };
+pub use native::{NativeKind, NativeMap, NativeMapEntry, NativeValue, NativeValues};
 pub(crate) use value::{
     BitArrayFunctionValue, BoolFunctionValue, CaptureListValue, CaptureValue, CustomFunctionValue,
     CustomFunctionValueTarget, ExternalFunctionValue, FloatFunctionValue, FunctionFunctionValue,
@@ -67,13 +67,11 @@ pub use value::{
 };
 
 pub(crate) use crate::host::{ExternalPayloadLease, ExternalPayloadView};
-pub(in crate::runtime) use profile::{ExecutableProgramPlan, ExecutableRuntimePlan, RuntimeGraph};
+pub(in crate::runtime) use profile::{ExecutableRuntimePlan, RuntimeGraph};
 pub(crate) use retained::{CallbackInputs, RetainedCallable, RetainedInputs, RetainedValueRef};
 
 use crate::plan::execution::ExecutionPlan;
-use crate::plan::execution::function::{
-    ExecutionGraphProfile, ProfiledCoreRuntimeFunctionId, ProfiledRuntimeFunctionId,
-};
+use crate::plan::execution::function::{ProfiledCoreRuntimeFunctionId, ProfiledRuntimeFunctionId};
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::state::{RuntimeState, RuntimeStateFor};
@@ -88,53 +86,31 @@ pub fn run_main(plan: &ExecutionPlan, echo: &mut dyn EchoSink) -> Result<Value, 
     finish_program(plan, &mut state, value)
 }
 
-pub(crate) fn run_hosted_main<Profile: crate::HostProfile>(
-    plan: &crate::plan::execution::HostedExecution<Profile>,
-    host: &mut Profile::RunState,
-    echo: &mut dyn EchoSink,
-) -> Result<Value, ExecutionError> {
-    let work = crate::runtime::work::execution::ExecutionWork::<Profile>::new();
-    let mut state = RuntimeState::with_host(
+pub(crate) async fn run_hosted_main<Profile: crate::HostProfile>(
+    plan: &mut crate::plan::execution::HostedExecution<Profile>,
+    host: &dyn crate::execution::ExecutionHost,
+    state: &mut Profile::RunState,
+    echo: &mut (dyn EchoSink + Send),
+) -> Result<Value, crate::execution::RunError> {
+    let (plan, stores) = plan.parts_mut();
+    let domain = execution::Domain::new(
+        std::sync::Arc::clone(plan),
+        host,
+        state,
+        stores,
         echo,
-        crate::runtime::state::RuntimeHost::<Profile>::new(host, plan.external_stores(), &work),
+        execution::Domain::<Profile>::DEFAULT_BUDGET,
     );
-    run_hosted_program_inner(plan.execution(), &mut state)
+    let context = domain.context();
+    domain.drive(context.run_main()).await?
 }
 
-#[cfg(test)]
-fn run_hosted_program<Profile: crate::HostProfile>(
-    plan: &crate::plan::execution::HostedProgram<Profile>,
-    state: &mut RuntimeStateFor<'_, crate::plan::execution::HostedProgram<Profile>>,
-) -> Result<Value, ExecutionError> {
-    run_hosted_program_inner(plan, state)
-}
-
-fn run_hosted_program_inner<Profile: crate::HostProfile>(
-    plan: &crate::plan::execution::HostedProgram<Profile>,
-    state: &mut RuntimeStateFor<'_, crate::plan::execution::HostedProgram<Profile>>,
-) -> Result<Value, ExecutionError> {
-    let inputs = RetainedValues::empty();
-    let value = match plan.main_runtime() {
-        ProfiledRuntimeFunctionId::Core(function) => {
-            run_core_program(plan, state, function, inputs)
-        }
-        ProfiledRuntimeFunctionId::External(function) => {
-            function::run_external(plan, state, function, error::HostCallOrigin::Entry, inputs)
-                .map(EvaluatedValue::External)
-        }
-    }?;
-    finish_program(plan, state, value)
-}
-
-fn run_core_program<Plan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    function: ProfiledCoreRuntimeFunctionId<RuntimeGraph<Plan>>,
+fn run_core_program(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState<'_>,
+    function: ProfiledCoreRuntimeFunctionId<std::convert::Infallible>,
     inputs: graph::RetainedValues,
-) -> ExecutionResult<EvaluatedValue>
-where
-    Plan: ExecutableProgramPlan,
-{
+) -> ExecutionResult<EvaluatedValue> {
     match function {
         ProfiledCoreRuntimeFunctionId::Never(function) => {
             function::run_never(plan, state, function, error::HostCallOrigin::Entry, inputs)
@@ -177,13 +153,13 @@ where
                 .map(EvaluatedValue::Tuple)
         }
         ProfiledCoreRuntimeFunctionId::List(function) => {
-            let function = <RuntimeGraph<Plan> as ExecutionGraphProfile>::list_function(&function);
             function::run_list(plan, state, function, error::HostCallOrigin::Entry, inputs)
                 .map(EvaluatedValue::from)
         }
-        ProfiledCoreRuntimeFunctionId::Function { id, .. } => plan
-            .run_function_return(state, id, error::HostCallOrigin::Entry, inputs)
-            .map(EvaluatedValue::Function),
+        ProfiledCoreRuntimeFunctionId::Function { id, .. } => {
+            function::run_core_function(plan, state, id, error::HostCallOrigin::Entry, inputs)
+                .map(EvaluatedValue::Function)
+        }
     }
 }
 

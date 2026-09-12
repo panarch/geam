@@ -1,3 +1,6 @@
+#[path = "../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 use ecow::EcoString;
 use geam_core::{
     HostComponentProfile, HostCustomConstructorSchema, HostCustomFieldSchema, HostCustomTypeSchema,
@@ -187,6 +190,7 @@ struct ProfileState {
 impl HostProfile for Profile {
     type RunState = ProfileState;
     type ExternalStores = ProfileStores;
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<Component> for Profile {
@@ -381,11 +385,15 @@ fn custom_inputs_decode_only_active_values_and_nested_lists_lazily() {
     )
     .expect("complete custom provider source should compile");
     let plan = plan_host_program(typed).expect("matching custom provider should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("matching custom provider should seal");
 
     assert_eq!(
-        execution.run_main(&mut ProfileState { component: () }, &mut Vec::new(),),
+        crate::execution_fixture::run(
+            &mut execution,
+            &mut ProfileState { component: () },
+            &mut Vec::new()
+        ),
         Ok(Value::Bool(true)),
     );
 }

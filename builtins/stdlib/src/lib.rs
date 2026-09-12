@@ -14,6 +14,10 @@ pub(crate) use geam_core::{
 };
 use std::marker::PhantomData;
 
+#[cfg(test)]
+#[path = "../../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 mod bit_array;
 mod dict;
 mod dynamic;
@@ -27,6 +31,7 @@ mod string;
 mod string_tree;
 mod uri;
 
+pub use dynamic::DynamicPayload as Dynamic;
 pub use io::{IoOutput, IoSink, IoStream};
 pub use run_state::{GleamStdlibRunState, GleamStdlibRunStateError};
 
@@ -98,6 +103,7 @@ pub struct GleamStdlibProfile;
 impl HostProfile for GleamStdlibProfile {
     type RunState = GleamStdlibRunState;
     type ExternalStores = GleamStdlibStores;
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<Component> for GleamStdlibProfile {
@@ -194,6 +200,7 @@ mod tests {
     impl HostProfile for CustomProfile {
         type RunState = CustomRunState;
         type ExternalStores = CustomStores;
+        type ExecutionState = ();
     }
 
     impl HostComponentProfile<Component<RecordingSink>> for CustomProfile {

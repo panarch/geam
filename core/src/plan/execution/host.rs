@@ -1,5 +1,6 @@
 mod error;
 mod function;
+mod native;
 mod table;
 
 pub(crate) use function::HostConstructionTypes;
@@ -7,6 +8,10 @@ pub(in crate::plan::execution) use function::HostedFunctionParameters;
 pub(crate) use function::{
     HostCallParameter, HostFunctionId, HostNeverFunctionId, HostedFunction, HostedFunctionMetadata,
     HostedFunctionTarget, HostedNeverFunction, HostedValueFunction,
+};
+pub(crate) use native::{
+    NativeConstructor, NativeConversion, NativeConversionId, NativeConversionKind,
+    NativeConversions,
 };
 pub(crate) use table::HostFunctionTables;
 

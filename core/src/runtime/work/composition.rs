@@ -1,9 +1,9 @@
 use super::Shared;
 use super::execution::{Completion, SourceWork, WorkContext};
 use crate::host::{
-    HostCallErrorKind, HostCallRuntime, HostCodecScope, HostFutureCompletion, HostFutureError,
-    HostFutureStore, HostProvider, HostScopedValue, HostTokenRuntime, HostType, HostTypeDescriptor,
-    HostTypeSequence, HostWorkProfile,
+    HostCallErrorKind, HostCallRuntime, HostCodecScope, HostExecutionError, HostFutureStore,
+    HostOwnedCompletion, HostProvider, HostScopedValue, HostTokenRuntime, HostType,
+    HostTypeDescriptor, HostTypeSequence, HostWorkProfile,
 };
 use crate::runtime::host::RuntimeHostCall;
 use crate::runtime::{HostCallOrigin, StoredRuntimeList};
@@ -25,8 +25,8 @@ impl<Profile: HostWorkProfile> WorkContext<Profile> {
         Constructions: HostTypeSequence,
         Native: Future<
                 Output = Result<
-                    HostFutureCompletion<Profile, Provider, Output, Constructions>,
-                    HostFutureError,
+                    HostOwnedCompletion<Profile, Provider, Output, Constructions>,
+                    HostExecutionError,
                 >,
             > + Send
             + 'static,
@@ -37,9 +37,11 @@ impl<Profile: HostWorkProfile> WorkContext<Profile> {
             async move {
                 let completion = match native.await {
                     Ok(completion) => Ok(completion),
-                    Err(HostFutureError::Host(error)) => Err(error),
-                    Err(HostFutureError::Cancelled) => return Err(super::Cancelled),
-                    Err(HostFutureError::Execution(error)) => return Ok(Shared::new(Err(error.0))),
+                    Err(HostExecutionError::Host(error)) => Err(error),
+                    Err(HostExecutionError::Cancelled) => return Err(super::Cancelled),
+                    Err(HostExecutionError::Execution(error)) => {
+                        return Ok(Shared::new(Err(error.0)));
+                    }
                 };
                 let result = context
                     .with_runtime(move |plan, state| {

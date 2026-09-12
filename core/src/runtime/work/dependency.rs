@@ -97,10 +97,7 @@ impl<Value> Drop for DependencyObserver<Value> {
 }
 
 impl<Value> Operation<Value> {
-    pub(super) fn poll_graph(
-        self: &Arc<Self>,
-        mut service: impl FnMut() -> bool,
-    ) -> Poll<Result<Shared<Value>, Cancelled>> {
+    pub(super) fn poll_graph(self: &Arc<Self>) -> Poll<Result<Shared<Value>, Cancelled>> {
         let mut steps = vec![Step::Poll(Arc::clone(self))];
         let mut visited = HashSet::new();
         while let Some(step) = steps.pop() {
@@ -123,12 +120,7 @@ impl<Value> Operation<Value> {
                     operation
                 }
             };
-            let result = loop {
-                let result = operation.poll();
-                if result.is_ready() || !service() {
-                    break result;
-                }
-            };
+            let result = operation.poll();
             if result.is_ready() {
                 continue;
             }

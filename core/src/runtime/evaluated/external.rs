@@ -114,8 +114,20 @@ mod tests {
             );
             format!("Resource({})", context.inspect_stored_value(&stored)).into()
         };
-        let first = store.insert(7usize, |_, left, right| left == right, source_hash, inspect);
-        let second = store.insert(7usize, |_, left, right| left == right, source_hash, inspect);
+        let first = store.insert(
+            7usize,
+            |_, left, right| left == right,
+            source_hash,
+            inspect,
+            |_| None,
+        );
+        let second = store.insert(
+            7usize,
+            |_, left, right| left == right,
+            source_hash,
+            inspect,
+            |_| None,
+        );
         let first: EvaluatedExternalValue =
             EvaluatedExternalValue::new(ExternalTypeId::new(0), first);
         let second: EvaluatedExternalValue =
@@ -148,8 +160,20 @@ mod tests {
     #[test]
     fn transferred_external_value_preserves_source_semantics_and_runtime_identity() {
         let store = crate::host::HostExternalStore::default();
-        let first = store.insert(7usize, transfer_equal, transfer_hash, transfer_inspect);
-        let second = store.insert(7usize, transfer_equal, transfer_hash, transfer_inspect);
+        let first = store.insert(
+            7usize,
+            transfer_equal,
+            transfer_hash,
+            transfer_inspect,
+            |_| None,
+        );
+        let second = store.insert(
+            7usize,
+            transfer_equal,
+            transfer_hash,
+            transfer_inspect,
+            |_| None,
+        );
         let first: EvaluatedExternalValue =
             EvaluatedExternalValue::new(ExternalTypeId::new(0), first);
         let second: EvaluatedExternalValue =

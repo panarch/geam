@@ -15,16 +15,16 @@ use super::type_syntax::{
     is_qualified_type_path, is_type_application_named, source_wrapper,
 };
 use super::{
-    AsyncCallAccess, CallAccess, CallbackType, ClassifiedGenericHostType, CollectionType,
-    DeclaredInput, ExternalArguments, ExternalModel, ExternalSemantics, FunctionArgumentType,
-    FunctionArguments, FunctionCallAccess, FunctionCallParameter, FunctionFlavor,
-    FunctionInputType, FunctionInputValueType, FunctionModel, FunctionOutputCollectionType,
-    FunctionOutputLeafType, FunctionOutputValueType, FunctionParameter, FunctionProfile,
-    FunctionReturnType, FunctionRootOutputValueType, FunctionSourceParameter, GenericExternalModel,
-    GenericExternalStorage, GenericExternalType, GenericHostType, GenericInputSource,
-    GenericParameterScope, GenericValueType, ListDecoderModel, ListType, ModuleArguments,
-    ModuleProfile, PartialExternalArguments, PartialModuleArguments, ProviderValueType,
-    SourceWrapper, StaticValueType, StoredExternalField, ValidatedFunction, is_marker,
+    CallAccess, CallbackType, ClassifiedGenericHostType, CollectionType, DeclaredInput,
+    ExternalArguments, ExternalModel, ExternalSemantics, FunctionArgumentType, FunctionArguments,
+    FunctionCallAccess, FunctionCallParameter, FunctionInputType, FunctionInputValueType,
+    FunctionModel, FunctionOutputCollectionType, FunctionOutputLeafType, FunctionOutputValueType,
+    FunctionParameter, FunctionProfile, FunctionReturnType, FunctionRootOutputValueType,
+    FunctionSourceParameter, GenericExternalModel, GenericExternalStorage, GenericExternalType,
+    GenericHostType, GenericInputSource, GenericParameterScope, GenericValueType, InputOwnership,
+    ListDecoderModel, ListType, ModuleArguments, ModuleProfile, OwnedCallAccess,
+    PartialExternalArguments, PartialModuleArguments, ProviderValueType, SourceWrapper,
+    StaticValueType, StoredExternalField, ValidatedFunction, is_marker,
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -169,8 +169,16 @@ impl Parse for FunctionArguments {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let mut arguments = Self::default();
         while !input.is_empty() {
-            let field = input.parse::<Ident>()?;
+            let field = input.call(Ident::parse_any)?;
             match field.to_string().as_str() {
+                "await" => {
+                    if arguments.await_.replace(field.clone()).is_some() {
+                        return Err(syn::Error::new(
+                            field.span(),
+                            "duplicate function argument `await`",
+                        ));
+                    }
+                }
                 "profile" => {
                     input.parse::<Token![=]>()?;
                     if arguments.profile.replace(input.parse()?).is_some() {
@@ -360,7 +368,7 @@ pub(super) fn take_function_marker(
             Meta::NameValue(_) => {
                 return Err(syn::Error::new_spanned(
                     attribute,
-                    "`#[geam::function]` accepts only `profile = Name`",
+                    "`#[geam::function]` accepts only `await` and `profile = Name` arguments",
                 ));
             }
         };
@@ -737,7 +745,8 @@ impl<'a> FunctionValidationContext<'a> {
 pub(super) fn validate_function(
     function: &mut ItemFn,
     arguments: FunctionArguments,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
+    completion: super::SourceCompletion,
     list_decoders: &mut Vec<ListDecoderModel>,
     context: &FunctionValidationContext<'_>,
 ) -> syn::Result<ValidatedFunction> {
@@ -751,8 +760,8 @@ pub(super) fn validate_function(
             "provider functions must not be const",
         ));
     }
-    let async_ = matches!(flavor, FunctionFlavor::Async);
-    if async_ && module_profile.is_some() {
+    let async_ = matches!(flavor, InputOwnership::Owned);
+    if completion == super::SourceCompletion::Work && module_profile.is_some() {
         return Err(syn::Error::new_spanned(
             &function.sig,
             "async provider functions currently require component module composition",
@@ -809,7 +818,7 @@ pub(super) fn validate_function(
     )?;
 
     let mut call = if async_ {
-        FunctionCallAccess::Async(AsyncCallAccess::None)
+        FunctionCallAccess::Owned(OwnedCallAccess::None)
     } else {
         FunctionCallAccess::Immediate(CallAccess::None)
     };
@@ -839,7 +848,7 @@ pub(super) fn validate_function(
             })));
             if mutable {
                 call = if async_ {
-                    FunctionCallAccess::Async(AsyncCallAccess::Mutable)
+                    FunctionCallAccess::Owned(OwnedCallAccess::Mutable)
                 } else {
                     FunctionCallAccess::Immediate(CallAccess::Mutable)
                 };
@@ -907,6 +916,12 @@ pub(super) fn validate_function(
         host_result: host_result.is_some(),
         profile: profile.is_some(),
     };
+    if !async_ && function_contains_callback(&model) {
+        return Err(syn::Error::new_spanned(
+            &function.sig,
+            "Callback arguments require an async function; use #[geam::function(await)] for an ordinary Gleam result",
+        ));
+    }
     if function_contains_callback(&model) && !call.is_mutable() {
         return Err(syn::Error::new_spanned(
             &function.sig.inputs,
@@ -917,6 +932,7 @@ pub(super) fn validate_function(
 
     Ok(ValidatedFunction {
         model,
+        completion,
         call,
         parameters,
         declared_generics,
@@ -928,7 +944,7 @@ pub(super) fn validate_function(
 pub(super) fn apply_function_signature(
     function: &mut ItemFn,
     validated: &ValidatedFunction,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
     customs: &[CustomModel],
     support: &TokenStream,
 ) {
@@ -954,7 +970,7 @@ pub(super) fn apply_function_signature(
                     let state = &call.state;
                     let context = if call.mutable {
                         match flavor {
-                            FunctionFlavor::Immediate => syn::parse_quote! {
+                            InputOwnership::Borrowed => syn::parse_quote! {
                                 #support::ProviderActiveCall<
                                     '__geam_call,
                                     #active_profile,
@@ -962,13 +978,13 @@ pub(super) fn apply_function_signature(
                                     #host_return,
                                 >
                             },
-                            FunctionFlavor::Async => syn::parse_quote! {
-                                #support::ProviderFutureCall<
-                                    '__geam_call,
-                                    #active_profile,
-                                    __GeamProvider,
-                                >
-                            },
+                            InputOwnership::Owned => {
+                                let context = match validated.completion {
+                                    super::SourceCompletion::Ordinary => quote!(#support::ProviderExecutionCall),
+                                    super::SourceCompletion::Work => quote!(#support::ProviderFutureCall),
+                                };
+                                syn::parse_quote!(#context<'__geam_call, #active_profile, __GeamProvider>)
+                            }
                         }
                     } else {
                         syn::parse_quote! {
@@ -1016,9 +1032,7 @@ pub(super) fn apply_function_signature(
                                 callback,
                                 &validated.declared_generics,
                                 &active_profile,
-                                &host_return,
                                 support,
-                                flavor,
                             ));
                         }
                         FunctionArgumentType::Input(FunctionInputType::Value(value)) => {
@@ -1045,7 +1059,7 @@ pub(super) fn apply_function_signature(
     if !call.is_none() || function_contains_callback(model) {
         prepend_function_lifetime(&mut function.sig.generics, syn::parse_quote!('__geam_call));
     }
-    if matches!(flavor, FunctionFlavor::Async) && function_contains_callback(model) {
+    if matches!(flavor, InputOwnership::Owned) && function_contains_callback(model) {
         for generic in &model.generics {
             let ident = &generic.ident;
             function
@@ -1083,7 +1097,7 @@ pub(super) fn apply_function_signature(
             .make_where_clause()
             .predicates
             .push(syn::parse_quote! { __GeamProfile: __GeamModuleProfile });
-        if matches!(flavor, FunctionFlavor::Async) {
+        if matches!(flavor, InputOwnership::Owned) {
             function
                 .sig
                 .generics
@@ -1136,39 +1150,23 @@ pub(super) fn apply_function_signature(
             let callback_arguments = callback
                 .arguments
                 .iter()
-                .map(|argument| match flavor {
-                    FunctionFlavor::Immediate => callback_output_signature_type(
+                .map(|argument| {
+                    callback_output_signature_type(
                         argument,
                         customs,
                         support,
-                        FunctionFlavor::Immediate,
-                    ),
-                    FunctionFlavor::Async => callback_output_signature_type(
-                        argument,
-                        customs,
-                        support,
-                        FunctionFlavor::Async,
-                    ),
+                        InputOwnership::Owned,
+                    )
                 })
                 .collect::<Vec<_>>();
             let callback_return = callback_input_signature_type(
                 &callback.return_,
                 customs,
                 support,
-                flavor,
+                InputOwnership::Owned,
                 &active_profile,
             );
-            let predicate = match flavor {
-                FunctionFlavor::Immediate => syn::parse_quote! {
-                    #codec: #support::ProviderCallbackCodec<
-                        #active_profile,
-                        __GeamProvider,
-                        #host_return,
-                        Arguments = (#(#callback_arguments,)*),
-                        Returned = #callback_return,
-                    >
-                },
-                FunctionFlavor::Async => syn::parse_quote! {
+            let predicate = syn::parse_quote! {
                     #codec: #support::ProviderCallbackCodec<
                         #active_profile,
                         __GeamProvider,
@@ -1176,7 +1174,6 @@ pub(super) fn apply_function_signature(
                         Arguments = (#(#callback_arguments,)*),
                         Returned = #callback_return,
                     >
-                },
             };
             function
                 .sig
@@ -1191,7 +1188,7 @@ pub(super) fn apply_function_signature(
 pub(super) fn resolve_function_value_forms(
     function: &mut FunctionModel,
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) {
     for argument in &mut function.arguments {
         let FunctionArgumentType::Callback(callback) = argument else {
@@ -1207,7 +1204,7 @@ pub(super) fn resolve_function_value_forms(
 fn rewrite_function_return_type(
     type_: &mut FunctionReturnType,
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) {
     match type_ {
         FunctionReturnType::Value(value) => {
@@ -1222,7 +1219,7 @@ fn rewrite_function_return_type(
 fn rewrite_root_output_value_type(
     type_: &mut FunctionRootOutputValueType,
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) {
     match type_ {
         FunctionRootOutputValueType::Value(value) => {
@@ -1249,7 +1246,7 @@ fn rewrite_root_output_value_type(
 fn rewrite_output_value_type(
     type_: &mut FunctionOutputValueType,
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) {
     match type_ {
         FunctionOutputValueType::Value(value) => {
@@ -1277,7 +1274,7 @@ fn rewrite_output_value_type(
 fn rewrite_output_leaf_type(
     type_: &mut FunctionOutputLeafType,
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) {
     match type_ {
         FunctionOutputLeafType::Declared { type_, .. }
@@ -1288,7 +1285,7 @@ fn rewrite_output_leaf_type(
     };
 }
 
-fn rewrite_declared_output_type(type_: &mut Type, support: &TokenStream, flavor: FunctionFlavor) {
+fn rewrite_declared_output_type(type_: &mut Type, support: &TokenStream, flavor: InputOwnership) {
     if !is_type_application_named(type_, "External") {
         let source = type_.clone();
         *type_ = syn::parse_quote!(<#source as #support::ProviderValueForms>::Output);
@@ -1296,10 +1293,10 @@ fn rewrite_declared_output_type(type_: &mut Type, support: &TokenStream, flavor:
     }
     let source = type_.clone();
     *type_ = match flavor {
-        FunctionFlavor::Immediate => syn::parse_quote! {
+        InputOwnership::Borrowed => syn::parse_quote! {
             <#source as #support::ProviderValueForms>::ImmediateInput
         },
-        FunctionFlavor::Async => syn::parse_quote! {
+        InputOwnership::Owned => syn::parse_quote! {
             <#source as #support::ProviderValueForms>::OwnedInput
         },
     };
@@ -1399,17 +1396,17 @@ fn collection_type_with_item(collection: &TypePath, item: &Type) -> TypePath {
 fn wrap_host_result_type(
     output: Type,
     host_result: Option<&TypePath>,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
     support: &TokenStream,
 ) -> Type {
     if let Some(host_result) = host_result {
         match flavor {
-            FunctionFlavor::Immediate => {
+            InputOwnership::Borrowed => {
                 let result = collection_type_with_item(host_result, &output);
                 syn::parse_quote!(#result)
             }
-            FunctionFlavor::Async => {
-                let error = syn::parse_quote!(#support::HostFutureError);
+            InputOwnership::Owned => {
+                let error = syn::parse_quote!(#support::HostExecutionError);
                 let result = collection_type_with_items(host_result, &[output, error]);
                 syn::parse_quote!(#result)
             }

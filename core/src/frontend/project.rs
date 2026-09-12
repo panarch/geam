@@ -20,6 +20,13 @@ const MANIFEST_FILE: &str = "manifest.toml";
 
 #[derive(Debug, Error)]
 pub enum ProjectError {
+    #[error("failed to resolve package resource location {path}")]
+    ResourcePath {
+        path: Utf8PathBuf,
+        #[source]
+        error: std::io::Error,
+    },
+
     #[error("failed to read Gleam package config {path}")]
     ConfigIo {
         path: Utf8PathBuf,
@@ -91,6 +98,10 @@ pub fn compile_typed_project(
         project.modules,
         WarningEmitter::null(),
     )
+    .map(|mut program| {
+        program.package_resources = project.resources;
+        program
+    })
     .map_err(ProjectError::from)
 }
 
@@ -118,6 +129,10 @@ pub fn compile_typed_host_project<Profile: HostProfile>(
         hosts,
         WarningEmitter::null(),
     )
+    .map(|mut program| {
+        program.package_resources = project.resources;
+        program
+    })
     .map_err(ProjectError::from)
 }
 
@@ -125,6 +140,7 @@ struct ParsedProject {
     root_package: EcoString,
     root_module: EcoString,
     modules: Vec<ParsedModule>,
+    resources: BTreeMap<EcoString, std::path::PathBuf>,
 }
 
 fn load_project(
@@ -142,6 +158,7 @@ fn load_project(
         root_package: packages.root.name,
         root_module,
         modules,
+        resources: packages.resources,
     })
 }
 
@@ -200,6 +217,7 @@ struct LoadedPackage {
 struct LoadedProject {
     root: LoadedPackage,
     dependencies: Vec<LoadedPackage>,
+    resources: BTreeMap<EcoString, std::path::PathBuf>,
 }
 
 fn load_packages(
@@ -215,6 +233,8 @@ fn load_packages(
         direct_dependencies: root_dependencies.clone(),
     };
     let mut dependencies = Vec::new();
+    let resource_root = absolute_project_root(project_root)?;
+    let mut resources = BTreeMap::from([(root_name.clone(), resource_root.join("priv"))]);
     let mut loaded = BTreeSet::from([root_name.clone()]);
     let mut pending = root_dependencies
         .iter()
@@ -234,11 +254,19 @@ fn load_packages(
                 package: package_name.clone(),
             })?;
         loaded.insert(package_name.clone());
+        let directory = package_directory(package);
+        let package_root = project_root.join(&directory);
+        resources.insert(
+            package_name.clone(),
+            resource_root.join(&directory).join("priv"),
+        );
         if !package.build_tools.iter().any(|tool| tool == "gleam") {
+            for dependency in &package.requirements {
+                pending.insert((package.name.clone(), dependency.clone()));
+            }
             continue;
         }
 
-        let package_root = package_root(project_root, package);
         if !package_root.is_dir() && !package.is_local() {
             return Err(ProjectError::MissingDownloadedPackage {
                 package: package_name,
@@ -265,7 +293,18 @@ fn load_packages(
         });
     }
 
-    Ok(LoadedProject { root, dependencies })
+    Ok(LoadedProject {
+        root,
+        dependencies,
+        resources,
+    })
+}
+
+fn absolute_project_root(root: &Utf8Path) -> Result<std::path::PathBuf, ProjectError> {
+    std::path::absolute(root).map_err(|error| ProjectError::ResourcePath {
+        path: root.to_path_buf(),
+        error,
+    })
 }
 
 fn dependency_names(config: &PackageConfig) -> Box<[EcoString]> {
@@ -278,14 +317,14 @@ fn dependency_names(config: &PackageConfig) -> Box<[EcoString]> {
         .collect()
 }
 
-fn package_root(project_root: &Utf8Path, package: &ManifestPackage) -> Utf8PathBuf {
+fn package_directory(package: &ManifestPackage) -> Utf8PathBuf {
     match &package.source {
-        ManifestPackageSource::Hex { .. } | ManifestPackageSource::Git { .. } => project_root
-            .join("build")
-            .join("packages")
-            .join(package.name.as_str()),
-        ManifestPackageSource::Local { path } if path.is_absolute() => path.clone(),
-        ManifestPackageSource::Local { path } => project_root.join(path),
+        ManifestPackageSource::Hex { .. } | ManifestPackageSource::Git { .. } => {
+            Utf8PathBuf::from("build")
+                .join("packages")
+                .join(package.name.as_str())
+        }
+        ManifestPackageSource::Local { path } => path.clone(),
     }
 }
 
@@ -458,6 +497,7 @@ mod tests {
     use crate::{HostedExecution, PlanError, Value, plan_host_program, plan_program};
     use camino::{Utf8Path, Utf8PathBuf};
     use num_bigint::BigInt;
+    use std::collections::BTreeMap;
     use std::fs;
     use tempfile::{TempDir, tempdir};
 
@@ -704,6 +744,28 @@ pub fn answer() -> Int
                 .expect("provider module should be unique"),
         )
         .expect("hosted project should compile through the shared loader");
+        let resources = BTreeMap::from([
+            ("application".into(), root.join("priv").into_std_path_buf()),
+            (
+                "git_dep".into(),
+                root.join("build/packages/git_dep/priv").into_std_path_buf(),
+            ),
+            (
+                "hex_dep".into(),
+                root.join("build/packages/hex_dep/priv").into_std_path_buf(),
+            ),
+            (
+                "local_dep".into(),
+                root.join("packages/local_dep/priv").into_std_path_buf(),
+            ),
+        ]);
+        assert_eq!(plain.package_resources(), &resources);
+        assert_eq!(hosted.package_resources(), &resources);
+        assert!(
+            resources
+                .values()
+                .all(|path| path.is_absolute() && !path.exists())
+        );
         let plan = plan_host_program(hosted).expect("hosted project should plan");
 
         let expected_modules = [
@@ -745,10 +807,10 @@ pub fn answer() -> Int
             ],
         );
 
-        let execution = HostedExecution::try_from_module_plan(plan)
+        let mut execution = HostedExecution::try_from_module_plan(plan)
             .expect("hosted project execution should seal");
         assert_eq!(
-            execution.run_main(&mut (), &mut Vec::new()),
+            crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
             Ok(Value::Int(42.into())),
         );
     }
@@ -800,11 +862,11 @@ pub fn value() -> Int
         )
         .expect("unselected source providers should not enter the hosted program");
         let plan = plan_host_program(typed).expect("selected provider should plan");
-        let execution = HostedExecution::try_from_module_plan(plan)
+        let mut execution = HostedExecution::try_from_module_plan(plan)
             .expect("selected provider should seal for execution");
 
         assert_eq!(
-            execution.run_main(&mut (), &mut Vec::new()),
+            crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
             Ok(Value::Int(42.into())),
         );
     }
@@ -954,15 +1016,27 @@ pub fn value() -> Int
         let mut state = ();
         let mut stores = ();
         let mut echo = drop;
-        let mut driver =
-            crate::runtime::work::driver::Driver::new(&plan, &mut state, &mut stores, &mut echo);
+        use crate::runtime::EmbeddingEntry;
+        let host = crate::execution_fixture::TestHost::default();
+        let domain = crate::runtime::execution::Domain::new(
+            std::sync::Arc::new(plan),
+            &host,
+            &mut state,
+            &mut stores,
+            &mut echo,
+            std::num::NonZeroUsize::MIN,
+        );
+        let context = domain.context();
         assert_eq!(
-            driver
-                .run_int(
-                    *entries.ints[0].function(),
-                    crate::runtime::RetainedInputs::empty()
+            host.block_on(
+                domain.drive(
+                    entries.ints[0]
+                        .function()
+                        .call(&context, crate::runtime::RetainedInputs::empty())
                 )
-                .expect("selected provider executes"),
+            )
+            .expect("host cleanup")
+            .expect("selected provider executes"),
             BigInt::from(42)
         );
         for (path, source) in files {
@@ -1063,7 +1137,7 @@ packages = [
     }
 
     #[test]
-    fn skips_non_gleam_resolved_packages() {
+    fn skips_non_gleam_sources_but_keeps_their_transitive_resources() {
         let project = tempdir().expect("temporary project should be created");
         let root = project_root(&project);
         write_file(
@@ -1082,7 +1156,8 @@ build_only = ">= 1.0.0 and < 2.0.0"
             "manifest.toml",
             r#"
 packages = [
-  { name = "build_only", version = "1.0.0", build_tools = ["rebar3"], requirements = [], source = "hex", outer_checksum = "00" },
+  { name = "build_only", version = "1.0.0", build_tools = ["rebar3"], requirements = ["data_only"], source = "hex", outer_checksum = "00" },
+  { name = "data_only", version = "1.0.0", build_tools = ["make"], requirements = [], source = "git", repo = "https://example.invalid/data", commit = "0123456789abcdef" },
 ]
 
 [requirements]
@@ -1090,8 +1165,25 @@ packages = [
         );
         write_file(&root, "src/main.gleam", "pub fn main() { 1 }");
 
-        let program =
-            compile_typed_project(root, "main").expect("non-Gleam package should be skipped");
+        let program = compile_typed_project(root.clone(), "main")
+            .expect("non-Gleam sources should be skipped");
+
+        assert_eq!(
+            program.package_resources(),
+            &BTreeMap::from([
+                ("application".into(), root.join("priv").into_std_path_buf()),
+                (
+                    "build_only".into(),
+                    root.join("build/packages/build_only/priv")
+                        .into_std_path_buf()
+                ),
+                (
+                    "data_only".into(),
+                    root.join("build/packages/data_only/priv")
+                        .into_std_path_buf()
+                ),
+            ])
+        );
 
         assert_eq!(
             program
@@ -1100,6 +1192,25 @@ packages = [
                 .collect::<Vec<_>>(),
             ["main"],
         );
+    }
+
+    #[test]
+    fn resource_locations_are_absolute_without_requiring_a_priv_directory() {
+        let config = toml::from_str("name = \"application\"\nversion = \"1.0.0\"").unwrap();
+        let loaded = super::load_packages(Utf8Path::new("."), config, &BTreeMap::new()).unwrap();
+        assert_eq!(
+            loaded.resources["application"],
+            std::env::current_dir().unwrap().join("priv")
+        );
+        let config = toml::from_str("name = \"application\"\nversion = \"1.0.0\"").unwrap();
+        let error = super::load_packages(Utf8Path::new(""), config, &BTreeMap::new())
+            .err()
+            .unwrap();
+        assert_eq!(
+            error.to_string(),
+            "failed to resolve package resource location "
+        );
+        assert!(std::error::Error::source(&error).is_some());
     }
 
     #[test]

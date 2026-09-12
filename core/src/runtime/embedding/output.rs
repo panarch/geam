@@ -11,7 +11,7 @@ pub(crate) struct EmbeddingOutput {
     strings: Vec<EcoString>,
     bit_arrays: Vec<crate::BitArrayValue>,
     utf_codepoints: Vec<char>,
-    variants: Vec<usize>,
+    customs: Vec<EvaluatedCustomValue>,
     _externals: Vec<EvaluatedExternalValue>,
     bools: Vec<bool>,
     _parameter_lists: Vec<ParameterListValueId>,
@@ -61,7 +61,15 @@ impl EmbeddingOutput {
     }
 
     pub(crate) fn take_variant(&mut self) -> usize {
-        take_last(&mut self.variants)
+        let (constructor, fields) = take_last(&mut self.customs).into_fields();
+        for field in fields.into_vec().into_iter().rev() {
+            self.push_reversed(field);
+        }
+        constructor.index()
+    }
+
+    pub(crate) fn take_custom(&mut self) -> super::EmbeddingCustomInput {
+        super::EmbeddingCustomInput::retained(take_last(&mut self.customs))
     }
 
     pub(crate) fn take_external(&mut self) -> EvaluatedExternalValue {
@@ -85,7 +93,7 @@ impl EmbeddingOutput {
             strings: Vec::new(),
             bit_arrays: Vec::new(),
             utf_codepoints: Vec::new(),
-            variants: Vec::new(),
+            customs: Vec::new(),
             _externals: Vec::new(),
             bools: Vec::new(),
             _parameter_lists: Vec::new(),
@@ -101,13 +109,7 @@ impl EmbeddingOutput {
             EvaluatedValue::String(value) => self.strings.push(value),
             EvaluatedValue::BitArray(value) => self.bit_arrays.push(value.into_value()),
             EvaluatedValue::UtfCodepoint(value) => self.utf_codepoints.push(value),
-            EvaluatedValue::Custom(value) => {
-                let (constructor, fields) = value.into_fields();
-                for field in fields.into_vec().into_iter().rev() {
-                    self.push_reversed(field);
-                }
-                self.variants.push(constructor.index());
-            }
+            EvaluatedValue::Custom(value) => self.customs.push(value),
             EvaluatedValue::External(value) => self._externals.push(value),
             EvaluatedValue::Bool(value) => self.bools.push(value),
             EvaluatedValue::Nil => {}
@@ -167,6 +169,7 @@ pub fn main() {
             |context, left, right| context.stored_values_equal(left, right),
             |context, value| context.stored_value_hash(value),
             |context, value| context.inspect_stored_value(value),
+            |_| None,
         );
         let external: EvaluatedExternalValue =
             EvaluatedExternalValue::new(ExternalTypeId::new(0), external);

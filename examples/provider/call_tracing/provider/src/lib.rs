@@ -21,14 +21,27 @@ mod call_tracing {
         call.state_mut().entries.push(entry);
     }
 
-    #[geam::function]
-    fn around<Item>(
+    #[geam::function(await)]
+    async fn record_later(
+        #[geam::call] call: &mut Call<RunState>,
+        entry: EcoString,
+    ) -> HostResult<()> {
+        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        call.with_state(move |state| state.entries.push(entry))
+            .await?;
+        Ok(())
+    }
+
+    #[geam::function(await)]
+    async fn around<Item>(
         #[geam::call] call: &mut Call<RunState>,
         callback: Callback<fn() -> Value<Item>>,
     ) -> HostResult<Value<Item>> {
-        call.state_mut().entries.push("before".into());
-        let returned = call.invoke(callback, ())?;
-        call.state_mut().entries.push("after".into());
+        call.with_state(|state| state.entries.push("before".into()))
+            .await?;
+        let returned = call.invoke(&callback, ()).await?;
+        call.with_state(|state| state.entries.push("after".into()))
+            .await?;
         Ok(returned)
     }
 

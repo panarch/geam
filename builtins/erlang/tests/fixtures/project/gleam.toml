@@ -1,0 +1,7 @@
+name = "geam_erlang_test"
+version = "1.0.0"
+gleam = ">= 1.18.1"
+
+[dependencies]
+gleam_stdlib = ">= 1.0.3 and < 1.0.4"
+gleam_erlang = ">= 1.3.0 and < 1.3.1"

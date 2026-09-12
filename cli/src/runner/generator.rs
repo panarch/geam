@@ -12,6 +12,7 @@ enum ComponentInitialization {
     Stdlib,
     Unit,
     SystemTime,
+    PackageResources,
     Configured { package: String },
 }
 
@@ -32,6 +33,11 @@ impl RunnerComponent {
                 field: "time".to_owned(),
                 type_path: "geam::gleam_time::Component".to_owned(),
                 initialization: ComponentInitialization::SystemTime,
+            },
+            BuiltInProvider::Erlang => Self {
+                field: "erlang".to_owned(),
+                type_path: "geam::gleam_erlang::Component<Profile>".to_owned(),
+                initialization: ComponentInitialization::PackageResources,
             },
             BuiltInProvider::Geam => Self {
                 field: "future".to_owned(),
@@ -87,6 +93,7 @@ impl RunnerComponent {
                 field = self.field,
             ),
             ComponentInitialization::Stdlib
+            | ComponentInitialization::PackageResources
             | ComponentInitialization::Unit
             | ComponentInitialization::SystemTime => String::new(),
         }
@@ -100,6 +107,7 @@ impl RunnerComponent {
                 type_path = self.type_path,
             ),
             ComponentInitialization::Stdlib
+            | ComponentInitialization::PackageResources
             | ComponentInitialization::Unit
             | ComponentInitialization::SystemTime => String::new(),
         }
@@ -113,6 +121,9 @@ impl RunnerComponent {
             ComponentInitialization::Unit => "()".to_owned(),
             ComponentInitialization::SystemTime => {
                 "geam::gleam_time::SystemTimeSource".to_owned()
+            }
+            ComponentInitialization::PackageResources => {
+                "geam::gleam_erlang::Configuration { resources: typed.package_resources().clone() }".to_owned()
             }
             ComponentInitialization::Configured { .. } => return String::new(),
         };
@@ -217,6 +228,7 @@ struct Profile;
 impl geam::HostProfile for Profile {
     type RunState = RunState;
     type ExternalStores = Stores;
+    type ExecutionState = geam::gleam_erlang::ErlangExecution;
 }
 
 impl geam::HostWorkProfile for Profile {
@@ -231,6 +243,12 @@ impl geam::gleam_stdlib::GleamStdlibHostProfile for Profile {
 
 impl geam::gleam_time::GleamTimeHostProfile for Profile {
     type Source = geam::gleam_time::SystemTimeSource;
+}
+
+impl geam::gleam_erlang::GleamErlangHostProfile for Profile {
+    fn erlang_execution(state: &mut Self::ExecutionState) -> &mut geam::gleam_erlang::ErlangExecution {
+        state
+    }
 }
 
 fn host_providers() -> Result<geam::HostProviderSet<Profile>, geam::HostRegistrationError> {
@@ -267,7 +285,8 @@ __STATE_INITIALIZERS__    };
     let plan = geam::plan_host_program(typed)?;
     let mut execution = geam::HostedEntry::try_from_module_plan(plan)?;
     let mut echo = output.echo_sink();
-    let execution_result = runtime.block_on(execution.run(&mut state, &mut echo));
+    let host = geam::execution::TokioHost::new(runtime.handle().clone());
+    let execution_result = runtime.block_on(execution.run(&host, &mut state, &mut echo));
     output.finish()?;
     execution_result?;
     Ok(())
@@ -483,6 +502,11 @@ mod tests {
                     initialization: ComponentInitialization::SystemTime,
                 },
                 RunnerComponent {
+                    field: "erlang".to_owned(),
+                    type_path: "geam::gleam_erlang::Component<Profile>".to_owned(),
+                    initialization: ComponentInitialization::PackageResources,
+                },
+                RunnerComponent {
                     field: "future".to_owned(),
                     type_path: "geam::FutureComponent".to_owned(),
                     initialization: ComponentInitialization::Unit,
@@ -511,6 +535,7 @@ mod tests {
             "stdlib",
             "json",
             "time",
+            "erlang",
             "future",
             "geam_provider_alpha",
             "geam_provider_zeta",
@@ -519,12 +544,14 @@ mod tests {
         }
         assert!(source.contains("impl geam::gleam_stdlib::GleamStdlibHostProfile for Profile"));
         assert!(source.contains("impl geam::gleam_time::GleamTimeHostProfile for Profile"));
+        assert!(source.contains("impl geam::gleam_erlang::GleamErlangHostProfile for Profile"));
         assert!(source.contains("impl geam::HostWorkProfile for Profile"));
 
         let type_paths = [
             "geam::gleam_stdlib::Component<CliIoSink>",
             "geam::gleam_json::Component",
             "geam::gleam_time::Component",
+            "geam::gleam_erlang::Component<Profile>",
             "geam::FutureComponent",
             "geam_provider_alpha::Component",
             "geam_provider_zeta::Component",
@@ -568,7 +595,7 @@ mod tests {
         assert!(runtime_context < alpha_initialization);
 
         let mut previous_initialization = output_initialization;
-        for field in ["stdlib", "json", "time", "future"] {
+        for field in ["stdlib", "json", "time", "erlang", "future"] {
             let initialization = source
                 .find(&format!("let state_{field}"))
                 .expect("runner capability should initialize");
@@ -580,8 +607,9 @@ mod tests {
         ));
         assert!(source.contains("let state_json = ();"));
         assert!(source.contains("let state_time = geam::gleam_time::SystemTimeSource;"));
+        assert!(source.contains("let state_erlang = geam::gleam_erlang::Configuration { resources: typed.package_resources().clone() };"));
         assert!(source.contains(
-            "let execution_result = runtime.block_on(execution.run(&mut state, &mut echo));"
+            "let execution_result = runtime.block_on(execution.run(&host, &mut state, &mut echo));"
         ));
         assert_eq!(
             source,

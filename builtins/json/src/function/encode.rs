@@ -109,7 +109,7 @@ mod tests {
 
     #[test]
     fn executes_scalar_encoding_through_the_hosted_pipeline() {
-        let execution = execution(
+        let mut execution = execution(
             r#"
 pub fn main() {
   #(
@@ -125,9 +125,9 @@ pub fn main() {
 }
 "#,
         );
-        let value = execution
-            .run_main(&mut run_state([0; 32]), &mut Vec::new())
-            .expect("scalar JSON encoding should run");
+        let value =
+            crate::execution_fixture::run(&mut execution, &mut run_state([0; 32]), &mut Vec::new())
+                .expect("scalar JSON encoding should run");
 
         assert_eq!(
             value.inspect().to_string(),
@@ -137,7 +137,7 @@ pub fn main() {
 
     #[test]
     fn constructs_nested_json_and_shares_string_tree_output() {
-        let execution = execution(
+        let mut execution = execution(
             r#"
 pub fn main() {
   #(
@@ -151,9 +151,9 @@ pub fn main() {
 }
 "#,
         );
-        let value = execution
-            .run_main(&mut run_state([0; 32]), &mut Vec::new())
-            .expect("nested JSON construction should run");
+        let value =
+            crate::execution_fixture::run(&mut execution, &mut run_state([0; 32]), &mut Vec::new())
+                .expect("nested JSON construction should run");
 
         assert_eq!(
             value.inspect().to_string(),
@@ -178,10 +178,13 @@ pub fn main() {{
 }}
 "#,
             );
-            let execution = execution_with_modules(&source, [non_finite]);
-            let error = execution
-                .run_main(&mut run_state([0; 32]), &mut Vec::new())
-                .expect_err("non-finite JSON float should fail");
+            let mut execution = execution_with_modules(&source, [non_finite]);
+            let error = crate::execution_fixture::run(
+                &mut execution,
+                &mut run_state([0; 32]),
+                &mut Vec::new(),
+            )
+            .expect_err("non-finite JSON float should fail");
             let error = expect_json_host_error(error);
 
             assert_eq!(error.package(), "gleam_json");

@@ -1,11 +1,11 @@
-use super::{Future, FutureType, ScopeBrand, ScopedOutput, SharedList};
+use super::{Future, FutureType, ScopeBrand, SharedList, SourceType};
 use crate::embedding::input::{InputConstructions, ScopedFreshInput, ScopedInputValue};
 use crate::host::HostExternalSchema;
 use crate::plan::execution::LibraryListConstructions;
 use crate::runtime::{EmbeddingInputStorage, EmbeddingInputValue, EvaluatedExternalValue};
 use std::sync::Arc;
 
-impl<'scope, Value: ScopedOutput<Schema>, Schema: HostExternalSchema>
+impl<'scope, Value: SourceType, Schema: HostExternalSchema>
     ScopedInputValue<Future<'scope, Value::Value<'scope>, Schema>, ScopeBrand<'scope>>
     for FutureType<Value, Schema>
 {
@@ -24,7 +24,7 @@ impl<'scope, Value: ScopedOutput<Schema>, Schema: HostExternalSchema>
     }
 }
 
-impl<'scope, Value: ScopedOutput<Schema>, Schema: HostExternalSchema>
+impl<'scope, Value: SourceType, Schema: HostExternalSchema>
     ScopedInputValue<&Future<'scope, Value::Value<'scope>, Schema>, ScopeBrand<'scope>>
     for FutureType<Value, Schema>
 {
@@ -43,7 +43,7 @@ impl<'scope, Value: ScopedOutput<Schema>, Schema: HostExternalSchema>
     }
 }
 
-impl<'scope, Value: ScopedOutput<Schema>, Schema: HostExternalSchema>
+impl<'scope, Value: SourceType, Schema: HostExternalSchema>
     ScopedFreshInput<Future<'scope, Value::Value<'scope>, Schema>, ScopeBrand<'scope>>
     for FutureType<Value, Schema>
 {
@@ -55,7 +55,7 @@ impl<'scope, Value: ScopedOutput<Schema>, Schema: HostExternalSchema>
     }
 }
 
-impl<'scope, Value: ScopedOutput<Schema>, Schema: HostExternalSchema>
+impl<'scope, Value: SourceType, Schema: HostExternalSchema>
     ScopedFreshInput<&Future<'scope, Value::Value<'scope>, Schema>, ScopeBrand<'scope>>
     for FutureType<Value, Schema>
 {

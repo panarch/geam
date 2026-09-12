@@ -163,7 +163,7 @@ pub fn bitwise_shift_right(value: Int, shift: Int) -> Int
 
     #[test]
     fn executes_every_integer_provider_through_the_hosted_pipeline() {
-        let execution = execution(
+        let mut execution = execution(
             r#"
 pub fn main() {
   #(
@@ -185,12 +185,12 @@ pub fn main() {
 "#,
         );
 
-        let value = execution
-            .run_main(
-                &mut GleamStdlibRunState::from_seed([0; 32]),
-                &mut Vec::new(),
-            )
-            .expect("integer providers should run");
+        let value = crate::execution_fixture::run(
+            &mut execution,
+            &mut GleamStdlibRunState::from_seed([0; 32]),
+            &mut Vec::new(),
+        )
+        .expect("integer providers should run");
 
         assert_eq!(
             value.inspect().to_string(),
@@ -253,13 +253,13 @@ pub fn main() {
         ];
 
         for (call, function, message) in cases {
-            let execution = execution(&format!("pub fn main() {{ {call} }}"));
-            let error = execution
-                .run_main(
-                    &mut GleamStdlibRunState::from_seed([0; 32]),
-                    &mut Vec::new(),
-                )
-                .expect_err("checked integer conversion should fail");
+            let mut execution = execution(&format!("pub fn main() {{ {call} }}"));
+            let error = crate::execution_fixture::run(
+                &mut execution,
+                &mut GleamStdlibRunState::from_seed([0; 32]),
+                &mut Vec::new(),
+            )
+            .expect_err("checked integer conversion should fail");
             let error = expect_integer_host_error(error);
 
             assert_eq!(error.package(), "gleam_stdlib");

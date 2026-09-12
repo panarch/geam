@@ -1,38 +1,19 @@
-use super::super::{EvaluatedFunctionExit, evaluate_entry};
+use super::super::run;
+use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::function::BitArrayFunctionId;
-use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::evaluated::EvaluatedBitArray;
 use crate::runtime::graph::RetainedValues;
-use crate::runtime::state::RuntimeStateFor;
+use crate::runtime::state::RuntimeState;
 
-pub(in crate::runtime) fn run_bit_array<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    mut function: BitArrayFunctionId,
-    mut origin: HostCallOrigin,
-    mut inputs: RetainedValues,
+pub(in crate::runtime) fn run_bit_array(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState<'_>,
+    function: BitArrayFunctionId,
+    origin: HostCallOrigin,
+    inputs: RetainedValues,
 ) -> ExecutionResult<EvaluatedBitArray> {
-    loop {
-        let exit = evaluate_entry(
-            plan,
-            state,
-            plan.bit_array_function(function),
-            origin,
-            inputs,
-        )?;
-        match exit {
-            EvaluatedFunctionExit::Return(value) => return Ok(value),
-            EvaluatedFunctionExit::TailCall {
-                function: target,
-                args,
-            } => {
-                origin = HostCallOrigin::source(target.site().clone());
-                function = *target.function();
-                inputs = args;
-            }
-        }
-    }
+    run(plan, state, function, origin, inputs)
 }
 
 #[cfg(test)]
@@ -104,7 +85,7 @@ pub fn main() {
         )
         .expect("host source should compile");
         let plan = plan_host_program(typed).expect("host source should plan");
-        let execution =
+        let mut execution =
             HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         assert_eq!(
             execution
@@ -121,7 +102,7 @@ pub fn main() {
             [ParamLocal::BitArray(BitArrayLocalId(0))],
         );
         assert_eq!(
-            execution.run_main(&mut (), &mut Vec::new()),
+            crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
             Ok(Value::BitArray(BitArrayValue::from_bytes(vec![1, 2]))),
         );
     }

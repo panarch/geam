@@ -162,10 +162,14 @@ fn generate(
         package.require_geam_feature("geam-builtin", "to generate hosted embedding bindings")?;
     }
     let source = match requirements {
-        [] if bindings.has_future() => render::hosted(
+        [] if bindings.needs_scope() => render::hosted(
             &HostedBindings {
+                components: if bindings.has_future() {
+                    HostedComponents::from_builtin(BuiltInProvider::Geam)
+                } else {
+                    HostedComponents::default()
+                },
                 boundary: bindings,
-                components: HostedComponents::from_builtin(BuiltInProvider::Geam),
             },
             package.project_path(),
         ),
@@ -833,6 +837,124 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     #[test]
+    fn generates_scoped_opaque_sessions_without_a_future_component() {
+        let fixture = ApplicationFixture::new();
+        fixture.write_plain_project();
+        let manifest_path = fixture.root.join("Cargo.toml");
+        let mut manifest: toml_edit::DocumentMut = fs::read_to_string(&manifest_path)
+            .expect("manifest")
+            .parse()
+            .expect("TOML");
+        manifest["dependencies"]["runtime"]["features"] =
+            toml_edit::value(toml_edit::Array::from_iter(["embedding", "tokio"]));
+        manifest["dependencies"]["tokio"] = toml_edit::value("1");
+        fs::write(&manifest_path, manifest.to_string()).expect("host executor dependencies");
+        fs::write(
+            fixture
+                .root
+                .join("gleam/src/plain_embedding_application.gleam"),
+            r#"
+pub opaque type Session(a) { Session(a, fn(Int) -> Int) }
+pub type Handle = Session(Int)
+pub fn start() { Session(40, fn(value) { value + 2 }) }
+pub fn keep(value: Handle) { value }
+pub fn read(value: Handle) { let Session(value, callback) = value callback(value) }
+pub fn strings(value: Session(String)) { value }
+pub fn string_session() { Session("retained", fn(value) { value }) }
+pub fn read_string(value: Session(String)) { let Session(value, _) = value value }
+pub fn pack(value: #(Handle, Result(Handle, String), List(Handle))) { value }
+pub type Wrapped(a) { Wrapped(a) }
+pub fn complex() {
+  Session([#(fn() { 42 }, Wrapped("nested"))], fn(value) { value })
+}
+pub fn read_complex(value: Session(List(#(fn() -> Int, Wrapped(String))))) {
+  let Session(items, _) = value
+  let assert [#(callback, Wrapped(text))] = items
+  #(callback(), text)
+}
+"#,
+        )
+        .expect("source-owned session");
+        fs::write(fixture.root.join("src/main.rs"), r#"mod geam_bindings;
+use runtime::embedding::HostedModuleBuilder;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let executor = tokio::runtime::Builder::new_current_thread().build()?;
+    let host = runtime::execution::TokioHost::new(executor.handle().clone());
+    let program = geam_bindings::project().compile()?;
+    let (bindings, functions) = geam_bindings::bind(HostedModuleBuilder::new(program)?)?;
+    let mut module = bindings.seal()?;
+    let mut state = geam_bindings::RunStateInputs {}.initialize();
+    let mut echo = Vec::new();
+    executor.block_on(module.with_execution(&host, &mut state, &mut echo, async |scope| {
+        let session = scope.call(&functions.start, ()).await?;
+        let text = scope.call(&functions.string_session, ()).await?;
+        let text = scope.call(&functions.strings, (text,)).await?;
+        assert_eq!(scope.call(&functions.read_string, (text,)).await?, "retained");
+        let retained = scope.call(&functions.keep, (&session,)).await?;
+        assert_eq!(scope.call(&functions.read, (retained,)).await?, 42.into());
+        let packed = scope.call(&functions.pack, ((&session, Ok(&session), vec![session.clone()]),)).await?;
+        let item = packed.2.read_item(0, |item| item).expect("retained session");
+        assert_eq!(scope.call(&functions.read, (item,)).await?, 42.into());
+        let packed = scope.call(&functions.pack, ((&packed.0, packed.1.as_ref().map_err(Clone::clone), &packed.2),)).await?;
+        assert_eq!(scope.call(&functions.read, (packed.0,)).await?, 42.into());
+        let complex = scope.call(&functions.complex, ()).await?;
+        assert_eq!(scope.call(&functions.read_complex, (complex,)).await?, (42.into(), "nested".into()));
+        Ok::<_, Box<dyn std::error::Error>>(())
+    }))??;
+    assert!(echo.is_empty());
+    Ok(())
+}
+"#).expect("Rust session consumer");
+        fixture.generate_lockfile();
+        sync(&fixture.root).expect("opaque bindings");
+        check(&fixture.root).expect("checked generated descriptors");
+        let generated_path = fixture.root.join("src/geam_bindings.rs");
+        let generated = fs::read(&generated_path).expect("generated source");
+        let source = std::str::from_utf8(&generated).expect("Rust source");
+        assert!(source.contains("HostedProject<Profile>"));
+        assert!(!source.contains("Future"));
+        assert!(!source.contains("HostWorkProfile"));
+        assert_success(
+            Command::new("rustfmt").arg("--check").arg(&generated_path),
+            "opaque binding format",
+        );
+        assert_success(
+            fixture.cargo("clippy").args([
+                "--offline",
+                "--locked",
+                "--all-targets",
+                "--",
+                "-D",
+                "warnings",
+            ]),
+            "opaque binding types",
+        );
+        let output = success_output(
+            fixture
+                .cargo("run")
+                .args(["--offline", "--locked", "--quiet"]),
+            "opaque session round-trip",
+        );
+        assert_eq!(output.stdout, b"");
+        assert_eq!(output.stderr, b"");
+        sync(&fixture.root).expect("repeat sync");
+        assert_eq!(fs::read(&generated_path).expect("same output"), generated);
+        let manifest: toml::Value =
+            toml::from_str(&fs::read_to_string(&manifest_path).expect("updated manifest"))
+                .expect("TOML");
+        assert_eq!(
+            manifest["dependencies"]["runtime"]["features"]
+                .as_array()
+                .expect("features"),
+            &[
+                toml::Value::String("embedding".into()),
+                toml::Value::String("tokio".into())
+            ]
+        );
+    }
+
+    #[test]
     fn binds_future_values_when_native_declarations_have_fallbacks() {
         let fixture = ApplicationFixture::new();
         fixture.write_plain_project();
@@ -890,29 +1012,34 @@ pub fn ready(value: Int) { future.ready(value) }
             .expect("Cargo manifest")
             .parse()
             .expect("Cargo TOML");
-        cargo["dependencies"]["futures"] = toml_edit::value("0.3");
+        cargo["dependencies"]["tokio"] = toml_edit::value("1");
+        cargo["dependencies"]["runtime"]["features"]
+            .as_array_mut()
+            .expect("features")
+            .push("tokio");
         fs::write(&cargo_path, cargo.to_string()).expect("caller-owned executor dependency");
         fs::write(
             fixture.root.join("src/main.rs"),
             r#"mod geam_bindings;
-use runtime::embedding::{HostedModuleBuilder, with_execution_scope};
+use runtime::embedding::HostedModuleBuilder;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let executor = tokio::runtime::Builder::new_current_thread().build()?;
+    let host = runtime::execution::TokioHost::new(executor.handle().clone());
     let program = geam_bindings::project().compile()?;
     let (bindings, functions) = geam_bindings::bind(HostedModuleBuilder::new(program)?)?;
     let mut module = bindings.seal()?;
     let mut state = geam_bindings::RunStateInputs {}.initialize();
     let mut echo = Vec::new();
-    futures::executor::block_on(with_execution_scope(async |guard| {
-        let mut scope = module.attach(guard, &mut state, &mut echo);
-        let values = scope.call(&functions.empty, ())?;
+    executor.block_on(module.with_execution(&host, &mut state, &mut echo, async |scope| {
+        let values = scope.call(&functions.empty, ()).await?;
         assert!(values.is_empty());
-        let retained = scope.call(&functions.keep, (&values,))?;
+        let retained = scope.call(&functions.keep, (&values,)).await?;
         assert!(retained.is_empty());
-        let work = scope.call(&functions.ready, (42.into(),))?;
+        let work = scope.call(&functions.ready, (42.into(),)).await?;
         assert_eq!(scope.observe(&work).await?.read(Clone::clone), 42.into());
         Ok::<_, Box<dyn std::error::Error>>(())
-    }))?;
+    }))??;
     assert!(echo.is_empty());
     Ok(())
 }
@@ -970,8 +1097,8 @@ version = "0.0.0"
 edition = "2024"
 
 [dependencies]
-runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding", "geam-builtin"] }}
-futures = "0.3"
+runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding", "geam-builtin", "tokio"] }}
+tokio = "1"
 
 [workspace]
 resolver = "3"
@@ -997,35 +1124,36 @@ pub fn result(value: Future(Int)) -> Result(Future(Int), String) { Ok(value) }
         fs::write(
             fixture.root.join("src/main.rs"),
             r#"mod geam_bindings;
-use runtime::embedding::{HostedModuleBuilder, with_execution_scope};
+use runtime::embedding::HostedModuleBuilder;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let executor = tokio::runtime::Builder::new_current_thread().build()?;
+    let host = runtime::execution::TokioHost::new(executor.handle().clone());
     let program = geam_bindings::project().compile()?;
     let builder = HostedModuleBuilder::new(program)?;
     let (bindings, functions) = geam_bindings::bind(builder)?;
     let mut module = bindings.seal()?;
     let mut state = geam_bindings::RunStateInputs {}.initialize();
     let mut echo = |value: runtime::EchoOutput| panic!("unexpected Echo: {value}");
-    futures::executor::block_on(with_execution_scope(async |guard| {
-        let mut scope = module.attach(guard, &mut state, &mut echo);
-        assert_eq!(scope.call(&functions.double, (21.into(),))?, 42.into());
-        let work = scope.call(&functions.ready, (21.into(),))?;
-        let work_list = scope.call(&functions.collect, (vec![&work, &work],))?;
+    executor.block_on(module.with_execution(&host, &mut state, &mut echo, async |scope| {
+        assert_eq!(scope.call(&functions.double, (21.into(),)).await?, 42.into());
+        let work = scope.call(&functions.ready, (21.into(),)).await?;
+        let work_list = scope.call(&functions.collect, (vec![&work, &work],)).await?;
         let list = scope.observe(&work_list).await?;
         list.read(|items| {
             assert_eq!(items.len(), 2);
             assert_eq!(items.read_item(0, Clone::clone), Some(21.into()));
             assert_eq!(items.read_item(1, Clone::clone), Some(21.into()));
         });
-        let nested = scope.call(&functions.nested, (&work,))?;
+        let nested = scope.call(&functions.nested, (&work,)).await?;
         let completion = scope.observe(&nested).await?;
         let retained = completion.read(|inner| inner);
         assert_eq!(scope.observe(&retained).await?.read(Clone::clone), 21.into());
-        let result = scope.call(&functions.result, (work,))?;
+        let result = scope.call(&functions.result, (work,)).await?;
         let alias = result.expect("source success");
         assert_eq!(scope.observe(&alias).await?.read(Clone::clone), 21.into());
         Ok::<_, Box<dyn std::error::Error>>(())
-    }))
+    }))?
 }
 "#,
         )
@@ -1105,8 +1233,8 @@ version = "0.0.0"
 edition = "2024"
 
 [dependencies]
-runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding", "geam-builtin", "gleam-json", "gleam-time"] }}
-futures = "0.3"
+runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding", "geam-builtin", "gleam-json", "gleam-time", "tokio"] }}
+tokio = "1"
 
 [workspace]
 resolver = "3"
@@ -1152,6 +1280,7 @@ resolver = "3"
                 .root
                 .join("gleam/src/generated_future_builtins.gleam"),
             r#"import geam/future
+import gleam/erlang/process
 import gleam/io
 import gleam/json
 import gleam/time/timestamp
@@ -1159,7 +1288,9 @@ import gleam/time/timestamp
 pub fn double(value: Int) { value * 2 }
 
 pub fn answer() -> future.Future(String) {
+  let creator = process.self()
   use _ <- future.map(future.ready(Nil))
+  let assert False = creator == process.self()
   io.println("finished")
   let #(seconds, _) = timestamp.system_time() |> timestamp.to_unix_seconds_and_nanoseconds
   json.object([#("answer", json.int(seconds))]) |> json.to_string
@@ -1170,7 +1301,7 @@ pub fn answer() -> future.Future(String) {
         fs::write(
             fixture.root.join("src/main.rs"),
             r#"mod geam_bindings;
-use runtime::embedding::{HostedModuleBuilder, with_execution_scope};
+use runtime::embedding::HostedModuleBuilder;
 use runtime::gleam_stdlib::{GleamStdlibRunState, IoOutput, IoStream};
 use runtime::gleam_time::TimeSource;
 use std::cell::Cell;
@@ -1187,27 +1318,30 @@ impl TimeSource for Clock {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let executor = tokio::runtime::Builder::new_current_thread().build()?;
+    let host = runtime::execution::TokioHost::new(executor.handle().clone());
     let program = geam_bindings::project::<Vec<IoOutput>, Clock>().compile()?;
+    let resources = program.package_resources().clone();
     let builder = HostedModuleBuilder::new(program)?;
     let (bindings, functions) = geam_bindings::bind(builder)?;
     let mut module = bindings.seal()?;
     let mut state = geam_bindings::RunStateInputs {
         stdlib: GleamStdlibRunState::from_seed([7; 32]),
         time: Clock(Cell::new(42)),
+        erlang: runtime::gleam_erlang::Configuration { resources },
     }.initialize();
     assert!(state.stdlib().io_outputs().is_empty());
     let mut echo = |value: runtime::EchoOutput| panic!("unexpected Echo: {value}");
-    futures::executor::block_on(with_execution_scope(async |guard| {
-        let mut scope = module.attach(guard, &mut state, &mut echo);
-        assert_eq!(scope.call(&functions.double, (21.into(),))?, 42.into());
-        let work = scope.call(&functions.answer, ())?;
+    executor.block_on(module.with_execution(&host, &mut state, &mut echo, async |scope| {
+        assert_eq!(scope.call(&functions.double, (21.into(),)).await?, 42.into());
+        let work = scope.call(&functions.answer, ()).await?;
         let completed = scope.observe(&work).await?;
         completed.read(|text| assert_eq!(text, "{\"answer\":42}"));
         scope.observe(&work).await?.read(|text| assert_eq!(text, "{\"answer\":42}"));
-        let next = scope.call(&functions.answer, ())?;
+        let next = scope.call(&functions.answer, ()).await?;
         scope.observe(&next).await?.read(|text| assert_eq!(text, "{\"answer\":43}"));
         Ok::<_, Box<dyn std::error::Error>>(())
-    }))?;
+    }))??;
     let output = state.stdlib_mut().take_io_outputs();
     assert_eq!(output.len(), 2);
     for output in output {
@@ -1915,7 +2049,8 @@ name = {binary:?}
 path = "src/main.rs"
 
 [dependencies]
-runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding"] }}
+runtime = {{ package = "geam", path = {:?}, default-features = false, features = ["embedding", "tokio"] }}
+tokio = "1"
 flags = {{ package = "geam-example-feature-flags", path = {flags_provider:?} }}
 patterns = {{ package = "geam-example-text-pattern", path = {pattern_provider:?} }}
 
@@ -1952,10 +2087,12 @@ fn feature_flags_configuration() -> HostProviderConfiguration {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let executor = tokio::runtime::Builder::new_current_thread().build()?;
+    let host = runtime::execution::TokioHost::new(executor.handle().clone());
     let program = geam_bindings::project().compile()?;
     let builder = HostedModuleBuilder::new(program)?;
     let (bindings, functions) = geam_bindings::bind(builder)?;
-    let module = bindings.seal()?;
+    let mut module = bindings.seal()?;
     let initialization_error = match (geam_bindings::RunStateInputs {
         example_feature_flags: HostProviderConfiguration::empty(),
         example_text_pattern: HostProviderConfiguration::empty(),
@@ -1980,35 +2117,37 @@ fn main() -> Result<(), Box<dyn Error>> {
     .initialize()?;
     let mut echo = Vec::new();
 
-    let value = module.call(&functions.format_words, (), &mut state, &mut echo)?;
-    let words = module.call(
+    executor.block_on(module.with_execution(&host, &mut state, &mut echo, async |scope| {
+    let value = scope.call(&functions.format_words, ()).await?;
+    let words = scope.call(
         &functions.contains_only_words,
         ("Geam and Gleam".into(),),
-        &mut state,
-        &mut echo,
-    )?;
-    let numbers = module.call(
+    ).await?;
+    let numbers = scope.call(
         &functions.contains_only_words,
         ("Geam 2026".into(),),
-        &mut state,
-        &mut echo,
-    )?;
-    let environment = module.call(&functions.environment, (), &mut state, &mut echo)?;
-    let checkout = module.call(&functions.checkout_enabled, (), &mut state, &mut echo)?;
+    ).await?;
+    let environment = scope.call(&functions.environment, ()).await?;
+    let checkout = scope.call(&functions.checkout_enabled, ()).await?;
 
     assert_eq!(value, "<Geam> + <Gleam> 2026");
     assert!(words);
     assert!(!numbers);
     assert_eq!(environment, "staging");
     assert!(checkout);
-    let checked = module.call(
-        &functions.validate_words, (vec!["Geam".into(), "2026".into()],), &mut state, &mut echo,
-    )?;
-    assert_eq!(checked.to_vec(), [Ok("Geam".into()), Err("2026".into())]);
-    let retained = module.call(&functions.words_again, (&checked,), &mut state, &mut echo)?;
-    assert_eq!(retained.to_vec(), checked.to_vec());
-    assert!(echo.is_empty());
+    let checked = scope.call(
+        &functions.validate_words, (vec!["Geam".into(), "2026".into()],),
+    ).await?;
+    let retained = scope.call(&functions.words_again, (&checked,)).await?;
+    for values in [&checked, &retained] {
+        assert_eq!(values.len(), 2);
+        assert_eq!(values.read_item(0, |value| value.cloned().map_err(Clone::clone)), Some(Ok("Geam".into())));
+        assert_eq!(values.read_item(1, |value| value.cloned().map_err(Clone::clone)), Some(Err("2026".into())));
+    }
     println!("{value}");
+    Ok::<_, Box<dyn Error>>(())
+    }))??;
+    assert!(echo.is_empty());
     Ok(())
 }
 "#,

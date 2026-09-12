@@ -6,14 +6,13 @@ use geam_stdlib::GleamStdlibRunState;
 
 #[test]
 fn dict_callback_failure_preserves_source_origin_and_allows_the_next_call() {
-    use geam_core::embedding::{
-        CallError, FunctionDeclaration, HostedModuleBuilder, with_execution_scope,
-    };
+    let execution_host = crate::execution_fixture::TestHost::default();
+
+    use geam_core::embedding::{CallError, FunctionDeclaration, HostedModuleBuilder};
     use geam_core::{ExecutionError, PanicMessage};
     use num_bigint::BigInt;
-    use std::future::Future;
     use std::pin::pin;
-    use std::task::{Context, Poll, Waker};
+    use std::task::Poll;
 
     let program = compile_typed_host_project(
         super::project_root(),
@@ -40,29 +39,35 @@ fn dict_callback_failure_preserves_source_origin_and_allows_the_next_call() {
         work: (),
     };
     let mut echo = ObservedEcho::default();
-    let mut task = pin!(with_execution_scope(async |guard| {
-        let mut scope = module.attach(guard, &mut state, &mut echo);
-        for (entry, message) in [
-            (map, "map callback"),
-            (fold, "fold callback"),
-            (update, "update callback"),
-        ] {
-            let error = scope
-                .call(&entry, (true,))
-                .expect_err("nested source callback fails");
-            assert!(
-                matches!(error, CallError::Execution(ExecutionError::Panic(ref error))
+    let mut task =
+        pin!(
+            module.with_execution(&execution_host, &mut state, &mut echo, async |scope| {
+                for (entry, message) in [
+                    (map, "map callback"),
+                    (fold, "fold callback"),
+                    (update, "update callback"),
+                ] {
+                    let error = scope
+                        .call(&entry, (true,))
+                        .await
+                        .expect_err("nested source callback fails");
+                    assert!(
+                        matches!(error, CallError::Execution(ExecutionError::Panic(ref error))
                 if error.message() == &PanicMessage::Explicit(message.into())
                     && error.site().module() == "gleam_dict")
-            );
-            assert_eq!(
-                scope.call(&entry, (false,)).expect("later valid call"),
-                BigInt::from(42)
-            );
-        }
-    }));
+                    );
+                    assert_eq!(
+                        scope
+                            .call(&entry, (false,))
+                            .await
+                            .expect("later valid call"),
+                        BigInt::from(42)
+                    );
+                }
+            })
+        );
     assert!(matches!(
-        task.as_mut().poll(&mut Context::from_waker(Waker::noop())),
-        Poll::Ready(())
+        execution_host.poll(task.as_mut()),
+        Poll::Ready(Ok(()))
     ));
 }

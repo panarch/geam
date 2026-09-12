@@ -20,6 +20,7 @@ nav = [
     { "Embed Gleam in Rust" = "embedding.md" },
     { "Add Rust to a Gleam package" = "host-providers.md" },
     { "Use Future values" = "future.md" },
+    { "Run Gleam processes" = "processes.md" },
   ] },
   { "Reference" = [
     "reference/README.md",

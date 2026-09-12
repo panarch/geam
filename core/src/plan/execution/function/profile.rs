@@ -2,8 +2,8 @@ use super::{ExecutableFunction, FunctionBodyOwner, ValueFunctionEntry};
 use crate::plan::execution::function::{
     ExternalFunctionFunctionId, ExternalFunctionId, ExternalListFunctionFunctionId,
     ExternalListFunctionId, FunctionFunctionId, FunctionLabelSource, ListFunctionFunctionId,
-    ProfiledFunctionFunctionId, ProfiledListFunctionFunctionId, ProfiledListFunctionId,
-    RuntimeFunctionFunctionTarget, RuntimeListFunctionId, TailCallLabelIndex,
+    ProfiledFunctionFunctionId, ProfiledListFunctionFunctionId, RuntimeFunctionFunctionTarget,
+    TailCallLabelIndex,
 };
 use crate::plan::execution::graph::{
     ExternalFunctionInstruction, ExternalFunctionInstructionView, ExternalInstruction,
@@ -20,9 +20,9 @@ use crate::plan::execution::function::{CoreRuntimeFunctionId, ProfiledCoreRuntim
 
 pub(crate) trait ExecutionProfile {
     type Graph: ExecutionGraphProfile;
-    type HostTarget<Body: ExecutionFunctionBody>;
+    type HostTarget<Body: ExecutionFunctionBody>: Clone + Send + Sync + 'static;
     type Function<Body: ExecutionFunctionBody>: ExecutionFunctionEntry<Body, HostTarget = Self::HostTarget<Body>>;
-    type NeverHostTarget;
+    type NeverHostTarget: Clone + Send + Sync + 'static;
     type NeverFunction: ExecutionFunctionEntry<
             super::ExecutionNeverFunctionBody<Self>,
             HostTarget = Self::NeverHostTarget,
@@ -37,21 +37,23 @@ pub(crate) trait ExecutionProfile {
     ) -> Self::NeverFunction;
 }
 
-pub(crate) trait ExecutionGraphProfile: Sized + Debug + Clone + PartialEq + Eq {
-    type ExternalFunctionId: Debug + Clone + PartialEq + Eq;
-    type ExternalListFunctionId: Debug + Clone + PartialEq + Eq;
-    type ExternalFunctionFunctionId: Debug + Clone + PartialEq + Eq;
-    type ExternalListFunctionFunctionId: Debug + Clone + PartialEq + Eq;
-    type RuntimeFunctionFunctionId: Debug + Clone + PartialEq + Eq;
-    type ExternalInstruction: ExternalInstructionView<Function = Self::ExternalFunctionId>;
-    type ExternalListInstruction: ExternalListInstructionView<
-        Function = Self::ExternalListFunctionId,
-    >;
-    type ExternalFunctionInstruction: ExternalFunctionInstructionView;
+pub(crate) trait ExecutionGraphProfile:
+    Sized + Debug + Clone + PartialEq + Eq + Send + Sync + 'static
+{
+    type ExternalFunctionId: Debug + Clone + PartialEq + Eq + Send + Sync;
+    type ExternalListFunctionId: Debug + Clone + PartialEq + Eq + Send + Sync;
+    type ExternalFunctionFunctionId: Debug + Clone + PartialEq + Eq + Send + Sync;
+    type ExternalListFunctionFunctionId: Debug + Clone + PartialEq + Eq + Send + Sync;
+    type RuntimeFunctionFunctionId: Debug + Clone + PartialEq + Eq + Send + Sync;
+    type ExternalInstruction: ExternalInstructionView<Function = Self::ExternalFunctionId>
+        + Send
+        + Sync;
+    type ExternalListInstruction: ExternalListInstructionView<Function = Self::ExternalListFunctionId>
+        + Send
+        + Sync;
+    type ExternalFunctionInstruction: ExternalFunctionInstructionView + Send + Sync;
 
     fn external_function(id: &Self::ExternalFunctionId) -> ExternalFunctionId;
-
-    fn list_function(id: &ProfiledListFunctionId<Self>) -> RuntimeListFunctionId;
 
     fn function_function(id: &ProfiledFunctionFunctionId<Self>) -> FunctionFunctionId;
 
@@ -61,9 +63,15 @@ pub(crate) trait ExecutionGraphProfile: Sized + Debug + Clone + PartialEq + Eq {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct HostedExecutionGraph;
 
-pub(crate) trait ExecutionFunctionBody: FunctionBodyOwner + Sized {}
+pub(crate) trait ExecutionFunctionBody:
+    FunctionBodyOwner<Return: Clone + Send + Sync + 'static> + Sized + 'static
+{
+}
 
-impl<Body: FunctionBodyOwner> ExecutionFunctionBody for Body {}
+impl<Body: FunctionBodyOwner<Return: Clone + Send + Sync + 'static> + 'static> ExecutionFunctionBody
+    for Body
+{
+}
 
 pub(crate) trait ExecutionFunctionEntry<Body> {
     type HostTarget;
@@ -137,15 +145,6 @@ impl ExecutionGraphProfile for Infallible {
 
     fn external_function(id: &Self::ExternalFunctionId) -> ExternalFunctionId {
         match *id {}
-    }
-
-    fn list_function(id: &ProfiledListFunctionId<Self>) -> RuntimeListFunctionId {
-        use ProfiledListFunctionId as F;
-
-        match id {
-            F::Core(id) => RuntimeListFunctionId::Core(id.clone()),
-            F::External(id) => match *id {},
-        }
     }
 
     fn function_function(id: &ProfiledFunctionFunctionId<Self>) -> FunctionFunctionId {
@@ -309,10 +308,6 @@ impl ExecutionGraphProfile for HostedExecutionGraph {
         *id
     }
 
-    fn list_function(id: &ProfiledListFunctionId<Self>) -> RuntimeListFunctionId {
-        id.clone()
-    }
-
     fn function_function(id: &ProfiledFunctionFunctionId<Self>) -> FunctionFunctionId {
         id.clone()
     }
@@ -373,13 +368,19 @@ pub(super) fn plain_core_runtime_function_id(
             id: *id,
             return_type: return_type.clone(),
         },
-        F::List(id) => CoreRuntimeFunctionId::List(Infallible::list_function(id)),
+        F::List(id) => CoreRuntimeFunctionId::List(match id {
+            super::ProfiledListFunctionId::Core(id) => {
+                super::ProfiledListFunctionId::Core(id.clone())
+            }
+            super::ProfiledListFunctionId::External(id) => match *id {},
+        }),
         F::Function { id, return_type } => CoreRuntimeFunctionId::Function {
             id: RuntimeFunctionFunctionTarget::Core(id.clone()),
             return_type: return_type.clone(),
         },
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -393,17 +394,16 @@ mod tests {
         CustomListFunctionBody, ExecutableFunction, ExternalFunctionBody,
         ExternalFunctionFunctionBody, ExternalFunctionFunctionId, ExternalFunctionId,
         ExternalListFunctionBody, ExternalListFunctionFunctionBody, ExternalListFunctionFunctionId,
-        ExternalListFunctionId, FloatFunctionBody, FloatFunctionFunctionBody,
-        FloatListFunctionBody, FunctionExit, FunctionFunctionFunctionBody, FunctionFunctionId,
-        FunctionListFunctionBody, GenericFunctionFunctionBody, IntFunctionBody,
-        IntFunctionFunctionBody, IntListFunctionBody, ListFunctionFunctionId, ListListFunctionBody,
-        NeverFunctionBody, NeverFunctionFunctionBody, NilFunctionBody, NilFunctionFunctionBody,
-        NilListFunctionBody, ParameterListFunctionBody, ParameterListListFunctionBody,
-        ProfiledFunctionBody, ProfiledFunctionFunctionId, ProfiledListFunctionFunctionId,
-        ProfiledListFunctionId, RuntimeListFunctionId, StringFunctionBody,
-        StringFunctionFunctionBody, StringListFunctionBody, TupleFunctionBody,
-        TupleFunctionFunctionBody, TupleListFunctionBody, UtfCodepointFunctionBody,
-        UtfCodepointFunctionFunctionBody, UtfCodepointListFunctionBody, ValueFunctionEntry,
+        FloatFunctionBody, FloatFunctionFunctionBody, FloatListFunctionBody, FunctionExit,
+        FunctionFunctionFunctionBody, FunctionFunctionId, FunctionListFunctionBody,
+        GenericFunctionFunctionBody, IntFunctionBody, IntFunctionFunctionBody, IntListFunctionBody,
+        ListFunctionFunctionId, ListListFunctionBody, NeverFunctionBody, NeverFunctionFunctionBody,
+        NilFunctionBody, NilFunctionFunctionBody, NilListFunctionBody, ParameterListFunctionBody,
+        ParameterListListFunctionBody, ProfiledFunctionBody, ProfiledFunctionFunctionId,
+        ProfiledListFunctionFunctionId, StringFunctionBody, StringFunctionFunctionBody,
+        StringListFunctionBody, TupleFunctionBody, TupleFunctionFunctionBody,
+        TupleListFunctionBody, UtfCodepointFunctionBody, UtfCodepointFunctionFunctionBody,
+        UtfCodepointListFunctionBody, ValueFunctionEntry,
     };
     use crate::plan::execution::graph::{
         BlockGraphExitId, BlockId, IntLocalId, ProfiledBlock, ProfiledBlockGraph, Terminator,
@@ -527,19 +527,12 @@ mod tests {
         let external_function_type =
             ExternalFunctionType::from_shapes(function_type.clone(), Vec::new(), external_type);
         let function = ExternalFunctionId::new(2, external_type);
-        let list_function = ExternalListFunctionId::new(3, list_type);
         let function_function = ExternalFunctionFunctionId::new(4, external_function_type.clone());
         let list_function_function = ExternalListFunctionFunctionId(5);
 
         assert_eq!(
             <HostedExecutionGraph as ExecutionGraphProfile>::external_function(&function),
             function,
-        );
-        assert_eq!(
-            <HostedExecutionGraph as ExecutionGraphProfile>::list_function(
-                &ProfiledListFunctionId::External(list_function),
-            ),
-            RuntimeListFunctionId::External(list_function),
         );
         assert_eq!(
             <HostedExecutionGraph as ExecutionGraphProfile>::function_function(

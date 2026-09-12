@@ -1143,7 +1143,8 @@ mod tests {
         let mut runtime =
             TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
         assert_eq!(
-            implementation.call(&mut runtime).map(|token| token.family),
+            crate::host::expect_immediate_call(implementation, &mut runtime)
+                .map(|token| token.family),
             Ok(HostValueFamily::Bool),
         );
         assert_eq!(runtime.completed(), Some(&HostScopedValue::Bool(true)));

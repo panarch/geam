@@ -133,9 +133,9 @@ note: required by a bound in `geam_core::HostProfile::ExternalStores`
    = note: this error originates in the attribute macro `geam_macros::module` which comes from the expansion of the attribute macro `geam_macros::provider` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: `Rc<BigInt>` cannot be sent between threads safely
-  --> tests/ui/async/non_send_payload.rs:65:14
+  --> tests/ui/async/non_send_payload.rs:66:14
    |
-65 |     let _ = <Component as HostProviderComponentRegistration<Profile>>::providers();
+66 |     let _ = <Component as HostProviderComponentRegistration<Profile>>::providers();
    |              ^^^^^^^^^ `Rc<BigInt>` cannot be sent between threads safely
    |
    = help: within `native::Value`, the trait `Send` is not implemented for `Rc<BigInt>`

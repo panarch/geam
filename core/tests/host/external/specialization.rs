@@ -176,11 +176,14 @@ pub fn main() {
     )
     .expect("generic external source should compile");
     let plan = plan_host_program(typed).expect("generic external source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("generic external execution should seal");
-    let returned = execution
-        .run_main(&mut ExternalRunState::default(), &mut Vec::new())
-        .expect("generic external source should execute");
+    let returned = crate::execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut Vec::new(),
+    )
+    .expect("generic external source should execute");
 
     assert_eq!(
         returned.inspect().to_string(),
@@ -244,11 +247,14 @@ pub fn main() {
     )
     .expect("symbolic external callable source should compile");
     let plan = plan_host_program(typed).expect("symbolic external callable source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("symbolic external callable execution should seal");
-    let returned = execution
-        .run_main(&mut ExternalRunState::default(), &mut Vec::new())
-        .expect("symbolic external callable source should execute");
+    let returned = crate::execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut Vec::new(),
+    )
+    .expect("symbolic external callable source should execute");
 
     assert_eq!(
         returned.inspect().to_string(),
@@ -330,11 +336,14 @@ pub fn main() {
     )
     .expect("generic external source should compile");
     let plan = plan_host_program(typed).expect("generic external source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("generic external execution should seal");
-    let returned = execution
-        .run_main(&mut ExternalRunState::default(), &mut Vec::new())
-        .expect("generic external source should execute");
+    let returned = crate::execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut Vec::new(),
+    )
+    .expect("generic external source should execute");
 
     assert_eq!(
         returned.inspect().to_string(),
@@ -457,12 +466,15 @@ pub fn main() {
     )
     .expect("generic function expression source should compile");
     let plan = plan_host_program(typed).expect("generic function expression source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("generic function expression execution should seal");
 
-    let returned = execution
-        .run_main(&mut ExternalRunState::default(), &mut Vec::new())
-        .expect("generic function expression source should execute");
+    let returned = crate::execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut Vec::new(),
+    )
+    .expect("generic function expression source should execute");
 
     assert_eq!(
         returned,
@@ -527,13 +539,16 @@ pub fn main() {
     .expect("diverging external function call source should compile");
     let plan =
         plan_host_program(typed).expect("diverging external function call source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("diverging external function call execution should seal");
 
     let mut echoes = Vec::new();
-    let error = execution
-        .run_main(&mut ExternalRunState::default(), &mut echoes)
-        .expect_err("the uninhabited argument should panic");
+    let error = crate::execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut echoes,
+    )
+    .expect_err("the uninhabited argument should panic");
     let ExecutionError::Panic(error) = error else {
         panic!("the uninhabited argument should remain a source panic");
     };
@@ -767,12 +782,15 @@ pub fn main() {
     )
     .expect("external constant and list source should compile");
     let plan = plan_host_program(typed).expect("external constant and list source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("external constant and list execution should seal");
 
-    let returned = execution
-        .run_main(&mut ExternalRunState::default(), &mut Vec::new())
-        .expect("external constant and list source should execute");
+    let returned = crate::execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut Vec::new(),
+    )
+    .expect("external constant and list source should execute");
 
     assert_eq!(returned, Value::Tuple(vec![Value::Bool(true); 33]));
 }
@@ -960,12 +978,15 @@ pub fn main() {
     )
     .expect("external divergence source should compile");
     let plan = plan_host_program(typed).expect("external divergence source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("external divergence execution should seal");
 
-    let returned = execution
-        .run_main(&mut ExternalRunState::default(), &mut Vec::new())
-        .expect("external divergence source should execute");
+    let returned = crate::execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut Vec::new(),
+    )
+    .expect("external divergence source should execute");
 
     assert_eq!(
         returned.inspect().to_string(),

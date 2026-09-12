@@ -3,81 +3,86 @@ use std::convert::Infallible;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::function::{
     ExecutionFunctionBody, ExecutionGraphProfile, ExecutionHostTarget, ExecutionNeverHostTarget,
-    ExecutionProfile, FunctionBodyOwner, RuntimeFunctionFunctionTarget,
+    ExecutionProfile,
 };
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
+use crate::runtime::execution::invocation::Waiting;
+use crate::runtime::execution::{Invocation, ServiceContext};
 use crate::runtime::graph::RetainedValues;
-use crate::runtime::state::{self, RuntimeStateFor};
-use crate::runtime::{evaluated, function, graph, host};
+use crate::runtime::state;
+use crate::runtime::{graph, host};
+use std::num::NonZeroUsize;
 
 pub(in crate::runtime) type RuntimeGraph<Plan> =
     <<Plan as RuntimeExecutionPlan>::Profile as ExecutionProfile>::Graph;
 
 pub(in crate::runtime) trait ExecutableRuntimePlan:
-    RuntimeExecutionPlan
+    RuntimeExecutionPlan + Sync
 {
     type RuntimeHost<'run>: state::RuntimeHostState<State = Self::RunState>
     where
         Self: 'run;
 
-    fn call_host<Body>(
-        &self,
-        state: &mut RuntimeStateFor<'_, Self>,
+    type HostInvocation<'plan, Output: Send + 'plan>: Send + 'plan
+    where
+        Self: 'plan;
+
+    fn prepare_host<'plan, Body>(
+        &'plan self,
         origin: HostCallOrigin,
         target: &ExecutionHostTarget<Self::Profile, Body>,
         inputs: RetainedValues,
-    ) -> ExecutionResult<<<Body as FunctionBodyOwner>::Return as graph::GraphValue>::Evaluated>
+    ) -> Self::HostInvocation<'plan, <Body::Return as graph::GraphValue>::Evaluated>
     where
         Body: ExecutionFunctionBody,
         Body::Return: graph::GraphValue;
 
-    fn call_host_never(
-        &self,
-        state: &mut RuntimeStateFor<'_, Self>,
+    fn prepare_host_never<'plan>(
+        &'plan self,
         origin: HostCallOrigin,
         target: &ExecutionNeverHostTarget<Self::Profile>,
         inputs: RetainedValues,
-    ) -> ExecutionResult<Infallible>;
+    ) -> Self::HostInvocation<'plan, Infallible>;
 
-    fn execute_external_list_instruction(
-        &self,
-        state: &mut RuntimeStateFor<'_, Self>,
-        environment: &mut graph::BlockEnvironment,
+    fn map_host<'plan, Input: Send + 'plan, Output: Send + 'plan>(
+        invocation: Self::HostInvocation<'plan, Input>,
+        map: impl FnOnce(Input) -> ExecutionResult<Output> + Send + 'plan,
+    ) -> Self::HostInvocation<'plan, Output>;
+
+    fn submit_host<'plan, Output: Send + 'plan>(
+        invocation: Self::HostInvocation<'plan, Output>,
+        context: &ServiceContext<Self>,
+        budget: NonZeroUsize,
+    ) -> Waiting<'plan, Output>;
+
+    fn advance_external_list_instruction<'plan>(
+        &'plan self,
+        state: &mut impl graph::RuntimeGraphState<Error = crate::ExecutionError>,
+        frame: graph::Frame<'plan, Self>,
+        returns: &mut graph::Returns<'plan, Self>,
         instruction: &<RuntimeGraph<Self> as ExecutionGraphProfile>::ExternalListInstruction,
         expected: &crate::plan::ValueType,
-    ) -> ExecutionResult<()>;
+    ) -> ExecutionResult<graph::Activation<'plan, Self>>;
 
-    fn execute_external_function_instruction(
-        &self,
-        state: &mut RuntimeStateFor<'_, Self>,
-        environment: &mut graph::BlockEnvironment,
+    fn advance_external_function_instruction<'plan>(
+        &'plan self,
+        frame: graph::Frame<'plan, Self>,
+        returns: &mut graph::Returns<'plan, Self>,
         instruction: &<RuntimeGraph<Self> as ExecutionGraphProfile>::ExternalFunctionInstruction,
-    ) -> ExecutionResult<()>;
-}
-
-pub(in crate::runtime) trait ExecutableProgramPlan:
-    ExecutableRuntimePlan
-{
-    fn run_function_return(
-        &self,
-        state: &mut RuntimeStateFor<'_, Self>,
-        function: <RuntimeGraph<Self> as ExecutionGraphProfile>::RuntimeFunctionFunctionId,
-        origin: HostCallOrigin,
-        inputs: RetainedValues,
-    ) -> ExecutionResult<evaluated::EvaluatedFunctionValue>;
+    ) -> graph::Activation<'plan, Self>;
 }
 
 impl ExecutableRuntimePlan for ExecutionPlan {
     type RuntimeHost<'run> = ();
+    type HostInvocation<'plan, Output: Send + 'plan> = Infallible;
 
-    fn call_host<Body>(
+    fn prepare_host<Body>(
         &self,
-        _state: &mut RuntimeStateFor<'_, Self>,
         _origin: HostCallOrigin,
         target: &ExecutionHostTarget<Self::Profile, Body>,
         _inputs: RetainedValues,
-    ) -> ExecutionResult<<<Body as FunctionBodyOwner>::Return as graph::GraphValue>::Evaluated>
+    ) -> Infallible
     where
         Body: ExecutionFunctionBody,
         Body::Return: graph::GraphValue,
@@ -85,45 +90,48 @@ impl ExecutableRuntimePlan for ExecutionPlan {
         match *target {}
     }
 
-    fn call_host_never(
+    fn prepare_host_never(
         &self,
-        _state: &mut RuntimeStateFor<'_, Self>,
         _origin: HostCallOrigin,
         target: &ExecutionNeverHostTarget<Self::Profile>,
         _inputs: RetainedValues,
-    ) -> ExecutionResult<Infallible> {
+    ) -> Infallible {
         match *target {}
     }
 
-    fn execute_external_list_instruction(
-        &self,
-        _state: &mut RuntimeStateFor<'_, Self>,
-        _environment: &mut graph::BlockEnvironment,
+    fn map_host<'plan, Input: Send + 'plan, Output: Send + 'plan>(
+        invocation: Infallible,
+        _map: impl FnOnce(Input) -> ExecutionResult<Output> + Send + 'plan,
+    ) -> Infallible {
+        match invocation {}
+    }
+
+    fn submit_host<'plan, Output: Send + 'plan>(
+        invocation: Infallible,
+        _context: &ServiceContext<Self>,
+        _budget: NonZeroUsize,
+    ) -> Waiting<'plan, Output> {
+        match invocation {}
+    }
+
+    fn advance_external_list_instruction<'plan>(
+        &'plan self,
+        _state: &mut impl graph::RuntimeGraphState<Error = crate::ExecutionError>,
+        _frame: graph::Frame<'plan, Self>,
+        _returns: &mut graph::Returns<'plan, Self>,
         instruction: &Infallible,
         _expected: &crate::plan::ValueType,
-    ) -> ExecutionResult<()> {
+    ) -> ExecutionResult<graph::Activation<'plan, Self>> {
         match *instruction {}
     }
 
-    fn execute_external_function_instruction(
-        &self,
-        _state: &mut RuntimeStateFor<'_, Self>,
-        _environment: &mut graph::BlockEnvironment,
+    fn advance_external_function_instruction<'plan>(
+        &'plan self,
+        _frame: graph::Frame<'plan, Self>,
+        _returns: &mut graph::Returns<'plan, Self>,
         instruction: &Infallible,
-    ) -> ExecutionResult<()> {
+    ) -> graph::Activation<'plan, Self> {
         match *instruction {}
-    }
-}
-
-impl ExecutableProgramPlan for ExecutionPlan {
-    fn run_function_return(
-        &self,
-        state: &mut RuntimeStateFor<'_, Self>,
-        function: <RuntimeGraph<Self> as ExecutionGraphProfile>::RuntimeFunctionFunctionId,
-        origin: HostCallOrigin,
-        inputs: RetainedValues,
-    ) -> ExecutionResult<evaluated::EvaluatedFunctionValue> {
-        function::run_core_function(self, state, function, origin, inputs)
     }
 }
 
@@ -135,75 +143,74 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
     where
         Self: 'run;
 
-    fn call_host<Body>(
-        &self,
-        state: &mut RuntimeStateFor<'_, Self>,
+    type HostInvocation<'plan, Output: Send + 'plan> = Invocation<'plan, Self, Output>;
+
+    fn prepare_host<'plan, Body>(
+        &'plan self,
         origin: HostCallOrigin,
         target: &ExecutionHostTarget<Self::Profile, Body>,
         inputs: RetainedValues,
-    ) -> ExecutionResult<<<Body as FunctionBodyOwner>::Return as graph::GraphValue>::Evaluated>
+    ) -> Invocation<'plan, Self, <Body::Return as graph::GraphValue>::Evaluated>
     where
         Body: ExecutionFunctionBody,
         Body::Return: graph::GraphValue,
     {
-        match target {
+        let target = target.clone();
+        Invocation::new(move |plan: &Self, state| match target {
             crate::plan::execution::host::HostedFunctionTarget::Value(target) => {
-                host::invoke_value(self, state, origin, target, inputs)
+                host::invoke_value(plan, state, origin, &target, inputs)
             }
             crate::plan::execution::host::HostedFunctionTarget::Never(target) => {
-                host::invoke_never(self, state, origin, *target, inputs).map(|never| match never {})
+                host::invoke_never(plan, state, origin, target, inputs).map(|never| match never {})
             }
-        }
+        })
     }
 
-    fn call_host_never(
-        &self,
-        state: &mut RuntimeStateFor<'_, Self>,
+    fn prepare_host_never<'plan>(
+        &'plan self,
         origin: HostCallOrigin,
         target: &ExecutionNeverHostTarget<Self::Profile>,
         inputs: RetainedValues,
-    ) -> ExecutionResult<Infallible> {
-        host::invoke_never(self, state, origin, *target, inputs)
+    ) -> Invocation<'plan, Self, Infallible> {
+        let target = *target;
+        Invocation::new(move |plan: &Self, state| {
+            host::invoke_never(plan, state, origin, target, inputs).map(|never| match never {})
+        })
     }
 
-    fn execute_external_list_instruction(
-        &self,
-        state: &mut RuntimeStateFor<'_, Self>,
-        environment: &mut graph::BlockEnvironment,
+    fn map_host<'plan, Input: Send + 'plan, Output: Send + 'plan>(
+        invocation: Invocation<'plan, Self, Input>,
+        map: impl FnOnce(Input) -> ExecutionResult<Output> + Send + 'plan,
+    ) -> Invocation<'plan, Self, Output> {
+        invocation.map(map)
+    }
+
+    fn submit_host<'plan, Output: Send + 'plan>(
+        invocation: Invocation<'plan, Self, Output>,
+        context: &ServiceContext<Self>,
+        budget: NonZeroUsize,
+    ) -> Waiting<'plan, Output> {
+        invocation.submit(context, budget)
+    }
+
+    fn advance_external_list_instruction<'plan>(
+        &'plan self,
+        state: &mut impl graph::RuntimeGraphState<Error = crate::ExecutionError>,
+        frame: graph::Frame<'plan, Self>,
+        returns: &mut graph::Returns<'plan, Self>,
         instruction: &crate::plan::execution::graph::ExternalListInstruction,
         expected: &crate::plan::ValueType,
-    ) -> ExecutionResult<()> {
-        graph::execute_external_list_instruction(self, state, environment, instruction, expected)
+    ) -> ExecutionResult<graph::Activation<'plan, Self>> {
+        graph::advance_external_list_instruction(self, state, frame, returns, instruction, expected)
     }
 
-    fn execute_external_function_instruction(
-        &self,
-        state: &mut RuntimeStateFor<'_, Self>,
-        environment: &mut graph::BlockEnvironment,
+    fn advance_external_function_instruction<'plan>(
+        &'plan self,
+        frame: graph::Frame<'plan, Self>,
+        returns: &mut graph::Returns<'plan, Self>,
         instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
-    ) -> ExecutionResult<()> {
-        graph::execute_external_function_instruction(self, state, environment, instruction)
-    }
-}
-
-impl<Profile: crate::HostProfile> ExecutableProgramPlan
-    for crate::plan::execution::HostedProgram<Profile>
-{
-    fn run_function_return(
-        &self,
-        state: &mut RuntimeStateFor<'_, Self>,
-        function: <RuntimeGraph<Self> as ExecutionGraphProfile>::RuntimeFunctionFunctionId,
-        origin: HostCallOrigin,
-        inputs: RetainedValues,
-    ) -> ExecutionResult<evaluated::EvaluatedFunctionValue> {
-        match function {
-            RuntimeFunctionFunctionTarget::Core(function) => {
-                function::run_core_function(self, state, function, origin, inputs)
-            }
-            RuntimeFunctionFunctionTarget::External(function) => {
-                function::run_external_function_function(self, state, function, origin, inputs)
-            }
-        }
+    ) -> graph::Activation<'plan, Self> {
+        graph::advance_external_function_instruction(self, frame, returns, instruction)
     }
 }
 
@@ -363,37 +370,63 @@ mod tests {
         }
 
         fn invoke_counter<'call>(
-            mut call: HostCall<
-                'call,
-                ExternalTestProfile,
-                RuntimeCounterProvider,
-                RuntimeHostCounter,
-            >,
+            call: HostCall<'call, ExternalTestProfile, RuntimeCounterProvider, RuntimeHostCounter>,
+            constructions: HostConstructions<'call, HostTypeListEnd>,
             function: HostCallable<'call, RuntimeIntArguments, RuntimeHostCounter>,
             value: BigInt,
-        ) -> Result<HostCallCompletion<'call, RuntimeHostCounter>, HostCallError> {
-            let counter = call
-                .invoke(function, (value, ()))
-                .expect("counter callback should succeed");
-            Ok(call.return_value(counter))
+        ) -> Result<crate::HostCallContinuation<'call, RuntimeHostCounter>, HostCallError> {
+            type Owned = crate::provider::Value<
+                RuntimeHostCounter,
+                crate::provider::ProviderValueContext<RuntimeHostCounter>,
+            >;
+            let callback = call.owned_callable(function, &constructions);
+            Ok(call.resume(constructions, move |context| {
+                Box::pin(async move {
+                    let counter = callback
+                        .invoke(
+                            &context,
+                            move |_, _| (value, ()),
+                            |call, _, value| Ok(Owned::from_host(&call, value)),
+                        )
+                        .await?;
+                    Ok(crate::HostOwnedCompletion::new(move |mut call, _| {
+                        let value = counter.into_host(&mut call);
+                        Ok(call.return_value(value))
+                    }))
+                })
+            }))
         }
 
         fn invoke<'call>(
-            mut call: HostCall<
-                'call,
-                ExternalTestProfile,
-                RuntimeCounterProvider,
-                RuntimeGenericValue,
-            >,
+            call: HostCall<'call, ExternalTestProfile, RuntimeCounterProvider, RuntimeGenericValue>,
+            constructions: HostConstructions<'call, HostTypeListEnd>,
             function: HostCallable<'call, HostTypeListEnd, RuntimeGenericValue>,
-        ) -> Result<HostCallCompletion<'call, RuntimeGenericValue>, HostCallError> {
-            let value = call
-                .invoke(function, ())
-                .expect("generic callback should succeed");
-            Ok(call.return_value(value))
+        ) -> Result<crate::HostCallContinuation<'call, RuntimeGenericValue>, HostCallError>
+        {
+            type Owned = crate::provider::Value<
+                RuntimeGenericValue,
+                crate::provider::ProviderValueContext<RuntimeGenericValue>,
+            >;
+            let callback = call.owned_callable(function, &constructions);
+            Ok(call.resume(constructions, move |context| {
+                Box::pin(async move {
+                    let value = callback
+                        .invoke(
+                            &context,
+                            |_, _| (),
+                            |call, _, value| Ok(Owned::from_host(&call, value)),
+                        )
+                        .await?;
+                    Ok(crate::HostOwnedCompletion::new(move |mut call, _| {
+                        let value = value.into_host(&mut call);
+                        Ok(call.return_value(value))
+                    }))
+                })
+            }))
         }
 
-        let provider = HostProviderModule::<ExternalTestProfile>::new("application", "main")
+        let provider = || {
+            HostProviderModule::<ExternalTestProfile>::new("application", "main")
             .expect("provider module should be valid")
             .with_external_type::<RuntimeCounterProvider, RuntimeCounterSchema>()
             .expect("external type should be valid")
@@ -420,23 +453,26 @@ mod tests {
                 _,
             >("construct_list_item", construct_list_item)
             .expect("intermediate external constructor should be valid")
-            .with_scoped_function::<
+            .with_resumable_function::<
                 RuntimeCounterProvider,
                 (RuntimeCounterCallable, BigInt),
                 RuntimeHostCounter,
+                HostTypeListEnd,
                 _,
             >(
                 "invoke_counter",
                 invoke_counter,
             )
             .expect("external callback should be valid")
-            .with_scoped_function::<
+            .with_resumable_function::<
                 RuntimeCounterProvider,
                 (RuntimeGenericCallable,),
                 RuntimeGenericValue,
+                HostTypeListEnd,
                 _,
             >("invoke", invoke)
-            .expect("generic callback should be valid");
+            .expect("generic callback should be valid")
+        };
         let source = r#"
 @external(erlang, "host", "Counter")
 pub type Counter
@@ -476,7 +512,7 @@ fn function_function() -> fn() -> fn(Int) -> Counter {
   external_function
 }
 
-pub fn main() {
+fn exercise() {
   let make = external_function()
   let make_list = external_list_function()
   let counter = make(1)
@@ -522,55 +558,76 @@ pub fn main() {
   counter
 }
 "#;
-        let typed = compile_typed_host_program(
-            "application",
-            "main",
-            [PackageSource::new(
+        for (entry, failure) in [
+            ("exercise()", None),
+            (
+                "invoke_counter(fn(_) { panic as \"counter callback\" }, 0)",
+                Some("counter callback"),
+            ),
+            (
+                "invoke(fn() -> Int { panic as \"generic callback\" })",
+                Some("generic callback"),
+            ),
+        ] {
+            let source = format!("{source}\npub fn main() {{ {entry} }}\n");
+            let typed = compile_typed_host_program(
                 "application",
-                Vec::<EcoString>::new(),
-                [ModuleSource::new("main", "src/main.gleam", source)],
-            )],
-            HostProviderSet::with_providers(
-                Vec::<HostModule<ExternalTestProfile>>::new(),
-                [provider],
+                "main",
+                [PackageSource::new(
+                    "application",
+                    Vec::<EcoString>::new(),
+                    [ModuleSource::new("main", "src/main.gleam", source)],
+                )],
+                HostProviderSet::with_providers(
+                    Vec::<HostModule<ExternalTestProfile>>::new(),
+                    [provider()],
+                )
+                .expect("provider module should be unique"),
             )
-            .expect("provider module should be unique"),
-        )
-        .expect("external runtime source should compile");
-        let plan = plan_host_program(typed).expect("external runtime source should plan");
-        let execution = HostedExecution::try_from_module_plan(plan)
-            .expect("external runtime execution should seal");
-        let mut echoes = Vec::new();
-        let returned = execution
-            .run_main(&mut ExternalTestRunState::default(), &mut echoes)
-            .expect("external runtime source should execute");
+            .expect("external runtime source should compile");
+            let plan = plan_host_program(typed).expect("external runtime source should plan");
+            let mut execution = HostedExecution::try_from_module_plan(plan)
+                .expect("external runtime execution should seal");
+            let mut echoes = Vec::new();
+            let result = crate::execution_fixture::run(
+                &mut execution,
+                &mut ExternalTestRunState::default(),
+                &mut echoes,
+            );
+            if let Some(message) = failure {
+                assert_eq!(result.unwrap_err().to_string(), format!("panic: {message}"));
+                assert!(echoes.is_empty());
+                continue;
+            }
+            let returned = result.expect("external runtime source should execute");
 
-        assert_eq!(returned.inspect().to_string(), "Counter(1)");
-        assert_eq!(echoes.len(), 9);
-        assert_eq!(
-            echoes[0].value().inspect().to_string(),
-            "#(//fn(a) { ... }, //fn(a) { ... }, //fn() { ... })",
-        );
-        assert_eq!(
-            echoes[1].value().inspect().to_string(),
-            "#(//fn() { ... }, //fn() { ... }, //fn() { ... })",
-        );
-        assert_eq!(
-            echoes[2].value().inspect().to_string(),
-            "#(Counter(1), [Counter(2), Counter(2)], ['A'])",
-        );
-        assert_eq!(
-            echoes[3].value().inspect().to_string(),
-            "#([Counter(2), Counter(2)], [Counter(3), Counter(3)])",
-        );
-        assert_eq!(echoes[4].value().inspect().to_string(), "[Counter(8)]");
-        assert_eq!(echoes[5].value().inspect().to_string(), "Counter(4)");
-        assert_eq!(
-            echoes[6].value().inspect().to_string(),
-            "#(Counter(5), Counter(6), Counter(7))",
-        );
-        assert_eq!(echoes[7].value().inspect().to_string(), "[]");
-        assert_eq!(echoes[8].value(), &Value::Bool(true));
+            assert_eq!(returned.inspect().to_string(), "Counter(1)");
+            assert_eq!(echoes.len(), 9);
+            assert_eq!(
+                echoes[0].value().inspect().to_string(),
+                "#(//fn(a) { ... }, //fn(a) { ... }, //fn() { ... })",
+            );
+            assert_eq!(
+                echoes[1].value().inspect().to_string(),
+                "#(//fn() { ... }, //fn() { ... }, //fn() { ... })",
+            );
+            assert_eq!(
+                echoes[2].value().inspect().to_string(),
+                "#(Counter(1), [Counter(2), Counter(2)], ['A'])",
+            );
+            assert_eq!(
+                echoes[3].value().inspect().to_string(),
+                "#([Counter(2), Counter(2)], [Counter(3), Counter(3)])",
+            );
+            assert_eq!(echoes[4].value().inspect().to_string(), "[Counter(8)]");
+            assert_eq!(echoes[5].value().inspect().to_string(), "Counter(4)");
+            assert_eq!(
+                echoes[6].value().inspect().to_string(),
+                "#(Counter(5), Counter(6), Counter(7))",
+            );
+            assert_eq!(echoes[7].value().inspect().to_string(), "[]");
+            assert_eq!(echoes[8].value(), &Value::Bool(true));
+        }
     }
     #[test]
     fn transfer_never_calls_preserve_nested_provider_identity_and_host_caller() {
@@ -580,13 +637,13 @@ pub fn main() {
             HostProviderSet,
         };
         use std::cell::Cell;
-        use std::convert::Infallible;
 
         struct Profile;
         struct Provider;
         impl HostProfile for Profile {
             type RunState = Cell<usize>;
             type ExternalStores = ();
+            type ExecutionState = ();
         }
         impl HostProvider<Profile> for Provider {
             type State = Cell<usize>;
@@ -596,12 +653,20 @@ pub fn main() {
         }
         fn stop<'call>(
             mut call: HostCall<'call, Profile, Provider, BigInt>,
+            constructions: HostConstructions<'call, HostTypeListEnd>,
             callback: HostCallable<'call, HostTypeListEnd, BigInt>,
-        ) -> Result<Infallible, crate::HostCallError> {
+        ) -> Result<crate::HostCallContinuation<'call, BigInt>, crate::HostCallError> {
             call.state().set(1);
-            let value = call.invoke(callback, ())?;
-            assert_eq!(value, BigInt::from(42));
-            Err(crate::HostFailure::new("stopped after callback").into())
+            let callback = call.owned_callable(callback, &constructions);
+            Ok(call.resume(constructions, move |context| {
+                Box::pin(async move {
+                    let value = callback
+                        .invoke(&context, |_, _| (), |_, _, value| Ok(value))
+                        .await?;
+                    assert_eq!(value, BigInt::from(42));
+                    Err(crate::HostFailure::new("stopped after callback").into())
+                })
+            }))
         }
         fn reject<'call>(
             mut call: HostCall<'call, Profile, Provider, BigInt>,
@@ -612,7 +677,7 @@ pub fn main() {
         let provider = HostProviderModule::new("application", "library")
             .expect("native module")
             .with_scoped_function::<Provider, (), BigInt, _>("reject", reject).expect("reject")
-            .with_scoped_diverging_function::<Provider, (HostFunctionType<HostTypeListEnd, BigInt>,), BigInt, _>("stop", stop).expect("stop");
+            .with_resumable_function::<Provider, (HostFunctionType<HostTypeListEnd, BigInt>,), BigInt, geam_core::HostTypeListEnd, _>("stop", stop).expect("stop");
         let source = r#"@external(erlang, "native", "reject")
 fn reject() -> Int
 @external(erlang, "native", "stop")
@@ -652,23 +717,33 @@ pub fn run(fails: Bool) {
         let (plan, entries) =
             crate::plan::execution::HostedProgram::from_library_plan(library, entry, Vec::new())
                 .expect("diverging callbacks seal");
+        let plan = std::sync::Arc::new(plan);
         for fails in [false, true] {
             let mut state = Cell::new(0);
             let mut output = Vec::new();
             let mut echo = |value: crate::EchoOutput| output.push(value.to_string());
             let mut stores = ();
-            let mut driver = crate::runtime::work::driver::Driver::new(
-                &plan,
+            let host = crate::execution_fixture::TestHost::default();
+            let domain = crate::runtime::execution::Domain::new(
+                std::sync::Arc::clone(&plan),
+                &host,
                 &mut state,
                 &mut stores,
                 &mut echo,
+                std::num::NonZeroUsize::MIN,
             );
-            let mut input = crate::runtime::RetainedInputs::empty();
-            input.push_value(crate::runtime::EvaluatedValue::Bool(fails));
-            let error = driver
-                .run_int(*entries.ints[0].function(), input)
+            let context = domain.context();
+            let mut input = crate::runtime::RetainedValues::empty();
+            input.push_evaluated(crate::runtime::EvaluatedValue::Bool(fails));
+            let error = host
+                .block_on(domain.drive(context.call(
+                    *entries.ints[0].function(),
+                    crate::runtime::HostCallOrigin::Entry,
+                    input,
+                )))
+                .expect("host cleanup")
+                .expect("active entry")
                 .expect_err("native function never returns");
-            drop(driver);
             {
                 let error = transfer_host_error(&error);
                 assert_eq!(error.package(), "application");

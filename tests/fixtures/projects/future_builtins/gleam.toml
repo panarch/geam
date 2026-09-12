@@ -8,3 +8,4 @@ geam = { path = "../../../../builtins/geam/gleam" }
 gleam_stdlib = ">= 1.0.3 and < 1.0.4"
 gleam_json = ">= 3.1.0 and < 3.1.1"
 gleam_time = ">= 1.8.0 and < 1.8.1"
+gleam_erlang = ">= 1.3.0 and < 1.3.1"

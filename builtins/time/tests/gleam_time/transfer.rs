@@ -27,6 +27,7 @@ pub(super) struct Stores {
 impl HostProfile for Profile {
     type RunState = RunState;
     type ExternalStores = Stores;
+    type ExecutionState = ();
 }
 
 impl GleamStdlibHostProfile for Profile {

@@ -1,0 +1,207 @@
+# gleam/erlang/application
+external priv_directory: fn(String) -> Result(String, Nil) = gleam_erlang_ffi:priv_directory
+function priv_directory: fn(String) -> Result(String, Nil)
+type StartType: StartType
+value Failover: fn(Node) -> StartType
+value Normal: StartType
+value Takeover: fn(Node) -> StartType
+value priv_directory: fn(String) -> Result(String, Nil)
+
+# gleam/erlang/atom
+external cast_from_dynamic: fn(dynamic.Dynamic) -> Atom = gleam_erlang_ffi:identity
+external create: fn(String) -> Atom = erlang:binary_to_atom
+external get: fn(String) -> Result(Atom, Nil) = gleam_erlang_ffi:atom_from_string
+external is_atom: fn(dynamic.Dynamic) -> Bool = erlang:is_atom
+external to_dynamic: fn(Atom) -> dynamic.Dynamic = gleam_erlang_ffi:identity
+external to_string: fn(Atom) -> String = erlang:atom_to_binary
+function cast_from_dynamic: fn(dynamic.Dynamic) -> Atom
+function create: fn(String) -> Atom
+function decoder: fn() -> decode.Decoder(Atom)
+function get: fn(String) -> Result(Atom, Nil)
+function to_dynamic: fn(Atom) -> dynamic.Dynamic
+function to_string: fn(Atom) -> String
+type Atom: Atom
+value cast_from_dynamic: fn(dynamic.Dynamic) -> Atom
+value create: fn(String) -> Atom
+value decoder: fn() -> decode.Decoder(Atom)
+value get: fn(String) -> Result(Atom, Nil)
+value to_dynamic: fn(Atom) -> dynamic.Dynamic
+value to_string: fn(Atom) -> String
+
+# gleam/erlang/charlist
+external from_string: fn(String) -> Charlist = unicode:characters_to_list
+external to_string: fn(Charlist) -> String = unicode:characters_to_binary
+function from_string: fn(String) -> Charlist
+function to_string: fn(Charlist) -> String
+type Charlist: Charlist
+value from_string: fn(String) -> Charlist
+value to_string: fn(Charlist) -> String
+
+# gleam/erlang/node
+external connect: fn(Atom) -> Result(Node, ConnectError) = gleam_erlang_ffi:connect_node
+external name: fn(Node) -> Atom = gleam_erlang_ffi:identity
+external self: fn() -> Node = erlang:node
+external visible: fn() -> List(Node) = erlang:nodes
+function connect: fn(Atom) -> Result(Node, ConnectError)
+function name: fn(Node) -> Atom
+function self: fn() -> Node
+function visible: fn() -> List(Node)
+type ConnectError: ConnectError
+type Node: Node
+value FailedToConnect: ConnectError
+value LocalNodeIsNotAlive: ConnectError
+value connect: fn(Atom) -> Result(Node, ConnectError)
+value name: fn(Node) -> Atom
+value self: fn() -> Node
+value visible: fn() -> List(Node)
+
+# gleam/erlang/port
+type Port: Port
+
+# gleam/erlang/process
+external cast_down_message: fn(Dynamic) -> Down = gleam_erlang_ffi:cast_down_message
+external cast_exit_reason: fn(Dynamic) -> ExitReason = gleam_erlang_ffi:cast_exit_reason
+external erlang_cancel_timer: fn(Timer) -> Dynamic = erlang:cancel_timer
+external erlang_demonitor_process: fn(Monitor) -> DoNotLeak = gleam_erlang_ffi:demonitor
+external erlang_kill: fn(to: Pid, because: KillFlag) -> Bool = erlang:exit
+external erlang_monitor_process: fn(ProcessMonitorFlag, Pid) -> Monitor = erlang:monitor
+external erlang_send_exit: fn(to: Pid, because: whatever) -> Bool = erlang:exit
+external erlang_unlink: fn(pid: Pid) -> Bool = erlang:unlink
+external flush_messages: fn() -> Nil = gleam_erlang_ffi:flush_messages
+external insert_selector_handler: fn(Selector(payload), for: tag, mapping: fn(message) -> payload) -> Selector(payload) = gleam_erlang_ffi:insert_selector_handler
+external is_alive: fn(Pid) -> Bool = erlang:is_process_alive
+external link: fn(pid: Pid) -> Bool = gleam_erlang_ffi:link
+external map_selector: fn(Selector(a), fn(a) -> b) -> Selector(b) = gleam_erlang_ffi:map_selector
+external merge_selector: fn(Selector(a), Selector(a)) -> Selector(a) = gleam_erlang_ffi:merge_selector
+external name_send_after: fn(Int, Name(msg), #(Name(msg), msg)) -> Timer = erlang:send_after
+external named: fn(Name(a)) -> Result(Pid, Nil) = gleam_erlang_ffi:process_named
+external new_name: fn(prefix: String) -> Name(message) = gleam_erlang_ffi:new_name
+external new_selector: fn() -> Selector(payload) = gleam_erlang_ffi:new_selector
+external perform_receive: fn(Subject(message), Int) -> Result(message, Nil) = gleam_erlang_ffi:receive
+external pid_send_after: fn(Int, Pid, #(Dynamic, msg)) -> Timer = erlang:send_after
+external raw_send: fn(Pid, message) -> DoNotLeak = erlang:send
+external receive_forever: fn(from: Subject(message)) -> message = gleam_erlang_ffi:receive
+external reference_to_dynamic: fn(Reference) -> Dynamic = gleam_erlang_ffi:identity
+external register: fn(Pid, Name(message)) -> Result(Nil, Nil) = gleam_erlang_ffi:register_process
+external remove_selector_handler: fn(Selector(payload), for: tag) -> Selector(payload) = gleam_erlang_ffi:remove_selector_handler
+external selector_receive: fn(from: Selector(payload), within: Int) -> Result(payload, Nil) = gleam_erlang_ffi:select
+external selector_receive_forever: fn(from: Selector(payload)) -> payload = gleam_erlang_ffi:select
+external self: fn() -> Pid = erlang:self
+external sleep: fn(Int) -> Nil = gleam_erlang_ffi:sleep
+external sleep_forever: fn() -> Nil = gleam_erlang_ffi:sleep_forever
+external spawn: fn(fn() -> anything) -> Pid = proc_lib:spawn_link
+external spawn_unlinked: fn(fn() -> anything) -> Pid = proc_lib:spawn
+external trap_exits: fn(Bool) -> Nil = gleam_erlang_ffi:trap_exits
+external unregister: fn(Name(message)) -> Result(Nil, Nil) = gleam_erlang_ffi:unregister_process
+function call: fn(Subject(message), waiting: Int, sending: fn(Subject(reply)) -> message) -> reply
+function call_forever: fn(Subject(message), fn(Subject(reply)) -> message) -> reply
+function cancel_timer: fn(Timer) -> Cancelled
+function demonitor_process: fn(monitor: Monitor) -> Nil
+function deselect: fn(Selector(payload), for: Subject(message)) -> Selector(payload)
+function deselect_specific_monitor: fn(Selector(payload), Monitor) -> Selector(payload)
+function flush_messages: fn() -> Nil
+function is_alive: fn(Pid) -> Bool
+function kill: fn(Pid) -> Nil
+function link: fn(pid: Pid) -> Bool
+function map_selector: fn(Selector(a), fn(a) -> b) -> Selector(b)
+function merge_selector: fn(Selector(a), Selector(a)) -> Selector(a)
+function monitor: fn(Pid) -> Monitor
+function named: fn(Name(a)) -> Result(Pid, Nil)
+function named_subject: fn(Name(message)) -> Subject(message)
+function new_name: fn(prefix: String) -> Name(message)
+function new_selector: fn() -> Selector(payload)
+function new_subject: fn() -> Subject(message)
+function receive: fn(from: Subject(message), within: Int) -> Result(message, Nil)
+function receive_forever: fn(from: Subject(message)) -> message
+function register: fn(Pid, Name(message)) -> Result(Nil, Nil)
+function select: fn(Selector(payload), for: Subject(payload)) -> Selector(payload)
+function select_map: fn(Selector(payload), for: Subject(message), mapping: fn(message) -> payload) -> Selector(payload)
+function select_monitors: fn(Selector(payload), fn(Down) -> payload) -> Selector(payload)
+function select_other: fn(Selector(payload), mapping: fn(Dynamic) -> payload) -> Selector(payload)
+function select_record: fn(Selector(payload), tag: tag, fields: Int, mapping: fn(Dynamic) -> payload) -> Selector(payload)
+function select_specific_monitor: fn(Selector(payload), Monitor, fn(Down) -> payload) -> Selector(payload)
+function select_trapped_exits: fn(Selector(a), fn(ExitMessage) -> a) -> Selector(a)
+function selector_receive: fn(from: Selector(payload), within: Int) -> Result(payload, Nil)
+function selector_receive_forever: fn(from: Selector(payload)) -> payload
+function self: fn() -> Pid
+function send: fn(Subject(message), message) -> Nil
+function send_abnormal_exit: fn(Pid, anything) -> Nil
+function send_after: fn(Subject(msg), Int, msg) -> Timer
+function send_exit: fn(to: Pid) -> Nil
+function sleep: fn(Int) -> Nil
+function sleep_forever: fn() -> Nil
+function spawn: fn(fn() -> anything) -> Pid
+function spawn_unlinked: fn(fn() -> anything) -> Pid
+function subject_name: fn(Subject(message)) -> Result(Name(message), Nil)
+function subject_owner: fn(Subject(message)) -> Result(Pid, Nil)
+function trap_exits: fn(Bool) -> Nil
+function unlink: fn(Pid) -> Nil
+function unregister: fn(Name(message)) -> Result(Nil, Nil)
+type Cancelled: Cancelled
+type Down: Down
+type ExitMessage: ExitMessage
+type ExitReason: ExitReason
+type Monitor: Monitor
+type Name: Name(message)
+type Pid: Pid
+type Selector: Selector(payload)
+type Subject: Subject(message)
+type Timer: Timer
+value Abnormal: fn(Dynamic) -> ExitReason
+value Cancelled: fn(Int) -> Cancelled
+value ExitMessage: fn(Pid, ExitReason) -> ExitMessage
+value Killed: ExitReason
+value Normal: ExitReason
+value PortDown: fn(Monitor, Port, ExitReason) -> Down
+value ProcessDown: fn(Monitor, Pid, ExitReason) -> Down
+value TimerNotFound: Cancelled
+value call: fn(Subject(message), Int, fn(Subject(reply)) -> message) -> reply
+value call_forever: fn(Subject(message), fn(Subject(reply)) -> message) -> reply
+value cancel_timer: fn(Timer) -> Cancelled
+value demonitor_process: fn(Monitor) -> Nil
+value deselect: fn(Selector(payload), Subject(message)) -> Selector(payload)
+value deselect_specific_monitor: fn(Selector(payload), Monitor) -> Selector(payload)
+value flush_messages: fn() -> Nil
+value is_alive: fn(Pid) -> Bool
+value kill: fn(Pid) -> Nil
+value link: fn(Pid) -> Bool
+value map_selector: fn(Selector(a), fn(a) -> b) -> Selector(b)
+value merge_selector: fn(Selector(a), Selector(a)) -> Selector(a)
+value monitor: fn(Pid) -> Monitor
+value named: fn(Name(a)) -> Result(Pid, Nil)
+value named_subject: fn(Name(message)) -> Subject(message)
+value new_name: fn(String) -> Name(message)
+value new_selector: fn() -> Selector(payload)
+value new_subject: fn() -> Subject(message)
+value receive: fn(Subject(message), Int) -> Result(message, Nil)
+value receive_forever: fn(Subject(message)) -> message
+value register: fn(Pid, Name(message)) -> Result(Nil, Nil)
+value select: fn(Selector(payload), Subject(payload)) -> Selector(payload)
+value select_map: fn(Selector(payload), Subject(message), fn(message) -> payload) -> Selector(payload)
+value select_monitors: fn(Selector(payload), fn(Down) -> payload) -> Selector(payload)
+value select_other: fn(Selector(payload), fn(Dynamic) -> payload) -> Selector(payload)
+value select_record: fn(Selector(payload), tag, Int, fn(Dynamic) -> payload) -> Selector(payload)
+value select_specific_monitor: fn(Selector(payload), Monitor, fn(Down) -> payload) -> Selector(payload)
+value select_trapped_exits: fn(Selector(a), fn(ExitMessage) -> a) -> Selector(a)
+value selector_receive: fn(Selector(payload), Int) -> Result(payload, Nil)
+value selector_receive_forever: fn(Selector(payload)) -> payload
+value self: fn() -> Pid
+value send: fn(Subject(message), message) -> Nil
+value send_abnormal_exit: fn(Pid, anything) -> Nil
+value send_after: fn(Subject(msg), Int, msg) -> Timer
+value send_exit: fn(Pid) -> Nil
+value sleep: fn(Int) -> Nil
+value sleep_forever: fn() -> Nil
+value spawn: fn(fn() -> anything) -> Pid
+value spawn_unlinked: fn(fn() -> anything) -> Pid
+value subject_name: fn(Subject(message)) -> Result(Name(message), Nil)
+value subject_owner: fn(Subject(message)) -> Result(Pid, Nil)
+value trap_exits: fn(Bool) -> Nil
+value unlink: fn(Pid) -> Nil
+value unregister: fn(Name(message)) -> Result(Nil, Nil)
+
+# gleam/erlang/reference
+external new: fn() -> Reference = erlang:make_ref
+function new: fn() -> Reference
+type Reference: Reference
+value new: fn() -> Reference

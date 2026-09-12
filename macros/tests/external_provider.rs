@@ -1,3 +1,6 @@
+#[path = "../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 use ecow::EcoString;
 use geam_core::provider::{Configuration, ExternalPayload};
 use geam_core::{
@@ -119,6 +122,7 @@ struct ProfileState {
 impl HostProfile for Profile {
     type RunState = ProfileState;
     type ExternalStores = ProfileStores;
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<Component> for Profile {
@@ -271,15 +275,16 @@ fn macro_authored_external_values_preserve_updates_equality_and_lifetime() {
     assert_eq!(zero.inspect(), "Metrics([])");
 
     let (first, second) = {
-        let execution = execution(METRICS_SOURCE).expect("matching external provider should plan");
+        let mut execution =
+            execution(METRICS_SOURCE).expect("matching external provider should plan");
         let mut first_state = ProfileState { component: () };
         let mut second_state = ProfileState { component: () };
-        let first = execution
-            .run_main(&mut first_state, &mut Vec::new())
-            .expect("external provider should execute");
-        let second = execution
-            .run_main(&mut second_state, &mut Vec::new())
-            .expect("external provider should repeat independently");
+        let first =
+            crate::execution_fixture::run(&mut execution, &mut first_state, &mut Vec::new())
+                .expect("external provider should execute");
+        let second =
+            crate::execution_fixture::run(&mut execution, &mut second_state, &mut Vec::new())
+                .expect("external provider should repeat independently");
         (first, second)
     };
 

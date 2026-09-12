@@ -154,11 +154,14 @@ pub fn main() {
             .collect::<Vec<_>>(),
         [("support", "support/counter"), ("application", "main")],
     );
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("external execution should seal");
-    let returned = execution
-        .run_main(&mut ExternalRunState::default(), &mut Vec::new())
-        .expect("dependency external source should execute");
+    let returned = crate::execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut Vec::new(),
+    )
+    .expect("dependency external source should execute");
     let Value::Tuple(values) = returned else {
         panic!("main should return a tuple");
     };
@@ -241,12 +244,15 @@ pub fn main() {
     )
     .expect("source-less external source should compile");
     let plan = plan_host_program(typed).expect("source-less external source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("source-less external execution should seal");
 
-    let returned = execution
-        .run_main(&mut ExternalRunState::default(), &mut Vec::new())
-        .expect("source-less external source should execute");
+    let returned = crate::execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut Vec::new(),
+    )
+    .expect("source-less external source should execute");
 
     assert_eq!(returned.inspect().to_string(), "Counter(31)");
 }

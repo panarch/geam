@@ -22,16 +22,16 @@ mod callback_borrow {
     #[derive(PartialEq, Eq, Hash)]
     struct Token;
 
-    #[geam_macros::function]
-    fn invoke<Item>(
+    #[geam_macros::function(await)]
+    async fn invoke<Item>(
         #[geam_macros::call] call: &mut Call<RunState>,
         callback: Callback<
             fn(Value<Item>, ((BigInt, self::Token), bool)) -> Value<Item>,
         >,
         value: Value<Item>,
     ) -> HostResult<Value<Item>> {
-        let state = call.state_mut();
-        let returned = call.invoke(callback, (value, ((1.into(), Token), true)))?;
+        let state = call.with_state(|state| state).await?;
+        let returned = call.invoke(&callback, (value, ((1.into(), Token), true))).await?;
         state.calls += 1;
         Ok(returned)
     }

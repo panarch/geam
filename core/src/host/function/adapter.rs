@@ -41,6 +41,72 @@ where
     fn register(self) -> ScopedHostFunctionRegistration<Profile>;
 }
 
+pub trait ResumableHostFunctionAdapter<Profile, Provider, Arguments, Return, Constructions>:
+    Send + Sync + 'static
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Constructions: HostTypeSequence,
+{
+    fn register(self) -> ScopedHostFunctionRegistration<Profile>;
+}
+
+macro_rules! resumable_function {
+    (@layout $layout:ident;) => {
+        let $layout = HostParameterLayout::default();
+    };
+    (@layout $layout:ident; $($argument:ident),+) => {
+        let mut $layout = HostParameterLayout::default();
+    };
+    ($($argument:ident => $slot:ident),*) => {
+        impl<Profile, Provider, Function, Return, Constructions, $($argument,)*>
+            ResumableHostFunctionAdapter<Profile, Provider, ($($argument,)*), Return, Constructions> for Function
+        where
+            Profile: HostProfile,
+            Provider: HostProvider<Profile>,
+            Constructions: HostTypeSequence,
+            Return: HostAbiType,
+            $($argument: HostScopedArgument,)*
+            Function: for<'call> Fn(
+                HostCall<'call, Profile, Provider, Return>,
+                HostConstructions<'call, Constructions>,
+                $(<$argument as crate::host::HostType>::Value<'call>,)*
+            ) -> Result<crate::host::HostCallContinuation<'call, Return>, HostCallError> + Send + Sync + 'static,
+        {
+            fn register(self) -> ScopedHostFunctionRegistration<Profile> {
+                resumable_function!(@layout layout; $($argument),*);
+                $(let $slot = <$argument as HostScopedArgument>::register(&mut layout);)*
+                let mut custom_schemas = Vec::new();
+                let mut visited = std::collections::HashSet::new();
+                $(<$argument as HostAbiType>::collect_custom_schemas(&mut custom_schemas, &mut visited);)*
+                <Return as HostAbiType>::collect_custom_schemas(&mut custom_schemas, &mut visited);
+                let implementation = HostFunctionImplementation::continuing(move |runtime| {
+                    let call = HostCall::new(runtime);
+                    $(let $slot = <$argument as HostScopedArgument>::read(&call, $slot);)*
+                    self(call, HostConstructions::new(), $($slot,)*)
+                        .map(|completion| completion.continuation)
+                });
+                ScopedHostFunctionRegistration {
+                    parameters: layout.finish(),
+                    parameter_types: vec![$(<$argument as HostAbiType>::descriptor()),*].into_boxed_slice(),
+                    return_type: <Return as HostAbiType>::descriptor(),
+                    custom_schemas: custom_schemas.into_boxed_slice(),
+                    implementation,
+                }
+            }
+        }
+    };
+}
+
+resumable_function!();
+resumable_function!(A => a);
+resumable_function!(A => a, B => b);
+resumable_function!(A => a, B => b, C => c);
+resumable_function!(A => a, B => b, C => c, D => d);
+resumable_function!(A => a, B => b, C => c, D => d, E => e);
+resumable_function!(A => a, B => b, C => c, D => d, E => e, F => f);
+resumable_function!(A => a, B => b, C => c, D => d, E => e, F => f, G => g);
+
 pub struct HostFunctionRegistration<Profile: HostProfile> {
     pub(super) parameters: Box<[HostParameter]>,
     pub(super) parameter_types: Box<[HostTypeDescriptor]>,
@@ -68,6 +134,102 @@ impl<Profile: HostProfile> HostFunctionRegistration<Profile> {
         }
     }
 }
+
+macro_rules! native_function {
+    ($($argument:ident => $slot:ident),*) => {
+        impl<Profile, Provider, Return, Targets, Function, $($argument,)*>
+            ScopedConstructingHostFunctionAdapter<Profile, Provider, ($($argument,)*), Return, Targets>
+            for crate::host::native::NativeFunction<Profile, Provider, Return, Targets, Function>
+        where
+            Profile: HostProfile,
+            Provider: HostProvider<Profile>,
+            Return: HostAbiType,
+            Targets: HostTypeSequence,
+            $($argument: HostScopedArgument,)*
+            Function: for<'call> Fn(
+                crate::host::native::NativeCall<'call, Profile, Provider, Return, Targets>,
+                $(<$argument as crate::host::HostType>::Value<'call>),*
+            ) -> Result<HostCallCompletion<'call, Return>, HostCallError> + Send + Sync + 'static,
+        {
+            fn register(self) -> ScopedHostFunctionRegistration<Profile> {
+                // Tie decoded arguments and completion to the same call lifetime.
+                fn callback<Profile, Provider, Return, Targets, Function, $($argument,)*>(function: Function) -> Function
+                where
+                    Profile: HostProfile,
+                    Provider: HostProvider<Profile>,
+                    Return: HostAbiType,
+                    Targets: HostTypeSequence,
+                    $($argument: HostScopedArgument,)*
+                    Function: for<'call> Fn(
+                        HostCall<'call, Profile, Provider, Return>,
+                        HostConstructions<'call, Targets>,
+                        $(<$argument as crate::host::HostType>::Value<'call>),*
+                    ) -> Result<HostCallCompletion<'call, Return>, HostCallError>,
+                {
+                    function
+                }
+                <_ as ScopedConstructingHostFunctionAdapter<
+                    Profile, Provider, ($($argument,)*), Return, Targets,
+                >>::register(callback::<Profile, Provider, Return, Targets, _, $($argument,)*>(move |call, _, $($slot),*| {
+                        (self.function)(
+                            crate::host::native::NativeCall::new(call, std::sync::Arc::clone(&self.rules)),
+                            $($slot),*
+                        )
+                    }))
+            }
+        }
+
+        impl<Profile, Provider, Return, Targets, Function, $($argument,)*>
+            ResumableHostFunctionAdapter<Profile, Provider, ($($argument,)*), Return, Targets>
+            for crate::host::native::NativeFunction<Profile, Provider, Return, Targets, Function>
+        where
+            Profile: HostProfile,
+            Provider: HostProvider<Profile>,
+            Return: HostAbiType,
+            Targets: HostTypeSequence,
+            $($argument: HostScopedArgument,)*
+            Function: for<'call> Fn(
+                crate::host::native::NativeCall<'call, Profile, Provider, Return, Targets>,
+                $(<$argument as crate::host::HostType>::Value<'call>),*
+            ) -> Result<crate::host::HostCallContinuation<'call, Return>, HostCallError> + Send + Sync + 'static,
+        {
+            fn register(self) -> ScopedHostFunctionRegistration<Profile> {
+                fn callback<Profile, Provider, Return, Targets, Function, $($argument,)*>(function: Function) -> Function
+                where
+                    Profile: HostProfile,
+                    Provider: HostProvider<Profile>,
+                    Return: HostAbiType,
+                    Targets: HostTypeSequence,
+                    $($argument: HostScopedArgument,)*
+                    Function: for<'call> Fn(
+                        HostCall<'call, Profile, Provider, Return>,
+                        HostConstructions<'call, Targets>,
+                        $(<$argument as crate::host::HostType>::Value<'call>),*
+                    ) -> Result<crate::host::HostCallContinuation<'call, Return>, HostCallError>,
+                {
+                    function
+                }
+                <_ as ResumableHostFunctionAdapter<
+                    Profile, Provider, ($($argument,)*), Return, Targets,
+                >>::register(callback::<Profile, Provider, Return, Targets, _, $($argument,)*>(move |call, _, $($slot),*| {
+                    (self.function)(
+                        crate::host::native::NativeCall::new(call, std::sync::Arc::clone(&self.rules)),
+                        $($slot),*
+                    )
+                }))
+            }
+        }
+    };
+}
+
+native_function!();
+native_function!(A => a);
+native_function!(A => a, B => b);
+native_function!(A => a, B => b, C => c);
+native_function!(A => a, B => b, C => c, D => d);
+native_function!(A => a, B => b, C => c, D => d, E => e);
+native_function!(A => a, B => b, C => c, D => d, E => e, F => f);
+native_function!(A => a, B => b, C => c, D => d, E => e, F => f, G => g);
 
 macro_rules! host_function {
     () => {
@@ -655,8 +817,7 @@ mod tests {
         let mut runtime =
             TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
         assert_eq!(
-            implementation
-                .call(&mut runtime)
+            crate::host::expect_immediate_call(implementation, &mut runtime)
                 .expect_err("fallible function should preserve its failure")
                 .to_string(),
             "unavailable",
@@ -713,9 +874,11 @@ mod tests {
             );
             let mut state = TestRunState::default();
             let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
-            expect_value_implementation(&registration.implementation)
-                .call(&mut runtime)
-                .expect("fallible callback should succeed");
+            crate::host::expect_immediate_call(
+                expect_value_implementation(&registration.implementation),
+                &mut runtime,
+            )
+            .expect("fallible callback should succeed");
             assert_eq!(
                 runtime.completed(),
                 Some(&HostScopedValue::Int(BigInt::from(arity))),
@@ -798,9 +961,11 @@ mod tests {
             );
             let mut state = TestRunState::default();
             let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
-            expect_value_implementation(&registration.implementation)
-                .call(&mut runtime)
-                .expect("scoped callback should succeed");
+            crate::host::expect_immediate_call(
+                expect_value_implementation(&registration.implementation),
+                &mut runtime,
+            )
+            .expect("scoped callback should succeed");
             assert_eq!(
                 runtime.completed(),
                 Some(&HostScopedValue::Int(BigInt::from(arity))),
@@ -917,14 +1082,88 @@ mod tests {
             );
             let mut state = TestRunState::default();
             let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
-            expect_value_implementation(&registration.implementation)
-                .call(&mut runtime)
-                .expect("scoped constructing callback should succeed");
+            crate::host::expect_immediate_call(
+                expect_value_implementation(&registration.implementation),
+                &mut runtime,
+            )
+            .expect("scoped constructing callback should succeed");
             assert_eq!(
                 runtime.completed(),
                 Some(&HostScopedValue::Int(BigInt::from(arity))),
             );
         }
+    }
+
+    #[test]
+    fn supports_every_native_argument_arity_without_a_second_parameter_layout() {
+        use crate::host::native::{NativeCall, NativeRules};
+        type Call<'call> =
+            NativeCall<'call, TestHostProfile, ScopedProvider, BigInt, HostTypeListEnd>;
+        let provider = crate::HostProviderModule::new("application", "main").unwrap()
+            .with_native_function::<ScopedProvider, (), BigInt, HostTypeListEnd, _>(
+                "zero", NativeRules::default(), |mut call: Call<'_>| {
+                    *call.call().state() += 1;
+                    Ok(call.finish(0.into()))
+                },
+            ).unwrap()
+            .with_native_function::<ScopedProvider, (BigInt,), BigInt, HostTypeListEnd, _>(
+                "one", NativeRules::default(), |call: Call<'_>, a| Ok(call.finish(a)),
+            ).unwrap()
+            .with_native_function::<ScopedProvider, (BigInt, BigInt), BigInt, HostTypeListEnd, _>(
+                "two", NativeRules::default(), |call: Call<'_>, a, b| Ok(call.finish(a * 10 + b)),
+            ).unwrap()
+            .with_native_function::<ScopedProvider, (BigInt, BigInt, BigInt), BigInt, HostTypeListEnd, _>(
+                "three", NativeRules::default(), |call: Call<'_>, a, b, c| Ok(call.finish(a * 100 + b * 10 + c)),
+            ).unwrap()
+            .with_native_function::<ScopedProvider, (BigInt, BigInt, BigInt, BigInt), BigInt, HostTypeListEnd, _>(
+                "four", NativeRules::default(), |call: Call<'_>, a, b, c, d| Ok(call.finish(a * 1000 + b * 100 + c * 10 + d)),
+            ).unwrap()
+            .with_native_function::<ScopedProvider, (BigInt, BigInt, BigInt, BigInt, BigInt), BigInt, HostTypeListEnd, _>(
+                "five", NativeRules::default(), |call: Call<'_>, a, b, c, d, e| Ok(call.finish(a * 10000 + b * 1000 + c * 100 + d * 10 + e)),
+            ).unwrap()
+            .with_native_function::<ScopedProvider, (BigInt, BigInt, BigInt, BigInt, BigInt, BigInt), BigInt, HostTypeListEnd, _>(
+                "six", NativeRules::default(), |call: Call<'_>, a, b, c, d, e, f| Ok(call.finish(a * 100000 + b * 10000 + c * 1000 + d * 100 + e * 10 + f)),
+            ).unwrap()
+            .with_native_function::<ScopedProvider, (BigInt, BigInt, BigInt, BigInt, BigInt, BigInt, BigInt), BigInt, HostTypeListEnd, _>(
+                "seven", NativeRules::default(), |call: Call<'_>, a, b, c, d, e, f, g| Ok(call.finish(a * 1000000 + b * 100000 + c * 10000 + d * 1000 + e * 100 + f * 10 + g)),
+            ).unwrap();
+        let source = r#"
+@external(erlang, "native", "zero") fn zero() -> Int
+@external(erlang, "native", "one") fn one(a: Int) -> Int
+@external(erlang, "native", "two") fn two(a: Int, b: Int) -> Int
+@external(erlang, "native", "three") fn three(a: Int, b: Int, c: Int) -> Int
+@external(erlang, "native", "four") fn four(a: Int, b: Int, c: Int, d: Int) -> Int
+@external(erlang, "native", "five") fn five(a: Int, b: Int, c: Int, d: Int, e: Int) -> Int
+@external(erlang, "native", "six") fn six(a: Int, b: Int, c: Int, d: Int, e: Int, f: Int) -> Int
+@external(erlang, "native", "seven") fn seven(a: Int, b: Int, c: Int, d: Int, e: Int, f: Int, g: Int) -> Int
+pub fn main() {
+  #(zero(), one(1), two(1, 2), three(1, 2, 3), four(1, 2, 3, 4),
+    five(1, 2, 3, 4, 5), six(1, 2, 3, 4, 5, 6), seven(1, 2, 3, 4, 5, 6, 7))
+}
+"#;
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "main",
+            [crate::PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [crate::ModuleSource::new("main", "main.gleam", source)],
+            )],
+            crate::HostProviderSet::from_providers([provider]).unwrap(),
+        )
+        .unwrap();
+        let mut execution =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let mut state = TestRunState::default();
+        let mut echo = Vec::new();
+        let result = crate::execution_fixture::run(&mut execution, &mut state, &mut echo).unwrap();
+        assert_eq!(
+            result.inspect().to_string(),
+            "#(0, 1, 12, 123, 1234, 12345, 123456, 1234567)"
+        );
+        assert_eq!(state.counter, 1);
+        assert!(echo.is_empty());
     }
 
     #[test]
@@ -1301,8 +1540,7 @@ mod tests {
         let arguments = CallArguments::new(ints, bools);
         let mut state = TestRunState::default();
         let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
-        implementation
-            .call(&mut runtime)
+        crate::host::expect_immediate_call(implementation, &mut runtime)
             .expect("test host function should succeed");
         let Some(HostScopedValue::Int(value)) = runtime.completed() else {
             panic!("test function should return Int");
@@ -1319,8 +1557,7 @@ mod tests {
         let arguments = CallArguments::new(ints, bools);
         let mut state = TestRunState::default();
         let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
-        implementation
-            .call(&mut runtime)
+        crate::host::expect_immediate_call(implementation, &mut runtime)
             .expect("test host function should succeed");
         let Some(HostScopedValue::Bool(value)) = runtime.completed() else {
             panic!("test function should return Bool");
@@ -1335,8 +1572,7 @@ mod tests {
         let implementation = expect_value_implementation(&implementation);
         let mut state = TestRunState::default();
         let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
-        implementation
-            .call(&mut runtime)
+        crate::host::expect_immediate_call(implementation, &mut runtime)
             .expect("test host function should succeed");
         let Some(HostScopedValue::String(value)) = runtime.completed() else {
             panic!("all-scalar test function should return String");

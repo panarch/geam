@@ -1,5 +1,7 @@
 use super::ScopeBrand;
-use crate::host::{HostExternalSchema, HostFutureStore};
+use crate::host::{
+    HostExternalSchema, HostFutureStore, HostProfile, HostWorkProfile, HostWorkSchema,
+};
 use crate::runtime::shared::Shared;
 use crate::runtime::{BorrowedValue, EmbeddingList, EvaluatedExternalValue, StoredRuntimeValue};
 use std::marker::PhantomData;
@@ -93,10 +95,14 @@ pub(crate) trait SharedValue: ReadValue {
     fn view<'value>(value: BorrowedValue<'value>, context: &Self::Context) -> Self::View<'value>;
 }
 
-pub(crate) trait ScopedOutput<Schema: HostExternalSchema>: SourceType {
+pub(crate) trait ScopedOutput<Profile: HostProfile>: SourceType {
+    type Retention: Send + 'static;
+
+    fn retain(stores: &Profile::ExternalStores) -> Self::Retention;
+
     fn context<'scope>(
         brand: ScopeBrand<'scope>,
-        store: &HostFutureStore,
+        retention: Self::Retention,
         owner: &Arc<()>,
     ) -> <Self::Value<'scope> as SharedValue>::Context;
 }
@@ -123,7 +129,7 @@ impl<Value: crate::embedding::value::EmbeddingValue, Schema: HostExternalSchema>
     fn collect_variants(variants: &mut Vec<crate::plan::StandardVariant>) {
         Value::collect_variants(variants);
     }
-    fn collect_input_variants(_: &mut Vec<crate::plan::StandardVariant>) {}
+    fn collect_input_variants(_: &mut Vec<crate::plan::LibraryVariant>) {}
     fn collect_lists(_: &mut Vec<crate::plan::LibraryValueType>) {}
 }
 
@@ -268,8 +274,10 @@ macro_rules! scalar {
         impl SourceType for $type {
             type Value<'scope> = Self;
         }
-        impl<Schema: HostExternalSchema> ScopedOutput<Schema> for $type {
-            fn context<'scope>(_: ScopeBrand<'scope>, _: &HostFutureStore, _: &Arc<()>) {}
+        impl<Profile: HostProfile> ScopedOutput<Profile> for $type {
+            type Retention = ();
+            fn retain(_: &Profile::ExternalStores) {}
+            fn context<'scope>(_: ScopeBrand<'scope>, _: (), _: &Arc<()>) {}
         }
     };
 }
@@ -302,8 +310,10 @@ impl SourceType for () {
     type Value<'scope> = Self;
 }
 
-impl<Schema: HostExternalSchema> ScopedOutput<Schema> for () {
-    fn context<'scope>(_: ScopeBrand<'scope>, _: &HostFutureStore, _: &Arc<()>) {}
+impl<Profile: HostProfile> ScopedOutput<Profile> for () {
+    type Retention = ();
+    fn retain(_: &Profile::ExternalStores) {}
+    fn context<'scope>(_: ScopeBrand<'scope>, _: (), _: &Arc<()>) {}
 }
 
 macro_rules! tuple {
@@ -320,9 +330,11 @@ macro_rules! tuple {
         impl<$($type: SourceType),+> SourceType for ($($type,)+) {
             type Value<'scope> = ($($type::Value<'scope>,)+);
         }
-        impl<Schema: HostExternalSchema, $($type: ScopedOutput<Schema>),+> ScopedOutput<Schema> for ($($type,)+) {
-            fn context<'scope>(brand: ScopeBrand<'scope>, store: &HostFutureStore, owner: &Arc<()>) -> <Self::Value<'scope> as SharedValue>::Context {
-                ($($type::context(brand, store, owner),)+)
+        impl<Profile: HostProfile, $($type: ScopedOutput<Profile>),+> ScopedOutput<Profile> for ($($type,)+) {
+            type Retention = ($($type::Retention,)+);
+            fn retain(stores: &Profile::ExternalStores) -> Self::Retention { ($($type::retain(stores),)+) }
+            fn context<'scope>(brand: ScopeBrand<'scope>, retention: Self::Retention, owner: &Arc<()>) -> <Self::Value<'scope> as SharedValue>::Context {
+                ($($type::context(brand, retention.$index, owner),)+)
             }
         }
     };
@@ -355,17 +367,21 @@ impl<Success: SourceType, Failure: SourceType> SourceType for Result<Success, Fa
     type Value<'scope> = Result<Success::Value<'scope>, Failure::Value<'scope>>;
 }
 
-impl<Schema: HostExternalSchema, Success: ScopedOutput<Schema>, Failure: ScopedOutput<Schema>>
-    ScopedOutput<Schema> for Result<Success, Failure>
+impl<Profile: HostProfile, Success: ScopedOutput<Profile>, Failure: ScopedOutput<Profile>>
+    ScopedOutput<Profile> for Result<Success, Failure>
 {
+    type Retention = (Success::Retention, Failure::Retention);
+    fn retain(stores: &Profile::ExternalStores) -> Self::Retention {
+        (Success::retain(stores), Failure::retain(stores))
+    }
     fn context<'scope>(
         brand: ScopeBrand<'scope>,
-        store: &HostFutureStore,
+        retention: Self::Retention,
         owner: &Arc<()>,
     ) -> <Self::Value<'scope> as SharedValue>::Context {
         (
-            Success::context(brand, store, owner),
-            Failure::context(brand, store, owner),
+            Success::context(brand, retention.0, owner),
+            Failure::context(brand, retention.1, owner),
         )
     }
 }
@@ -389,15 +405,17 @@ impl<Value: SourceType> SourceType for Option<Value> {
     type Value<'scope> = Option<Value::Value<'scope>>;
 }
 
-impl<Schema: HostExternalSchema, Value: ScopedOutput<Schema>> ScopedOutput<Schema>
-    for Option<Value>
-{
+impl<Profile: HostProfile, Value: ScopedOutput<Profile>> ScopedOutput<Profile> for Option<Value> {
+    type Retention = Value::Retention;
+    fn retain(stores: &Profile::ExternalStores) -> Self::Retention {
+        Value::retain(stores)
+    }
     fn context<'scope>(
         brand: ScopeBrand<'scope>,
-        store: &HostFutureStore,
+        retention: Self::Retention,
         owner: &Arc<()>,
     ) -> <Self::Value<'scope> as SharedValue>::Context {
-        Value::context(brand, store, owner)
+        Value::context(brand, retention, owner)
     }
 }
 
@@ -419,17 +437,21 @@ impl<Value: SourceType> SourceType for super::super::List<Value> {
     type Value<'scope> = SharedList<Value::Value<'scope>>;
 }
 
-impl<Schema: HostExternalSchema, Value: ScopedOutput<Schema>> ScopedOutput<Schema>
+impl<Profile: HostProfile, Value: ScopedOutput<Profile>> ScopedOutput<Profile>
     for super::super::List<Value>
 {
+    type Retention = Value::Retention;
+    fn retain(stores: &Profile::ExternalStores) -> Self::Retention {
+        Value::retain(stores)
+    }
     fn context<'scope>(
         brand: ScopeBrand<'scope>,
-        store: &HostFutureStore,
+        retention: Self::Retention,
         owner: &Arc<()>,
     ) -> <Self::Value<'scope> as SharedValue>::Context {
         ListContext {
             owner: owner.clone(),
-            item: Value::context(brand, store, owner),
+            item: Value::context(brand, retention, owner),
         }
     }
 }
@@ -465,18 +487,25 @@ impl<Value: SourceType, Schema: HostExternalSchema> SourceType for FutureType<Va
     type Value<'scope> = Future<'scope, Value::Value<'scope>, Schema>;
 }
 
-impl<Value: ScopedOutput<Schema>, Schema: HostExternalSchema> ScopedOutput<Schema>
-    for FutureType<Value, Schema>
+impl<Profile: HostWorkProfile, Value: ScopedOutput<Profile>> ScopedOutput<Profile>
+    for FutureType<Value, HostWorkSchema<Profile>>
 {
+    type Retention = (HostFutureStore, Value::Retention);
+    fn retain(stores: &Profile::ExternalStores) -> Self::Retention {
+        (
+            crate::host::work_store::<Profile>(stores).clone_handle(),
+            Value::retain(stores),
+        )
+    }
     fn context<'scope>(
         brand: ScopeBrand<'scope>,
-        store: &HostFutureStore,
+        retention: Self::Retention,
         owner: &Arc<()>,
     ) -> <Self::Value<'scope> as SharedValue>::Context {
         FutureContext {
             brand,
-            store: store.clone_handle(),
-            output: Value::context(brand, store, owner),
+            store: retention.0,
+            output: Value::context(brand, retention.1, owner),
             schema: PhantomData,
         }
     }
@@ -484,19 +513,19 @@ impl<Value: ScopedOutput<Schema>, Schema: HostExternalSchema> ScopedOutput<Schem
 
 #[cfg(test)]
 mod tests {
-    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder, List, with_execution_scope};
+    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder, List};
     use crate::frontend::compile_typed_host_program;
     use crate::host::{HostComponentProfile, HostFutureStore, HostProfile, HostProviderSet};
     use crate::work_fixture::WorkComponent;
     use crate::work_fixture::WorkType;
     use crate::{EchoOutput, EchoSink, ModuleSource, PackageSource};
     use ecow::EcoString;
-    use futures_util::FutureExt;
 
     struct Profile;
     impl HostProfile for Profile {
         type RunState = ();
         type ExternalStores = HostFutureStore;
+        type ExecutionState = ();
     }
     impl crate::host::HostWorkProfile for Profile {
         type Work = crate::work_fixture::WorkComponent;
@@ -519,6 +548,8 @@ mod tests {
 
     #[test]
     fn retained_lists_share_source_storage_and_borrow_items_after_the_owner_drops() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let program = compile_typed_host_program(
             "application",
             "library",
@@ -541,25 +572,30 @@ mod tests {
         let mut module = bindings.seal().expect("list seal");
         let mut state = ();
         let mut echo = Echo::default();
-        let (list, retained) = with_execution_scope(async |guard| {
-            let mut scope = module.attach(guard, &mut state, &mut echo);
-            let list = scope
-                .call(&keep, (vec![EcoString::from("first"), "second".into()],))
-                .expect("fresh list");
-            assert_eq!(list.len(), 2);
-            assert!(!list.is_empty());
-            let retained = scope.call(&keep, (&list,)).expect("retained input");
-            list.value.read(|original| {
-                retained.value.read(|returned| {
-                    assert!(original.same_allocation(returned));
-                    assert_eq!(original.item_reads(), 0);
-                    assert_eq!(returned.item_reads(), 0);
-                })
-            });
-            (list, retained)
-        })
-        .now_or_never()
-        .expect("direct list calls");
+        let (list, retained) = execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    let list = scope
+                        .call(&keep, (vec![EcoString::from("first"), "second".into()],))
+                        .await
+                        .expect("fresh list");
+                    assert_eq!(list.len(), 2);
+                    assert!(!list.is_empty());
+                    let retained = scope.call(&keep, (&list,)).await.expect("retained input");
+                    list.value.read(|original| {
+                        retained.value.read(|returned| {
+                            assert!(original.same_allocation(returned));
+                            assert_eq!(original.item_reads(), 0);
+                            assert_eq!(returned.item_reads(), 0);
+                        })
+                    });
+                    (list, retained)
+                },
+            ))
+            .expect("direct list calls");
         drop(module);
         let alias = retained.clone();
         list.read_item(1, |first| {
@@ -584,6 +620,8 @@ mod tests {
 
     #[test]
     fn optional_results_and_nested_lists_have_the_same_direct_and_shared_views() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         use num_bigint::BigInt;
         type Choice = Option<Result<BigInt, ()>>;
         type Choices = List<Choice>;
@@ -652,39 +690,49 @@ pub fn ready_list(values: List(Option(Result(Int, Nil)))) { future.ready(values)
         let mut module = bindings.seal().expect("specializations");
         let mut state = ();
         let mut echo = Echo::default();
-        let returned = with_execution_scope(async |guard| {
-            let mut scope = module.attach(guard, &mut state, &mut echo);
-            let inputs = vec![Some(Ok(BigInt::from(42))), Some(Err(())), None];
-            for input in &inputs {
-                assert_eq!(
-                    scope
-                        .call(&choice, (input.clone(),))
-                        .expect("direct choice"),
-                    *input
-                );
-                let work = scope
-                    .call(&ready, (input.clone(),))
-                    .expect("work construction");
-                let completed = scope.observe(&work).await.expect("shared choice");
-                assert_eq!(
-                    completed.read(|value| value.map(|result| result.cloned())),
-                    *input
-                );
-            }
-            let list = scope
-                .call(&choices, (inputs.clone(),))
-                .expect("direct list");
-            for (index, input) in inputs.iter().enumerate() {
-                assert_eq!(
-                    list.read_item(index, |value| value.map(|result| result.cloned())),
-                    Some(input.clone())
-                );
-            }
-            let work = scope.call(&ready_list, (&list,)).expect("same-owner list");
-            scope.observe(&work).await.expect("shared list").clone()
-        })
-        .now_or_never()
-        .expect("source-only work completes");
+        let returned = execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    let inputs = vec![Some(Ok(BigInt::from(42))), Some(Err(())), None];
+                    for input in &inputs {
+                        assert_eq!(
+                            scope
+                                .call(&choice, (input.clone(),))
+                                .await
+                                .expect("direct choice"),
+                            *input
+                        );
+                        let work = scope
+                            .call(&ready, (input.clone(),))
+                            .await
+                            .expect("work construction");
+                        let completed = scope.observe(&work).await.expect("shared choice");
+                        assert_eq!(
+                            completed.read(|value| value.map(|result| result.cloned())),
+                            *input
+                        );
+                    }
+                    let list = scope
+                        .call(&choices, (inputs.clone(),))
+                        .await
+                        .expect("direct list");
+                    for (index, input) in inputs.iter().enumerate() {
+                        assert_eq!(
+                            list.read_item(index, |value| value.map(|result| result.cloned())),
+                            Some(input.clone())
+                        );
+                    }
+                    let work = scope
+                        .call(&ready_list, (&list,))
+                        .await
+                        .expect("same-owner list");
+                    scope.observe(&work).await.expect("shared list").clone()
+                },
+            ))
+            .expect("source-only work completes");
         drop(module);
         assert_eq!(
             returned.read(|list| list.read_item(0, |value| value.map(|result| result.cloned()))),
@@ -694,6 +742,8 @@ pub fn ready_list(values: List(Option(Result(Int, Nil)))) { future.ready(values)
 
     #[test]
     fn shared_scalar_lists_and_nested_work_keep_their_typed_borrowed_views() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         use crate::BitArrayValue;
         use crate::host::HostProvider;
         use num_bigint::BigInt;
@@ -738,61 +788,68 @@ pub fn ready_list(values: List(Option(Result(Int, Nil)))) { future.ready(values)
             &state,
         ));
         let mut echo = Echo::default();
-        with_execution_scope(async |guard| {
-            let mut scope = module.attach(guard, &mut state, &mut echo);
-            let number = scope
-                .call(&ready_int, (BigInt::from(42),))
-                .expect("inner work");
-            let bits = BitArrayValue::try_from_parts(vec![0b1010_0000], 3).expect("three bits");
-            let work = scope
-                .call(
-                    &ready_values,
-                    ((
-                        3.5,
-                        bits.clone(),
-                        'x',
-                        true,
-                        vec![3.5],
-                        vec![bits.clone()],
-                        (vec!['x'], vec![true], &number),
-                    ),),
-                )
-                .expect("recursive work");
-            let completed = scope.observe(&work).await.expect("shared completion");
-            let nested = completed.read(
-                |(
-                    float,
-                    bit_array,
-                    codepoint,
-                    boolean,
-                    floats,
-                    bit_arrays,
-                    (codepoints, bools, nested),
-                )| {
-                    assert_eq!(float, 3.5);
-                    assert_eq!(bit_array, &bits);
-                    assert_eq!(codepoint, 'x');
-                    assert!(boolean);
-                    assert_eq!(floats.read_item(0, std::convert::identity), Some(3.5));
-                    assert_eq!(floats.read_item(1, std::convert::identity), None);
-                    let same_bits = |value: &BitArrayValue| value == &bits;
-                    assert_eq!(bit_arrays.read_item(0, same_bits), Some(true));
-                    assert_eq!(bit_arrays.read_item(1, same_bits), None);
-                    assert_eq!(codepoints.read_item(0, std::convert::identity), Some('x'));
-                    assert_eq!(codepoints.read_item(1, std::convert::identity), None);
-                    assert_eq!(bools.read_item(0, std::convert::identity), Some(true));
-                    assert_eq!(bools.read_item(1, std::convert::identity), None);
-                    nested
+        execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    let number = scope
+                        .call(&ready_int, (BigInt::from(42),))
+                        .await
+                        .expect("inner work");
+                    let bits =
+                        BitArrayValue::try_from_parts(vec![0b1010_0000], 3).expect("three bits");
+                    let work = scope
+                        .call(
+                            &ready_values,
+                            ((
+                                3.5,
+                                bits.clone(),
+                                'x',
+                                true,
+                                vec![3.5],
+                                vec![bits.clone()],
+                                (vec!['x'], vec![true], &number),
+                            ),),
+                        )
+                        .await
+                        .expect("recursive work");
+                    let completed = scope.observe(&work).await.expect("shared completion");
+                    let nested = completed.read(
+                        |(
+                            float,
+                            bit_array,
+                            codepoint,
+                            boolean,
+                            floats,
+                            bit_arrays,
+                            (codepoints, bools, nested),
+                        )| {
+                            assert_eq!(float, 3.5);
+                            assert_eq!(bit_array, &bits);
+                            assert_eq!(codepoint, 'x');
+                            assert!(boolean);
+                            assert_eq!(floats.read_item(0, std::convert::identity), Some(3.5));
+                            assert_eq!(floats.read_item(1, std::convert::identity), None);
+                            let same_bits = |value: &BitArrayValue| value == &bits;
+                            assert_eq!(bit_arrays.read_item(0, same_bits), Some(true));
+                            assert_eq!(bit_arrays.read_item(1, same_bits), None);
+                            assert_eq!(codepoints.read_item(0, std::convert::identity), Some('x'));
+                            assert_eq!(codepoints.read_item(1, std::convert::identity), None);
+                            assert_eq!(bools.read_item(0, std::convert::identity), Some(true));
+                            assert_eq!(bools.read_item(1, std::convert::identity), None);
+                            nested
+                        },
+                    );
+                    scope
+                        .observe(&nested)
+                        .await
+                        .expect("same nested operation")
+                        .read(|value| assert_eq!(value, &BigInt::from(42)));
                 },
-            );
-            scope
-                .observe(&nested)
-                .await
-                .expect("same nested operation")
-                .read(|value| assert_eq!(value, &BigInt::from(42)));
-        })
-        .now_or_never()
-        .expect("ready compositions");
+            ))
+            .expect("ready compositions");
         assert_eq!(
             echo.0,
             [
@@ -804,6 +861,8 @@ pub fn ready_list(values: List(Option(Result(Int, Nil)))) { future.ready(values)
 
     #[test]
     fn every_transferable_list_entry_preserves_its_family_and_accepts_same_owner_inputs() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         use crate::BitArrayValue;
         use num_bigint::BigInt;
 
@@ -879,100 +938,117 @@ pub fn work(values: List(future.Work(Int))) { values }
         let mut module = bindings.seal().expect("all list families seal together");
         let mut state = ();
         let mut echo = Echo::default();
-        with_execution_scope(async |guard| {
-            let mut scope = module.attach(guard, &mut state, &mut echo);
-            let numbers = scope
-                .call(&ints, (vec![BigInt::from(42)],))
-                .expect("integer list");
-            assert_eq!(numbers.read_item(0, Clone::clone), Some(BigInt::from(42)));
-            assert_eq!(
-                scope
-                    .call(&floats, (vec![3.5],))
-                    .expect("float list")
-                    .read_item(0, std::convert::identity),
-                Some(3.5)
-            );
-            assert_eq!(
-                scope
-                    .call(&strings, (vec![EcoString::from("hello")],))
-                    .expect("string list")
-                    .read_item(0, Clone::clone),
-                Some(EcoString::from("hello"))
-            );
-            let bytes = BitArrayValue::try_from_parts(vec![0xa0], 3).expect("three bits");
-            assert_eq!(
-                scope
-                    .call(&bits, (vec![bytes.clone()],))
-                    .expect("bit array list")
-                    .read_item(0, Clone::clone),
-                Some(bytes)
-            );
-            assert_eq!(
-                scope
-                    .call(&codepoints, (vec!['x'],))
-                    .expect("codepoint list")
-                    .read_item(0, std::convert::identity),
-                Some('x')
-            );
-            assert_eq!(
-                scope
-                    .call(&bools, (vec![true],))
-                    .expect("bool list")
-                    .read_item(0, std::convert::identity),
-                Some(true)
-            );
-            assert_eq!(
-                scope
-                    .call(&nils, (vec![()],))
-                    .expect("nil list")
-                    .read_item(0, std::convert::identity),
-                Some(())
-            );
-            assert_eq!(
-                scope
-                    .call(
-                        &tuples,
-                        (vec![(BigInt::from(42), EcoString::from("hello"))],)
-                    )
-                    .expect("tuple list")
-                    .read_item(0, |(number, text)| (number.clone(), text.clone())),
-                Some((BigInt::from(42), EcoString::from("hello")))
-            );
-            assert_eq!(
-                scope
-                    .call(&choices, (vec![Ok(BigInt::from(42))],))
-                    .expect("custom list")
-                    .read_item(0, |value| value.cloned().map_err(Clone::clone)),
-                Some(Ok(BigInt::from(42)))
-            );
-            let nested_numbers = scope
-                .call(&nested, (vec![vec![BigInt::from(42)]],))
-                .expect("nested list");
-            assert_eq!(
-                scope
-                    .call(&nested, (&nested_numbers,))
-                    .expect("retained nested list")
-                    .read_item(0, |list| list.read_item(0, Clone::clone)),
-                Some(Some(BigInt::from(42)))
-            );
-            let operation = scope.call(&ready, (BigInt::from(42),)).expect("work");
-            let operations = scope
-                .call(&work, (vec![&operation],))
-                .expect("external list");
-            let repeated = scope
-                .call(&work, (&operations,))
-                .expect("retained external list");
-            let operation = repeated
-                .read_item(0, std::convert::identity)
-                .expect("same work");
-            scope
-                .observe(&operation)
-                .await
-                .expect("completion")
-                .read(|value| assert_eq!(value, &BigInt::from(42)));
-        })
-        .now_or_never()
-        .expect("ready work is caller-driven");
+        execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    let numbers = scope
+                        .call(&ints, (vec![BigInt::from(42)],))
+                        .await
+                        .expect("integer list");
+                    assert_eq!(numbers.read_item(0, Clone::clone), Some(BigInt::from(42)));
+                    assert_eq!(
+                        scope
+                            .call(&floats, (vec![3.5],))
+                            .await
+                            .expect("float list")
+                            .read_item(0, std::convert::identity),
+                        Some(3.5)
+                    );
+                    assert_eq!(
+                        scope
+                            .call(&strings, (vec![EcoString::from("hello")],))
+                            .await
+                            .expect("string list")
+                            .read_item(0, Clone::clone),
+                        Some(EcoString::from("hello"))
+                    );
+                    let bytes = BitArrayValue::try_from_parts(vec![0xa0], 3).expect("three bits");
+                    assert_eq!(
+                        scope
+                            .call(&bits, (vec![bytes.clone()],))
+                            .await
+                            .expect("bit array list")
+                            .read_item(0, Clone::clone),
+                        Some(bytes)
+                    );
+                    assert_eq!(
+                        scope
+                            .call(&codepoints, (vec!['x'],))
+                            .await
+                            .expect("codepoint list")
+                            .read_item(0, std::convert::identity),
+                        Some('x')
+                    );
+                    assert_eq!(
+                        scope
+                            .call(&bools, (vec![true],))
+                            .await
+                            .expect("bool list")
+                            .read_item(0, std::convert::identity),
+                        Some(true)
+                    );
+                    assert_eq!(
+                        scope
+                            .call(&nils, (vec![()],))
+                            .await
+                            .expect("nil list")
+                            .read_item(0, std::convert::identity),
+                        Some(())
+                    );
+                    assert_eq!(
+                        scope
+                            .call(
+                                &tuples,
+                                (vec![(BigInt::from(42), EcoString::from("hello"))],)
+                            )
+                            .await
+                            .expect("tuple list")
+                            .read_item(0, |(number, text)| (number.clone(), text.clone())),
+                        Some((BigInt::from(42), EcoString::from("hello")))
+                    );
+                    assert_eq!(
+                        scope
+                            .call(&choices, (vec![Ok(BigInt::from(42))],))
+                            .await
+                            .expect("custom list")
+                            .read_item(0, |value| value.cloned().map_err(Clone::clone)),
+                        Some(Ok(BigInt::from(42)))
+                    );
+                    let nested_numbers = scope
+                        .call(&nested, (vec![vec![BigInt::from(42)]],))
+                        .await
+                        .expect("nested list");
+                    assert_eq!(
+                        scope
+                            .call(&nested, (&nested_numbers,))
+                            .await
+                            .expect("retained nested list")
+                            .read_item(0, |list| list.read_item(0, Clone::clone)),
+                        Some(Some(BigInt::from(42)))
+                    );
+                    let operation = scope.call(&ready, (BigInt::from(42),)).await.expect("work");
+                    let operations = scope
+                        .call(&work, (vec![&operation],))
+                        .await
+                        .expect("external list");
+                    let repeated = scope
+                        .call(&work, (&operations,))
+                        .await
+                        .expect("retained external list");
+                    let operation = repeated
+                        .read_item(0, std::convert::identity)
+                        .expect("same work");
+                    scope
+                        .observe(&operation)
+                        .await
+                        .expect("completion")
+                        .read(|value| assert_eq!(value, &BigInt::from(42)));
+                },
+            ))
+            .expect("ready work is caller-driven");
         assert!(echo.0.is_empty());
     }
 }

@@ -103,7 +103,10 @@ jobs:
             examples/embedding/package \
             examples/embedding/io \
             examples/embedding/provider \
-            examples/embedding/async_host
+            examples/embedding/async_host \
+            examples/embedding/session \
+            examples/embedding/processes \
+            examples/embedding/execution
           do
             (cd "$project" && cargo upgrade --package "geam@=$RELEASE_VERSION" --pinned --recursive false)
           done

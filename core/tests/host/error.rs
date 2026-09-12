@@ -1,8 +1,8 @@
 use geam_core::{
-    ExecutionError, HostCall, HostCallCompletion, HostCallError, HostCallable, HostFailure,
-    HostFunctionType, HostLocation, HostModule, HostProvider, HostProviderModule, HostProviderSet,
-    HostTypeList, HostTypeListEnd, HostedExecution, ModuleSource, PackageSource, PanicKind,
-    StatelessHostProfile, compile_typed_host_program, plan_host_program,
+    ExecutionError, HostCall, HostCallError, HostCallable, HostFailure, HostFunctionType,
+    HostLocation, HostModule, HostProvider, HostProviderModule, HostProviderSet, HostTypeList,
+    HostTypeListEnd, HostedExecution, ModuleSource, PackageSource, PanicKind, StatelessHostProfile,
+    compile_typed_host_program, plan_host_program,
 };
 use miette::{GraphicalReportHandler, GraphicalTheme};
 use num_bigint::BigInt;
@@ -47,10 +47,9 @@ geam::host_function
     )
     .expect("host program should compile");
     let plan = plan_host_program(typed).expect("host program should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
-    let error = execution
-        .run_main(&mut (), &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect_err("fallible host function should fail");
 
     assert_eq!(render_execution_error(&error), expected.trim());
@@ -119,10 +118,9 @@ geam::host_function
     )
     .expect("host program should compile");
     let plan = plan_host_program(typed).expect("provider should link");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
-    let error = execution
-        .run_main(&mut (), &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect_err("fallible provider should fail");
 
     assert_eq!(render_execution_error(&error), expected.trim());
@@ -152,7 +150,7 @@ geam::host_function
 fn reports_nested_host_failure_with_the_immediate_host_caller() {
     let outer = HostModule::new("host_support", "host/outer")
         .expect("outer host module should be valid")
-        .with_scoped_function::<CallbackProvider, (IntCallable, BigInt), BigInt, _>(
+        .with_resumable_function::<CallbackProvider, (IntCallable, BigInt), BigInt, geam_core::HostTypeListEnd, _>(
             "apply",
             invoke_callback,
         )
@@ -189,10 +187,9 @@ geam::host_function
     )
     .expect("nested host failure source should compile");
     let plan = plan_host_program(typed).expect("nested host failure source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("nested host failure execution should seal");
-    let error = execution
-        .run_main(&mut (), &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect_err("inner host should fail");
 
     assert_eq!(render_execution_error(&error), expected.trim());
@@ -216,7 +213,7 @@ geam::host_function
 fn preserves_nested_gleam_panic_without_host_rewrapping() {
     let outer = HostModule::new("host_support", "host/outer")
         .expect("outer host module should be valid")
-        .with_scoped_function::<CallbackProvider, (IntCallable, BigInt), BigInt, _>(
+        .with_resumable_function::<CallbackProvider, (IntCallable, BigInt), BigInt, geam_core::HostTypeListEnd, _>(
             "apply",
             invoke_callback,
         )
@@ -257,10 +254,9 @@ geam::panic
     )
     .expect("nested panic source should compile");
     let plan = plan_host_program(typed).expect("nested panic source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("nested panic execution should seal");
-    let error = execution
-        .run_main(&mut (), &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect_err("nested source should panic");
 
     assert_eq!(render_execution_error(&error), expected.trim());
@@ -287,12 +283,22 @@ impl HostProvider<StatelessHostProfile> for CallbackProvider {
 }
 
 fn invoke_callback<'call>(
-    mut call: HostCall<'call, StatelessHostProfile, CallbackProvider, BigInt>,
+    call: HostCall<'call, StatelessHostProfile, CallbackProvider, BigInt>,
+    constructions: geam_core::HostConstructions<'call, geam_core::HostTypeListEnd>,
     function: HostCallable<'call, IntArguments, BigInt>,
     value: BigInt,
-) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
-    let returned = call.invoke(function, (value, ()))?;
-    Ok(call.return_value(returned))
+) -> Result<geam_core::HostCallContinuation<'call, BigInt>, HostCallError> {
+    let function = call.owned_callable(function, &constructions);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            let returned = function
+                .invoke(&context, move |_, _| (value, ()), |_, _, value| Ok(value))
+                .await?;
+            Ok(geam_core::HostOwnedCompletion::new(move |call, _| {
+                Ok(call.return_value(returned))
+            }))
+        })
+    }))
 }
 
 fn render_execution_error(error: &ExecutionError) -> String {

@@ -1,3 +1,4 @@
+mod native;
 mod parameter;
 mod return_;
 mod sealing;
@@ -247,9 +248,9 @@ fn assemble_hosted_program(
             main,
             constants,
             function_parameters: std::sync::Arc::new(function_parameters),
-            list_types,
-            custom_types,
-            external_types,
+            list_types: std::sync::Arc::new(list_types),
+            custom_types: std::sync::Arc::new(custom_types),
+            external_types: std::sync::Arc::new(external_types),
             value_shapes,
         }),
         functions,
@@ -309,7 +310,7 @@ impl HostedEntries for library::Entries {
 #[cfg(test)]
 mod tests {
     use super::lower_hosted_library;
-    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder, with_execution_scope};
+    use crate::embedding::{FunctionDeclaration, HostedModuleBuilder};
     use crate::frontend::HostedTypedProgram;
     use crate::host::{
         HostCall, HostCallCompletion, HostCallError, HostCallable, HostComponentProfile,
@@ -323,7 +324,7 @@ mod tests {
     use crate::{
         HostModule, HostProviderSet, ModuleSource, PackageSource, compile_typed_host_program,
     };
-    use futures_util::FutureExt;
+
     use num_bigint::BigInt;
     use std::convert::Infallible;
 
@@ -334,6 +335,7 @@ mod tests {
         impl crate::HostProfile for Profile {
             type RunState = ();
             type ExternalStores = crate::host::HostFutureStore;
+            type ExecutionState = ();
         }
         impl crate::host::HostWorkProfile for Profile {
             type Work = crate::work_fixture::WorkComponent;
@@ -383,7 +385,10 @@ mod tests {
                 LibraryValueType::Custom(
                     StandardVariant::Result.custom_type(vec![ValueType::Int, ValueType::String]),
                 ),
-                vec![StandardVariant::Result],
+                vec![crate::plan::LibraryVariant::new(
+                    StandardVariant::Result,
+                    vec![ValueType::Int, ValueType::String],
+                )],
                 Vec::new(),
             ),
             (
@@ -536,6 +541,7 @@ pub fn second(value: Int) { math.add(value, 2) }
     impl HostProfile for Profile {
         type RunState = ();
         type ExternalStores = HostFutureStore;
+        type ExecutionState = ();
     }
     impl crate::host::HostWorkProfile for Profile {
         type Work = crate::work_fixture::WorkComponent;
@@ -641,17 +647,20 @@ pub fn run() { let _ = accept_never 42 }
             .expect("uninhabited specialization is erased");
         let mut state = ();
         let mut echo = drop;
-        with_execution_scope(async |guard| {
-            assert_eq!(
-                module
-                    .attach(guard, &mut state, &mut echo)
-                    .call(&run, ())
-                    .expect("direct entry"),
-                BigInt::from(42)
-            );
-        })
-        .now_or_never()
-        .expect("direct call is immediate");
+        let execution_host = crate::execution_fixture::TestHost::default();
+        execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    assert_eq!(
+                        scope.call(&run, ()).await.expect("direct entry"),
+                        BigInt::from(42)
+                    );
+                },
+            ))
+            .expect("hosted call completes");
     }
 
     #[test]
@@ -678,6 +687,113 @@ pub fn run() { let _ = produce 42 }
             error.reason(),
             &HostSpecializationErrorReason::UndeterminedReturnStorage
         );
+    }
+
+    #[test]
+    fn native_rules_reject_overlap_only_after_generic_specialization() {
+        use crate::work_fixture::WorkSchema;
+        type Other = HostTypeParameter<1>;
+        type FirstArguments = HostTypeList<Generic, HostTypeListEnd>;
+        type SecondArguments = HostTypeList<Other, HostTypeListEnd>;
+        fn ready<'call>(
+            call: crate::host::native::NativeCall<'call, Profile, Provider, bool, HostTypeListEnd>,
+            _: <Generic as HostType>::Value<'call>,
+            _: <Other as HostType>::Value<'call>,
+        ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+            Ok(call.finish(true))
+        }
+        for (source, overlaps) in [
+            (
+                r#"
+@external(erlang, "native", "ready")
+fn ready(left: a, right: b) -> Bool
+pub fn run() { ready(1, 2) }
+"#,
+                true,
+            ),
+            (
+                r#"
+@external(erlang, "native", "ready")
+fn ready(left: a, right: b) -> Bool
+pub fn run() { ready(1, "two") }
+"#,
+                false,
+            ),
+        ] {
+            let host = HostProviderModule::new("application", "library")
+                .unwrap()
+                .with_native_function::<Provider, (Generic, Other), bool, HostTypeListEnd, _>(
+                    "ready",
+                    crate::host::native::NativeRules::default()
+                        .external::<WorkSchema, FirstArguments>(|_, _, _| None)
+                        .external::<WorkSchema, SecondArguments>(|_, _, _| None),
+                    ready,
+                )
+                .unwrap();
+            let work = HostProviderModule::new("work_fixture", "fixture/work")
+                .unwrap()
+                .with_external_type::<WorkComponent, WorkSchema>()
+                .unwrap();
+            let typed = compile_typed_host_program(
+                "application",
+                "library",
+                [
+                    PackageSource::new(
+                        "application",
+                        ["work_fixture"],
+                        [ModuleSource::new("library", "src/library.gleam", source)],
+                    ),
+                    PackageSource::new(
+                        "work_fixture",
+                        Vec::<String>::new(),
+                        [ModuleSource::new(
+                            "fixture/work",
+                            "src/fixture/work.gleam",
+                            "pub type Work(a)",
+                        )],
+                    ),
+                ],
+                HostProviderSet::from_providers([host, work]).unwrap(),
+            )
+            .unwrap();
+            let (bindings, run) = HostedModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(), bool>::new("run"))
+                .unwrap();
+            if overlaps {
+                let error = bindings
+                    .seal()
+                    .err()
+                    .expect("same specialization must conflict");
+                assert_eq!(error.function(), "ready");
+                assert_eq!(
+                    error.reason(),
+                    &HostSpecializationErrorReason::ConflictingNativeConversions {
+                        type_: crate::ValueType::External(crate::ExternalType::new(
+                            crate::ExternalTypeName::new(
+                                "work_fixture".into(),
+                                "fixture/work".into(),
+                                "Work".into()
+                            ),
+                            vec![crate::ValueType::Int],
+                        )),
+                    }
+                );
+            } else {
+                let mut module = bindings.seal().expect("distinct specialized rules");
+                let execution_host = crate::execution_fixture::TestHost::default();
+                execution_host
+                    .block_on(module.with_execution(
+                        &execution_host,
+                        &mut (),
+                        &mut drop,
+                        async |scope| {
+                            assert!(scope.call(&run, ()).await.unwrap());
+                        },
+                    ))
+                    .expect("direct entry");
+            }
+        }
     }
 
     #[test]
@@ -723,6 +839,8 @@ pub fn run() { accept(generic) }
 
     #[test]
     fn inhabited_specializations_execute_the_registered_value_and_diverging_callbacks() {
+        let execution_host = crate::execution_fixture::TestHost::default();
+
         let host = HostProviderModule::new("application", "library")
             .expect("provider")
             .with_scoped_function::<Provider, (BigInt,), BigInt, _>(
@@ -765,34 +883,45 @@ pub fn stopped() { stop(concrete) }
             .expect("diverging provider");
         let mut module = bindings.seal().expect("inhabited source types");
         let mut state = ();
+        let stores = HostFutureStore::default();
+        assert!(std::ptr::eq(Profile::component_stores(&stores), &stores));
         assert!(std::ptr::eq(
             <WorkComponent as HostProvider<Profile>>::project(&mut state),
             &state
         ));
         let mut echo = drop;
-        with_execution_scope(async |guard| {
-            let mut execution = module.attach(guard, &mut state, &mut echo);
-            assert_eq!(
-                execution.call(&accepted, ()).expect("accepted values"),
-                BigInt::from(2)
-            );
-            assert_eq!(
-                execution
-                    .call(&failed, ())
-                    .expect_err("native producer fails")
-                    .to_string(),
-                "host function application::library.produce failed: native producer failed"
-            );
-            assert_eq!(
-                execution
-                    .call(&stopped, ())
-                    .expect_err("native callback fails")
-                    .to_string(),
-                "host function application::library.stop failed: native callback failed"
-            );
-        })
-        .now_or_never()
-        .expect("direct executions");
+        execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |execution| {
+                    assert_eq!(
+                        execution
+                            .call(&accepted, ())
+                            .await
+                            .expect("accepted values"),
+                        BigInt::from(2)
+                    );
+                    assert_eq!(
+                        execution
+                            .call(&failed, ())
+                            .await
+                            .expect_err("native producer fails")
+                            .to_string(),
+                        "host function application::library.produce failed: native producer failed"
+                    );
+                    assert_eq!(
+                        execution
+                            .call(&stopped, ())
+                            .await
+                            .expect_err("native callback fails")
+                            .to_string(),
+                        "host function application::library.stop failed: native callback failed"
+                    );
+                },
+            ))
+            .expect("direct executions");
     }
 
     #[test]
@@ -816,17 +945,23 @@ pub fn run() { let _ = stop() 42 }
             .expect("diverging target has no returned value");
         let mut state = ();
         let mut echo = drop;
-        with_execution_scope(async |guard| {
-            assert_eq!(
-                module
-                    .attach(guard, &mut state, &mut echo)
-                    .call(&run, ())
-                    .expect_err("no fabricated Never value")
-                    .to_string(),
-                "host function application::library.stop failed: native execution stopped"
-            );
-        })
-        .now_or_never()
-        .expect("direct failure");
+        let execution_host = crate::execution_fixture::TestHost::default();
+        execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    assert_eq!(
+                        scope
+                            .call(&run, ())
+                            .await
+                            .expect_err("no fabricated Never value")
+                            .to_string(),
+                        "host function application::library.stop failed: native execution stopped"
+                    );
+                },
+            ))
+            .expect("direct failure");
     }
 }

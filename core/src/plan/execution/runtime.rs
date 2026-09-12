@@ -402,19 +402,23 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
 
 #[derive(Clone, Copy)]
 pub(crate) struct RuntimeValueMetadata<'plan> {
-    list_types: &'plan super::type_::ListTypeTable,
-    custom_types: &'plan super::type_::CustomTypeTable,
-    external_types: &'plan super::type_::ExternalTypeTable,
+    list_types: &'plan std::sync::Arc<super::type_::ListTypeTable>,
+    custom_types: &'plan std::sync::Arc<super::type_::CustomTypeTable>,
+    external_types: &'plan std::sync::Arc<super::type_::ExternalTypeTable>,
 }
 
 #[derive(Clone)]
 pub(crate) struct OwnedRuntimeValueMetadata {
-    list_types: super::type_::ListTypeTable,
-    custom_types: super::type_::CustomTypeTable,
-    external_types: super::type_::ExternalTypeTable,
+    list_types: std::sync::Arc<super::type_::ListTypeTable>,
+    custom_types: std::sync::Arc<super::type_::CustomTypeTable>,
+    external_types: std::sync::Arc<super::type_::ExternalTypeTable>,
 }
 
 impl<'plan> RuntimeValueMetadata<'plan> {
+    pub(crate) fn native_constructor_tags(self) -> impl Iterator<Item = &'plan EcoString> {
+        self.custom_types.native_constructor_tags()
+    }
+
     fn new<Graph: super::function::ExecutionGraphProfile>(
         common: &'plan super::ExecutionProgramCommon<Graph>,
     ) -> Self {
@@ -473,10 +477,16 @@ impl<'plan> RuntimeValueMetadata<'plan> {
 
     pub(crate) fn to_owned(self) -> OwnedRuntimeValueMetadata {
         OwnedRuntimeValueMetadata {
-            list_types: self.list_types.clone(),
-            custom_types: self.custom_types.clone(),
-            external_types: self.external_types.clone(),
+            list_types: std::sync::Arc::clone(self.list_types),
+            custom_types: std::sync::Arc::clone(self.custom_types),
+            external_types: std::sync::Arc::clone(self.external_types),
         }
+    }
+
+    pub(crate) fn shares_owner(self, other: Self) -> bool {
+        std::sync::Arc::ptr_eq(self.list_types, other.list_types)
+            && std::sync::Arc::ptr_eq(self.custom_types, other.custom_types)
+            && std::sync::Arc::ptr_eq(self.external_types, other.external_types)
     }
 }
 
@@ -541,6 +551,47 @@ mod tests {
     use super::RuntimeExecutionPlan;
     use crate::plan::execution::function::{BoolFunctionId, IntFunctionId};
     use crate::{compile_typed_module, plan_module};
+
+    #[test]
+    fn retained_metadata_shares_frozen_tables_without_retaining_the_program() {
+        let typed = compile_typed_module(
+            "main",
+            "main.gleam",
+            r#"
+pub type Packet(a) { Packet(value: a) }
+pub fn main() { [Packet(42)] }
+"#,
+        )
+        .expect("source should compile");
+        let plan = plan_module(typed).expect("source should plan");
+        let execution = crate::ExecutionPlan::from_module_plan(plan);
+        let first = execution.value_metadata().to_owned();
+        let second = execution.value_metadata().to_owned();
+        assert!(std::sync::Arc::ptr_eq(
+            &first.list_types,
+            &second.list_types
+        ));
+        assert!(std::sync::Arc::ptr_eq(
+            &first.custom_types,
+            &second.custom_types
+        ));
+        assert!(std::sync::Arc::ptr_eq(
+            &first.external_types,
+            &second.external_types
+        ));
+        let program = std::sync::Arc::downgrade(&execution.program.common);
+        let tables = std::sync::Arc::downgrade(&first.custom_types);
+        drop(execution);
+        assert!(program.upgrade().is_none());
+        assert!(std::ptr::eq(
+            first.as_borrowed().custom_types.as_ref(),
+            second.as_borrowed().custom_types.as_ref(),
+        ));
+        drop(first);
+        assert!(tables.upgrade().is_some());
+        drop(second);
+        assert!(tables.upgrade().is_none());
+    }
 
     #[test]
     fn plain_execution_resolves_only_graph_int_functions() {

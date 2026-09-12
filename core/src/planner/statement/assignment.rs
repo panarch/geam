@@ -878,6 +878,7 @@ pub(super) fn is_total_binding_pattern(
             }
         }
         Pattern::BitArray { segments, .. } => Ok(is_total_bit_array_binding(segments)),
+        Pattern::Constructor { type_, .. } if type_.is_nil() => Ok(true),
         Pattern::Constructor {
             arguments,
             constructor,
@@ -927,6 +928,10 @@ fn plan_binding_pattern_in_context_with_alias(
     match (pattern, shape) {
         (Pattern::Variable { name, .. }, _) => Ok(BindingPattern::Named(name)),
         (Pattern::Discard { .. }, _) => Ok(BindingPattern::Discard),
+        (pattern @ Pattern::Constructor { .. }, ValueShape::Nil) => {
+            crate::planner::pattern::validate_pattern(&pattern, &ValueShape::Nil, context)?;
+            Ok(BindingPattern::Discard)
+        }
         (Pattern::Tuple { elements, .. }, _) => elements
             .into_iter()
             .map(|element| plan_binding_pattern_in_context_with_alias(element, context, true))
@@ -1654,6 +1659,37 @@ pub fn main() {
         let expected = module("main", function("main", int(42)).evaluate(int(1)), []);
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_nil_constructor_binding_evaluates_the_single_inhabitant() {
+        let actual = plan_module(compile("pub fn main() { let Nil = Nil 42 }"))
+            .expect("Nil is an irrefutable constructor binding");
+        let expected = module(
+            "main",
+            function("main", int(42)).evaluate(crate::planner::dsl::nil()),
+            [],
+        );
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn reject_margin_nil_binding_requires_a_resolved_constructor() {
+        assert_eq!(
+            plan_binding_pattern(Pattern::Constructor {
+                location: dummy_span(),
+                name_location: dummy_span(),
+                name: "Nil".into(),
+                arguments: Vec::new(),
+                module: None,
+                constructor: Inferred::Unknown,
+                spread: None,
+                type_: type_::nil(),
+            }),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::UnresolvedConstructor,
+            )),
+        );
     }
 
     #[test]

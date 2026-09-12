@@ -4,7 +4,7 @@ use super::{
 };
 use crate::plan::{
     AssertSubject, BitArrayExpr, BoolExpr, CustomExpr, CustomLocal, Expr, ExprKind, FloatExpr,
-    IntExpr, ListExpr, ListLocal, NilExpr, Step, StringExpr, TupleExpr, ValueType,
+    IntExpr, ListExpr, ListLocal, Step, StringExpr, TupleExpr, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidTypedAstReason, PlanError};
@@ -245,15 +245,6 @@ fn plan_assert_subject(
                 Expr::bool(BoolExpr::local_get(local, name)),
             ))
         }
-        ExprKind::Nil(value) => {
-            let local = context.define_internal_nil_local();
-            let name = internal_assert_name("nil", local.0);
-            Ok((
-                Step::let_nil(local, name.clone(), value),
-                AssertSubject::Nil(local),
-                Expr::nil(NilExpr::local_get(local, name)),
-            ))
-        }
         ExprKind::Tuple(value) => {
             let local = context.define_internal_tuple_local();
             let name = internal_assert_name("tuple", local.0);
@@ -277,7 +268,8 @@ fn plan_assert_subject(
                 Expr::list(local_value),
             ))
         }
-        ExprKind::Generic(_)
+        ExprKind::Nil(_)
+        | ExprKind::Generic(_)
         | ExprKind::UtfCodepoint(_)
         | ExprKind::External(_)
         | ExprKind::Function(_) => Err(PlanError::InvalidTypedAst {
@@ -320,9 +312,9 @@ mod tests {
         CustomConstructorRefinement, CustomLocal, CustomLocalId, CustomType, CustomTypeName,
         CustomValueShape, Endianness, FloatLocalId, FunctionExpr, IntExpr, IntFunctionExpr,
         IntFunctionReference, IntListLocalId, IntLocalId, ListAssertPattern, ListAssertTail,
-        ListLocal, NilLocalId, PanicSite, ParamLocal, Signedness, SourceSpan, Step, StepKind,
-        StringExpr, StringLocalId, TupleLocalId, TypeParameterId, UtfCodepointExpr,
-        UtfCodepointLocalId, ValueShape, ValueType,
+        ListLocal, PanicSite, ParamLocal, Signedness, SourceSpan, Step, StepKind, StringExpr,
+        StringLocalId, TupleLocalId, TypeParameterId, UtfCodepointExpr, UtfCodepointLocalId,
+        ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -413,7 +405,6 @@ pub fn main() {
                     CustomValueShape::any(custom_type),
                 )),
                 AssertSubject::Bool(crate::plan::BoolLocalId(0)),
-                AssertSubject::Nil(NilLocalId(0)),
                 AssertSubject::Tuple(TupleLocalId(0)),
                 AssertSubject::List(ListLocal::int(IntListLocalId(0))),
             ],
@@ -680,6 +671,15 @@ pub fn main() {
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
         let cases = [
+            (
+                Pattern::Variable {
+                    location: dummy_span(),
+                    name: "unit".into(),
+                    type_: type_::nil(),
+                    origin: VariableOrigin::generated(),
+                },
+                crate::plan::Expr::nil(crate::plan::NilExpr::value()),
+            ),
             (
                 Pattern::Variable {
                     location: dummy_span(),

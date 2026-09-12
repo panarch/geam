@@ -94,6 +94,7 @@ impl Drop for TokenDrop {
 impl HostProfile for TransientProfile {
     type RunState = TransientRunState;
     type ExternalStores = TransientStores;
+    type ExecutionState = ();
 }
 
 impl HostProvider<TransientProfile> for TransientProvider {
@@ -346,29 +347,71 @@ fn length<'call>(
 }
 
 fn map_values<'call>(
-    mut call: HostCall<'call, TransientProfile, TransientProvider, TransientMap>,
+    call: HostCall<'call, TransientProfile, TransientProvider, TransientMap>,
+    constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
     map: HostExternal<'call, TransientMap>,
     function: HostCallable<'call, ItemFunctionArguments, Item>,
-) -> Result<HostCallCompletion<'call, TransientMap>, HostCallError> {
-    let payload = call.external_payload(map);
-    let mut mapped = Vec::with_capacity(payload.entries.len());
-    for index in 0..payload.entries.len() {
-        let key = payload.restore_argument(&mut call, |payload| &payload.entries[index].key);
-        let value = payload.restore_argument(&mut call, |payload| &payload.entries[index].value);
-        let value = call.invoke(function, (value, ()))?;
-        mapped.push((key, value));
-    }
-    let payload_drops = Arc::clone(&call.state().payload_drops);
-    let entry_drops = Arc::clone(&call.state().entry_drops);
-    let map = call.create_external_with(move |builder| TransientPayload {
-        entries: mapped
-            .into_iter()
-            .map(|(key, value)| new_entry(builder, key, value, Arc::clone(&entry_drops)))
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
-        _drop: PayloadDrop(payload_drops),
-    });
-    Ok(call.return_value(map))
+) -> Result<geam_core::HostCallContinuation<'call, TransientMap>, HostCallError> {
+    type Owned<Type> =
+        geam_core::provider::Value<Type, geam_core::provider::ProviderValueContext<Type>>;
+    let count = call.external_payload(map).entries.len();
+    let mut map = Owned::<TransientMap>::from_host(&call, map);
+    let function = call.owned_callable(function, &constructions);
+    Ok(call.resume(constructions, move |context| {
+        Box::pin(async move {
+            let mut mapped = Vec::with_capacity(count);
+            for index in 0..count {
+                let (retained, key, value) = context
+                    .with_call(move |mut call| {
+                        let value = map.into_host(&mut call);
+                        let payload = call.external_payload(value);
+                        let key = payload
+                            .restore_argument(&mut call, |payload| &payload.entries[index].key);
+                        let item = payload
+                            .restore_argument(&mut call, |payload| &payload.entries[index].value);
+                        (
+                            Owned::<TransientMap>::from_host(&call, value),
+                            Owned::<Key>::from_host(&call, key),
+                            Owned::<Item>::from_host(&call, item),
+                        )
+                    })
+                    .await?;
+                map = retained;
+                let value = function
+                    .invoke(
+                        &context,
+                        move |mut call, _| (value.into_host(&mut call), ()),
+                        |call, _, value| Ok(Owned::<Item>::from_host(&call, value)),
+                    )
+                    .await?;
+                mapped.push((key, value));
+            }
+            Ok(geam_core::HostOwnedCompletion::<
+                TransientProfile,
+                TransientProvider,
+                TransientMap,
+                HostTypeListEnd,
+            >::new(move |mut call, _| {
+                let mapped = mapped
+                    .into_iter()
+                    .map(|(key, value)| (key.into_host(&mut call), value.into_host(&mut call)))
+                    .collect::<Vec<_>>();
+                let payload_drops = Arc::clone(&call.state().payload_drops);
+                let entry_drops = Arc::clone(&call.state().entry_drops);
+                let map = call.create_external_with(move |builder| TransientPayload {
+                    entries: mapped
+                        .into_iter()
+                        .map(|(key, value)| {
+                            new_entry(builder, key, value, Arc::clone(&entry_drops))
+                        })
+                        .collect::<Vec<_>>()
+                        .into_boxed_slice(),
+                    _drop: PayloadDrop(payload_drops),
+                });
+                Ok(call.return_value(map))
+            }))
+        })
+    }))
 }
 
 fn make_token<'call>(
@@ -503,11 +546,11 @@ pub fn main() {
     )
     .expect("transient map source should compile");
     let plan = plan_host_program(typed).expect("transient map source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("transient map execution should seal");
     let mut state = TransientRunState::default();
 
-    let actual = execution.run_main(&mut state, &mut Vec::new());
+    let actual = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new());
 
     assert_eq!(
         actual,
@@ -603,12 +646,11 @@ pub fn main() {
     )
     .expect("aliased transient source should compile");
     let plan = plan_host_program(typed).expect("aliased transient source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("aliased transient execution should seal");
     let mut state = TransientRunState::default();
 
-    let actual = execution
-        .run_main(&mut state, &mut Vec::new())
+    let actual = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect("aliased transient source should run");
 
     assert_eq!(
@@ -641,7 +683,7 @@ fn maps_large_transient_values_through_nested_reentry() {
         .expect("values provider should be valid")
         .with_scoped_function::<TransientProvider, (TransientMap,), BigInt, _>("length", length)
         .expect("length provider should be valid")
-        .with_scoped_function::<TransientProvider, (TransientMap, ItemFunction), TransientMap, _>(
+        .with_resumable_function::<TransientProvider, (TransientMap, ItemFunction), TransientMap, geam_core::HostTypeListEnd, _>(
             "map_values",
             map_values,
         )
@@ -708,11 +750,11 @@ pub fn main() {
     )
     .expect("large transient source should compile");
     let plan = plan_host_program(typed).expect("large transient source should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("large transient execution should seal");
     let mut state = TransientRunState::default();
 
-    let actual = execution.run_main(&mut state, &mut Vec::new());
+    let actual = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new());
 
     assert_eq!(
         actual,
@@ -738,7 +780,7 @@ fn releases_transient_storage_after_nested_host_failure() {
             "insert", insert,
         )
         .expect("insert provider should be valid")
-        .with_scoped_function::<TransientProvider, (TransientMap, ItemFunction), TransientMap, _>(
+        .with_resumable_function::<TransientProvider, (TransientMap, ItemFunction), TransientMap, geam_core::HostTypeListEnd, _>(
             "map_values",
             map_values,
         )
@@ -802,12 +844,11 @@ pub fn main() {
     )
     .expect("failing transient source should compile");
     let plan = plan_host_program(typed).expect("failing transient source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("failing transient execution should seal");
     let mut state = TransientRunState::default();
 
-    let error = execution
-        .run_main(&mut state, &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect_err("nested host callback should fail");
     let ExecutionError::Host(error) = error else {
         panic!("nested provider failure should remain a host error");
@@ -862,12 +903,11 @@ pub fn main() {
     )
     .expect("panicking transient source should compile");
     let plan = plan_host_program(typed).expect("panicking transient source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("panicking transient execution should seal");
     let mut state = TransientRunState::default();
 
-    let error = execution
-        .run_main(&mut state, &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect_err("source should panic");
     let ExecutionError::Panic(panic) = error else {
         panic!("let assert should remain a source panic");

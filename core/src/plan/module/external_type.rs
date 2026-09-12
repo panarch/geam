@@ -47,7 +47,8 @@ impl ExternalTypeDefinition {
 }
 
 impl ExternalType {
-    pub(crate) fn new(name: ExternalTypeName, arguments: Vec<ValueType>) -> Self {
+    /// Describes a concrete external type without granting storage access.
+    pub fn new(name: ExternalTypeName, arguments: Vec<ValueType>) -> Self {
         Self {
             name: Box::new(name),
             arguments: arguments.into_boxed_slice(),
@@ -64,7 +65,8 @@ impl ExternalType {
 }
 
 impl ExternalTypeName {
-    pub(crate) fn new(package: EcoString, module: EcoString, name: EcoString) -> Self {
+    /// Describes a nominal source identity, checked when a binding is loaded.
+    pub fn new(package: EcoString, module: EcoString, name: EcoString) -> Self {
         Self {
             package,
             module,

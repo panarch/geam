@@ -4,6 +4,8 @@ use geam_core::{
     compile_typed_host_project, compile_typed_project, plan_host_program, plan_program, run_main,
 };
 
+#[path = "../../../tests/support/execution_host.rs"]
+mod execution_fixture;
 #[path = "gleam_stdlib/gleam_bit_array.rs"]
 mod gleam_bit_array;
 #[path = "gleam_stdlib/gleam_bool.rs"]
@@ -143,11 +145,10 @@ fn run_hosted_fixture(
         expected_module_order(root_module, dependency_modules),
     );
 
-    let execution = HostedExecution::try_from_module_plan(module_plan)
+    let mut execution = HostedExecution::try_from_module_plan(module_plan)
         .expect("hosted stdlib fixture should seal");
     let mut echo = Vec::new();
-    let actual = execution
-        .run_main(&mut fresh_state(), &mut echo)
+    let actual = crate::execution_fixture::run(&mut execution, &mut fresh_state(), &mut echo)
         .expect("hosted stdlib fixture should run");
 
     assert_eq!(actual.inspect().to_string(), expected);

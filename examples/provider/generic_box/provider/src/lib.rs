@@ -53,14 +53,14 @@ mod generic_box {
         call.equal(&value, &expected)
     }
 
-    #[geam::function]
-    fn map<Input, Output>(
+    #[geam::function(await)]
+    async fn map<Input, Output>(
         #[geam::call] call: &mut Call<()>,
         boxed: BoxInput<Input>,
         mapper: Callback<fn(Value<Input>) -> Value<Output>>,
     ) -> HostResult<BoxValue<Output>> {
         let value = call.restore(boxed.value());
-        let mapped = call.invoke(mapper, (value,))?;
+        let mapped = call.invoke(&mapper, (value,)).await?;
         Ok(BoxValue {
             value: call.store(mapped),
         })

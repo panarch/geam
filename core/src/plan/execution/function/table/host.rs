@@ -846,7 +846,7 @@ pub fn main() {
         )
         .expect("external source should compile");
         let plan = plan_host_program(typed).expect("external source should plan");
-        let execution =
+        let mut execution =
             HostedExecution::try_from_module_plan(plan).expect("external execution should seal");
         let expected = r#"
 function external#0
@@ -908,9 +908,12 @@ function function.list.external#0
 
         assert_eq!(actual, expected);
 
-        let returned = execution
-            .run_main(&mut ExternalTestRunState::default(), &mut Vec::new())
-            .expect("external function tables should execute");
+        let returned = crate::execution_fixture::run(
+            &mut execution,
+            &mut ExternalTestRunState::default(),
+            &mut Vec::new(),
+        )
+        .expect("external function tables should execute");
         assert_eq!(returned.inspect().to_string(), "#(1, [1], 2, [1], True)");
     }
 }

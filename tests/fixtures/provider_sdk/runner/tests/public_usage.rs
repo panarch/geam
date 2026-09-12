@@ -1,4 +1,7 @@
 use ecow::EcoString;
+extern crate geam as geam_core;
+#[path = "../../../../support/execution_host.rs"]
+mod execution_fixture;
 use geam::{
     ExecutionError, HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
     HostProviderComponentInitialization, HostProviderComponentRegistration,
@@ -22,6 +25,7 @@ struct RunState {
 impl HostProfile for Profile {
     type RunState = RunState;
     type ExternalStores = Stores;
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<Component> for Profile {
@@ -105,14 +109,13 @@ pub fn main() {
     )
     .expect("complete path provider example should compile");
     let plan = plan_host_program(typed).expect("complete path provider example should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("path provider example should seal");
     let mut state = RunState {
         provider: component_state,
     };
 
-    let returned = execution
-        .run_main(&mut state, &mut Vec::new())
+    let returned = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect("path provider example should run");
 
     assert_eq!(
@@ -156,7 +159,7 @@ pub fn main() {
     )
     .expect("independent state example should compile");
     let plan = plan_host_program(typed).expect("independent state example should plan");
-    let execution =
+    let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("independent state example should seal");
     let mut first = RunState {
         provider: Component::initialize(&configuration)
@@ -168,15 +171,15 @@ pub fn main() {
     };
 
     assert_eq!(
-        execution.run_main(&mut first, &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut first, &mut Vec::new()),
         Ok(Value::String("sdk:item!".into())),
     );
     assert_eq!(
-        execution.run_main(&mut first, &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut first, &mut Vec::new()),
         Ok(Value::String("sdk:item!".into())),
     );
     assert_eq!(
-        execution.run_main(&mut second, &mut Vec::new()),
+        crate::execution_fixture::run(&mut execution, &mut second, &mut Vec::new()),
         Ok(Value::String("sdk:item!".into())),
     );
     assert_eq!(first.provider.calls(), 2);
@@ -224,13 +227,12 @@ pub fn main() {
     )
     .expect("external ownership example should compile");
     let plan = plan_host_program(typed).expect("external ownership example should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("external ownership example should seal");
     let mut state = RunState {
         provider: component_state,
     };
-    let returned = execution
-        .run_main(&mut state, &mut Vec::new())
+    let returned = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect("external ownership example should run");
 
     drop(state);
@@ -278,14 +280,13 @@ pub fn main() {
     )
     .expect("stateful callback failure source should compile");
     let plan = plan_host_program(typed).expect("stateful callback failure source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("stateful callback failure source should seal");
     let mut state = RunState {
         provider: component_state,
     };
 
-    let error = execution
-        .run_main(&mut state, &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect_err("nested callback should preserve the source panic");
 
     assert!(matches!(error, ExecutionError::Panic(_)));
@@ -327,14 +328,13 @@ pub fn main() {
     )
     .expect("constructing callback failure source should compile");
     let plan = plan_host_program(typed).expect("constructing callback failure source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("constructing callback failure source should seal");
     let mut state = RunState {
         provider: component_state,
     };
 
-    let error = execution
-        .run_main(&mut state, &mut Vec::new())
+    let error = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect_err("constructing callback should preserve the source panic");
 
     assert!(matches!(error, ExecutionError::Panic(_)));

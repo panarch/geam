@@ -1,9 +1,10 @@
+#[path = "../../tests/support/execution_host.rs"]
+mod execution_fixture;
+
 use ecow::EcoString;
 use geam_builtin::FutureComponent;
 use geam_builtin::embedding::FutureType;
-use geam_core::embedding::{
-    BigInt as EmbeddingInt, FunctionDeclaration, HostedModuleBuilder, with_execution_scope,
-};
+use geam_core::embedding::{BigInt as EmbeddingInt, FunctionDeclaration, HostedModuleBuilder};
 use geam_core::host::HostFutureStore;
 use geam_core::provider::advanced::{
     DynamicKind, Equality, Hashing, Index0, Inspection, Retained, RetainedExternalPayload,
@@ -16,9 +17,6 @@ use geam_core::{
     PackageSource, compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
-use std::future::Future;
-use std::pin::pin;
-use std::task::{Context, Poll, Waker};
 
 #[geam_macros::provider(
     package = "dynamic_provider",
@@ -353,6 +351,7 @@ struct ProfileState {
 impl HostProfile for Profile {
     type RunState = ProfileState;
     type ExternalStores = ProfileStores;
+    type ExecutionState = ();
 }
 
 impl geam_core::host::HostWorkProfile for Profile {
@@ -403,6 +402,7 @@ impl EchoSink for AsyncEcho {
 impl HostProfile for AsyncProfile {
     type RunState = <Component as HostProviderComponent>::RunState;
     type ExternalStores = FutureStores;
+    type ExecutionState = ();
 }
 
 impl HostComponentProfile<Component> for AsyncProfile {
@@ -510,17 +510,17 @@ fn existential_values_restore_exact_types_and_preserve_source_semantics() {
     )
     .expect("complete dynamic source should compile");
     let plan = plan_host_program(typed).expect("dynamic provider should link");
-    let execution = HostedExecution::try_from_module_plan(plan)
+    let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("dynamic provider execution should seal");
-    let returned = execution
-        .run_main(
-            &mut ProfileState {
-                component: (),
-                future: (),
-            },
-            &mut Vec::new(),
-        )
-        .expect("dynamic provider should execute");
+    let returned = crate::execution_fixture::run(
+        &mut execution,
+        &mut ProfileState {
+            component: (),
+            future: (),
+        },
+        &mut Vec::new(),
+    )
+    .expect("dynamic provider should execute");
 
     assert_eq!(
         returned.inspect().to_string(),
@@ -542,6 +542,8 @@ fn existential_values_restore_exact_types_and_preserve_source_semantics() {
 
 #[test]
 fn retained_dynamic_values_cross_pending_execution_without_changing_identity() {
+    let execution_host = crate::execution_fixture::TestHost::default();
+
     const APPLICATION: &str = r#"
 import dynamic_provider
 
@@ -618,41 +620,36 @@ pub fn direct() { dynamic_provider.transfer_flow() }
     let mut module = bindings.seal().expect("dynamic flow should seal");
     let mut echo = AsyncEcho::default();
     let mut state = ();
-    let returned = poll_ready(with_execution_scope(async |guard| {
-        let mut scope = module.attach(guard, &mut state, &mut echo);
-        assert_eq!(
-            scope.call(&direct, ()).expect("direct retained values"),
-            (
-                true,
-                true,
-                true,
-                true,
-                true,
-                true,
-                (true, true, true, true, true, true, true)
-            )
-        );
-        let work = scope
-            .call(&flow, (7.into(),))
-            .expect("construct retained work");
-        scope.observe(&work).await.expect("dynamic completion")
-    }));
+    let returned = execution_host
+        .block_on(
+            module.with_execution(&execution_host, &mut state, &mut echo, async |scope| {
+                assert_eq!(
+                    scope
+                        .call(&direct, ())
+                        .await
+                        .expect("direct retained values"),
+                    (
+                        true,
+                        true,
+                        true,
+                        true,
+                        true,
+                        true,
+                        (true, true, true, true, true, true, true)
+                    )
+                );
+                let work = scope
+                    .call(&flow, (7.into(),))
+                    .await
+                    .expect("construct retained work");
+                scope.observe(&work).await.expect("dynamic completion")
+            }),
+        )
+        .expect("controlled execution");
     returned.read(|(before, during, result)| {
         assert_eq!(before, "Int");
         assert_eq!(during, "Int");
         assert_eq!(result, Ok(&EmbeddingInt::from(7)));
     });
     assert_eq!(echo.0, ["Snapshot(11)"]);
-}
-
-fn poll_ready<Output>(future: impl Future<Output = Output>) -> Output {
-    let mut future = pin!(future);
-    let waker = Waker::noop();
-    let mut context = Context::from_waker(waker);
-    for _ in 0..16 {
-        if let Poll::Ready(value) = future.as_mut().poll(&mut context) {
-            return value;
-        }
-    }
-    panic!("future did not become ready")
 }

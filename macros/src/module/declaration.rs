@@ -12,7 +12,7 @@ use super::list::{
 };
 use super::signature::{host_custom_field_type, host_static_value_type};
 use super::{
-    FunctionFlavor, GeneratedNames, GeneratedValue, OutputEnvironment, OutputState, StaticValueType,
+    GeneratedNames, GeneratedValue, InputOwnership, OutputEnvironment, OutputState, StaticValueType,
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -197,8 +197,8 @@ pub(super) fn generate_custom_declaration(
         let input = &input_model.ident;
         let definition = generate_custom_input_definition(custom, input, custom_inputs, support);
         let input_declaration = {
-            let immediate_input = custom_input_ident(input, FunctionFlavor::Immediate);
-            let async_input = custom_input_ident(input, FunctionFlavor::Async);
+            let immediate_input = custom_input_ident(input, InputOwnership::Borrowed);
+            let async_input = custom_input_ident(input, InputOwnership::Owned);
             let immediate_declaration = generate_custom_input_declaration(
                 custom_index,
                 custom,
@@ -206,7 +206,7 @@ pub(super) fn generate_custom_declaration(
                 customs,
                 custom_inputs,
                 support,
-                FunctionFlavor::Immediate,
+                InputOwnership::Borrowed,
             );
             let async_declaration = custom
                 .constructors
@@ -220,7 +220,7 @@ pub(super) fn generate_custom_declaration(
                         customs,
                         custom_inputs,
                         support,
-                        FunctionFlavor::Async,
+                        InputOwnership::Owned,
                     )
                 });
             quote! {
@@ -262,13 +262,13 @@ pub(super) fn generate_custom_declaration(
         quote!(#support::NoCustomInput)
     };
     let immediate_input = if let Some(input) = &custom.input {
-        let input = custom_input_ident(&input.ident, FunctionFlavor::Immediate);
+        let input = custom_input_ident(&input.ident, InputOwnership::Borrowed);
         quote!(#input)
     } else {
         quote!(#support::NoCustomInput)
     };
     let owned_input = if let Some(input) = &custom.input {
-        let input = custom_input_ident(&input.ident, FunctionFlavor::Async);
+        let input = custom_input_ident(&input.ident, InputOwnership::Owned);
         quote!(#input)
     } else {
         quote!(#support::NoCustomInput)
@@ -428,8 +428,8 @@ fn generate_custom_input_definition(
     let parameters = has_context.then(|| quote!(<__GeamContext: #context_trait = #immediate>));
     let context_definition = has_context.then(|| {
         let implementations = [
-            (&immediate, FunctionFlavor::Immediate),
-            (&owned, FunctionFlavor::Async),
+            (&immediate, InputOwnership::Borrowed),
+            (&owned, InputOwnership::Owned),
         ]
         .into_iter()
         .map(|(context, flavor)| {
@@ -449,8 +449,8 @@ fn generate_custom_input_definition(
         }
     });
     let aliases = {
-        let immediate_input = custom_input_ident(input, FunctionFlavor::Immediate);
-        let owned_input = custom_input_ident(input, FunctionFlavor::Async);
+        let immediate_input = custom_input_ident(input, InputOwnership::Borrowed);
+        let owned_input = custom_input_ident(input, InputOwnership::Owned);
         let immediate_type = if has_context {
             quote!(#input<#immediate>)
         } else {
@@ -482,7 +482,7 @@ fn generate_custom_input_declaration(
     customs: &[CustomModel],
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> TokenStream {
     let input = custom_input_ident(&input_model.ident, flavor);
     let function_flavor = flavor;
@@ -499,10 +499,10 @@ fn generate_custom_input_declaration(
         function_flavor,
     );
     let decoder = match flavor {
-        FunctionFlavor::Immediate => {
+        InputOwnership::Borrowed => {
             format_ident!("__GeamImmediate{}", input_model.decoder)
         }
-        FunctionFlavor::Async => format_ident!("__GeamOwned{}", input_model.decoder),
+        InputOwnership::Owned => format_ident!("__GeamOwned{}", input_model.decoder),
     };
     let list_decoder = list_decoder_ident(&input_model.list_decoder, flavor);
     let list_decoder_value = list_decoder_value(
@@ -576,20 +576,20 @@ fn generate_custom_decoder(
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
     codec_bounds: &[TokenStream],
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> TokenStream {
     let decoder = match flavor {
-        FunctionFlavor::Immediate => {
+        InputOwnership::Borrowed => {
             format_ident!("__GeamImmediate{}", input_model.decoder)
         }
-        FunctionFlavor::Async => format_ident!("__GeamOwned{}", input_model.decoder),
+        InputOwnership::Owned => format_ident!("__GeamOwned{}", input_model.decoder),
     };
     let schema = &custom.schema;
     let input = match flavor {
-        FunctionFlavor::Immediate => {
-            custom_input_ident(&input_model.ident, FunctionFlavor::Immediate)
+        InputOwnership::Borrowed => {
+            custom_input_ident(&input_model.ident, InputOwnership::Borrowed)
         }
-        FunctionFlavor::Async => custom_input_ident(&input_model.ident, FunctionFlavor::Async),
+        InputOwnership::Owned => custom_input_ident(&input_model.ident, InputOwnership::Owned),
     };
     let mut names = GeneratedNames::default();
     let mut branches = Vec::with_capacity(custom.constructors.len());
@@ -683,7 +683,7 @@ fn decode_custom_field_value(
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
     names: &mut GeneratedNames,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> GeneratedValue {
     match type_ {
         CustomFieldValueType::Value(type_) => {
@@ -691,21 +691,21 @@ fn decode_custom_field_value(
         }
         CustomFieldValueType::List(list) => {
             let decoder = match flavor {
-                FunctionFlavor::Immediate => list_decoder_value(
+                InputOwnership::Borrowed => list_decoder_value(
                     &list.decoder,
                     &list.collection.value,
                     customs,
                     support,
-                    FunctionFlavor::Immediate,
+                    InputOwnership::Borrowed,
                     &quote!(Provider),
                     &quote!(&*call),
                 ),
-                FunctionFlavor::Async => list_decoder_value(
+                InputOwnership::Owned => list_decoder_value(
                     &list.decoder,
                     &list.collection.value,
                     customs,
                     support,
-                    FunctionFlavor::Async,
+                    InputOwnership::Owned,
                     &quote!(Provider),
                     &quote!(&*call),
                 ),
@@ -726,7 +726,7 @@ fn decode_custom_input_value(
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
     names: &mut GeneratedNames,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> GeneratedValue {
     match type_ {
         StaticValueType::Scalar(_) => GeneratedValue {
@@ -735,14 +735,14 @@ fn decode_custom_input_value(
         },
         StaticValueType::Declared { type_, .. } => {
             let value = match flavor {
-                FunctionFlavor::Immediate => quote!(
+                InputOwnership::Borrowed => quote!(
                     <<#type_ as #support::ProviderValueForms>::ImmediateInput as
                         #support::ProviderInputValue<Profile, Provider, Return>>::from_host(
                             call,
                             #input,
                         )
                 ),
-                FunctionFlavor::Async => quote!(
+                InputOwnership::Owned => quote!(
                     <<#type_ as #support::ProviderValueForms>::OwnedInput as
                         #support::ProviderInputValue<Profile, Provider, Return>>::from_host(
                             call,
@@ -759,14 +759,14 @@ fn decode_custom_input_value(
             payload: _, schema, ..
         } => {
             let value = match flavor {
-                FunctionFlavor::Immediate => quote!(
+                InputOwnership::Borrowed => quote!(
                     call.provider_external_view_with::<
                         __GeamProvider,
                         #schema,
                         #support::HostTypeListEnd,
                     >(#input)
                 ),
-                FunctionFlavor::Async => quote!(
+                InputOwnership::Owned => quote!(
                     call.provider_external_item_with::<
                         __GeamProvider,
                         #schema,
@@ -781,11 +781,11 @@ fn decode_custom_input_value(
         }
         StaticValueType::Custom { index, .. } => {
             let input_type = match flavor {
-                FunctionFlavor::Immediate => {
-                    custom_input_ident(&custom_inputs[index], FunctionFlavor::Immediate)
+                InputOwnership::Borrowed => {
+                    custom_input_ident(&custom_inputs[index], InputOwnership::Borrowed)
                 }
-                FunctionFlavor::Async => {
-                    custom_input_ident(&custom_inputs[index], FunctionFlavor::Async)
+                InputOwnership::Owned => {
+                    custom_input_ident(&custom_inputs[index], InputOwnership::Owned)
                 }
             };
             let input_trait = { quote!(#support::ProviderInputValue) };
@@ -913,7 +913,7 @@ fn custom_input_type(
     type_: &CustomFieldValueType,
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> TokenStream {
     match type_ {
         CustomFieldValueType::Value(type_) => {
@@ -927,10 +927,10 @@ fn custom_input_type(
                 flavor,
             );
             let decoder = match flavor {
-                FunctionFlavor::Immediate => {
-                    list_decoder_ident(&list.decoder, FunctionFlavor::Immediate)
+                InputOwnership::Borrowed => {
+                    list_decoder_ident(&list.decoder, InputOwnership::Borrowed)
                 }
-                FunctionFlavor::Async => list_decoder_ident(&list.decoder, FunctionFlavor::Async),
+                InputOwnership::Owned => list_decoder_ident(&list.decoder, InputOwnership::Owned),
             };
             let context = { quote!(#support::ProviderInputListContext) };
             quote! { #support::List<#item, #context<#decoder>> }
@@ -942,33 +942,33 @@ fn custom_input_value_type(
     type_: &StaticValueType,
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> TokenStream {
     match type_ {
         StaticValueType::Scalar(type_) => quote!(#type_),
         StaticValueType::Declared { type_, .. } => match flavor {
-            FunctionFlavor::Immediate => {
+            InputOwnership::Borrowed => {
                 quote!(<#type_ as #support::ProviderValueForms>::ImmediateInput)
             }
-            FunctionFlavor::Async => {
+            InputOwnership::Owned => {
                 quote!(<#type_ as #support::ProviderValueForms>::OwnedInput)
             }
         },
         StaticValueType::External { payload, .. } => match flavor {
-            FunctionFlavor::Immediate => {
+            InputOwnership::Borrowed => {
                 quote!(#support::ProviderExternalView<#payload>)
             }
-            FunctionFlavor::Async => {
+            InputOwnership::Owned => {
                 quote!(#support::ProviderOwnedExternal<#payload>)
             }
         },
         StaticValueType::Custom { index, .. } => {
             let input = match flavor {
-                FunctionFlavor::Immediate => {
-                    custom_input_ident(&custom_inputs[index], FunctionFlavor::Immediate)
+                InputOwnership::Borrowed => {
+                    custom_input_ident(&custom_inputs[index], InputOwnership::Borrowed)
                 }
-                FunctionFlavor::Async => {
-                    custom_input_ident(&custom_inputs[index], FunctionFlavor::Async)
+                InputOwnership::Owned => {
+                    custom_input_ident(&custom_inputs[index], InputOwnership::Owned)
                 }
             };
             quote!(#input)
@@ -996,33 +996,33 @@ fn custom_list_input_value_type(
     type_: &StaticValueType,
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> TokenStream {
     match type_ {
         StaticValueType::Scalar(type_) => quote!(#type_),
         StaticValueType::Declared { type_, .. } => match flavor {
-            FunctionFlavor::Immediate => {
+            InputOwnership::Borrowed => {
                 quote!(<#type_ as #support::ProviderValueForms>::ImmediateListInput)
             }
-            FunctionFlavor::Async => {
+            InputOwnership::Owned => {
                 quote!(<#type_ as #support::ProviderValueForms>::OwnedListInput)
             }
         },
         StaticValueType::External { payload, .. } => match flavor {
-            FunctionFlavor::Immediate => {
+            InputOwnership::Borrowed => {
                 quote!(#support::ProviderExternalView<#payload>)
             }
-            FunctionFlavor::Async => {
+            InputOwnership::Owned => {
                 quote!(#support::ProviderOwnedExternal<#payload>)
             }
         },
         StaticValueType::Custom { index, .. } => {
             let input = match flavor {
-                FunctionFlavor::Immediate => {
-                    custom_input_ident(&custom_inputs[index], FunctionFlavor::Immediate)
+                InputOwnership::Borrowed => {
+                    custom_input_ident(&custom_inputs[index], InputOwnership::Borrowed)
                 }
-                FunctionFlavor::Async => {
-                    custom_input_ident(&custom_inputs[index], FunctionFlavor::Async)
+                InputOwnership::Owned => {
+                    custom_input_ident(&custom_inputs[index], InputOwnership::Owned)
                 }
             };
             quote!(#input)
@@ -1153,7 +1153,7 @@ fn custom_input_codec_bounds(
     customs: &[CustomModel],
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> Vec<TokenStream> {
     let mut bounds = Vec::new();
     for constructor in &custom.constructors {
@@ -1173,11 +1173,11 @@ fn custom_input_codec_bounds(
                     for access in list_declared_accesses(&list.collection.value, customs) {
                         let type_ = access.type_;
                         bounds.push(match flavor {
-                            FunctionFlavor::Immediate => quote! {
+                            InputOwnership::Borrowed => quote! {
                                 <#type_ as #support::ProviderValueForms>::ImmediateListInput:
                                     #support::ProviderListInputCodec<Profile, Provider>
                             },
-                            FunctionFlavor::Async => quote! {
+                            InputOwnership::Owned => quote! {
                                 <#type_ as #support::ProviderValueForms>::OwnedListInput:
                                     #support::ProviderListInputCodec<Profile, Provider>
                             },
@@ -1196,12 +1196,12 @@ fn collect_custom_input_codec_bounds(
     custom_inputs: &BTreeMap<usize, Ident>,
     support: &TokenStream,
     bounds: &mut Vec<TokenStream>,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) {
     match type_ {
         StaticValueType::Declared { type_, .. } => {
             bounds.push(match flavor {
-                FunctionFlavor::Immediate => quote! {
+                InputOwnership::Borrowed => quote! {
                     <#type_ as #support::ProviderValueForms>::ImmediateInput:
                         #support::ProviderInputValue<
                             Profile,
@@ -1210,7 +1210,7 @@ fn collect_custom_input_codec_bounds(
                             Host = <#type_ as #support::ProviderValue>::Host,
                         >
                 },
-                FunctionFlavor::Async => quote! {
+                InputOwnership::Owned => quote! {
                     <#type_ as #support::ProviderValueForms>::OwnedInput:
                         #support::ProviderInputValue<
                             Profile,
@@ -1223,11 +1223,11 @@ fn collect_custom_input_codec_bounds(
         }
         StaticValueType::Custom { index, .. } => {
             let input = match flavor {
-                FunctionFlavor::Immediate => {
-                    custom_input_ident(&custom_inputs[index], FunctionFlavor::Immediate)
+                InputOwnership::Borrowed => {
+                    custom_input_ident(&custom_inputs[index], InputOwnership::Borrowed)
                 }
-                FunctionFlavor::Async => {
-                    custom_input_ident(&custom_inputs[index], FunctionFlavor::Async)
+                InputOwnership::Owned => {
+                    custom_input_ident(&custom_inputs[index], InputOwnership::Owned)
                 }
             };
             let input_trait = {
@@ -1293,7 +1293,7 @@ fn custom_list_codec_bounds(
     custom_index: usize,
     customs: &[CustomModel],
     support: &TokenStream,
-    flavor: FunctionFlavor,
+    flavor: InputOwnership,
 ) -> Vec<TokenStream> {
     let mut bounds = Vec::new();
     for access in list_declared_accesses(
@@ -1304,11 +1304,11 @@ fn custom_list_codec_bounds(
     ) {
         let type_ = access.type_;
         bounds.push(match flavor {
-            FunctionFlavor::Immediate => quote! {
+            InputOwnership::Borrowed => quote! {
                 <#type_ as #support::ProviderValueForms>::ImmediateListInput:
                     #support::ProviderListInputCodec<Profile, Provider>
             },
-            FunctionFlavor::Async => quote! {
+            InputOwnership::Owned => quote! {
                 <#type_ as #support::ProviderValueForms>::OwnedListInput:
                     #support::ProviderListInputCodec<Profile, Provider>
             },

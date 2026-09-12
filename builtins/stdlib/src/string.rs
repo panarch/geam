@@ -307,7 +307,7 @@ fn remove_suffix(string: String, suffix: String) -> String
 
     #[test]
     fn executes_every_string_provider_through_the_hosted_pipeline() {
-        let execution = execution(
+        let mut execution = execution(
             r#"
 pub fn main() {
   assert length("A👍🏽é") == 3
@@ -338,12 +338,12 @@ pub fn main() {
 }
 "#,
         );
-        let value = execution
-            .run_main(
-                &mut GleamStdlibRunState::from_seed([0; 32]),
-                &mut Vec::new(),
-            )
-            .expect("string providers should run");
+        let value = crate::execution_fixture::run(
+            &mut execution,
+            &mut GleamStdlibRunState::from_seed([0; 32]),
+            &mut Vec::new(),
+        )
+        .expect("string providers should run");
 
         assert_eq!(
             value.inspect().to_string(),
@@ -372,12 +372,12 @@ pub fn main() {
         ];
 
         for (source, function, reason) in cases {
-            let error = execution(source)
-                .run_main(
-                    &mut GleamStdlibRunState::from_seed([0; 32]),
-                    &mut Vec::new(),
-                )
-                .expect_err("invalid string input should fail");
+            let error = crate::execution_fixture::run(
+                &mut execution(source),
+                &mut GleamStdlibRunState::from_seed([0; 32]),
+                &mut Vec::new(),
+            )
+            .expect_err("invalid string input should fail");
             let error = expect_string_host_error(error);
 
             assert_eq!(error.package(), "gleam_stdlib");

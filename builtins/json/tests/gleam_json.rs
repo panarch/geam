@@ -12,6 +12,8 @@ mod decode;
 mod encode;
 #[path = "gleam_json/error.rs"]
 mod error;
+#[path = "../../../tests/support/execution_host.rs"]
+mod execution_fixture;
 #[path = "gleam_json/surface.rs"]
 mod surface;
 #[path = "gleam_json/transfer.rs"]
@@ -65,14 +67,14 @@ fn assert_full_project_graph() {
 
 fn run_fixture(root_module: &str) -> Value {
     let expected = fixture_expected(root_module);
-    let execution = fixture_execution(root_module);
+    let mut execution = fixture_execution(root_module);
     let mut echo = Vec::new();
-    let actual = execution
-        .run_main(
-            &mut GleamJsonRunState::new(GleamStdlibRunState::from_seed([0; 32])),
-            &mut echo,
-        )
-        .expect("official JSON fixture should run");
+    let actual = crate::execution_fixture::run(
+        &mut execution,
+        &mut GleamJsonRunState::new(GleamStdlibRunState::from_seed([0; 32])),
+        &mut echo,
+    )
+    .expect("official JSON fixture should run");
 
     assert_eq!(actual.inspect().to_string(), expected);
     let mut transferred = transfer::fixture(root_module);
@@ -92,19 +94,17 @@ fn run_fixture(root_module: &str) -> Value {
 
 fn run_fixture_repeated(root_module: &str) {
     let expected = fixture_expected(root_module);
-    let execution = fixture_execution(root_module);
+    let mut execution = fixture_execution(root_module);
     let mut first_state = GleamJsonRunState::new(GleamStdlibRunState::from_seed([1; 32]));
     let mut second_state = GleamJsonRunState::new(GleamStdlibRunState::from_seed([2; 32]));
 
-    let first = execution
-        .run_main(&mut first_state, &mut Vec::new())
+    let first = crate::execution_fixture::run(&mut execution, &mut first_state, &mut Vec::new())
         .expect("official JSON fixture should run the first time");
-    let repeated = execution
-        .run_main(&mut first_state, &mut Vec::new())
+    let repeated = crate::execution_fixture::run(&mut execution, &mut first_state, &mut Vec::new())
         .expect("official JSON fixture should repeat with the same state");
-    let independent = execution
-        .run_main(&mut second_state, &mut Vec::new())
-        .expect("official JSON fixture should run with an independent state");
+    let independent =
+        crate::execution_fixture::run(&mut execution, &mut second_state, &mut Vec::new())
+            .expect("official JSON fixture should run with an independent state");
 
     let mut transferred = transfer::fixture(root_module);
     let mut transfer_first = transfer::RunState {

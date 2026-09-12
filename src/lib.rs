@@ -1,5 +1,8 @@
 #![recursion_limit = "256"]
 
+#[cfg(feature = "gleam-erlang")]
+pub use geam_erlang as gleam_erlang;
+
 #[cfg(feature = "gleam-json")]
 pub mod gleam_json;
 #[cfg(feature = "gleam-stdlib")]
@@ -14,8 +17,8 @@ pub use geam_builtin::FutureComponent;
 pub mod provider {
     pub mod advanced {
         pub use geam_core::provider::advanced::{
-            DynamicKind, Equality, External, Hashing, Index0, Inspection, Next, Retained,
-            RetainedExternalPayload, StoredDynamic,
+            DynamicKind, Equality, External, Hashing, Index0, Inspection, NativeKind, NativeMap,
+            NativeMapEntry, NativeValue, Next, Retained, RetainedExternalPayload, StoredDynamic,
         };
     }
 
@@ -30,35 +33,36 @@ pub mod provider {
 pub mod __macro_support {
     pub use geam_core::__macro_support::{
         Call, Callback, EcoString, Equality, ExternalPayload, Hashing, HostCall,
-        HostCallCompletion, HostCallError, HostCallable, HostComponentProfile, HostConstruction,
-        HostConstructions, HostCustom, HostCustomConstructorAt, HostCustomConstructorDefinition,
-        HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomField,
-        HostCustomFieldList, HostCustomFieldListEnd, HostCustomIndex0, HostCustomIndexNext,
-        HostCustomSchema, HostCustomType, HostExternal, HostExternalBinding, HostExternalEquality,
+        HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
+        HostComponentProfile, HostConstruction, HostConstructions, HostCustom,
+        HostCustomConstructorAt, HostCustomConstructorDefinition, HostCustomConstructorList,
+        HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
+        HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType,
+        HostExecutionError, HostExternal, HostExternalBinding, HostExternalEquality,
         HostExternalHashing, HostExternalInspection, HostExternalSchema, HostExternalStorage,
-        HostExternalStore, HostExternalType, HostFunctionType, HostFutureCompletion,
-        HostFutureError, HostFutureType, HostList, HostListType, HostOpaqueFunctionType,
-        HostProfile, HostProvider, HostProviderComponent, HostProviderComponentInitialization,
+        HostExternalStore, HostExternalType, HostFunctionType, HostFutureType, HostList,
+        HostListType, HostOpaqueFunctionType, HostOwnedCompletion, HostProfile, HostProvider,
+        HostProviderComponent, HostProviderComponentInitialization,
         HostProviderComponentRegistration, HostProviderConfiguration,
         HostProviderInitializationError, HostProviderModule, HostRegistrationError, HostResult,
         HostStoredType, HostStoredValue, HostTuple, HostTupleType, HostType, HostTypeAt,
         HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter,
         HostTypeSequence, HostWorkProfile, HostWorkSchema, Index0, Inspection, List,
         MissingCallbackContext, MissingExternalInputContext, MissingExternalOutputContext,
-        MissingStoredContext, MissingValueContext, Next, NoCustomInput, ProviderActiveCall,
-        ProviderCallPlaceholder, ProviderCallbackCodec, ProviderCallbackContext,
-        ProviderConstruction, ProviderConstructionIndex0, ProviderConstructionIndexNext,
-        ProviderConstructionList, ProviderConstructionRequirementAt,
-        ProviderConstructionRequirements, ProviderConstructions, ProviderCustomDeclaration,
-        ProviderCustomInputDeclaration, ProviderDynamicInput, ProviderDynamicValue, ProviderError,
-        ProviderExternalCodec, ProviderExternalDeclaration, ProviderExternalInputContext,
-        ProviderExternalListDecoder, ProviderExternalOutput, ProviderExternalPayloadAccess,
-        ProviderExternalReturn, ProviderExternalView, ProviderFuture, ProviderFutureCall,
-        ProviderFutureCallbackContext, ProviderFutureValueContext, ProviderInputListContext,
-        ProviderInputValue, ProviderListContext, ProviderListCustomFields, ProviderListInputCodec,
-        ProviderListInputValue, ProviderListItemDecoder, ProviderListItemValue,
-        ProviderListTupleItems, ProviderModuleRegistration, ProviderNoConstructions, ProviderNone,
-        ProviderOk, ProviderOption, ProviderOutputValue, ProviderOwnedExternal,
+        MissingStoredContext, MissingValueContext, NativeValue, Next, NoCustomInput,
+        ProviderActiveCall, ProviderCallPlaceholder, ProviderCallbackCodec, ProviderConstruction,
+        ProviderConstructionIndex0, ProviderConstructionIndexNext, ProviderConstructionList,
+        ProviderConstructionRequirementAt, ProviderConstructionRequirements, ProviderConstructions,
+        ProviderCustomDeclaration, ProviderCustomInputDeclaration, ProviderDynamicInput,
+        ProviderDynamicValue, ProviderError, ProviderExecutionCall, ProviderExternalCodec,
+        ProviderExternalDeclaration, ProviderExternalInputContext, ProviderExternalListDecoder,
+        ProviderExternalOutput, ProviderExternalPayloadAccess, ProviderExternalReturn,
+        ProviderExternalView, ProviderFuture, ProviderFutureCall, ProviderFutureValueContext,
+        ProviderInputListContext, ProviderInputValue, ProviderListContext,
+        ProviderListCustomFields, ProviderListInputCodec, ProviderListInputValue,
+        ProviderListItemDecoder, ProviderListItemValue, ProviderListTupleItems,
+        ProviderModuleRegistration, ProviderNoConstructions, ProviderNone, ProviderOk,
+        ProviderOption, ProviderOutputValue, ProviderOwnedCallbackContext, ProviderOwnedExternal,
         ProviderOwnedExternalInputContext, ProviderOwnedExternalListDecoder,
         ProviderOwnedStoredInput, ProviderPackage, ProviderResult, ProviderRootOutputValue,
         ProviderScalarListDecoder, ProviderSharedCall, ProviderSome, ProviderStoredInput,
@@ -71,7 +75,7 @@ pub mod __macro_support {
 pub use geam_core::List;
 #[cfg(feature = "embedding")]
 pub mod embedding;
-pub use geam_core::{frontend, host, plan, planner, runtime};
+pub use geam_core::{execution, frontend, host, plan, planner, runtime};
 #[cfg(feature = "provider")]
 pub use geam_macros::{custom, external, function, module, provider};
 
@@ -81,18 +85,19 @@ pub use geam_core::frontend::{
     compile_typed_package_program, compile_typed_program, compile_typed_project,
 };
 pub use geam_core::host::{
-    FallibleHostFunction, HostCall, HostCallCompletion, HostCallError, HostCallable,
-    HostComponentProfile, HostConstruction, HostConstructions, HostCustom, HostCustomConstructor,
-    HostCustomConstructorAt, HostCustomConstructorDefinition, HostCustomConstructorList,
-    HostCustomConstructorListEnd, HostCustomConstructorSchema, HostCustomField,
-    HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema, HostCustomIndex0,
-    HostCustomIndexNext, HostCustomSchema, HostCustomType, HostCustomTypeArgument,
-    HostCustomTypeSchema, HostExternal, HostExternalBinding, HostExternalEquality,
-    HostExternalHashing, HostExternalInspection, HostExternalPayloadBuilder,
-    HostExternalPayloadView, HostExternalSchema, HostExternalStorage, HostExternalStore,
-    HostExternalType, HostExternalTypeSchema, HostFailure, HostFunction, HostFunctionSchema,
-    HostFunctionType, HostFutureStore, HostList, HostListType, HostModule, HostProfile,
-    HostProvider, HostProviderComponent, HostProviderComponentInitialization,
+    FallibleHostFunction, HostCall, HostCallCompletion, HostCallContinuation, HostCallError,
+    HostCallable, HostComponentProfile, HostConstruction, HostConstructions, HostCustom,
+    HostCustomConstructor, HostCustomConstructorAt, HostCustomConstructorDefinition,
+    HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomConstructorSchema,
+    HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema,
+    HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType,
+    HostCustomTypeArgument, HostCustomTypeSchema, HostExecutionContext, HostExecutionError,
+    HostExternal, HostExternalBinding, HostExternalEquality, HostExternalHashing,
+    HostExternalInspection, HostExternalPayloadBuilder, HostExternalPayloadView,
+    HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType,
+    HostExternalTypeSchema, HostFailure, HostFunction, HostFunctionSchema, HostFunctionType,
+    HostFutureStore, HostList, HostListType, HostModule, HostOwnedCallable, HostOwnedCompletion,
+    HostProfile, HostProvider, HostProviderComponent, HostProviderComponentInitialization,
     HostProviderComponentRegistration, HostProviderConfiguration, HostProviderConfigurationValue,
     HostProviderInitializationError, HostProviderModule, HostProviderSet, HostRegistrationError,
     HostSchemaType, HostStoredDynamic, HostStoredType, HostStoredValue, HostTuple, HostTupleType,

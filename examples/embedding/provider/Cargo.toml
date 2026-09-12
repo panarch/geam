@@ -6,7 +6,8 @@ rust-version = "1.96"
 publish = false
 
 [dependencies]
-geam = { version = "=0.2.3", default-features = false, features = ["embedding", "geam-builtin"] }
+geam = { version = "=0.2.3", default-features = false, features = ["embedding", "geam-builtin", "tokio"] }
+tokio = { version = "1", features = ["rt"] }
 patterns = { package = "geam-example-text-pattern", path = "../../provider/text_pattern/provider" }
 
 [patch.crates-io]

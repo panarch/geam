@@ -77,6 +77,11 @@ where
 }
 
 impl<Type> HostStoredValue<Type> {
+    /// Retains an immutable native view without changing the stored source type.
+    pub fn native_view(&self) -> crate::provider::advanced::NativeValue {
+        crate::runtime::NativeValue::from_stored(self.value.clone_retained())
+    }
+
     pub(crate) fn new(value: crate::runtime::StoredRuntimeValue) -> Self {
         Self {
             value,
@@ -175,5 +180,20 @@ where
 
     fn deref(&self) -> &Self::Target {
         &self.value
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::HostStoredValue;
+    use crate::runtime::StoredRuntimeValue;
+    use num_bigint::BigInt;
+
+    #[test]
+    fn native_view_outlives_the_typed_retention_without_replacing_its_value() {
+        let stored = HostStoredValue::<BigInt>::new(StoredRuntimeValue::test_int(42.into()));
+        let view = stored.native_view();
+        drop(stored);
+        assert_eq!(view.as_int(), Some(BigInt::from(42)));
     }
 }
