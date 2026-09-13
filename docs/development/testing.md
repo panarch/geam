@@ -355,14 +355,17 @@ default features and release profile. It uploads that executable as a workflow
 artifact for the Linux embedding jobs. Each consumer downloads the same binary
 and restores its executable permission; it does not install another CLI.
 
-The `Embedding examples` matrix checks, formats, tests, and lints each guided
-example independently. Their integration tests execute each binary and compare
-exact output. Each example has its own cache key for the root workspace's Rust
-dependencies, as in the provider matrix. A failure does not cancel the remaining
-examples. Cargo metadata and all build commands receive the
-job-wide `CARGO_TARGET_DIR`, so preparation, tests, and Clippy use the cached
-target directory. Preparation keeps its separate `geam-embedding` subdirectory
-there.
+The `Embedding examples` matrix runs the nine guided examples in three groups.
+Each group checks, formats, tests, and lints its examples sequentially. Their
+integration tests execute each binary and compare exact output. Each example
+has a separate log section; a failure stops that example's remaining commands
+but does not skip the other examples or cancel sibling jobs. The group fails if
+any of its examples fail.
+
+Each group has its own cache key for the root workspace's Rust dependencies.
+Cargo metadata and all build commands receive the job-wide `CARGO_TARGET_DIR`,
+so preparation, tests, and Clippy use the cached target directory. Preparation
+keeps its separate `geam-embedding` subdirectory there.
 
 The `Rust embedding` job retains the application, manual embedding, execution
 control, and async provider checks. Its capstone readiness and recovery checks
@@ -471,11 +474,17 @@ repository-local patches and complete standalone execution. The independent
 Provider SDK fixture remains the canonical low-level typed-host ABI acceptance
 owner.
 
-The [Acceptance workflow](../../.github/workflows/acceptance.yml) runs a matrix
-for the ten provider examples other than `async_files`. Each job selects its exact `provider_examples`
-test, runs the independent provider's tests, verifies its Cargo package, and
-exports its Gleam package. A failed example does not cancel the other matrix
-jobs. The parallel `Published provider` job has no repository checkout and
+The [Acceptance workflow](../../.github/workflows/acceptance.yml) runs the ten
+provider examples other than `async_files` in four matrix groups of two or
+three examples. Groups balance observed execution times rather than following
+the guide's reading order. For each example, the job selects its exact
+`provider_examples` test, runs the independent provider's tests, verifies its
+Cargo package, and exports its Gleam package. Log sections and failure
+annotations identify individual examples. A failure stops that example's
+remaining commands but does not skip later examples or cancel sibling jobs;
+the group fails if any example fails.
+
+The parallel `Published provider` job has no repository checkout and
 therefore cannot substitute path dependencies or checkout binaries for the
 released artifacts it monitors. Formatting and Clippy remain in the Workspace
 workflow. The Rust embedding job checks the independent `async_files` provider
@@ -483,10 +492,11 @@ and its standalone case, sharing its existing embedding build cache. It builds
 the Gleam package with the checkout's local `geam` dependency; a Hex export of
 that example requires a published `geam` dependency and is not a local gate.
 
-Each example has a distinct cache key. Within a job, the root test binary and
-independent provider use the checkout's `target/` directory so Cargo can reuse
-matching build artifacts without changing either workspace's lockfile. The
-generated runner still uses its temporary project's `build/geam/target/`;
+Each group has a distinct cache key for the root workspace's Rust dependencies.
+Within a job, the root test binary and independent providers use the checkout's
+`target/` directory so Cargo can reuse matching build artifacts without changing
+any workspace's lockfile. The generated runner still uses its temporary
+project's `build/geam/target/`;
 those isolated runner artifacts are not shared or cached between jobs.
 
 The normal suite executes the full generated runner with the fixture's locked

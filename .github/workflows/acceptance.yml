@@ -100,22 +100,19 @@ jobs:
           overwrite: true
 
   embedding-examples:
-    name: Embedding examples (${{ matrix.example }})
+    name: Embedding examples (group ${{ matrix.group }})
     needs: checkout-cli
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        example:
-          - first_call
-          - data
-          - package
-          - io
-          - provider
-          - async_host
-          - session
-          - processes
-          - prepared
+        include:
+          - group: 1
+            examples: [first_call, package, processes]
+          - group: 2
+            examples: [data, io, provider]
+          - group: 3
+            examples: [async_host, session, prepared]
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/target
 
@@ -140,7 +137,7 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.example }}
+          key: group-${{ matrix.group }}
           workspaces: ". -> target"
 
       - name: Fetch workspace dependencies for offline fixtures
@@ -155,15 +152,30 @@ jobs:
       - name: Make checkout CLI executable
         run: chmod +x "$RUNNER_TEMP/checkout-geam/bin/geam"
 
-      - name: Verify guided embedding example
-        working-directory: examples/embedding/${{ matrix.example }}
+      - name: Verify guided embedding examples
+        shell: bash
+        env:
+          EXAMPLES: ${{ toJSON(matrix.examples) }}
         run: |
-          "$RUNNER_TEMP/checkout-geam/bin/geam" embedding check
-          (cd gleam && gleam format --check)
-          cargo fmt --all --check
-          cargo test --locked
-          cargo clippy --all-targets --locked -- -D warnings
-          git diff --exit-code -- .
+          status=0
+          examples=$(jq -r '.[]' <<< "$EXAMPLES")
+          while IFS= read -r example; do
+            echo "::group::Embedding example: $example"
+            if ! bash -e -o pipefail -c '
+              cd "examples/embedding/$1"
+              "$RUNNER_TEMP/checkout-geam/bin/geam" embedding check
+              (cd gleam && gleam format --check)
+              cargo fmt --all --check
+              cargo test --locked
+              cargo clippy --all-targets --locked -- -D warnings
+              git diff --exit-code -- .
+            ' -- "$example"; then
+              echo "::error title=Embedding example failed::$example"
+              status=1
+            fi
+            echo "::endgroup::"
+          done <<< "$examples"
+          exit "$status"
 
   rust-embedding:
     name: Rust embedding
@@ -507,32 +519,40 @@ jobs:
           diff --unified "$RUNNER_TEMP/provider-files.before" "$RUNNER_TEMP/provider-files.after"
 
   example-providers:
-    name: Provider examples (${{ matrix.example }})
+    name: Provider examples (group ${{ matrix.group }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - example: text_tools
-            test: runs_the_documented_text_tools_provider_across_three_modules
-          - example: value_types
-            test: runs_the_documented_value_types_provider_without_configuration
-          - example: tag_set
-            test: runs_the_documented_tag_set_provider_without_configuration
-          - example: request_ids
-            test: runs_the_documented_request_ids_provider_with_fresh_default_state
-          - example: feature_flags
-            test: runs_the_documented_feature_flags_provider_with_explicit_configuration
-          - example: run_metrics
-            test: runs_the_documented_run_metrics_provider_without_configuration
-          - example: call_tracing
-            test: runs_the_documented_call_tracing_provider_with_fresh_callback_state
-          - example: generic_box
-            test: runs_the_documented_generic_box_provider_with_persistent_values
-          - example: native_records
-            test: runs_the_documented_native_records_provider_through_dynamic_and_callbacks
-          - example: text_pattern
-            test: runs_the_documented_text_pattern_on_erlang_and_geam
+          - group: 1
+            examples:
+              - example: tag_set
+                test: runs_the_documented_tag_set_provider_without_configuration
+              - example: native_records
+                test: runs_the_documented_native_records_provider_through_dynamic_and_callbacks
+          - group: 2
+            examples:
+              - example: text_tools
+                test: runs_the_documented_text_tools_provider_across_three_modules
+              - example: generic_box
+                test: runs_the_documented_generic_box_provider_with_persistent_values
+          - group: 3
+            examples:
+              - example: value_types
+                test: runs_the_documented_value_types_provider_without_configuration
+              - example: run_metrics
+                test: runs_the_documented_run_metrics_provider_without_configuration
+              - example: text_pattern
+                test: runs_the_documented_text_pattern_on_erlang_and_geam
+          - group: 4
+            examples:
+              - example: request_ids
+                test: runs_the_documented_request_ids_provider_with_fresh_default_state
+              - example: feature_flags
+                test: runs_the_documented_feature_flags_provider_with_explicit_configuration
+              - example: call_tracing
+                test: runs_the_documented_call_tracing_provider_with_fresh_callback_state
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/target
 
@@ -556,28 +576,37 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.example }}
-          workspaces: |
-            . -> target
-            examples/provider/${{ matrix.example }}/provider -> ../../../../target
+          key: group-${{ matrix.group }}
+          workspaces: ". -> target"
 
       - name: Fetch workspace dependencies for offline fixtures
         run: cargo fetch --locked
 
-      - name: Run documented provider example
-        run: cargo test --package geam --test provider_examples --locked -- --exact "${{ matrix.test }}"
-
-      - name: Test example provider
-        working-directory: examples/provider/${{ matrix.example }}/provider
-        run: cargo test --locked
-
-      - name: Verify example provider package
-        working-directory: examples/provider/${{ matrix.example }}/provider
-        run: cargo package --locked
-
-      - name: Verify example Gleam package
-        working-directory: examples/provider/${{ matrix.example }}/project/packages/example_${{ matrix.example }}
-        run: gleam export hex-tarball
+      - name: Verify provider examples
+        shell: bash
+        env:
+          EXAMPLES: ${{ toJSON(matrix.examples) }}
+        run: |
+          status=0
+          examples=$(jq -r '.[] | [.example, .test] | @tsv' <<< "$EXAMPLES")
+          while IFS=$'\t' read -r example test; do
+            echo "::group::Provider example: $example"
+            if ! bash -e -o pipefail -c '
+              example=$1
+              test=$2
+              cargo test --package geam --test provider_examples --locked -- --exact "$test"
+              cd "examples/provider/$example/provider"
+              cargo test --locked
+              cargo package --locked
+              cd "../project/packages/example_$example"
+              gleam export hex-tarball
+            ' -- "$example" "$test"; then
+              echo "::error title=Provider example failed::$example"
+              status=1
+            fi
+            echo "::endgroup::"
+          done <<< "$examples"
+          exit "$status"
 
   external-provider-sdk:
     name: External provider SDK
