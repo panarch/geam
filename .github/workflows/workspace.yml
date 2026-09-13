@@ -187,7 +187,40 @@ jobs:
           cargo check --package geam --no-default-features --features embedding,gleam-erlang,geam-builtin,tokio --all-targets --locked
 
       - name: Test workspace packages
-        run: cargo test --workspace --exclude geam --features geam-core/tokio --locked
+        run: cargo test --workspace --exclude geam --exclude geam-cli --features geam-core/tokio --locked
 
       - name: Assemble workspace packages
         run: cargo package --workspace --locked --no-verify
+
+  cli-tests:
+    name: CLI tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Gleam toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          gleam-version: "1.18.1"
+          rebar3-version: "3"
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+          cache: false
+          rustflags: ""
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Fetch workspace dependencies for offline fixtures
+        run: cargo fetch --locked
+
+      - name: Test CLI package
+        run: cargo test --package geam-cli --features geam-core/tokio --locked

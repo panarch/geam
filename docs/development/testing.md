@@ -27,6 +27,12 @@ Default workspace tests and installation still use the complete `full`
 profile. Minimal checks prove only the selected facade and dependency graph;
 they do not replace owner or acceptance tests.
 
+The Workspace workflow runs `geam-cli` owner tests in the separate `CLI tests`
+job. The `Tests` job runs the remaining workspace packages, excluding the root
+acceptance package and CLI, and retains feature-profile checks and package
+assembly. Tests stay with their owning crates; the local workspace command and
+independent coverage closures are unchanged.
+
 For guidance on constructing owner tests, promoting diagnostic probes, and
 closing coverage gaps, see [test-development.md](test-development.md).
 
@@ -234,13 +240,13 @@ for example in \
   prepared
 do
   (
+    export CARGO_TARGET_DIR="$PWD/target"
     cd "examples/embedding/$example"
     ../../../target/debug/geam embedding check
     (cd gleam && gleam format --check)
     cargo fmt --all --check
-    CARGO_TARGET_DIR=../../../target/embedding cargo test --locked
-    CARGO_TARGET_DIR=../../../target/embedding \
-      cargo clippy --all-targets --locked -- -D warnings
+    cargo test --locked
+    cargo clippy --all-targets --locked -- -D warnings
   )
 done
 ```
@@ -343,16 +349,28 @@ cargo clippy --manifest-path examples/embedding/application/Cargo.toml \
 cargo run --quiet --manifest-path examples/embedding/application/Cargo.toml --locked
 ```
 
-The Acceptance workflow's `Rust embedding` job owns these boundaries. It first
-installs the current checkout with `cargo install --path . --locked` into a
-temporary installation root, using the default features and release profile.
-It checks, formats, tests, and lints every guided example; their integration
-tests execute each binary and compare exact output. The following capstone
-readiness and recovery checks use that installed binary, so CI also verifies
-that feature separation preserves the default CLI installation. The job starts
-without a separate Gleam download step, checks locked readiness, and verifies
-that tracked application files remain unchanged. It then makes generated source
-stale, requires `embedding check` to fail, and runs production sync to restore
+The Acceptance workflow's `Checkout CLI` job installs the current checkout with
+`cargo install --path . --locked` into a temporary installation root, using the
+default features and release profile. It uploads that executable as a workflow
+artifact for the Linux embedding jobs. Each consumer downloads the same binary
+and restores its executable permission; it does not install another CLI.
+
+The `Embedding examples` matrix checks, formats, tests, and lints each guided
+example independently. Their integration tests execute each binary and compare
+exact output. Each example has its own cache key for the root workspace's Rust
+dependencies, as in the provider matrix. A failure does not cancel the remaining
+examples. Cargo metadata and all build commands receive the
+job-wide `CARGO_TARGET_DIR`, so preparation, tests, and Clippy use the cached
+target directory. Preparation keeps its separate `geam-embedding` subdirectory
+there.
+
+The `Rust embedding` job retains the application, manual embedding, execution
+control, and async provider checks. Its capstone readiness and recovery checks
+use the same installed binary, so CI also verifies that feature separation
+preserves the default CLI installation. It starts without a separate Gleam
+download step, checks locked readiness, and verifies that tracked application
+files remain unchanged. It then makes generated source stale, requires
+`embedding check` to fail, and runs production sync to restore
 the exact committed file before formatting, testing, linting, and running the
 application with the exact inventory report and its captured Gleam IO. The same
 job requires one Geam package identity, the exact core/macros/stdlib/builtin application

@@ -69,9 +69,55 @@ jobs:
           cargo package --quiet --offline --allow-dirty --no-verify --locked \
             --config "patch.crates-io.geam.path='$GITHUB_WORKSPACE'"
 
-  rust-embedding:
-    name: Rust embedding
+  checkout-cli:
+    name: Checkout CLI
     runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+          rustflags: ""
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Install checkout CLI
+        run: cargo install --path . --locked --root "$RUNNER_TEMP/checkout-geam"
+
+      - name: Upload checkout CLI
+        uses: actions/upload-artifact@v7
+        with:
+          name: checkout-geam-linux
+          path: ${{ runner.temp }}/checkout-geam/bin/geam
+          if-no-files-found: error
+          overwrite: true
+
+  embedding-examples:
+    name: Embedding examples (${{ matrix.example }})
+    needs: checkout-cli
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        example:
+          - first_call
+          - data
+          - package
+          - io
+          - provider
+          - async_host
+          - session
+          - processes
+          - prepared
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
 
     steps:
       - name: Checkout
@@ -94,9 +140,60 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: |
-            . -> target
-            examples/embedding/application -> target
+          key: ${{ matrix.example }}
+          workspaces: ". -> target"
+
+      - name: Fetch workspace dependencies for offline fixtures
+        run: cargo fetch --locked
+
+      - name: Download checkout CLI
+        uses: actions/download-artifact@v8
+        with:
+          name: checkout-geam-linux
+          path: ${{ runner.temp }}/checkout-geam/bin
+
+      - name: Make checkout CLI executable
+        run: chmod +x "$RUNNER_TEMP/checkout-geam/bin/geam"
+
+      - name: Verify guided embedding example
+        working-directory: examples/embedding/${{ matrix.example }}
+        run: |
+          "$RUNNER_TEMP/checkout-geam/bin/geam" embedding check
+          (cd gleam && gleam format --check)
+          cargo fmt --all --check
+          cargo test --locked
+          cargo clippy --all-targets --locked -- -D warnings
+          git diff --exit-code -- .
+
+  rust-embedding:
+    name: Rust embedding
+    needs: checkout-cli
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Gleam toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          gleam-version: "1.18.1"
+          rebar3-version: "3"
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+          cache: false
+          rustflags: ""
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
 
       - name: Fetch workspace dependencies for offline fixtures
         run: cargo fetch --locked
@@ -116,49 +213,29 @@ jobs:
           cargo tree --manifest-path examples/embedding/application/Cargo.toml --locked --package geam-rust-embedding-application --edges normal --depth 1 --prefix none > "$RUNNER_TEMP/application-embedding-graph"
           grep -Eq '^geam-example-text-pattern v' "$RUNNER_TEMP/application-embedding-graph"
 
-      - name: Install checkout CLI
-        run: cargo install --path . --locked --root "$RUNNER_TEMP/checkout-geam"
+      - name: Download checkout CLI
+        uses: actions/download-artifact@v8
+        with:
+          name: checkout-geam-linux
+          path: ${{ runner.temp }}/checkout-geam/bin
 
-      - name: Verify guided embedding examples
-        run: |
-          for example in \
-            first_call \
-            data \
-            package \
-            io \
-            provider \
-            async_host \
-            session \
-            processes \
-            prepared
-          do
-            echo "::group::$example"
-            (
-              cd "examples/embedding/$example"
-              "$RUNNER_TEMP/checkout-geam/bin/geam" embedding check
-              (cd gleam && gleam format --check)
-              cargo fmt --all --check
-              CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding" cargo test --locked
-              CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding" cargo clippy --all-targets --locked -- -D warnings
-              git diff --exit-code -- .
-            )
-            echo "::endgroup::"
-          done
+      - name: Make checkout CLI executable
+        run: chmod +x "$RUNNER_TEMP/checkout-geam/bin/geam"
 
       - name: Verify host-driven execution control
         working-directory: examples/embedding/execution
         run: |
           (cd gleam && gleam format --check)
           cargo fmt --all --check
-          CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding" cargo test --locked
-          CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding" cargo clippy --all-targets --locked -- -D warnings
+          cargo test --locked
+          cargo clippy --all-targets --locked -- -D warnings
 
       - name: Verify the independent async provider
         working-directory: examples/provider/async_files/provider
         run: |
           cargo fmt --all --check
-          CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding" cargo test --locked
-          CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/embedding" cargo clippy --all-targets --locked -- -D warnings
+          cargo test --locked
+          cargo clippy --all-targets --locked -- -D warnings
           cargo package --locked --no-verify \
             --config "patch.crates-io.geam.path='$GITHUB_WORKSPACE'"
           (cd ../project && gleam format --check)
