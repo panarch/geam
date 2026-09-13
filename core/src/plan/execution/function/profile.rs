@@ -18,15 +18,16 @@ use std::fmt::Debug;
 #[cfg(test)]
 use crate::plan::execution::function::{CoreRuntimeFunctionId, ProfiledCoreRuntimeFunctionId};
 
-pub(crate) trait ExecutionProfile {
+pub trait ExecutionProfile: sealed::Profile + 'static {
     type Graph: ExecutionGraphProfile;
     type HostTarget<Body: ExecutionFunctionBody>: Clone + Send + Sync + 'static;
-    type Function<Body: ExecutionFunctionBody>: ExecutionFunctionEntry<Body, HostTarget = Self::HostTarget<Body>>;
+    type Function<Body: ExecutionFunctionBody>: ExecutionFunctionEntry<Body, HostTarget = Self::HostTarget<Body>>
+        + 'static;
     type NeverHostTarget: Clone + Send + Sync + 'static;
     type NeverFunction: ExecutionFunctionEntry<
             super::ExecutionNeverFunctionBody<Self>,
             HostTarget = Self::NeverHostTarget,
-        >;
+        > + 'static;
 
     fn graph<Body: ExecutionFunctionBody>(
         function: ExecutableFunction<Body>,
@@ -37,8 +38,8 @@ pub(crate) trait ExecutionProfile {
     ) -> Self::NeverFunction;
 }
 
-pub(crate) trait ExecutionGraphProfile:
-    Sized + Debug + Clone + PartialEq + Eq + Send + Sync + 'static
+pub trait ExecutionGraphProfile:
+    sealed::Graph + Sized + Debug + Clone + PartialEq + Eq + Send + Sync + 'static
 {
     type ExternalFunctionId: Debug + Clone + PartialEq + Eq + Send + Sync;
     type ExternalListFunctionId: Debug + Clone + PartialEq + Eq + Send + Sync;
@@ -46,12 +47,14 @@ pub(crate) trait ExecutionGraphProfile:
     type ExternalListFunctionFunctionId: Debug + Clone + PartialEq + Eq + Send + Sync;
     type RuntimeFunctionFunctionId: Debug + Clone + PartialEq + Eq + Send + Sync;
     type ExternalInstruction: ExternalInstructionView<Function = Self::ExternalFunctionId>
+        + Clone
         + Send
         + Sync;
     type ExternalListInstruction: ExternalListInstructionView<Function = Self::ExternalListFunctionId>
+        + Clone
         + Send
         + Sync;
-    type ExternalFunctionInstruction: ExternalFunctionInstructionView + Send + Sync;
+    type ExternalFunctionInstruction: ExternalFunctionInstructionView + Clone + Send + Sync;
 
     fn external_function(id: &Self::ExternalFunctionId) -> ExternalFunctionId;
 
@@ -61,9 +64,9 @@ pub(crate) trait ExecutionGraphProfile:
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct HostedExecutionGraph;
+pub struct HostedExecutionGraph;
 
-pub(crate) trait ExecutionFunctionBody:
+pub trait ExecutionFunctionBody:
     FunctionBodyOwner<Return: Clone + Send + Sync + 'static> + Sized + 'static
 {
 }
@@ -73,13 +76,13 @@ impl<Body: FunctionBodyOwner<Return: Clone + Send + Sync + 'static> + 'static> E
 {
 }
 
-pub(crate) trait ExecutionFunctionEntry<Body> {
+pub trait ExecutionFunctionEntry<Body> {
     type HostTarget;
 
     fn as_ref(&self) -> ExecutionFunctionRef<'_, Body, Self::HostTarget>;
 }
 
-pub(crate) enum ExecutionFunctionRef<'function, Body, HostTarget> {
+pub enum ExecutionFunctionRef<'function, Body, HostTarget> {
     Graph(&'function ExecutableFunction<Body>),
     Host(&'function HostTarget),
 }
@@ -90,6 +93,16 @@ pub(crate) type ExecutionHostTarget<Profile, Body> =
     <Profile as ExecutionProfile>::HostTarget<Body>;
 pub(crate) type ExecutionNeverFunction<Profile> = <Profile as ExecutionProfile>::NeverFunction;
 pub(crate) type ExecutionNeverHostTarget<Profile> = <Profile as ExecutionProfile>::NeverHostTarget;
+
+mod sealed {
+    pub trait Profile {}
+    pub trait Graph {}
+
+    impl Profile for std::convert::Infallible {}
+    impl Profile for crate::plan::execution::host::HostedExecutionProfile {}
+    impl Graph for std::convert::Infallible {}
+    impl Graph for super::HostedExecutionGraph {}
+}
 
 impl ExecutionProfile for Infallible {
     type Graph = Infallible;
@@ -573,7 +586,7 @@ mod tests {
             0,
             ProfiledFunctionBody::from_parts(
                 single_exit_graph(),
-                vec![FunctionExit::Return(IntLocalId(0))],
+                vec![FunctionExit::Return(IntLocalId(0))].into(),
             ),
         )
     }
@@ -583,7 +596,7 @@ mod tests {
             0,
             ProfiledFunctionBody::from_parts(
                 single_exit_graph(),
-                Vec::<FunctionExit<std::convert::Infallible, _>>::new(),
+                Vec::<FunctionExit<std::convert::Infallible, _>>::new().into(),
             ),
         )
     }

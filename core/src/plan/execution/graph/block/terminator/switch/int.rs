@@ -1,18 +1,20 @@
 use super::super::Edge;
 use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::graph::IntLocalId;
-use num_bigint::BigInt;
+use crate::plan::execution::graph::{IntLocalId, IntegerLiteral};
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 
-pub(crate) struct IntSwitch {
-    subject: IntLocalId,
-    clauses: Box<[(BigInt, Edge)]>,
-    fallback: Edge,
+#[derive(Clone)]
+pub struct IntSwitch {
+    pub subject: IntLocalId,
+    pub clauses: Table<(IntegerLiteral, Edge)>,
+    pub fallback: Edge,
 }
 
 impl IntSwitch {
     pub(in crate::plan::execution) fn new(
         subject: IntLocalId,
-        clauses: Box<[(BigInt, Edge)]>,
+        clauses: Table<(IntegerLiteral, Edge)>,
         fallback: Edge,
     ) -> Self {
         Self {
@@ -26,7 +28,7 @@ impl IntSwitch {
         self.subject
     }
 
-    pub(crate) fn clauses(&self) -> &[(BigInt, Edge)] {
+    pub(crate) fn clauses(&self) -> &[(IntegerLiteral, Edge)] {
         &self.clauses
     }
 
@@ -44,6 +46,24 @@ impl Explain for IntSwitch {
         });
         context.push_str(" fallback=");
         context.write(self.fallback());
+    }
+}
+
+impl Emit for IntSwitch {
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            subject,
+            clauses,
+            fallback,
+        } = self;
+        output.structure(
+            "graph::IntSwitch",
+            &[
+                ("subject", subject),
+                ("clauses", clauses),
+                ("fallback", fallback),
+            ],
+        );
     }
 }
 
@@ -93,7 +113,6 @@ pub fn main() { case identity(1) { 1 -> 1 _ -> 0 } }
             .body()
             .block_graph()
             .blocks()
-            .iter()
             .map(|block| block.terminator())
             .collect()
     }

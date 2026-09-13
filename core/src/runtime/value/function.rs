@@ -904,7 +904,7 @@ mod tests {
         let generic = GenericFunctionValue::from_evaluated(
             GenericCallableId::Function {
                 template: 0,
-                substitution: Box::new([]),
+                substitution: Vec::new().into(),
             },
             Vec::new(),
             Vec::new(),

@@ -1,6 +1,6 @@
-pub(super) mod body;
-pub(super) mod id;
-mod table;
+pub(in crate::plan::execution) mod body;
+pub(in crate::plan::execution) mod id;
+pub(in crate::plan::execution) mod table;
 
 pub(crate) use body::{
     BitArrayFunctionFunctionBody, BoolFunctionFunctionBody, CoreListFunctionFunctionBody,

@@ -131,7 +131,7 @@ pub(super) fn link_source_less_module(
             definition,
         );
         let info = host_function_info(&template);
-        functions_by_name.insert(template.name().clone(), info);
+        functions_by_name.insert(template.name().into(), info);
         linked_functions.push(LinkedFunction::Host {
             template,
             constructions,
@@ -397,9 +397,7 @@ pub fn main() {
                         function
                             .gleam_body()
                             .map(|function| function.name().as_str()),
-                        function
-                            .host_template()
-                            .map(|function| function.name().as_str()),
+                        function.host_template().map(|function| function.name()),
                     )
                 })
                 .collect::<Vec<_>>(),

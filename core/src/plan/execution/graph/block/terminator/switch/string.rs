@@ -1,18 +1,21 @@
 use super::super::Edge;
+use crate::plan::Text;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::graph::StringLocalId;
-use ecow::EcoString;
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 
-pub(crate) struct StringSwitch {
-    subject: StringLocalId,
-    clauses: Box<[(EcoString, Edge)]>,
-    fallback: Edge,
+#[derive(Clone)]
+pub struct StringSwitch {
+    pub subject: StringLocalId,
+    pub clauses: Table<(Text, Edge)>,
+    pub fallback: Edge,
 }
 
 impl StringSwitch {
     pub(in crate::plan::execution) fn new(
         subject: StringLocalId,
-        clauses: Box<[(EcoString, Edge)]>,
+        clauses: Table<(Text, Edge)>,
         fallback: Edge,
     ) -> Self {
         Self {
@@ -26,7 +29,7 @@ impl StringSwitch {
         self.subject
     }
 
-    pub(crate) fn clauses(&self) -> &[(EcoString, Edge)] {
+    pub(crate) fn clauses(&self) -> &[(Text, Edge)] {
         &self.clauses
     }
 
@@ -44,6 +47,53 @@ impl Explain for StringSwitch {
         });
         context.push_str(" fallback=");
         context.write(self.fallback());
+    }
+}
+
+impl Emit for StringSwitch {
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            subject,
+            clauses,
+            fallback,
+        } = self;
+        output.structure(
+            "graph::StringSwitch",
+            &[
+                ("subject", subject),
+                ("clauses", clauses),
+                ("fallback", fallback),
+            ],
+        );
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::StringSwitch;
+    use crate::plan::execution::graph::{BlockId, Edge, IntLocalId, ParamLocal, StringLocalId};
+    use crate::plan::execution::prepared::rust::Rust;
+
+    #[test]
+    fn emits_switch_string_with_edge_arguments() {
+        let value = StringSwitch::new(
+            StringLocalId(2),
+            vec![(
+                "key".into(),
+                Edge::new(BlockId(3), vec![ParamLocal::Int(IntLocalId(5))]),
+            )]
+            .into(),
+            Edge::new(BlockId(4), Vec::new()),
+        );
+        assert_eq!(
+            Rust::expression(&value),
+            concat!(
+                "data::graph::StringSwitch {subject: data::graph::StringLocalId(2,),",
+                "clauses: data::Storage::Static(&[(data::Text::Static(\"key\",),data::graph::Edge {target: data::graph::BlockId(3,),",
+                "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(5,),),]),},),]),",
+                "fallback: data::graph::Edge {target: data::graph::BlockId(4,),args: data::Storage::Static(&[]),},}"
+            )
+        );
     }
 }
 
@@ -93,7 +143,6 @@ pub fn main() { case identity("one") { "one" -> 1 _ -> 0 } }
             .body()
             .block_graph()
             .blocks()
-            .iter()
             .map(|block| block.terminator())
             .collect()
     }

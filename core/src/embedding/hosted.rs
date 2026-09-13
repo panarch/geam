@@ -84,6 +84,7 @@ impl<Profile: HostProfile> HostedModuleBindings<Profile> {
             first,
             remaining,
             owner,
+            exports: _,
         } = self.inner.into_parts();
         let (execution, entries) = HostedExecution::try_from_library_plan(plan, first, remaining)?;
         Ok(HostedModule {
@@ -91,6 +92,18 @@ impl<Profile: HostProfile> HostedModuleBindings<Profile> {
             entries,
             owner,
         })
+    }
+
+    /// Prepares immutable data without creating external stores or run state.
+    pub fn prepare(self) -> Result<super::PreparedHostedModule, HostSpecializationError> {
+        let BindingParts {
+            plan,
+            first,
+            remaining,
+            exports,
+            owner: _,
+        } = self.inner.into_parts();
+        super::PreparedHostedModule::new(plan, first, remaining, exports)
     }
 }
 
@@ -1051,8 +1064,8 @@ pub fn fail() { counter.stop() }
                     error.function().as_str(),
                     error.failure(),
                     error.location().site().map(|site| (
-                        site.module().as_str(),
-                        site.function().as_str(),
+                        site.module(),
+                        site.function(),
                     )),
                     error.location().path().map(|path| path.as_str()),
                     error.location().line(),
@@ -1113,6 +1126,112 @@ pub fn nested() { counter.around(counter.stop) }
     }
 
     static STORE_DEFAULTS: AtomicUsize = AtomicUsize::new(0);
+
+    #[test]
+    fn preparation_keeps_only_declarations_without_initializing_or_executing() {
+        static PREPARATION_STORE_DEFAULTS: AtomicUsize = AtomicUsize::new(0);
+        struct PreparationProfile;
+        struct PreparationStores;
+        impl Default for PreparationStores {
+            fn default() -> Self {
+                PREPARATION_STORE_DEFAULTS.fetch_add(1, Ordering::SeqCst);
+                Self
+            }
+        }
+        impl HostProfile for PreparationProfile {
+            type RunState = std::cell::Cell<usize>;
+            type ExternalStores = PreparationStores;
+            type ExecutionState = ();
+            fn initialize_execution(state: &mut Self::RunState) -> Self::ExecutionState {
+                state.set(state.get() + 1);
+            }
+        }
+        let implementation = std::sync::Arc::new(());
+        let calls = std::sync::Arc::new(AtomicUsize::new(0));
+        let bind = || {
+            let implementation = implementation.clone();
+            let calls = calls.clone();
+            let provider = HostProviderModule::<PreparationProfile>::new("application", "library")
+                .unwrap()
+                .with_function("native", move |value: BigInt| -> BigInt {
+                    let _ = &implementation;
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    value
+                })
+                .unwrap();
+            let program = compile_typed_host_program(
+                "application",
+                "library",
+                [PackageSource::new(
+                    "application",
+                    Vec::<EcoString>::new(),
+                    [ModuleSource::new(
+                        "library",
+                        "src/library.gleam",
+                        r#"
+@external(erlang, "native", "native")
+fn native(value: Int) -> Int
+pub fn run(value: Int) -> Int {
+  echo native(value)
+  panic as "preparation must not execute Gleam"
+}
+"#,
+                    )],
+                )],
+                HostProviderSet::from_providers([provider]).unwrap(),
+            )
+            .unwrap();
+            HostedModuleBuilder::new(program)
+                .unwrap()
+                .function(FunctionDeclaration::<(BigInt,), BigInt>::new("run"))
+                .unwrap()
+        };
+        let (bindings, _) = bind();
+        assert_eq!(std::sync::Arc::strong_count(&implementation), 2);
+        let before = PREPARATION_STORE_DEFAULTS.load(Ordering::SeqCst);
+        let prepared = bindings.prepare().unwrap();
+        assert_eq!(std::sync::Arc::strong_count(&implementation), 1);
+        assert_eq!(PREPARATION_STORE_DEFAULTS.load(Ordering::SeqCst), before);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        let emitted = prepared.emit_rust();
+        assert!(emitted.starts_with("data::HostedModuleArtifact {"));
+        assert_eq!(prepared.emit_rust(), emitted);
+
+        let (bindings, run) = bind();
+        let mut module = bindings.seal().unwrap();
+        assert_eq!(
+            PREPARATION_STORE_DEFAULTS.load(Ordering::SeqCst),
+            before + 1
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        let host = crate::execution_fixture::TestHost::default();
+        let mut state = std::cell::Cell::new(0);
+        let mut echo = Vec::new();
+        let error = host
+            .block_on(
+                module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                    scope.call(&run, (42.into(),)).await
+                }),
+            )
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "panic: preparation must not execute Gleam"
+        );
+        assert_eq!(state.get(), 1);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            PREPARATION_STORE_DEFAULTS.load(Ordering::SeqCst),
+            before + 1
+        );
+        assert_eq!(
+            echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            ["src/library.gleam:5\n42"]
+        );
+        drop(module);
+        assert_eq!(std::sync::Arc::strong_count(&implementation), 1);
+    }
 
     struct CountingStores;
 

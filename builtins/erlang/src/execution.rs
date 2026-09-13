@@ -433,8 +433,11 @@ impl HostExecutionState for ErlangExecution {
             .into_iter()
             .map(EcoString::from),
         );
-        self.atoms
-            .extend(metadata.native_constructor_tags().cloned());
+        self.atoms.extend(
+            metadata
+                .native_constructor_tags()
+                .map(ecow::EcoString::from),
+        );
     }
 
     fn started(&mut self, unit: ExecutionUnit) {

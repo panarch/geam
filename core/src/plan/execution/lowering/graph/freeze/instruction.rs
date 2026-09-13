@@ -97,7 +97,7 @@ fn freeze_int(
     use execution::graph::IntInstruction as E;
 
     match instruction {
-        DraftIntInstruction::Value(value) => E::Value(value.clone()),
+        DraftIntInstruction::Value(value) => E::Value(value.into()),
         DraftIntInstruction::Constant(id) => E::Constant(*id),
         DraftIntInstruction::Call {
             function,
@@ -105,7 +105,7 @@ fn freeze_int(
             site,
         } => E::Call {
             function: *function,
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftIntInstruction::FunctionCall {
@@ -114,7 +114,7 @@ fn freeze_int(
             site,
         } => E::FunctionCall {
             function: values.int_function(function),
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftIntInstruction::TupleIndex { tuple, index } => E::TupleIndex {
@@ -168,7 +168,7 @@ fn freeze_float(
             site,
         } => E::Call {
             function: *function,
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftFloatInstruction::FunctionCall {
@@ -177,7 +177,7 @@ fn freeze_float(
             site,
         } => E::FunctionCall {
             function: values.float_function(function),
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftFloatInstruction::TupleIndex { tuple, index } => E::TupleIndex {
@@ -218,7 +218,7 @@ fn freeze_string(
     use execution::graph::StringInstruction as E;
 
     match instruction {
-        DraftStringInstruction::Value(value) => E::Value(value.clone()),
+        DraftStringInstruction::Value(value) => E::Value(value.clone().into()),
         DraftStringInstruction::Constant(id) => E::Constant(*id),
         DraftStringInstruction::Call {
             function,
@@ -226,7 +226,7 @@ fn freeze_string(
             site,
         } => E::Call {
             function: *function,
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftStringInstruction::FunctionCall {
@@ -235,7 +235,7 @@ fn freeze_string(
             site,
         } => E::FunctionCall {
             function: values.string_function(function),
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftStringInstruction::TupleIndex { tuple, index } => E::TupleIndex {
@@ -256,7 +256,7 @@ fn freeze_string(
         },
         DraftStringInstruction::DropPrefix { value, prefix } => E::DropPrefix {
             value: values.string(value),
-            prefix: prefix.clone(),
+            prefix: prefix.clone().into(),
         },
     }
 }
@@ -273,7 +273,7 @@ fn freeze_bit_array(
                 .iter()
                 .map(|segment| freeze_bit_array_segment(segment, values))
                 .collect::<Vec<_>>()
-                .into_boxed_slice(),
+                .into(),
         ),
         DraftBitArrayInstruction::Constant(id) => E::Constant(*id),
         DraftBitArrayInstruction::Call {
@@ -282,7 +282,7 @@ fn freeze_bit_array(
             site,
         } => E::Call {
             function: *function,
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftBitArrayInstruction::FunctionCall {
@@ -291,7 +291,7 @@ fn freeze_bit_array(
             site,
         } => E::FunctionCall {
             function: values.bit_array_function(function),
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftBitArrayInstruction::TupleIndex { tuple, index } => E::TupleIndex {
@@ -402,7 +402,7 @@ fn freeze_utf_codepoint(
             site,
         } => E::Call {
             function: *function,
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftUtfCodepointInstruction::FunctionCall {
@@ -411,7 +411,7 @@ fn freeze_utf_codepoint(
             site,
         } => E::FunctionCall {
             function: values.utf_codepoint_function(function),
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftUtfCodepointInstruction::TupleIndex { tuple, index } => E::TupleIndex {
@@ -441,7 +441,7 @@ fn freeze_custom(
             fields,
         } => E::Construct {
             constructor: *constructor,
-            fields: values.any_slice(fields),
+            fields: values.any_slice(fields).into(),
         },
         DraftCustomInstruction::Constant(id) => E::Constant(*id),
         DraftCustomInstruction::Call {
@@ -450,7 +450,7 @@ fn freeze_custom(
             site,
         } => E::Call {
             function: *function,
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftCustomInstruction::FunctionCall {
@@ -459,7 +459,7 @@ fn freeze_custom(
             site,
         } => E::FunctionCall {
             function: values.custom_function(function),
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftCustomInstruction::TupleIndex { tuple, index } => E::TupleIndex {
@@ -490,7 +490,7 @@ fn freeze_external(
             site,
         } => E::Call {
             function: *function,
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftExternalInstruction::FunctionCall {
@@ -499,7 +499,7 @@ fn freeze_external(
             site,
         } => E::FunctionCall {
             function: values.external_function(function),
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftExternalInstruction::TupleIndex { tuple, index } => E::TupleIndex {
@@ -532,7 +532,7 @@ fn freeze_bool(
             site,
         } => E::Call {
             function: *function,
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftBoolInstruction::FunctionCall {
@@ -541,7 +541,7 @@ fn freeze_bool(
             site,
         } => E::FunctionCall {
             function: values.bool_function(function),
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftBoolInstruction::TupleIndex { tuple, index } => E::TupleIndex {
@@ -599,7 +599,7 @@ fn freeze_bool(
         },
         DraftBoolInstruction::StringStartsWith { value, prefix } => E::StringStartsWith {
             value: values.string(value),
-            prefix: prefix.clone(),
+            prefix: prefix.clone().into(),
         },
         DraftBoolInstruction::ListLengthEquals { value, length } => E::ListLengthEquals {
             value: values.list(value),
@@ -627,7 +627,7 @@ fn freeze_nil(
             site,
         } => E::Call {
             function: *function,
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftNilInstruction::FunctionCall {
@@ -636,7 +636,7 @@ fn freeze_nil(
             site,
         } => E::FunctionCall {
             function: values.nil_function(function),
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftNilInstruction::TupleIndex { tuple, index } => E::TupleIndex {
@@ -661,7 +661,7 @@ fn freeze_tuple(
     use execution::graph::TupleInstruction as E;
 
     match instruction {
-        DraftTupleInstruction::Value(elements) => E::Value(values.any_slice(elements)),
+        DraftTupleInstruction::Value(elements) => E::Value(values.any_slice(elements).into()),
         DraftTupleInstruction::Constant(id) => E::Constant(*id),
         DraftTupleInstruction::Call {
             function,
@@ -669,7 +669,7 @@ fn freeze_tuple(
             site,
         } => E::Call {
             function: *function,
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftTupleInstruction::FunctionCall {
@@ -678,7 +678,7 @@ fn freeze_tuple(
             site,
         } => E::FunctionCall {
             function: values.tuple_function(function),
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftTupleInstruction::TupleIndex { tuple, index } => E::TupleIndex {
@@ -711,7 +711,7 @@ fn freeze_parameter_list(
             site,
         } => E::Call {
             function: *function,
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftParameterListInstruction::FunctionCall {
@@ -720,7 +720,7 @@ fn freeze_parameter_list(
             site,
         } => E::FunctionCall {
             function: values.list_function(function),
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftParameterListInstruction::TupleIndex { tuple, index } => E::TupleIndex {
@@ -901,7 +901,7 @@ where
                 .iter()
                 .map(|value| element(values, value))
                 .collect::<Vec<_>>()
-                .into_boxed_slice(),
+                .into(),
         ),
         DraftTypedListInstruction::Constant(id) => E::Constant(*id),
         DraftTypedListInstruction::Spread { elements, tail } => E::Spread {
@@ -909,7 +909,7 @@ where
                 .iter()
                 .map(|value| element(values, value))
                 .collect::<Vec<_>>()
-                .into_boxed_slice(),
+                .into(),
             tail: list(values, tail),
         },
         DraftTypedListInstruction::Call {
@@ -918,7 +918,7 @@ where
             site,
         } => E::Call {
             function: function.clone(),
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftTypedListInstruction::FunctionCall {
@@ -927,7 +927,7 @@ where
             site,
         } => E::FunctionCall {
             function: function_local(values, function),
-            args: values.any_slice(args),
+            args: values.any_slice(args).into(),
             site: site.clone(),
         },
         DraftTypedListInstruction::TupleIndex { tuple, index } => E::TupleIndex {
@@ -980,7 +980,7 @@ fn freeze_function(
                 .iter()
                 .map(|capture| values.capture(&capture.target, &capture.source))
                 .collect::<Vec<_>>()
-                .into_boxed_slice();
+                .into();
             match freeze_function_target(target) {
                 FrozenFunctionTarget::Function(target) => {
                     function_instruction(type_, family, F::Closure { target, captures })
@@ -1003,7 +1003,7 @@ fn freeze_function(
                 family,
                 F::Call {
                     function,
-                    args: values.any_slice(args),
+                    args: values.any_slice(args).into(),
                     site: site.clone(),
                 },
             ),
@@ -1012,7 +1012,7 @@ fn freeze_function(
                 family,
                 X::Call {
                     function,
-                    args: values.any_slice(args),
+                    args: values.any_slice(args).into(),
                     site: site.clone(),
                 },
             ),
@@ -1027,7 +1027,7 @@ fn freeze_function(
                 family,
                 F::FunctionCall {
                     function,
-                    args: values.any_slice(args),
+                    args: values.any_slice(args).into(),
                     site: site.clone(),
                 },
             ),
@@ -1037,7 +1037,7 @@ fn freeze_function(
                     family,
                     X::FunctionCall {
                         function,
-                        args: values.any_slice(args),
+                        args: values.any_slice(args).into(),
                         site: site.clone(),
                     },
                 )
@@ -1518,7 +1518,7 @@ mod tests {
             ],
         );
 
-        assert_eq!(int_value(&instructions[0]), &1.into());
+        assert_eq!(int_value(&instructions[0]), 1.into());
         assert_eq!(
             utf_codepoint_call(&instructions[4]),
             (UtfCodepointFunctionId(4), 0),
@@ -1537,10 +1537,10 @@ mod tests {
         assert!(std::panic::catch_unwind(|| int_function_reference(&instructions[14])).is_err());
     }
 
-    fn int_value(instruction: &ProfiledInstruction<HostedExecutionGraph>) -> &num_bigint::BigInt {
+    fn int_value(instruction: &ProfiledInstruction<HostedExecutionGraph>) -> num_bigint::BigInt {
         match instruction.kind() {
             InstructionKind::Int(crate::plan::execution::graph::IntInstruction::Value(value)) => {
-                value
+                value.materialize()
             }
             _ => panic!("Int draft instruction should freeze as an Int value"),
         }

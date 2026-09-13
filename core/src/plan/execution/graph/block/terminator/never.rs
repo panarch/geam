@@ -2,22 +2,26 @@ use crate::plan::execution::explain::FunctionLabel;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::NeverFunctionId;
 use crate::plan::execution::graph::{NeverFunctionLocal, ParamLocal};
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 
-pub(crate) enum NeverCallTarget {
+#[derive(Clone)]
+pub enum NeverCallTarget {
     Direct(NeverFunctionId),
     Value(NeverFunctionLocal),
 }
 
-pub(crate) struct NeverCall {
-    function: NeverCallTarget,
-    args: Box<[ParamLocal]>,
-    site: crate::plan::HostCallSite,
+#[derive(Clone)]
+pub struct NeverCall {
+    pub function: NeverCallTarget,
+    pub args: Table<ParamLocal>,
+    pub site: crate::plan::HostCallSite,
 }
 
 impl NeverCall {
     pub(in crate::plan::execution) fn new(
         function: NeverCallTarget,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     ) -> Self {
         Self {
@@ -51,6 +55,85 @@ impl Explain for NeverCall {
         }
         context.push_str(" args=");
         context.write_list(self.args(), |context, argument| context.write(argument));
+    }
+}
+
+impl Emit for NeverCallTarget {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Direct(field_0) => output.call("graph::NeverCallTarget::Direct", &[field_0]),
+            Self::Value(field_0) => output.call("graph::NeverCallTarget::Value", &[field_0]),
+        }
+    }
+}
+
+impl Emit for NeverCall {
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            function,
+            args,
+            site,
+        } = self;
+        output.structure(
+            "graph::NeverCall",
+            &[("function", function), ("args", args), ("site", site)],
+        );
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::{
+        NeverCall, NeverCallTarget, NeverFunctionId, NeverFunctionLocal, ParamLocal, Rust,
+    };
+    use crate::plan::execution::graph::{IntLocalId, NeverFunctionLocalId};
+    use crate::plan::execution::type_::{
+        FunctionShape, FunctionType, GenericFunctionType, ValueShapeId, ValueType,
+    };
+    use crate::plan::{HostCallSite, SourceSpan};
+
+    #[test]
+    fn emits_direct_and_function_valued_never_calls_with_the_source_site() {
+        let target = NeverCallTarget::Direct(NeverFunctionId(2));
+        assert_eq!(
+            Rust::expression(&target),
+            "data::graph::NeverCallTarget::Direct(data::function::NeverFunctionId(2,),)"
+        );
+        let signature = FunctionType::new(
+            Vec::new(),
+            ValueType::Parameter(crate::plan::TypeParameterId(0)),
+        );
+        let function = NeverCallTarget::Value(NeverFunctionLocal {
+            id: NeverFunctionLocalId(3),
+            type_: GenericFunctionType::from_shapes(
+                signature.clone(),
+                FunctionShape::new(ValueShapeId(1), signature),
+            ),
+        });
+        assert_eq!(
+            Rust::expression(&function),
+            concat!(
+                "data::graph::NeverCallTarget::Value(data::graph::NeverFunctionLocal {id: data::graph::NeverFunctionLocalId(3,),",
+                "type_: data::type_::GenericFunctionType {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),",
+                "return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0,),)),},",
+                "shape: data::type_::FunctionShape {shape_id: data::type_::ValueShapeId(1,),",
+                "type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),",
+                "return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0,),)),},},},},)"
+            )
+        );
+        let call = NeverCall::new(
+            target,
+            vec![ParamLocal::Int(IntLocalId(1))].into(),
+            HostCallSite::from_static("example", "main", SourceSpan::new(3, 12)),
+        );
+        assert_eq!(
+            Rust::expression(&call),
+            concat!(
+                "data::graph::NeverCall {function: data::graph::NeverCallTarget::Direct(data::function::NeverFunctionId(2,),),",
+                "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(1,),),]),",
+                "site: data::source::HostCallSite::from_static(\"example\",\"main\",data::source::SourceSpan::new(3,12,),),}"
+            )
+        );
     }
 }
 
@@ -124,7 +207,6 @@ pub fn main() -> Int {
             .body()
             .block_graph()
             .blocks()
-            .iter()
             .map(|block| block.terminator())
             .collect()
     }

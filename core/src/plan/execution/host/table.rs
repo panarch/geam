@@ -29,6 +29,26 @@ impl<Profile: HostProfile> HostFunctionTables<Profile> {
         &self.never_functions[id.index()]
     }
 
+    pub(in crate::plan::execution) fn into_metadata(
+        self,
+    ) -> (
+        super::super::storage::Table<std::sync::Arc<super::HostedFunctionMetadata>>,
+        super::super::storage::Table<std::sync::Arc<super::HostedFunctionMetadata>>,
+    ) {
+        (
+            self.value_functions
+                .into_vec()
+                .into_iter()
+                .map(super::HostedFunction::into_metadata)
+                .collect(),
+            self.never_functions
+                .into_vec()
+                .into_iter()
+                .map(super::HostedFunction::into_metadata)
+                .collect(),
+        )
+    }
+
     #[cfg(test)]
     pub(in crate::plan::execution) fn value_functions(&self) -> &[HostedValueFunction<Profile>] {
         &self.value_functions

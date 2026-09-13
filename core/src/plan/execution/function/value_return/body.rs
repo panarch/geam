@@ -10,6 +10,7 @@ use crate::plan::execution::graph::{
     BitArrayLocalId, BoolLocalId, CustomLocal, ExternalLocal, FloatLocalId, IntLocalId, NilLocalId,
     StringLocalId, TupleLocalId, UtfCodepointLocalId,
 };
+use crate::plan::execution::prepared::rust::{Emit, Rust};
 use crate::plan::execution::type_::{CustomValueShape, ExternalTypeId};
 use std::convert::Infallible;
 
@@ -67,16 +68,16 @@ pub(crate) type ExecutionNilFunctionBody<Profile> =
 pub(crate) type ExecutionTupleFunctionBody<Profile> =
     ProfiledTupleFunctionBody<<Profile as ExecutionProfile>::Graph>;
 
-pub(crate) struct ProfiledCustomFunctionBody<Graph: ExecutionGraphProfile> {
-    _signature_shape: CustomValueShape,
-    _body_shape: CustomValueShape,
-    body: ProfiledFunctionBody<CustomLocal, crate::plan::FunctionCallTarget<usize>, Graph>,
+pub struct ProfiledCustomFunctionBody<Graph: ExecutionGraphProfile> {
+    pub _signature_shape: CustomValueShape,
+    pub _body_shape: CustomValueShape,
+    pub body: ProfiledFunctionBody<CustomLocal, crate::plan::FunctionCallTarget<usize>, Graph>,
 }
 
-pub(crate) struct ProfiledExternalFunctionBody<Graph: ExecutionGraphProfile> {
-    _signature_type: ExternalTypeId,
-    _body_type: ExternalTypeId,
-    body: ProfiledFunctionBody<ExternalLocal, crate::plan::FunctionCallTarget<usize>, Graph>,
+pub struct ProfiledExternalFunctionBody<Graph: ExecutionGraphProfile> {
+    pub _signature_type: ExternalTypeId,
+    pub _body_type: ExternalTypeId,
+    pub body: ProfiledFunctionBody<ExternalLocal, crate::plan::FunctionCallTarget<usize>, Graph>,
 }
 
 pub(crate) type CustomFunctionBody = ProfiledCustomFunctionBody<HostedExecutionGraph>;
@@ -161,6 +162,48 @@ impl<Graph: ExecutionGraphProfile> FunctionBodyOwner for ProfiledExternalFunctio
     }
 }
 
+impl<Graph: ExecutionGraphProfile> Emit for ProfiledCustomFunctionBody<Graph>
+where
+    ProfiledFunctionBody<CustomLocal, crate::plan::FunctionCallTarget<usize>, Graph>: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            _signature_shape,
+            _body_shape,
+            body,
+        } = self;
+        output.structure(
+            "function::ProfiledCustomFunctionBody",
+            &[
+                ("_signature_shape", _signature_shape),
+                ("_body_shape", _body_shape),
+                ("body", body),
+            ],
+        );
+    }
+}
+
+impl<Graph: ExecutionGraphProfile> Emit for ProfiledExternalFunctionBody<Graph>
+where
+    ProfiledFunctionBody<ExternalLocal, crate::plan::FunctionCallTarget<usize>, Graph>: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            _signature_type,
+            _body_type,
+            body,
+        } = self;
+        output.structure(
+            "function::ProfiledExternalFunctionBody",
+            &[
+                ("_signature_type", _signature_type),
+                ("_body_type", _body_type),
+                ("body", body),
+            ],
+        );
+    }
+}
+
 #[cfg(test)]
 mod explain_tests {
     use super::{ExecutionCustomFunctionBody, FunctionBodyOwner, ProfiledExternalFunctionBody};
@@ -211,7 +254,7 @@ pub fn main() { Boxed(1) }
                     Terminator::Exit(BlockGraphExitId::new(0)),
                 )],
             ),
-            vec![FunctionExit::Return(expected_return)],
+            vec![FunctionExit::Return(expected_return)].into(),
         );
         let owner = ProfiledExternalFunctionBody::from_parts(type_, type_, body);
 

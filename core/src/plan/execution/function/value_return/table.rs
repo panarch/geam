@@ -8,30 +8,25 @@ use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::{
     ExecutionFunction, ExecutionNeverFunction, ExecutionProfile, write_table,
 };
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 use std::convert::Infallible;
 
-pub(in crate::plan::execution) struct ValueFunctionTables<Profile: ExecutionProfile> {
-    pub(in crate::plan::execution) never_functions: Vec<ExecutionNeverFunction<Profile>>,
-    pub(in crate::plan::execution) int_functions:
-        Vec<ExecutionFunction<Profile, ExecutionIntFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) float_functions:
-        Vec<ExecutionFunction<Profile, ExecutionFloatFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) string_functions:
-        Vec<ExecutionFunction<Profile, ExecutionStringFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) bit_array_functions:
-        Vec<ExecutionFunction<Profile, ExecutionBitArrayFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) utf_codepoint_functions:
-        Vec<ExecutionFunction<Profile, ExecutionUtfCodepointFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) custom_functions:
-        Vec<ExecutionFunction<Profile, ExecutionCustomFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) external_functions:
-        Vec<ExecutionFunction<Profile, ExecutionExternalFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) bool_functions:
-        Vec<ExecutionFunction<Profile, ExecutionBoolFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) nil_functions:
-        Vec<ExecutionFunction<Profile, ExecutionNilFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) tuple_functions:
-        Vec<ExecutionFunction<Profile, ExecutionTupleFunctionBody<Profile>>>,
+pub struct ValueFunctionTables<Profile: ExecutionProfile> {
+    pub never_functions: Table<ExecutionNeverFunction<Profile>>,
+    pub int_functions: Table<ExecutionFunction<Profile, ExecutionIntFunctionBody<Profile>>>,
+    pub float_functions: Table<ExecutionFunction<Profile, ExecutionFloatFunctionBody<Profile>>>,
+    pub string_functions: Table<ExecutionFunction<Profile, ExecutionStringFunctionBody<Profile>>>,
+    pub bit_array_functions:
+        Table<ExecutionFunction<Profile, ExecutionBitArrayFunctionBody<Profile>>>,
+    pub utf_codepoint_functions:
+        Table<ExecutionFunction<Profile, ExecutionUtfCodepointFunctionBody<Profile>>>,
+    pub custom_functions: Table<ExecutionFunction<Profile, ExecutionCustomFunctionBody<Profile>>>,
+    pub external_functions:
+        Table<ExecutionFunction<Profile, ExecutionExternalFunctionBody<Profile>>>,
+    pub bool_functions: Table<ExecutionFunction<Profile, ExecutionBoolFunctionBody<Profile>>>,
+    pub nil_functions: Table<ExecutionFunction<Profile, ExecutionNilFunctionBody<Profile>>>,
+    pub tuple_functions: Table<ExecutionFunction<Profile, ExecutionTupleFunctionBody<Profile>>>,
 }
 
 impl Explain for ValueFunctionTables<Infallible> {
@@ -47,6 +42,53 @@ impl Explain for ValueFunctionTables<Infallible> {
         write_table(context, "bool", &self.bool_functions);
         write_table(context, "nil", &self.nil_functions);
         write_table(context, "tuple", &self.tuple_functions);
+    }
+}
+
+impl<Profile: ExecutionProfile> Emit for ValueFunctionTables<Profile>
+where
+    Table<ExecutionNeverFunction<Profile>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionIntFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionFloatFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionStringFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionBitArrayFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionUtfCodepointFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionCustomFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionExternalFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionBoolFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionNilFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionTupleFunctionBody<Profile>>>: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            never_functions,
+            int_functions,
+            float_functions,
+            string_functions,
+            bit_array_functions,
+            utf_codepoint_functions,
+            custom_functions,
+            external_functions,
+            bool_functions,
+            nil_functions,
+            tuple_functions,
+        } = self;
+        output.structure(
+            "function::ValueFunctionTables",
+            &[
+                ("never_functions", never_functions),
+                ("int_functions", int_functions),
+                ("float_functions", float_functions),
+                ("string_functions", string_functions),
+                ("bit_array_functions", bit_array_functions),
+                ("utf_codepoint_functions", utf_codepoint_functions),
+                ("custom_functions", custom_functions),
+                ("external_functions", external_functions),
+                ("bool_functions", bool_functions),
+                ("nil_functions", nil_functions),
+                ("tuple_functions", tuple_functions),
+            ],
+        );
     }
 }
 

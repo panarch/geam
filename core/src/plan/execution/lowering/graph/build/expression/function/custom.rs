@@ -17,9 +17,7 @@ pub(in crate::plan::execution::lowering) fn custom_function_expr(
 ) -> Representability<DraftFlow<DraftCustomFunction>> {
     let return_shape =
         context.concrete_custom_value_shape(expression.custom_function_type().return_());
-    let shape = context.concrete_function_shape(&crate::plan::FunctionShape::from_function_type(
-        expression.custom_function_type().to_function_type(),
-    ));
+    let shape = context.concrete_function_shape(&expression.custom_function_type().shape());
     custom_function_expr_kind(
         expression.kind(),
         &return_shape,

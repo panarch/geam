@@ -93,7 +93,7 @@ impl EchoLocation {
                     .filter(|byte| **byte == b'\n')
                     .count()
                     + 1;
-                Self::resolved(site, context.path().clone(), line)
+                Self::resolved(site, context.path(), line)
             }
             None => Self::site(site),
         }

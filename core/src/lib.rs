@@ -27,6 +27,9 @@ pub mod __macro_support;
 #[doc(hidden)]
 pub mod provider_support;
 
+#[doc(hidden)]
+pub use plan::execution::prepared::data as __prepared_support;
+
 pub use frontend::{
     FrontendError, HostedTypedProgram, ModuleSource, PackageSource, ProjectError, TypedProgram,
     compile_typed_host_program, compile_typed_host_project, compile_typed_module,

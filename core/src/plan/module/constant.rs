@@ -302,6 +302,25 @@ impl ConstantNilReference {
 }
 
 impl ConstantInstantiation {
+    pub(crate) fn shape(&self) -> ValueShape {
+        match &self.kind {
+            ConstantInstantiationKind::Int(_) => ValueShape::Int,
+            ConstantInstantiationKind::String(_) => ValueShape::String,
+            ConstantInstantiationKind::BitArray(_) => ValueShape::BitArray,
+            ConstantInstantiationKind::Custom(value) => ValueShape::Custom(value.shape().clone()),
+            ConstantInstantiationKind::Float(_) => ValueShape::Float,
+            ConstantInstantiationKind::Bool(_) => ValueShape::Bool,
+            ConstantInstantiationKind::Nil(_) => ValueShape::Nil,
+            ConstantInstantiationKind::Tuple(value) => ValueShape::Tuple(value.shape().clone()),
+            ConstantInstantiationKind::List(value) => {
+                ValueShape::List(Box::new(value.item_shape()))
+            }
+            ConstantInstantiationKind::Function(value) => {
+                ValueShape::Function(Box::new(value.shape().clone()))
+            }
+        }
+    }
+
     pub(crate) fn from_int(value: ConstantIntInstantiation) -> Self {
         Self {
             kind: ConstantInstantiationKind::Int(value),

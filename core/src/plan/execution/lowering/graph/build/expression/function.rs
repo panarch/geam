@@ -157,9 +157,7 @@ pub(in crate::plan::execution::lowering) fn evaluated_function_function_expr(
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
 ) -> Representability<DraftFlow<()>> {
-    let shape = context.concrete_function_shape(&crate::plan::FunctionShape::from_function_type(
-        expression.function_function_type().to_function_type(),
-    ));
+    let shape = context.concrete_function_shape(&expression.function_function_type().shape());
     generic::symbolic_function_function_expr_kind(expression.kind(), &shape, cursor, graph, context)
         .map(|flow| flow.map(|_| ()))
 }

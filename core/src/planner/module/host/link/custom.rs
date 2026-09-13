@@ -142,8 +142,8 @@ fn validate_host_custom_schema_with_constructions(
         None => {
             return Err(PlanError::HostProviderLink {
                 package: package.clone(),
-                module: site.module().clone(),
-                function: site.function().clone(),
+                module: site.module().into(),
+                function: site.function().into(),
                 reason: Box::new(HostProviderLinkReason::MissingCustomType { custom_type: name }),
             });
         }
@@ -151,16 +151,16 @@ fn validate_host_custom_schema_with_constructions(
     if !visible {
         return Err(PlanError::HostProviderLink {
             package: package.clone(),
-            module: site.module().clone(),
-            function: site.function().clone(),
+            module: site.module().into(),
+            function: site.function().into(),
             reason: Box::new(HostProviderLinkReason::CustomTypeVisibility { custom_type: name }),
         });
     }
     if actual != &expected {
         return Err(PlanError::HostProviderLink {
             package: package.clone(),
-            module: site.module().clone(),
-            function: site.function().clone(),
+            module: site.module().into(),
+            function: site.function().into(),
             reason: Box::new(HostProviderLinkReason::CustomSchemaMismatch {
                 expected,
                 actual: actual.clone(),
@@ -185,8 +185,8 @@ fn validate_host_custom_schema_with_constructions(
     if let Some(actual) = invalid_argument_count {
         return Err(PlanError::HostProviderLink {
             package: package.clone(),
-            module: site.module().clone(),
-            function: site.function().clone(),
+            module: site.module().into(),
+            function: site.function().into(),
             reason: Box::new(HostProviderLinkReason::CustomTypeArgumentCount {
                 custom_type: name,
                 expected: parameter_count,

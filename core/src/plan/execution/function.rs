@@ -1,12 +1,13 @@
-mod body;
-mod entry;
-mod function_return;
-mod list_return;
-mod parameters;
-mod profile;
-mod runtime;
-mod table;
-mod value_return;
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+pub(in crate::plan::execution) mod body;
+pub(in crate::plan::execution) mod entry;
+pub(in crate::plan::execution) mod function_return;
+pub(in crate::plan::execution) mod list_return;
+pub(in crate::plan::execution) mod parameters;
+pub(in crate::plan::execution) mod profile;
+pub(in crate::plan::execution) mod runtime;
+pub(in crate::plan::execution) mod table;
+pub(in crate::plan::execution) mod value_return;
 
 use crate::plan::execution::explain::FunctionLabel;
 
@@ -64,7 +65,7 @@ pub(crate) use list_return::{
     RuntimeListFunctionId, StringListFunctionBody, StringListFunctionId, TupleListFunctionBody,
     TupleListFunctionId, UtfCodepointListFunctionBody, UtfCodepointListFunctionId,
 };
-pub(crate) use parameters::{FunctionParameterCatalog, FunctionTableFamily};
+pub(crate) use parameters::{FunctionCatalog, FunctionParameterView, FunctionTableFamily};
 pub(crate) use profile::{
     ExecutionFunction, ExecutionFunctionBody, ExecutionFunctionEntry, ExecutionFunctionRef,
     ExecutionGraphProfile, ExecutionHostTarget, ExecutionNeverFunction, ExecutionNeverHostTarget,
@@ -90,9 +91,9 @@ pub(crate) use value_return::{
     TupleFunctionId, UtfCodepointFunctionBody, UtfCodepointFunctionId, ValueFunctionEntry,
 };
 
-pub(crate) struct ExecutableFunction<Body> {
-    entry: FunctionEntry,
-    body: Body,
+pub struct ExecutableFunction<Body> {
+    pub entry: FunctionEntry,
+    pub body: Body,
 }
 
 impl<Body> ExecutableFunction<Body> {
@@ -117,5 +118,18 @@ impl<Body> ExecutableFunction<Body> {
 
     pub(in crate::plan::execution) fn into_parts(self) -> (FunctionEntry, Body) {
         (self.entry, self.body)
+    }
+}
+
+impl<Body> Emit for ExecutableFunction<Body>
+where
+    Body: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        let Self { entry, body } = self;
+        output.structure(
+            "function::ExecutableFunction",
+            &[("entry", entry), ("body", body)],
+        );
     }
 }

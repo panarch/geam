@@ -1,9 +1,10 @@
 use crate::plan::PanicSite;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::graph::StringLocalId;
+use crate::plan::execution::prepared::rust::{Emit, Rust};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SourceStopKind {
+pub enum SourceStopKind {
     Panic,
     Todo,
     Assert,
@@ -12,10 +13,11 @@ pub(crate) enum SourceStopKind {
     IncompleteUse,
 }
 
-pub(crate) struct SourceStop {
-    kind: SourceStopKind,
-    message: Option<StringLocalId>,
-    site: PanicSite,
+#[derive(Clone)]
+pub struct SourceStop {
+    pub kind: SourceStopKind,
+    pub message: Option<StringLocalId>,
+    pub site: PanicSite,
 }
 
 impl SourceStop {
@@ -64,6 +66,88 @@ fn source_stop_kind(kind: SourceStopKind) -> &'static str {
         SourceStopKind::EmptyFunction => "empty_function",
         SourceStopKind::EmptyBlock => "empty_block",
         SourceStopKind::IncompleteUse => "incomplete_use",
+    }
+}
+
+impl Emit for SourceStopKind {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Panic => output.path("graph::SourceStopKind::Panic"),
+            Self::Todo => output.path("graph::SourceStopKind::Todo"),
+            Self::Assert => output.path("graph::SourceStopKind::Assert"),
+            Self::EmptyFunction => output.path("graph::SourceStopKind::EmptyFunction"),
+            Self::EmptyBlock => output.path("graph::SourceStopKind::EmptyBlock"),
+            Self::IncompleteUse => output.path("graph::SourceStopKind::IncompleteUse"),
+        }
+    }
+}
+
+impl Emit for SourceStop {
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            kind,
+            message,
+            site,
+        } = self;
+        output.structure(
+            "graph::SourceStop",
+            &[("kind", kind), ("message", message), ("site", site)],
+        );
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::{SourceStop, SourceStopKind};
+    use crate::plan::execution::graph::StringLocalId;
+    use crate::plan::execution::prepared::rust::Rust;
+    use crate::plan::{PanicSite, SourceSpan};
+
+    #[test]
+    fn emits_source_stop_kinds_and_optional_messages() {
+        for (value, expected) in [
+            (SourceStopKind::Panic, "data::graph::SourceStopKind::Panic"),
+            (SourceStopKind::Todo, "data::graph::SourceStopKind::Todo"),
+            (
+                SourceStopKind::Assert,
+                "data::graph::SourceStopKind::Assert",
+            ),
+            (
+                SourceStopKind::EmptyFunction,
+                "data::graph::SourceStopKind::EmptyFunction",
+            ),
+            (
+                SourceStopKind::EmptyBlock,
+                "data::graph::SourceStopKind::EmptyBlock",
+            ),
+            (
+                SourceStopKind::IncompleteUse,
+                "data::graph::SourceStopKind::IncompleteUse",
+            ),
+        ] {
+            assert_eq!(Rust::expression(&value), expected);
+        }
+        let site = PanicSite::new("example".into(), "main".into(), SourceSpan::new(3, 8));
+        assert_eq!(
+            Rust::expression(&SourceStop::new(
+                SourceStopKind::Panic,
+                Some(StringLocalId(2)),
+                site.clone()
+            )),
+            concat!(
+                "data::graph::SourceStop {kind: data::graph::SourceStopKind::Panic,",
+                "message: Some(data::graph::StringLocalId(2,)),site: data::source::PanicSite::from_static(",
+                "\"example\",\"main\",data::source::SourceSpan::new(3,8,),),}"
+            )
+        );
+        assert_eq!(
+            Rust::expression(&SourceStop::new(SourceStopKind::Todo, None, site)),
+            concat!(
+                "data::graph::SourceStop {kind: data::graph::SourceStopKind::Todo,",
+                "message: None,site: data::source::PanicSite::from_static(",
+                "\"example\",\"main\",data::source::SourceSpan::new(3,8,),),}"
+            )
+        );
     }
 }
 
@@ -128,7 +212,6 @@ pub fn main() -> Int {
             .body()
             .block_graph()
             .blocks()
-            .iter()
             .map(|block| block.terminator())
             .collect()
     }

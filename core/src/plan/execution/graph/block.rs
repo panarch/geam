@@ -1,5 +1,6 @@
-mod instruction;
-mod terminator;
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+pub(in crate::plan::execution) mod instruction;
+pub(in crate::plan::execution) mod terminator;
 
 pub(crate) use instruction::{
     BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayInstruction, BitArraySegment, BoolInstruction,
@@ -25,14 +26,27 @@ use crate::plan::execution::function::{
     ExecutionGraphProfile, FunctionLabelSource, HostedExecutionGraph,
 };
 use crate::plan::execution::graph::{BlockGraphExplainContext, ParamSlot};
+use std::ops::Range;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct BlockId(usize);
+pub struct BlockId(pub usize);
 
 pub(crate) struct ProfiledBlock<Graph: ExecutionGraphProfile> {
     params: Box<[ParamSlot]>,
     instructions: Box<[ProfiledInstruction<Graph>]>,
     terminator: Terminator,
+}
+
+pub struct BlockHeader {
+    pub params: Range<usize>,
+    pub instructions: Range<usize>,
+    pub terminator: Terminator,
+}
+
+pub(crate) struct BlockView<'graph, Graph: ExecutionGraphProfile> {
+    pub(super) params: &'graph [ParamSlot],
+    pub(super) instructions: &'graph [ProfiledInstruction<Graph>],
+    pub(super) terminator: &'graph Terminator,
 }
 
 pub(crate) type Block = ProfiledBlock<HostedExecutionGraph>;
@@ -65,24 +79,34 @@ impl<Graph: ExecutionGraphProfile> ProfiledBlock<Graph> {
         }
     }
 
-    pub(crate) fn params(&self) -> &[ParamSlot] {
-        &self.params
-    }
-
-    pub(crate) fn instructions(&self) -> &[ProfiledInstruction<Graph>] {
-        &self.instructions
-    }
-
-    pub(crate) fn terminator(&self) -> &Terminator {
-        &self.terminator
-    }
-
     pub(in crate::plan::execution) fn into_parts(self) -> ProfiledBlockParts<Graph> {
         (self.params, self.instructions, self.terminator)
     }
+}
+
+impl<Graph: ExecutionGraphProfile> Copy for BlockView<'_, Graph> {}
+
+impl<Graph: ExecutionGraphProfile> Clone for BlockView<'_, Graph> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'graph, Graph: ExecutionGraphProfile> BlockView<'graph, Graph> {
+    pub(crate) fn params(self) -> &'graph [ParamSlot] {
+        self.params
+    }
+
+    pub(crate) fn instructions(self) -> &'graph [ProfiledInstruction<Graph>] {
+        self.instructions
+    }
+
+    pub(crate) fn terminator(self) -> &'graph Terminator {
+        self.terminator
+    }
 
     pub(in crate::plan::execution::graph) fn write_explanation(
-        &self,
+        self,
         context: &mut BlockGraphExplainContext<'_, '_, '_>,
         index: usize,
     ) where
@@ -105,6 +129,31 @@ impl<Graph: ExecutionGraphProfile> ProfiledBlock<Graph> {
         context.push_str("    ");
         self.terminator().write_explanation(context);
         context.push('\n');
+    }
+}
+
+impl Emit for BlockId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("graph::BlockId", &[field_0]);
+    }
+}
+
+impl Emit for BlockHeader {
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            params,
+            instructions,
+            terminator,
+        } = self;
+        output.structure(
+            "graph::BlockHeader",
+            &[
+                ("params", params),
+                ("instructions", instructions),
+                ("terminator", terminator),
+            ],
+        );
     }
 }
 

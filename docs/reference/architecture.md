@@ -58,6 +58,14 @@ feature boundary. `ExecutionPlan::explain()` provides a human-readable view of
 lowered functions, values, instructions, and control-flow edges, but its text is
 not a stable serialization format.
 
+Prepared embedding performs this pipeline before the Rust build and emits the
+complete immutable execution plan as Rust data. Loading admits that data and
+links the actual native implementations before creating a callable owner.
+Dynamic owned tables and prepared static tables expose the same borrowed reads
+to the evaluator; prepared loading does not re-run the frontend or rebuild the
+complete owned graph. Source diagnostics are included, while runtime state,
+capabilities and application resources remain separate.
+
 ## Plain And Hosted Programs
 
 A plain program contains only source behavior that needs no Rust callbacks. It

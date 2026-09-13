@@ -1,3 +1,4 @@
+use crate::plan::execution::prepared::rust::{Emit, Rust};
 mod host;
 
 use super::{
@@ -43,10 +44,10 @@ use std::convert::Infallible;
 
 pub(in crate::plan::execution) use host::HostedFunctionTablesExplanation;
 
-pub(in crate::plan::execution) struct FunctionTables<Profile: ExecutionProfile> {
-    pub(in crate::plan::execution) value_returns: ValueFunctionTables<Profile>,
-    pub(in crate::plan::execution) list_returns: ListFunctionTables<Profile>,
-    pub(in crate::plan::execution) function_returns: FunctionFunctionTables<Profile>,
+pub struct FunctionTables<Profile: ExecutionProfile> {
+    pub value_returns: ValueFunctionTables<Profile>,
+    pub list_returns: ListFunctionTables<Profile>,
+    pub function_returns: FunctionFunctionTables<Profile>,
 }
 
 impl Explain for FunctionTables<Infallible> {
@@ -573,6 +574,29 @@ impl FunctionTables<Infallible> {
     }
 }
 
+impl<Profile: ExecutionProfile> Emit for FunctionTables<Profile>
+where
+    ValueFunctionTables<Profile>: Emit,
+    ListFunctionTables<Profile>: Emit,
+    FunctionFunctionTables<Profile>: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            value_returns,
+            list_returns,
+            function_returns,
+        } = self;
+        output.structure(
+            "function::FunctionTables",
+            &[
+                ("value_returns", value_returns),
+                ("list_returns", list_returns),
+                ("function_returns", function_returns),
+            ],
+        );
+    }
+}
+
 #[cfg(test)]
 mod explain_tests {
     use crate::plan::execution::explain;
@@ -625,7 +649,7 @@ pub fn main() {
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
             let mut context = explain::ExplainContext::new(plan, output);
-            context.write(&plan.program.functions);
+            context.write(plan.program.functions.as_ref());
         });
     }
 }

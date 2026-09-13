@@ -129,7 +129,8 @@ jobs:
             provider \
             async_host \
             session \
-            processes
+            processes \
+            prepared
           do
             echo "::group::$example"
             (
@@ -275,6 +276,42 @@ jobs:
       - name: Verify generated process handles
         working-directory: examples/embedding/processes
         run: cargo test --locked
+
+  prepared-embedding:
+    name: Prepared embedding (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+          rustflags: ""
+
+      - name: Install Gleam toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          gleam-version: "1.18.1"
+          rebar3-version: "3"
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: prepared-embedding
+
+      - name: Fetch workspace dependencies for offline fixtures
+        run: cargo fetch --locked
+
+      - name: Verify prepared generation and source-free distribution
+        run: cargo test --package geam --test prepared_embedding --locked
 
   published-provider:
     name: Published provider

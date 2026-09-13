@@ -1,17 +1,20 @@
 use super::super::Edge;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::graph::FloatLocalId;
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 
-pub(crate) struct FloatSwitch {
-    subject: FloatLocalId,
-    clauses: Box<[(f64, Edge)]>,
-    fallback: Edge,
+#[derive(Clone)]
+pub struct FloatSwitch {
+    pub subject: FloatLocalId,
+    pub clauses: Table<(f64, Edge)>,
+    pub fallback: Edge,
 }
 
 impl FloatSwitch {
     pub(in crate::plan::execution) fn new(
         subject: FloatLocalId,
-        clauses: Box<[(f64, Edge)]>,
+        clauses: Table<(f64, Edge)>,
         fallback: Edge,
     ) -> Self {
         Self {
@@ -43,6 +46,53 @@ impl Explain for FloatSwitch {
         });
         context.push_str(" fallback=");
         context.write(self.fallback());
+    }
+}
+
+impl Emit for FloatSwitch {
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            subject,
+            clauses,
+            fallback,
+        } = self;
+        output.structure(
+            "graph::FloatSwitch",
+            &[
+                ("subject", subject),
+                ("clauses", clauses),
+                ("fallback", fallback),
+            ],
+        );
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::FloatSwitch;
+    use crate::plan::execution::graph::{BlockId, Edge, FloatLocalId, IntLocalId, ParamLocal};
+    use crate::plan::execution::prepared::rust::Rust;
+
+    #[test]
+    fn emits_switch_float_with_edge_arguments() {
+        let value = FloatSwitch::new(
+            FloatLocalId(2),
+            vec![(
+                -0.0,
+                Edge::new(BlockId(3), vec![ParamLocal::Int(IntLocalId(5))]),
+            )]
+            .into(),
+            Edge::new(BlockId(4), Vec::new()),
+        );
+        assert_eq!(
+            Rust::expression(&value),
+            concat!(
+                "data::graph::FloatSwitch {subject: data::graph::FloatLocalId(2,),",
+                "clauses: data::Storage::Static(&[(f64::from_bits(9223372036854775808),data::graph::Edge {target: data::graph::BlockId(3,),",
+                "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(5,),),]),},),]),",
+                "fallback: data::graph::Edge {target: data::graph::BlockId(4,),args: data::Storage::Static(&[]),},}"
+            )
+        );
     }
 }
 
@@ -92,7 +142,6 @@ pub fn main() { case identity(1.0) { 1.0 -> 1 _ -> 0 } }
             .body()
             .block_graph()
             .blocks()
-            .iter()
             .map(|block| block.terminator())
             .collect()
     }

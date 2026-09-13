@@ -6,18 +6,21 @@ use crate::plan::execution::function::TupleFunctionId;
 use crate::plan::execution::graph::{
     CustomLocal, ParamLocal, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
 };
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 
-pub(crate) enum TupleInstruction {
-    Value(Box<[ParamLocal]>),
+#[derive(Clone)]
+pub enum TupleInstruction {
+    Value(Table<ParamLocal>),
     Constant(ConstantId<TupleLocalId>),
     Call {
         function: TupleFunctionId,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: TupleFunctionLocalId,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     TupleIndex {
@@ -58,6 +61,132 @@ impl Explain for TupleInstruction {
             TupleInstruction::ListIndex { list, index } => {
                 write_projection(output, "tuple.list_index", list, *index);
             }
+        }
+    }
+}
+
+impl Emit for TupleInstruction {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Value(field_0) => output.call("graph::TupleInstruction::Value", &[field_0]),
+            Self::Constant(field_0) => output.call("graph::TupleInstruction::Constant", &[field_0]),
+            Self::Call {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::TupleInstruction::Call",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::FunctionCall {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::TupleInstruction::FunctionCall",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::TupleIndex { tuple, index } => output.structure(
+                "graph::TupleInstruction::TupleIndex",
+                &[("tuple", tuple), ("index", index)],
+            ),
+            Self::CustomField { source, index } => output.structure(
+                "graph::TupleInstruction::CustomField",
+                &[("source", source), ("index", index)],
+            ),
+            Self::ListIndex { list, index } => output.structure(
+                "graph::TupleInstruction::ListIndex",
+                &[("list", list), ("index", index)],
+            ),
+        }
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::TupleInstruction;
+    use crate::plan::execution::constant::ConstantId;
+    use crate::plan::execution::function::TupleFunctionId;
+    use crate::plan::execution::graph::{
+        CustomLocal, CustomLocalId, IntLocalId, ParamLocal, TupleFunctionLocalId, TupleListLocalId,
+        TupleLocalId,
+    };
+    use crate::plan::execution::prepared::rust::Rust;
+    use crate::plan::execution::type_::{CustomTypeId, CustomValueShape, CustomValueShapeId};
+    use crate::plan::{HostCallSite, SourceSpan};
+
+    #[test]
+    fn emits_every_tuple_instruction_with_its_operands_and_source_site() {
+        let site = HostCallSite::new("example".into(), "main".into(), SourceSpan::new(3, 8));
+        let cases = [
+            (
+                TupleInstruction::Value(vec![ParamLocal::Int(IntLocalId(7))].into()),
+                "data::graph::TupleInstruction::Value(data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(7,),),]),)",
+            ),
+            (
+                TupleInstruction::Constant(ConstantId::new(3)),
+                concat!(
+                    "data::graph::TupleInstruction::Constant(data::constant::ConstantId {",
+                    "index: 3,value: ::core::marker::PhantomData,},)"
+                ),
+            ),
+            (
+                TupleInstruction::Call {
+                    function: TupleFunctionId(2),
+                    args: vec![ParamLocal::Int(IntLocalId(5))].into(),
+                    site: site.clone(),
+                },
+                concat!(
+                    "data::graph::TupleInstruction::Call {function: data::function::TupleFunctionId(2,),",
+                    "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(5,),),]),",
+                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
+                    "data::source::SourceSpan::new(3,8,),),}"
+                ),
+            ),
+            (
+                TupleInstruction::FunctionCall {
+                    function: TupleFunctionLocalId(2),
+                    args: vec![ParamLocal::Int(IntLocalId(5))].into(),
+                    site,
+                },
+                concat!(
+                    "data::graph::TupleInstruction::FunctionCall {function: data::graph::TupleFunctionLocalId(2,),",
+                    "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(5,),),]),",
+                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
+                    "data::source::SourceSpan::new(3,8,),),}"
+                ),
+            ),
+            (
+                TupleInstruction::TupleIndex {
+                    tuple: TupleLocalId(2),
+                    index: 1,
+                },
+                "data::graph::TupleInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+            ),
+            (
+                TupleInstruction::CustomField {
+                    source: CustomLocal::new(
+                        CustomLocalId(2),
+                        CustomValueShape::new(CustomTypeId(3), CustomValueShapeId(4)),
+                    ),
+                    index: 1,
+                },
+                concat!(
+                    "data::graph::TupleInstruction::CustomField {source: data::graph::CustomLocal {",
+                    "id: data::graph::CustomLocalId(2,),shape: data::type_::CustomValueShape {",
+                    "type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},index: 1,}"
+                ),
+            ),
+            (
+                TupleInstruction::ListIndex {
+                    list: TupleListLocalId(2),
+                    index: 1,
+                },
+                "data::graph::TupleInstruction::ListIndex {list: data::graph::TupleListLocalId(2,),index: 1,}",
+            ),
+        ];
+        for (instruction, expected) in cases {
+            assert_eq!(Rust::expression(&instruction), expected);
         }
     }
 }
@@ -126,7 +255,7 @@ pub fn main() {
         explain::assert_rendered(source, expected, |plan, output| {
             let graph = plan.tuple_function(TupleFunctionId(0)).body().block_graph();
             let mut first = true;
-            for instruction in graph.blocks().iter().flat_map(|block| block.instructions()) {
+            for instruction in graph.blocks().flat_map(|block| block.instructions()) {
                 if let ProfiledInstructionKind::Tuple(instruction) = instruction.kind() {
                     if first {
                         first = false;

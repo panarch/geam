@@ -98,7 +98,7 @@ impl LoweringContext {
                 SpecializationOutcome::Complete(constants.finish_hosted()),
                 |functions, constants| {
                     let (list_types, custom_types, external_types, value_shapes) =
-                        types.into_tables();
+                        types.into_tables(&representations);
                     Box::new(LoweredExecution {
                         constants,
                         functions: *functions,
@@ -244,16 +244,16 @@ fn assemble_hosted_program(
     ExecutionProgram {
         common: std::sync::Arc::new(ExecutionProgramCommon {
             root,
-            modules,
+            modules: modules.into(),
             main,
-            constants,
+            constants: Box::new(constants).into(),
             function_parameters: std::sync::Arc::new(function_parameters),
             list_types: std::sync::Arc::new(list_types),
             custom_types: std::sync::Arc::new(custom_types),
             external_types: std::sync::Arc::new(external_types),
-            value_shapes,
+            value_shapes: Box::new(value_shapes).into(),
         }),
-        functions,
+        functions: Box::new(functions).into(),
     }
 }
 

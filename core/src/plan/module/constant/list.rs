@@ -533,6 +533,27 @@ pub(super) enum ConstantStoredListValue {
 }
 
 impl ConstantListInstantiation {
+    pub(super) fn item_shape(&self) -> ValueShape {
+        match self {
+            Self::Generic(value) => ValueShape::Parameter(*value.item_shape()),
+            Self::Int(_) => ValueShape::Int,
+            Self::String(_) => ValueShape::String,
+            Self::BitArray(_) => ValueShape::BitArray,
+            Self::UtfCodepoint(_) => ValueShape::UtfCodepoint,
+            Self::Custom(value) => ValueShape::Custom(value.item_shape().clone()),
+            Self::External(value) => ValueShape::External(value.item_shape().clone()),
+            Self::Float(_) => ValueShape::Float,
+            Self::Bool(_) => ValueShape::Bool,
+            Self::Nil(_) => ValueShape::Nil,
+            Self::Tuple(value) => ValueShape::Tuple(value.item_shape().clone()),
+            Self::ParameterList(value) => {
+                ValueShape::List(Box::new(ValueShape::Parameter(*value.item_shape())))
+            }
+            Self::List(value) => ValueShape::List(Box::new(value.item_shape().to_value_shape())),
+            Self::Function(value) => ValueShape::Function(Box::new(value.item_shape().clone())),
+        }
+    }
+
     pub(super) fn module(&self) -> crate::plan::ModuleId {
         match self {
             Self::Generic(value) => value.module(),

@@ -67,13 +67,13 @@ pub fn main() {
 //     %float#0:shape#1(Float) = constant.float#0
 //     %string#0:shape#2(String) = constant.string#0
 //     %bit_array#0:shape#3(BitArray) = constant.bit_array#0
-//     %custom#0:shape#11(custom_type#0) = constant.custom#0
-//     %bool#0:shape#5(Bool) = constant.bool#0
-//     %nil#0:shape#6(Nil) = constant.nil#0
-//     %tuple#0:shape#7(#(Int)) = constant.tuple#0
-//     %list.int#0:shape#8(list_type#0) = list.int[type#0] constant.list.int#0
-//     %list.string#0:shape#9(list_type#1) = list.string[type#1] constant.list.string#0
-//     %list.bit_array#0:shape#10(list_type#2) = list.bit_array[type#2] constant.list.bit_array#0
+//     %custom#0:shape#5(custom_type#0) = constant.custom#0
+//     %bool#0:shape#6(Bool) = constant.bool#0
+//     %nil#0:shape#7(Nil) = constant.nil#0
+//     %tuple#0:shape#8(#(Int)) = constant.tuple#0
+//     %list.int#0:shape#9(list_type#0) = list.int[type#0] constant.list.int#0
+//     %list.string#0:shape#10(list_type#1) = list.string[type#1] constant.list.string#0
+//     %list.bit_array#0:shape#11(list_type#2) = list.bit_array[type#2] constant.list.bit_array#0
 //     %list.custom#0:shape#12(list_type#3) = list.custom[type#3] constant.list.custom#0
 //     %list.float#0:shape#13(list_type#4) = list.float[type#4] constant.list.float#0
 //     %list.bool#0:shape#14(list_type#5) = list.bool[type#5] constant.list.bool#0
@@ -120,34 +120,34 @@ pub fn main() {
 // constant.bool#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %bool#0:shape#5(Bool) = bool.value True
+//     %bool#0:shape#6(Bool) = bool.value True
 //     return %bool#0
 //
 // constant.nil#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %nil#0:shape#6(Nil) = nil.value
+//     %nil#0:shape#7(Nil) = nil.value
 //     return %nil#0
 //
 // constant.tuple#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
 //     %int#0:shape#0(Int) = int.value 1
-//     %tuple#0:shape#7(#(Int)) = tuple.value elements=[%int#0]
+//     %tuple#0:shape#8(#(Int)) = tuple.value elements=[%int#0]
 //     return %tuple#0
 //
 // constant.list.int#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
 //     %int#0:shape#0(Int) = int.value 1
-//     %list.int#0:shape#8(list_type#0) = list.int[type#0] value elements=[%int#0]
+//     %list.int#0:shape#9(list_type#0) = list.int[type#0] value elements=[%int#0]
 //     return %list.int#0
 //
 // constant.list.string#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
 //     %string#0:shape#2(String) = string.value "one"
-//     %list.string#0:shape#9(list_type#1) = list.string[type#1] value elements=[%string#0]
+//     %list.string#0:shape#10(list_type#1) = list.string[type#1] value elements=[%string#0]
 //     return %list.string#0
 //
 // constant.list.bit_array#0
@@ -155,7 +155,7 @@ pub fn main() {
 //   block b0 params=[]
 //     %int#0:shape#0(Int) = int.value 1
 //     %bit_array#0:shape#3(BitArray) = bit_array.value [int(%int#0, bits=8, big)]
-//     %list.bit_array#0:shape#10(list_type#2) = list.bit_array[type#2] value elements=[%bit_array#0]
+//     %list.bit_array#0:shape#11(list_type#2) = list.bit_array[type#2] value elements=[%bit_array#0]
 //     return %list.bit_array#0
 //
 // constant.list.custom#0
@@ -176,14 +176,14 @@ pub fn main() {
 // constant.list.bool#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %bool#0:shape#5(Bool) = bool.value True
+//     %bool#0:shape#6(Bool) = bool.value True
 //     %list.bool#0:shape#14(list_type#5) = list.bool[type#5] value elements=[%bool#0]
 //     return %list.bool#0
 //
 // constant.list.nil#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %nil#0:shape#6(Nil) = nil.value
+//     %nil#0:shape#7(Nil) = nil.value
 //     %list.nil#0:shape#15(list_type#6) = list.nil[type#6] value elements=[%nil#0]
 //     return %list.nil#0
 //
@@ -191,7 +191,7 @@ pub fn main() {
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
 //     %int#0:shape#0(Int) = int.value 1
-//     %tuple#0:shape#7(#(Int)) = tuple.value elements=[%int#0]
+//     %tuple#0:shape#8(#(Int)) = tuple.value elements=[%int#0]
 //     %list.tuple#0:shape#16(list_type#7) = list.tuple[type#7] value elements=[%tuple#0]
 //     return %list.tuple#0
 //
@@ -199,7 +199,7 @@ pub fn main() {
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
 //     %int#0:shape#0(Int) = int.value 1
-//     %list.int#0:shape#8(list_type#0) = list.int[type#0] value elements=[%int#0]
+//     %list.int#0:shape#9(list_type#0) = list.int[type#0] value elements=[%int#0]
 //     %list.list#0:shape#17(list_type#8) = list.list[type#8] value elements=[%list.int#0]
 //     return %list.list#0
 //

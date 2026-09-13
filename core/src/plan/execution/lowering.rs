@@ -38,7 +38,7 @@ struct SpecializationState {
 struct LoweredExecution<Profile: ExecutionProfile> {
     constants: super::constant::ProfiledConstantTable<Profile::Graph>,
     functions: super::function::FunctionTables<Profile>,
-    function_parameters: super::function::FunctionParameterCatalog,
+    function_parameters: super::function::FunctionCatalog,
     list_types: ListTypeTable,
     custom_types: CustomTypeTable,
     external_types: ExternalTypeTable,
@@ -367,6 +367,7 @@ impl LoweringContext {
             .custom_constructor(SpecializedCustomConstructor::instantiate(
                 constructor,
                 &self.substitution,
+                &self.representations,
             ))
     }
 
@@ -573,35 +574,58 @@ impl LoweringContext {
         &self.provisional_specializations[key].parameters
     }
 
-    fn function_parameter_catalog(&mut self) -> super::function::FunctionParameterCatalog {
-        let specializations = self
+    fn function_parameter_catalog(&mut self) -> super::function::FunctionCatalog {
+        let mut specializations = self
             .provisional_specializations
-            .values()
-            .map(|specialization| {
+            .iter()
+            .map(|(key, specialization)| {
+                let (return_, captures) = self.entry_templates[&key.template()]
+                    .contract(key.substitution(), &self.representations);
                 (
                     specialization.family,
                     specialization.index,
                     specialization.parameters.clone(),
+                    return_,
+                    captures,
                 )
             })
             .collect::<Vec<_>>();
+        specializations.sort_by_key(|(family, index, _, _, _)| (*family, *index));
         let entries = specializations
             .into_iter()
-            .map(|(family, index, shapes)| {
+            .map(|(family, index, shapes, return_, captures)| {
                 let mut prefix = local::ParameterPrefix::default();
                 let parameters = shapes
                     .iter()
                     .map(|shape| {
                         let (index, stored) =
                             prefix.allocate_stored(shape.clone(), &self.representations);
-                        local::stored_value_local_at(&stored, index, self)
+                        let local = local::stored_value_local_at(&stored, index, self);
+                        let shape = self.types.value_shape(&stored.to_specialized());
+                        super::graph::ParamSlot::new(local, shape)
                     })
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice();
-                (family, index, parameters)
+                    .collect::<Vec<_>>();
+                let return_ = self.types.value_shape(&return_);
+                let captures = captures
+                    .iter()
+                    .map(|shape| {
+                        let (index, stored) =
+                            prefix.allocate_stored(shape.clone(), &self.representations);
+                        let local = local::stored_value_local_at(&stored, index, self);
+                        let shape = self.types.value_shape(&stored.to_specialized());
+                        super::graph::ParamSlot::new(local, shape)
+                    })
+                    .collect();
+                super::function::parameters::FunctionCatalogEntry {
+                    family,
+                    index,
+                    parameters,
+                    return_,
+                    captures,
+                }
             })
             .collect();
-        super::function::FunctionParameterCatalog::new(entries)
+        super::function::FunctionCatalog::new(entries)
     }
 
     fn reserve_index_for(
@@ -1245,7 +1269,8 @@ impl LoweringContext {
         let outcome = functions
             .finish()
             .zip_with(constants.finish_plain(), |functions, constants| {
-                let (list_types, custom_types, external_types, value_shapes) = types.into_tables();
+                let (list_types, custom_types, external_types, value_shapes) =
+                    types.into_tables(&representations);
                 Box::new(LoweredExecution {
                     constants,
                     functions: *functions,

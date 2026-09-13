@@ -8,16 +8,18 @@ use super::{
 };
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::graph::LocalLabel;
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 use crate::plan::execution::type_::{FunctionType, ValueShapeId, ValueType};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ParamSlot {
-    local: ParamLocal,
-    shape: ValueShapeId,
+pub struct ParamSlot {
+    pub local: ParamLocal,
+    pub shape: ValueShapeId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ParamLocal {
+pub enum ParamLocal {
     Int(IntLocalId),
     Float(FloatLocalId),
     String(StringLocalId),
@@ -29,7 +31,7 @@ pub(crate) enum ParamLocal {
     Nil(NilLocalId),
     Tuple {
         local: TupleLocalId,
-        type_: Vec<ValueType>,
+        type_: Table<ValueType>,
     },
     List(ListLocal),
     IntFunction {
@@ -98,6 +100,86 @@ impl Explain for ParamSlot {
     }
 }
 
+impl Emit for ParamSlot {
+    fn emit(&self, output: &mut Rust) {
+        let Self { local, shape } = self;
+        output.structure("graph::ParamSlot", &[("local", local), ("shape", shape)]);
+    }
+}
+
+impl Emit for ParamLocal {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Int(field_0) => output.call("graph::ParamLocal::Int", &[field_0]),
+            Self::Float(field_0) => output.call("graph::ParamLocal::Float", &[field_0]),
+            Self::String(field_0) => output.call("graph::ParamLocal::String", &[field_0]),
+            Self::BitArray(field_0) => output.call("graph::ParamLocal::BitArray", &[field_0]),
+            Self::UtfCodepoint(field_0) => {
+                output.call("graph::ParamLocal::UtfCodepoint", &[field_0])
+            }
+            Self::Custom(field_0) => output.call("graph::ParamLocal::Custom", &[field_0]),
+            Self::External(field_0) => output.call("graph::ParamLocal::External", &[field_0]),
+            Self::Bool(field_0) => output.call("graph::ParamLocal::Bool", &[field_0]),
+            Self::Nil(field_0) => output.call("graph::ParamLocal::Nil", &[field_0]),
+            Self::Tuple { local, type_ } => output.structure(
+                "graph::ParamLocal::Tuple",
+                &[("local", local), ("type_", type_)],
+            ),
+            Self::List(field_0) => output.call("graph::ParamLocal::List", &[field_0]),
+            Self::IntFunction { local, type_ } => output.structure(
+                "graph::ParamLocal::IntFunction",
+                &[("local", local), ("type_", type_)],
+            ),
+            Self::FloatFunction { local, type_ } => output.structure(
+                "graph::ParamLocal::FloatFunction",
+                &[("local", local), ("type_", type_)],
+            ),
+            Self::StringFunction { local, type_ } => output.structure(
+                "graph::ParamLocal::StringFunction",
+                &[("local", local), ("type_", type_)],
+            ),
+            Self::BitArrayFunction { local, type_ } => output.structure(
+                "graph::ParamLocal::BitArrayFunction",
+                &[("local", local), ("type_", type_)],
+            ),
+            Self::UtfCodepointFunction { local, type_ } => output.structure(
+                "graph::ParamLocal::UtfCodepointFunction",
+                &[("local", local), ("type_", type_)],
+            ),
+            Self::GenericFunction(field_0) => {
+                output.call("graph::ParamLocal::GenericFunction", &[field_0])
+            }
+            Self::NeverFunction(field_0) => {
+                output.call("graph::ParamLocal::NeverFunction", &[field_0])
+            }
+            Self::CustomFunction(field_0) => {
+                output.call("graph::ParamLocal::CustomFunction", &[field_0])
+            }
+            Self::ExternalFunction(field_0) => {
+                output.call("graph::ParamLocal::ExternalFunction", &[field_0])
+            }
+            Self::BoolFunction { local, type_ } => output.structure(
+                "graph::ParamLocal::BoolFunction",
+                &[("local", local), ("type_", type_)],
+            ),
+            Self::NilFunction { local, type_ } => output.structure(
+                "graph::ParamLocal::NilFunction",
+                &[("local", local), ("type_", type_)],
+            ),
+            Self::TupleFunction { local, type_ } => output.structure(
+                "graph::ParamLocal::TupleFunction",
+                &[("local", local), ("type_", type_)],
+            ),
+            Self::ListFunction(field_0) => {
+                output.call("graph::ParamLocal::ListFunction", &[field_0])
+            }
+            Self::FunctionFunction(field_0) => {
+                output.call("graph::ParamLocal::FunctionFunction", &[field_0])
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod explain_tests {
     use crate::plan::execution::explain;
@@ -117,7 +199,9 @@ mod explain_tests {
                 .int_function(IntFunctionId(0))
                 .body()
                 .block_graph()
-                .blocks()[0]
+                .blocks()
+                .next()
+                .unwrap()
                 .instructions()[0];
             let mut context = explain::ExplainContext::new(plan, output);
             context.write(instruction.output());

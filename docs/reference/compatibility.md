@@ -143,10 +143,12 @@ package integration.
 ## Runtime And Deployment Limits
 
 - Geam currently requires a 64-bit Rust target.
-- Standalone and embedding load selected Gleam source and resolved package
-  sources; they do not compile a BEAM or JavaScript artifact.
-- The current Rust embedding workflow reads its nested `gleam/` project at
-  application initialization. A copied executable alone is not self-contained.
+- Standalone and dynamic embedding load selected Gleam source and resolved
+  package sources; they do not execute a BEAM or JavaScript artifact.
+- Dynamic Rust embedding reads its nested `gleam/` project at initialization.
+  [Prepared embedding](../embedding.md#prepare-a-program-before-building)
+  instead includes the execution plan in the binary and needs no Gleam source
+  files at runtime. Application resources remain an explicit deployment input.
 - Provider components are statically linked Rust dependencies. Geam does not
   load arbitrary dynamic libraries or choose providers at runtime.
 - Source effects exist only when the selected profile supplies their explicit

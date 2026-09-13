@@ -1,5 +1,7 @@
-mod bit_array;
-mod list;
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::{Node, Table};
+pub(in crate::plan::execution) mod bit_array;
+pub(in crate::plan::execution) mod list;
 
 pub(crate) use bit_array::{
     BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
@@ -7,43 +9,45 @@ pub(crate) use bit_array::{
 };
 pub(crate) use list::{MatchPatternList, MatchPatternListTail};
 
+use crate::plan::Text;
 use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::graph::IntegerLiteral;
 use crate::plan::execution::type_::CustomConstructorId;
-use ecow::EcoString;
-use num_bigint::BigInt;
 
-pub(crate) enum MatchPattern {
+#[derive(Clone)]
+pub enum MatchPattern {
     Bind(MatchPatternBinding),
     Discard,
-    Int(BigInt),
+    Int(IntegerLiteral),
     Float(f64),
-    String(EcoString),
+    String(Text),
     Bool(bool),
     Nil,
-    Tuple(Box<[MatchPattern]>),
+    Tuple(Table<MatchPattern>),
     List(MatchPatternList),
     BitArray(BitArrayPattern),
     Custom {
         constructor: CustomConstructorId,
-        fields: Box<[MatchPattern]>,
+        fields: Table<MatchPattern>,
     },
     StringPrefix {
-        prefix: EcoString,
+        prefix: Text,
         left: Option<MatchPatternBinding>,
         right: Option<MatchPatternBinding>,
     },
     Alias {
-        pattern: Box<MatchPattern>,
+        pattern: Node<MatchPattern>,
         binding: MatchPatternBinding,
     },
 }
 
-pub(crate) struct MatchPatternBinding {
-    index: usize,
+#[derive(Clone)]
+pub struct MatchPatternBinding {
+    pub index: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct MatchIntBindingId(usize);
+pub struct MatchIntBindingId(pub usize);
 
 impl MatchPatternBinding {
     pub(in crate::plan::execution) fn new(index: usize) -> Self {
@@ -148,6 +152,147 @@ fn write_optional_binding(
     }
 }
 
+impl Emit for MatchPattern {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Bind(field_0) => output.call("graph::MatchPattern::Bind", &[field_0]),
+            Self::Discard => output.path("graph::MatchPattern::Discard"),
+            Self::Int(field_0) => output.call("graph::MatchPattern::Int", &[field_0]),
+            Self::Float(field_0) => output.call("graph::MatchPattern::Float", &[field_0]),
+            Self::String(field_0) => output.call("graph::MatchPattern::String", &[field_0]),
+            Self::Bool(field_0) => output.call("graph::MatchPattern::Bool", &[field_0]),
+            Self::Nil => output.path("graph::MatchPattern::Nil"),
+            Self::Tuple(field_0) => output.call("graph::MatchPattern::Tuple", &[field_0]),
+            Self::List(field_0) => output.call("graph::MatchPattern::List", &[field_0]),
+            Self::BitArray(field_0) => output.call("graph::MatchPattern::BitArray", &[field_0]),
+            Self::Custom {
+                constructor,
+                fields,
+            } => output.structure(
+                "graph::MatchPattern::Custom",
+                &[("constructor", constructor), ("fields", fields)],
+            ),
+            Self::StringPrefix {
+                prefix,
+                left,
+                right,
+            } => output.structure(
+                "graph::MatchPattern::StringPrefix",
+                &[("prefix", prefix), ("left", left), ("right", right)],
+            ),
+            Self::Alias { pattern, binding } => output.structure(
+                "graph::MatchPattern::Alias",
+                &[("pattern", pattern), ("binding", binding)],
+            ),
+        }
+    }
+}
+
+impl Emit for MatchPatternBinding {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index } = self;
+        output.structure("graph::MatchPatternBinding", &[("index", index)]);
+    }
+}
+
+impl Emit for MatchIntBindingId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("graph::MatchIntBindingId", &[field_0]);
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::{
+        BitArrayPattern, CustomConstructorId, MatchIntBindingId, MatchPattern, MatchPatternBinding,
+        MatchPatternList, Node, Rust,
+    };
+    use crate::plan::execution::type_::CustomTypeId;
+
+    #[test]
+    fn emits_every_match_pattern_and_preserves_nested_bindings() {
+        assert_eq!(
+            Rust::expression(&MatchPatternBinding::new(3)),
+            "data::graph::MatchPatternBinding {index: 3,}"
+        );
+        assert_eq!(
+            Rust::expression(&MatchIntBindingId::new(2)),
+            "data::graph::MatchIntBindingId(2,)"
+        );
+        let cases = [
+            (
+                MatchPattern::Bind(MatchPatternBinding::new(3)),
+                "data::graph::MatchPattern::Bind(data::graph::MatchPatternBinding {index: 3,},)",
+            ),
+            (MatchPattern::Discard, "data::graph::MatchPattern::Discard"),
+            (
+                MatchPattern::Int(num_bigint::BigInt::from(1).into()),
+                "data::graph::MatchPattern::Int(data::graph::IntegerLiteral {sign: data::Sign::Plus,digits: data::Storage::Static(&[1,]),},)",
+            ),
+            (
+                MatchPattern::Float(-0.0),
+                "data::graph::MatchPattern::Float(f64::from_bits(9223372036854775808),)",
+            ),
+            (
+                MatchPattern::String("test".into()),
+                "data::graph::MatchPattern::String(data::Text::Static(\"test\",),)",
+            ),
+            (
+                MatchPattern::Bool(true),
+                "data::graph::MatchPattern::Bool(true,)",
+            ),
+            (MatchPattern::Nil, "data::graph::MatchPattern::Nil"),
+            (
+                MatchPattern::Tuple(vec![MatchPattern::Nil].into()),
+                "data::graph::MatchPattern::Tuple(data::Storage::Static(&[data::graph::MatchPattern::Nil,]),)",
+            ),
+            (
+                MatchPattern::List(MatchPatternList::new(vec![MatchPattern::Discard], None)),
+                "data::graph::MatchPattern::List(data::graph::MatchPatternList {elements: data::Storage::Static(&[data::graph::MatchPattern::Discard,]),tail: None,},)",
+            ),
+            (
+                MatchPattern::BitArray(BitArrayPattern::new(Vec::new())),
+                "data::graph::MatchPattern::BitArray(data::graph::BitArrayPattern {segments: data::Storage::Static(&[]),},)",
+            ),
+            (
+                MatchPattern::Custom {
+                    constructor: CustomConstructorId::new(CustomTypeId(2), 4),
+                    fields: vec![MatchPattern::Nil].into(),
+                },
+                concat!(
+                    "data::graph::MatchPattern::Custom {constructor: data::type_::CustomConstructorId {type_id: data::type_::CustomTypeId(2,),index: 4,},",
+                    "fields: data::Storage::Static(&[data::graph::MatchPattern::Nil,]),}"
+                ),
+            ),
+            (
+                MatchPattern::StringPrefix {
+                    prefix: "pre".into(),
+                    left: None,
+                    right: Some(MatchPatternBinding::new(3)),
+                },
+                concat!(
+                    "data::graph::MatchPattern::StringPrefix {prefix: data::Text::Static(\"pre\",),left: None,",
+                    "right: Some(data::graph::MatchPatternBinding {index: 3,}),}"
+                ),
+            ),
+            (
+                MatchPattern::Alias {
+                    pattern: Node::Static(&MatchPattern::Discard),
+                    binding: MatchPatternBinding::new(3),
+                },
+                concat!(
+                    "data::graph::MatchPattern::Alias {pattern: data::Storage::Static(&data::graph::MatchPattern::Discard),",
+                    "binding: data::graph::MatchPatternBinding {index: 3,},}"
+                ),
+            ),
+        ];
+        for (pattern, expected) in cases {
+            assert_eq!(Rust::expression(&pattern), expected);
+        }
+    }
+}
+
 #[cfg(test)]
 mod explain_tests {
     use super::super::Terminator;
@@ -240,7 +385,6 @@ pub fn main() {
             .body()
             .block_graph()
             .blocks()
-            .iter()
             .map(|block| block.terminator())
             .collect()
     }

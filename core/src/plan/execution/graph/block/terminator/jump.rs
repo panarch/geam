@@ -1,8 +1,10 @@
 use super::Edge;
 use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::prepared::rust::{Emit, Rust};
 
-pub(crate) struct Jump {
-    edge: Edge,
+#[derive(Clone)]
+pub struct Jump {
+    pub edge: Edge,
 }
 
 impl Jump {
@@ -19,6 +21,32 @@ impl Explain for Jump {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
         context.push_str("jump ");
         context.write(self.edge());
+    }
+}
+
+impl Emit for Jump {
+    fn emit(&self, output: &mut Rust) {
+        let Self { edge } = self;
+        output.structure("graph::Jump", &[("edge", edge)]);
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::Jump;
+    use crate::plan::execution::graph::{BlockId, Edge, IntLocalId, ParamLocal};
+    use crate::plan::execution::prepared::rust::Rust;
+
+    #[test]
+    fn emits_jump_with_edge_arguments() {
+        let value = Jump::new(Edge::new(BlockId(3), vec![ParamLocal::Int(IntLocalId(5))]));
+        assert_eq!(
+            Rust::expression(&value),
+            concat!(
+                "data::graph::Jump {edge: data::graph::Edge {target: data::graph::BlockId(3,),",
+                "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(5,),),]),},}"
+            )
+        );
     }
 }
 
@@ -82,7 +110,6 @@ pub fn main() {
             .body()
             .block_graph()
             .blocks()
-            .iter()
             .map(|block| block.terminator())
             .collect()
     }

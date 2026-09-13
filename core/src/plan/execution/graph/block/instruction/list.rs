@@ -17,23 +17,26 @@ use crate::plan::execution::graph::{
     ParameterListLocalId, StringListLocalId, StringLocalId, TupleListLocalId, TupleLocalId,
     UtfCodepointListLocalId, UtfCodepointLocalId,
 };
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, ExternalListTypeId, FloatListTypeId,
     FunctionListTypeId, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId,
     ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
 
-pub(crate) enum ParameterListInstruction {
+#[derive(Clone)]
+pub enum ParameterListInstruction {
     Empty,
     Constant(ConstantId<ParameterListLocalId>),
     Call {
         function: ParameterListFunctionId,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: ListFunctionLocal,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     TupleIndex {
@@ -51,21 +54,22 @@ pub(crate) enum ParameterListInstruction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum TypedListInstruction<Element, Local, Function, FunctionLocal = ListFunctionLocal> {
-    Value(Box<[Element]>),
+pub enum TypedListInstruction<Element: 'static, Local, Function, FunctionLocal = ListFunctionLocal>
+{
+    Value(Table<Element>),
     Constant(ConstantId<Local>),
     Spread {
-        elements: Box<[Element]>,
+        elements: Table<Element>,
         tail: Local,
     },
     Call {
         function: Function,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: FunctionLocal,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     TupleIndex {
@@ -87,9 +91,9 @@ pub(crate) enum TypedListInstruction<Element, Local, Function, FunctionLocal = L
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ExternalListInstruction {
-    type_id: ExternalListTypeId,
-    instruction: TypedListInstruction<
+pub struct ExternalListInstruction {
+    pub type_id: ExternalListTypeId,
+    pub instruction: TypedListInstruction<
         ExternalLocal,
         ExternalListLocalId,
         crate::plan::execution::function::ExternalListFunctionId,
@@ -97,7 +101,7 @@ pub(crate) struct ExternalListInstruction {
     >,
 }
 
-pub(crate) trait ExternalListInstructionView {
+pub trait ExternalListInstructionView {
     type Function;
     type FunctionLocal;
 
@@ -113,7 +117,8 @@ pub(crate) trait ExternalListInstructionView {
     >;
 }
 
-pub(crate) enum ListInstruction {
+#[derive(Clone)]
+pub enum ListInstruction {
     Parameter(ParameterListTypeId, ParameterListInstruction),
     ParameterList(
         ParameterListListTypeId,
@@ -401,6 +406,499 @@ fn write_list_values<Value: LocalLabel>(output: &mut String, values: &[Value]) {
     output.push(']');
 }
 
+impl Emit for ParameterListInstruction {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Empty => output.path("graph::ParameterListInstruction::Empty"),
+            Self::Constant(field_0) => {
+                output.call("graph::ParameterListInstruction::Constant", &[field_0])
+            }
+            Self::Call {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::ParameterListInstruction::Call",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::FunctionCall {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::ParameterListInstruction::FunctionCall",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::TupleIndex { tuple, index } => output.structure(
+                "graph::ParameterListInstruction::TupleIndex",
+                &[("tuple", tuple), ("index", index)],
+            ),
+            Self::CustomField { source, index } => output.structure(
+                "graph::ParameterListInstruction::CustomField",
+                &[("source", source), ("index", index)],
+            ),
+            Self::ListIndex { list, index } => output.structure(
+                "graph::ParameterListInstruction::ListIndex",
+                &[("list", list), ("index", index)],
+            ),
+        }
+    }
+}
+
+impl<Element: 'static, Local, Function, FunctionLocal> Emit
+    for TypedListInstruction<Element, Local, Function, FunctionLocal>
+where
+    Table<Element>: Emit,
+    ConstantId<Local>: Emit,
+    Local: Emit,
+    Function: Emit,
+    FunctionLocal: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Value(field_0) => output.call("graph::TypedListInstruction::Value", &[field_0]),
+            Self::Constant(field_0) => {
+                output.call("graph::TypedListInstruction::Constant", &[field_0])
+            }
+            Self::Spread { elements, tail } => output.structure(
+                "graph::TypedListInstruction::Spread",
+                &[("elements", elements), ("tail", tail)],
+            ),
+            Self::Call {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::TypedListInstruction::Call",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::FunctionCall {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::TypedListInstruction::FunctionCall",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::TupleIndex { tuple, index } => output.structure(
+                "graph::TypedListInstruction::TupleIndex",
+                &[("tuple", tuple), ("index", index)],
+            ),
+            Self::CustomField { source, index } => output.structure(
+                "graph::TypedListInstruction::CustomField",
+                &[("source", source), ("index", index)],
+            ),
+            Self::ListIndex { list, index } => output.structure(
+                "graph::TypedListInstruction::ListIndex",
+                &[("list", list), ("index", index)],
+            ),
+            Self::DropFirst { list, count } => output.structure(
+                "graph::TypedListInstruction::DropFirst",
+                &[("list", list), ("count", count)],
+            ),
+        }
+    }
+}
+
+impl Emit for ExternalListInstruction {
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            type_id,
+            instruction,
+        } = self;
+        output.structure(
+            "graph::ExternalListInstruction",
+            &[("type_id", type_id), ("instruction", instruction)],
+        );
+    }
+}
+
+impl Emit for ListInstruction {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Parameter(field_0, field_1) => {
+                output.call("graph::ListInstruction::Parameter", &[field_0, field_1])
+            }
+            Self::ParameterList(field_0, field_1) => {
+                output.call("graph::ListInstruction::ParameterList", &[field_0, field_1])
+            }
+            Self::Int(field_0, field_1) => {
+                output.call("graph::ListInstruction::Int", &[field_0, field_1])
+            }
+            Self::String(field_0, field_1) => {
+                output.call("graph::ListInstruction::String", &[field_0, field_1])
+            }
+            Self::BitArray(field_0, field_1) => {
+                output.call("graph::ListInstruction::BitArray", &[field_0, field_1])
+            }
+            Self::UtfCodepoint(field_0, field_1) => {
+                output.call("graph::ListInstruction::UtfCodepoint", &[field_0, field_1])
+            }
+            Self::Custom(field_0, field_1) => {
+                output.call("graph::ListInstruction::Custom", &[field_0, field_1])
+            }
+            Self::Float(field_0, field_1) => {
+                output.call("graph::ListInstruction::Float", &[field_0, field_1])
+            }
+            Self::Bool(field_0, field_1) => {
+                output.call("graph::ListInstruction::Bool", &[field_0, field_1])
+            }
+            Self::Nil(field_0, field_1) => {
+                output.call("graph::ListInstruction::Nil", &[field_0, field_1])
+            }
+            Self::Tuple(field_0, field_1) => {
+                output.call("graph::ListInstruction::Tuple", &[field_0, field_1])
+            }
+            Self::List(field_0, field_1) => {
+                output.call("graph::ListInstruction::List", &[field_0, field_1])
+            }
+            Self::Function(field_0, field_1) => {
+                output.call("graph::ListInstruction::Function", &[field_0, field_1])
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::{
+        ExternalListInstruction, ListInstruction, ParameterListInstruction, TypedListInstruction,
+    };
+    use crate::plan::execution::graph::{ExternalLocal, ExternalLocalId};
+    use crate::plan::execution::prepared::rust::Rust;
+    use crate::plan::execution::type_::list::{FunctionItemTypeId, TupleItemTypeId};
+    use crate::plan::execution::type_::{
+        BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeId, ExternalListTypeId,
+        ExternalTypeId, FloatListTypeId, FunctionListTypeId, IntListTypeId, ListListTypeId,
+        ListTypeId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId,
+        TupleListTypeId, UtfCodepointListTypeId,
+    };
+
+    #[test]
+    fn emits_parameter_list_operations_without_concrete_element_storage() {
+        use crate::plan::execution::constant::ConstantId;
+        use crate::plan::execution::function::ParameterListFunctionId;
+        use crate::plan::execution::graph::{
+            CustomLocal, CustomLocalId, ListFunctionLocal, ParamLocal,
+            ParameterListFunctionLocalId, ParameterListListLocalId, TupleLocalId,
+        };
+        use crate::plan::execution::type_::{
+            CustomValueShape, CustomValueShapeId, FunctionType, ValueType,
+        };
+        use crate::plan::{HostCallSite, SourceSpan};
+
+        let cases = [
+            (
+                ParameterListInstruction::Empty,
+                "data::graph::ParameterListInstruction::Empty",
+            ),
+            (
+                ParameterListInstruction::Constant(ConstantId::new(2)),
+                "data::graph::ParameterListInstruction::Constant(data::constant::ConstantId {index: 2,value: ::core::marker::PhantomData,},)",
+            ),
+            (
+                ParameterListInstruction::Call {
+                    function: ParameterListFunctionId::new(
+                        2,
+                        ParameterListTypeId::new(ListTypeId(3), crate::plan::TypeParameterId(4)),
+                    ),
+                    args: Vec::<ParamLocal>::new().into(),
+                    site: HostCallSite::new("example".into(), "main".into(), SourceSpan::new(3, 8)),
+                },
+                concat!(
+                    "data::graph::ParameterListInstruction::Call {function: data::function::ParameterListFunctionId {index: 2,",
+                    "type_id: data::type_::ParameterListTypeId {list_type: data::type_::ListTypeId(3,),item: data::type_::parameter_id(4,),},},",
+                    "args: data::Storage::Static(&[]),site: data::source::HostCallSite::from_static(\"example\",\"main\",",
+                    "data::source::SourceSpan::new(3,8,),),}"
+                ),
+            ),
+            (
+                ParameterListInstruction::FunctionCall {
+                    function: ListFunctionLocal::Parameter {
+                        local: ParameterListFunctionLocalId(2),
+                        type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
+                        list_type: ParameterListTypeId::new(
+                            ListTypeId(3),
+                            crate::plan::TypeParameterId(4),
+                        ),
+                    },
+                    args: Vec::new().into(),
+                    site: HostCallSite::new("example".into(), "main".into(), SourceSpan::new(3, 8)),
+                },
+                concat!(
+                    "data::graph::ParameterListInstruction::FunctionCall {function: data::graph::ListFunctionLocal::Parameter {",
+                    "local: data::graph::ParameterListFunctionLocalId(2,),type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),",
+                    "return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),},",
+                    "list_type: data::type_::ParameterListTypeId {list_type: data::type_::ListTypeId(3,),item: data::type_::parameter_id(4,),},},",
+                    "args: data::Storage::Static(&[]),site: data::source::HostCallSite::from_static(\"example\",\"main\",",
+                    "data::source::SourceSpan::new(3,8,),),}"
+                ),
+            ),
+            (
+                ParameterListInstruction::TupleIndex {
+                    tuple: TupleLocalId(2),
+                    index: 1,
+                },
+                "data::graph::ParameterListInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+            ),
+            (
+                ParameterListInstruction::CustomField {
+                    source: CustomLocal::new(
+                        CustomLocalId(2),
+                        CustomValueShape::new(CustomTypeId(3), CustomValueShapeId(4)),
+                    ),
+                    index: 1,
+                },
+                concat!(
+                    "data::graph::ParameterListInstruction::CustomField {source: data::graph::CustomLocal {id: data::graph::CustomLocalId(2,),",
+                    "shape: data::type_::CustomValueShape {type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},index: 1,}"
+                ),
+            ),
+            (
+                ParameterListInstruction::ListIndex {
+                    list: ParameterListListLocalId(2),
+                    index: 1,
+                },
+                "data::graph::ParameterListInstruction::ListIndex {list: data::graph::ParameterListListLocalId(2,),index: 1,}",
+            ),
+        ];
+        for (instruction, expected) in cases {
+            assert_eq!(Rust::expression(&instruction), expected);
+        }
+    }
+
+    #[test]
+    fn emits_typed_list_construction_calls_and_projections() {
+        use crate::plan::execution::constant::ConstantId;
+        use crate::plan::execution::function::IntListFunctionId;
+        use crate::plan::execution::graph::{
+            CustomLocal, CustomLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId,
+            ListFunctionLocal, ListListLocalId, ParamLocal, TupleLocalId,
+        };
+        use crate::plan::execution::type_::{
+            CustomValueShape, CustomValueShapeId, FunctionType, ValueType,
+        };
+        use crate::plan::{HostCallSite, SourceSpan};
+
+        let cases: [(
+            TypedListInstruction<IntLocalId, IntListLocalId, IntListFunctionId>,
+            &str,
+        ); 9] = [
+            (
+                TypedListInstruction::Value(vec![IntLocalId(2)].into()),
+                "data::graph::TypedListInstruction::Value(data::Storage::Static(&[data::graph::IntLocalId(2,),]),)",
+            ),
+            (
+                TypedListInstruction::Constant(ConstantId::new(2)),
+                "data::graph::TypedListInstruction::Constant(data::constant::ConstantId {index: 2,value: ::core::marker::PhantomData,},)",
+            ),
+            (
+                TypedListInstruction::Spread {
+                    elements: vec![IntLocalId(2)].into(),
+                    tail: IntListLocalId(5),
+                },
+                "data::graph::TypedListInstruction::Spread {elements: data::Storage::Static(&[data::graph::IntLocalId(2,),]),tail: data::graph::IntListLocalId(5,),}",
+            ),
+            (
+                TypedListInstruction::Call {
+                    function: IntListFunctionId::new(2, IntListTypeId::new(ListTypeId(3))),
+                    args: vec![ParamLocal::Int(IntLocalId(5))].into(),
+                    site: HostCallSite::new("example".into(), "main".into(), SourceSpan::new(3, 8)),
+                },
+                concat!(
+                    "data::graph::TypedListInstruction::Call {function: data::function::IntListFunctionId {index: 2,",
+                    "type_id: data::type_::IntListTypeId {list_type: data::type_::ListTypeId(3,),},},",
+                    "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(5,),),]),",
+                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",data::source::SourceSpan::new(3,8,),),}"
+                ),
+            ),
+            (
+                TypedListInstruction::FunctionCall {
+                    function: ListFunctionLocal::Int {
+                        local: IntListFunctionLocalId(2),
+                        type_: FunctionType::new(
+                            vec![ValueType::Int],
+                            ValueType::List(ListTypeId(3)),
+                        ),
+                        list_type: IntListTypeId::new(ListTypeId(3)),
+                    },
+                    args: vec![ParamLocal::Int(IntLocalId(5))].into(),
+                    site: HostCallSite::new("example".into(), "main".into(), SourceSpan::new(3, 8)),
+                },
+                concat!(
+                    "data::graph::TypedListInstruction::FunctionCall {function: data::graph::ListFunctionLocal::Int {",
+                    "local: data::graph::IntListFunctionLocalId(2,),type_: data::type_::FunctionType {arguments: data::Storage::Static(&[data::type_::ValueType::Int,]),",
+                    "return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),},",
+                    "list_type: data::type_::IntListTypeId {list_type: data::type_::ListTypeId(3,),},},",
+                    "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(5,),),]),",
+                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",data::source::SourceSpan::new(3,8,),),}"
+                ),
+            ),
+            (
+                TypedListInstruction::TupleIndex {
+                    tuple: TupleLocalId(2),
+                    index: 1,
+                },
+                "data::graph::TypedListInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+            ),
+            (
+                TypedListInstruction::CustomField {
+                    source: CustomLocal::new(
+                        CustomLocalId(2),
+                        CustomValueShape::new(CustomTypeId(3), CustomValueShapeId(4)),
+                    ),
+                    index: 1,
+                },
+                concat!(
+                    "data::graph::TypedListInstruction::CustomField {source: data::graph::CustomLocal {id: data::graph::CustomLocalId(2,),",
+                    "shape: data::type_::CustomValueShape {type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},index: 1,}"
+                ),
+            ),
+            (
+                TypedListInstruction::ListIndex {
+                    list: ListListLocalId(2),
+                    index: 1,
+                },
+                "data::graph::TypedListInstruction::ListIndex {list: data::graph::ListListLocalId(2,),index: 1,}",
+            ),
+            (
+                TypedListInstruction::DropFirst {
+                    list: IntListLocalId(2),
+                    count: 1,
+                },
+                "data::graph::TypedListInstruction::DropFirst {list: data::graph::IntListLocalId(2,),count: 1,}",
+            ),
+        ];
+        for (instruction, expected) in cases {
+            assert_eq!(Rust::expression(&instruction), expected);
+        }
+    }
+
+    #[test]
+    fn emits_every_list_storage_family_and_its_type_metadata() {
+        let cases = [
+            (
+                ListInstruction::Int(
+                    IntListTypeId::new(ListTypeId(3)),
+                    TypedListInstruction::Value(Vec::new().into()),
+                ),
+                "data::graph::ListInstruction::Int(data::type_::IntListTypeId {list_type: data::type_::ListTypeId(3,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+            ),
+            (
+                ListInstruction::String(
+                    StringListTypeId::new(ListTypeId(3)),
+                    TypedListInstruction::Value(Vec::new().into()),
+                ),
+                "data::graph::ListInstruction::String(data::type_::StringListTypeId {list_type: data::type_::ListTypeId(3,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+            ),
+            (
+                ListInstruction::BitArray(
+                    BitArrayListTypeId::new(ListTypeId(3)),
+                    TypedListInstruction::Value(Vec::new().into()),
+                ),
+                "data::graph::ListInstruction::BitArray(data::type_::BitArrayListTypeId {list_type: data::type_::ListTypeId(3,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+            ),
+            (
+                ListInstruction::UtfCodepoint(
+                    UtfCodepointListTypeId::new(ListTypeId(3)),
+                    TypedListInstruction::Value(Vec::new().into()),
+                ),
+                "data::graph::ListInstruction::UtfCodepoint(data::type_::UtfCodepointListTypeId {list_type: data::type_::ListTypeId(3,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+            ),
+            (
+                ListInstruction::Float(
+                    FloatListTypeId::new(ListTypeId(3)),
+                    TypedListInstruction::Value(Vec::new().into()),
+                ),
+                "data::graph::ListInstruction::Float(data::type_::FloatListTypeId {list_type: data::type_::ListTypeId(3,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+            ),
+            (
+                ListInstruction::Bool(
+                    BoolListTypeId::new(ListTypeId(3)),
+                    TypedListInstruction::Value(Vec::new().into()),
+                ),
+                "data::graph::ListInstruction::Bool(data::type_::BoolListTypeId {list_type: data::type_::ListTypeId(3,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+            ),
+            (
+                ListInstruction::Nil(
+                    NilListTypeId::new(ListTypeId(3)),
+                    TypedListInstruction::Value(Vec::new().into()),
+                ),
+                "data::graph::ListInstruction::Nil(data::type_::NilListTypeId {list_type: data::type_::ListTypeId(3,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+            ),
+            (
+                ListInstruction::Parameter(
+                    ParameterListTypeId::new(ListTypeId(3), crate::plan::TypeParameterId(4)),
+                    ParameterListInstruction::Empty,
+                ),
+                "data::graph::ListInstruction::Parameter(data::type_::ParameterListTypeId {list_type: data::type_::ListTypeId(3,),item: data::type_::parameter_id(4,),},data::graph::ParameterListInstruction::Empty,)",
+            ),
+            (
+                ListInstruction::ParameterList(
+                    ParameterListListTypeId::new(
+                        ListTypeId(3),
+                        ParameterListTypeId::new(ListTypeId(4), crate::plan::TypeParameterId(5)),
+                    ),
+                    TypedListInstruction::Value(Vec::new().into()),
+                ),
+                "data::graph::ListInstruction::ParameterList(data::type_::ParameterListListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ParameterListTypeId {list_type: data::type_::ListTypeId(4,),item: data::type_::parameter_id(5,),},},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+            ),
+            (
+                ListInstruction::Custom(
+                    CustomListTypeId::new(ListTypeId(3), CustomTypeId(4)),
+                    TypedListInstruction::Value(Vec::new().into()),
+                ),
+                "data::graph::ListInstruction::Custom(data::type_::CustomListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::CustomTypeId(4,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+            ),
+            (
+                ListInstruction::Tuple(
+                    TupleListTypeId {
+                        list_type: ListTypeId(3),
+                        item_type: TupleItemTypeId(4),
+                    },
+                    TypedListInstruction::Value(Vec::new().into()),
+                ),
+                "data::graph::ListInstruction::Tuple(data::type_::TupleListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::TupleItemTypeId(4,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+            ),
+            (
+                ListInstruction::List(
+                    ListListTypeId::new(ListTypeId(3), ListTypeId(4)),
+                    TypedListInstruction::Value(Vec::new().into()),
+                ),
+                "data::graph::ListInstruction::List(data::type_::ListListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ListTypeId(4,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+            ),
+            (
+                ListInstruction::Function(
+                    FunctionListTypeId {
+                        list_type: ListTypeId(3),
+                        item_type: FunctionItemTypeId(4),
+                    },
+                    TypedListInstruction::Value(Vec::new().into()),
+                ),
+                "data::graph::ListInstruction::Function(data::type_::FunctionListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::FunctionItemTypeId(4,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+            ),
+        ];
+        for (instruction, expected) in cases {
+            assert_eq!(Rust::expression(&instruction), expected);
+        }
+        let external = ExternalListInstruction::new(
+            ExternalListTypeId::new(ListTypeId(3), ExternalTypeId(4)),
+            TypedListInstruction::Value(
+                vec![ExternalLocal::new(ExternalLocalId(2), ExternalTypeId(4))].into(),
+            ),
+        );
+        assert_eq!(
+            Rust::expression(&external),
+            concat!(
+                "data::graph::ExternalListInstruction {type_id: data::type_::ExternalListTypeId {",
+                "list_type: data::type_::ListTypeId(3,),item_type: data::type_::ExternalTypeId(4,),},",
+                "instruction: data::graph::TypedListInstruction::Value(data::Storage::Static(&[",
+                "data::graph::ExternalLocal {id: data::graph::ExternalLocalId(2,),type_id: data::type_::ExternalTypeId(4,),},]),),}"
+            )
+        );
+    }
+}
+
 #[cfg(test)]
 mod external_list_view_tests {
     use super::{ExternalListInstruction, ExternalListInstructionView, TypedListInstruction};
@@ -414,7 +912,7 @@ mod external_list_view_tests {
         let instruction = ExternalListInstruction::new(
             list_type,
             TypedListInstruction::Value(
-                vec![ExternalLocal::new(ExternalLocalId(2), external_type)].into_boxed_slice(),
+                vec![ExternalLocal::new(ExternalLocalId(2), external_type)].into(),
             ),
         );
 
@@ -422,7 +920,7 @@ mod external_list_view_tests {
         assert_eq!(
             instruction.instruction(),
             &TypedListInstruction::Value(
-                vec![ExternalLocal::new(ExternalLocalId(2), external_type)].into_boxed_slice(),
+                vec![ExternalLocal::new(ExternalLocalId(2), external_type)].into(),
             ),
         );
     }
@@ -486,7 +984,7 @@ pub fn main() {
             let instruction = ExternalListInstruction::new(
                 ExternalListTypeId::new(ListTypeId::new(7), external_type),
                 TypedListInstruction::Value(
-                    vec![ExternalLocal::new(ExternalLocalId(2), external_type)].into_boxed_slice(),
+                    vec![ExternalLocal::new(ExternalLocalId(2), external_type)].into(),
                 ),
             );
             let mut context = explain::ExplainContext::new(plan, output);

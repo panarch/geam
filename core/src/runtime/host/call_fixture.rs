@@ -292,7 +292,7 @@ impl HostCallRuntime<TestHostProfile> for TestHostCallRuntime<'_> {
         &self,
         descriptor: &crate::host::HostTypeDescriptor,
     ) -> Option<crate::plan::ValueType> {
-        descriptor.resolve(&[])
+        descriptor.resolve(&|_| None)
     }
 
     fn retain_stored(&self, _value: HostScopedValue) -> crate::runtime::StoredRuntimeValue {

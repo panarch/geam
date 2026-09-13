@@ -356,15 +356,16 @@ fn plan_total_binding_pattern(
                 .collect::<Result<Vec<_>, _>>()
                 .map(TotalBindingPattern::tuple)
         }
-        (BindingPattern::ListTail { tail, element_type }, expected @ ValueShape::List(_)) => {
+        (BindingPattern::ListTail { tail, element_type }, ValueShape::List(item_shape)) => {
             crate::planner::pattern::validate_pattern_value_type(
                 ValueType::List(Box::new(element_type.clone())),
-                expected.value_type(),
+                ValueType::List(Box::new(item_shape.value_type())),
             )?;
             let tail = match tail {
                 ListTailBinding::Named(name) => ListAssertTail::bind(
-                    context.define_list_local(name.clone(), element_type.clone()),
+                    context.define_list_local_shape(name.clone(), item_shape.as_ref().clone()),
                     name,
+                    *item_shape,
                 ),
                 ListTailBinding::Discard => ListAssertTail::Ignore,
             };
@@ -1385,7 +1386,11 @@ mod tests {
             ),
             Ok(TotalBindingPattern::list(
                 ValueType::Int,
-                ListAssertTail::bind(ListLocal::int(IntListLocalId(0)), "rest".into(),),
+                ListAssertTail::bind(
+                    ListLocal::int(IntListLocalId(0)),
+                    "rest".into(),
+                    ValueShape::Int
+                ),
             )),
         );
         assert_eq!(

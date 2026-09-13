@@ -18,32 +18,35 @@ use crate::plan::execution::function::{
 use crate::plan::execution::graph::{
     BlockGraphExitExplanation, BlockGraphExitId, LocalLabel, ParamSlot, ProfiledBlockGraph,
 };
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 
-pub(crate) struct ProfiledFunctionBody<Return, TailCall, Graph: ExecutionGraphProfile> {
-    block_graph: ProfiledBlockGraph<Graph>,
-    exits: Box<[FunctionExit<Return, TailCall>]>,
+pub struct ProfiledFunctionBody<Return: 'static, TailCall: 'static, Graph: ExecutionGraphProfile> {
+    pub block_graph: ProfiledBlockGraph<Graph>,
+    pub exits: Table<FunctionExit<Return, TailCall>>,
 }
 
 pub(crate) type FunctionBody<Return, TailCall> =
     ProfiledFunctionBody<Return, TailCall, HostedExecutionGraph>;
 
-pub(crate) enum FunctionExit<Return, TailCall> {
+pub enum FunctionExit<Return, TailCall> {
     Return(Return),
     TailCall {
         function: TailCall,
-        args: Box<[crate::plan::execution::graph::ParamLocal]>,
+        args: Table<crate::plan::execution::graph::ParamLocal>,
     },
 }
 
-pub(crate) trait FunctionBodyOwner {
-    type Return;
-    type TailCall;
+pub trait FunctionBodyOwner {
+    type Return: 'static;
+    type TailCall: 'static;
     type Graph: ExecutionGraphProfile;
 
     fn function_body(&self) -> &ProfiledFunctionBody<Self::Return, Self::TailCall, Self::Graph>;
 }
 
-struct FunctionExitExplanation<'a, Return, TailCall, Graph: ExecutionGraphProfile> {
+struct FunctionExitExplanation<'a, Return: 'static, TailCall: 'static, Graph: ExecutionGraphProfile>
+{
     body: &'a ProfiledFunctionBody<Return, TailCall, Graph>,
     family: &'static str,
 }
@@ -51,12 +54,9 @@ struct FunctionExitExplanation<'a, Return, TailCall, Graph: ExecutionGraphProfil
 impl<Return, TailCall, Graph: ExecutionGraphProfile> ProfiledFunctionBody<Return, TailCall, Graph> {
     pub(in crate::plan::execution) fn from_parts(
         block_graph: ProfiledBlockGraph<Graph>,
-        exits: Vec<FunctionExit<Return, TailCall>>,
+        exits: Table<FunctionExit<Return, TailCall>>,
     ) -> Self {
-        Self {
-            block_graph,
-            exits: exits.into_boxed_slice(),
-        }
+        Self { block_graph, exits }
     }
 
     pub(crate) fn block_graph(&self) -> &ProfiledBlockGraph<Graph> {
@@ -71,7 +71,7 @@ impl<Return, TailCall, Graph: ExecutionGraphProfile> ProfiledFunctionBody<Return
         self,
     ) -> (
         ProfiledBlockGraph<Graph>,
-        Box<[FunctionExit<Return, TailCall>]>,
+        Table<FunctionExit<Return, TailCall>>,
     ) {
         (self.block_graph, self.exits)
     }
@@ -377,6 +377,37 @@ where
             Self::Tuple { id, .. } => id.0,
             Self::List { id, .. } => id.0,
             Self::Function { id, .. } => id.0,
+        }
+    }
+}
+
+impl<Return: 'static, TailCall: 'static, Graph: ExecutionGraphProfile> Emit
+    for ProfiledFunctionBody<Return, TailCall, Graph>
+where
+    ProfiledBlockGraph<Graph>: Emit,
+    Table<FunctionExit<Return, TailCall>>: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        let Self { block_graph, exits } = self;
+        output.structure(
+            "function::ProfiledFunctionBody",
+            &[("block_graph", block_graph), ("exits", exits)],
+        );
+    }
+}
+
+impl<Return, TailCall> Emit for FunctionExit<Return, TailCall>
+where
+    Return: Emit,
+    TailCall: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Return(field_0) => output.call("function::FunctionExit::Return", &[field_0]),
+            Self::TailCall { function, args } => output.structure(
+                "function::FunctionExit::TailCall",
+                &[("function", function), ("args", args)],
+            ),
         }
     }
 }

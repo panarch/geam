@@ -152,6 +152,11 @@ path = "tests/future_builtins.rs"
 required-features = ["embedding", "provider", "builtins"]
 
 [[test]]
+name = "prepared_embedding"
+path = "tests/prepared_embedding.rs"
+required-features = ["cli", "embedding"]
+
+[[test]]
 name = "provider_examples"
 path = "tests/provider_examples.rs"
 required-features = ["cli"]

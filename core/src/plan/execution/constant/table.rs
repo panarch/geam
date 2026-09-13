@@ -12,72 +12,41 @@ use crate::plan::execution::graph::{
     ParameterListListLocalId, ParameterListLocalId, StringListLocalId, StringLocalId,
     TupleListLocalId, TupleLocalId, UtfCodepointListLocalId,
 };
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 
-pub(crate) struct ProfiledConstantTable<Graph: ExecutionGraphProfile> {
-    ints: Vec<ProfiledConstantProgram<IntLocalId, Graph>>,
-    strings: Vec<ProfiledConstantProgram<StringLocalId, Graph>>,
-    bit_arrays: Vec<ProfiledConstantProgram<BitArrayLocalId, Graph>>,
-    customs: Vec<ProfiledConstantProgram<CustomLocal, Graph>>,
-    floats: Vec<ProfiledConstantProgram<FloatLocalId, Graph>>,
-    bools: Vec<ProfiledConstantProgram<BoolLocalId, Graph>>,
-    nils: Vec<ProfiledConstantProgram<NilLocalId, Graph>>,
-    tuples: Vec<ProfiledConstantProgram<TupleLocalId, Graph>>,
-    parameter_lists: Vec<ProfiledConstantProgram<ParameterListLocalId, Graph>>,
-    parameter_list_lists: Vec<ProfiledConstantProgram<ParameterListListLocalId, Graph>>,
-    int_lists: Vec<ProfiledConstantProgram<IntListLocalId, Graph>>,
-    string_lists: Vec<ProfiledConstantProgram<StringListLocalId, Graph>>,
-    bit_array_lists: Vec<ProfiledConstantProgram<BitArrayListLocalId, Graph>>,
-    utf_codepoint_lists: Vec<ProfiledConstantProgram<UtfCodepointListLocalId, Graph>>,
-    custom_lists: Vec<ProfiledConstantProgram<CustomListLocalId, Graph>>,
-    external_lists: Vec<ProfiledConstantProgram<ExternalListLocalId, Graph>>,
-    float_lists: Vec<ProfiledConstantProgram<FloatListLocalId, Graph>>,
-    bool_lists: Vec<ProfiledConstantProgram<BoolListLocalId, Graph>>,
-    nil_lists: Vec<ProfiledConstantProgram<NilListLocalId, Graph>>,
-    tuple_lists: Vec<ProfiledConstantProgram<TupleListLocalId, Graph>>,
-    list_lists: Vec<ProfiledConstantProgram<ListListLocalId, Graph>>,
-    function_lists: Vec<ProfiledConstantProgram<FunctionListLocalId, Graph>>,
-    functions: Vec<ProfiledConstantProgram<FunctionLocal, Graph>>,
-}
-
-impl<Graph: ExecutionGraphProfile> Default for ProfiledConstantTable<Graph> {
-    fn default() -> Self {
-        Self {
-            ints: Vec::new(),
-            strings: Vec::new(),
-            bit_arrays: Vec::new(),
-            customs: Vec::new(),
-            floats: Vec::new(),
-            bools: Vec::new(),
-            nils: Vec::new(),
-            tuples: Vec::new(),
-            parameter_lists: Vec::new(),
-            parameter_list_lists: Vec::new(),
-            int_lists: Vec::new(),
-            string_lists: Vec::new(),
-            bit_array_lists: Vec::new(),
-            utf_codepoint_lists: Vec::new(),
-            custom_lists: Vec::new(),
-            external_lists: Vec::new(),
-            float_lists: Vec::new(),
-            bool_lists: Vec::new(),
-            nil_lists: Vec::new(),
-            tuple_lists: Vec::new(),
-            list_lists: Vec::new(),
-            function_lists: Vec::new(),
-            functions: Vec::new(),
-        }
-    }
+pub struct ProfiledConstantTable<Graph: ExecutionGraphProfile> {
+    pub ints: Table<ProfiledConstantProgram<IntLocalId, Graph>>,
+    pub strings: Table<ProfiledConstantProgram<StringLocalId, Graph>>,
+    pub bit_arrays: Table<ProfiledConstantProgram<BitArrayLocalId, Graph>>,
+    pub customs: Table<ProfiledConstantProgram<CustomLocal, Graph>>,
+    pub floats: Table<ProfiledConstantProgram<FloatLocalId, Graph>>,
+    pub bools: Table<ProfiledConstantProgram<BoolLocalId, Graph>>,
+    pub nils: Table<ProfiledConstantProgram<NilLocalId, Graph>>,
+    pub tuples: Table<ProfiledConstantProgram<TupleLocalId, Graph>>,
+    pub parameter_lists: Table<ProfiledConstantProgram<ParameterListLocalId, Graph>>,
+    pub parameter_list_lists: Table<ProfiledConstantProgram<ParameterListListLocalId, Graph>>,
+    pub int_lists: Table<ProfiledConstantProgram<IntListLocalId, Graph>>,
+    pub string_lists: Table<ProfiledConstantProgram<StringListLocalId, Graph>>,
+    pub bit_array_lists: Table<ProfiledConstantProgram<BitArrayListLocalId, Graph>>,
+    pub utf_codepoint_lists: Table<ProfiledConstantProgram<UtfCodepointListLocalId, Graph>>,
+    pub custom_lists: Table<ProfiledConstantProgram<CustomListLocalId, Graph>>,
+    pub external_lists: Table<ProfiledConstantProgram<ExternalListLocalId, Graph>>,
+    pub float_lists: Table<ProfiledConstantProgram<FloatListLocalId, Graph>>,
+    pub bool_lists: Table<ProfiledConstantProgram<BoolListLocalId, Graph>>,
+    pub nil_lists: Table<ProfiledConstantProgram<NilListLocalId, Graph>>,
+    pub tuple_lists: Table<ProfiledConstantProgram<TupleListLocalId, Graph>>,
+    pub list_lists: Table<ProfiledConstantProgram<ListListLocalId, Graph>>,
+    pub function_lists: Table<ProfiledConstantProgram<FunctionListLocalId, Graph>>,
+    pub functions: Table<ProfiledConstantProgram<FunctionLocal, Graph>>,
 }
 
 pub(crate) type ConstantTable = ProfiledConstantTable<HostedExecutionGraph>;
 
-pub(crate) trait ConstantValue: Sized {
+pub(crate) trait ConstantValue: Sized + 'static {
     fn programs<Graph: ExecutionGraphProfile>(
         table: &ProfiledConstantTable<Graph>,
     ) -> &[ProfiledConstantProgram<Self, Graph>];
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>>;
 }
 
 impl ConstantValue for IntLocalId {
@@ -85,12 +54,6 @@ impl ConstantValue for IntLocalId {
         table: &ProfiledConstantTable<Graph>,
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.ints
-    }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.ints
     }
 }
 
@@ -100,12 +63,6 @@ impl ConstantValue for StringLocalId {
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.strings
     }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.strings
-    }
 }
 
 impl ConstantValue for BitArrayLocalId {
@@ -113,12 +70,6 @@ impl ConstantValue for BitArrayLocalId {
         table: &ProfiledConstantTable<Graph>,
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.bit_arrays
-    }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.bit_arrays
     }
 }
 
@@ -128,12 +79,6 @@ impl ConstantValue for CustomLocal {
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.customs
     }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.customs
-    }
 }
 
 impl ConstantValue for FloatLocalId {
@@ -141,12 +86,6 @@ impl ConstantValue for FloatLocalId {
         table: &ProfiledConstantTable<Graph>,
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.floats
-    }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.floats
     }
 }
 
@@ -156,12 +95,6 @@ impl ConstantValue for BoolLocalId {
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.bools
     }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.bools
-    }
 }
 
 impl ConstantValue for NilLocalId {
@@ -169,12 +102,6 @@ impl ConstantValue for NilLocalId {
         table: &ProfiledConstantTable<Graph>,
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.nils
-    }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.nils
     }
 }
 
@@ -184,12 +111,6 @@ impl ConstantValue for TupleLocalId {
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.tuples
     }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.tuples
-    }
 }
 
 impl ConstantValue for ParameterListLocalId {
@@ -197,12 +118,6 @@ impl ConstantValue for ParameterListLocalId {
         table: &ProfiledConstantTable<Graph>,
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.parameter_lists
-    }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.parameter_lists
     }
 }
 
@@ -212,12 +127,6 @@ impl ConstantValue for ParameterListListLocalId {
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.parameter_list_lists
     }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.parameter_list_lists
-    }
 }
 
 impl ConstantValue for IntListLocalId {
@@ -225,12 +134,6 @@ impl ConstantValue for IntListLocalId {
         table: &ProfiledConstantTable<Graph>,
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.int_lists
-    }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.int_lists
     }
 }
 
@@ -240,12 +143,6 @@ impl ConstantValue for StringListLocalId {
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.string_lists
     }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.string_lists
-    }
 }
 
 impl ConstantValue for BitArrayListLocalId {
@@ -253,12 +150,6 @@ impl ConstantValue for BitArrayListLocalId {
         table: &ProfiledConstantTable<Graph>,
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.bit_array_lists
-    }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.bit_array_lists
     }
 }
 
@@ -268,12 +159,6 @@ impl ConstantValue for UtfCodepointListLocalId {
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.utf_codepoint_lists
     }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.utf_codepoint_lists
-    }
 }
 
 impl ConstantValue for CustomListLocalId {
@@ -281,12 +166,6 @@ impl ConstantValue for CustomListLocalId {
         table: &ProfiledConstantTable<Graph>,
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.custom_lists
-    }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.custom_lists
     }
 }
 
@@ -296,12 +175,6 @@ impl ConstantValue for ExternalListLocalId {
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.external_lists
     }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.external_lists
-    }
 }
 
 impl ConstantValue for FloatListLocalId {
@@ -309,12 +182,6 @@ impl ConstantValue for FloatListLocalId {
         table: &ProfiledConstantTable<Graph>,
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.float_lists
-    }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.float_lists
     }
 }
 
@@ -324,12 +191,6 @@ impl ConstantValue for BoolListLocalId {
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.bool_lists
     }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.bool_lists
-    }
 }
 
 impl ConstantValue for NilListLocalId {
@@ -337,12 +198,6 @@ impl ConstantValue for NilListLocalId {
         table: &ProfiledConstantTable<Graph>,
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.nil_lists
-    }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.nil_lists
     }
 }
 
@@ -352,12 +207,6 @@ impl ConstantValue for TupleListLocalId {
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.tuple_lists
     }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.tuple_lists
-    }
 }
 
 impl ConstantValue for ListListLocalId {
@@ -365,12 +214,6 @@ impl ConstantValue for ListListLocalId {
         table: &ProfiledConstantTable<Graph>,
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.list_lists
-    }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.list_lists
     }
 }
 
@@ -380,12 +223,6 @@ impl ConstantValue for FunctionListLocalId {
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.function_lists
     }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.function_lists
-    }
 }
 
 impl ConstantValue for FunctionLocal {
@@ -394,25 +231,9 @@ impl ConstantValue for FunctionLocal {
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.functions
     }
-
-    fn programs_mut<Graph: ExecutionGraphProfile>(
-        table: &mut ProfiledConstantTable<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.functions
-    }
 }
 
 impl<Graph: ExecutionGraphProfile> ProfiledConstantTable<Graph> {
-    pub(in crate::plan::execution) fn push<Return: ConstantValue>(
-        &mut self,
-        program: ProfiledConstantProgram<Return, Graph>,
-    ) -> ConstantId<Return> {
-        let programs = Return::programs_mut(self);
-        let id = ConstantId::new(programs.len());
-        programs.push(program);
-        id
-    }
-
     pub(crate) fn get<Return: ConstantValue>(
         &self,
         id: ConstantId<Return>,
@@ -484,6 +305,89 @@ fn write_table<Value, Graph>(
     }
 }
 
+impl<Graph: ExecutionGraphProfile> Emit for ProfiledConstantTable<Graph>
+where
+    Table<ProfiledConstantProgram<IntLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<StringLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<BitArrayLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<CustomLocal, Graph>>: Emit,
+    Table<ProfiledConstantProgram<FloatLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<BoolLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<NilLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<TupleLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<ParameterListLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<ParameterListListLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<IntListLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<StringListLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<BitArrayListLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<UtfCodepointListLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<CustomListLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<ExternalListLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<FloatListLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<BoolListLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<NilListLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<TupleListLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<ListListLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<FunctionListLocalId, Graph>>: Emit,
+    Table<ProfiledConstantProgram<FunctionLocal, Graph>>: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            ints,
+            strings,
+            bit_arrays,
+            customs,
+            floats,
+            bools,
+            nils,
+            tuples,
+            parameter_lists,
+            parameter_list_lists,
+            int_lists,
+            string_lists,
+            bit_array_lists,
+            utf_codepoint_lists,
+            custom_lists,
+            external_lists,
+            float_lists,
+            bool_lists,
+            nil_lists,
+            tuple_lists,
+            list_lists,
+            function_lists,
+            functions,
+        } = self;
+        output.structure(
+            "constant::ProfiledConstantTable",
+            &[
+                ("ints", ints),
+                ("strings", strings),
+                ("bit_arrays", bit_arrays),
+                ("customs", customs),
+                ("floats", floats),
+                ("bools", bools),
+                ("nils", nils),
+                ("tuples", tuples),
+                ("parameter_lists", parameter_lists),
+                ("parameter_list_lists", parameter_list_lists),
+                ("int_lists", int_lists),
+                ("string_lists", string_lists),
+                ("bit_array_lists", bit_array_lists),
+                ("utf_codepoint_lists", utf_codepoint_lists),
+                ("custom_lists", custom_lists),
+                ("external_lists", external_lists),
+                ("float_lists", float_lists),
+                ("bool_lists", bool_lists),
+                ("nil_lists", nil_lists),
+                ("tuple_lists", tuple_lists),
+                ("list_lists", list_lists),
+                ("function_lists", function_lists),
+                ("functions", functions),
+            ],
+        );
+    }
+}
+
 #[cfg(test)]
 mod explain_tests {
     use crate::plan::execution::explain;
@@ -514,7 +418,7 @@ pub fn main() { #(one, enabled) }
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
             let mut context = explain::ExplainContext::new(plan, output);
-            context.write(&plan.program.common.constants);
+            context.write(plan.program.common.constants.as_ref());
         });
     }
 }

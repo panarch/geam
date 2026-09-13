@@ -44,10 +44,10 @@ impl<Subject> ExecutionError<Subject> {
         failure: crate::HostFailure,
     ) -> Self {
         Self::Host(Box::new(HostError::new(
-            function.package().clone(),
-            function.module().clone(),
-            function.name().clone(),
-            function.signature().clone(),
+            function.package().into(),
+            function.module().into(),
+            function.name().into(),
+            function.signature(),
             failure,
             site,
             source_context,
@@ -60,10 +60,10 @@ impl<Subject> ExecutionError<Subject> {
         failure: crate::HostFailure,
     ) -> Self {
         Self::Host(Box::new(HostError::new_from_host(
-            function.package().clone(),
-            function.module().clone(),
-            function.name().clone(),
-            function.signature().clone(),
+            function.package().into(),
+            function.module().into(),
+            function.name().into(),
+            function.signature(),
             failure,
             caller,
         )))

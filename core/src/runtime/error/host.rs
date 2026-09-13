@@ -132,7 +132,7 @@ impl HostLocation {
         }
     }
 
-    pub fn path(&self) -> Option<&Utf8PathBuf> {
+    pub fn path(&self) -> Option<&camino::Utf8Path> {
         match self {
             Self::Resolved { path, .. } => Some(path),
             Self::Site(_) | Self::Host { .. } => None,
@@ -166,7 +166,7 @@ impl HostLocation {
                     + 1;
                 Self::Resolved {
                     site,
-                    path: context.path().clone(),
+                    path: context.path().to_owned(),
                     line,
                 }
             }
@@ -214,10 +214,10 @@ impl HostCallOrigin {
 
     pub(crate) fn host(function: &crate::plan::execution::host::HostedFunctionMetadata) -> Self {
         Self::Host(HostOrigin::new(
-            function.package().clone(),
-            function.module().clone(),
-            function.name().clone(),
-            function.signature().clone(),
+            function.package().into(),
+            function.module().into(),
+            function.name().into(),
+            function.signature(),
         ))
     }
 

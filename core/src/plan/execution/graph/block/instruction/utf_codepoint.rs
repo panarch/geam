@@ -4,16 +4,19 @@ use crate::plan::execution::function::UtfCodepointFunctionId;
 use crate::plan::execution::graph::{
     CustomLocal, ParamLocal, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
 };
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 
-pub(crate) enum UtfCodepointInstruction {
+#[derive(Clone)]
+pub enum UtfCodepointInstruction {
     Call {
         function: UtfCodepointFunctionId,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: UtfCodepointFunctionLocalId,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     TupleIndex {
@@ -49,6 +52,118 @@ impl Explain for UtfCodepointInstruction {
             UtfCodepointInstruction::ListIndex { list, index } => {
                 write_projection(output, "utf_codepoint.list_index", list, *index);
             }
+        }
+    }
+}
+
+impl Emit for UtfCodepointInstruction {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Call {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::UtfCodepointInstruction::Call",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::FunctionCall {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::UtfCodepointInstruction::FunctionCall",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::TupleIndex { tuple, index } => output.structure(
+                "graph::UtfCodepointInstruction::TupleIndex",
+                &[("tuple", tuple), ("index", index)],
+            ),
+            Self::CustomField { source, index } => output.structure(
+                "graph::UtfCodepointInstruction::CustomField",
+                &[("source", source), ("index", index)],
+            ),
+            Self::ListIndex { list, index } => output.structure(
+                "graph::UtfCodepointInstruction::ListIndex",
+                &[("list", list), ("index", index)],
+            ),
+        }
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::UtfCodepointInstruction;
+    use crate::plan::execution::function::UtfCodepointFunctionId;
+    use crate::plan::execution::graph::{
+        CustomLocal, CustomLocalId, ParamLocal, TupleLocalId, UtfCodepointFunctionLocalId,
+        UtfCodepointListLocalId, UtfCodepointLocalId,
+    };
+    use crate::plan::execution::prepared::rust::Rust;
+    use crate::plan::execution::type_::{CustomTypeId, CustomValueShape, CustomValueShapeId};
+    use crate::plan::{HostCallSite, SourceSpan};
+
+    #[test]
+    fn emits_every_utf_codepoint_instruction_with_its_operands_and_source_site() {
+        let site = HostCallSite::new("example".into(), "main".into(), SourceSpan::new(3, 8));
+        let cases = [
+            (
+                UtfCodepointInstruction::Call {
+                    function: UtfCodepointFunctionId(2),
+                    args: vec![ParamLocal::UtfCodepoint(UtfCodepointLocalId(5))].into(),
+                    site: site.clone(),
+                },
+                concat!(
+                    "data::graph::UtfCodepointInstruction::Call {function: data::function::UtfCodepointFunctionId(2,),",
+                    "args: data::Storage::Static(&[data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(5,),),]),",
+                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
+                    "data::source::SourceSpan::new(3,8,),),}"
+                ),
+            ),
+            (
+                UtfCodepointInstruction::FunctionCall {
+                    function: UtfCodepointFunctionLocalId(2),
+                    args: vec![ParamLocal::UtfCodepoint(UtfCodepointLocalId(5))].into(),
+                    site,
+                },
+                concat!(
+                    "data::graph::UtfCodepointInstruction::FunctionCall {function: data::graph::UtfCodepointFunctionLocalId(2,),",
+                    "args: data::Storage::Static(&[data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(5,),),]),",
+                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
+                    "data::source::SourceSpan::new(3,8,),),}"
+                ),
+            ),
+            (
+                UtfCodepointInstruction::TupleIndex {
+                    tuple: TupleLocalId(2),
+                    index: 1,
+                },
+                "data::graph::UtfCodepointInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+            ),
+            (
+                UtfCodepointInstruction::CustomField {
+                    source: CustomLocal::new(
+                        CustomLocalId(2),
+                        CustomValueShape::new(CustomTypeId(3), CustomValueShapeId(4)),
+                    ),
+                    index: 1,
+                },
+                concat!(
+                    "data::graph::UtfCodepointInstruction::CustomField {source: data::graph::CustomLocal {",
+                    "id: data::graph::CustomLocalId(2,),shape: data::type_::CustomValueShape {",
+                    "type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},index: 1,}"
+                ),
+            ),
+            (
+                UtfCodepointInstruction::ListIndex {
+                    list: UtfCodepointListLocalId(2),
+                    index: 1,
+                },
+                "data::graph::UtfCodepointInstruction::ListIndex {list: data::graph::UtfCodepointListLocalId(2,),index: 1,}",
+            ),
+        ];
+        for (instruction, expected) in cases {
+            assert_eq!(Rust::expression(&instruction), expected);
         }
     }
 }
@@ -118,7 +233,7 @@ pub fn main() {
         explain::assert_rendered(source, expected, |plan, output| {
             let graph = plan.tuple_function(TupleFunctionId(0)).body().block_graph();
             let mut first = true;
-            for instruction in graph.blocks().iter().flat_map(|block| block.instructions()) {
+            for instruction in graph.blocks().flat_map(|block| block.instructions()) {
                 if let ProfiledInstructionKind::UtfCodepoint(instruction) = instruction.kind() {
                     write_separator(output, &mut first);
                     let mut context = explain::ExplainContext::new(plan, output);

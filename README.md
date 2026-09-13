@@ -90,6 +90,8 @@ explains each part of this lifecycle. The executable [embedding
 examples](examples/embedding)
 then add structured data, Gleam packages, IO routed through Rust, an external
 provider, repeated calls, and async Rust work one step at a time.
+For an executable that loads its Gleam program without source files, see
+[prepared embedding](docs/embedding.md#prepare-a-program-before-building).
 
 ### Add Rust to a Gleam package
 

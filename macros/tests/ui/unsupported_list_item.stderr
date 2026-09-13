@@ -34,18 +34,18 @@ error[E0599]: the method `len` exists for struct `geam_core::List<i64, geam_core
    = note: the following trait bounds were not satisfied:
            `i64: HostType`
 
-error[E0277]: the trait bound `HostListType<i64>: host::function::argument::HostScopedArgument` is not satisfied
+error[E0277]: the trait bound `HostListType<i64>: geam_core::host::function::argument::HostScopedArgument` is not satisfied
   --> tests/ui/unsupported_list_item.rs:10:1
    |
 10 | #[geam_macros::module(path = "lists", crate_path = geam_core)]
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `host::function::argument::HostScopedArgument` is not implemented for `HostListType<i64>`
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `geam_core::host::function::argument::HostScopedArgument` is not implemented for `HostListType<i64>`
    |
-help: the trait `host::function::argument::HostScopedArgument` is implemented for `HostListType<Item>`
+help: the trait `geam_core::host::function::argument::HostScopedArgument` is implemented for `HostListType<Item>`
   --> $WORKSPACE/core/src/host/function/argument.rs
    |
    | impl<Item: HostAbiType> HostScopedArgument for HostListType<Item> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   = note: required for `for<'__geam_call> fn(HostCall<'__geam_call, Profile, __GeamProvider, BigInt>, HostList<'__geam_call, i64>) -> Result<HostCallCompletion<'__geam_call, BigInt>, HostCallError> {__geam_host_length::<Profile>}` to implement `host::function::adapter::ScopedHostFunctionAdapter<Profile, __GeamProvider, (HostListType<i64>,), BigInt>`
+   = note: required for `for<'__geam_call> fn(HostCall<'__geam_call, Profile, __GeamProvider, BigInt>, HostList<'__geam_call, i64>) -> Result<HostCallCompletion<'__geam_call, BigInt>, HostCallError> {__geam_host_length::<Profile>}` to implement `geam_core::host::function::adapter::ScopedHostFunctionAdapter<Profile, __GeamProvider, (HostListType<i64>,), BigInt>`
    = note: required for `for<'__geam_call> fn(HostCall<'__geam_call, Profile, __GeamProvider, BigInt>, HostList<'__geam_call, i64>) -> Result<HostCallCompletion<'__geam_call, BigInt>, HostCallError> {__geam_host_length::<Profile>}` to implement `ScopedHostFunction<Profile, __GeamProvider, (HostListType<i64>,), BigInt>`
 note: required by a bound in `HostProviderModule::<Profile>::with_scoped_function`
   --> $WORKSPACE/core/src/host/module.rs
@@ -68,9 +68,9 @@ help: the trait `HostType` is implemented for `f64`
    |
    | impl HostType for f64 {
    | ^^^^^^^^^^^^^^^^^^^^^
-   = note: required for `i64` to implement `host::type_::HostAbiType`
+   = note: required for `i64` to implement `geam_core::host::type_::HostAbiType`
    = note: required for `HostListType<i64>` to implement `HostType`
-   = note: required for `for<'__geam_call> fn(HostCall<'__geam_call, Profile, __GeamProvider, BigInt>, HostList<'__geam_call, i64>) -> Result<HostCallCompletion<'__geam_call, BigInt>, HostCallError> {__geam_host_length::<Profile>}` to implement `host::function::adapter::ScopedHostFunctionAdapter<Profile, __GeamProvider, (HostListType<i64>,), BigInt>`
+   = note: required for `for<'__geam_call> fn(HostCall<'__geam_call, Profile, __GeamProvider, BigInt>, HostList<'__geam_call, i64>) -> Result<HostCallCompletion<'__geam_call, BigInt>, HostCallError> {__geam_host_length::<Profile>}` to implement `geam_core::host::function::adapter::ScopedHostFunctionAdapter<Profile, __GeamProvider, (HostListType<i64>,), BigInt>`
    = note: required for `for<'__geam_call> fn(HostCall<'__geam_call, Profile, __GeamProvider, BigInt>, HostList<'__geam_call, i64>) -> Result<HostCallCompletion<'__geam_call, BigInt>, HostCallError> {__geam_host_length::<Profile>}` to implement `ScopedHostFunction<Profile, __GeamProvider, (HostListType<i64>,), BigInt>`
 note: required by a bound in `HostProviderModule::<Profile>::with_scoped_function`
   --> $WORKSPACE/core/src/host/module.rs

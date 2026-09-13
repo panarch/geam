@@ -6,8 +6,8 @@ use super::bit_array;
 use super::environment::BlockEnvironment;
 use crate::plan::execution::graph::{
     BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
-    BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, MatchIntBindingId,
-    MatchPattern, MatchPatternBinding, MatchPatternListTail,
+    BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, IntegerLiteral,
+    MatchIntBindingId, MatchPattern, MatchPatternBinding, MatchPatternListTail,
 };
 use crate::runtime::InvariantError;
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedValue};
@@ -79,13 +79,13 @@ where
         }
         MatchPattern::Discard => Ok(true),
         MatchPattern::Int(pattern) => {
-            Ok(matches!(value, EvaluatedValue::Int(value) if value == pattern))
+            Ok(matches!(value, EvaluatedValue::Int(value) if pattern.matches(value)))
         }
         MatchPattern::Float(pattern) => {
             Ok(matches!(value, EvaluatedValue::Float(value) if value == pattern))
         }
         MatchPattern::String(pattern) => {
-            Ok(matches!(value, EvaluatedValue::String(value) if value == pattern))
+            Ok(matches!(value, EvaluatedValue::String(value) if value.as_str() == pattern.as_str()))
         }
         MatchPattern::Bool(pattern) => {
             Ok(matches!(value, EvaluatedValue::Bool(value) if value == pattern))
@@ -164,7 +164,7 @@ where
                 if plan.value_type(expected) != value.value_type(plan.value_metadata()) {
                     return Err(InvariantError::CustomFieldFamilyMismatch {
                         custom_type: plan.custom_value_type(constructor.type_id()),
-                        constructor: descriptor.name().clone(),
+                        constructor: descriptor.name().into(),
                         field_index: index,
                         expected: plan.value_type(expected),
                         actual: value.value_type(plan.value_metadata()),
@@ -188,7 +188,7 @@ where
                 return Ok(false);
             };
             if let Some(binding) = left {
-                bindings.bind(binding, EvaluatedValue::String(prefix.clone()));
+                bindings.bind(binding, EvaluatedValue::String(prefix.materialize()));
             }
             if let Some(binding) = right {
                 bindings.bind(binding, EvaluatedValue::String(suffix.into()));
@@ -335,7 +335,7 @@ fn evaluate_size_expression(
     expression: &BitArrayPatternSizeExpr,
 ) -> BigInt {
     match expression {
-        BitArrayPatternSizeExpr::Value(value) => value.clone(),
+        BitArrayPatternSizeExpr::Value(value) => value.materialize(),
         BitArrayPatternSizeExpr::Local(local) => environment.int(*local),
         BitArrayPatternSizeExpr::Binding(binding) => bindings.int(*binding),
         BitArrayPatternSizeExpr::Add { left, right } => {
@@ -370,12 +370,12 @@ fn evaluate_size_expression(
 }
 
 fn match_int(
-    pattern: &BitArrayPatternValue<BigInt>,
+    pattern: &BitArrayPatternValue<IntegerLiteral>,
     value: &BigInt,
     bindings: &mut MatchBindings,
 ) -> bool {
     match pattern {
-        BitArrayPatternValue::Literal(expected) => expected == value,
+        BitArrayPatternValue::Literal(expected) => expected.matches(value),
         BitArrayPatternValue::Bind(binding) => {
             bindings.bind_int(binding, value);
             true
@@ -1018,7 +1018,7 @@ pub fn main() {
             error,
             InvariantError::CustomFieldFamilyMismatch {
                 custom_type: plan.custom_value_type(constructor.type_id()),
-                constructor: descriptor.name().clone(),
+                constructor: descriptor.name().into(),
                 field_index: 0,
                 expected: ValueType::Int,
                 actual: ValueType::String,
@@ -1195,7 +1195,7 @@ pub fn main() {
             )),
             InvariantError::CustomFieldFamilyMismatch {
                 custom_type: plan.custom_value_type(constructor.type_id()),
-                constructor: descriptor.name().clone(),
+                constructor: descriptor.name().into(),
                 field_index: 0,
                 expected: ValueType::Int,
                 actual: ValueType::String,
@@ -1244,7 +1244,6 @@ pub fn main() {
             .body()
             .block_graph()
             .blocks()
-            .iter()
             .find_map(|block| {
                 if let Terminator::Match(matcher) = block.terminator() {
                     Some(matcher.pattern())

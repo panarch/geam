@@ -54,7 +54,7 @@ where
     use IntInstruction as I;
 
     match instruction {
-        I::Value(value) => Ok(V::Ready(value.clone())),
+        I::Value(value) => Ok(V::Ready(value.materialize())),
         I::Constant(id) => Ok(V::Constant(*id)),
         I::Call {
             function,
@@ -247,7 +247,7 @@ where
     use StringInstruction as I;
 
     match instruction {
-        I::Value(value) => Ok(V::Ready(value.clone())),
+        I::Value(value) => Ok(V::Ready(value.materialize())),
         I::Constant(id) => Ok(V::Constant(*id)),
         I::Call {
             function,
@@ -887,7 +887,7 @@ where
 
     Err(InvariantError::CustomFieldFamilyMismatch {
         custom_type: plan.custom_value_type(constructor.type_id()),
-        constructor: descriptor.name().clone(),
+        constructor: descriptor.name().into(),
         field_index: index,
         expected: expected.clone(),
         actual,

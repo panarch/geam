@@ -2,6 +2,7 @@ use crate::plan::execution::explain::FunctionLabel;
 use crate::plan::execution::function::{
     ExecutionGraphProfile, FunctionLabelSource, HostedExecutionGraph,
 };
+use crate::plan::execution::prepared::rust::{Emit, Rust};
 use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, ExternalListTypeId, FloatListTypeId,
     FunctionListTypeId, FunctionType, IntListTypeId, ListListTypeId, NilListTypeId,
@@ -10,7 +11,7 @@ use crate::plan::execution::type_::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ProfiledFunctionFunctionId<Graph: ExecutionGraphProfile> {
+pub enum ProfiledFunctionFunctionId<Graph: ExecutionGraphProfile> {
     Generic(GenericFunctionFunctionId),
     Never(NeverFunctionFunctionId),
     Int(IntFunctionFunctionId),
@@ -30,97 +31,97 @@ pub(crate) enum ProfiledFunctionFunctionId<Graph: ExecutionGraphProfile> {
 pub(crate) type FunctionFunctionId = ProfiledFunctionFunctionId<HostedExecutionGraph>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct IntFunctionFunctionId(pub(crate) usize);
+pub struct IntFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FloatFunctionFunctionId(pub(crate) usize);
+pub struct FloatFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StringFunctionFunctionId(pub(crate) usize);
+pub struct StringFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BitArrayFunctionFunctionId(pub(crate) usize);
+pub struct BitArrayFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct UtfCodepointFunctionFunctionId(pub(crate) usize);
+pub struct UtfCodepointFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenericFunctionFunctionId {
-    index: usize,
-    type_: crate::plan::execution::type_::GenericFunctionType,
+    pub index: usize,
+    pub type_: crate::plan::execution::type_::GenericFunctionType,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct NeverFunctionFunctionId {
-    index: usize,
-    type_: crate::plan::execution::type_::GenericFunctionType,
+pub struct NeverFunctionFunctionId {
+    pub index: usize,
+    pub type_: crate::plan::execution::type_::GenericFunctionType,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustomFunctionFunctionId {
-    index: usize,
-    type_: crate::plan::execution::type_::CustomFunctionType,
+    pub index: usize,
+    pub type_: crate::plan::execution::type_::CustomFunctionType,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExternalFunctionFunctionId {
-    index: usize,
-    type_: crate::plan::execution::type_::ExternalFunctionType,
+    pub index: usize,
+    pub type_: crate::plan::execution::type_::ExternalFunctionType,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BoolFunctionFunctionId(pub(crate) usize);
+pub struct BoolFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NilFunctionFunctionId(pub(crate) usize);
+pub struct NilFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TupleFunctionFunctionId(pub(crate) usize);
+pub struct TupleFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct IntListFunctionFunctionId(pub(crate) usize);
+pub struct IntListFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StringListFunctionFunctionId(pub(crate) usize);
+pub struct StringListFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BitArrayListFunctionFunctionId(pub(crate) usize);
+pub struct BitArrayListFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct UtfCodepointListFunctionFunctionId(pub(crate) usize);
+pub struct UtfCodepointListFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ParameterListFunctionFunctionId(pub(crate) usize);
+pub struct ParameterListFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ParameterListListFunctionFunctionId(pub(crate) usize);
+pub struct ParameterListListFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CustomListFunctionFunctionId(pub(crate) usize);
+pub struct CustomListFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ExternalListFunctionFunctionId(pub(crate) usize);
+pub struct ExternalListFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FloatListFunctionFunctionId(pub(crate) usize);
+pub struct FloatListFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BoolListFunctionFunctionId(pub(crate) usize);
+pub struct BoolListFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NilListFunctionFunctionId(pub(crate) usize);
+pub struct NilListFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TupleListFunctionFunctionId(pub(crate) usize);
+pub struct TupleListFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ListListFunctionFunctionId(pub(crate) usize);
+pub struct ListListFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FunctionListFunctionFunctionId(pub(crate) usize);
+pub struct FunctionListFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ProfiledListFunctionFunctionId<Graph: ExecutionGraphProfile> {
+pub enum ProfiledListFunctionFunctionId<Graph: ExecutionGraphProfile> {
     Parameter {
         id: ParameterListFunctionFunctionId,
         type_: FunctionType,
@@ -197,8 +198,8 @@ pub(crate) type ListFunctionFunctionId = ProfiledListFunctionFunctionId<HostedEx
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionFunctionFunctionId {
-    index: usize,
-    type_: crate::plan::execution::type_::FunctionFunctionType,
+    pub index: usize,
+    pub type_: crate::plan::execution::type_::FunctionFunctionType,
 }
 
 impl CustomFunctionFunctionId {
@@ -413,6 +414,762 @@ where
             Self::Tuple { id, .. } => FunctionLabel::new("function.list.tuple", id.0),
             Self::List { id, .. } => FunctionLabel::new("function.list.list", id.0),
             Self::Function { id, .. } => FunctionLabel::new("function.list.function", id.0),
+        }
+    }
+}
+
+impl<Graph: ExecutionGraphProfile> Emit for ProfiledFunctionFunctionId<Graph>
+where
+    Graph::ExternalFunctionFunctionId: Emit,
+    ProfiledListFunctionFunctionId<Graph>: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Generic(field_0) => {
+                output.call("function::ProfiledFunctionFunctionId::Generic", &[field_0])
+            }
+            Self::Never(field_0) => {
+                output.call("function::ProfiledFunctionFunctionId::Never", &[field_0])
+            }
+            Self::Int(field_0) => {
+                output.call("function::ProfiledFunctionFunctionId::Int", &[field_0])
+            }
+            Self::Float(field_0) => {
+                output.call("function::ProfiledFunctionFunctionId::Float", &[field_0])
+            }
+            Self::String(field_0) => {
+                output.call("function::ProfiledFunctionFunctionId::String", &[field_0])
+            }
+            Self::BitArray(field_0) => {
+                output.call("function::ProfiledFunctionFunctionId::BitArray", &[field_0])
+            }
+            Self::UtfCodepoint(field_0) => output.call(
+                "function::ProfiledFunctionFunctionId::UtfCodepoint",
+                &[field_0],
+            ),
+            Self::Custom(field_0) => {
+                output.call("function::ProfiledFunctionFunctionId::Custom", &[field_0])
+            }
+            Self::External(field_0) => {
+                output.call("function::ProfiledFunctionFunctionId::External", &[field_0])
+            }
+            Self::Bool(field_0) => {
+                output.call("function::ProfiledFunctionFunctionId::Bool", &[field_0])
+            }
+            Self::Nil(field_0) => {
+                output.call("function::ProfiledFunctionFunctionId::Nil", &[field_0])
+            }
+            Self::Tuple(field_0) => {
+                output.call("function::ProfiledFunctionFunctionId::Tuple", &[field_0])
+            }
+            Self::List(field_0) => {
+                output.call("function::ProfiledFunctionFunctionId::List", &[field_0])
+            }
+            Self::Function(field_0) => {
+                output.call("function::ProfiledFunctionFunctionId::Function", &[field_0])
+            }
+        }
+    }
+}
+
+impl Emit for IntFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::IntFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for FloatFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::FloatFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for StringFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::StringFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for BitArrayFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::BitArrayFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for UtfCodepointFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::UtfCodepointFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for GenericFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, type_ } = self;
+        output.structure(
+            "function::GenericFunctionFunctionId",
+            &[("index", index), ("type_", type_)],
+        );
+    }
+}
+
+impl Emit for NeverFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, type_ } = self;
+        output.structure(
+            "function::NeverFunctionFunctionId",
+            &[("index", index), ("type_", type_)],
+        );
+    }
+}
+
+impl Emit for CustomFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, type_ } = self;
+        output.structure(
+            "function::CustomFunctionFunctionId",
+            &[("index", index), ("type_", type_)],
+        );
+    }
+}
+
+impl Emit for ExternalFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, type_ } = self;
+        output.structure(
+            "function::ExternalFunctionFunctionId",
+            &[("index", index), ("type_", type_)],
+        );
+    }
+}
+
+impl Emit for BoolFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::BoolFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for NilFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::NilFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for TupleFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::TupleFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for IntListFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::IntListFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for StringListFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::StringListFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for BitArrayListFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::BitArrayListFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for UtfCodepointListFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::UtfCodepointListFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for ParameterListFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::ParameterListFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for ParameterListListFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::ParameterListListFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for CustomListFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::CustomListFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for ExternalListFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::ExternalListFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for FloatListFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::FloatListFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for BoolListFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::BoolListFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for NilListFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::NilListFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for TupleListFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::TupleListFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for ListListFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::ListListFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for FunctionListFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::FunctionListFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl<Graph: ExecutionGraphProfile> Emit for ProfiledListFunctionFunctionId<Graph>
+where
+    Graph::ExternalListFunctionFunctionId: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Parameter {
+                id,
+                type_,
+                list_type,
+            } => output.structure(
+                "function::ProfiledListFunctionFunctionId::Parameter",
+                &[("id", id), ("type_", type_), ("list_type", list_type)],
+            ),
+            Self::ParameterList {
+                id,
+                type_,
+                list_type,
+            } => output.structure(
+                "function::ProfiledListFunctionFunctionId::ParameterList",
+                &[("id", id), ("type_", type_), ("list_type", list_type)],
+            ),
+            Self::Int {
+                id,
+                type_,
+                list_type,
+            } => output.structure(
+                "function::ProfiledListFunctionFunctionId::Int",
+                &[("id", id), ("type_", type_), ("list_type", list_type)],
+            ),
+            Self::String {
+                id,
+                type_,
+                list_type,
+            } => output.structure(
+                "function::ProfiledListFunctionFunctionId::String",
+                &[("id", id), ("type_", type_), ("list_type", list_type)],
+            ),
+            Self::BitArray {
+                id,
+                type_,
+                list_type,
+            } => output.structure(
+                "function::ProfiledListFunctionFunctionId::BitArray",
+                &[("id", id), ("type_", type_), ("list_type", list_type)],
+            ),
+            Self::UtfCodepoint {
+                id,
+                type_,
+                list_type,
+            } => output.structure(
+                "function::ProfiledListFunctionFunctionId::UtfCodepoint",
+                &[("id", id), ("type_", type_), ("list_type", list_type)],
+            ),
+            Self::Custom {
+                id,
+                type_,
+                list_type,
+            } => output.structure(
+                "function::ProfiledListFunctionFunctionId::Custom",
+                &[("id", id), ("type_", type_), ("list_type", list_type)],
+            ),
+            Self::External {
+                id,
+                type_,
+                list_type,
+            } => output.structure(
+                "function::ProfiledListFunctionFunctionId::External",
+                &[("id", id), ("type_", type_), ("list_type", list_type)],
+            ),
+            Self::Float {
+                id,
+                type_,
+                list_type,
+            } => output.structure(
+                "function::ProfiledListFunctionFunctionId::Float",
+                &[("id", id), ("type_", type_), ("list_type", list_type)],
+            ),
+            Self::Bool {
+                id,
+                type_,
+                list_type,
+            } => output.structure(
+                "function::ProfiledListFunctionFunctionId::Bool",
+                &[("id", id), ("type_", type_), ("list_type", list_type)],
+            ),
+            Self::Nil {
+                id,
+                type_,
+                list_type,
+            } => output.structure(
+                "function::ProfiledListFunctionFunctionId::Nil",
+                &[("id", id), ("type_", type_), ("list_type", list_type)],
+            ),
+            Self::Tuple {
+                id,
+                type_,
+                list_type,
+            } => output.structure(
+                "function::ProfiledListFunctionFunctionId::Tuple",
+                &[("id", id), ("type_", type_), ("list_type", list_type)],
+            ),
+            Self::List {
+                id,
+                type_,
+                list_type,
+            } => output.structure(
+                "function::ProfiledListFunctionFunctionId::List",
+                &[("id", id), ("type_", type_), ("list_type", list_type)],
+            ),
+            Self::Function {
+                id,
+                type_,
+                list_type,
+            } => output.structure(
+                "function::ProfiledListFunctionFunctionId::Function",
+                &[("id", id), ("type_", type_), ("list_type", list_type)],
+            ),
+        }
+    }
+}
+
+impl Emit for FunctionFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, type_ } = self;
+        output.structure(
+            "function::FunctionFunctionFunctionId",
+            &[("index", index), ("type_", type_)],
+        );
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::{
+        BitArrayFunctionFunctionId, BitArrayListFunctionFunctionId, BoolFunctionFunctionId,
+        BoolListFunctionFunctionId, CustomFunctionFunctionId, CustomListFunctionFunctionId,
+        ExternalFunctionFunctionId, ExternalListFunctionFunctionId, FloatFunctionFunctionId,
+        FloatListFunctionFunctionId, FunctionFunctionFunctionId, FunctionListFunctionFunctionId,
+        GenericFunctionFunctionId, IntFunctionFunctionId, IntListFunctionFunctionId,
+        ListListFunctionFunctionId, NeverFunctionFunctionId, NilFunctionFunctionId,
+        NilListFunctionFunctionId, ParameterListFunctionFunctionId,
+        ParameterListListFunctionFunctionId, ProfiledFunctionFunctionId,
+        ProfiledListFunctionFunctionId, StringFunctionFunctionId, StringListFunctionFunctionId,
+        TupleFunctionFunctionId, TupleListFunctionFunctionId, UtfCodepointFunctionFunctionId,
+        UtfCodepointListFunctionFunctionId,
+    };
+    use crate::plan::execution::function::HostedExecutionGraph;
+    use crate::plan::execution::prepared::rust::Rust;
+    use crate::plan::execution::type_::list::{FunctionItemTypeId, TupleItemTypeId};
+    use crate::plan::execution::type_::{
+        BitArrayListTypeId, BoolListTypeId, CustomFunctionType, CustomListTypeId, CustomTypeId,
+        CustomValueShape, CustomValueShapeId, ExternalFunctionType, ExternalListTypeId,
+        ExternalTypeId, FloatListTypeId, FunctionFunctionType, FunctionListTypeId, FunctionShape,
+        FunctionType, GenericFunctionType, IntListTypeId, ListListTypeId, ListTypeId,
+        NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId,
+        TupleListTypeId, UtfCodepointListTypeId, ValueShapeId, ValueType,
+    };
+
+    #[test]
+    fn emits_function_return_ids_with_symbolic_and_nominal_contracts() {
+        let symbolic = FunctionType::new(
+            Vec::new(),
+            ValueType::Parameter(crate::plan::TypeParameterId(0)),
+        );
+        let inner = FunctionType::new(Vec::new(), ValueType::Int);
+        let cases: [(ProfiledFunctionFunctionId<HostedExecutionGraph>, &str); 14] = [
+            (
+                ProfiledFunctionFunctionId::Int(IntFunctionFunctionId(2)),
+                "data::function::ProfiledFunctionFunctionId::Int(data::function::IntFunctionFunctionId(2,),)",
+            ),
+            (
+                ProfiledFunctionFunctionId::Float(FloatFunctionFunctionId(2)),
+                "data::function::ProfiledFunctionFunctionId::Float(data::function::FloatFunctionFunctionId(2,),)",
+            ),
+            (
+                ProfiledFunctionFunctionId::String(StringFunctionFunctionId(2)),
+                "data::function::ProfiledFunctionFunctionId::String(data::function::StringFunctionFunctionId(2,),)",
+            ),
+            (
+                ProfiledFunctionFunctionId::BitArray(BitArrayFunctionFunctionId(2)),
+                "data::function::ProfiledFunctionFunctionId::BitArray(data::function::BitArrayFunctionFunctionId(2,),)",
+            ),
+            (
+                ProfiledFunctionFunctionId::UtfCodepoint(UtfCodepointFunctionFunctionId(2)),
+                "data::function::ProfiledFunctionFunctionId::UtfCodepoint(data::function::UtfCodepointFunctionFunctionId(2,),)",
+            ),
+            (
+                ProfiledFunctionFunctionId::Bool(BoolFunctionFunctionId(2)),
+                "data::function::ProfiledFunctionFunctionId::Bool(data::function::BoolFunctionFunctionId(2,),)",
+            ),
+            (
+                ProfiledFunctionFunctionId::Nil(NilFunctionFunctionId(2)),
+                "data::function::ProfiledFunctionFunctionId::Nil(data::function::NilFunctionFunctionId(2,),)",
+            ),
+            (
+                ProfiledFunctionFunctionId::Tuple(TupleFunctionFunctionId(2)),
+                "data::function::ProfiledFunctionFunctionId::Tuple(data::function::TupleFunctionFunctionId(2,),)",
+            ),
+            (
+                ProfiledFunctionFunctionId::Generic(GenericFunctionFunctionId {
+                    index: 2,
+                    type_: GenericFunctionType::from_shapes(
+                        symbolic.clone(),
+                        FunctionShape::new(ValueShapeId(3), symbolic.clone()),
+                    ),
+                }),
+                concat!(
+                    "data::function::ProfiledFunctionFunctionId::Generic(data::function::GenericFunctionFunctionId {index: 2,type_: ",
+                    "data::type_::GenericFunctionType {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0,),)),},shape: data::type_::FunctionShape {shape_id: data::type_::ValueShapeId(3,),type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0,),)),},},}",
+                    ",},)",
+                ),
+            ),
+            (
+                ProfiledFunctionFunctionId::Never(NeverFunctionFunctionId {
+                    index: 2,
+                    type_: GenericFunctionType::from_shapes(
+                        symbolic.clone(),
+                        FunctionShape::new(ValueShapeId(3), symbolic.clone()),
+                    ),
+                }),
+                concat!(
+                    "data::function::ProfiledFunctionFunctionId::Never(data::function::NeverFunctionFunctionId {index: 2,type_: ",
+                    "data::type_::GenericFunctionType {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0,),)),},shape: data::type_::FunctionShape {shape_id: data::type_::ValueShapeId(3,),type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0,),)),},},}",
+                    ",},)",
+                ),
+            ),
+            (
+                ProfiledFunctionFunctionId::Custom(CustomFunctionFunctionId {
+                    index: 2,
+                    type_: CustomFunctionType::from_shapes(
+                        FunctionType::new(Vec::new(), ValueType::Custom(CustomTypeId(3))),
+                        Vec::new(),
+                        CustomValueShape::new(CustomTypeId(3), CustomValueShapeId(4)),
+                    ),
+                }),
+                concat!(
+                    "data::function::ProfiledFunctionFunctionId::Custom(data::function::CustomFunctionFunctionId {index: 2,type_: ",
+                    "data::type_::CustomFunctionType {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(3,),)),},arguments: data::Storage::Static(&[]),return_: data::type_::CustomValueShape {type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},}",
+                    ",},)",
+                ),
+            ),
+            (
+                ProfiledFunctionFunctionId::External(ExternalFunctionFunctionId {
+                    index: 2,
+                    type_: ExternalFunctionType::from_shapes(
+                        FunctionType::new(Vec::new(), ValueType::External(ExternalTypeId(3))),
+                        Vec::new(),
+                        ExternalTypeId(3),
+                    ),
+                }),
+                concat!(
+                    "data::function::ProfiledFunctionFunctionId::External(data::function::ExternalFunctionFunctionId {index: 2,type_: ",
+                    "data::type_::ExternalFunctionType {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::External(data::type_::ExternalTypeId(3,),)),},arguments: data::Storage::Static(&[]),return_: data::type_::ExternalTypeId(3,),}",
+                    ",},)",
+                ),
+            ),
+            (
+                ProfiledFunctionFunctionId::List(ProfiledListFunctionFunctionId::Int {
+                    id: IntListFunctionFunctionId(2),
+                    type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
+                    list_type: IntListTypeId::new(ListTypeId(3)),
+                }),
+                concat!(
+                    "data::function::ProfiledFunctionFunctionId::List(data::function::ProfiledListFunctionFunctionId::Int {id: data::function::IntListFunctionFunctionId(2,),type_: ",
+                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
+                    ",list_type: data::type_::IntListTypeId {list_type: data::type_::ListTypeId(3,),},},)",
+                ),
+            ),
+            (
+                ProfiledFunctionFunctionId::Function(FunctionFunctionFunctionId {
+                    index: 2,
+                    type_: FunctionFunctionType::from_shapes(
+                        FunctionType::new(Vec::new(), ValueType::Function(inner.clone())),
+                        Vec::new(),
+                        FunctionShape::new(ValueShapeId(7), inner.clone()),
+                    ),
+                }),
+                concat!(
+                    "data::function::ProfiledFunctionFunctionId::Function(data::function::FunctionFunctionFunctionId {index: 2,type_: ",
+                    "data::type_::FunctionFunctionType {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Function(data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Int),},)),},arguments: data::Storage::Static(&[]),return_: data::type_::FunctionShape {shape_id: data::type_::ValueShapeId(7,),type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Int),},},}",
+                    ",},)",
+                ),
+            ),
+        ];
+        for (id, expected) in cases {
+            assert_eq!(Rust::expression(&id), expected);
+        }
+    }
+
+    #[test]
+    fn emits_function_returning_list_ids_with_all_item_families() {
+        let cases: [(ProfiledListFunctionFunctionId<HostedExecutionGraph>, &str); 14] = [
+            (
+                ProfiledListFunctionFunctionId::Int {
+                    id: IntListFunctionFunctionId(2),
+                    type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
+                    list_type: IntListTypeId::new(ListTypeId(3)),
+                },
+                concat!(
+                    "data::function::ProfiledListFunctionFunctionId::Int {id: data::function::IntListFunctionFunctionId(2,),type_: ",
+                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
+                    ",list_type: ",
+                    "data::type_::IntListTypeId {list_type: data::type_::ListTypeId(3,),}",
+                    ",}",
+                ),
+            ),
+            (
+                ProfiledListFunctionFunctionId::String {
+                    id: StringListFunctionFunctionId(2),
+                    type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
+                    list_type: StringListTypeId::new(ListTypeId(3)),
+                },
+                concat!(
+                    "data::function::ProfiledListFunctionFunctionId::String {id: data::function::StringListFunctionFunctionId(2,),type_: ",
+                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
+                    ",list_type: ",
+                    "data::type_::StringListTypeId {list_type: data::type_::ListTypeId(3,),}",
+                    ",}",
+                ),
+            ),
+            (
+                ProfiledListFunctionFunctionId::BitArray {
+                    id: BitArrayListFunctionFunctionId(2),
+                    type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
+                    list_type: BitArrayListTypeId::new(ListTypeId(3)),
+                },
+                concat!(
+                    "data::function::ProfiledListFunctionFunctionId::BitArray {id: data::function::BitArrayListFunctionFunctionId(2,),type_: ",
+                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
+                    ",list_type: ",
+                    "data::type_::BitArrayListTypeId {list_type: data::type_::ListTypeId(3,),}",
+                    ",}",
+                ),
+            ),
+            (
+                ProfiledListFunctionFunctionId::UtfCodepoint {
+                    id: UtfCodepointListFunctionFunctionId(2),
+                    type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
+                    list_type: UtfCodepointListTypeId::new(ListTypeId(3)),
+                },
+                concat!(
+                    "data::function::ProfiledListFunctionFunctionId::UtfCodepoint {id: data::function::UtfCodepointListFunctionFunctionId(2,),type_: ",
+                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
+                    ",list_type: ",
+                    "data::type_::UtfCodepointListTypeId {list_type: data::type_::ListTypeId(3,),}",
+                    ",}",
+                ),
+            ),
+            (
+                ProfiledListFunctionFunctionId::Float {
+                    id: FloatListFunctionFunctionId(2),
+                    type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
+                    list_type: FloatListTypeId::new(ListTypeId(3)),
+                },
+                concat!(
+                    "data::function::ProfiledListFunctionFunctionId::Float {id: data::function::FloatListFunctionFunctionId(2,),type_: ",
+                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
+                    ",list_type: ",
+                    "data::type_::FloatListTypeId {list_type: data::type_::ListTypeId(3,),}",
+                    ",}",
+                ),
+            ),
+            (
+                ProfiledListFunctionFunctionId::Bool {
+                    id: BoolListFunctionFunctionId(2),
+                    type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
+                    list_type: BoolListTypeId::new(ListTypeId(3)),
+                },
+                concat!(
+                    "data::function::ProfiledListFunctionFunctionId::Bool {id: data::function::BoolListFunctionFunctionId(2,),type_: ",
+                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
+                    ",list_type: ",
+                    "data::type_::BoolListTypeId {list_type: data::type_::ListTypeId(3,),}",
+                    ",}",
+                ),
+            ),
+            (
+                ProfiledListFunctionFunctionId::Nil {
+                    id: NilListFunctionFunctionId(2),
+                    type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
+                    list_type: NilListTypeId::new(ListTypeId(3)),
+                },
+                concat!(
+                    "data::function::ProfiledListFunctionFunctionId::Nil {id: data::function::NilListFunctionFunctionId(2,),type_: ",
+                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
+                    ",list_type: ",
+                    "data::type_::NilListTypeId {list_type: data::type_::ListTypeId(3,),}",
+                    ",}",
+                ),
+            ),
+            (
+                ProfiledListFunctionFunctionId::Parameter {
+                    id: ParameterListFunctionFunctionId(2),
+                    type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
+                    list_type: ParameterListTypeId::new(
+                        ListTypeId(3),
+                        crate::plan::TypeParameterId(4),
+                    ),
+                },
+                concat!(
+                    "data::function::ProfiledListFunctionFunctionId::Parameter {id: data::function::ParameterListFunctionFunctionId(2,),type_: ",
+                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
+                    ",list_type: ",
+                    "data::type_::ParameterListTypeId {list_type: data::type_::ListTypeId(3,),item: data::type_::parameter_id(4,),}",
+                    ",}",
+                ),
+            ),
+            (
+                ProfiledListFunctionFunctionId::ParameterList {
+                    id: ParameterListListFunctionFunctionId(2),
+                    type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
+                    list_type: ParameterListListTypeId::new(
+                        ListTypeId(3),
+                        ParameterListTypeId::new(ListTypeId(4), crate::plan::TypeParameterId(5)),
+                    ),
+                },
+                concat!(
+                    "data::function::ProfiledListFunctionFunctionId::ParameterList {id: data::function::ParameterListListFunctionFunctionId(2,),type_: ",
+                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
+                    ",list_type: ",
+                    "data::type_::ParameterListListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ParameterListTypeId {list_type: data::type_::ListTypeId(4,),item: data::type_::parameter_id(5,),},}",
+                    ",}",
+                ),
+            ),
+            (
+                ProfiledListFunctionFunctionId::Custom {
+                    id: CustomListFunctionFunctionId(2),
+                    type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
+                    list_type: CustomListTypeId::new(ListTypeId(3), CustomTypeId(4)),
+                },
+                concat!(
+                    "data::function::ProfiledListFunctionFunctionId::Custom {id: data::function::CustomListFunctionFunctionId(2,),type_: ",
+                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
+                    ",list_type: ",
+                    "data::type_::CustomListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::CustomTypeId(4,),}",
+                    ",}",
+                ),
+            ),
+            (
+                ProfiledListFunctionFunctionId::External {
+                    id: ExternalListFunctionFunctionId(2),
+                    type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
+                    list_type: ExternalListTypeId::new(ListTypeId(3), ExternalTypeId(4)),
+                },
+                concat!(
+                    "data::function::ProfiledListFunctionFunctionId::External {id: data::function::ExternalListFunctionFunctionId(2,),type_: ",
+                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
+                    ",list_type: ",
+                    "data::type_::ExternalListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ExternalTypeId(4,),}",
+                    ",}",
+                ),
+            ),
+            (
+                ProfiledListFunctionFunctionId::Tuple {
+                    id: TupleListFunctionFunctionId(2),
+                    type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
+                    list_type: TupleListTypeId {
+                        list_type: ListTypeId(3),
+                        item_type: TupleItemTypeId(4),
+                    },
+                },
+                concat!(
+                    "data::function::ProfiledListFunctionFunctionId::Tuple {id: data::function::TupleListFunctionFunctionId(2,),type_: ",
+                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
+                    ",list_type: ",
+                    "data::type_::TupleListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::TupleItemTypeId(4,),}",
+                    ",}",
+                ),
+            ),
+            (
+                ProfiledListFunctionFunctionId::List {
+                    id: ListListFunctionFunctionId(2),
+                    type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
+                    list_type: ListListTypeId::new(ListTypeId(3), ListTypeId(4)),
+                },
+                concat!(
+                    "data::function::ProfiledListFunctionFunctionId::List {id: data::function::ListListFunctionFunctionId(2,),type_: ",
+                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
+                    ",list_type: ",
+                    "data::type_::ListListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ListTypeId(4,),}",
+                    ",}",
+                ),
+            ),
+            (
+                ProfiledListFunctionFunctionId::Function {
+                    id: FunctionListFunctionFunctionId(2),
+                    type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
+                    list_type: FunctionListTypeId {
+                        list_type: ListTypeId(3),
+                        item_type: FunctionItemTypeId(4),
+                    },
+                },
+                concat!(
+                    "data::function::ProfiledListFunctionFunctionId::Function {id: data::function::FunctionListFunctionFunctionId(2,),type_: ",
+                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
+                    ",list_type: ",
+                    "data::type_::FunctionListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::FunctionItemTypeId(4,),}",
+                    ",}",
+                ),
+            ),
+        ];
+        for (id, expected) in cases {
+            assert_eq!(Rust::expression(&id), expected);
         }
     }
 }

@@ -104,6 +104,26 @@ tests cover both pending work and shared completion with caller-borrowed state.
 These tests establish the [work execution contract](review-policy.md#execution-and-explicit-work-rules)
 independently of executor-specific examples.
 
+The `geam-core` prepared integration target compiles emitted Rust tables and
+loads them through the same evaluator as dynamic programs. Its maintained
+artifacts under `core/tests/fixtures/prepared` cover arithmetic, the complete
+value/function families, native conversions/callbacks, and retained work.
+Tests compare fresh preparation with these exact artifacts as well as checking
+explicit runtime values, diagnostics and owner isolation.
+
+After changing the artifact format, emission, or these fixtures, regenerate
+their Rust data through the public preparation API, then inspect the diff and
+rerun the compiled consumer tests:
+
+```sh
+cargo run --package geam-core --example prepare_fixtures --locked
+cargo test --package geam-core --features tokio --test prepared --locked
+```
+
+The generator does not include the old artifacts, so it can rebuild fixtures
+whose previous representation no longer compiles. It does not update expected
+runtime results; those remain explicit assertions in the integration target.
+
 Multi-module execution cases live under
 `tests/fixtures/execution/modules/<case>/`. The runner derives canonical module
 names from paths relative to the case directory (`main.gleam` becomes `main`,
@@ -210,7 +230,8 @@ for example in \
   provider \
   async_host \
   session \
-  processes
+  processes \
+  prepared
 do
   (
     cd "examples/embedding/$example"
@@ -255,6 +276,22 @@ cargo fmt --manifest-path examples/embedding/execution/Cargo.toml --check
 CARGO_TARGET_DIR=target/embedding cargo test --manifest-path examples/embedding/execution/Cargo.toml --locked
 CARGO_TARGET_DIR=target/embedding cargo clippy --manifest-path examples/embedding/execution/Cargo.toml --all-targets --locked -- -D warnings
 ```
+
+The `prepared` example uses the first-call function with generated `load()` and
+compiler-visible execution data. Its private generated child is checked into
+the repository along with the bindings. The release-preparation workflow
+regenerates this example after changing dependency versions and locks.
+
+The root `prepared_embedding` target runs init, both and prepared sync/check,
+binding drift recovery, ordinary Cargo builds and explicit semantic assertions.
+It moves the executable, removes the original Gleam project, and verifies both
+normal output and embedded source diagnostics with an empty PATH. It then
+packages the consumer, inspects Cargo's extracted verification tree and builds
+and runs that tree from another directory after removing the original consumer.
+Failing Geam/Gleam command sentinels ensure packaging and rebuilding do not
+silently invoke a generation tool. The Prepared embedding CI matrix runs this
+boundary on Linux, macOS and Windows; native feature/registration mismatch and
+rich hosted generation remain CLI owner tests.
 
 Core owners and `geam-macros`'s `async_provider` target exercise deterministic
 Pending, shared completion, bounded state access, rich callbacks, cancellation,
@@ -333,9 +370,13 @@ features, existing dependency preservation, and explicit native-provider
 validation. Check cases cover locked Hex/Git/local sources, cold and partial
 caches, stale locks or generated files, invalid source, provider incompatibility,
 and acquisition failures while comparing project bytes. Cargo's locked metadata
-path may populate caches; neither it nor the check command compiles or executes
-Rust build scripts, provider initialization, or the application. Runtime typed
-value and ownership contracts remain in core tests.
+path may populate caches. Dynamic-only checking does not compile Rust or run
+build scripts. Prepared and both checking compile and run a disposable helper
+using the consumer dependencies and compare the complete generated output set.
+Dependency build scripts and provider registration can run; application main,
+application build scripts and provider run-state initialization do not. All
+choices preserve managed files on check. Runtime typed value and ownership
+contracts remain in core tests.
 
 The tracked `cli/tests/fixtures/standalone_cli` fixture verifies the complete CLI
 assembly boundary. Its Gleam project combines a Pure Gleam path package,
@@ -438,7 +479,7 @@ fixture package is published. The text-pattern provider and matching Hex package
 are release-coupled public documentation artifacts and share every Geam release
 version.
 
-The root package keeps five explicit acceptance targets:
+The root package keeps six explicit acceptance targets:
 
 - `binary` starts the installed-shape `geam` process for command dispatch,
   process failures, pure execution, and IO/Echo ordering.
@@ -449,6 +490,8 @@ The root package keeps five explicit acceptance targets:
   the real binary and generated runners.
 - `future_builtins` composes a macro-authored asynchronous provider with stdlib,
   JSON, and Time in a caller-driven Rust embedding scope.
+- `prepared_embedding` verifies generated preparation, source-free execution,
+  diagnostics and extracted Cargo package consumption.
 - `standalone_distribution` combines built-ins and two independent providers
   in one canonical managed-project flow. Its Future cases verify exact outer
   entry completion and a generated Tokio host using controlled timers, loopback
@@ -512,6 +555,7 @@ cargo test --package geam --test binary --locked
 cargo test --package geam --test cross_crate_http --locked
 cargo test --package geam --test provider_examples --locked
 cargo test --package geam --test future_builtins --locked
+cargo test --package geam --test prepared_embedding --locked
 cargo test --package geam --test standalone_distribution --locked
 ```
 

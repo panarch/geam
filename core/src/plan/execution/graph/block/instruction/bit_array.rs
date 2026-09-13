@@ -9,18 +9,23 @@ use crate::plan::execution::graph::{
     TupleLocalId, UtfCodepointLocalId,
 };
 use crate::plan::execution::graph::{LocalLabel, endianness, float_size, string_encoding};
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 
-pub(crate) struct BitArrayEvaluatedSize {
-    value: IntLocalId,
-    unit: u8,
+#[derive(Clone)]
+pub struct BitArrayEvaluatedSize {
+    pub value: IntLocalId,
+    pub unit: u8,
 }
 
-pub(crate) enum BitArrayBitsSize {
+#[derive(Clone)]
+pub enum BitArrayBitsSize {
     Fixed(usize),
     Evaluated(BitArrayEvaluatedSize),
 }
 
-pub(crate) enum BitArraySegment {
+#[derive(Clone)]
+pub enum BitArraySegment {
     Int {
         value: IntLocalId,
         bit_size: usize,
@@ -59,17 +64,18 @@ pub(crate) enum BitArraySegment {
     },
 }
 
-pub(crate) enum BitArrayInstruction {
-    Value(Box<[BitArraySegment]>),
+#[derive(Clone)]
+pub enum BitArrayInstruction {
+    Value(Table<BitArraySegment>),
     Constant(ConstantId<crate::plan::execution::graph::BitArrayLocalId>),
     Call {
         function: BitArrayFunctionId,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: crate::plan::execution::graph::BitArrayFunctionLocalId,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     TupleIndex {
@@ -231,6 +237,331 @@ impl Explain for BitArraySegment {
     }
 }
 
+impl Emit for BitArrayEvaluatedSize {
+    fn emit(&self, output: &mut Rust) {
+        let Self { value, unit } = self;
+        output.structure(
+            "graph::BitArrayEvaluatedSize",
+            &[("value", value), ("unit", unit)],
+        );
+    }
+}
+
+impl Emit for BitArrayBitsSize {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Fixed(field_0) => output.call("graph::BitArrayBitsSize::Fixed", &[field_0]),
+            Self::Evaluated(field_0) => {
+                output.call("graph::BitArrayBitsSize::Evaluated", &[field_0])
+            }
+        }
+    }
+}
+
+impl Emit for BitArraySegment {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Int {
+                value,
+                bit_size,
+                endianness,
+            } => output.structure(
+                "graph::BitArraySegment::Int",
+                &[
+                    ("value", value),
+                    ("bit_size", bit_size),
+                    ("endianness", endianness),
+                ],
+            ),
+            Self::EvaluatedInt {
+                value,
+                size,
+                endianness,
+                site,
+            } => output.structure(
+                "graph::BitArraySegment::EvaluatedInt",
+                &[
+                    ("value", value),
+                    ("size", size),
+                    ("endianness", endianness),
+                    ("site", site),
+                ],
+            ),
+            Self::Float {
+                value,
+                bit_size,
+                endianness,
+            } => output.structure(
+                "graph::BitArraySegment::Float",
+                &[
+                    ("value", value),
+                    ("bit_size", bit_size),
+                    ("endianness", endianness),
+                ],
+            ),
+            Self::EvaluatedFloat {
+                value,
+                size,
+                endianness,
+                site,
+            } => output.structure(
+                "graph::BitArraySegment::EvaluatedFloat",
+                &[
+                    ("value", value),
+                    ("size", size),
+                    ("endianness", endianness),
+                    ("site", site),
+                ],
+            ),
+            Self::String { value, encoding } => output.structure(
+                "graph::BitArraySegment::String",
+                &[("value", value), ("encoding", encoding)],
+            ),
+            Self::UtfCodepoint { value, encoding } => output.structure(
+                "graph::BitArraySegment::UtfCodepoint",
+                &[("value", value), ("encoding", encoding)],
+            ),
+            Self::Bits(field_0) => output.call("graph::BitArraySegment::Bits", &[field_0]),
+            Self::SizedBits { value, size, site } => output.structure(
+                "graph::BitArraySegment::SizedBits",
+                &[("value", value), ("size", size), ("site", site)],
+            ),
+        }
+    }
+}
+
+impl Emit for BitArrayInstruction {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Value(field_0) => output.call("graph::BitArrayInstruction::Value", &[field_0]),
+            Self::Constant(field_0) => {
+                output.call("graph::BitArrayInstruction::Constant", &[field_0])
+            }
+            Self::Call {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::BitArrayInstruction::Call",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::FunctionCall {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::BitArrayInstruction::FunctionCall",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::TupleIndex { tuple, index } => output.structure(
+                "graph::BitArrayInstruction::TupleIndex",
+                &[("tuple", tuple), ("index", index)],
+            ),
+            Self::CustomField { source, index } => output.structure(
+                "graph::BitArrayInstruction::CustomField",
+                &[("source", source), ("index", index)],
+            ),
+            Self::ListIndex { list, index } => output.structure(
+                "graph::BitArrayInstruction::ListIndex",
+                &[("list", list), ("index", index)],
+            ),
+        }
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::{BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayInstruction, BitArraySegment};
+    use crate::plan::execution::constant::ConstantId;
+    use crate::plan::execution::function::BitArrayFunctionId;
+    use crate::plan::execution::graph::{
+        BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, CustomLocal, CustomLocalId,
+        Endianness, FloatBitSize, FloatLocalId, IntLocalId, ParamLocal, StringEncoding,
+        StringLocalId, TupleLocalId, UtfCodepointLocalId,
+    };
+    use crate::plan::execution::prepared::rust::Rust;
+    use crate::plan::execution::type_::{CustomTypeId, CustomValueShape, CustomValueShapeId};
+    use crate::plan::{HostCallSite, PanicSite, SourceSpan};
+
+    #[test]
+    fn emits_bit_segments_with_fixed_and_evaluated_sizes() {
+        let site = PanicSite::new("example".into(), "main".into(), SourceSpan::new(3, 8));
+        let cases = [
+            (
+                BitArraySegment::Int {
+                    value: IntLocalId(2),
+                    bit_size: 24,
+                    endianness: Endianness::Little,
+                },
+                "data::graph::BitArraySegment::Int {value: data::graph::IntLocalId(2,),bit_size: 24,endianness: data::graph::Endianness::Little,}",
+            ),
+            (
+                BitArraySegment::EvaluatedInt {
+                    value: IntLocalId(2),
+                    size: BitArrayEvaluatedSize::new(IntLocalId(3), 8),
+                    endianness: Endianness::Big,
+                    site: site.clone(),
+                },
+                concat!(
+                    "data::graph::BitArraySegment::EvaluatedInt {value: data::graph::IntLocalId(2,),",
+                    "size: data::graph::BitArrayEvaluatedSize {value: data::graph::IntLocalId(3,),unit: 8,},",
+                    "endianness: data::graph::Endianness::Big,site: data::source::PanicSite::from_static(",
+                    "\"example\",\"main\",data::source::SourceSpan::new(3,8,),),}"
+                ),
+            ),
+            (
+                BitArraySegment::Float {
+                    value: FloatLocalId(2),
+                    bit_size: FloatBitSize::ThirtyTwo,
+                    endianness: Endianness::Little,
+                },
+                concat!(
+                    "data::graph::BitArraySegment::Float {value: data::graph::FloatLocalId(2,),",
+                    "bit_size: data::graph::FloatBitSize::ThirtyTwo,endianness: data::graph::Endianness::Little,}"
+                ),
+            ),
+            (
+                BitArraySegment::EvaluatedFloat {
+                    value: FloatLocalId(2),
+                    size: BitArrayEvaluatedSize::new(IntLocalId(3), 1),
+                    endianness: Endianness::Little,
+                    site: site.clone(),
+                },
+                concat!(
+                    "data::graph::BitArraySegment::EvaluatedFloat {value: data::graph::FloatLocalId(2,),",
+                    "size: data::graph::BitArrayEvaluatedSize {value: data::graph::IntLocalId(3,),unit: 1,},",
+                    "endianness: data::graph::Endianness::Little,site: data::source::PanicSite::from_static(",
+                    "\"example\",\"main\",data::source::SourceSpan::new(3,8,),),}"
+                ),
+            ),
+            (
+                BitArraySegment::String {
+                    value: StringLocalId(2),
+                    encoding: StringEncoding::Utf8,
+                },
+                "data::graph::BitArraySegment::String {value: data::graph::StringLocalId(2,),encoding: data::graph::StringEncoding::Utf8,}",
+            ),
+            (
+                BitArraySegment::UtfCodepoint {
+                    value: UtfCodepointLocalId(2),
+                    encoding: StringEncoding::Utf16(Endianness::Little),
+                },
+                concat!(
+                    "data::graph::BitArraySegment::UtfCodepoint {value: data::graph::UtfCodepointLocalId(2,),",
+                    "encoding: data::graph::StringEncoding::Utf16(data::graph::Endianness::Little,),}"
+                ),
+            ),
+            (
+                BitArraySegment::Bits(BitArrayLocalId(2)),
+                "data::graph::BitArraySegment::Bits(data::graph::BitArrayLocalId(2,),)",
+            ),
+            (
+                BitArraySegment::SizedBits {
+                    value: BitArrayLocalId(2),
+                    size: BitArrayBitsSize::Fixed(13),
+                    site: site.clone(),
+                },
+                concat!(
+                    "data::graph::BitArraySegment::SizedBits {value: data::graph::BitArrayLocalId(2,),",
+                    "size: data::graph::BitArrayBitsSize::Fixed(13,),site: data::source::PanicSite::from_static(",
+                    "\"example\",\"main\",data::source::SourceSpan::new(3,8,),),}"
+                ),
+            ),
+            (
+                BitArraySegment::SizedBits {
+                    value: BitArrayLocalId(2),
+                    size: BitArrayBitsSize::Evaluated(BitArrayEvaluatedSize::new(IntLocalId(3), 8)),
+                    site,
+                },
+                concat!(
+                    "data::graph::BitArraySegment::SizedBits {value: data::graph::BitArrayLocalId(2,),",
+                    "size: data::graph::BitArrayBitsSize::Evaluated(data::graph::BitArrayEvaluatedSize {",
+                    "value: data::graph::IntLocalId(3,),unit: 8,},),site: data::source::PanicSite::from_static(",
+                    "\"example\",\"main\",data::source::SourceSpan::new(3,8,),),}"
+                ),
+            ),
+        ];
+        for (segment, expected) in cases {
+            assert_eq!(Rust::expression(&segment), expected);
+        }
+    }
+
+    #[test]
+    fn emits_every_bit_array_instruction_with_its_operands_and_source_site() {
+        let site = HostCallSite::new("example".into(), "main".into(), SourceSpan::new(3, 8));
+        let cases = [
+            (
+                BitArrayInstruction::Value(vec![BitArraySegment::Bits(BitArrayLocalId(7))].into()),
+                "data::graph::BitArrayInstruction::Value(data::Storage::Static(&[data::graph::BitArraySegment::Bits(data::graph::BitArrayLocalId(7,),),]),)",
+            ),
+            (
+                BitArrayInstruction::Constant(ConstantId::new(3)),
+                concat!(
+                    "data::graph::BitArrayInstruction::Constant(data::constant::ConstantId {",
+                    "index: 3,value: ::core::marker::PhantomData,},)"
+                ),
+            ),
+            (
+                BitArrayInstruction::Call {
+                    function: BitArrayFunctionId(2),
+                    args: vec![ParamLocal::BitArray(BitArrayLocalId(5))].into(),
+                    site: site.clone(),
+                },
+                concat!(
+                    "data::graph::BitArrayInstruction::Call {function: data::function::BitArrayFunctionId(2,),",
+                    "args: data::Storage::Static(&[data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(5,),),]),",
+                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
+                    "data::source::SourceSpan::new(3,8,),),}"
+                ),
+            ),
+            (
+                BitArrayInstruction::FunctionCall {
+                    function: BitArrayFunctionLocalId(2),
+                    args: vec![ParamLocal::BitArray(BitArrayLocalId(5))].into(),
+                    site,
+                },
+                concat!(
+                    "data::graph::BitArrayInstruction::FunctionCall {function: data::graph::BitArrayFunctionLocalId(2,),",
+                    "args: data::Storage::Static(&[data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(5,),),]),",
+                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
+                    "data::source::SourceSpan::new(3,8,),),}"
+                ),
+            ),
+            (
+                BitArrayInstruction::TupleIndex {
+                    tuple: TupleLocalId(2),
+                    index: 1,
+                },
+                "data::graph::BitArrayInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+            ),
+            (
+                BitArrayInstruction::CustomField {
+                    source: CustomLocal::new(
+                        CustomLocalId(2),
+                        CustomValueShape::new(CustomTypeId(3), CustomValueShapeId(4)),
+                    ),
+                    index: 1,
+                },
+                concat!(
+                    "data::graph::BitArrayInstruction::CustomField {source: data::graph::CustomLocal {",
+                    "id: data::graph::CustomLocalId(2,),shape: data::type_::CustomValueShape {",
+                    "type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},index: 1,}"
+                ),
+            ),
+            (
+                BitArrayInstruction::ListIndex {
+                    list: BitArrayListLocalId(2),
+                    index: 1,
+                },
+                "data::graph::BitArrayInstruction::ListIndex {list: data::graph::BitArrayListLocalId(2,),index: 1,}",
+            ),
+        ];
+        for (instruction, expected) in cases {
+            assert_eq!(Rust::expression(&instruction), expected);
+        }
+    }
+}
+
 #[cfg(test)]
 mod explain_tests {
     use super::{BitArrayBitsSize, BitArrayEvaluatedSize, BitArraySegment};
@@ -325,7 +656,7 @@ pub fn main() {
                 .body()
                 .block_graph();
             let mut context = explain::ExplainContext::new(plan, output);
-            for instruction in graph.blocks()[0].instructions() {
+            for instruction in graph.blocks().next().unwrap().instructions() {
                 context.write(instruction);
             }
         });

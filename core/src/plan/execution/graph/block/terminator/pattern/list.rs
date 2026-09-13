@@ -1,12 +1,16 @@
 use super::{MatchPattern, MatchPatternBinding};
 use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 
-pub(crate) struct MatchPatternList {
-    elements: Box<[MatchPattern]>,
-    tail: Option<MatchPatternListTail>,
+#[derive(Clone)]
+pub struct MatchPatternList {
+    pub elements: Table<MatchPattern>,
+    pub tail: Option<MatchPatternListTail>,
 }
 
-pub(crate) enum MatchPatternListTail {
+#[derive(Clone)]
+pub enum MatchPatternListTail {
     Ignore,
     Bind(MatchPatternBinding),
 }
@@ -17,7 +21,7 @@ impl MatchPatternList {
         tail: Option<MatchPatternListTail>,
     ) -> Self {
         Self {
-            elements: elements.into_boxed_slice(),
+            elements: elements.into(),
             tail,
         }
     }
@@ -49,6 +53,64 @@ impl Explain for MatchPatternList {
             }
         }
         context.push(']');
+    }
+}
+
+impl Emit for MatchPatternList {
+    fn emit(&self, output: &mut Rust) {
+        let Self { elements, tail } = self;
+        output.structure(
+            "graph::MatchPatternList",
+            &[("elements", elements), ("tail", tail)],
+        );
+    }
+}
+
+impl Emit for MatchPatternListTail {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Ignore => output.path("graph::MatchPatternListTail::Ignore"),
+            Self::Bind(field_0) => output.call("graph::MatchPatternListTail::Bind", &[field_0]),
+        }
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::{MatchPattern, MatchPatternBinding, MatchPatternList, MatchPatternListTail, Rust};
+
+    #[test]
+    fn emits_closed_ignored_and_bound_list_tails() {
+        assert_eq!(
+            Rust::expression(&MatchPatternListTail::Ignore),
+            "data::graph::MatchPatternListTail::Ignore"
+        );
+        assert_eq!(
+            Rust::expression(&MatchPatternListTail::Bind(MatchPatternBinding::new(2))),
+            "data::graph::MatchPatternListTail::Bind(data::graph::MatchPatternBinding {index: 2,},)"
+        );
+        for (tail, expected) in [
+            (
+                None,
+                "data::graph::MatchPatternList {elements: data::Storage::Static(&[data::graph::MatchPattern::Discard,]),tail: None,}",
+            ),
+            (
+                Some(MatchPatternListTail::Ignore),
+                "data::graph::MatchPatternList {elements: data::Storage::Static(&[data::graph::MatchPattern::Discard,]),tail: Some(data::graph::MatchPatternListTail::Ignore),}",
+            ),
+            (
+                Some(MatchPatternListTail::Bind(MatchPatternBinding::new(2))),
+                concat!(
+                    "data::graph::MatchPatternList {elements: data::Storage::Static(&[data::graph::MatchPattern::Discard,]),",
+                    "tail: Some(data::graph::MatchPatternListTail::Bind(data::graph::MatchPatternBinding {index: 2,},)),}"
+                ),
+            ),
+        ] {
+            assert_eq!(
+                Rust::expression(&MatchPatternList::new(vec![MatchPattern::Discard], tail)),
+                expected
+            );
+        }
     }
 }
 
@@ -99,7 +161,9 @@ pub fn main() {
                 plan.int_function(IntFunctionId(0))
                     .body()
                     .block_graph()
-                    .blocks()[0]
+                    .blocks()
+                    .next()
+                    .unwrap()
                     .terminator(),
             );
         });
@@ -122,7 +186,9 @@ pub fn main() {
                 plan.int_function(IntFunctionId(0))
                     .body()
                     .block_graph()
-                    .blocks()[0]
+                    .blocks()
+                    .next()
+                    .unwrap()
                     .terminator(),
             );
         });
@@ -144,7 +210,9 @@ pub fn main() {
                 .int_function(IntFunctionId(0))
                 .body()
                 .block_graph()
-                .blocks()[0]
+                .blocks()
+                .next()
+                .unwrap()
                 .terminator();
             let mut context = explain::ExplainContext::new(plan, output);
             context.write(list_pattern(terminator));

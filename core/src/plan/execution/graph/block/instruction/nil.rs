@@ -5,18 +5,21 @@ use crate::plan::execution::function::NilFunctionId;
 use crate::plan::execution::graph::{
     CustomLocal, NilFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal, TupleLocalId,
 };
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 
-pub(crate) enum NilInstruction {
+#[derive(Clone)]
+pub enum NilInstruction {
     Value,
     Constant(ConstantId<NilLocalId>),
     Call {
         function: NilFunctionId,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: NilFunctionLocalId,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     TupleIndex {
@@ -54,6 +57,129 @@ impl Explain for NilInstruction {
             NilInstruction::ListIndex { list, index } => {
                 write_projection(output, "nil.list_index", list, *index);
             }
+        }
+    }
+}
+
+impl Emit for NilInstruction {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Value => output.path("graph::NilInstruction::Value"),
+            Self::Constant(field_0) => output.call("graph::NilInstruction::Constant", &[field_0]),
+            Self::Call {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::NilInstruction::Call",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::FunctionCall {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::NilInstruction::FunctionCall",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::TupleIndex { tuple, index } => output.structure(
+                "graph::NilInstruction::TupleIndex",
+                &[("tuple", tuple), ("index", index)],
+            ),
+            Self::CustomField { source, index } => output.structure(
+                "graph::NilInstruction::CustomField",
+                &[("source", source), ("index", index)],
+            ),
+            Self::ListIndex { list, index } => output.structure(
+                "graph::NilInstruction::ListIndex",
+                &[("list", list), ("index", index)],
+            ),
+        }
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::NilInstruction;
+    use crate::plan::execution::constant::ConstantId;
+    use crate::plan::execution::function::NilFunctionId;
+    use crate::plan::execution::graph::{
+        CustomLocal, CustomLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal,
+        TupleLocalId,
+    };
+    use crate::plan::execution::prepared::rust::Rust;
+    use crate::plan::execution::type_::{CustomTypeId, CustomValueShape, CustomValueShapeId};
+    use crate::plan::{HostCallSite, SourceSpan};
+
+    #[test]
+    fn emits_every_nil_instruction_with_its_operands_and_source_site() {
+        let site = HostCallSite::new("example".into(), "main".into(), SourceSpan::new(3, 8));
+        let cases = [
+            (NilInstruction::Value, "data::graph::NilInstruction::Value"),
+            (
+                NilInstruction::Constant(ConstantId::new(3)),
+                concat!(
+                    "data::graph::NilInstruction::Constant(data::constant::ConstantId {",
+                    "index: 3,value: ::core::marker::PhantomData,},)"
+                ),
+            ),
+            (
+                NilInstruction::Call {
+                    function: NilFunctionId(2),
+                    args: vec![ParamLocal::Nil(NilLocalId(5))].into(),
+                    site: site.clone(),
+                },
+                concat!(
+                    "data::graph::NilInstruction::Call {function: data::function::NilFunctionId(2,),",
+                    "args: data::Storage::Static(&[data::graph::ParamLocal::Nil(data::graph::NilLocalId(5,),),]),",
+                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
+                    "data::source::SourceSpan::new(3,8,),),}"
+                ),
+            ),
+            (
+                NilInstruction::FunctionCall {
+                    function: NilFunctionLocalId(2),
+                    args: vec![ParamLocal::Nil(NilLocalId(5))].into(),
+                    site,
+                },
+                concat!(
+                    "data::graph::NilInstruction::FunctionCall {function: data::graph::NilFunctionLocalId(2,),",
+                    "args: data::Storage::Static(&[data::graph::ParamLocal::Nil(data::graph::NilLocalId(5,),),]),",
+                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
+                    "data::source::SourceSpan::new(3,8,),),}"
+                ),
+            ),
+            (
+                NilInstruction::TupleIndex {
+                    tuple: TupleLocalId(2),
+                    index: 1,
+                },
+                "data::graph::NilInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+            ),
+            (
+                NilInstruction::CustomField {
+                    source: CustomLocal::new(
+                        CustomLocalId(2),
+                        CustomValueShape::new(CustomTypeId(3), CustomValueShapeId(4)),
+                    ),
+                    index: 1,
+                },
+                concat!(
+                    "data::graph::NilInstruction::CustomField {source: data::graph::CustomLocal {",
+                    "id: data::graph::CustomLocalId(2,),shape: data::type_::CustomValueShape {",
+                    "type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},index: 1,}"
+                ),
+            ),
+            (
+                NilInstruction::ListIndex {
+                    list: NilListLocalId(2),
+                    index: 1,
+                },
+                "data::graph::NilInstruction::ListIndex {list: data::graph::NilListLocalId(2,),index: 1,}",
+            ),
+        ];
+        for (instruction, expected) in cases {
+            assert_eq!(Rust::expression(&instruction), expected);
         }
     }
 }
@@ -118,7 +244,7 @@ pub fn main() {
         explain::assert_rendered(source, expected, |plan, output| {
             let graph = plan.nil_function(NilFunctionId(0)).body().block_graph();
             let mut first = true;
-            for instruction in graph.blocks().iter().flat_map(|block| block.instructions()) {
+            for instruction in graph.blocks().flat_map(|block| block.instructions()) {
                 if let ProfiledInstructionKind::Nil(instruction) = instruction.kind() {
                     if first {
                         first = false;

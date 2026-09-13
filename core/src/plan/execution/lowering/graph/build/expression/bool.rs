@@ -748,7 +748,14 @@ mod tests {
             let lowered = super::super::super::super::freeze::freeze(graph, &mut context);
             assert_eq!(lowered.body.block_graph().blocks().len(), 1);
             assert_eq!(
-                lowered.body.block_graph().blocks()[0].instructions().len(),
+                lowered
+                    .body
+                    .block_graph()
+                    .blocks()
+                    .next()
+                    .unwrap()
+                    .instructions()
+                    .len(),
                 1
             );
         }

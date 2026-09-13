@@ -543,6 +543,24 @@ impl ConstantGenericFunctionInstantiation {
 }
 
 impl ConstantFunctionInstantiation {
+    pub(super) fn shape(&self) -> &FunctionShape {
+        match self {
+            Self::Generic(value) => value.shape(),
+            Self::Int(value) => value.shape(),
+            Self::String(value) => value.shape(),
+            Self::BitArray(value) => value.shape(),
+            Self::UtfCodepoint(value) => value.shape(),
+            Self::Custom(value) => value.shape(),
+            Self::External(value) => value.shape(),
+            Self::Float(value) => value.shape(),
+            Self::Bool(value) => value.shape(),
+            Self::Nil(value) => value.shape(),
+            Self::Tuple(value) => value.shape(),
+            Self::List(value) => value.shape(),
+            Self::Function(value) => value.shape(),
+        }
+    }
+
     pub(super) fn module(&self) -> crate::plan::ModuleId {
         match self {
             Self::Generic(value) => value.module(),

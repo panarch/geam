@@ -1,3 +1,5 @@
+mod refinement;
+
 use crate::plan::module::{FunctionInstantiation, FunctionTemplateId, TypeSubstitution};
 use crate::plan::{
     CustomConstructorRefinement, CustomTypeName, ExternalTypeName, FunctionShape, ValueShape,
@@ -45,6 +47,7 @@ pub(super) struct SpecializedCustomConstructor {
 pub(super) struct SpecializedCustomConstructorField {
     label: Option<EcoString>,
     shape: SpecializedValueShape,
+    refinement: crate::plan::execution::type_::custom::FieldRefinement,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -482,7 +485,9 @@ impl SpecializedCustomConstructor {
     pub(super) fn instantiate(
         constructor: crate::plan::CustomConstructor,
         substitution: &SpecializedTypeSubstitution,
+        representations: &RepresentationContext,
     ) -> Self {
+        let refinements = representations.constructor_refinements(&constructor);
         let (type_, name, index, fields) = constructor.into_parts();
         Self {
             type_: SpecializedCustomValueShape::instantiate(
@@ -493,10 +498,12 @@ impl SpecializedCustomConstructor {
             index,
             fields: fields
                 .into_iter()
-                .map(|field| {
+                .zip(refinements)
+                .map(|(field, refinement)| {
                     let (label, type_) = field.into_parts();
                     SpecializedCustomConstructorField {
                         label,
+                        refinement,
                         shape: SpecializedValueShape::instantiate(
                             &ValueShape::from_value_type(type_),
                             substitution,
@@ -521,12 +528,26 @@ impl SpecializedCustomConstructor {
 }
 
 impl SpecializedCustomConstructorField {
-    pub(super) fn new(label: Option<EcoString>, shape: SpecializedValueShape) -> Self {
-        Self { label, shape }
+    pub(super) fn new(
+        label: Option<EcoString>,
+        shape: SpecializedValueShape,
+        refinement: crate::plan::execution::type_::custom::FieldRefinement,
+    ) -> Self {
+        Self {
+            label,
+            shape,
+            refinement,
+        }
     }
 
-    pub(super) fn into_parts(self) -> (Option<EcoString>, SpecializedValueShape) {
-        (self.label, self.shape)
+    pub(super) fn into_parts(
+        self,
+    ) -> (
+        Option<EcoString>,
+        SpecializedValueShape,
+        crate::plan::execution::type_::custom::FieldRefinement,
+    ) {
+        (self.label, self.shape, self.refinement)
     }
 }
 
@@ -617,6 +638,10 @@ impl SpecializedValueShape {
 }
 
 impl RepresentationContext {
+    pub(super) fn definitions(&self) -> impl Iterator<Item = &crate::plan::CustomTypeDefinition> {
+        self.custom_types.values()
+    }
+
     pub(super) fn stored_shape(&self, shape: &SpecializedValueShape) -> Option<StoredValueShape> {
         match self.representation(shape) {
             ValueRepresentation::Stored(shape) => Some(shape),
@@ -703,11 +728,7 @@ impl RepresentationContext {
                     return CustomConstructorMatch::Impossible;
                 }
 
-                let constructor_count = if is_result(&source.name) {
-                    2
-                } else {
-                    self.custom_types[&source.name].constructors().len()
-                };
+                let constructor_count = self.constructor_count(&source.name);
                 if (0..constructor_count)
                     .filter(|index| *index != constructor)
                     .all(|index| !self.custom_has_value(&exact(index)))
@@ -717,6 +738,14 @@ impl RepresentationContext {
                     CustomConstructorMatch::Dynamic
                 }
             }
+        }
+    }
+
+    pub(super) fn constructor_count(&self, name: &CustomTypeName) -> usize {
+        if is_result(name) {
+            2
+        } else {
+            self.custom_types[name].constructors().len()
         }
     }
 

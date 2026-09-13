@@ -15,9 +15,9 @@ pub(super) fn freeze(
     match pattern {
         DraftMatchPattern::Bind(binding) => E::Bind(freeze_binding(binding)),
         DraftMatchPattern::Discard => E::Discard,
-        DraftMatchPattern::Int(value) => E::Int(value),
+        DraftMatchPattern::Int(value) => E::Int(value.into()),
         DraftMatchPattern::Float(value) => E::Float(value),
-        DraftMatchPattern::String(value) => E::String(value),
+        DraftMatchPattern::String(value) => E::String(value.into()),
         DraftMatchPattern::Bool(value) => E::Bool(value),
         DraftMatchPattern::Nil => E::Nil,
         DraftMatchPattern::Tuple(elements) => E::Tuple(
@@ -25,7 +25,7 @@ pub(super) fn freeze(
                 .into_iter()
                 .map(|element| freeze(element, values))
                 .collect::<Vec<_>>()
-                .into_boxed_slice(),
+                .into(),
         ),
         DraftMatchPattern::List { elements, tail } => {
             E::List(execution::graph::MatchPatternList::new(
@@ -46,19 +46,19 @@ pub(super) fn freeze(
                 .into_iter()
                 .map(|field| freeze(field, values))
                 .collect::<Vec<_>>()
-                .into_boxed_slice(),
+                .into(),
         },
         DraftMatchPattern::StringPrefix {
             prefix,
             left,
             right,
         } => E::StringPrefix {
-            prefix,
+            prefix: prefix.into(),
             left: left.map(freeze_binding),
             right: right.map(freeze_binding),
         },
         DraftMatchPattern::Alias { pattern, binding } => E::Alias {
-            pattern: Box::new(freeze(*pattern, values)),
+            pattern: Box::new(freeze(*pattern, values)).into(),
             binding: freeze_binding(binding),
         },
     }
@@ -129,7 +129,7 @@ fn freeze_bit_array_segment(
         DraftBitArrayPatternSegment::String { pattern, encoding } => E::String {
             pattern: match pattern {
                 DraftBitArrayStringPattern::Literal(value) => {
-                    execution::graph::BitArrayStringPattern::Literal(value)
+                    execution::graph::BitArrayStringPattern::Literal(value.into())
                 }
                 DraftBitArrayStringPattern::Discard => {
                     execution::graph::BitArrayStringPattern::Discard
@@ -161,40 +161,40 @@ fn freeze_bit_array_size_expr(
     use execution::graph::BitArrayPatternSizeExpr as E;
 
     match expression {
-        DraftBitArrayPatternSizeExpr::Value(value) => E::Value(value),
+        DraftBitArrayPatternSizeExpr::Value(value) => E::Value(value.into()),
         DraftBitArrayPatternSizeExpr::Local(value) => E::Local(values.int(&value)),
         DraftBitArrayPatternSizeExpr::Binding(index) => {
             E::Binding(execution::graph::MatchIntBindingId::new(index))
         }
         DraftBitArrayPatternSizeExpr::Add { left, right } => E::Add {
-            left: Box::new(freeze_bit_array_size_expr(*left, values)),
-            right: Box::new(freeze_bit_array_size_expr(*right, values)),
+            left: Box::new(freeze_bit_array_size_expr(*left, values)).into(),
+            right: Box::new(freeze_bit_array_size_expr(*right, values)).into(),
         },
         DraftBitArrayPatternSizeExpr::Subtract { left, right } => E::Subtract {
-            left: Box::new(freeze_bit_array_size_expr(*left, values)),
-            right: Box::new(freeze_bit_array_size_expr(*right, values)),
+            left: Box::new(freeze_bit_array_size_expr(*left, values)).into(),
+            right: Box::new(freeze_bit_array_size_expr(*right, values)).into(),
         },
         DraftBitArrayPatternSizeExpr::Multiply { left, right } => E::Multiply {
-            left: Box::new(freeze_bit_array_size_expr(*left, values)),
-            right: Box::new(freeze_bit_array_size_expr(*right, values)),
+            left: Box::new(freeze_bit_array_size_expr(*left, values)).into(),
+            right: Box::new(freeze_bit_array_size_expr(*right, values)).into(),
         },
         DraftBitArrayPatternSizeExpr::Divide { left, right } => E::Divide {
-            left: Box::new(freeze_bit_array_size_expr(*left, values)),
-            right: Box::new(freeze_bit_array_size_expr(*right, values)),
+            left: Box::new(freeze_bit_array_size_expr(*left, values)).into(),
+            right: Box::new(freeze_bit_array_size_expr(*right, values)).into(),
         },
         DraftBitArrayPatternSizeExpr::Remainder { left, right } => E::Remainder {
-            left: Box::new(freeze_bit_array_size_expr(*left, values)),
-            right: Box::new(freeze_bit_array_size_expr(*right, values)),
+            left: Box::new(freeze_bit_array_size_expr(*left, values)).into(),
+            right: Box::new(freeze_bit_array_size_expr(*right, values)).into(),
         },
     }
 }
 
-fn freeze_bit_array_value<Value>(
+fn freeze_bit_array_value<Value, Frozen: From<Value> + 'static>(
     pattern: DraftBitArrayPatternValue<Value>,
-) -> execution::graph::BitArrayPatternValue<Value> {
+) -> execution::graph::BitArrayPatternValue<Frozen> {
     match pattern {
         DraftBitArrayPatternValue::Literal(value) => {
-            execution::graph::BitArrayPatternValue::Literal(value)
+            execution::graph::BitArrayPatternValue::Literal(value.into())
         }
         DraftBitArrayPatternValue::Bind(binding) => {
             execution::graph::BitArrayPatternValue::Bind(freeze_binding(binding))
@@ -202,7 +202,7 @@ fn freeze_bit_array_value<Value>(
         DraftBitArrayPatternValue::Discard => execution::graph::BitArrayPatternValue::Discard,
         DraftBitArrayPatternValue::Alias { pattern, binding } => {
             execution::graph::BitArrayPatternValue::Alias {
-                pattern: Box::new(freeze_bit_array_value(*pattern)),
+                pattern: Box::new(freeze_bit_array_value(*pattern)).into(),
                 binding: freeze_binding(binding),
             }
         }
@@ -219,7 +219,7 @@ fn freeze_bit_array_binding(
         DraftBitArrayBindingPattern::Discard => execution::graph::BitArrayBindingPattern::Discard,
         DraftBitArrayBindingPattern::Alias { pattern, binding } => {
             execution::graph::BitArrayBindingPattern::Alias {
-                pattern: Box::new(freeze_bit_array_binding(*pattern)),
+                pattern: Box::new(freeze_bit_array_binding(*pattern)).into(),
                 binding: freeze_binding(binding),
             }
         }
@@ -310,8 +310,9 @@ mod tests {
             &values,
         ));
         assert!(!bit_array_value_matches(
-            &execution_graph::BitArrayPatternValue::<num_bigint::BigInt>::Discard,
+            &execution_graph::BitArrayPatternValue::<execution_graph::IntegerLiteral>::Discard,
             &draft_pattern::DraftBitArrayPatternValue::Literal(0.into()),
+            execution_graph::IntegerLiteral::matches,
         ));
         assert!(!bit_array_binding_matches(
             &execution_graph::BitArrayBindingPattern::Discard,
@@ -322,7 +323,7 @@ mod tests {
             &draft_pattern::DraftBitArrayStringPattern::Literal("mismatch".into()),
         ));
         assert!(!bit_array_size_expr_matches(
-            &execution_graph::BitArrayPatternSizeExpr::Value(1.into()),
+            &execution_graph::BitArrayPatternSizeExpr::Value(num_bigint::BigInt::from(1).into()),
             &draft_pattern::DraftBitArrayPatternSizeExpr::Binding(0),
             &values,
         ));
@@ -522,9 +523,9 @@ mod tests {
         match (actual, expected) {
             (E::Bind(actual), D::Bind(expected)) => actual.index() == expected.index,
             (E::Discard, D::Discard) => true,
-            (E::Int(actual), D::Int(expected)) => actual == expected,
+            (E::Int(actual), D::Int(expected)) => actual.matches(expected),
             (E::Float(actual), D::Float(expected)) => actual == expected,
-            (E::String(actual), D::String(expected)) => actual == expected,
+            (E::String(actual), D::String(expected)) => actual.as_str() == expected.as_str(),
             (E::Bool(actual), D::Bool(expected)) => actual == expected,
             (E::Nil, D::Nil) => true,
             (E::Tuple(actual), D::Tuple(expected)) => {
@@ -582,7 +583,7 @@ mod tests {
                     right: expected_right,
                 },
             ) => {
-                actual_prefix == expected_prefix
+                actual_prefix.as_str() == expected_prefix.as_str()
                     && optional_binding_matches(actual_left.as_ref(), expected_left.as_ref())
                     && optional_binding_matches(actual_right.as_ref(), expected_right.as_ref())
             }
@@ -655,8 +656,11 @@ mod tests {
                     signedness: expected_signedness,
                 },
             ) => {
-                bit_array_value_matches(actual_pattern, expected_pattern)
-                    && bit_array_size_matches(actual_size, expected_size, values)
+                bit_array_value_matches(
+                    actual_pattern,
+                    expected_pattern,
+                    execution_graph::IntegerLiteral::matches,
+                ) && bit_array_size_matches(actual_size, expected_size, values)
                     && actual_endianness == expected_endianness
                     && actual_signedness == expected_signedness
             }
@@ -672,7 +676,7 @@ mod tests {
                     endianness: expected_endianness,
                 },
             ) => {
-                bit_array_value_matches(actual_pattern, expected_pattern)
+                bit_array_value_matches(actual_pattern, expected_pattern, PartialEq::eq)
                     && bit_array_size_matches(actual_size, expected_size, values)
                     && actual_endianness == expected_endianness
             }
@@ -728,15 +732,16 @@ mod tests {
         }
     }
 
-    fn bit_array_value_matches<Value: PartialEq>(
-        actual: &execution_graph::BitArrayPatternValue<Value>,
-        expected: &draft_pattern::DraftBitArrayPatternValue<Value>,
+    fn bit_array_value_matches<Actual, Expected>(
+        actual: &execution_graph::BitArrayPatternValue<Actual>,
+        expected: &draft_pattern::DraftBitArrayPatternValue<Expected>,
+        matches: fn(&Actual, &Expected) -> bool,
     ) -> bool {
         use draft_pattern::DraftBitArrayPatternValue as D;
         use execution_graph::BitArrayPatternValue as E;
 
         match (actual, expected) {
-            (E::Literal(actual), D::Literal(expected)) => actual == expected,
+            (E::Literal(actual), D::Literal(expected)) => matches(actual, expected),
             (E::Bind(actual), D::Bind(expected)) => actual.index() == expected.index,
             (E::Discard, D::Discard) => true,
             (
@@ -750,7 +755,7 @@ mod tests {
                 },
             ) => {
                 actual_binding.index() == expected_binding.index
-                    && bit_array_value_matches(actual_pattern, expected_pattern)
+                    && bit_array_value_matches(actual_pattern, expected_pattern, matches)
             }
             _ => false,
         }
@@ -791,7 +796,7 @@ mod tests {
             (
                 execution_graph::BitArrayStringPattern::Literal(actual),
                 draft_pattern::DraftBitArrayStringPattern::Literal(expected),
-            ) => actual == expected,
+            ) => actual.as_str() == expected.as_str(),
             (
                 execution_graph::BitArrayStringPattern::Discard,
                 draft_pattern::DraftBitArrayStringPattern::Discard,
@@ -818,7 +823,7 @@ mod tests {
         use execution_graph::BitArrayPatternSizeExpr as E;
 
         match (actual, expected) {
-            (E::Value(actual), D::Value(expected)) => actual == expected,
+            (E::Value(actual), D::Value(expected)) => actual.matches(expected),
             (E::Local(actual), D::Local(expected)) => *actual == values.int(expected),
             (E::Binding(actual), D::Binding(expected)) => actual.index() == *expected,
             (

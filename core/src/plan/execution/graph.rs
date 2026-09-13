@@ -1,7 +1,9 @@
-mod bit_array;
-mod block;
-mod exit;
-mod value;
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+pub(in crate::plan::execution) mod bit_array;
+pub(in crate::plan::execution) mod block;
+pub(in crate::plan::execution) mod exit;
+pub(in crate::plan::execution) mod integer;
+pub(in crate::plan::execution) mod value;
 
 pub(crate) use bit_array::{Endianness, FloatBitSize, StringEncoding};
 pub(in crate::plan::execution::graph) use bit_array::{endianness, float_size, string_encoding};
@@ -22,6 +24,7 @@ pub(crate) use block::{
     TupleInstruction, TypedListInstruction, UtfCodepointInstruction,
 };
 pub(crate) use exit::BlockGraphExitId;
+pub(crate) use integer::IntegerLiteral;
 pub(crate) use value::{
     BitArrayFunctionLocalId, BitArrayListFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
     BoolFunctionLocalId, BoolListFunctionLocalId, BoolListLocalId, BoolLocalId,
@@ -47,11 +50,30 @@ use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::{
     ExecutionGraphProfile, FunctionLabelSource, HostedExecutionGraph,
 };
+use crate::plan::execution::storage::Table;
+pub(in crate::plan::execution) use block::BlockHeader;
+pub(crate) use block::BlockView;
 
-pub(crate) struct ProfiledBlockGraph<Graph: ExecutionGraphProfile> {
-    entry: BlockId,
-    blocks: Box<[ProfiledBlock<Graph>]>,
+pub struct ProfiledBlockGraph<Graph: ExecutionGraphProfile> {
+    pub entry: BlockId,
+    pub blocks: Table<BlockHeader>,
+    pub params: Table<ParamSlot>,
+    pub instructions: Table<ProfiledInstruction<Graph>>,
 }
+
+pub(crate) struct BlockGraphView<'graph, Graph: ExecutionGraphProfile> {
+    entry: BlockId,
+    blocks: &'graph [BlockHeader],
+    params: &'graph [ParamSlot],
+    instructions: &'graph [ProfiledInstruction<Graph>],
+}
+
+pub(in crate::plan::execution) type BlockGraphParts<Graph> = (
+    BlockId,
+    Table<BlockHeader>,
+    Table<ParamSlot>,
+    Table<ProfiledInstruction<Graph>>,
+);
 
 pub(crate) type BlockGraph = ProfiledBlockGraph<HostedExecutionGraph>;
 
@@ -69,26 +91,66 @@ impl<Graph: ExecutionGraphProfile> ProfiledBlockGraph<Graph> {
         entry: BlockId,
         blocks: Vec<ProfiledBlock<Graph>>,
     ) -> Self {
+        let mut headers = Vec::with_capacity(blocks.len());
+        let mut all_params = Vec::new();
+        let mut all_instructions = Vec::new();
+        for block in blocks {
+            let (params, instructions, terminator) = block.into_parts();
+            let param_start = all_params.len();
+            let instruction_start = all_instructions.len();
+            all_params.extend(params);
+            all_instructions.extend(instructions);
+            headers.push(BlockHeader {
+                params: param_start..all_params.len(),
+                instructions: instruction_start..all_instructions.len(),
+                terminator,
+            });
+        }
         Self {
             entry,
-            blocks: blocks.into_boxed_slice(),
+            blocks: headers.into(),
+            params: all_params.into(),
+            instructions: all_instructions.into(),
+        }
+    }
+
+    pub(in crate::plan::execution) fn from_tables(
+        entry: BlockId,
+        blocks: Table<BlockHeader>,
+        params: Table<ParamSlot>,
+        instructions: Table<ProfiledInstruction<Graph>>,
+    ) -> Self {
+        Self {
+            entry,
+            blocks,
+            params,
+            instructions,
         }
     }
 
     pub(crate) fn entry(&self) -> BlockId {
-        self.entry
+        self.as_view().entry()
     }
 
-    pub(crate) fn blocks(&self) -> &[ProfiledBlock<Graph>] {
-        &self.blocks
+    pub(crate) fn blocks(&self) -> impl ExactSizeIterator<Item = BlockView<'_, Graph>> {
+        self.as_view().blocks()
     }
 
-    pub(crate) fn block(&self, id: BlockId) -> &ProfiledBlock<Graph> {
-        &self.blocks[id.index()]
+    pub(crate) fn block(&self, id: BlockId) -> BlockView<'_, Graph> {
+        self.as_view().block(id)
     }
 
-    pub(in crate::plan::execution) fn into_parts(self) -> (BlockId, Box<[ProfiledBlock<Graph>]>) {
-        (self.entry, self.blocks)
+    pub(crate) fn as_view(&self) -> BlockGraphView<'_, Graph> {
+        BlockGraphView {
+            entry: self.entry,
+            blocks: &self.blocks,
+            params: &self.params,
+            instructions: &self.instructions,
+        }
+    }
+
+    pub(in crate::plan::execution) fn into_parts(self) -> BlockGraphParts<Graph> {
+        (self.entry, self.blocks, self.params, self.instructions)
     }
 
     pub(in crate::plan::execution) fn write_explanation(
@@ -115,8 +177,38 @@ impl<Graph: ExecutionGraphProfile> ProfiledBlockGraph<Graph> {
         context.push('\n');
 
         let mut graph_context = BlockGraphExplainContext { context, exits };
-        for (index, block) in self.blocks().iter().enumerate() {
+        for (index, block) in self.blocks().enumerate() {
             block.write_explanation(&mut graph_context, index);
+        }
+    }
+}
+
+impl<Graph: ExecutionGraphProfile> Copy for BlockGraphView<'_, Graph> {}
+
+impl<Graph: ExecutionGraphProfile> Clone for BlockGraphView<'_, Graph> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'graph, Graph: ExecutionGraphProfile> BlockGraphView<'graph, Graph> {
+    pub(crate) fn entry(self) -> BlockId {
+        self.entry
+    }
+
+    pub(crate) fn blocks(self) -> impl ExactSizeIterator<Item = BlockView<'graph, Graph>> {
+        self.blocks.iter().map(move |block| self.view_block(block))
+    }
+
+    pub(crate) fn block(self, id: BlockId) -> BlockView<'graph, Graph> {
+        self.view_block(&self.blocks[id.index()])
+    }
+
+    fn view_block(self, block: &'graph BlockHeader) -> BlockView<'graph, Graph> {
+        BlockView {
+            params: &self.params[block.params.clone()],
+            instructions: &self.instructions[block.instructions.clone()],
+            terminator: &block.terminator,
         }
     }
 }
@@ -157,10 +249,59 @@ impl BlockGraphExplainContext<'_, '_, '_> {
     }
 }
 
+impl<Graph: ExecutionGraphProfile> Emit for ProfiledBlockGraph<Graph>
+where
+    Table<ProfiledInstruction<Graph>>: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            entry,
+            blocks,
+            params,
+            instructions,
+        } = self;
+        output.structure(
+            "graph::ProfiledBlockGraph",
+            &[
+                ("entry", entry),
+                ("blocks", blocks),
+                ("params", params),
+                ("instructions", instructions),
+            ],
+        );
+    }
+}
+
 #[cfg(test)]
 mod explain_tests {
     use crate::plan::execution::explain;
     use crate::plan::execution::function::IntFunctionId;
+
+    #[test]
+    fn borrowed_graph_views_preserve_owned_block_and_instruction_addresses() {
+        let source = "pub fn main() { 20 + 22 }";
+        let module = crate::compile_typed_module("main", "main.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(module).unwrap());
+        let graph = plan.int_function(IntFunctionId(0)).body().block_graph();
+        let view = graph.as_view();
+        let copied = Clone::clone(&view);
+
+        assert_eq!(view.entry(), graph.entry());
+        assert_eq!(view.blocks().len(), 1);
+        assert!(std::ptr::eq(view.blocks.as_ptr(), graph.blocks.as_ptr()));
+        assert!(std::ptr::eq(
+            Clone::clone(&copied.block(view.entry())).terminator(),
+            graph.block(graph.entry()).terminator()
+        ));
+        assert!(std::ptr::eq(
+            copied.block(view.entry()).instructions().as_ptr(),
+            graph.block(graph.entry()).instructions().as_ptr(),
+        ));
+        assert_eq!(
+            crate::run_main(&plan, &mut Vec::new()).unwrap(),
+            crate::Value::Int(42.into())
+        );
+    }
 
     #[test]
     fn writes_complete_graph_entry_and_block_order() {

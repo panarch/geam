@@ -10,63 +10,65 @@ use super::{
 };
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::{ExecutionFunction, ExecutionProfile, write_table};
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 use std::convert::Infallible;
 
-pub(in crate::plan::execution) struct FunctionFunctionTables<Profile: ExecutionProfile> {
-    pub(in crate::plan::execution) int_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionIntFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) float_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionFloatFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) string_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionStringFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) bit_array_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionBitArrayFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) utf_codepoint_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionUtfCodepointFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) custom_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionCustomFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) external_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionExternalFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) bool_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionBoolFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) nil_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionNilFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) tuple_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionTupleFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) generic_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionGenericFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) never_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionNeverFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) parameter_list_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) parameter_list_list_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) int_list_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) string_list_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) bit_array_list_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) utf_codepoint_list_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) custom_list_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) external_list_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionExternalListFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) float_list_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) bool_list_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) nil_list_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) tuple_list_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) list_list_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) function_list_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
-    pub(in crate::plan::execution) function_function_functions:
-        Vec<ExecutionFunction<Profile, ExecutionFunctionFunctionFunctionBody<Profile>>>,
+pub struct FunctionFunctionTables<Profile: ExecutionProfile> {
+    pub int_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionIntFunctionFunctionBody<Profile>>>,
+    pub float_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionFloatFunctionFunctionBody<Profile>>>,
+    pub string_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionStringFunctionFunctionBody<Profile>>>,
+    pub bit_array_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionBitArrayFunctionFunctionBody<Profile>>>,
+    pub utf_codepoint_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionUtfCodepointFunctionFunctionBody<Profile>>>,
+    pub custom_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionCustomFunctionFunctionBody<Profile>>>,
+    pub external_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionExternalFunctionFunctionBody<Profile>>>,
+    pub bool_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionBoolFunctionFunctionBody<Profile>>>,
+    pub nil_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionNilFunctionFunctionBody<Profile>>>,
+    pub tuple_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionTupleFunctionFunctionBody<Profile>>>,
+    pub generic_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionGenericFunctionFunctionBody<Profile>>>,
+    pub never_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionNeverFunctionFunctionBody<Profile>>>,
+    pub parameter_list_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
+    pub parameter_list_list_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
+    pub int_list_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
+    pub string_list_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
+    pub bit_array_list_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
+    pub utf_codepoint_list_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
+    pub custom_list_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
+    pub external_list_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionExternalListFunctionFunctionBody<Profile>>>,
+    pub float_list_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
+    pub bool_list_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
+    pub nil_list_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
+    pub tuple_list_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
+    pub list_list_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
+    pub function_list_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
+    pub function_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionFunctionFunctionFunctionBody<Profile>>>,
 }
 
 impl Explain for FunctionFunctionTables<Infallible> {
@@ -173,6 +175,122 @@ impl Explain for FunctionFunctionTables<Infallible> {
             context,
             "function.function",
             &self.function_function_functions,
+        );
+    }
+}
+
+impl<Profile: ExecutionProfile> Emit for FunctionFunctionTables<Profile>
+where
+    Table<ExecutionFunction<Profile, ExecutionIntFunctionFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionFloatFunctionFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionStringFunctionFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionBitArrayFunctionFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionUtfCodepointFunctionFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionCustomFunctionFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionExternalFunctionFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionBoolFunctionFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionNilFunctionFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionTupleFunctionFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionGenericFunctionFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionNeverFunctionFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionExternalListFunctionFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionFunctionFunctionFunctionBody<Profile>>>: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            int_function_functions,
+            float_function_functions,
+            string_function_functions,
+            bit_array_function_functions,
+            utf_codepoint_function_functions,
+            custom_function_functions,
+            external_function_functions,
+            bool_function_functions,
+            nil_function_functions,
+            tuple_function_functions,
+            generic_function_functions,
+            never_function_functions,
+            parameter_list_function_functions,
+            parameter_list_list_function_functions,
+            int_list_function_functions,
+            string_list_function_functions,
+            bit_array_list_function_functions,
+            utf_codepoint_list_function_functions,
+            custom_list_function_functions,
+            external_list_function_functions,
+            float_list_function_functions,
+            bool_list_function_functions,
+            nil_list_function_functions,
+            tuple_list_function_functions,
+            list_list_function_functions,
+            function_list_function_functions,
+            function_function_functions,
+        } = self;
+        output.structure(
+            "function::FunctionFunctionTables",
+            &[
+                ("int_function_functions", int_function_functions),
+                ("float_function_functions", float_function_functions),
+                ("string_function_functions", string_function_functions),
+                ("bit_array_function_functions", bit_array_function_functions),
+                (
+                    "utf_codepoint_function_functions",
+                    utf_codepoint_function_functions,
+                ),
+                ("custom_function_functions", custom_function_functions),
+                ("external_function_functions", external_function_functions),
+                ("bool_function_functions", bool_function_functions),
+                ("nil_function_functions", nil_function_functions),
+                ("tuple_function_functions", tuple_function_functions),
+                ("generic_function_functions", generic_function_functions),
+                ("never_function_functions", never_function_functions),
+                (
+                    "parameter_list_function_functions",
+                    parameter_list_function_functions,
+                ),
+                (
+                    "parameter_list_list_function_functions",
+                    parameter_list_list_function_functions,
+                ),
+                ("int_list_function_functions", int_list_function_functions),
+                (
+                    "string_list_function_functions",
+                    string_list_function_functions,
+                ),
+                (
+                    "bit_array_list_function_functions",
+                    bit_array_list_function_functions,
+                ),
+                (
+                    "utf_codepoint_list_function_functions",
+                    utf_codepoint_list_function_functions,
+                ),
+                (
+                    "custom_list_function_functions",
+                    custom_list_function_functions,
+                ),
+                (
+                    "external_list_function_functions",
+                    external_list_function_functions,
+                ),
+                (
+                    "float_list_function_functions",
+                    float_list_function_functions,
+                ),
+                ("bool_list_function_functions", bool_list_function_functions),
+                ("nil_list_function_functions", nil_list_function_functions),
+                (
+                    "tuple_list_function_functions",
+                    tuple_list_function_functions,
+                ),
+                ("list_list_function_functions", list_list_function_functions),
+                (
+                    "function_list_function_functions",
+                    function_list_function_functions,
+                ),
+                ("function_function_functions", function_function_functions),
+            ],
         );
     }
 }

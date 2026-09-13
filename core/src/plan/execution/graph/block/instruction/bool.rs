@@ -2,6 +2,7 @@ use super::{
     write_binary, write_call, write_constant, write_function_call, write_length, write_literal,
     write_projection, write_unary,
 };
+use crate::plan::Text;
 use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::BoolFunctionId;
@@ -10,19 +11,21 @@ use crate::plan::execution::graph::{
     BoolFunctionLocalId, BoolListLocalId, BoolLocalId, CustomLocal, FloatLocalId, IntLocalId,
     ListLocal, ParamLocal, StringLocalId, TupleLocalId,
 };
-use ecow::EcoString;
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 
-pub(crate) enum BoolInstruction {
+#[derive(Clone)]
+pub enum BoolInstruction {
     Value(bool),
     Constant(ConstantId<BoolLocalId>),
     Call {
         function: BoolFunctionId,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: BoolFunctionLocalId,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     TupleIndex {
@@ -80,7 +83,7 @@ pub(crate) enum BoolInstruction {
     },
     StringStartsWith {
         value: StringLocalId,
-        prefix: EcoString,
+        prefix: Text,
     },
     ListLengthEquals {
         value: ListLocal,
@@ -158,6 +161,288 @@ impl Explain for BoolInstruction {
             BoolInstruction::ListLengthAtLeast { value, length } => {
                 write_length(output, "bool.list_length_at_least", value, *length);
             }
+        }
+    }
+}
+
+impl Emit for BoolInstruction {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Value(field_0) => output.call("graph::BoolInstruction::Value", &[field_0]),
+            Self::Constant(field_0) => output.call("graph::BoolInstruction::Constant", &[field_0]),
+            Self::Call {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::BoolInstruction::Call",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::FunctionCall {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::BoolInstruction::FunctionCall",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::TupleIndex { tuple, index } => output.structure(
+                "graph::BoolInstruction::TupleIndex",
+                &[("tuple", tuple), ("index", index)],
+            ),
+            Self::CustomField { source, index } => output.structure(
+                "graph::BoolInstruction::CustomField",
+                &[("source", source), ("index", index)],
+            ),
+            Self::ListIndex { list, index } => output.structure(
+                "graph::BoolInstruction::ListIndex",
+                &[("list", list), ("index", index)],
+            ),
+            Self::Not(field_0) => output.call("graph::BoolInstruction::Not", &[field_0]),
+            Self::LtInt { left, right } => output.structure(
+                "graph::BoolInstruction::LtInt",
+                &[("left", left), ("right", right)],
+            ),
+            Self::LtEqInt { left, right } => output.structure(
+                "graph::BoolInstruction::LtEqInt",
+                &[("left", left), ("right", right)],
+            ),
+            Self::GtInt { left, right } => output.structure(
+                "graph::BoolInstruction::GtInt",
+                &[("left", left), ("right", right)],
+            ),
+            Self::GtEqInt { left, right } => output.structure(
+                "graph::BoolInstruction::GtEqInt",
+                &[("left", left), ("right", right)],
+            ),
+            Self::LtFloat { left, right } => output.structure(
+                "graph::BoolInstruction::LtFloat",
+                &[("left", left), ("right", right)],
+            ),
+            Self::LtEqFloat { left, right } => output.structure(
+                "graph::BoolInstruction::LtEqFloat",
+                &[("left", left), ("right", right)],
+            ),
+            Self::GtFloat { left, right } => output.structure(
+                "graph::BoolInstruction::GtFloat",
+                &[("left", left), ("right", right)],
+            ),
+            Self::GtEqFloat { left, right } => output.structure(
+                "graph::BoolInstruction::GtEqFloat",
+                &[("left", left), ("right", right)],
+            ),
+            Self::Equal { left, right } => output.structure(
+                "graph::BoolInstruction::Equal",
+                &[("left", left), ("right", right)],
+            ),
+            Self::NotEqual { left, right } => output.structure(
+                "graph::BoolInstruction::NotEqual",
+                &[("left", left), ("right", right)],
+            ),
+            Self::StringStartsWith { value, prefix } => output.structure(
+                "graph::BoolInstruction::StringStartsWith",
+                &[("value", value), ("prefix", prefix)],
+            ),
+            Self::ListLengthEquals { value, length } => output.structure(
+                "graph::BoolInstruction::ListLengthEquals",
+                &[("value", value), ("length", length)],
+            ),
+            Self::ListLengthAtLeast { value, length } => output.structure(
+                "graph::BoolInstruction::ListLengthAtLeast",
+                &[("value", value), ("length", length)],
+            ),
+        }
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::BoolInstruction;
+    use crate::plan::execution::constant::ConstantId;
+    use crate::plan::execution::function::BoolFunctionId;
+    use crate::plan::execution::graph::{
+        BoolFunctionLocalId, BoolListLocalId, BoolLocalId, CustomLocal, CustomLocalId,
+        FloatLocalId, IntLocalId, ListLocal, ParamLocal, StringLocalId, TupleLocalId,
+    };
+    use crate::plan::execution::prepared::rust::Rust;
+    use crate::plan::execution::type_::{
+        BoolListTypeId, CustomTypeId, CustomValueShape, CustomValueShapeId, ListTypeId,
+    };
+    use crate::plan::{HostCallSite, SourceSpan};
+
+    #[test]
+    fn emits_every_boolean_instruction_with_its_operands_and_source_site() {
+        let site = HostCallSite::new("example".into(), "main".into(), SourceSpan::new(3, 8));
+        let cases = [
+            (
+                BoolInstruction::Value(true),
+                "data::graph::BoolInstruction::Value(true,)",
+            ),
+            (
+                BoolInstruction::Constant(ConstantId::new(3)),
+                concat!(
+                    "data::graph::BoolInstruction::Constant(data::constant::ConstantId {",
+                    "index: 3,value: ::core::marker::PhantomData,},)"
+                ),
+            ),
+            (
+                BoolInstruction::Call {
+                    function: BoolFunctionId(2),
+                    args: vec![ParamLocal::Bool(BoolLocalId(5))].into(),
+                    site: site.clone(),
+                },
+                concat!(
+                    "data::graph::BoolInstruction::Call {function: data::function::BoolFunctionId(2,),",
+                    "args: data::Storage::Static(&[data::graph::ParamLocal::Bool(data::graph::BoolLocalId(5,),),]),",
+                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
+                    "data::source::SourceSpan::new(3,8,),),}"
+                ),
+            ),
+            (
+                BoolInstruction::FunctionCall {
+                    function: BoolFunctionLocalId(2),
+                    args: vec![ParamLocal::Bool(BoolLocalId(5))].into(),
+                    site,
+                },
+                concat!(
+                    "data::graph::BoolInstruction::FunctionCall {function: data::graph::BoolFunctionLocalId(2,),",
+                    "args: data::Storage::Static(&[data::graph::ParamLocal::Bool(data::graph::BoolLocalId(5,),),]),",
+                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
+                    "data::source::SourceSpan::new(3,8,),),}"
+                ),
+            ),
+            (
+                BoolInstruction::TupleIndex {
+                    tuple: TupleLocalId(2),
+                    index: 1,
+                },
+                "data::graph::BoolInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+            ),
+            (
+                BoolInstruction::CustomField {
+                    source: CustomLocal::new(
+                        CustomLocalId(2),
+                        CustomValueShape::new(CustomTypeId(3), CustomValueShapeId(4)),
+                    ),
+                    index: 1,
+                },
+                concat!(
+                    "data::graph::BoolInstruction::CustomField {source: data::graph::CustomLocal {",
+                    "id: data::graph::CustomLocalId(2,),shape: data::type_::CustomValueShape {",
+                    "type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},index: 1,}"
+                ),
+            ),
+            (
+                BoolInstruction::ListIndex {
+                    list: BoolListLocalId(2),
+                    index: 1,
+                },
+                "data::graph::BoolInstruction::ListIndex {list: data::graph::BoolListLocalId(2,),index: 1,}",
+            ),
+            (
+                BoolInstruction::Not(BoolLocalId(2)),
+                "data::graph::BoolInstruction::Not(data::graph::BoolLocalId(2,),)",
+            ),
+            (
+                BoolInstruction::LtInt {
+                    left: IntLocalId(2),
+                    right: IntLocalId(5),
+                },
+                "data::graph::BoolInstruction::LtInt {left: data::graph::IntLocalId(2,),right: data::graph::IntLocalId(5,),}",
+            ),
+            (
+                BoolInstruction::LtEqInt {
+                    left: IntLocalId(2),
+                    right: IntLocalId(5),
+                },
+                "data::graph::BoolInstruction::LtEqInt {left: data::graph::IntLocalId(2,),right: data::graph::IntLocalId(5,),}",
+            ),
+            (
+                BoolInstruction::GtInt {
+                    left: IntLocalId(2),
+                    right: IntLocalId(5),
+                },
+                "data::graph::BoolInstruction::GtInt {left: data::graph::IntLocalId(2,),right: data::graph::IntLocalId(5,),}",
+            ),
+            (
+                BoolInstruction::GtEqInt {
+                    left: IntLocalId(2),
+                    right: IntLocalId(5),
+                },
+                "data::graph::BoolInstruction::GtEqInt {left: data::graph::IntLocalId(2,),right: data::graph::IntLocalId(5,),}",
+            ),
+            (
+                BoolInstruction::LtFloat {
+                    left: FloatLocalId(2),
+                    right: FloatLocalId(5),
+                },
+                "data::graph::BoolInstruction::LtFloat {left: data::graph::FloatLocalId(2,),right: data::graph::FloatLocalId(5,),}",
+            ),
+            (
+                BoolInstruction::LtEqFloat {
+                    left: FloatLocalId(2),
+                    right: FloatLocalId(5),
+                },
+                "data::graph::BoolInstruction::LtEqFloat {left: data::graph::FloatLocalId(2,),right: data::graph::FloatLocalId(5,),}",
+            ),
+            (
+                BoolInstruction::GtFloat {
+                    left: FloatLocalId(2),
+                    right: FloatLocalId(5),
+                },
+                "data::graph::BoolInstruction::GtFloat {left: data::graph::FloatLocalId(2,),right: data::graph::FloatLocalId(5,),}",
+            ),
+            (
+                BoolInstruction::GtEqFloat {
+                    left: FloatLocalId(2),
+                    right: FloatLocalId(5),
+                },
+                "data::graph::BoolInstruction::GtEqFloat {left: data::graph::FloatLocalId(2,),right: data::graph::FloatLocalId(5,),}",
+            ),
+            (
+                BoolInstruction::Equal {
+                    left: ParamLocal::Bool(BoolLocalId(2)),
+                    right: ParamLocal::Bool(BoolLocalId(5)),
+                },
+                "data::graph::BoolInstruction::Equal {left: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2,),),right: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(5,),),}",
+            ),
+            (
+                BoolInstruction::NotEqual {
+                    left: ParamLocal::Bool(BoolLocalId(2)),
+                    right: ParamLocal::Bool(BoolLocalId(5)),
+                },
+                "data::graph::BoolInstruction::NotEqual {left: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2,),),right: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(5,),),}",
+            ),
+            (
+                BoolInstruction::StringStartsWith {
+                    value: StringLocalId(2),
+                    prefix: "pre".into(),
+                },
+                "data::graph::BoolInstruction::StringStartsWith {value: data::graph::StringLocalId(2,),prefix: data::Text::Static(\"pre\",),}",
+            ),
+            (
+                BoolInstruction::ListLengthEquals {
+                    value: ListLocal::Bool {
+                        local: BoolListLocalId(2),
+                        type_id: BoolListTypeId::new(ListTypeId(4)),
+                    },
+                    length: 3,
+                },
+                "data::graph::BoolInstruction::ListLengthEquals {value: data::graph::ListLocal::Bool {local: data::graph::BoolListLocalId(2,),type_id: data::type_::BoolListTypeId {list_type: data::type_::ListTypeId(4,),},},length: 3,}",
+            ),
+            (
+                BoolInstruction::ListLengthAtLeast {
+                    value: ListLocal::Bool {
+                        local: BoolListLocalId(2),
+                        type_id: BoolListTypeId::new(ListTypeId(4)),
+                    },
+                    length: 3,
+                },
+                "data::graph::BoolInstruction::ListLengthAtLeast {value: data::graph::ListLocal::Bool {local: data::graph::BoolListLocalId(2,),type_id: data::type_::BoolListTypeId {list_type: data::type_::ListTypeId(4,),},},length: 3,}",
+            ),
+        ];
+        for (instruction, expected) in cases {
+            assert_eq!(Rust::expression(&instruction), expected);
         }
     }
 }
@@ -267,7 +552,7 @@ pub fn main() {
         explain::assert_rendered(source, expected, |plan, output| {
             let graph = plan.bool_function(BoolFunctionId(0)).body().block_graph();
             let mut first = true;
-            for instruction in graph.blocks().iter().flat_map(|block| block.instructions()) {
+            for instruction in graph.blocks().flat_map(|block| block.instructions()) {
                 if let ProfiledInstructionKind::Bool(instruction) = instruction.kind() {
                     if first {
                         first = false;

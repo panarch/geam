@@ -1,5 +1,5 @@
 use crate::error::CliError;
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 use std::fs;
 use std::io::Write;
 
@@ -7,6 +7,122 @@ use std::io::Write;
 pub(super) enum SyncOutcome {
     Unchanged,
     Updated,
+}
+
+pub(super) fn program_path(destination: &Utf8Path) -> Utf8PathBuf {
+    destination.with_extension("").join("program.rs")
+}
+
+pub(super) fn validate_generated_set(
+    destination: &Utf8Path,
+    prepared: bool,
+) -> Result<(), CliError> {
+    if prepared {
+        let directory = destination.with_extension("");
+        match fs::symlink_metadata(&directory) {
+            Ok(metadata) if metadata.is_dir() => {}
+            Ok(_) => {
+                return Err(CliError::EmbeddingFileConflict {
+                    path: directory,
+                    reason: "prepared data requires a directory, not a file or symbolic link"
+                        .to_owned(),
+                });
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(CliError::FileRead {
+                    path: directory,
+                    error,
+                });
+            }
+        }
+        validate_generated(&program_path(destination))?;
+    }
+    validate_generated(destination)
+}
+
+pub(super) fn check_generated(
+    manifest: &Utf8Path,
+    destination: &Utf8Path,
+    source: &[u8],
+    program: Option<&[u8]>,
+) -> Result<(), CliError> {
+    check(manifest, destination, source)?;
+    let path = program_path(destination);
+    match program {
+        Some(expected) => check(manifest, &path, expected),
+        None if obsolete_program(destination)? => Err(out_of_date(manifest, &path)),
+        None => Ok(()),
+    }
+}
+
+pub(super) fn sync_generated(
+    destination: &Utf8Path,
+    source: &[u8],
+    program: Option<&[u8]>,
+) -> Result<SyncOutcome, CliError> {
+    validate_generated_set(destination, program.is_some())?;
+    let path = program_path(destination);
+    let root = stage(destination, source)?;
+    let child = match program {
+        Some(expected) => {
+            let directory = path.with_file_name("");
+            fs::create_dir_all(&directory).map_err(|error| CliError::FileWrite {
+                path: directory,
+                error,
+            })?;
+            stage(&path, expected)?
+        }
+        None => None,
+    };
+    let obsolete = program.is_none() && obsolete_program(destination)?;
+    publish_generated(destination, root, child, obsolete)
+}
+
+fn publish_generated(
+    destination: &Utf8Path,
+    root: Option<tempfile::NamedTempFile>,
+    child: Option<tempfile::NamedTempFile>,
+    obsolete: bool,
+) -> Result<SyncOutcome, CliError> {
+    let path = program_path(destination);
+    let changed = root.is_some() || child.is_some() || obsolete;
+    // Stage both files before replacing either; an interrupted set is detected by check.
+    if let Some(child) = child {
+        publish(child, &path)?;
+    }
+    if let Some(root) = root {
+        publish(root, destination)?;
+    }
+    if obsolete {
+        fs::remove_file(&path).map_err(|error| CliError::FileWrite { path, error })?;
+    }
+    Ok(if changed {
+        SyncOutcome::Updated
+    } else {
+        SyncOutcome::Unchanged
+    })
+}
+
+fn obsolete_program(destination: &Utf8Path) -> Result<bool, CliError> {
+    let directory = destination.with_extension("");
+    match fs::symlink_metadata(&directory) {
+        Ok(metadata) if !metadata.is_dir() => return Ok(false),
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => {
+            return Err(CliError::FileRead {
+                path: directory,
+                error,
+            });
+        }
+    }
+    let path = program_path(destination);
+    match fs::read(&path) {
+        Ok(bytes) => Ok(bytes.starts_with(super::GENERATED_HEADER.as_bytes())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(CliError::FileRead { path, error }),
+    }
 }
 
 pub(super) fn validate_generated(destination: &Utf8Path) -> Result<(), CliError> {
@@ -47,8 +163,27 @@ pub(super) fn sync(
     destination: &Utf8Path,
     expected: &[u8],
 ) -> Result<SyncOutcome, CliError> {
+    let Some(temporary) = stage_in(directory, destination, expected)? else {
+        return Ok(SyncOutcome::Unchanged);
+    };
+    publish(temporary, destination)?;
+    Ok(SyncOutcome::Updated)
+}
+
+fn stage(
+    destination: &Utf8Path,
+    expected: &[u8],
+) -> Result<Option<tempfile::NamedTempFile>, CliError> {
+    stage_in(&destination.with_file_name(""), destination, expected)
+}
+
+fn stage_in(
+    directory: &Utf8Path,
+    destination: &Utf8Path,
+    expected: &[u8],
+) -> Result<Option<tempfile::NamedTempFile>, CliError> {
     match fs::read(destination) {
-        Ok(current) if current == expected => return Ok(SyncOutcome::Unchanged),
+        Ok(current) if current == expected => return Ok(None),
         Ok(_) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => {
@@ -64,16 +199,17 @@ pub(super) fn sync(
             path: destination.to_path_buf(),
             error,
         })?;
-    write_expected(&mut temporary, destination, expected).and_then(|()| {
-        temporary
-            .persist(destination)
-            .map(|_| ())
-            .map_err(|error| CliError::FileWrite {
-                path: destination.to_path_buf(),
-                error: error.error,
-            })
-    })?;
-    Ok(SyncOutcome::Updated)
+    write_expected(&mut temporary, destination, expected).map(|()| Some(temporary))
+}
+
+fn publish(temporary: tempfile::NamedTempFile, destination: &Utf8Path) -> Result<(), CliError> {
+    temporary
+        .persist(destination)
+        .map(|_| ())
+        .map_err(|error| CliError::FileWrite {
+            path: destination.to_owned(),
+            error: error.error,
+        })
 }
 
 fn write_expected(
@@ -99,12 +235,162 @@ fn out_of_date(manifest: &Utf8Path, destination: &Utf8Path) -> CliError {
 
 #[cfg(test)]
 mod tests {
-    use super::{SyncOutcome, check, sync, validate_generated, write_expected};
+    use super::{
+        SyncOutcome, check, check_generated, program_path, sync, sync_generated,
+        validate_generated, validate_generated_set, write_expected,
+    };
     use crate::error::CliError;
     use camino::Utf8PathBuf;
     use std::fs;
     use std::io::{self, Write};
     use tempfile::tempdir;
+
+    #[test]
+    fn manages_both_files_and_removes_only_obsolete_owned_children() {
+        let directory = tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(directory.path().to_owned()).unwrap();
+        let manifest = root.join("Cargo.toml");
+        let destination = root.join("geam_bindings.rs");
+        let child = program_path(&destination);
+        let source = format!("{}\n// bindings\n", crate::embedding::GENERATED_HEADER);
+        let program = format!(
+            "{}\n// static program\n",
+            crate::embedding::GENERATED_HEADER
+        );
+        validate_generated_set(&destination, false).unwrap();
+        validate_generated_set(&destination, true).unwrap();
+        assert_eq!(
+            sync_generated(&destination, source.as_bytes(), Some(program.as_bytes())).unwrap(),
+            SyncOutcome::Updated
+        );
+        assert_eq!(fs::read_to_string(&child).unwrap(), program);
+        check_generated(
+            &manifest,
+            &destination,
+            source.as_bytes(),
+            Some(program.as_bytes()),
+        )
+        .unwrap();
+        assert_eq!(
+            sync_generated(&destination, source.as_bytes(), Some(program.as_bytes())).unwrap(),
+            SyncOutcome::Unchanged
+        );
+        let sibling = child.with_file_name("handwritten.rs");
+        fs::write(&sibling, "// user module\n").unwrap();
+        assert!(
+            matches!(check_generated(&manifest, &destination, source.as_bytes(), None), Err(CliError::EmbeddingBindingsOutOfDate { output, .. }) if output == child)
+        );
+        assert_eq!(
+            sync_generated(&destination, source.as_bytes(), None).unwrap(),
+            SyncOutcome::Updated
+        );
+        assert!(!child.exists());
+        assert_eq!(fs::read_to_string(&sibling).unwrap(), "// user module\n");
+        check_generated(&manifest, &destination, source.as_bytes(), None).unwrap();
+        fs::write(&child, "// handwritten program\n").unwrap();
+        check_generated(&manifest, &destination, source.as_bytes(), None).unwrap();
+        assert_eq!(
+            sync_generated(&destination, source.as_bytes(), None).unwrap(),
+            SyncOutcome::Unchanged
+        );
+        assert!(
+            matches!(sync_generated(&destination, source.as_bytes(), Some(program.as_bytes())), Err(CliError::EmbeddingFileConflict { path, .. }) if path == child)
+        );
+        assert_eq!(
+            fs::read_to_string(&child).unwrap(),
+            "// handwritten program\n"
+        );
+        assert_eq!(fs::read_to_string(&destination).unwrap(), source);
+    }
+
+    #[test]
+    fn recovers_missing_and_stale_children_without_touching_a_fresh_root() {
+        let directory = tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(directory.path().to_owned()).unwrap();
+        let manifest = root.join("Cargo.toml");
+        let destination = root.join("geam_bindings.rs");
+        let child = program_path(&destination);
+        let source = format!("{}\n// bindings\n", crate::embedding::GENERATED_HEADER);
+        let program = format!("{}\n// program\n", crate::embedding::GENERATED_HEADER);
+        sync_generated(&destination, source.as_bytes(), None).unwrap();
+        let modified = fs::metadata(&destination).unwrap().modified().unwrap();
+        assert!(
+            matches!(check_generated(&manifest, &destination, source.as_bytes(), Some(program.as_bytes())), Err(CliError::EmbeddingBindingsOutOfDate { output, .. }) if output == child)
+        );
+        assert_eq!(
+            sync_generated(&destination, source.as_bytes(), Some(program.as_bytes())).unwrap(),
+            SyncOutcome::Updated
+        );
+        let changed = format!("{program}// changed body\n");
+        assert!(
+            check_generated(
+                &manifest,
+                &destination,
+                source.as_bytes(),
+                Some(changed.as_bytes())
+            )
+            .is_err()
+        );
+        assert_eq!(fs::read_to_string(&child).unwrap(), program);
+        assert_eq!(
+            sync_generated(&destination, source.as_bytes(), Some(changed.as_bytes())).unwrap(),
+            SyncOutcome::Updated
+        );
+        check_generated(
+            &manifest,
+            &destination,
+            source.as_bytes(),
+            Some(changed.as_bytes()),
+        )
+        .unwrap();
+        assert_eq!(
+            fs::metadata(&destination).unwrap().modified().unwrap(),
+            modified
+        );
+    }
+
+    #[test]
+    fn rejects_non_directory_prepared_output_before_replacing_bindings() {
+        let directory = tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(directory.path().to_owned()).unwrap();
+        let destination = root.join("geam_bindings.rs");
+        let child_directory = destination.with_extension("");
+        fs::write(&child_directory, "user file").unwrap();
+        validate_generated_set(&destination, false).unwrap();
+        assert!(
+            matches!(validate_generated_set(&destination, true), Err(CliError::EmbeddingFileConflict { path, .. }) if path == child_directory)
+        );
+        assert!(!destination.exists());
+        assert!(!super::obsolete_program(&destination).unwrap());
+        fs::remove_file(&child_directory).unwrap();
+        fs::create_dir(&child_directory).unwrap();
+        fs::create_dir(program_path(&destination)).unwrap();
+        assert!(matches!(
+            super::obsolete_program(&destination).unwrap_err(),
+            CliError::FileRead { path, .. } if path == program_path(&destination)
+        ));
+        assert!(matches!(
+            validate_generated_set(&destination, true).unwrap_err(),
+            CliError::FileRead { path, .. } if path == program_path(&destination)
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn never_writes_prepared_data_through_a_symlinked_child_directory() {
+        let directory = tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(directory.path().to_owned()).unwrap();
+        let destination = root.join("geam_bindings.rs");
+        let unrelated = root.join("unrelated");
+        fs::create_dir(&unrelated).unwrap();
+        std::os::unix::fs::symlink(&unrelated, destination.with_extension("")).unwrap();
+        assert!(matches!(
+            validate_generated_set(&destination, true).unwrap_err(),
+            CliError::EmbeddingFileConflict { path, .. } if path == destination.with_extension("")
+        ));
+        assert!(!super::obsolete_program(&destination).unwrap());
+        assert_eq!(fs::read_dir(unrelated).unwrap().count(), 0);
+    }
 
     #[test]
     fn permits_only_missing_or_marked_generated_files_for_replacement() {
@@ -132,6 +418,91 @@ mod tests {
         assert!(
             matches!(validate_generated(&unreadable), Err(CliError::FileRead { path, .. }) if path == unreadable)
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preserves_the_generated_set_when_child_reads_or_writes_fail() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(directory.path().to_owned()).unwrap();
+        let manifest = root.join("Cargo.toml");
+        let destination = root.join("bindings.rs");
+        let child = program_path(&destination);
+        let source = format!("{}\n", crate::embedding::GENERATED_HEADER);
+        fs::write(&destination, &source).unwrap();
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o500)).unwrap();
+        let result = sync_generated(&destination, source.as_bytes(), Some(source.as_bytes()));
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(
+            matches!(result.unwrap_err(), CliError::FileWrite { path, .. } if path == child.with_file_name(""))
+        );
+        assert_eq!(fs::read_to_string(&destination).unwrap(), source);
+        fs::create_dir_all(&child).unwrap();
+        assert!(
+            matches!(check_generated(&manifest, &destination, source.as_bytes(), None), Err(CliError::FileRead { path, .. }) if path == child)
+        );
+        assert!(
+            matches!(sync_generated(&destination, source.as_bytes(), None), Err(CliError::FileRead { path, .. }) if path == child)
+        );
+        fs::remove_dir(&child).unwrap();
+        fs::write(&child, &source).unwrap();
+        let children = child.with_file_name("");
+        fs::set_permissions(&children, fs::Permissions::from_mode(0o500)).unwrap();
+        let result = sync_generated(&destination, source.as_bytes(), None);
+        fs::set_permissions(&children, fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(matches!(result.unwrap_err(), CliError::FileWrite { path, .. } if path == child));
+        assert_eq!(fs::read_to_string(&child).unwrap(), source);
+
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o000)).unwrap();
+        let validation = validate_generated_set(&destination, true);
+        let obsolete = super::obsolete_program(&destination);
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(
+            matches!(validation.unwrap_err(), CliError::FileRead { path, .. } if path == children)
+        );
+        assert!(
+            matches!(obsolete.unwrap_err(), CliError::FileRead { path, .. } if path == children)
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reports_access_changes_between_staging_and_publication() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(directory.path().to_owned()).unwrap();
+        let destination = root.join("bindings.rs");
+        let child = program_path(&destination);
+        let source = format!("{}\n", crate::embedding::GENERATED_HEADER);
+        fs::create_dir_all(child.with_file_name("")).unwrap();
+        for block_child in [true, false] {
+            let parent = if block_child {
+                child.with_file_name("")
+            } else {
+                root.clone()
+            };
+            let staged_root = super::stage(&destination, source.as_bytes()).unwrap();
+            let staged_child = super::stage(&child, source.as_bytes()).unwrap();
+            fs::set_permissions(&parent, fs::Permissions::from_mode(0o500)).unwrap();
+            let result = super::publish_generated(&destination, staged_root, staged_child, false);
+            fs::set_permissions(&parent, fs::Permissions::from_mode(0o700)).unwrap();
+            let error = result.unwrap_err();
+            let expected = if block_child { &child } else { &destination };
+            assert!(matches!(error, CliError::FileWrite { path, .. } if path == *expected));
+            assert!(!destination.exists());
+        }
+        sync_generated(&destination, source.as_bytes(), Some(source.as_bytes())).unwrap();
+        let parent = child.with_file_name("");
+        fs::set_permissions(&parent, fs::Permissions::from_mode(0o500)).unwrap();
+        let result = sync_generated(
+            &destination,
+            source.as_bytes(),
+            Some(format!("{source}// new\n").as_bytes()),
+        );
+        fs::set_permissions(&parent, fs::Permissions::from_mode(0o700)).unwrap();
+        let error = result.unwrap_err();
+        assert!(matches!(error, CliError::FileWrite { path, .. } if path == child));
     }
 
     #[test]

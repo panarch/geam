@@ -54,8 +54,8 @@ pub(super) fn seal(
         if resolved_rules.insert(type_.clone(), index).is_some() {
             return Err(HostSpecializationError::conflicting_native_conversions(
                 template.package().clone(),
-                template.site().module().clone(),
-                template.site().function().clone(),
+                template.site().module().into(),
+                template.site().function().into(),
                 crate::plan::FunctionType::new(
                     template
                         .parameters()

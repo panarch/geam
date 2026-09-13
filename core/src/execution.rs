@@ -87,7 +87,7 @@ pub struct ExecutionMetadata<'plan>(
 impl<'plan> ExecutionMetadata<'plan> {
     /// Native tags of constructors retained in the sealed execution catalog.
     /// Multiple specializations may contain the same tag.
-    pub fn native_constructor_tags(self) -> impl Iterator<Item = &'plan ecow::EcoString> {
+    pub fn native_constructor_tags(self) -> impl Iterator<Item = &'plan str> {
         self.0.native_constructor_tags()
     }
 }
@@ -129,10 +129,11 @@ mod tests {
         struct Tags(Arc<Mutex<BTreeSet<ecow::EcoString>>>);
         impl HostExecutionState for Tags {
             fn initialize(&mut self, metadata: ExecutionMetadata<'_>) {
-                self.0
-                    .lock()
-                    .unwrap()
-                    .extend(metadata.native_constructor_tags().cloned());
+                self.0.lock().unwrap().extend(
+                    metadata
+                        .native_constructor_tags()
+                        .map(ecow::EcoString::from),
+                );
             }
             fn started(&mut self, _: ExecutionUnit) {
                 assert_eq!(

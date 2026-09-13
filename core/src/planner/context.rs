@@ -1616,14 +1616,6 @@ impl<'a> PlanContext<'a> {
         local
     }
 
-    pub(super) fn define_list_local(
-        &mut self,
-        name: EcoString,
-        element_type: ValueType,
-    ) -> ListLocal {
-        self.define_list_local_shape(name, ValueShape::from_value_type(element_type))
-    }
-
     pub(super) fn define_list_local_shape(
         &mut self,
         name: EcoString,
@@ -2941,7 +2933,7 @@ mod tests {
         context.define_custom_local_shape("custom".into(), custom_shape.clone());
         context.define_external_local_shape("external".into(), external_shape.clone());
         context.define_tuple_local("tuple".into(), vec![ValueType::Int]);
-        context.define_list_local("list".into(), ValueType::String);
+        context.define_list_local_shape("list".into(), ValueShape::String);
         context.define_string_function_local("function".into(), function_type.clone());
 
         for (name, expected) in [
@@ -3487,7 +3479,7 @@ mod tests {
         assert_eq!(context.lookup_list_local(&"<list:int:0>".into()), None);
         assert_eq!(context.lookup_list_local(&"<case:list:int:0>".into()), None);
         assert_eq!(
-            context.define_list_local("values".into(), ValueType::Int),
+            context.define_list_local_shape("values".into(), ValueShape::Int),
             ListLocal::int(IntListLocalId(1)),
         );
         assert_eq!(
@@ -3669,42 +3661,50 @@ mod tests {
         let parameter = TypeParameterId(0);
 
         assert_eq!(
-            context.define_list_local("generic".into(), ValueType::Parameter(parameter)),
+            context.define_list_local_shape("generic".into(), ValueShape::Parameter(parameter)),
             ListLocal::generic(GenericListLocalId(0), parameter),
         );
 
         assert_eq!(
-            context.define_list_local("strings".into(), ValueType::String),
+            context.define_list_local_shape("strings".into(), ValueShape::String),
             ListLocal::string(StringListLocalId(0)),
         );
         assert_eq!(
-            context.define_list_local("bit_arrays".into(), ValueType::BitArray),
+            context.define_list_local_shape("bit_arrays".into(), ValueShape::BitArray),
             ListLocal::bit_array(BitArrayListLocalId(0)),
         );
         assert_eq!(
-            context.define_list_local("floats".into(), ValueType::Float),
+            context.define_list_local_shape("floats".into(), ValueShape::Float),
             ListLocal::float(FloatListLocalId(0)),
         );
         assert_eq!(
-            context.define_list_local("bools".into(), ValueType::Bool),
+            context.define_list_local_shape("bools".into(), ValueShape::Bool),
             ListLocal::bool(BoolListLocalId(0)),
         );
         assert_eq!(
-            context.define_list_local("nils".into(), ValueType::Nil),
+            context.define_list_local_shape("nils".into(), ValueShape::Nil),
             ListLocal::nil(NilListLocalId(0)),
         );
         assert_eq!(
-            context.define_list_local("tuples".into(), ValueType::Tuple(tuple_type.clone())),
+            context.define_list_local_shape(
+                "tuples".into(),
+                ValueShape::Tuple(vec![ValueShape::Int, ValueShape::String].into_boxed_slice())
+            ),
             ListLocal::tuple(TupleListLocalId(0), tuple_type.clone()),
         );
         assert_eq!(
-            context.define_list_local("lists".into(), ValueType::List(Box::new(ValueType::Float)),),
+            context.define_list_local_shape(
+                "lists".into(),
+                ValueShape::List(Box::new(ValueShape::Float))
+            ),
             ListLocal::list(ListListLocalId(0), ValueType::Float),
         );
         assert_eq!(
-            context.define_list_local(
+            context.define_list_local_shape(
                 "functions".into(),
-                ValueType::Function(Box::new(nested_function_type.clone())),
+                ValueShape::Function(Box::new(FunctionShape::from_function_type(
+                    nested_function_type.clone()
+                ))),
             ),
             ListLocal::function(FunctionListLocalId(0), nested_function_type.clone()),
         );
@@ -3842,40 +3842,45 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            context.define_list_local("next_string".into(), ValueType::String),
+            context.define_list_local_shape("next_string".into(), ValueShape::String),
             ListLocal::string(StringListLocalId(3)),
         );
         assert_eq!(
-            context.define_list_local("next_bit_array".into(), ValueType::BitArray),
+            context.define_list_local_shape("next_bit_array".into(), ValueShape::BitArray),
             ListLocal::bit_array(BitArrayListLocalId(3)),
         );
         assert_eq!(
-            context.define_list_local("next_float".into(), ValueType::Float),
+            context.define_list_local_shape("next_float".into(), ValueShape::Float),
             ListLocal::float(FloatListLocalId(4)),
         );
         assert_eq!(
-            context.define_list_local("next_bool".into(), ValueType::Bool),
+            context.define_list_local_shape("next_bool".into(), ValueShape::Bool),
             ListLocal::bool(BoolListLocalId(5)),
         );
         assert_eq!(
-            context.define_list_local("next_nil".into(), ValueType::Nil),
+            context.define_list_local_shape("next_nil".into(), ValueShape::Nil),
             ListLocal::nil(NilListLocalId(6)),
         );
         assert_eq!(
-            context.define_list_local("next_tuple".into(), ValueType::Tuple(tuple_type)),
+            context.define_list_local_shape(
+                "next_tuple".into(),
+                ValueShape::Tuple(vec![ValueShape::Int].into_boxed_slice())
+            ),
             ListLocal::tuple(TupleListLocalId(7), vec![ValueType::Int]),
         );
         assert_eq!(
-            context.define_list_local(
+            context.define_list_local_shape(
                 "next_list".into(),
-                ValueType::List(Box::new(ValueType::Int)),
+                ValueShape::List(Box::new(ValueShape::Int)),
             ),
             ListLocal::list(ListListLocalId(8), ValueType::Int),
         );
         assert_eq!(
-            context.define_list_local(
+            context.define_list_local_shape(
                 "next_function".into(),
-                ValueType::Function(Box::new(nested_function_type.clone())),
+                ValueShape::Function(Box::new(FunctionShape::from_function_type(
+                    nested_function_type.clone()
+                ))),
             ),
             ListLocal::function(FunctionListLocalId(9), nested_function_type),
         );
@@ -4166,7 +4171,7 @@ mod tests {
             ValueType::List(Box::new(element_type.clone())),
         );
 
-        context.define_list_local("values".into(), element_type.clone());
+        context.define_list_local_shape("values".into(), ValueShape::Int);
         context.define_list_function_local("f".into(), function_type.clone(), element_type);
         let captures = context
             .capture_bindings(&[EcoString::from("values"), EcoString::from("f")])

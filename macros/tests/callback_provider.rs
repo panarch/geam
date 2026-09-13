@@ -403,8 +403,8 @@ fn nested_provider_failure_remains_the_original_execution_error() {
     let HostLocation::Resolved { site, path, line } = error.location() else {
         panic!("source callback host failure should preserve its source call site");
     };
-    assert_eq!(site.module().as_str(), "callback_provider");
-    assert_eq!(site.function().as_str(), "fail_callback");
+    assert_eq!(site.module(), "callback_provider");
+    assert_eq!(site.function(), "fail_callback");
     assert_eq!(path.as_str(), "src/callback_provider.gleam");
     assert_eq!(*line, 77);
 }
@@ -432,6 +432,6 @@ fn nested_source_panic_is_not_rewrapped_as_a_host_failure() {
         panic.message(),
         &PanicMessage::Explicit("callback panic".into()),
     );
-    assert_eq!(panic.site().module().as_str(), "callback_provider");
-    assert_eq!(panic.site().function().as_str(), "panic_callback");
+    assert_eq!(panic.site().module(), "callback_provider");
+    assert_eq!(panic.site().function(), "panic_callback");
 }

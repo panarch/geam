@@ -133,8 +133,8 @@ pub(super) fn validate_host_external_schema(
         .external_type(&name)
         .ok_or_else(|| PlanError::HostProviderLink {
             package: package.clone(),
-            module: site.module().clone(),
-            function: site.function().clone(),
+            module: site.module().into(),
+            function: site.function().into(),
             reason: Box::new(
                 crate::planner::error::HostProviderLinkReason::MissingExternalType {
                     external_type: name.clone(),
@@ -150,8 +150,8 @@ pub(super) fn validate_host_external_schema(
     if actual != &expected {
         return Err(PlanError::HostProviderLink {
             package: package.clone(),
-            module: site.module().clone(),
-            function: site.function().clone(),
+            module: site.module().into(),
+            function: site.function().into(),
             reason: Box::new(
                 crate::planner::error::HostProviderLinkReason::ExternalSchemaMismatch {
                     expected,
@@ -179,8 +179,8 @@ pub(super) fn validate_host_external_schema(
     if let Some(actual) = invalid_argument_count {
         return Err(PlanError::HostProviderLink {
             package: package.clone(),
-            module: site.module().clone(),
-            function: site.function().clone(),
+            module: site.module().into(),
+            function: site.function().into(),
             reason: Box::new(
                 crate::planner::error::HostProviderLinkReason::ExternalTypeArgumentCount {
                     external_type: name,

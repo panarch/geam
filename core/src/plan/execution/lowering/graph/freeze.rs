@@ -47,7 +47,10 @@ where
             .map(|exit| match exit {
                 FrozenGraphExit::Return(value) => execution::function::FunctionExit::Return(value),
                 FrozenGraphExit::TailCall { function, args } => {
-                    execution::function::FunctionExit::TailCall { function, args }
+                    execution::function::FunctionExit::TailCall {
+                        function,
+                        args: args.into(),
+                    }
                 }
             })
             .collect();
@@ -57,6 +60,7 @@ where
 
 pub(super) fn freeze_constant<Return>(
     graph: DraftGraphBuilder<Return, Infallible>,
+    shape: &super::super::specialization::SpecializedValueShape,
     context: &mut super::super::LoweringContext,
 ) -> execution::constant::ConstantProgram<Return::Frozen>
 where
@@ -71,7 +75,8 @@ where
             FrozenGraphExit::TailCall { function, .. } => match function {},
         })
         .collect();
-    execution::constant::ConstantProgram::from_parts(frozen.graph, returns)
+    let shape = context.types.value_shape(shape);
+    execution::constant::ConstantProgram::from_parts(frozen.graph, returns, shape)
 }
 
 fn freeze_graph<Return, TailCall>(
@@ -218,9 +223,14 @@ where
             layout.values.int(&subject),
             clauses
                 .into_iter()
-                .map(|(pattern, edge)| (pattern, freeze_edge(&edge, layout, liveness, block_ids)))
+                .map(|(pattern, edge)| {
+                    (
+                        pattern.into(),
+                        freeze_edge(&edge, layout, liveness, block_ids),
+                    )
+                })
                 .collect::<Vec<_>>()
-                .into_boxed_slice(),
+                .into(),
             freeze_edge(&fallback, layout, liveness, block_ids),
         )),
         DraftTerminator::FloatSwitch {
@@ -233,7 +243,7 @@ where
                 .into_iter()
                 .map(|(pattern, edge)| (pattern, freeze_edge(&edge, layout, liveness, block_ids)))
                 .collect::<Vec<_>>()
-                .into_boxed_slice(),
+                .into(),
             freeze_edge(&fallback, layout, liveness, block_ids),
         )),
         DraftTerminator::StringSwitch {
@@ -244,9 +254,14 @@ where
             layout.values.string(&subject),
             clauses
                 .into_iter()
-                .map(|(pattern, edge)| (pattern, freeze_edge(&edge, layout, liveness, block_ids)))
+                .map(|(pattern, edge)| {
+                    (
+                        pattern.into(),
+                        freeze_edge(&edge, layout, liveness, block_ids),
+                    )
+                })
                 .collect::<Vec<_>>()
-                .into_boxed_slice(),
+                .into(),
             freeze_edge(&fallback, layout, liveness, block_ids),
         )),
         DraftTerminator::Match {
@@ -325,7 +340,7 @@ where
                     layout.values.never_function(&function),
                 ),
             },
-            layout.values.any_slice(&args),
+            layout.values.any_slice(&args).into(),
             site,
         )),
     }
@@ -623,7 +638,7 @@ pub fn main() { loop(1) }
     fn returned_exit_guard_rejects_a_tail_call() {
         returned_exit(&FunctionExit::TailCall {
             function: 0,
-            args: Box::new([]),
+            args: Vec::new().into(),
         });
     }
 
@@ -693,7 +708,7 @@ pub fn main() { loop(1) }
     ) {
         assert_eq!(instruction.output().local(), &ParamLocal::Int(output));
         assert_int_shape(plan, instruction.output().shape());
-        assert_eq!(int_value(instruction), &value.into());
+        assert_eq!(int_value(instruction), value.into());
     }
 
     fn bool_branch(terminator: &Terminator) -> (BoolLocalId, &Edge, &Edge) {
@@ -736,9 +751,9 @@ pub fn main() { loop(1) }
 
     fn int_value<Graph: ExecutionGraphProfile>(
         instruction: &ProfiledInstruction<Graph>,
-    ) -> &num_bigint::BigInt {
+    ) -> num_bigint::BigInt {
         match instruction.kind() {
-            ProfiledInstructionKind::Int(IntInstruction::Value(value)) => value,
+            ProfiledInstructionKind::Int(IntInstruction::Value(value)) => value.materialize(),
             _ => panic!("fixture should contain an Int value instruction"),
         }
     }

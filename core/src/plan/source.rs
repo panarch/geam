@@ -1,11 +1,14 @@
-use camino::Utf8PathBuf;
+use super::Text;
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use camino::{Utf8Path, Utf8PathBuf};
 use ecow::EcoString;
 use gleam_compiler_core::ast::SrcSpan;
+use std::borrow::Cow;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceContext {
-    path: Utf8PathBuf,
-    source: String,
+    path: Text,
+    source: Cow<'static, str>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,41 +19,49 @@ pub struct SourceSpan {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PanicSite {
-    module: EcoString,
-    function: EcoString,
+    module: Text,
+    function: Text,
     span: SourceSpan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EchoSite {
-    module: EcoString,
-    function: EcoString,
+    module: Text,
+    function: Text,
     span: SourceSpan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostCallSite {
-    module: EcoString,
-    function: EcoString,
+    module: Text,
+    function: Text,
     span: SourceSpan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct FunctionCallTarget<Function> {
-    function: Function,
-    site: HostCallSite,
+pub struct FunctionCallTarget<Function> {
+    pub function: Function,
+    pub site: HostCallSite,
 }
 
 impl SourceContext {
     pub fn new(path: impl Into<Utf8PathBuf>, source: impl Into<String>) -> Self {
         Self {
-            path: path.into(),
-            source: source.into(),
+            path: Text::Owned(path.into().as_str().into()),
+            source: Cow::Owned(source.into()),
         }
     }
 
-    pub fn path(&self) -> &Utf8PathBuf {
-        &self.path
+    /// Retains source text already embedded in the application, without reading a file.
+    pub const fn from_static(path: &'static str, source: &'static str) -> Self {
+        Self {
+            path: Text::Static(path),
+            source: Cow::Borrowed(source),
+        }
+    }
+
+    pub fn path(&self) -> &Utf8Path {
+        Utf8Path::new(&self.path)
     }
 
     pub fn source(&self) -> &str {
@@ -58,12 +69,54 @@ impl SourceContext {
     }
 
     pub(crate) fn named_source(&self) -> miette::NamedSource<String> {
-        miette::NamedSource::new(self.path.as_str(), self.source.clone()).with_language("gleam")
+        miette::NamedSource::new(self.path.as_ref(), self.source.to_string()).with_language("gleam")
+    }
+}
+
+impl Emit for SourceContext {
+    fn emit(&self, output: &mut Rust) {
+        output.call(
+            "source::SourceContext::from_static",
+            &[&self.path().as_str(), &self.source()],
+        );
+    }
+}
+
+impl Emit for SourceSpan {
+    fn emit(&self, output: &mut Rust) {
+        output.call("source::SourceSpan::new", &[&self.start, &self.end]);
+    }
+}
+
+impl Emit for PanicSite {
+    fn emit(&self, output: &mut Rust) {
+        output.call(
+            "source::PanicSite::from_static",
+            &[&self.module(), &self.function(), &self.span],
+        );
+    }
+}
+
+impl Emit for EchoSite {
+    fn emit(&self, output: &mut Rust) {
+        output.call(
+            "source::EchoSite::from_static",
+            &[&self.module(), &self.function(), &self.span],
+        );
+    }
+}
+
+impl Emit for HostCallSite {
+    fn emit(&self, output: &mut Rust) {
+        output.call(
+            "source::HostCallSite::from_static",
+            &[&self.module(), &self.function(), &self.span],
+        );
     }
 }
 
 impl SourceSpan {
-    pub fn new(start: usize, end: usize) -> Self {
+    pub const fn new(start: usize, end: usize) -> Self {
         Self { start, end }
     }
 
@@ -100,8 +153,21 @@ impl From<SrcSpan> for SourceSpan {
 impl PanicSite {
     pub fn new(module: EcoString, function: EcoString, span: SourceSpan) -> Self {
         Self {
-            module,
-            function,
+            module: module.into(),
+            function: function.into(),
+            span,
+        }
+    }
+
+    /// Uses names already embedded in the application.
+    pub const fn from_static(
+        module: &'static str,
+        function: &'static str,
+        span: SourceSpan,
+    ) -> Self {
+        Self {
+            module: Text::Static(module),
+            function: Text::Static(function),
             span,
         }
     }
@@ -115,11 +181,11 @@ impl PanicSite {
         }
     }
 
-    pub fn module(&self) -> &EcoString {
+    pub fn module(&self) -> &str {
         &self.module
     }
 
-    pub fn function(&self) -> &EcoString {
+    pub fn function(&self) -> &str {
         &self.function
     }
 
@@ -131,17 +197,30 @@ impl PanicSite {
 impl EchoSite {
     pub fn new(module: EcoString, function: EcoString, span: SourceSpan) -> Self {
         Self {
-            module,
-            function,
+            module: module.into(),
+            function: function.into(),
             span,
         }
     }
 
-    pub fn module(&self) -> &EcoString {
+    /// Uses names already embedded in the application.
+    pub const fn from_static(
+        module: &'static str,
+        function: &'static str,
+        span: SourceSpan,
+    ) -> Self {
+        Self {
+            module: Text::Static(module),
+            function: Text::Static(function),
+            span,
+        }
+    }
+
+    pub fn module(&self) -> &str {
         &self.module
     }
 
-    pub fn function(&self) -> &EcoString {
+    pub fn function(&self) -> &str {
         &self.function
     }
 
@@ -153,17 +232,30 @@ impl EchoSite {
 impl HostCallSite {
     pub fn new(module: EcoString, function: EcoString, span: SourceSpan) -> Self {
         Self {
-            module,
-            function,
+            module: module.into(),
+            function: function.into(),
             span,
         }
     }
 
-    pub fn module(&self) -> &EcoString {
+    /// Uses names already embedded in the application.
+    pub const fn from_static(
+        module: &'static str,
+        function: &'static str,
+        span: SourceSpan,
+    ) -> Self {
+        Self {
+            module: Text::Static(module),
+            function: Text::Static(function),
+            span,
+        }
+    }
+
+    pub fn module(&self) -> &str {
         &self.module
     }
 
-    pub fn function(&self) -> &EcoString {
+    pub fn function(&self) -> &str {
         &self.function
     }
 
@@ -204,10 +296,69 @@ impl From<crate::plan::FunctionInstantiation>
     }
 }
 
+impl<Function> Emit for FunctionCallTarget<Function>
+where
+    Function: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        let Self { function, site } = self;
+        output.structure(
+            "source::FunctionCallTarget",
+            &[("function", function), ("site", site)],
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{EchoSite, HostCallSite, PanicSite, SourceContext, SourceSpan};
+    use super::{EchoSite, FunctionCallTarget, HostCallSite, PanicSite, SourceContext, SourceSpan};
+    use crate::plan::execution::function::IntFunctionId;
+    use crate::plan::execution::prepared::rust::Rust;
     use gleam_compiler_core::ast::SrcSpan;
+
+    #[test]
+    fn emits_embedded_source_and_sites_with_exact_names_and_byte_spans() {
+        let source = SourceContext::new(
+            "sources/example.gleam",
+            "pub fn main() { \"line\\ntext\" }\n",
+        );
+        assert_eq!(
+            Rust::expression(&source),
+            r#"data::source::SourceContext::from_static("sources/example.gleam","pub fn main() { \"line\\ntext\" }\n",)"#
+        );
+        let span = SourceSpan::new(3, 12);
+        assert_eq!(
+            Rust::expression(&span),
+            "data::source::SourceSpan::new(3,12,)"
+        );
+        assert_eq!(
+            Rust::expression(&PanicSite::from_static("example", "main", span)),
+            "data::source::PanicSite::from_static(\"example\",\"main\",data::source::SourceSpan::new(3,12,),)"
+        );
+        assert_eq!(
+            Rust::expression(&EchoSite::from_static("example", "main", span)),
+            "data::source::EchoSite::from_static(\"example\",\"main\",data::source::SourceSpan::new(3,12,),)"
+        );
+        let call = HostCallSite::from_static("example", "main", span);
+        assert_eq!(
+            Rust::expression(&call),
+            "data::source::HostCallSite::from_static(\"example\",\"main\",data::source::SourceSpan::new(3,12,),)"
+        );
+        assert_eq!(
+            Rust::expression(&FunctionCallTarget::new(IntFunctionId(2), call.clone())),
+            concat!(
+                "data::source::FunctionCallTarget {function: data::function::IntFunctionId(2,),",
+                "site: data::source::HostCallSite::from_static(\"example\",\"main\",data::source::SourceSpan::new(3,12,),),}"
+            )
+        );
+        assert_eq!(
+            Rust::expression(&FunctionCallTarget::new(2usize, call)),
+            concat!(
+                "data::source::FunctionCallTarget {function: 2,",
+                "site: data::source::HostCallSite::from_static(\"example\",\"main\",data::source::SourceSpan::new(3,12,),),}"
+            )
+        );
+    }
 
     #[test]
     fn source_context_preserves_path_and_source() {
@@ -216,6 +367,55 @@ mod tests {
         assert_eq!(context.path().as_str(), "main.gleam");
         assert_eq!(context.source(), "pub fn main() { 1 }");
         assert_eq!(context.named_source().name(), "main.gleam");
+    }
+
+    #[test]
+    fn static_source_context_borrows_paths_and_bytes_without_reading_files() {
+        static PATH: &str = "not-on-disk/main.gleam";
+        static SOURCE: &str = "pub fn main() { 42 }";
+        static CONTEXT: SourceContext = SourceContext::from_static(PATH, SOURCE);
+
+        assert!(std::ptr::eq(
+            CONTEXT.path().as_str().as_ptr(),
+            PATH.as_ptr()
+        ));
+        assert!(std::ptr::eq(CONTEXT.source().as_ptr(), SOURCE.as_ptr()));
+        assert!(std::ptr::eq(
+            CONTEXT.clone().source().as_ptr(),
+            SOURCE.as_ptr()
+        ));
+        assert_eq!(CONTEXT.named_source().name(), PATH);
+        assert_eq!(CONTEXT, SourceContext::new(PATH, SOURCE));
+        assert_eq!(
+            format!("{CONTEXT:?}"),
+            "SourceContext { path: \"not-on-disk/main.gleam\", source: \"pub fn main() { 42 }\" }"
+        );
+    }
+
+    #[test]
+    fn static_sites_preserve_the_same_names_and_spans() {
+        static MODULE: &str = "application/module";
+        static FUNCTION: &str = "work";
+        const SPAN: SourceSpan = SourceSpan::new(3, 12);
+        static PANIC: PanicSite = PanicSite::from_static(MODULE, FUNCTION, SPAN);
+        static ECHO: EchoSite = EchoSite::from_static(MODULE, FUNCTION, SPAN);
+        static CALL: HostCallSite = HostCallSite::from_static(MODULE, FUNCTION, SPAN);
+
+        assert_eq!(PANIC, PanicSite::new(MODULE.into(), FUNCTION.into(), SPAN));
+        assert_eq!(ECHO, EchoSite::new(MODULE.into(), FUNCTION.into(), SPAN));
+        assert_eq!(
+            CALL,
+            HostCallSite::new(MODULE.into(), FUNCTION.into(), SPAN)
+        );
+        for (module, function, span) in [
+            (PANIC.module(), PANIC.function(), PANIC.span()),
+            (ECHO.module(), ECHO.function(), ECHO.span()),
+            (CALL.module(), CALL.function(), CALL.span()),
+        ] {
+            assert!(std::ptr::eq(module.as_ptr(), MODULE.as_ptr()));
+            assert!(std::ptr::eq(function.as_ptr(), FUNCTION.as_ptr()));
+            assert_eq!(span, SPAN);
+        }
     }
 
     #[test]

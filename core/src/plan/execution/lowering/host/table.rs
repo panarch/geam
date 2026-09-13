@@ -130,9 +130,13 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
             .substitution()
             .arguments()
             .iter()
-            .map(|argument| argument.to_module_shape().value_type())
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
+            .map(|argument| crate::plan::execution::host::HostTypeArgument {
+                type_: crate::plan::execution::type_::TypeMetadata::from_public(
+                    &argument.to_module_shape().value_type(),
+                ),
+                shape: context.types.value_shape(argument),
+            })
+            .collect();
         let registered = &self.registered.functions[&template.id()];
         let implementation = Arc::clone(&registered.implementation);
         let return_ = context.representations.inhabitation(shape.return_());
@@ -144,8 +148,8 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
                 let ValueInhabitation::Inhabited(return_) = return_ else {
                     return Err(HostSpecializationError::undetermined_return_storage(
                         template.package().clone(),
-                        template.site().module().clone(),
-                        template.site().function().clone(),
+                        template.site().module().into(),
+                        template.site().function().into(),
                         shape.to_module_shape().type_(),
                     ));
                 };
@@ -155,15 +159,24 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
                 let type_ = context.lower_concrete_function_type(&shape);
                 let host_index = self.value_functions.len();
                 self.value_functions.push(HostedFunction::new(
-                    HostedFunctionMetadata::new(
-                        template.package().clone(),
-                        template.site().clone(),
-                        shape.to_module_shape().type_(),
+                    HostedFunctionMetadata {
+                        package: template.package().clone().into(),
+                        site: template.site().clone(),
+                        signature: crate::plan::execution::type_::FunctionMetadata::from_public(
+                            &shape.to_module_shape().type_(),
+                        ),
                         type_arguments,
                         parameters,
                         constructions,
                         type_,
-                    ),
+                        registration: Box::new(
+                            crate::plan::execution::host::RegistrationContract::from_template(
+                                template,
+                                &registered.constructions,
+                            ),
+                        )
+                        .into(),
+                    },
                     implementation.clone(),
                 ));
                 return_::lower_host_return(
@@ -182,15 +195,24 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
                 let type_ = context.lower_concrete_function_type(&shape);
                 let host_index = self.never_functions.len();
                 self.never_functions.push(HostedFunction::new(
-                    HostedFunctionMetadata::new(
-                        template.package().clone(),
-                        template.site().clone(),
-                        shape.to_module_shape().type_(),
+                    HostedFunctionMetadata {
+                        package: template.package().clone().into(),
+                        site: template.site().clone(),
+                        signature: crate::plan::execution::type_::FunctionMetadata::from_public(
+                            &shape.to_module_shape().type_(),
+                        ),
                         type_arguments,
                         parameters,
                         constructions,
                         type_,
-                    ),
+                        registration: Box::new(
+                            crate::plan::execution::host::RegistrationContract::from_template(
+                                template,
+                                &registered.constructions,
+                            ),
+                        )
+                        .into(),
+                    },
                     implementation.clone(),
                 ));
                 match return_ {
@@ -435,8 +457,23 @@ pub fn main() {
         assert_eq!(function.package(), package);
         assert_eq!(function.module(), module);
         assert_eq!(function.name(), name);
-        assert_eq!(function.metadata().signature(), &signature);
-        assert_eq!(function.metadata().type_arguments(), type_arguments);
+        assert_eq!(function.metadata().signature(), signature);
+        for (index, argument) in type_arguments.iter().enumerate() {
+            assert_eq!(
+                function
+                    .metadata()
+                    .resolve_type(&crate::host::HostTypeDescriptor::Parameter(index)),
+                Some(argument.clone()),
+            );
+        }
+        assert_eq!(
+            function
+                .metadata()
+                .resolve_type(&crate::host::HostTypeDescriptor::Parameter(
+                    type_arguments.len()
+                )),
+            None,
+        );
         assert_eq!(function.type_(), &type_);
     }
 

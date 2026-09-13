@@ -2,10 +2,14 @@ use super::super::function::{ExecutionGraphProfile, FunctionLabelSource, HostedE
 use super::super::graph::{BlockGraphExitId, ProfiledBlockGraph};
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::graph::{BlockGraphExitExplanation, LocalLabel};
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
+use crate::plan::execution::type_::ValueShapeId;
 
-pub(crate) struct ProfiledConstantProgram<Return, Graph: ExecutionGraphProfile> {
-    block_graph: ProfiledBlockGraph<Graph>,
-    returns: Box<[Return]>,
+pub struct ProfiledConstantProgram<Return: 'static, Graph: ExecutionGraphProfile> {
+    pub block_graph: ProfiledBlockGraph<Graph>,
+    pub returns: Table<Return>,
+    pub shape: ValueShapeId,
 }
 
 pub(crate) type ConstantProgram<Return> = ProfiledConstantProgram<Return, HostedExecutionGraph>;
@@ -13,11 +17,13 @@ pub(crate) type ConstantProgram<Return> = ProfiledConstantProgram<Return, Hosted
 impl<Return, Graph: ExecutionGraphProfile> ProfiledConstantProgram<Return, Graph> {
     pub(in crate::plan::execution) fn from_parts(
         block_graph: ProfiledBlockGraph<Graph>,
-        returns: Vec<Return>,
+        returns: Table<Return>,
+        shape: ValueShapeId,
     ) -> Self {
         Self {
             block_graph,
-            returns: returns.into_boxed_slice(),
+            returns,
+            shape,
         }
     }
 
@@ -31,8 +37,8 @@ impl<Return, Graph: ExecutionGraphProfile> ProfiledConstantProgram<Return, Graph
 
     pub(in crate::plan::execution) fn into_parts(
         self,
-    ) -> (ProfiledBlockGraph<Graph>, Box<[Return]>) {
-        (self.block_graph, self.returns)
+    ) -> (ProfiledBlockGraph<Graph>, Table<Return>, ValueShapeId) {
+        (self.block_graph, self.returns, self.shape)
     }
 }
 
@@ -62,6 +68,28 @@ where
     fn write_exit(&self, context: &mut ExplainContext<'_, '_>, exit: BlockGraphExitId) {
         context.push_str("return ");
         context.write(self.return_(exit));
+    }
+}
+
+impl<Return: 'static, Graph: ExecutionGraphProfile> Emit for ProfiledConstantProgram<Return, Graph>
+where
+    ProfiledBlockGraph<Graph>: Emit,
+    Table<Return>: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            block_graph,
+            returns,
+            shape,
+        } = self;
+        output.structure(
+            "constant::ProfiledConstantProgram",
+            &[
+                ("block_graph", block_graph),
+                ("returns", returns),
+                ("shape", shape),
+            ],
+        );
     }
 }
 

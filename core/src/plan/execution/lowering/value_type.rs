@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::plan;
 use crate::plan::execution::type_::{
@@ -25,16 +25,16 @@ use super::specialization::{
 pub(super) struct TypeInterner {
     types: Vec<ListStorageTypeId>,
     ids: HashMap<SpecializedValueShape, ListTypeId>,
-    tuple_ids: HashMap<SpecializedValueShape, TupleListTypeId>,
+    tuple_ids: HashMap<Vec<ValueType>, TupleListTypeId>,
     parameter_list_ids: HashMap<plan::TypeParameterId, ParameterListListTypeId>,
-    list_ids: HashMap<StoredValueShape, ListListTypeId>,
-    function_ids: HashMap<SpecializedValueShape, FunctionListTypeId>,
+    list_ids: HashMap<ListTypeId, ListListTypeId>,
+    function_ids: HashMap<FunctionType, FunctionListTypeId>,
     custom_list_ids: HashMap<plan::CustomType, CustomListTypeId>,
     external_list_ids: HashMap<plan::ExternalType, ExternalListTypeId>,
     tuple_items: Vec<Vec<ValueType>>,
     function_items: Vec<FunctionType>,
     custom_ids: HashMap<plan::CustomType, CustomTypeId>,
-    custom_types: Vec<CustomTypeDescriptor>,
+    custom_types: Vec<CustomTypeBuilder>,
     external_ids: HashMap<plan::ExternalType, ExternalTypeId>,
     external_types: Vec<plan::ExternalType>,
     shape_ids: HashMap<SpecializedValueShape, ValueShapeId>,
@@ -42,6 +42,11 @@ pub(super) struct TypeInterner {
     shape_types: Vec<ValueType>,
     custom_shape_ids: HashMap<SpecializedCustomValueShape, CustomValueShapeId>,
     custom_shapes: Vec<CustomValueShapeDescriptor>,
+}
+
+struct CustomTypeBuilder {
+    type_: plan::CustomType,
+    constructors: BTreeMap<usize, CustomConstructorDescriptor>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -102,7 +107,7 @@ impl TypeInterner {
             ),
             SpecializedValueShape::List(item) => ValueType::List(self.list_type(item)),
             SpecializedValueShape::Function(type_) => {
-                ValueType::Function(Box::new(self.function_type(type_)))
+                ValueType::Function(self.function_type(type_))
             }
             SpecializedValueShape::Custom(shape) => ValueType::Custom(self.custom_type(shape)),
             SpecializedValueShape::External(shape) => {
@@ -133,7 +138,7 @@ impl TypeInterner {
                     .iter()
                     .map(|element| self.value_shape(element))
                     .collect::<Vec<_>>()
-                    .into_boxed_slice(),
+                    .into(),
             ),
             SpecializedValueShape::List(item) => ValueShapeDescriptor::List(self.value_shape(item)),
             SpecializedValueShape::Function(type_) => ValueShapeDescriptor::Function {
@@ -142,7 +147,7 @@ impl TypeInterner {
                     .iter()
                     .map(|argument| self.value_shape(argument))
                     .collect::<Vec<_>>()
-                    .into_boxed_slice(),
+                    .into(),
                 return_: self.value_shape(type_.return_()),
             },
             SpecializedValueShape::Custom(shape) => {
@@ -205,7 +210,7 @@ impl TypeInterner {
             .iter()
             .map(|argument| self.value_shape(argument))
             .collect::<Vec<_>>()
-            .into_boxed_slice();
+            .into();
         let constructor = match shape.constructor() {
             plan::CustomConstructorRefinement::Any => CustomConstructorRefinement::Any,
             plan::CustomConstructorRefinement::Exact(index) => {
@@ -379,23 +384,18 @@ impl TypeInterner {
     }
 
     pub(super) fn tuple_list_type(&mut self, item: &[SpecializedValueShape]) -> TupleListTypeId {
-        let type_ = SpecializedValueShape::List(Box::new(SpecializedValueShape::Tuple(
-            item.to_vec().into_boxed_slice(),
-        )));
-        if let Some(id) = self.tuple_ids.get(&type_) {
-            return *id;
-        }
-
         let item = item
             .iter()
             .map(|type_| self.value_type(type_))
             .collect::<Vec<_>>();
+        if let Some(id) = self.tuple_ids.get(&item) {
+            return *id;
+        }
         let list_type = ListTypeId::new(self.types.len());
         let id = TupleListTypeId::new(list_type, self.tuple_items.len());
-        self.tuple_items.push(item);
+        self.tuple_items.push(item.clone());
         self.types.push(ListStorageTypeId::Tuple(id));
-        self.ids.insert(type_.clone(), list_type);
-        self.tuple_ids.insert(type_, id);
+        self.tuple_ids.insert(item, id);
         id
     }
 
@@ -417,31 +417,15 @@ impl TypeInterner {
         if let Some(id) = self.parameter_list_ids.get(&parameter) {
             return *id;
         }
-        let item = SpecializedValueShape::Parameter(parameter);
-        let type_ =
-            SpecializedValueShape::List(Box::new(SpecializedValueShape::List(Box::new(item))));
         let item_type = self.parameter_list_type(parameter);
         let list_type = ListTypeId::new(self.types.len());
         let type_id = ParameterListListTypeId::new(list_type, item_type);
         self.types.push(ListStorageTypeId::ParameterList(type_id));
-        self.ids.insert(type_.clone(), list_type);
         self.parameter_list_ids.insert(parameter, type_id);
         type_id
     }
 
     pub(super) fn stored_list_list_type(&mut self, item: &StoredValueShape) -> ListListTypeId {
-        if let Some(id) = self.list_ids.get(item) {
-            return *id;
-        }
-
-        self.register_stored_list_list_type(item)
-    }
-
-    fn register_stored_list_list_type(&mut self, item: &StoredValueShape) -> ListListTypeId {
-        let specialized = item.to_specialized();
-        let type_ = SpecializedValueShape::List(Box::new(SpecializedValueShape::List(Box::new(
-            specialized,
-        ))));
         let item_type = match item {
             StoredValueShape::Int => self.int_list_type().list_type(),
             StoredValueShape::String => self.string_list_type().list_type(),
@@ -456,11 +440,13 @@ impl TypeInterner {
             StoredValueShape::List(item) => self.list_list_type(item).list_type(),
             StoredValueShape::Function(item) => self.function_list_type(item).list_type(),
         };
+        if let Some(id) = self.list_ids.get(&item_type) {
+            return *id;
+        }
         let list_type = ListTypeId::new(self.types.len());
         let id = ListListTypeId::new(list_type, item_type);
         self.types.push(ListStorageTypeId::List(id));
-        self.ids.insert(type_.clone(), list_type);
-        self.list_ids.insert(item.clone(), id);
+        self.list_ids.insert(item_type, id);
         id
     }
 
@@ -468,20 +454,15 @@ impl TypeInterner {
         &mut self,
         item: &SpecializedFunctionShape,
     ) -> FunctionListTypeId {
-        let type_ = SpecializedValueShape::List(Box::new(SpecializedValueShape::Function(
-            Box::new(item.clone()),
-        )));
-        if let Some(id) = self.function_ids.get(&type_) {
+        let item = self.function_type(item);
+        if let Some(id) = self.function_ids.get(&item) {
             return *id;
         }
-
-        let item = self.function_type(item);
         let list_type = ListTypeId::new(self.types.len());
         let id = FunctionListTypeId::new(list_type, self.function_items.len());
-        self.function_items.push(item);
+        self.function_items.push(item.clone());
         self.types.push(ListStorageTypeId::Function(id));
-        self.ids.insert(type_.clone(), list_type);
-        self.function_ids.insert(type_, id);
+        self.function_ids.insert(item, id);
         id
     }
 
@@ -527,7 +508,10 @@ impl TypeInterner {
 
         let id = CustomTypeId::new(self.custom_types.len());
         self.custom_ids.insert(type_.clone(), id);
-        self.custom_types.push(CustomTypeDescriptor::new(type_));
+        self.custom_types.push(CustomTypeBuilder {
+            type_,
+            constructors: BTreeMap::new(),
+        });
         id
     }
 
@@ -553,24 +537,36 @@ impl TypeInterner {
         let (type_, name, index, fields) = constructor.into_parts();
         let type_id = self.custom_type(&type_);
         let id = CustomConstructorId::new(type_id, index);
-        if self.custom_types[type_id.index()].has_constructor(index) {
+        if self.custom_types[type_id.index()]
+            .constructors
+            .contains_key(&index)
+        {
             return id;
         }
 
         let fields = fields
             .into_iter()
             .map(|field| {
-                let (label, type_) = field.into_parts();
-                CustomFieldDescriptor::new(label, self.value_type(&type_))
+                let (label, type_, refinement) = field.into_parts();
+                let nominal =
+                    plan::ValueShape::from_value_type(type_.to_module_shape().value_type());
+                let nominal = SpecializedValueShape::instantiate(
+                    &nominal,
+                    &super::specialization::SpecializedTypeSubstitution::empty(),
+                );
+                let shape = self.value_shape(&nominal);
+                CustomFieldDescriptor::new(label, self.value_type(&type_), shape, refinement)
             })
             .collect();
         self.custom_types[type_id.index()]
-            .insert_constructor(CustomConstructorDescriptor::new(id, name, fields));
+            .constructors
+            .insert(index, CustomConstructorDescriptor::new(id, name, fields));
         id
     }
 
     pub(super) fn into_tables(
         self,
+        representations: &super::specialization::RepresentationContext,
     ) -> (
         ListTypeTable,
         CustomTypeTable,
@@ -579,7 +575,22 @@ impl TypeInterner {
     ) {
         (
             ListTypeTable::from_parts(self.types, self.tuple_items, self.function_items),
-            CustomTypeTable::new(self.custom_types),
+            CustomTypeTable::new(
+                self.custom_types
+                    .into_iter()
+                    .map(|type_| {
+                        CustomTypeDescriptor::new(
+                            representations.constructor_count(type_.type_.type_name()),
+                            type_.type_,
+                            type_.constructors.into_values().collect(),
+                        )
+                    })
+                    .collect(),
+                representations
+                    .definitions()
+                    .map(crate::plan::execution::type_::custom::CustomDefinition::from_definition)
+                    .collect(),
+            ),
             ExternalTypeTable::new(self.external_types),
             ValueShapeTable::new(self.shapes, self.shape_types, self.custom_shapes),
         )
@@ -595,6 +606,59 @@ mod tests {
         ValueShapeDescriptor, ValueShapeId, ValueShapeTable, ValueType as ExecutionValueType,
     };
     use crate::plan::{CustomType, CustomTypeName, FunctionType, ValueType};
+
+    #[test]
+    fn nominal_list_storage_is_shared_through_nested_refinements() {
+        let plan = execution_plan(
+            r#"
+pub type Choice { First(Int) Second(Int) }
+fn widen(x: Choice) { x }
+pub fn main() {
+  let exact = First(42)
+  let wide = widen(exact)
+  #([[exact]], [[wide]], [#(exact)], [#(wide)],
+    [fn() { exact }], [fn() { wide }])
+}
+"#,
+        );
+        let types = &plan.program.common.list_types;
+        assert_eq!(
+            types.types.as_ref(),
+            &[
+                ListStorageTypeId::Custom(CustomListTypeId {
+                    list_type: ListTypeId(0),
+                    item_type: CustomTypeId(0),
+                }),
+                ListStorageTypeId::List(crate::plan::execution::type_::ListListTypeId {
+                    list_type: ListTypeId(1),
+                    item_type: ListTypeId(0),
+                }),
+                ListStorageTypeId::Tuple(crate::plan::execution::type_::TupleListTypeId {
+                    list_type: ListTypeId(2),
+                    item_type: crate::plan::execution::type_::list::TupleItemTypeId(0),
+                }),
+                ListStorageTypeId::Function(crate::plan::execution::type_::FunctionListTypeId {
+                    list_type: ListTypeId(3),
+                    item_type: crate::plan::execution::type_::list::FunctionItemTypeId(0),
+                }),
+            ]
+        );
+        assert_eq!(types.tuple_items.len(), 1);
+        assert_eq!(types.function_items.len(), 1);
+        let shapes = &plan.program.common.value_shapes;
+        assert!(
+            shapes
+                .custom_shapes
+                .iter()
+                .any(|shape| shape.constructor == CustomConstructorRefinement::Exact(0))
+        );
+        assert!(
+            shapes
+                .custom_shapes
+                .iter()
+                .any(|shape| shape.constructor == CustomConstructorRefinement::Any)
+        );
+    }
 
     #[test]
     fn lowering_preserves_exact_and_widened_custom_shapes() {
@@ -669,7 +733,7 @@ pub fn main() {
                 ValueShapeDescriptor::Custom(CustomValueShapeId::new(1)),
                 ValueShapeDescriptor::List(ValueShapeId::new(0)),
                 ValueShapeDescriptor::Function {
-                    arguments: Vec::new().into_boxed_slice(),
+                    arguments: Vec::new().into(),
                     return_: ValueShapeId::new(0),
                 },
                 ValueShapeDescriptor::Tuple(
@@ -679,13 +743,13 @@ pub fn main() {
                         ValueShapeId::new(2),
                         ValueShapeId::new(3),
                     ]
-                    .into_boxed_slice(),
+                    .into(),
                 ),
                 ValueShapeDescriptor::Custom(CustomValueShapeId::new(3)),
                 ValueShapeDescriptor::Custom(CustomValueShapeId::new(4)),
                 ValueShapeDescriptor::List(ValueShapeId::new(5)),
                 ValueShapeDescriptor::Function {
-                    arguments: Vec::new().into_boxed_slice(),
+                    arguments: Vec::new().into(),
                     return_: ValueShapeId::new(5),
                 },
                 ValueShapeDescriptor::Tuple(
@@ -695,12 +759,13 @@ pub fn main() {
                         ValueShapeId::new(2),
                         ValueShapeId::new(8),
                     ]
-                    .into_boxed_slice(),
+                    .into(),
                 ),
-                ValueShapeDescriptor::Bool,
                 ValueShapeDescriptor::Int,
+                ValueShapeDescriptor::Bool,
                 ValueShapeDescriptor::Custom(CustomValueShapeId::new(5)),
                 ValueShapeDescriptor::Custom(CustomValueShapeId::new(6)),
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(2)),
             ],
         );
         assert_custom_shapes(
@@ -708,37 +773,37 @@ pub fn main() {
             &[
                 CustomValueShapeDescriptor::new(
                     CustomTypeId::new(2),
-                    Vec::new().into_boxed_slice(),
+                    Vec::new().into(),
                     CustomConstructorRefinement::Any,
                 ),
                 CustomValueShapeDescriptor::new(
                     CustomTypeId::new(1),
-                    vec![ValueShapeId::new(0)].into_boxed_slice(),
+                    vec![ValueShapeId::new(0)].into(),
                     CustomConstructorRefinement::Any,
                 ),
                 CustomValueShapeDescriptor::new(
                     CustomTypeId::new(0),
-                    vec![ValueShapeId::new(4)].into_boxed_slice(),
+                    vec![ValueShapeId::new(4)].into(),
                     CustomConstructorRefinement::Any,
                 ),
                 CustomValueShapeDescriptor::new(
                     CustomTypeId::new(2),
-                    Vec::new().into_boxed_slice(),
+                    Vec::new().into(),
                     CustomConstructorRefinement::Exact(0),
                 ),
                 CustomValueShapeDescriptor::new(
                     CustomTypeId::new(1),
-                    vec![ValueShapeId::new(5)].into_boxed_slice(),
+                    vec![ValueShapeId::new(5)].into(),
                     CustomConstructorRefinement::Exact(0),
                 ),
                 CustomValueShapeDescriptor::new(
                     CustomTypeId::new(0),
-                    vec![ValueShapeId::new(9)].into_boxed_slice(),
+                    vec![ValueShapeId::new(9)].into(),
                     CustomConstructorRefinement::Exact(0),
                 ),
                 CustomValueShapeDescriptor::new(
                     CustomTypeId::new(2),
-                    Vec::new().into_boxed_slice(),
+                    Vec::new().into(),
                     CustomConstructorRefinement::Exact(1),
                 ),
             ],
@@ -778,7 +843,7 @@ pub fn main() {
             &plan.program.common.value_shapes,
             &[
                 ValueShapeDescriptor::Custom(CustomValueShapeId::new(0)),
-                ValueShapeDescriptor::Tuple(vec![ValueShapeId::new(0); 6].into_boxed_slice()),
+                ValueShapeDescriptor::Tuple(vec![ValueShapeId::new(0); 6].into()),
                 ValueShapeDescriptor::Custom(CustomValueShapeId::new(2)),
                 ValueShapeDescriptor::Tuple(
                     vec![
@@ -789,26 +854,27 @@ pub fn main() {
                         ValueShapeId::new(2),
                         ValueShapeId::new(2),
                     ]
-                    .into_boxed_slice(),
+                    .into(),
                 ),
                 ValueShapeDescriptor::Int,
-                ValueShapeDescriptor::Tuple(vec![ValueShapeId::new(2)].into_boxed_slice()),
                 ValueShapeDescriptor::String,
-                ValueShapeDescriptor::Custom(CustomValueShapeId::new(4)),
                 ValueShapeDescriptor::Function {
-                    arguments: Vec::new().into_boxed_slice(),
+                    arguments: Vec::new().into(),
                     return_: ValueShapeId::new(0),
                 },
+                ValueShapeDescriptor::Tuple(vec![ValueShapeId::new(2)].into()),
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(4)),
                 ValueShapeDescriptor::Function {
-                    arguments: vec![ValueShapeId::new(4)].into_boxed_slice(),
-                    return_: ValueShapeId::new(0),
+                    arguments: Vec::new().into(),
+                    return_: ValueShapeId::new(2),
+                },
+                ValueShapeDescriptor::Function {
+                    arguments: vec![ValueShapeId::new(4)].into(),
+                    return_: ValueShapeId::new(2),
                 },
                 ValueShapeDescriptor::Custom(CustomValueShapeId::new(5)),
                 ValueShapeDescriptor::Custom(CustomValueShapeId::new(3)),
-                ValueShapeDescriptor::Function {
-                    arguments: vec![ValueShapeId::new(4)].into_boxed_slice(),
-                    return_: ValueShapeId::new(2),
-                },
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(1)),
             ],
         );
         assert_custom_shapes(
@@ -816,32 +882,32 @@ pub fn main() {
             &[
                 CustomValueShapeDescriptor::new(
                     CustomTypeId::new(1),
-                    Vec::new().into_boxed_slice(),
+                    Vec::new().into(),
                     CustomConstructorRefinement::Any,
                 ),
                 CustomValueShapeDescriptor::new(
                     CustomTypeId::new(0),
-                    vec![ValueShapeId::new(1)].into_boxed_slice(),
+                    vec![ValueShapeId::new(1)].into(),
                     CustomConstructorRefinement::Any,
                 ),
                 CustomValueShapeDescriptor::new(
                     CustomTypeId::new(1),
-                    Vec::new().into_boxed_slice(),
+                    Vec::new().into(),
                     CustomConstructorRefinement::Exact(0),
                 ),
                 CustomValueShapeDescriptor::new(
                     CustomTypeId::new(0),
-                    vec![ValueShapeId::new(3)].into_boxed_slice(),
+                    vec![ValueShapeId::new(3)].into(),
                     CustomConstructorRefinement::Exact(0),
                 ),
                 CustomValueShapeDescriptor::new(
                     CustomTypeId::new(2),
-                    vec![ValueShapeId::new(2)].into_boxed_slice(),
+                    vec![ValueShapeId::new(2)].into(),
                     CustomConstructorRefinement::Exact(0),
                 ),
                 CustomValueShapeDescriptor::new(
                     CustomTypeId::new(3),
-                    vec![ValueShapeId::new(2)].into_boxed_slice(),
+                    vec![ValueShapeId::new(2)].into(),
                     CustomConstructorRefinement::Exact(0),
                 ),
             ],

@@ -580,7 +580,6 @@ pub fn main() { #(42, fn(value: Int) { value }, make()) }
             .block_graph();
         let function = graph
             .blocks()
-            .iter()
             .flat_map(|block| block.instructions())
             .find_map(|instruction| match instruction.kind() {
                 InstructionKind::Function(function)
@@ -626,7 +625,6 @@ pub fn main() {
             .block_graph();
         let function_list_type = graph
             .blocks()
-            .iter()
             .flat_map(|block| block.instructions())
             .find_map(|instruction| match instruction.kind() {
                 InstructionKind::List(ListInstruction::Function(type_id, _)) => Some(*type_id),
@@ -635,7 +633,6 @@ pub fn main() {
             .expect("tuple main should allocate its function list");
         let float_reference = graph
             .blocks()
-            .iter()
             .flat_map(|block| block.instructions())
             .find_map(|instruction| match instruction.kind() {
                 InstructionKind::Function(function)
@@ -727,7 +724,7 @@ pub fn main() {
                             Err(ExecutionError::Invariant(
                                 InvariantError::CustomFieldFamilyMismatch {
                                     custom_type: plan.custom_value_type(constructor.type_id()),
-                                    constructor: descriptor.name().clone(),
+                                    constructor: descriptor.name().into(),
                                     field_index: 0,
                                     expected,
                                     actual: ValueType::Int,

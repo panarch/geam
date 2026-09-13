@@ -93,7 +93,7 @@ impl HostedPlannedModule {
 }
 
 impl HostedFunctionTemplate {
-    pub(crate) fn name(&self) -> &EcoString {
+    pub(crate) fn name(&self) -> &str {
         match self {
             Self::GleamBody(function) => function.name(),
             Self::HostTemplate(function) => function.name(),

@@ -631,21 +631,8 @@ impl FunctionExpr {
             FunctionExprKind::UtfCodepoint(expression) => {
                 crate::plan::FunctionShape::from_function_type(expression.type_().clone())
             }
-            FunctionExprKind::Custom(expression) => crate::plan::FunctionShape::new(
-                expression.custom_function_type().argument_shapes().to_vec(),
-                crate::plan::ValueShape::Custom(
-                    expression.custom_function_type().return_().clone(),
-                ),
-            ),
-            FunctionExprKind::External(expression) => crate::plan::FunctionShape::new(
-                expression
-                    .external_function_type()
-                    .argument_shapes()
-                    .to_vec(),
-                crate::plan::ValueShape::External(
-                    expression.external_function_type().return_().clone(),
-                ),
-            ),
+            FunctionExprKind::Custom(expression) => expression.custom_function_type().shape(),
+            FunctionExprKind::External(expression) => expression.external_function_type().shape(),
             FunctionExprKind::Float(expression) => {
                 crate::plan::FunctionShape::from_function_type(expression.type_().clone())
             }
@@ -661,15 +648,7 @@ impl FunctionExpr {
             FunctionExprKind::List(expression) => {
                 crate::plan::FunctionShape::from_function_type(expression.type_().clone())
             }
-            FunctionExprKind::Function(expression) => crate::plan::FunctionShape::new(
-                expression
-                    .function_function_type()
-                    .argument_shapes()
-                    .to_vec(),
-                crate::plan::ValueShape::Function(Box::new(
-                    expression.function_function_type().return_shape().clone(),
-                )),
-            ),
+            FunctionExprKind::Function(expression) => expression.function_function_type().shape(),
         };
         Self { shape, kind }
     }

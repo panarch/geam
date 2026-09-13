@@ -5,9 +5,9 @@ use super::identifier::RustIdentifier;
 use crate::cargo::{CargoMetadataLoader, CargoMetadataMode, SystemCargoMetadata};
 use crate::error::CliError;
 use crate::progress::Progress;
-use camino::Utf8Path;
-use cargo_metadata::{DependencyKind, Metadata, Package, PackageId};
-pub(super) use project::EmbeddingProject;
+use camino::{Utf8Path, Utf8PathBuf};
+use cargo_metadata::{DependencyKind, Metadata, Package, PackageId, Resolve};
+pub(super) use project::{EmbeddingProject, Generation};
 use std::collections::BTreeSet;
 
 #[derive(Debug)]
@@ -17,6 +17,15 @@ pub(super) struct EmbeddingPackage {
     geam_package_id: PackageId,
     geam_features: BTreeSet<String>,
     direct_dependencies: Vec<DirectDependency>,
+    cargo_package: Package,
+    environment: CargoEnvironment,
+}
+
+#[derive(Debug)]
+pub(super) struct CargoEnvironment {
+    pub(super) resolve: Resolve,
+    pub(super) workspace_root: Utf8PathBuf,
+    pub(super) target_directory: Utf8PathBuf,
 }
 
 #[derive(Debug, Clone)]
@@ -56,17 +65,24 @@ impl EmbeddingPackage {
         loader: &dyn CargoMetadataLoader,
         mode: CargoMetadataMode,
     ) -> Result<Self, CliError> {
-        let metadata = loader.load(
+        let mut metadata = loader.load(
             &project.manifest.with_file_name(""),
             &project.manifest,
             mode,
             &mut Progress::Hidden,
         )?;
-        let package = select_package(&metadata, &project.manifest)?;
-        let mut direct_dependencies = direct_normal_dependencies(&metadata, package)?;
+        let package = select_package(&metadata, &project.manifest)?.clone();
+        let resolve = metadata
+            .resolve
+            .take()
+            .ok_or_else(|| CliError::InvalidCargoMetadata {
+                manifest: package.manifest_path.clone(),
+                reason: "the locked resolve graph is absent".to_owned(),
+            })?;
+        let mut direct_dependencies = direct_normal_dependencies(&metadata, &resolve, &package)?;
         for dependency in &mut direct_dependencies {
             dependency.geam_dependencies =
-                direct_normal_dependencies(&metadata, &dependency.package)?
+                direct_normal_dependencies(&metadata, &resolve, &dependency.package)?
                     .into_iter()
                     .filter(|dependency| dependency.package.name == "geam")
                     .map(|dependency| ResolvedGeamDependency {
@@ -75,13 +91,19 @@ impl EmbeddingPackage {
                     })
                     .collect();
         }
-        let geam = select_geam_dependency(package, &direct_dependencies)?;
+        let geam = select_geam_dependency(&package, &direct_dependencies)?;
         Ok(Self {
             project,
             geam_alias: geam.alias,
             geam_package_id: geam.package_id,
             geam_features: geam.enabled_features,
             direct_dependencies,
+            cargo_package: package,
+            environment: CargoEnvironment {
+                resolve,
+                workspace_root: metadata.workspace_root,
+                target_directory: metadata.target_directory,
+            },
         })
     }
 
@@ -103,6 +125,18 @@ impl EmbeddingPackage {
 
     pub(super) fn manifest(&self) -> &Utf8Path {
         &self.project.manifest
+    }
+
+    pub(super) fn generation(&self) -> Generation {
+        self.project.generation
+    }
+
+    pub(super) fn cargo_package(&self) -> &Package {
+        &self.cargo_package
+    }
+
+    pub(super) fn environment(&self) -> &CargoEnvironment {
+        &self.environment
     }
 
     pub(super) fn geam_package_id(&self) -> &PackageId {
@@ -128,10 +162,6 @@ impl EmbeddingPackage {
 
     pub(super) fn direct_dependencies(&self) -> &[DirectDependency] {
         &self.direct_dependencies
-    }
-
-    pub(super) fn output_directory(&self) -> &Utf8Path {
-        &self.project.output_directory
     }
 
     pub(super) fn output_path(&self) -> &Utf8Path {
@@ -164,15 +194,9 @@ fn select_package<'metadata>(
 
 fn direct_normal_dependencies(
     metadata: &Metadata,
+    resolve: &Resolve,
     package: &Package,
 ) -> Result<Vec<DirectDependency>, CliError> {
-    let resolve = metadata
-        .resolve
-        .as_ref()
-        .ok_or_else(|| CliError::InvalidCargoMetadata {
-            manifest: package.manifest_path.clone(),
-            reason: "the locked resolve graph is absent".to_owned(),
-        })?;
     let node = resolve
         .nodes
         .iter()
