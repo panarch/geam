@@ -117,6 +117,7 @@ impl LocalKey {
 pub(super) struct FunctionEntryTemplate {
     params: Box<[crate::plan::ValueShape]>,
     captures: Box<[crate::plan::ValueShape]>,
+    return_: crate::plan::ValueShape,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -197,14 +198,36 @@ impl FunctionEntryTemplate {
         Self {
             params: params.into_boxed_slice(),
             captures: captures.into_boxed_slice(),
+            return_: template.signature().shape().return_shape().clone(),
         }
     }
 
-    pub(super) fn from_shapes(params: Vec<crate::plan::ValueShape>) -> Self {
+    pub(super) fn from_shapes(
+        params: Vec<crate::plan::ValueShape>,
+        return_: crate::plan::ValueShape,
+    ) -> Self {
         Self {
             params: params.into_boxed_slice(),
             captures: Vec::new().into_boxed_slice(),
+            return_,
         }
+    }
+
+    pub(super) fn contract(
+        &self,
+        substitution: &SpecializedTypeSubstitution,
+        representations: &super::specialization::RepresentationContext,
+    ) -> (SpecializedValueShape, Vec<StoredValueShape>) {
+        let return_ = SpecializedValueShape::instantiate(&self.return_, substitution);
+        let captures = self
+            .captures
+            .iter()
+            .filter_map(|capture| {
+                let capture = SpecializedValueShape::instantiate(capture, substitution);
+                representations.stored_shape(&capture)
+            })
+            .collect();
+        (return_, captures)
     }
 
     pub(super) fn stored_parameters(
@@ -1102,11 +1125,10 @@ mod tests {
             (2, StoredValueShape::Int)
         );
 
-        let direct = FunctionEntryTemplate::from_shapes(vec![
+        let direct = FunctionEntryTemplate::from_shapes(
+            vec![ValueShape::Int, ValueShape::String, ValueShape::Int],
             ValueShape::Int,
-            ValueShape::String,
-            ValueShape::Int,
-        ]);
+        );
         assert_eq!(
             direct.stored_parameters(
                 &SpecializedTypeSubstitution::empty(),
@@ -1159,7 +1181,8 @@ mod tests {
                 type_: vec![
                     execution_type::ValueType::Int,
                     execution_type::ValueType::String
-                ],
+                ]
+                .into(),
             }
         );
 

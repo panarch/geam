@@ -1,40 +1,50 @@
-use super::ValueType;
-use crate::plan;
+pub(in crate::plan::execution) mod definition;
+mod refinement;
+pub use definition::{ConstructorDefinition, CustomDefinition, FieldDefinition};
+pub use refinement::FieldRefinement;
+
+use super::{NominalTypeMetadata, ValueType};
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
+use crate::plan::{self, Text};
 use ecow::EcoString;
-use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct CustomTypeId(usize);
+pub struct CustomTypeId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct CustomConstructorId {
-    type_id: CustomTypeId,
-    index: usize,
+pub struct CustomConstructorId {
+    pub type_id: CustomTypeId,
+    pub index: usize,
 }
 
 #[derive(Clone)]
-pub(crate) struct CustomTypeTable {
-    types: Vec<CustomTypeDescriptor>,
+pub struct CustomTypeTable {
+    pub types: Table<CustomTypeDescriptor>,
+    pub definitions: Table<CustomDefinition>,
 }
 
 #[derive(Clone)]
-pub(crate) struct CustomTypeDescriptor {
-    type_: plan::CustomType,
-    constructors: BTreeMap<usize, CustomConstructorDescriptor>,
+pub struct CustomTypeDescriptor {
+    pub type_: NominalTypeMetadata,
+    pub constructor_count: usize,
+    pub constructors: Table<CustomConstructorDescriptor>,
 }
 
 #[derive(Clone)]
-pub(crate) struct CustomConstructorDescriptor {
-    id: CustomConstructorId,
-    name: EcoString,
-    native_tag: EcoString,
-    fields: Vec<CustomFieldDescriptor>,
+pub struct CustomConstructorDescriptor {
+    pub id: CustomConstructorId,
+    pub name: Text,
+    pub native_tag: Text,
+    pub fields: Table<CustomFieldDescriptor>,
 }
 
 #[derive(Clone)]
-pub(crate) struct CustomFieldDescriptor {
-    label: Option<EcoString>,
-    type_: ValueType,
+pub struct CustomFieldDescriptor {
+    pub label: Option<Text>,
+    pub type_: ValueType,
+    pub shape: super::ValueShapeId,
+    pub refinement: FieldRefinement,
 }
 
 impl CustomTypeId {
@@ -62,25 +72,32 @@ impl CustomConstructorId {
 }
 
 impl CustomTypeTable {
-    pub(crate) fn native_constructor_tags(&self) -> impl Iterator<Item = &EcoString> {
+    pub(crate) fn native_constructor_tags(&self) -> impl Iterator<Item = &str> {
         self.types.iter().flat_map(|type_| {
             type_
                 .constructors
-                .values()
-                .map(|constructor| &constructor.native_tag)
+                .iter()
+                .map(|constructor| constructor.native_tag.as_str())
         })
     }
 
-    pub(in crate::plan::execution) fn new(types: Vec<CustomTypeDescriptor>) -> Self {
-        Self { types }
+    pub(in crate::plan::execution) fn new(
+        types: Vec<CustomTypeDescriptor>,
+        mut definitions: Vec<CustomDefinition>,
+    ) -> Self {
+        definitions.sort_unstable_by(|left, right| left.identity().cmp(&right.identity()));
+        Self {
+            types: types.into(),
+            definitions: definitions.into(),
+        }
     }
 
     pub(crate) fn value_type(&self, id: CustomTypeId) -> plan::CustomType {
-        self.types[id.index()].type_.clone()
+        self.types[id.index()].type_.custom_type()
     }
 
     pub(crate) fn constructor(&self, id: CustomConstructorId) -> &CustomConstructorDescriptor {
-        &self.types[id.type_id().index()].constructors[&id.index()]
+        self.types[id.type_id().index()].constructor(id.index())
     }
 
     pub(crate) fn constructor_id_for_type(
@@ -88,7 +105,9 @@ impl CustomTypeTable {
         type_id: CustomTypeId,
         constructor_index: usize,
     ) -> CustomConstructorId {
-        self.types[type_id.index()].constructors[&constructor_index].id()
+        self.types[type_id.index()]
+            .constructor(constructor_index)
+            .id()
     }
 
     #[cfg(test)]
@@ -102,28 +121,29 @@ impl CustomTypeTable {
         type_index: usize,
         constructor_index: usize,
     ) -> CustomConstructorId {
-        self.types[type_index].constructors[&constructor_index].id()
+        self.types[type_index].constructor(constructor_index).id()
     }
 }
 
 impl CustomTypeDescriptor {
-    pub(in crate::plan::execution) fn new(type_: plan::CustomType) -> Self {
+    pub(in crate::plan::execution) fn new(
+        constructor_count: usize,
+        type_: plan::CustomType,
+        constructors: Vec<CustomConstructorDescriptor>,
+    ) -> Self {
         Self {
-            type_,
-            constructors: BTreeMap::new(),
+            type_: NominalTypeMetadata::from_custom(&type_),
+            constructor_count,
+            constructors: constructors.into(),
         }
     }
 
-    pub(in crate::plan::execution) fn insert_constructor(
-        &mut self,
-        constructor: CustomConstructorDescriptor,
-    ) {
-        self.constructors
-            .insert(constructor.id.index(), constructor);
-    }
-
-    pub(in crate::plan::execution) fn has_constructor(&self, index: usize) -> bool {
-        self.constructors.contains_key(&index)
+    fn constructor(&self, index: usize) -> &CustomConstructorDescriptor {
+        // Executable constructor uses refer to a checked row in this sparse table.
+        let position = self
+            .constructors
+            .partition_point(|constructor| constructor.id.index() < index);
+        &self.constructors[position]
     }
 }
 
@@ -135,9 +155,9 @@ impl CustomConstructorDescriptor {
     ) -> Self {
         Self {
             id,
-            native_tag: gleam_compiler_core::strings::to_snake_case(&name),
-            name,
-            fields,
+            native_tag: gleam_compiler_core::strings::to_snake_case(&name).into(),
+            name: name.into(),
+            fields: fields.into(),
         }
     }
 
@@ -145,11 +165,11 @@ impl CustomConstructorDescriptor {
         self.id
     }
 
-    pub(crate) fn name(&self) -> &EcoString {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
-    pub(crate) fn native_tag(&self) -> &EcoString {
+    pub(crate) fn native_tag(&self) -> &str {
         &self.native_tag
     }
 
@@ -159,15 +179,110 @@ impl CustomConstructorDescriptor {
 }
 
 impl CustomFieldDescriptor {
-    pub(in crate::plan::execution) fn new(label: Option<EcoString>, type_: ValueType) -> Self {
-        Self { label, type_ }
+    pub(in crate::plan::execution) fn new(
+        label: Option<EcoString>,
+        type_: ValueType,
+        shape: super::ValueShapeId,
+        refinement: FieldRefinement,
+    ) -> Self {
+        Self {
+            label: label.map(Text::from),
+            type_,
+            shape,
+            refinement,
+        }
     }
 
-    pub(crate) fn label(&self) -> Option<&EcoString> {
-        self.label.as_ref()
+    pub(crate) fn label(&self) -> Option<&str> {
+        self.label.as_deref()
     }
 
     pub(crate) fn type_(&self) -> &ValueType {
         &self.type_
+    }
+}
+
+impl Emit for CustomTypeId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("type_::CustomTypeId", &[field_0]);
+    }
+}
+
+impl Emit for CustomConstructorId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { type_id, index } = self;
+        output.structure(
+            "type_::CustomConstructorId",
+            &[("type_id", type_id), ("index", index)],
+        );
+    }
+}
+
+impl Emit for CustomTypeTable {
+    fn emit(&self, output: &mut Rust) {
+        let Self { types, definitions } = self;
+        output.structure(
+            "type_::CustomTypeTable",
+            &[("types", types), ("definitions", definitions)],
+        );
+    }
+}
+
+impl Emit for CustomTypeDescriptor {
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            type_,
+            constructor_count,
+            constructors,
+        } = self;
+        output.structure(
+            "type_::CustomTypeDescriptor",
+            &[
+                ("type_", type_),
+                ("constructor_count", constructor_count),
+                ("constructors", constructors),
+            ],
+        );
+    }
+}
+
+impl Emit for CustomConstructorDescriptor {
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            id,
+            name,
+            native_tag,
+            fields,
+        } = self;
+        output.structure(
+            "type_::CustomConstructorDescriptor",
+            &[
+                ("id", id),
+                ("name", name),
+                ("native_tag", native_tag),
+                ("fields", fields),
+            ],
+        );
+    }
+}
+
+impl Emit for CustomFieldDescriptor {
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            label,
+            type_,
+            shape,
+            refinement,
+        } = self;
+        output.structure(
+            "type_::CustomFieldDescriptor",
+            &[
+                ("label", label),
+                ("type_", type_),
+                ("shape", shape),
+                ("refinement", refinement),
+            ],
+        );
     }
 }

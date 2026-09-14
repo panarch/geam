@@ -588,9 +588,9 @@ pub fn main() {
                     Vec::new(),
                     crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::type_::ValueType::Tuple(vec![
-                            crate::plan::execution::type_::ValueType::Int,
-                        ]),
+                        crate::plan::execution::type_::ValueType::Tuple(
+                            vec![crate::plan::execution::type_::ValueType::Int].into(),
+                        ),
                     ),
                 )),
                 EvaluatedFunctionValue::from(EvaluatedTupleFunction::reference(
@@ -599,9 +599,9 @@ pub fn main() {
                     Vec::new(),
                     crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::type_::ValueType::Tuple(vec![
-                            crate::plan::execution::type_::ValueType::Int,
-                        ]),
+                        crate::plan::execution::type_::ValueType::Tuple(
+                            vec![crate::plan::execution::type_::ValueType::Int].into(),
+                        ),
                     ),
                 )),
             ),
@@ -639,9 +639,9 @@ pub fn main() {
                         Vec::new(),
                         crate::plan::execution::type_::FunctionType::new(
                             Vec::new(),
-                            crate::plan::execution::type_::ValueType::Function(Box::new(
+                            crate::plan::execution::type_::ValueType::Function(
                                 execution_int_type.clone(),
-                            )),
+                            ),
                         ),
                     ),
                 )),
@@ -654,9 +654,9 @@ pub fn main() {
                         Vec::new(),
                         crate::plan::execution::type_::FunctionType::new(
                             Vec::new(),
-                            crate::plan::execution::type_::ValueType::Function(Box::new(
+                            crate::plan::execution::type_::ValueType::Function(
                                 execution_int_type.clone(),
-                            )),
+                            ),
                         ),
                     ),
                 )),

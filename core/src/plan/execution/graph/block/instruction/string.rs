@@ -1,6 +1,7 @@
 use super::{
     write_binary, write_call, write_constant, write_function_call, write_literal, write_projection,
 };
+use crate::plan::Text;
 use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::StringFunctionId;
@@ -8,19 +9,21 @@ use crate::plan::execution::graph::LocalLabel;
 use crate::plan::execution::graph::{
     CustomLocal, ParamLocal, StringFunctionLocalId, StringListLocalId, StringLocalId, TupleLocalId,
 };
-use ecow::EcoString;
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 
-pub(crate) enum StringInstruction {
-    Value(EcoString),
+#[derive(Clone)]
+pub enum StringInstruction {
+    Value(Text),
     Constant(ConstantId<StringLocalId>),
     Call {
         function: StringFunctionId,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: StringFunctionLocalId,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     TupleIndex {
@@ -41,7 +44,7 @@ pub(crate) enum StringInstruction {
     },
     DropPrefix {
         value: StringLocalId,
-        prefix: EcoString,
+        prefix: Text,
     },
 }
 
@@ -77,6 +80,183 @@ impl Explain for StringInstruction {
                 output.push_str(" prefix=");
                 output.push_str(&format!("{prefix:?}"));
             }
+        }
+    }
+}
+
+impl Emit for StringInstruction {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Value(field_0) => output.call("graph::StringInstruction::Value", &[field_0]),
+            Self::Constant(field_0) => {
+                output.call("graph::StringInstruction::Constant", &[field_0])
+            }
+            Self::Call {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::StringInstruction::Call",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::FunctionCall {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::StringInstruction::FunctionCall",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::TupleIndex { tuple, index } => output.structure(
+                "graph::StringInstruction::TupleIndex",
+                &[("tuple", tuple), ("index", index)],
+            ),
+            Self::CustomField { source, index } => output.structure(
+                "graph::StringInstruction::CustomField",
+                &[("source", source), ("index", index)],
+            ),
+            Self::ListIndex { list, index } => output.structure(
+                "graph::StringInstruction::ListIndex",
+                &[("list", list), ("index", index)],
+            ),
+            Self::Concatenate { left, right } => output.structure(
+                "graph::StringInstruction::Concatenate",
+                &[("left", left), ("right", right)],
+            ),
+            Self::DropPrefix { value, prefix } => output.structure(
+                "graph::StringInstruction::DropPrefix",
+                &[("value", value), ("prefix", prefix)],
+            ),
+        }
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::StringInstruction;
+    use crate::plan::execution::constant::ConstantId;
+    use crate::plan::execution::function::StringFunctionId;
+    use crate::plan::execution::graph::{
+        CustomLocal, CustomLocalId, ParamLocal, StringFunctionLocalId, StringListLocalId,
+        StringLocalId, TupleLocalId,
+    };
+    use crate::plan::execution::prepared::rust::Rust;
+    use crate::plan::execution::type_::{CustomTypeId, CustomValueShape, CustomValueShapeId};
+    use crate::plan::{HostCallSite, SourceSpan};
+
+    #[test]
+    fn emits_every_string_instruction_with_its_operands_and_source_site() {
+        let site = HostCallSite::new("example".into(), "main".into(), SourceSpan::new(3, 8));
+        let cases = [
+            (
+                StringInstruction::Value("line\n\"quoted\"".into()),
+                "data::graph::StringInstruction::Value(data::Text::Static(\"line\\n\\\"quoted\\\"\"))",
+            ),
+            (
+                StringInstruction::Constant(ConstantId::new(3)),
+                r#"
+data::graph::StringInstruction::Constant(data::constant::ConstantId {
+    index: 3,
+    value: ::core::marker::PhantomData,
+})"#.trim_start_matches('\n'),
+            ),
+            (
+                StringInstruction::Call {
+                    function: StringFunctionId(2),
+                    args: vec![ParamLocal::String(StringLocalId(5))].into(),
+                    site: site.clone(),
+                },
+                r#"
+data::graph::StringInstruction::Call {
+    function: data::function::StringFunctionId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::String(data::graph::StringLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                StringInstruction::FunctionCall {
+                    function: StringFunctionLocalId(2),
+                    args: vec![ParamLocal::String(StringLocalId(5))].into(),
+                    site,
+                },
+                r#"
+data::graph::StringInstruction::FunctionCall {
+    function: data::graph::StringFunctionLocalId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::String(data::graph::StringLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                StringInstruction::TupleIndex {
+                    tuple: TupleLocalId(2),
+                    index: 1,
+                },
+                r#"
+data::graph::StringInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                StringInstruction::CustomField {
+                    source: CustomLocal::new(
+                        CustomLocalId(2),
+                        CustomValueShape::new(CustomTypeId(3), CustomValueShapeId(4)),
+                    ),
+                    index: 1,
+                },
+                r#"
+data::graph::StringInstruction::CustomField {
+    source: data::graph::CustomLocal {
+        id: data::graph::CustomLocalId(2),
+        shape: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+    index: 1,
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                StringInstruction::ListIndex {
+                    list: StringListLocalId(2),
+                    index: 1,
+                },
+                r#"
+data::graph::StringInstruction::ListIndex {
+    list: data::graph::StringListLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                StringInstruction::Concatenate {
+                    left: StringLocalId(2),
+                    right: StringLocalId(5),
+                },
+                r#"
+data::graph::StringInstruction::Concatenate {
+    left: data::graph::StringLocalId(2),
+    right: data::graph::StringLocalId(5),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                StringInstruction::DropPrefix {
+                    value: StringLocalId(2),
+                    prefix: "pre".into(),
+                },
+                r#"
+data::graph::StringInstruction::DropPrefix {
+    value: data::graph::StringLocalId(2),
+    prefix: data::Text::Static("pre"),
+}"#.trim_start_matches('\n'),
+            ),
+        ];
+        for (instruction, expected) in cases {
+            assert_eq!(Rust::expression(&instruction), expected);
         }
     }
 }
@@ -165,7 +345,7 @@ pub fn main() {
         explain::assert_rendered(source, expected, |plan, output| {
             let graph = plan.tuple_function(TupleFunctionId(0)).body().block_graph();
             let mut first = true;
-            for instruction in graph.blocks().iter().flat_map(|block| block.instructions()) {
+            for instruction in graph.blocks().flat_map(|block| block.instructions()) {
                 if let ProfiledInstructionKind::String(instruction) = instruction.kind() {
                     write_separator(output, &mut first);
                     let mut context = explain::ExplainContext::new(plan, output);

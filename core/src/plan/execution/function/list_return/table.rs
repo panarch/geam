@@ -13,62 +13,64 @@ use super::{
 };
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::{ExecutionFunction, ExecutionProfile, write_table};
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 use std::convert::Infallible;
 
-pub(in crate::plan::execution) struct ListFunctionTables<Profile: ExecutionProfile> {
-    pub(in crate::plan::execution) parameter_list_functions: Vec<(
+pub struct ListFunctionTables<Profile: ExecutionProfile> {
+    pub parameter_list_functions: Table<(
         ParameterListFunctionId,
         ExecutionFunction<Profile, ExecutionParameterListFunctionBody<Profile>>,
     )>,
-    pub(in crate::plan::execution) int_list_functions: Vec<(
+    pub int_list_functions: Table<(
         IntListFunctionId,
         ExecutionFunction<Profile, ExecutionIntListFunctionBody<Profile>>,
     )>,
-    pub(in crate::plan::execution) string_list_functions: Vec<(
+    pub string_list_functions: Table<(
         StringListFunctionId,
         ExecutionFunction<Profile, ExecutionStringListFunctionBody<Profile>>,
     )>,
-    pub(in crate::plan::execution) bit_array_list_functions: Vec<(
+    pub bit_array_list_functions: Table<(
         BitArrayListFunctionId,
         ExecutionFunction<Profile, ExecutionBitArrayListFunctionBody<Profile>>,
     )>,
-    pub(in crate::plan::execution) utf_codepoint_list_functions: Vec<(
+    pub utf_codepoint_list_functions: Table<(
         UtfCodepointListFunctionId,
         ExecutionFunction<Profile, ExecutionUtfCodepointListFunctionBody<Profile>>,
     )>,
-    pub(in crate::plan::execution) custom_list_functions: Vec<(
+    pub custom_list_functions: Table<(
         CustomListFunctionId,
         ExecutionFunction<Profile, ExecutionCustomListFunctionBody<Profile>>,
     )>,
-    pub(in crate::plan::execution) external_list_functions: Vec<(
+    pub external_list_functions: Table<(
         ExternalListFunctionId,
         ExecutionFunction<Profile, ExecutionExternalListFunctionBody<Profile>>,
     )>,
-    pub(in crate::plan::execution) float_list_functions: Vec<(
+    pub float_list_functions: Table<(
         FloatListFunctionId,
         ExecutionFunction<Profile, ExecutionFloatListFunctionBody<Profile>>,
     )>,
-    pub(in crate::plan::execution) bool_list_functions: Vec<(
+    pub bool_list_functions: Table<(
         BoolListFunctionId,
         ExecutionFunction<Profile, ExecutionBoolListFunctionBody<Profile>>,
     )>,
-    pub(in crate::plan::execution) nil_list_functions: Vec<(
+    pub nil_list_functions: Table<(
         NilListFunctionId,
         ExecutionFunction<Profile, ExecutionNilListFunctionBody<Profile>>,
     )>,
-    pub(in crate::plan::execution) tuple_list_functions: Vec<(
+    pub tuple_list_functions: Table<(
         TupleListFunctionId,
         ExecutionFunction<Profile, ExecutionTupleListFunctionBody<Profile>>,
     )>,
-    pub(in crate::plan::execution) parameter_list_list_functions: Vec<(
+    pub parameter_list_list_functions: Table<(
         ParameterListListFunctionId,
         ExecutionFunction<Profile, ExecutionParameterListListFunctionBody<Profile>>,
     )>,
-    pub(in crate::plan::execution) list_list_functions: Vec<(
+    pub list_list_functions: Table<(
         ListListFunctionId,
         ExecutionFunction<Profile, ExecutionListListFunctionBody<Profile>>,
     )>,
-    pub(in crate::plan::execution) function_list_functions: Vec<(
+    pub function_list_functions: Table<(
         FunctionListFunctionId,
         ExecutionFunction<Profile, ExecutionFunctionListFunctionBody<Profile>>,
     )>,
@@ -169,6 +171,107 @@ impl Explain for ListFunctionTables<Infallible> {
             self.function_list_functions
                 .iter()
                 .map(|(_, function)| function),
+        );
+    }
+}
+
+impl<Profile: ExecutionProfile> Emit for ListFunctionTables<Profile>
+where
+    Table<(
+        ParameterListFunctionId,
+        ExecutionFunction<Profile, ExecutionParameterListFunctionBody<Profile>>,
+    )>: Emit,
+    Table<(
+        IntListFunctionId,
+        ExecutionFunction<Profile, ExecutionIntListFunctionBody<Profile>>,
+    )>: Emit,
+    Table<(
+        StringListFunctionId,
+        ExecutionFunction<Profile, ExecutionStringListFunctionBody<Profile>>,
+    )>: Emit,
+    Table<(
+        BitArrayListFunctionId,
+        ExecutionFunction<Profile, ExecutionBitArrayListFunctionBody<Profile>>,
+    )>: Emit,
+    Table<(
+        UtfCodepointListFunctionId,
+        ExecutionFunction<Profile, ExecutionUtfCodepointListFunctionBody<Profile>>,
+    )>: Emit,
+    Table<(
+        CustomListFunctionId,
+        ExecutionFunction<Profile, ExecutionCustomListFunctionBody<Profile>>,
+    )>: Emit,
+    Table<(
+        ExternalListFunctionId,
+        ExecutionFunction<Profile, ExecutionExternalListFunctionBody<Profile>>,
+    )>: Emit,
+    Table<(
+        FloatListFunctionId,
+        ExecutionFunction<Profile, ExecutionFloatListFunctionBody<Profile>>,
+    )>: Emit,
+    Table<(
+        BoolListFunctionId,
+        ExecutionFunction<Profile, ExecutionBoolListFunctionBody<Profile>>,
+    )>: Emit,
+    Table<(
+        NilListFunctionId,
+        ExecutionFunction<Profile, ExecutionNilListFunctionBody<Profile>>,
+    )>: Emit,
+    Table<(
+        TupleListFunctionId,
+        ExecutionFunction<Profile, ExecutionTupleListFunctionBody<Profile>>,
+    )>: Emit,
+    Table<(
+        ParameterListListFunctionId,
+        ExecutionFunction<Profile, ExecutionParameterListListFunctionBody<Profile>>,
+    )>: Emit,
+    Table<(
+        ListListFunctionId,
+        ExecutionFunction<Profile, ExecutionListListFunctionBody<Profile>>,
+    )>: Emit,
+    Table<(
+        FunctionListFunctionId,
+        ExecutionFunction<Profile, ExecutionFunctionListFunctionBody<Profile>>,
+    )>: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            parameter_list_functions,
+            int_list_functions,
+            string_list_functions,
+            bit_array_list_functions,
+            utf_codepoint_list_functions,
+            custom_list_functions,
+            external_list_functions,
+            float_list_functions,
+            bool_list_functions,
+            nil_list_functions,
+            tuple_list_functions,
+            parameter_list_list_functions,
+            list_list_functions,
+            function_list_functions,
+        } = self;
+        output.structure(
+            "function::ListFunctionTables",
+            &[
+                ("parameter_list_functions", parameter_list_functions),
+                ("int_list_functions", int_list_functions),
+                ("string_list_functions", string_list_functions),
+                ("bit_array_list_functions", bit_array_list_functions),
+                ("utf_codepoint_list_functions", utf_codepoint_list_functions),
+                ("custom_list_functions", custom_list_functions),
+                ("external_list_functions", external_list_functions),
+                ("float_list_functions", float_list_functions),
+                ("bool_list_functions", bool_list_functions),
+                ("nil_list_functions", nil_list_functions),
+                ("tuple_list_functions", tuple_list_functions),
+                (
+                    "parameter_list_list_functions",
+                    parameter_list_list_functions,
+                ),
+                ("list_list_functions", list_list_functions),
+                ("function_list_functions", function_list_functions),
+            ],
         );
     }
 }

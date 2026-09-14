@@ -412,6 +412,29 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_refutable_custom_alias_preserves_source_assertion_failure() {
+        for assertion in [
+            "let assert Full(value) as whole = Empty",
+            "let assert #(Full(value) as inner) as whole = #(Empty)",
+            "let assert [Full(value) as inner] as whole = [Empty]",
+        ] {
+            let source =
+                format!("pub type Choice {{ Empty Full(Int) }} pub fn main() {{ {assertion} }}");
+            let plan = plan_module(compile(&source))
+                .expect("a refutable alias must remain a source assertion");
+            let execution = crate::ExecutionPlan::from_module_plan(plan);
+            let mut echo = Vec::new();
+            let error =
+                crate::run_main(&execution, &mut echo).expect_err("Empty does not match Full");
+            assert_eq!(
+                error.to_string(),
+                "let_assert: Pattern match failed, no pattern matched the value."
+            );
+            assert!(echo.is_empty());
+        }
+    }
+
+    #[test]
     fn final_custom_let_assert_uses_constructor_shape_to_select_binding_or_assertion() {
         let total = plan_module(compile(
             r#"
@@ -1098,6 +1121,7 @@ pub fn main() {
                         Some(ListAssertTail::bind(
                             ListLocal::int(IntListLocalId(1)),
                             "rest".into(),
+                            ValueShape::Int,
                         )),
                     )),
                     None,

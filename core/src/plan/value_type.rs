@@ -139,6 +139,13 @@ impl CustomFunctionType {
         &self.return_
     }
 
+    pub(crate) fn shape(&self) -> super::FunctionShape {
+        super::FunctionShape::new(
+            self.arguments.clone(),
+            ValueShape::Custom(self.return_.clone()),
+        )
+    }
+
     pub(crate) fn to_function_type(&self) -> FunctionType {
         FunctionType::new(
             self.argument_types(),
@@ -162,6 +169,13 @@ impl ExternalFunctionType {
 
     pub(crate) fn return_(&self) -> &ExternalValueShape {
         &self.return_
+    }
+
+    pub(crate) fn shape(&self) -> super::FunctionShape {
+        super::FunctionShape::new(
+            self.arguments.clone(),
+            ValueShape::External(self.return_.clone()),
+        )
     }
 
     pub(crate) fn to_function_type(&self) -> FunctionType {
@@ -204,6 +218,13 @@ impl FunctionFunctionType {
 
     pub(crate) fn return_type(&self) -> FunctionType {
         self.return_.type_()
+    }
+
+    pub(crate) fn shape(&self) -> super::FunctionShape {
+        super::FunctionShape::new(
+            self.arguments.to_vec(),
+            ValueShape::Function(self.return_.clone()),
+        )
     }
 
     pub(crate) fn to_function_type(&self) -> FunctionType {

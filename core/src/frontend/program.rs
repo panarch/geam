@@ -3,7 +3,7 @@ use crate::host::{
     HostFunctionSchema, HostProfile, HostProviderSet, HostTypeDescriptor,
     RegisteredHostImplementations, RegisteredHostModule, RegisteredHostProviderModule,
 };
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use ecow::EcoString;
 use gleam_compiler_core::analyse::{ModuleAnalyzerConstructor, TargetSupport};
 use gleam_compiler_core::ast::{Publicity, SrcSpan, TypedModule, UntypedModule};
@@ -84,6 +84,25 @@ impl TypedProgram {
         &self.modules[self.root_index].module
     }
 
+    /// Remaps diagnostic paths using the package, module name and original path.
+    ///
+    /// Prepared consumers can retain logical source locations without embedding
+    /// build-machine paths. Source bytes, module identity and physical package
+    /// resource directories are unchanged.
+    pub fn map_source_paths(
+        mut self,
+        mut map: impl FnMut(&str, &str, &Utf8Path) -> Utf8PathBuf,
+    ) -> Self {
+        for module in &mut self.modules {
+            module.path = map(
+                &module.module.type_info.package,
+                &module.module.name,
+                &module.path,
+            );
+        }
+        self
+    }
+
     pub(crate) fn into_parts(self) -> (usize, Vec<TypedProgramModule>) {
         (self.root_index, self.modules)
     }
@@ -102,6 +121,26 @@ impl<Profile: HostProfile> HostedTypedProgram<Profile> {
 
     pub fn root_module(&self) -> &EcoString {
         &self.program.root_module
+    }
+
+    /// Remaps source diagnostic paths without changing native registrations or
+    /// physical package resource directories.
+    ///
+    /// The mapping receives the package, module name and original source path.
+    pub fn map_source_paths(
+        mut self,
+        mut map: impl FnMut(&str, &str, &Utf8Path) -> Utf8PathBuf,
+    ) -> Self {
+        for module in &mut self.program.modules {
+            if let HostedTypedProgramModule::Source(module) = module {
+                module.path = map(
+                    &module.module.type_info.package,
+                    &module.module.name,
+                    &module.path,
+                );
+            }
+        }
+        self
     }
 
     pub(crate) fn root_public_functions(&self) -> impl Iterator<Item = &EcoString> {
@@ -784,6 +823,128 @@ mod tests {
     };
     use gleam_compiler_core::uid::UniqueIdGenerator;
     use num_bigint::BigInt;
+
+    #[test]
+    fn maps_source_diagnostics_without_changing_modules_or_resources() {
+        let source = "pub fn main() { 42 }";
+        let mut program = compile_typed_package_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "/checkout/src/main.gleam",
+                    source,
+                )],
+            )],
+        )
+        .expect("source program");
+        program.package_resources.insert(
+            "application".into(),
+            std::path::PathBuf::from("/deployment/priv"),
+        );
+        let mut paths = Vec::new();
+        let program = program.map_source_paths(|package, module, path| {
+            paths.push((package.to_owned(), module.to_owned(), path.to_owned()));
+            format!("{package}/src/{module}.gleam").into()
+        });
+        assert_eq!(
+            paths,
+            [(
+                "application".to_owned(),
+                "main".to_owned(),
+                "/checkout/src/main.gleam".into()
+            )]
+        );
+        assert_eq!(
+            program.modules[0].path.as_str(),
+            "application/src/main.gleam"
+        );
+        assert_eq!(program.modules[0].source, source);
+        assert_eq!(program.root_package(), "application");
+        assert_eq!(program.root_typed_module().name, "main");
+        assert_eq!(
+            program.package_resources().get("application"),
+            Some(&std::path::PathBuf::from("/deployment/priv")),
+        );
+    }
+
+    #[test]
+    fn maps_hosted_source_diagnostics_without_rewriting_native_modules() {
+        let source = "import host/math\npub fn main() { math.add(20, 22) }";
+        let providers = HostProviderSet::new([HostModule::new("native", "host/math")
+            .expect("host module")
+            .with_function("add", <BigInt as std::ops::Add>::add)
+            .expect("typed host function")])
+        .expect("provider set");
+        let mut program = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                ["native"],
+                [ModuleSource::new(
+                    "main",
+                    "/checkout/src/main.gleam",
+                    source,
+                )],
+            )],
+            providers,
+        )
+        .expect("hosted source program");
+        program.package_resources.insert(
+            "application".into(),
+            std::path::PathBuf::from("/deployment/priv"),
+        );
+        let mut paths = Vec::new();
+        let program = program.map_source_paths(|package, module, path| {
+            paths.push((package.to_owned(), module.to_owned(), path.to_owned()));
+            format!("{package}/src/{module}.gleam").into()
+        });
+        assert_eq!(
+            paths,
+            [(
+                "application".to_owned(),
+                "main".to_owned(),
+                "/checkout/src/main.gleam".into()
+            )]
+        );
+        assert_eq!(
+            program
+                .program
+                .modules
+                .iter()
+                .map(|module| match module {
+                    HostedTypedProgramModule::Source(module) => (
+                        module.module.name.as_str(),
+                        Some((module.path.as_str(), module.source.as_str()))
+                    ),
+                    HostedTypedProgramModule::Host(module) => (module.module().as_str(), None),
+                })
+                .collect::<Vec<_>>(),
+            [
+                ("host/math", None),
+                ("main", Some(("application/src/main.gleam", source)))
+            ],
+        );
+        assert_eq!(
+            program.package_resources().get("application"),
+            Some(&std::path::PathBuf::from("/deployment/priv")),
+        );
+        let module = plan_host_program(program).expect("unchanged native linkage");
+        let mut execution =
+            crate::HostedExecution::try_from_module_plan(module).expect("hosted execution");
+        let mut echo = Vec::new();
+        let host = crate::execution_fixture::TestHost::default();
+        assert_eq!(
+            host.block_on(execution.run_main(&host, &mut (), &mut echo))
+                .expect("native call"),
+            crate::Value::Int(BigInt::from(42)),
+        );
+        assert!(echo.is_empty());
+    }
 
     #[test]
     fn builds_exact_source_less_host_function_interfaces() {

@@ -7,18 +7,21 @@ use crate::plan::execution::function::FloatFunctionId;
 use crate::plan::execution::graph::{
     CustomLocal, FloatFunctionLocalId, FloatListLocalId, FloatLocalId, ParamLocal, TupleLocalId,
 };
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 
-pub(crate) enum FloatInstruction {
+#[derive(Clone)]
+pub enum FloatInstruction {
     Value(f64),
     Constant(ConstantId<FloatLocalId>),
     Call {
         function: FloatFunctionId,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: FloatFunctionLocalId,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     TupleIndex {
@@ -80,6 +83,211 @@ impl Explain for FloatInstruction {
                 write_binary(output, "float.mult", left, right);
             }
             FloatInstruction::Div { left, right } => write_binary(output, "float.div", left, right),
+        }
+    }
+}
+
+impl Emit for FloatInstruction {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Value(field_0) => output.call("graph::FloatInstruction::Value", &[field_0]),
+            Self::Constant(field_0) => output.call("graph::FloatInstruction::Constant", &[field_0]),
+            Self::Call {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::FloatInstruction::Call",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::FunctionCall {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::FloatInstruction::FunctionCall",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::TupleIndex { tuple, index } => output.structure(
+                "graph::FloatInstruction::TupleIndex",
+                &[("tuple", tuple), ("index", index)],
+            ),
+            Self::CustomField { source, index } => output.structure(
+                "graph::FloatInstruction::CustomField",
+                &[("source", source), ("index", index)],
+            ),
+            Self::ListIndex { list, index } => output.structure(
+                "graph::FloatInstruction::ListIndex",
+                &[("list", list), ("index", index)],
+            ),
+            Self::Add { left, right } => output.structure(
+                "graph::FloatInstruction::Add",
+                &[("left", left), ("right", right)],
+            ),
+            Self::Sub { left, right } => output.structure(
+                "graph::FloatInstruction::Sub",
+                &[("left", left), ("right", right)],
+            ),
+            Self::Mult { left, right } => output.structure(
+                "graph::FloatInstruction::Mult",
+                &[("left", left), ("right", right)],
+            ),
+            Self::Div { left, right } => output.structure(
+                "graph::FloatInstruction::Div",
+                &[("left", left), ("right", right)],
+            ),
+        }
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::FloatInstruction;
+    use crate::plan::execution::constant::ConstantId;
+    use crate::plan::execution::function::FloatFunctionId;
+    use crate::plan::execution::graph::{
+        CustomLocal, CustomLocalId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
+        ParamLocal, TupleLocalId,
+    };
+    use crate::plan::execution::prepared::rust::Rust;
+    use crate::plan::execution::type_::{CustomTypeId, CustomValueShape, CustomValueShapeId};
+    use crate::plan::{HostCallSite, SourceSpan};
+
+    #[test]
+    fn emits_every_float_instruction_with_its_operands_and_source_site() {
+        let site = HostCallSite::new("example".into(), "main".into(), SourceSpan::new(3, 8));
+        let cases = [
+            (
+                FloatInstruction::Value(-0.0),
+                "data::graph::FloatInstruction::Value(f64::from_bits(9223372036854775808))",
+            ),
+            (
+                FloatInstruction::Constant(ConstantId::new(3)),
+                r#"
+data::graph::FloatInstruction::Constant(data::constant::ConstantId {
+    index: 3,
+    value: ::core::marker::PhantomData,
+})"#.trim_start_matches('\n'),
+            ),
+            (
+                FloatInstruction::Call {
+                    function: FloatFunctionId(2),
+                    args: vec![ParamLocal::Float(FloatLocalId(5))].into(),
+                    site: site.clone(),
+                },
+                r#"
+data::graph::FloatInstruction::Call {
+    function: data::function::FloatFunctionId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Float(data::graph::FloatLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                FloatInstruction::FunctionCall {
+                    function: FloatFunctionLocalId(2),
+                    args: vec![ParamLocal::Float(FloatLocalId(5))].into(),
+                    site,
+                },
+                r#"
+data::graph::FloatInstruction::FunctionCall {
+    function: data::graph::FloatFunctionLocalId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Float(data::graph::FloatLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                FloatInstruction::TupleIndex {
+                    tuple: TupleLocalId(2),
+                    index: 1,
+                },
+                r#"
+data::graph::FloatInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                FloatInstruction::CustomField {
+                    source: CustomLocal::new(
+                        CustomLocalId(2),
+                        CustomValueShape::new(CustomTypeId(3), CustomValueShapeId(4)),
+                    ),
+                    index: 1,
+                },
+                r#"
+data::graph::FloatInstruction::CustomField {
+    source: data::graph::CustomLocal {
+        id: data::graph::CustomLocalId(2),
+        shape: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+    index: 1,
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                FloatInstruction::ListIndex {
+                    list: FloatListLocalId(2),
+                    index: 1,
+                },
+                r#"
+data::graph::FloatInstruction::ListIndex {
+    list: data::graph::FloatListLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                FloatInstruction::Add {
+                    left: FloatLocalId(2),
+                    right: FloatLocalId(5),
+                },
+                r#"
+data::graph::FloatInstruction::Add {
+    left: data::graph::FloatLocalId(2),
+    right: data::graph::FloatLocalId(5),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                FloatInstruction::Sub {
+                    left: FloatLocalId(2),
+                    right: FloatLocalId(5),
+                },
+                r#"
+data::graph::FloatInstruction::Sub {
+    left: data::graph::FloatLocalId(2),
+    right: data::graph::FloatLocalId(5),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                FloatInstruction::Mult {
+                    left: FloatLocalId(2),
+                    right: FloatLocalId(5),
+                },
+                r#"
+data::graph::FloatInstruction::Mult {
+    left: data::graph::FloatLocalId(2),
+    right: data::graph::FloatLocalId(5),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                FloatInstruction::Div {
+                    left: FloatLocalId(2),
+                    right: FloatLocalId(5),
+                },
+                r#"
+data::graph::FloatInstruction::Div {
+    left: data::graph::FloatLocalId(2),
+    right: data::graph::FloatLocalId(5),
+}"#.trim_start_matches('\n'),
+            ),
+        ];
+        for (instruction, expected) in cases {
+            assert_eq!(Rust::expression(&instruction), expected);
         }
     }
 }
@@ -168,7 +376,7 @@ pub fn main() {
         explain::assert_rendered(source, expected, |plan, output| {
             let graph = plan.tuple_function(TupleFunctionId(0)).body().block_graph();
             let mut first = true;
-            for instruction in graph.blocks().iter().flat_map(|block| block.instructions()) {
+            for instruction in graph.blocks().flat_map(|block| block.instructions()) {
                 if let ProfiledInstructionKind::Float(instruction) = instruction.kind() {
                     write_separator(output, &mut first);
                     let mut context = explain::ExplainContext::new(plan, output);

@@ -7,8 +7,8 @@ error[E0308]: mismatched types
 29 |     fn next(#[geam_macros::call] _: &Call<OtherState>) -> bool {
    |        ---- arguments to this function are incorrect
    |
-   = note: expected reference `&Call<OtherState, geam_core::provider::ProviderSharedCall<'_, OtherState>>`
-              found reference `&Call<RunState, geam_core::provider::ProviderSharedCall<'_, RunState>>`
+   = note: expected reference `&geam_core::provider::Call<OtherState, geam_core::provider::ProviderSharedCall<'_, OtherState>>`
+              found reference `&geam_core::provider::Call<RunState, geam_core::provider::ProviderSharedCall<'_, RunState>>`
 note: function defined here
   --> tests/ui/call_type_mismatch.rs:29:8
    |

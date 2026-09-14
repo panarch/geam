@@ -4,6 +4,7 @@ pub use error::BindingError;
 
 use super::{Arguments, EmbeddingValue, Function, Module, ReturnValue};
 use crate::HostProfile;
+use crate::plan::execution::prepared::Export;
 use crate::plan::{
     FunctionTemplateId, FunctionTemplateSignature, FunctionType, HostedLibraryModulePlan,
     LibraryEntry, LibraryModulePlan, LibraryValueType,
@@ -44,7 +45,7 @@ pub(super) struct BindingBuilder<Plan> {
 
 pub(super) struct Bindings<Plan: BindingPlan> {
     source: BindingSource<Plan>,
-    selected_names: HashSet<EcoString>,
+    exports: Vec<Export>,
     first: LibraryEntry<Plan::External>,
     remaining: Vec<LibraryEntry<Plan::External>>,
     counts: LibraryEntryCounts,
@@ -56,6 +57,7 @@ pub(super) struct BindingParts<Plan: BindingPlan> {
     pub(super) first: LibraryEntry<Plan::External>,
     pub(super) remaining: Vec<LibraryEntry<Plan::External>>,
     pub(super) owner: Arc<()>,
+    pub(super) exports: Vec<Export>,
 }
 
 /// A typed declaration for one Gleam function selected for Rust embedding.
@@ -184,9 +186,22 @@ impl ModuleBindings {
             first,
             remaining,
             owner,
+            exports: _,
         } = self.inner.into_parts();
         let (execution, entries) = ExecutionPlan::from_library_plan(plan, first, remaining);
         Module::from_parts(execution, entries, owner)
+    }
+
+    /// Prepares the selected program as immutable data for a later Cargo build.
+    pub fn prepare(self) -> super::PreparedModule {
+        let BindingParts {
+            plan,
+            first,
+            remaining,
+            owner: _,
+            exports,
+        } = self.inner.into_parts();
+        super::PreparedModule::new(plan, first, remaining, exports)
     }
 }
 
@@ -202,6 +217,10 @@ where
             name: name.into(),
             marker: PhantomData,
         }
+    }
+
+    pub(super) fn into_name(self) -> EcoString {
+        self.name
     }
 }
 
@@ -270,7 +289,7 @@ impl<Plan: BindingPlan> BindingBuilder<Plan> {
         standard_variants.extend(Return::standard_variants());
         let (name, template) =
             self.source
-                .validate(declaration.name, expected, &standard_variants)?;
+                .validate(declaration.name, expected.clone(), &standard_variants)?;
         let mut counts = LibraryEntryCounts::default();
         let entry = LibraryEntry::new(
             template,
@@ -279,14 +298,13 @@ impl<Plan: BindingPlan> BindingBuilder<Plan> {
             ArgumentsType::input_lists(),
         );
         let (slot, first) = counts.reserve(entry);
-        let mut selected_names = HashSet::new();
-        selected_names.insert(name.clone());
+        let exports = vec![Export::new(name.clone(), expected, slot)];
         let function = Function::new(name, slot, &self.owner);
 
         Ok((
             Bindings {
                 source: self.source,
-                selected_names,
+                exports,
                 first,
                 remaining: Vec::new(),
                 counts,
@@ -308,14 +326,20 @@ impl<Plan: BindingPlan> Bindings<Plan> {
         Return: EmbeddingValue,
     {
         let name = declaration.name;
-        if self.selected_names.contains(&name) {
+        if self
+            .exports
+            .iter()
+            .any(|export| export.name.as_str() == name.as_str())
+        {
             return Err(BindingError::DuplicateFunction { name });
         }
         let expected = FunctionType::new(ArgumentsType::value_types(), Return::value_type());
         let input_variants = ArgumentsType::input_variants();
         let mut standard_variants = ArgumentsType::standard_variants();
         standard_variants.extend(Return::standard_variants());
-        let (name, template) = self.source.validate(name, expected, &standard_variants)?;
+        let (name, template) = self
+            .source
+            .validate(name, expected.clone(), &standard_variants)?;
         let entry = LibraryEntry::new(
             template,
             return_,
@@ -323,7 +347,7 @@ impl<Plan: BindingPlan> Bindings<Plan> {
             ArgumentsType::input_lists(),
         );
         let (slot, entry) = self.counts.reserve(entry);
-        self.selected_names.insert(name.clone());
+        self.exports.push(Export::new(name.clone(), expected, slot));
         self.remaining.push(entry);
 
         Ok(Function::new(name, slot, &self.owner))
@@ -335,6 +359,7 @@ impl<Plan: BindingPlan> Bindings<Plan> {
             first: self.first,
             remaining: self.remaining,
             owner: self.owner,
+            exports: self.exports,
         }
     }
 }

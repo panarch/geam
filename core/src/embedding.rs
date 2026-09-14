@@ -28,11 +28,13 @@ mod hosted;
 mod input;
 mod list;
 mod opaque;
+mod prepared;
 mod project;
 mod value;
 mod work;
 
 pub use crate::BitArrayValue;
+pub use crate::plan::execution::prepared::{PreparedError, PreparedHostedModule, PreparedModule};
 pub use binding::{BindingError, FunctionDeclaration, ModuleBindings, ModuleBuilder};
 pub use ecow::EcoString;
 pub use error::CallError;
@@ -43,6 +45,7 @@ pub use input::InputShape;
 pub use list::{Iter, List};
 pub use num_bigint::BigInt;
 pub use opaque::{Custom, CustomType, External, ExternalType, NamedTypeSchema};
+pub use prepared::{PreparedHostedModuleBindings, PreparedModuleBindings};
 pub use project::{HostedProject, HostedProjectError, Project};
 pub use work::{
     Completed, Future, FutureType, ObservationError, ReadValue, SharedExecutionError, SharedList,

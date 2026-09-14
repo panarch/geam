@@ -2,6 +2,7 @@ use crate::plan::execution::explain::FunctionLabel;
 use crate::plan::execution::function::{
     ExecutionGraphProfile, FunctionLabelSource, HostedExecutionGraph,
 };
+use crate::plan::execution::prepared::rust::{Emit, Rust};
 use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, ExternalListTypeId, FloatListTypeId,
     FunctionListTypeId, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId,
@@ -10,90 +11,90 @@ use crate::plan::execution::type_::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IntListFunctionId {
-    index: usize,
-    type_id: IntListTypeId,
+    pub index: usize,
+    pub type_id: IntListTypeId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StringListFunctionId {
-    index: usize,
-    type_id: StringListTypeId,
+    pub index: usize,
+    pub type_id: StringListTypeId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BitArrayListFunctionId {
-    index: usize,
-    type_id: BitArrayListTypeId,
+    pub index: usize,
+    pub type_id: BitArrayListTypeId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UtfCodepointListFunctionId {
-    index: usize,
-    type_id: UtfCodepointListTypeId,
+    pub index: usize,
+    pub type_id: UtfCodepointListTypeId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ParameterListFunctionId {
-    index: usize,
-    type_id: ParameterListTypeId,
+    pub index: usize,
+    pub type_id: ParameterListTypeId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ParameterListListFunctionId {
-    index: usize,
-    type_id: ParameterListListTypeId,
+    pub index: usize,
+    pub type_id: ParameterListListTypeId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CustomListFunctionId {
-    index: usize,
-    type_id: CustomListTypeId,
+    pub index: usize,
+    pub type_id: CustomListTypeId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExternalListFunctionId {
-    index: usize,
-    type_id: ExternalListTypeId,
+    pub index: usize,
+    pub type_id: ExternalListTypeId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FloatListFunctionId {
-    index: usize,
-    type_id: FloatListTypeId,
+    pub index: usize,
+    pub type_id: FloatListTypeId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolListFunctionId {
-    index: usize,
-    type_id: BoolListTypeId,
+    pub index: usize,
+    pub type_id: BoolListTypeId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NilListFunctionId {
-    index: usize,
-    type_id: NilListTypeId,
+    pub index: usize,
+    pub type_id: NilListTypeId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TupleListFunctionId {
-    index: usize,
-    type_id: TupleListTypeId,
+    pub index: usize,
+    pub type_id: TupleListTypeId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ListListFunctionId {
-    index: usize,
-    type_id: ListListTypeId,
+    pub index: usize,
+    pub type_id: ListListTypeId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FunctionListFunctionId {
-    index: usize,
-    type_id: FunctionListTypeId,
+    pub index: usize,
+    pub type_id: FunctionListTypeId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ListFunctionId {
+pub enum ListFunctionId {
     Parameter(ParameterListFunctionId),
     ParameterList(ParameterListListFunctionId),
     Int(IntListFunctionId),
@@ -110,7 +111,7 @@ pub(crate) enum ListFunctionId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LibraryListFunctionId<Graph: ExecutionGraphProfile = HostedExecutionGraph> {
+pub enum LibraryListFunctionId<Graph: ExecutionGraphProfile = HostedExecutionGraph> {
     Int(IntListFunctionId),
     String(StringListFunctionId),
     BitArray(BitArrayListFunctionId),
@@ -125,7 +126,7 @@ pub(crate) enum LibraryListFunctionId<Graph: ExecutionGraphProfile = HostedExecu
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ProfiledListFunctionId<Graph: ExecutionGraphProfile> {
+pub enum ProfiledListFunctionId<Graph: ExecutionGraphProfile> {
     Core(ListFunctionId),
     External(Graph::ExternalListFunctionId),
 }
@@ -460,6 +461,648 @@ impl FunctionLabelSource for ListFunctionId {
             Self::Tuple(id) => id.function_label(),
             Self::List(id) => id.function_label(),
             Self::Function(id) => id.function_label(),
+        }
+    }
+}
+
+impl Emit for IntListFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, type_id } = self;
+        output.structure(
+            "function::IntListFunctionId",
+            &[("index", index), ("type_id", type_id)],
+        );
+    }
+}
+
+impl Emit for StringListFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, type_id } = self;
+        output.structure(
+            "function::StringListFunctionId",
+            &[("index", index), ("type_id", type_id)],
+        );
+    }
+}
+
+impl Emit for BitArrayListFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, type_id } = self;
+        output.structure(
+            "function::BitArrayListFunctionId",
+            &[("index", index), ("type_id", type_id)],
+        );
+    }
+}
+
+impl Emit for UtfCodepointListFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, type_id } = self;
+        output.structure(
+            "function::UtfCodepointListFunctionId",
+            &[("index", index), ("type_id", type_id)],
+        );
+    }
+}
+
+impl Emit for ParameterListFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, type_id } = self;
+        output.structure(
+            "function::ParameterListFunctionId",
+            &[("index", index), ("type_id", type_id)],
+        );
+    }
+}
+
+impl Emit for ParameterListListFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, type_id } = self;
+        output.structure(
+            "function::ParameterListListFunctionId",
+            &[("index", index), ("type_id", type_id)],
+        );
+    }
+}
+
+impl Emit for CustomListFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, type_id } = self;
+        output.structure(
+            "function::CustomListFunctionId",
+            &[("index", index), ("type_id", type_id)],
+        );
+    }
+}
+
+impl Emit for ExternalListFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, type_id } = self;
+        output.structure(
+            "function::ExternalListFunctionId",
+            &[("index", index), ("type_id", type_id)],
+        );
+    }
+}
+
+impl Emit for FloatListFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, type_id } = self;
+        output.structure(
+            "function::FloatListFunctionId",
+            &[("index", index), ("type_id", type_id)],
+        );
+    }
+}
+
+impl Emit for BoolListFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, type_id } = self;
+        output.structure(
+            "function::BoolListFunctionId",
+            &[("index", index), ("type_id", type_id)],
+        );
+    }
+}
+
+impl Emit for NilListFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, type_id } = self;
+        output.structure(
+            "function::NilListFunctionId",
+            &[("index", index), ("type_id", type_id)],
+        );
+    }
+}
+
+impl Emit for TupleListFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, type_id } = self;
+        output.structure(
+            "function::TupleListFunctionId",
+            &[("index", index), ("type_id", type_id)],
+        );
+    }
+}
+
+impl Emit for ListListFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, type_id } = self;
+        output.structure(
+            "function::ListListFunctionId",
+            &[("index", index), ("type_id", type_id)],
+        );
+    }
+}
+
+impl Emit for FunctionListFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, type_id } = self;
+        output.structure(
+            "function::FunctionListFunctionId",
+            &[("index", index), ("type_id", type_id)],
+        );
+    }
+}
+
+impl Emit for ListFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Parameter(field_0) => {
+                output.call("function::ListFunctionId::Parameter", &[field_0])
+            }
+            Self::ParameterList(field_0) => {
+                output.call("function::ListFunctionId::ParameterList", &[field_0])
+            }
+            Self::Int(field_0) => output.call("function::ListFunctionId::Int", &[field_0]),
+            Self::String(field_0) => output.call("function::ListFunctionId::String", &[field_0]),
+            Self::BitArray(field_0) => {
+                output.call("function::ListFunctionId::BitArray", &[field_0])
+            }
+            Self::UtfCodepoint(field_0) => {
+                output.call("function::ListFunctionId::UtfCodepoint", &[field_0])
+            }
+            Self::Custom(field_0) => output.call("function::ListFunctionId::Custom", &[field_0]),
+            Self::Float(field_0) => output.call("function::ListFunctionId::Float", &[field_0]),
+            Self::Bool(field_0) => output.call("function::ListFunctionId::Bool", &[field_0]),
+            Self::Nil(field_0) => output.call("function::ListFunctionId::Nil", &[field_0]),
+            Self::Tuple(field_0) => output.call("function::ListFunctionId::Tuple", &[field_0]),
+            Self::List(field_0) => output.call("function::ListFunctionId::List", &[field_0]),
+            Self::Function(field_0) => {
+                output.call("function::ListFunctionId::Function", &[field_0])
+            }
+        }
+    }
+}
+
+impl<Graph: ExecutionGraphProfile> Emit for LibraryListFunctionId<Graph>
+where
+    Graph::ExternalListFunctionId: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Int(field_0) => output.call("function::LibraryListFunctionId::Int", &[field_0]),
+            Self::String(field_0) => {
+                output.call("function::LibraryListFunctionId::String", &[field_0])
+            }
+            Self::BitArray(field_0) => {
+                output.call("function::LibraryListFunctionId::BitArray", &[field_0])
+            }
+            Self::UtfCodepoint(field_0) => {
+                output.call("function::LibraryListFunctionId::UtfCodepoint", &[field_0])
+            }
+            Self::Custom(field_0) => {
+                output.call("function::LibraryListFunctionId::Custom", &[field_0])
+            }
+            Self::External(field_0) => {
+                output.call("function::LibraryListFunctionId::External", &[field_0])
+            }
+            Self::Float(field_0) => {
+                output.call("function::LibraryListFunctionId::Float", &[field_0])
+            }
+            Self::Bool(field_0) => output.call("function::LibraryListFunctionId::Bool", &[field_0]),
+            Self::Nil(field_0) => output.call("function::LibraryListFunctionId::Nil", &[field_0]),
+            Self::Tuple(field_0) => {
+                output.call("function::LibraryListFunctionId::Tuple", &[field_0])
+            }
+            Self::List(field_0) => output.call("function::LibraryListFunctionId::List", &[field_0]),
+        }
+    }
+}
+
+impl<Graph: ExecutionGraphProfile> Emit for ProfiledListFunctionId<Graph>
+where
+    Graph::ExternalListFunctionId: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Core(field_0) => {
+                output.call("function::ProfiledListFunctionId::Core", &[field_0])
+            }
+            Self::External(field_0) => {
+                output.call("function::ProfiledListFunctionId::External", &[field_0])
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::{
+        BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, ExternalListFunctionId,
+        FloatListFunctionId, FunctionListFunctionId, IntListFunctionId, LibraryListFunctionId,
+        ListFunctionId, ListListFunctionId, NilListFunctionId, ParameterListFunctionId,
+        ParameterListListFunctionId, ProfiledListFunctionId, StringListFunctionId,
+        TupleListFunctionId, UtfCodepointListFunctionId,
+    };
+    use crate::plan::execution::function::HostedExecutionGraph;
+    use crate::plan::execution::prepared::rust::Rust;
+    use crate::plan::execution::type_::list::{FunctionItemTypeId, TupleItemTypeId};
+    use crate::plan::execution::type_::{
+        BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeId, ExternalListTypeId,
+        ExternalTypeId, FloatListTypeId, FunctionListTypeId, IntListTypeId, ListListTypeId,
+        ListTypeId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId,
+        TupleListTypeId, UtfCodepointListTypeId,
+    };
+
+    #[test]
+    fn emits_list_function_ids_with_nested_item_types() {
+        let cases = [
+            (
+                ListFunctionId::Int(IntListFunctionId::new(2, IntListTypeId::new(ListTypeId(3)))),
+                r#"
+data::function::ListFunctionId::Int(data::function::IntListFunctionId {
+    index: 2,
+    type_id: data::type_::IntListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                ListFunctionId::String(StringListFunctionId::new(
+                    2,
+                    StringListTypeId::new(ListTypeId(3)),
+                )),
+                r#"
+data::function::ListFunctionId::String(data::function::StringListFunctionId {
+    index: 2,
+    type_id: data::type_::StringListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                ListFunctionId::BitArray(BitArrayListFunctionId::new(
+                    2,
+                    BitArrayListTypeId::new(ListTypeId(3)),
+                )),
+                r#"
+data::function::ListFunctionId::BitArray(data::function::BitArrayListFunctionId {
+    index: 2,
+    type_id: data::type_::BitArrayListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                ListFunctionId::UtfCodepoint(UtfCodepointListFunctionId::new(
+                    2,
+                    UtfCodepointListTypeId::new(ListTypeId(3)),
+                )),
+                r#"
+data::function::ListFunctionId::UtfCodepoint(data::function::UtfCodepointListFunctionId {
+    index: 2,
+    type_id: data::type_::UtfCodepointListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                ListFunctionId::Float(FloatListFunctionId::new(
+                    2,
+                    FloatListTypeId::new(ListTypeId(3)),
+                )),
+                r#"
+data::function::ListFunctionId::Float(data::function::FloatListFunctionId {
+    index: 2,
+    type_id: data::type_::FloatListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                ListFunctionId::Bool(BoolListFunctionId::new(
+                    2,
+                    BoolListTypeId::new(ListTypeId(3)),
+                )),
+                r#"
+data::function::ListFunctionId::Bool(data::function::BoolListFunctionId {
+    index: 2,
+    type_id: data::type_::BoolListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                ListFunctionId::Nil(NilListFunctionId::new(2, NilListTypeId::new(ListTypeId(3)))),
+                r#"
+data::function::ListFunctionId::Nil(data::function::NilListFunctionId {
+    index: 2,
+    type_id: data::type_::NilListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                ListFunctionId::Parameter(ParameterListFunctionId::new(
+                    2,
+                    ParameterListTypeId::new(ListTypeId(3), crate::plan::TypeParameterId(4)),
+                )),
+                r#"
+data::function::ListFunctionId::Parameter(data::function::ParameterListFunctionId {
+    index: 2,
+    type_id: data::type_::ParameterListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item: data::type_::parameter_id(4),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                ListFunctionId::ParameterList(ParameterListListFunctionId::new(
+                    2,
+                    ParameterListListTypeId::new(
+                        ListTypeId(3),
+                        ParameterListTypeId::new(ListTypeId(4), crate::plan::TypeParameterId(5)),
+                    ),
+                )),
+                r#"
+data::function::ListFunctionId::ParameterList(data::function::ParameterListListFunctionId {
+    index: 2,
+    type_id: data::type_::ParameterListListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ParameterListTypeId {
+            list_type: data::type_::ListTypeId(4),
+            item: data::type_::parameter_id(5),
+        },
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                ListFunctionId::Custom(CustomListFunctionId::new(
+                    2,
+                    CustomListTypeId::new(ListTypeId(3), CustomTypeId(4)),
+                )),
+                r#"
+data::function::ListFunctionId::Custom(data::function::CustomListFunctionId {
+    index: 2,
+    type_id: data::type_::CustomListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::CustomTypeId(4),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                ListFunctionId::Tuple(TupleListFunctionId::new(
+                    2,
+                    TupleListTypeId {
+                        list_type: ListTypeId(3),
+                        item_type: TupleItemTypeId(4),
+                    },
+                )),
+                r#"
+data::function::ListFunctionId::Tuple(data::function::TupleListFunctionId {
+    index: 2,
+    type_id: data::type_::TupleListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::TupleItemTypeId(4),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                ListFunctionId::List(ListListFunctionId::new(
+                    2,
+                    ListListTypeId::new(ListTypeId(3), ListTypeId(4)),
+                )),
+                r#"
+data::function::ListFunctionId::List(data::function::ListListFunctionId {
+    index: 2,
+    type_id: data::type_::ListListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ListTypeId(4),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                ListFunctionId::Function(FunctionListFunctionId::new(
+                    2,
+                    FunctionListTypeId {
+                        list_type: ListTypeId(3),
+                        item_type: FunctionItemTypeId(4),
+                    },
+                )),
+                r#"
+data::function::ListFunctionId::Function(data::function::FunctionListFunctionId {
+    index: 2,
+    type_id: data::type_::FunctionListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::FunctionItemTypeId(4),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+        ];
+        for (id, expected) in cases {
+            assert_eq!(Rust::expression(&id), expected);
+        }
+        let library: [(LibraryListFunctionId<HostedExecutionGraph>, &str); 11] = [
+            (
+                LibraryListFunctionId::Int(IntListFunctionId::new(
+                    2,
+                    IntListTypeId::new(ListTypeId(3)),
+                )),
+                r#"
+data::function::LibraryListFunctionId::Int(data::function::IntListFunctionId {
+    index: 2,
+    type_id: data::type_::IntListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                LibraryListFunctionId::String(StringListFunctionId::new(
+                    2,
+                    StringListTypeId::new(ListTypeId(3)),
+                )),
+                r#"
+data::function::LibraryListFunctionId::String(data::function::StringListFunctionId {
+    index: 2,
+    type_id: data::type_::StringListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                LibraryListFunctionId::BitArray(BitArrayListFunctionId::new(
+                    2,
+                    BitArrayListTypeId::new(ListTypeId(3)),
+                )),
+                r#"
+data::function::LibraryListFunctionId::BitArray(data::function::BitArrayListFunctionId {
+    index: 2,
+    type_id: data::type_::BitArrayListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                LibraryListFunctionId::UtfCodepoint(UtfCodepointListFunctionId::new(
+                    2,
+                    UtfCodepointListTypeId::new(ListTypeId(3)),
+                )),
+                r#"
+data::function::LibraryListFunctionId::UtfCodepoint(data::function::UtfCodepointListFunctionId {
+    index: 2,
+    type_id: data::type_::UtfCodepointListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                LibraryListFunctionId::Float(FloatListFunctionId::new(
+                    2,
+                    FloatListTypeId::new(ListTypeId(3)),
+                )),
+                r#"
+data::function::LibraryListFunctionId::Float(data::function::FloatListFunctionId {
+    index: 2,
+    type_id: data::type_::FloatListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                LibraryListFunctionId::Bool(BoolListFunctionId::new(
+                    2,
+                    BoolListTypeId::new(ListTypeId(3)),
+                )),
+                r#"
+data::function::LibraryListFunctionId::Bool(data::function::BoolListFunctionId {
+    index: 2,
+    type_id: data::type_::BoolListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                LibraryListFunctionId::Nil(NilListFunctionId::new(
+                    2,
+                    NilListTypeId::new(ListTypeId(3)),
+                )),
+                r#"
+data::function::LibraryListFunctionId::Nil(data::function::NilListFunctionId {
+    index: 2,
+    type_id: data::type_::NilListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                LibraryListFunctionId::Custom(CustomListFunctionId::new(
+                    2,
+                    CustomListTypeId::new(ListTypeId(3), CustomTypeId(4)),
+                )),
+                r#"
+data::function::LibraryListFunctionId::Custom(data::function::CustomListFunctionId {
+    index: 2,
+    type_id: data::type_::CustomListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::CustomTypeId(4),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                LibraryListFunctionId::External(ExternalListFunctionId::new(
+                    2,
+                    ExternalListTypeId::new(ListTypeId(3), ExternalTypeId(4)),
+                )),
+                r#"
+data::function::LibraryListFunctionId::External(data::function::ExternalListFunctionId {
+    index: 2,
+    type_id: data::type_::ExternalListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ExternalTypeId(4),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                LibraryListFunctionId::Tuple(TupleListFunctionId::new(
+                    2,
+                    TupleListTypeId {
+                        list_type: ListTypeId(3),
+                        item_type: TupleItemTypeId(4),
+                    },
+                )),
+                r#"
+data::function::LibraryListFunctionId::Tuple(data::function::TupleListFunctionId {
+    index: 2,
+    type_id: data::type_::TupleListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::TupleItemTypeId(4),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                LibraryListFunctionId::List(ListListFunctionId::new(
+                    2,
+                    ListListTypeId::new(ListTypeId(3), ListTypeId(4)),
+                )),
+                r#"
+data::function::LibraryListFunctionId::List(data::function::ListListFunctionId {
+    index: 2,
+    type_id: data::type_::ListListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ListTypeId(4),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+        ];
+        for (id, expected) in library {
+            assert_eq!(Rust::expression(&id), expected);
+        }
+        let profiled: [(ProfiledListFunctionId<HostedExecutionGraph>, &str); 2] = [
+            (
+                ProfiledListFunctionId::Core(ListFunctionId::Int(IntListFunctionId::new(
+                    2,
+                    IntListTypeId::new(ListTypeId(3)),
+                ))),
+                r#"
+data::function::ProfiledListFunctionId::Core(data::function::ListFunctionId::Int(data::function::IntListFunctionId {
+    index: 2,
+    type_id: data::type_::IntListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}))"#.trim_start_matches('\n'),
+            ),
+            (
+                ProfiledListFunctionId::External(ExternalListFunctionId::new(
+                    2,
+                    ExternalListTypeId::new(ListTypeId(3), ExternalTypeId(4)),
+                )),
+                r#"
+data::function::ProfiledListFunctionId::External(data::function::ExternalListFunctionId {
+    index: 2,
+    type_id: data::type_::ExternalListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ExternalTypeId(4),
+    },
+})"#.trim_start_matches('\n'),
+            ),
+        ];
+        for (id, expected) in profiled {
+            assert_eq!(Rust::expression(&id), expected);
         }
     }
 }

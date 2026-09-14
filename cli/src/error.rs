@@ -208,6 +208,13 @@ pub(super) enum CliError {
         output: Utf8PathBuf,
     },
 
+    #[error("{failure}; could not restore embedding preparation inputs: {rollback}")]
+    EmbeddingRestore {
+        #[source]
+        failure: Box<CliError>,
+        rollback: Box<CliError>,
+    },
+
     #[error("invalid Rust embedding boundary module {module}: {reason}")]
     InvalidEmbeddingBoundary { module: String, reason: String },
 }

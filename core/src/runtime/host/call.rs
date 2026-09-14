@@ -388,7 +388,7 @@ where
         type_: &crate::host::HostTypeDescriptor,
         values: Box<[HostScopedValue]>,
     ) -> HostValueToken {
-        let type_ = type_.resolve_sealed(self.function.type_arguments());
+        let type_ = self.function.resolve_construction(type_);
         self.build_native_list(self.function.constructions().list(&type_), values)
     }
 
@@ -424,7 +424,7 @@ where
         constructor: usize,
         fields: Box<[HostScopedValue]>,
     ) -> HostValueToken {
-        let type_ = type_.resolve_sealed(self.function.type_arguments());
+        let type_ = self.function.resolve_construction(type_);
         let constructor = self
             .plan
             .custom_constructor_id(self.function.constructions().custom(&type_), constructor);
@@ -451,7 +451,7 @@ where
         type_: &crate::host::HostTypeDescriptor,
         value: crate::runtime::ExternalPayloadLease,
     ) -> HostExternalToken {
-        let type_ = type_.resolve_sealed(self.function.type_arguments());
+        let type_ = self.function.resolve_construction(type_);
         self.scoped.push_external(EvaluatedExternalValue::new(
             self.function.constructions().external(&type_),
             value,
@@ -466,7 +466,7 @@ where
         &self,
         descriptor: &crate::host::HostTypeDescriptor,
     ) -> Option<crate::plan::ValueType> {
-        descriptor.resolve(self.function.type_arguments())
+        self.function.resolve_type(descriptor)
     }
 
     fn retain_stored(&self, value: HostScopedValue) -> StoredRuntimeValue {

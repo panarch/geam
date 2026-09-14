@@ -98,7 +98,7 @@ pub fn main() {
 //     %custom#0:shape#10(custom_type#1) = custom.construct custom_type#1.constructor#0 fields=[%function.int#7]
 //     %function.int#8:shape#1(fn(Int) -> Int) = function[Int] custom_field %custom#0 index=0
 //     %function.int#9:shape#12(fn(Int, String) -> Int) = function[Int] reference int#1
-//     %tuple#1:shape#15(#(fn(Int) -> Int, fn(Int) -> Int, fn(param#0) -> param#0, fn(Int) -> custom_type#0, fn(Int) -> Int, fn(Int) -> Int, fn(Int) -> Int, fn(Int) -> Int, fn(Int) -> Int, fn(Int, String) -> Int)) = tuple.value elements=[%function.int#1, %function.int#2, %function.generic#0, %function.custom#0, %function.int#3, %function.int#4, %function.int#6, %function.int#8, %function.int#0, %function.int#9]
+//     %tuple#1:shape#13(#(fn(Int) -> Int, fn(Int) -> Int, fn(param#0) -> param#0, fn(Int) -> custom_type#0, fn(Int) -> Int, fn(Int) -> Int, fn(Int) -> Int, fn(Int) -> Int, fn(Int) -> Int, fn(Int, String) -> Int)) = tuple.value elements=[%function.int#1, %function.int#2, %function.generic#0, %function.custom#0, %function.int#3, %function.int#4, %function.int#6, %function.int#8, %function.int#0, %function.int#9]
 //     return %tuple#1
 //   block b3 params=[%function.function#0:shape#3(fn() -> fn(Int) -> Int)]
 //     %function.int#0:shape#1(fn(Int) -> Int) = function[Int] reference int#0

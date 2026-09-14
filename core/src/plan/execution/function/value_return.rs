@@ -1,7 +1,7 @@
-mod body;
-mod entry;
-mod id;
-mod table;
+pub(in crate::plan::execution) mod body;
+pub(in crate::plan::execution) mod entry;
+pub(in crate::plan::execution) mod id;
+pub(in crate::plan::execution) mod table;
 
 pub(crate) use body::{
     BitArrayFunctionBody, BoolFunctionBody, CustomFunctionBody, ExecutionBitArrayFunctionBody,

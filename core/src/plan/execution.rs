@@ -1,3 +1,4 @@
+use crate::plan::execution::prepared::rust::{Emit, Rust};
 pub(crate) mod constant;
 mod entry;
 mod explain;
@@ -5,7 +6,9 @@ pub(crate) mod function;
 pub(crate) mod graph;
 pub(crate) mod host;
 mod lowering;
+pub(crate) mod prepared;
 pub(crate) mod runtime;
+mod storage;
 pub(crate) mod type_;
 
 use self::constant::ProfiledConstantTable;
@@ -38,6 +41,7 @@ use self::function::{
     ExecutionGraphProfile, ExecutionProfile, FunctionLabelSource, FunctionTables,
     ProfiledRuntimeFunctionId,
 };
+use self::storage::{Node, Table};
 #[cfg(test)]
 use self::type_::{
     CustomConstructorId, CustomConstructorRefinement, CustomTypeId, CustomValueShape,
@@ -46,6 +50,7 @@ use self::type_::{
 };
 use self::type_::{CustomTypeTable, ExternalTypeTable, ListTypeTable, ValueShapeTable};
 use crate::host::HostProfile;
+use crate::plan::Text;
 use crate::plan::{HostedModulePlan, ModuleId, ModulePlan, SourceContext};
 use ecow::EcoString;
 pub(crate) use entry::EntryCompletion;
@@ -58,45 +63,46 @@ pub struct ExecutionPlan {
     program: ExecutionProgram<Infallible>,
 }
 
-pub(crate) struct LibraryFunctionEntry<Function> {
-    function: Function,
-    inputs: LibraryInputConstructions,
+#[derive(Clone)]
+pub struct LibraryFunctionEntry<Function> {
+    pub function: Function,
+    pub inputs: LibraryInputConstructions,
 }
 
-pub(crate) struct LibraryInputConstructions {
-    variants: Box<[[type_::CustomConstructorId; 2]]>,
-    lists: LibraryListConstructions,
+#[derive(Clone)]
+pub struct LibraryInputConstructions {
+    pub variants: Table<[type_::CustomConstructorId; 2]>,
+    pub lists: LibraryListConstructions,
 }
 
-#[derive(Default)]
-pub(crate) struct LibraryListConstructions {
-    pub(crate) ints: Vec<type_::IntListTypeId>,
-    pub(crate) floats: Vec<type_::FloatListTypeId>,
-    pub(crate) strings: Vec<type_::StringListTypeId>,
-    pub(crate) bit_arrays: Vec<type_::BitArrayListTypeId>,
-    pub(crate) utf_codepoints: Vec<type_::UtfCodepointListTypeId>,
-    pub(crate) customs: Vec<type_::CustomListTypeId>,
-    pub(crate) externals: Vec<type_::ExternalListTypeId>,
-    pub(crate) bools: Vec<type_::BoolListTypeId>,
-    pub(crate) nils: Vec<type_::NilListTypeId>,
-    pub(crate) tuples: Vec<type_::TupleListTypeId>,
-    pub(crate) lists: Vec<type_::ListListTypeId>,
+#[derive(Clone)]
+pub struct LibraryListConstructions {
+    pub ints: Table<type_::IntListTypeId>,
+    pub floats: Table<type_::FloatListTypeId>,
+    pub strings: Table<type_::StringListTypeId>,
+    pub bit_arrays: Table<type_::BitArrayListTypeId>,
+    pub utf_codepoints: Table<type_::UtfCodepointListTypeId>,
+    pub customs: Table<type_::CustomListTypeId>,
+    pub externals: Table<type_::ExternalListTypeId>,
+    pub bools: Table<type_::BoolListTypeId>,
+    pub nils: Table<type_::NilListTypeId>,
+    pub tuples: Table<type_::TupleListTypeId>,
+    pub lists: Table<type_::ListListTypeId>,
 }
 
-pub(crate) struct LibraryFunctionEntries<
-    Graph: ExecutionGraphProfile = function::HostedExecutionGraph,
-> {
-    pub(crate) ints: Box<[LibraryFunctionEntry<function::IntFunctionId>]>,
-    pub(crate) floats: Box<[LibraryFunctionEntry<function::FloatFunctionId>]>,
-    pub(crate) strings: Box<[LibraryFunctionEntry<function::StringFunctionId>]>,
-    pub(crate) bit_arrays: Box<[LibraryFunctionEntry<function::BitArrayFunctionId>]>,
-    pub(crate) utf_codepoints: Box<[LibraryFunctionEntry<function::UtfCodepointFunctionId>]>,
-    pub(crate) customs: Box<[LibraryFunctionEntry<function::CustomFunctionId>]>,
-    pub(crate) externals: Box<[LibraryFunctionEntry<Graph::ExternalFunctionId>]>,
-    pub(crate) bools: Box<[LibraryFunctionEntry<function::BoolFunctionId>]>,
-    pub(crate) nils: Box<[LibraryFunctionEntry<function::NilFunctionId>]>,
-    pub(crate) tuples: Box<[LibraryFunctionEntry<function::TupleFunctionId>]>,
-    pub(crate) lists: Box<[LibraryFunctionEntry<function::LibraryListFunctionId<Graph>>]>,
+#[derive(Clone)]
+pub struct LibraryFunctionEntries<Graph: ExecutionGraphProfile = function::HostedExecutionGraph> {
+    pub ints: Table<LibraryFunctionEntry<function::IntFunctionId>>,
+    pub floats: Table<LibraryFunctionEntry<function::FloatFunctionId>>,
+    pub strings: Table<LibraryFunctionEntry<function::StringFunctionId>>,
+    pub bit_arrays: Table<LibraryFunctionEntry<function::BitArrayFunctionId>>,
+    pub utf_codepoints: Table<LibraryFunctionEntry<function::UtfCodepointFunctionId>>,
+    pub customs: Table<LibraryFunctionEntry<function::CustomFunctionId>>,
+    pub externals: Table<LibraryFunctionEntry<Graph::ExternalFunctionId>>,
+    pub bools: Table<LibraryFunctionEntry<function::BoolFunctionId>>,
+    pub nils: Table<LibraryFunctionEntry<function::NilFunctionId>>,
+    pub tuples: Table<LibraryFunctionEntry<function::TupleFunctionId>>,
+    pub lists: Table<LibraryFunctionEntry<function::LibraryListFunctionId<Graph>>>,
 }
 
 impl<Function> LibraryFunctionEntry<Function> {
@@ -122,7 +128,7 @@ impl LibraryInputConstructions {
         lists: LibraryListConstructions,
     ) -> Self {
         Self {
-            variants: variants.into_boxed_slice(),
+            variants: variants.into(),
             lists,
         }
     }
@@ -148,30 +154,30 @@ pub(crate) struct HostedProgram<Profile: HostProfile> {
 
 pub(crate) struct ExecutionProgram<Profile: ExecutionProfile> {
     common: std::sync::Arc<ExecutionProgramCommon<Profile::Graph>>,
-    functions: FunctionTables<Profile>,
+    functions: Node<FunctionTables<Profile>>,
 }
 
 struct ExecutionProgramCommon<Graph: ExecutionGraphProfile> {
     root: ModuleId,
-    modules: Box<[ExecutionModuleContext]>,
+    modules: Table<ExecutionModuleContext>,
     main: ProfiledRuntimeFunctionId<Graph>,
-    constants: ProfiledConstantTable<Graph>,
-    function_parameters: std::sync::Arc<function::FunctionParameterCatalog>,
+    constants: Node<ProfiledConstantTable<Graph>>,
+    function_parameters: std::sync::Arc<function::FunctionCatalog>,
     list_types: std::sync::Arc<ListTypeTable>,
     custom_types: std::sync::Arc<CustomTypeTable>,
     external_types: std::sync::Arc<ExternalTypeTable>,
-    value_shapes: ValueShapeTable,
+    value_shapes: Node<ValueShapeTable>,
 }
 
-struct ExecutionModuleContext {
-    module: EcoString,
-    source_context: Option<SourceContext>,
+pub struct ExecutionModuleContext {
+    pub module: Text,
+    pub source_context: Option<SourceContext>,
 }
 
 impl ExecutionModuleContext {
     fn new(module: EcoString, source_context: Option<SourceContext>) -> Self {
         Self {
-            module,
+            module: module.into(),
             source_context,
         }
     }
@@ -188,8 +194,8 @@ impl explain::Explain for ExecutionPlan {
             .function_label()
             .write(context.output());
         context.push('\n');
-        context.write(&self.program.functions);
-        context.write(&self.program.common.constants);
+        context.write(self.program.functions.as_ref());
+        context.write(self.program.common.constants.as_ref());
     }
 }
 
@@ -208,7 +214,7 @@ impl<Profile: HostProfile> explain::Explain for HostedProgram<Profile> {
             &self.program.functions,
             &self.host_functions,
         ));
-        context.write(&self.program.common.constants);
+        context.write(self.program.common.constants.as_ref());
     }
 }
 
@@ -228,7 +234,7 @@ impl ExecutionPlan {
         (Self { program }, entries)
     }
 
-    pub fn module(&self) -> &EcoString {
+    pub fn module(&self) -> &str {
         &self.program.common.modules[self.program.common.root.index()].module
     }
 
@@ -244,6 +250,12 @@ impl ExecutionPlan {
 }
 
 impl<Profile: HostProfile> HostedExecution<Profile> {
+    fn from_program(execution: HostedProgram<Profile>) -> Self {
+        Self {
+            execution: std::sync::Arc::new(execution),
+            external_stores: Profile::ExternalStores::default(),
+        }
+    }
     /// Seals all entry-reachable host specializations into executable storage.
     ///
     /// A linked but unused provider does not participate in sealing.
@@ -251,13 +263,10 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
         module_plan: HostedModulePlan<Profile>,
     ) -> Result<Self, HostSpecializationError> {
         let (program, host_functions) = lowering::lower_hosted(module_plan)?;
-        Ok(Self {
-            execution: std::sync::Arc::new(HostedProgram {
-                program,
-                host_functions,
-            }),
-            external_stores: Profile::ExternalStores::default(),
-        })
+        Ok(Self::from_program(HostedProgram {
+            program,
+            host_functions,
+        }))
     }
 
     pub(crate) fn try_from_library_plan(
@@ -266,13 +275,7 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
         remaining: Vec<crate::plan::LibraryEntry>,
     ) -> Result<(Self, LibraryFunctionEntries), HostSpecializationError> {
         let (execution, entries) = HostedProgram::from_library_plan(module_plan, first, remaining)?;
-        Ok((
-            Self {
-                execution: std::sync::Arc::new(execution),
-                external_stores: Profile::ExternalStores::default(),
-            },
-            entries,
-        ))
+        Ok((Self::from_program(execution), entries))
     }
 
     pub async fn run_main(
@@ -688,6 +691,114 @@ impl ExecutionPlan {
     #[cfg(test)]
     pub(crate) fn function_function_function_id(&self, index: usize) -> FunctionFunctionFunctionId {
         self.program.functions.function_function_function_id(index)
+    }
+}
+
+impl<Function> Emit for LibraryFunctionEntry<Function>
+where
+    Function: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        let Self { function, inputs } = self;
+        output.structure(
+            "program::LibraryFunctionEntry",
+            &[("function", function), ("inputs", inputs)],
+        );
+    }
+}
+
+impl Emit for LibraryInputConstructions {
+    fn emit(&self, output: &mut Rust) {
+        let Self { variants, lists } = self;
+        output.structure(
+            "program::LibraryInputConstructions",
+            &[("variants", variants), ("lists", lists)],
+        );
+    }
+}
+
+impl Emit for LibraryListConstructions {
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            ints,
+            floats,
+            strings,
+            bit_arrays,
+            utf_codepoints,
+            customs,
+            externals,
+            bools,
+            nils,
+            tuples,
+            lists,
+        } = self;
+        output.structure(
+            "program::LibraryListConstructions",
+            &[
+                ("ints", ints),
+                ("floats", floats),
+                ("strings", strings),
+                ("bit_arrays", bit_arrays),
+                ("utf_codepoints", utf_codepoints),
+                ("customs", customs),
+                ("externals", externals),
+                ("bools", bools),
+                ("nils", nils),
+                ("tuples", tuples),
+                ("lists", lists),
+            ],
+        );
+    }
+}
+
+impl<Graph: ExecutionGraphProfile> Emit for LibraryFunctionEntries<Graph>
+where
+    Table<LibraryFunctionEntry<Graph::ExternalFunctionId>>: Emit,
+    Table<LibraryFunctionEntry<function::LibraryListFunctionId<Graph>>>: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            ints,
+            floats,
+            strings,
+            bit_arrays,
+            utf_codepoints,
+            customs,
+            externals,
+            bools,
+            nils,
+            tuples,
+            lists,
+        } = self;
+        output.structure(
+            "program::LibraryFunctionEntries",
+            &[
+                ("ints", ints),
+                ("floats", floats),
+                ("strings", strings),
+                ("bit_arrays", bit_arrays),
+                ("utf_codepoints", utf_codepoints),
+                ("customs", customs),
+                ("externals", externals),
+                ("bools", bools),
+                ("nils", nils),
+                ("tuples", tuples),
+                ("lists", lists),
+            ],
+        );
+    }
+}
+
+impl Emit for ExecutionModuleContext {
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            module,
+            source_context,
+        } = self;
+        output.structure(
+            "program::ExecutionModuleContext",
+            &[("module", module), ("source_context", source_context)],
+        );
     }
 }
 

@@ -141,7 +141,7 @@ where
             let selected = switch
                 .clauses()
                 .iter()
-                .find_map(|(pattern, edge)| (pattern == &subject).then_some(edge));
+                .find_map(|(pattern, edge)| pattern.matches(&subject).then_some(edge));
             let edge = match selected {
                 Some(edge) => edge,
                 None => switch.fallback(),
@@ -165,7 +165,7 @@ where
             let selected = switch
                 .clauses()
                 .iter()
-                .find_map(|(pattern, edge)| (pattern == &subject).then_some(edge));
+                .find_map(|(pattern, edge)| (pattern.as_str() == subject.as_str()).then_some(edge));
             let edge = match selected {
                 Some(edge) => edge,
                 None => switch.fallback(),

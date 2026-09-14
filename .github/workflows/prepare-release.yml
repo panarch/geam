@@ -106,6 +106,7 @@ jobs:
             examples/embedding/async_host \
             examples/embedding/session \
             examples/embedding/processes \
+            examples/embedding/prepared \
             examples/embedding/execution
           do
             (cd "$project" && cargo upgrade --package "geam@=$RELEASE_VERSION" --pinned --recursive false)
@@ -153,6 +154,13 @@ jobs:
           git diff --check
           git diff --stat
 
+      - name: Refresh the prepared embedding program
+        working-directory: examples/embedding/prepared
+        run: |
+          cargo run --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" --package geam --bin geam --locked -- embedding sync
+          cargo run --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" --package geam --bin geam --locked -- embedding check
+          git diff --check
+
       - name: Open release PR
         env:
           GH_TOKEN: ${{ github.token }}
@@ -160,11 +168,13 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add --update -- '*Cargo.toml' '*Cargo.lock' '*gleam.toml' '*manifest.toml'
+          git add --update -- examples/embedding/prepared/src/geam_bindings.rs examples/embedding/prepared/src/geam_bindings/program.rs
           git commit -F - <<EOF
           Prepare Geam $RELEASE_VERSION
 
           - Bump workspace and published reference packages together.
           - Update provider requirements and dependency locks.
+          - Regenerate the prepared embedding example for the release dependencies.
           EOF
           git push --set-upstream origin "release/$RELEASE_VERSION"
           gh pr create --draft --base main --head "release/$RELEASE_VERSION" \

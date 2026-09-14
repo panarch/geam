@@ -17,6 +17,7 @@ tests.
 | [`session`](session) | Retain opaque Gleam data and pass it to later calls |
 | [`execution`](execution) | Drive and cancel a running Gleam entry without blocking the Rust host |
 | [`processes`](processes) | Retain a live Gleam service's Pid and Subject across Rust calls |
+| [`prepared`](prepared) | Include the Gleam program in the Rust executable |
 
 Start with [`first_call`](first_call) and follow each README's next step through
 [`application`](application). Continue with [`async_host`](async_host) when a
@@ -25,6 +26,10 @@ application values between calls. Every example keeps
 its file tour, run commands, and expected output together. See [Rust
 embedding](../../docs/embedding.md) for the initial project setup,
 synchronization workflow, and supported data.
+
+The [`prepared`](prepared) example uses the first-call function again and
+changes its loading step. It can be read directly after `first_call` when the
+application needs to run without Gleam source files.
 
 ## Manual Embedding API
 

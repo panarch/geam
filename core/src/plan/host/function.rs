@@ -43,11 +43,11 @@ impl HostFunctionTemplate {
         &self.package
     }
 
-    pub fn module(&self) -> &EcoString {
+    pub fn module(&self) -> &str {
         self.site.module()
     }
 
-    pub fn name(&self) -> &EcoString {
+    pub fn name(&self) -> &str {
         self.site.function()
     }
 

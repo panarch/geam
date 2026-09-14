@@ -56,14 +56,14 @@ fn custom(
         .enumerate()
         .map(|(index, value)| {
             CustomFieldValue::from_evaluated(
-                constructor.fields()[index].label().cloned(),
+                constructor.fields()[index].label().map(Into::into),
                 self::value(plan, state, value.clone()),
             )
         })
         .collect();
     CustomValue::from_evaluated(
         plan.custom_value_type(value.type_id()),
-        constructor.name().clone(),
+        constructor.name().into(),
         constructor.id().index(),
         fields,
     )
@@ -1144,9 +1144,9 @@ pub fn main() -> List(Counter) {
             Vec::new(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
-                crate::plan::execution::type_::ValueType::Tuple(vec![
-                    crate::plan::execution::type_::ValueType::Int,
-                ]),
+                crate::plan::execution::type_::ValueType::Tuple(
+                    vec![crate::plan::execution::type_::ValueType::Int].into(),
+                ),
             ),
         );
         let list_function_id =
@@ -1168,9 +1168,7 @@ pub fn main() -> List(Counter) {
             Vec::new(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
-                crate::plan::execution::type_::ValueType::Function(Box::new(
-                    execution_int_type.clone(),
-                )),
+                crate::plan::execution::type_::ValueType::Function(execution_int_type.clone()),
             ),
         ));
         let custom_function_owner = plan.int_function(IntFunctionId(1));

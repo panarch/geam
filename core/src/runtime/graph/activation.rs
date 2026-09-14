@@ -4,7 +4,7 @@ use crate::plan::execution::constant::{ConstantId, ConstantValue};
 use crate::plan::execution::function::{
     ExecutionFunctionEntry, ExecutionFunctionRef, FunctionBodyOwner, FunctionExit,
 };
-use crate::plan::execution::graph::ProfiledBlockGraph;
+use crate::plan::execution::graph::BlockGraphView;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedFunctionValue,
@@ -39,7 +39,7 @@ pub(in crate::runtime) enum Activation<'plan, Plan: ExecutableRuntimePlan + 'pla
 }
 
 pub(in crate::runtime) struct Frame<'plan, Plan: ExecutableRuntimePlan> {
-    pub(super) graph: &'plan ProfiledBlockGraph<RuntimeGraph<Plan>>,
+    pub(super) graph: BlockGraphView<'plan, RuntimeGraph<Plan>>,
     pub(super) position: GraphPosition,
     exit: GraphExit<'plan, Plan>,
 }
@@ -98,7 +98,7 @@ pub(super) trait ReturnValue: Send + 'static {
 
 impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
     pub(in crate::runtime) fn new(
-        graph: &'plan ProfiledBlockGraph<RuntimeGraph<Plan>>,
+        graph: BlockGraphView<'plan, RuntimeGraph<Plan>>,
         inputs: RetainedValues,
     ) -> Self {
         Self {
@@ -262,7 +262,7 @@ where
     match id.entry(plan) {
         ExecutionFunctionRef::Graph(function) => {
             let body = function.body().function_body();
-            let graph = body.block_graph();
+            let graph = body.block_graph().as_view();
             Activation::Graph(Frame {
                 graph,
                 position: GraphPosition::new(graph.entry(), inputs),
@@ -305,7 +305,7 @@ where
     Value: ReturnValue,
 {
     let constant = plan.constant(id);
-    let graph = constant.block_graph();
+    let graph = constant.block_graph().as_view();
     Activation::Graph(Frame {
         graph,
         position: GraphPosition::new(graph.entry(), RetainedValues::empty()),
@@ -326,7 +326,7 @@ fn enter_never<'plan, Plan: ExecutableRuntimePlan>(
     match plan.never_function(id).as_ref() {
         ExecutionFunctionRef::Graph(function) => {
             let body = function.body().function_body();
-            let graph = body.block_graph();
+            let graph = body.block_graph().as_view();
             Activation::Graph(Frame {
                 graph,
                 position: GraphPosition::new(graph.entry(), inputs),
@@ -441,7 +441,7 @@ mod tests {
 
     fn complete_int_graph(plan: &ExecutionPlan) -> CompletedGraph {
         let body = plan.int_function(IntFunctionId(0)).body();
-        let mut execution = Execution::new(body.block_graph(), RetainedValues::empty());
+        let mut execution = Execution::new(body.block_graph().as_view(), RetainedValues::empty());
         let mut returns = Returns::new();
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
@@ -496,7 +496,7 @@ pub fn main() {
 "#,
         );
         let body = plan.int_function(IntFunctionId(0)).body();
-        let mut execution = Execution::new(body.block_graph(), RetainedValues::empty());
+        let mut execution = Execution::new(body.block_graph().as_view(), RetainedValues::empty());
         let mut returns = Returns::new();
         let mut lists = RuntimeListStorage::default();
         let mut output = Vec::new();
@@ -573,7 +573,8 @@ pub fn main() { count(0) + 1 }
             .stack_size(256 * 1024)
             .spawn(move || {
                 let body = plan.int_function(IntFunctionId(0)).body();
-                let mut execution = Execution::new(body.block_graph(), RetainedValues::empty());
+                let mut execution =
+                    Execution::new(body.block_graph().as_view(), RetainedValues::empty());
                 let mut returns = Returns::new();
                 let mut echo = Vec::new();
                 let mut state = RuntimeState::new(&mut echo);

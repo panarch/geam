@@ -166,7 +166,7 @@ pub fn main() {
             Err(ExecutionError::Invariant(
                 InvariantError::CustomFieldFamilyMismatch {
                     custom_type: plan.custom_value_type(constructor.type_id()),
-                    constructor: descriptor.name().clone(),
+                    constructor: descriptor.name().into(),
                     field_index: 0,
                     expected: ValueType::Int,
                     actual: ValueType::String,

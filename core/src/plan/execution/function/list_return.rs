@@ -1,6 +1,6 @@
 mod body;
-mod id;
-mod table;
+pub(in crate::plan::execution) mod id;
+pub(in crate::plan::execution) mod table;
 
 pub(crate) use body::{
     BitArrayListFunctionBody, BoolListFunctionBody, CustomListFunctionBody,

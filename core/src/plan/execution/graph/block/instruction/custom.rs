@@ -6,22 +6,25 @@ use crate::plan::execution::function::CustomFunctionId;
 use crate::plan::execution::graph::{
     CustomFunctionLocal, CustomListLocalId, CustomLocal, ParamLocal, TupleLocalId,
 };
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 use crate::plan::execution::type_::CustomConstructorId;
 
-pub(crate) enum CustomInstruction {
+#[derive(Clone)]
+pub enum CustomInstruction {
     Construct {
         constructor: CustomConstructorId,
-        fields: Box<[ParamLocal]>,
+        fields: Table<ParamLocal>,
     },
     Constant(ConstantId<CustomLocal>),
     Call {
         function: CustomFunctionId,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: CustomFunctionLocal,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     TupleIndex {
@@ -69,6 +72,202 @@ impl Explain for CustomInstruction {
             CustomInstruction::ListIndex { list, index } => {
                 write_projection(output, "custom.list_index", list, *index);
             }
+        }
+    }
+}
+
+impl Emit for CustomInstruction {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Construct {
+                constructor,
+                fields,
+            } => output.structure(
+                "graph::CustomInstruction::Construct",
+                &[("constructor", constructor), ("fields", fields)],
+            ),
+            Self::Constant(field_0) => {
+                output.call("graph::CustomInstruction::Constant", &[field_0])
+            }
+            Self::Call {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::CustomInstruction::Call",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::FunctionCall {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::CustomInstruction::FunctionCall",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::TupleIndex { tuple, index } => output.structure(
+                "graph::CustomInstruction::TupleIndex",
+                &[("tuple", tuple), ("index", index)],
+            ),
+            Self::CustomField { source, index } => output.structure(
+                "graph::CustomInstruction::CustomField",
+                &[("source", source), ("index", index)],
+            ),
+            Self::ListIndex { list, index } => output.structure(
+                "graph::CustomInstruction::ListIndex",
+                &[("list", list), ("index", index)],
+            ),
+        }
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::CustomInstruction;
+    use crate::plan::execution::constant::ConstantId;
+    use crate::plan::execution::function::CustomFunctionId;
+    use crate::plan::execution::graph::CustomFunctionLocal;
+    use crate::plan::execution::graph::{
+        CustomFunctionLocalId, CustomListLocalId, CustomLocal, CustomLocalId, IntLocalId,
+        ParamLocal, TupleLocalId,
+    };
+    use crate::plan::execution::prepared::rust::Rust;
+    use crate::plan::execution::type_::{
+        CustomConstructorId, CustomFunctionType, CustomTypeId, CustomValueShape,
+        CustomValueShapeId, FunctionType, ValueType,
+    };
+    use crate::plan::{HostCallSite, SourceSpan};
+
+    #[test]
+    fn emits_every_custom_instruction_with_its_operands_and_source_site() {
+        let site = HostCallSite::new("example".into(), "main".into(), SourceSpan::new(3, 8));
+        let shape = CustomValueShape::new(CustomTypeId(3), CustomValueShapeId(4));
+        let cases = [
+            (
+                CustomInstruction::Construct {
+                    constructor: CustomConstructorId::new(CustomTypeId(3), 1),
+                    fields: vec![ParamLocal::Int(IntLocalId(5))].into(),
+                },
+                r#"
+data::graph::CustomInstruction::Construct {
+    constructor: data::type_::CustomConstructorId {
+        type_id: data::type_::CustomTypeId(3),
+        index: 1,
+    },
+    fields: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+    ]),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                CustomInstruction::Constant(ConstantId::new(3)),
+                r#"
+data::graph::CustomInstruction::Constant(data::constant::ConstantId {
+    index: 3,
+    value: ::core::marker::PhantomData,
+})"#.trim_start_matches('\n'),
+            ),
+            (
+                CustomInstruction::Call {
+                    function: CustomFunctionId::new(2, shape),
+                    args: vec![ParamLocal::Int(IntLocalId(5))].into(),
+                    site: site.clone(),
+                },
+                r#"
+data::graph::CustomInstruction::Call {
+    function: data::function::CustomFunctionId {
+        index: 2,
+        return_shape: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                CustomInstruction::FunctionCall {
+                    function: CustomFunctionLocal::new(
+                        CustomFunctionLocalId(2),
+                        CustomFunctionType::from_shapes(
+                            FunctionType::new(Vec::new(), ValueType::Custom(CustomTypeId(3))),
+                            Vec::new(),
+                            shape,
+                        ),
+                    ),
+                    args: vec![ParamLocal::Int(IntLocalId(5))].into(),
+                    site,
+                },
+                r#"
+data::graph::CustomInstruction::FunctionCall {
+    function: data::graph::CustomFunctionLocal {
+        id: data::graph::CustomFunctionLocalId(2),
+        type_: data::type_::CustomFunctionType {
+            type_: data::type_::FunctionType {
+                arguments: data::Storage::Static(&[]),
+                return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(3))),
+            },
+            arguments: data::Storage::Static(&[]),
+            return_: data::type_::CustomValueShape {
+                type_id: data::type_::CustomTypeId(3),
+                shape_id: data::type_::CustomValueShapeId(4),
+            },
+        },
+    },
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                CustomInstruction::TupleIndex {
+                    tuple: TupleLocalId(2),
+                    index: 1,
+                },
+                r#"
+data::graph::CustomInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                CustomInstruction::CustomField {
+                    source: CustomLocal::new(
+                        CustomLocalId(2),
+                        CustomValueShape::new(CustomTypeId(3), CustomValueShapeId(4)),
+                    ),
+                    index: 1,
+                },
+                r#"
+data::graph::CustomInstruction::CustomField {
+    source: data::graph::CustomLocal {
+        id: data::graph::CustomLocalId(2),
+        shape: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+    index: 1,
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                CustomInstruction::ListIndex {
+                    list: CustomListLocalId(2),
+                    index: 1,
+                },
+                r#"
+data::graph::CustomInstruction::ListIndex {
+    list: data::graph::CustomListLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
+            ),
+        ];
+        for (instruction, expected) in cases {
+            assert_eq!(Rust::expression(&instruction), expected);
         }
     }
 }
@@ -148,7 +347,7 @@ pub fn main() {
             let function = plan.custom_function(plan.custom_function_id(0));
             let graph = function.body().function_body().block_graph();
             let mut first = true;
-            for instruction in graph.blocks().iter().flat_map(|block| block.instructions()) {
+            for instruction in graph.blocks().flat_map(|block| block.instructions()) {
                 if let ProfiledInstructionKind::Custom(instruction) = instruction.kind() {
                     if first {
                         first = false;

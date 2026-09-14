@@ -4,6 +4,7 @@ mod function;
 mod list;
 mod parameter;
 mod scalar;
+mod schema;
 mod sequence;
 mod tuple;
 
@@ -293,12 +294,12 @@ impl HostTypeDescriptor {
 
     pub(crate) fn resolve(
         &self,
-        type_arguments: &[crate::plan::ValueType],
+        type_argument: &impl Fn(usize) -> Option<crate::plan::ValueType>,
     ) -> Option<crate::plan::ValueType> {
         use crate::plan::ValueType;
 
         match self {
-            Self::Parameter(index) => type_arguments.get(*index).cloned(),
+            Self::Parameter(index) => type_argument(*index),
             Self::Int => Some(ValueType::Int),
             Self::Float => Some(ValueType::Float),
             Self::String => Some(ValueType::String),
@@ -306,11 +307,11 @@ impl HostTypeDescriptor {
             Self::UtfCodepoint => Some(ValueType::UtfCodepoint),
             Self::Bool => Some(ValueType::Bool),
             Self::Nil => Some(ValueType::Nil),
-            Self::List(item) => Some(ValueType::List(Box::new(item.resolve(type_arguments)?))),
+            Self::List(item) => Some(ValueType::List(Box::new(item.resolve(type_argument)?))),
             Self::Tuple(elements) => Some(ValueType::Tuple(
                 elements
                     .iter()
-                    .map(|element| element.resolve(type_arguments))
+                    .map(|element| element.resolve(type_argument))
                     .collect::<Option<Vec<_>>>()?,
             )),
             Self::Function { arguments, return_ } | Self::OpaqueFunction { arguments, return_ } => {
@@ -318,9 +319,9 @@ impl HostTypeDescriptor {
                     crate::plan::FunctionType::new(
                         arguments
                             .iter()
-                            .map(|argument| argument.resolve(type_arguments))
+                            .map(|argument| argument.resolve(type_argument))
                             .collect::<Option<Vec<_>>>()?,
-                        return_.resolve(type_arguments)?,
+                        return_.resolve(type_argument)?,
                     ),
                 )))
             }
@@ -333,7 +334,7 @@ impl HostTypeDescriptor {
                     ),
                     arguments
                         .iter()
-                        .map(|argument| argument.resolve(type_arguments))
+                        .map(|argument| argument.resolve(type_argument))
                         .collect::<Option<Vec<_>>>()?,
                 )))
             }
@@ -346,7 +347,7 @@ impl HostTypeDescriptor {
                     ),
                     arguments
                         .iter()
-                        .map(|argument| argument.resolve(type_arguments))
+                        .map(|argument| argument.resolve(type_argument))
                         .collect::<Option<Vec<_>>>()?,
                 )))
             }
@@ -355,12 +356,12 @@ impl HostTypeDescriptor {
 
     pub(crate) fn resolve_sealed(
         &self,
-        type_arguments: &[crate::plan::ValueType],
+        type_argument: &impl Fn(usize) -> crate::plan::ValueType,
     ) -> crate::plan::ValueType {
         use crate::plan::ValueType;
 
         match self {
-            Self::Parameter(index) => type_arguments[*index].clone(),
+            Self::Parameter(index) => type_argument(*index),
             Self::Int => ValueType::Int,
             Self::Float => ValueType::Float,
             Self::String => ValueType::String,
@@ -368,20 +369,20 @@ impl HostTypeDescriptor {
             Self::UtfCodepoint => ValueType::UtfCodepoint,
             Self::Bool => ValueType::Bool,
             Self::Nil => ValueType::Nil,
-            Self::List(item) => ValueType::List(Box::new(item.resolve_sealed(type_arguments))),
+            Self::List(item) => ValueType::List(Box::new(item.resolve_sealed(type_argument))),
             Self::Tuple(elements) => ValueType::Tuple(
                 elements
                     .iter()
-                    .map(|element| element.resolve_sealed(type_arguments))
+                    .map(|element| element.resolve_sealed(type_argument))
                     .collect(),
             ),
             Self::Function { arguments, return_ } | Self::OpaqueFunction { arguments, return_ } => {
                 ValueType::Function(Box::new(crate::plan::FunctionType::new(
                     arguments
                         .iter()
-                        .map(|argument| argument.resolve_sealed(type_arguments))
+                        .map(|argument| argument.resolve_sealed(type_argument))
                         .collect(),
-                    return_.resolve_sealed(type_arguments),
+                    return_.resolve_sealed(type_argument),
                 )))
             }
             Self::Custom { schema, arguments } => ValueType::Custom(crate::plan::CustomType::new(
@@ -392,7 +393,7 @@ impl HostTypeDescriptor {
                 ),
                 arguments
                     .iter()
-                    .map(|argument| argument.resolve_sealed(type_arguments))
+                    .map(|argument| argument.resolve_sealed(type_argument))
                     .collect(),
             )),
             Self::External { schema, arguments } => {
@@ -404,7 +405,7 @@ impl HostTypeDescriptor {
                     ),
                     arguments
                         .iter()
-                        .map(|argument| argument.resolve_sealed(type_arguments))
+                        .map(|argument| argument.resolve_sealed(type_argument))
                         .collect(),
                 ))
             }
@@ -726,6 +727,7 @@ mod tests {
         };
 
         let arguments = [ValueType::String, ValueType::Bool];
+        let resolve = |index| arguments.get(index).cloned();
         let custom_schema =
             HostCustomTypeSchema::new("domain", "domain/box", "Boxed", 1, Vec::new());
         let external_schema =
@@ -788,17 +790,20 @@ mod tests {
                 vec![ValueType::Bool],
             )),
         ]);
-        assert_eq!(descriptor.resolve(&arguments), Some(expected.clone()));
-        assert_eq!(descriptor.resolve_sealed(&arguments), expected);
-        assert_eq!(HostTypeDescriptor::Parameter(2).resolve(&arguments), None);
+        assert_eq!(descriptor.resolve(&resolve), Some(expected.clone()));
+        assert_eq!(
+            descriptor.resolve_sealed(&|index| arguments[index].clone()),
+            expected
+        );
+        assert_eq!(HostTypeDescriptor::Parameter(2).resolve(&resolve), None);
 
         let missing = HostTypeDescriptor::Parameter(2);
         assert_eq!(
-            HostTypeDescriptor::List(Box::new(missing.clone())).resolve(&arguments),
+            HostTypeDescriptor::List(Box::new(missing.clone())).resolve(&resolve),
             None,
         );
         assert_eq!(
-            HostTypeDescriptor::Tuple(vec![missing.clone()].into_boxed_slice()).resolve(&arguments),
+            HostTypeDescriptor::Tuple(vec![missing.clone()].into_boxed_slice()).resolve(&resolve),
             None,
         );
         assert_eq!(
@@ -806,7 +811,7 @@ mod tests {
                 arguments: vec![missing.clone()].into_boxed_slice(),
                 return_: Box::new(HostTypeDescriptor::Int),
             }
-            .resolve(&arguments),
+            .resolve(&resolve),
             None,
         );
         assert_eq!(
@@ -814,7 +819,7 @@ mod tests {
                 arguments: Box::new([]),
                 return_: Box::new(missing.clone()),
             }
-            .resolve(&arguments),
+            .resolve(&resolve),
             None,
         );
         assert_eq!(
@@ -822,7 +827,7 @@ mod tests {
                 schema: HostCustomTypeSchema::new("domain", "domain/box", "Boxed", 1, Vec::new(),),
                 arguments: vec![missing.clone()].into_boxed_slice(),
             }
-            .resolve(&arguments),
+            .resolve(&resolve),
             None,
         );
         assert_eq!(
@@ -830,7 +835,7 @@ mod tests {
                 schema: HostExternalTypeSchema::new("domain", "domain/resource", "Resource", 1,),
                 arguments: vec![missing].into_boxed_slice(),
             }
-            .resolve(&arguments),
+            .resolve(&resolve),
             None,
         );
     }

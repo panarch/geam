@@ -254,7 +254,7 @@ where
     ) -> Option<HostScopedValue> {
         let conversion = conversions.get(id);
         if let Some(source) = value.find_source(|source| {
-            (self.call.runtime.owns_stored(source) && source.type_() == conversion.type_())
+            (self.call.runtime.owns_stored(source) && conversion.matches_type(source.type_()))
                 .then(|| source.clone_retained())
         }) {
             return Some(HostScopedValue::Value(

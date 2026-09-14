@@ -2,6 +2,7 @@ pub mod execution;
 mod host;
 pub mod module;
 mod source;
+mod text;
 mod value_shape;
 mod value_type;
 
@@ -108,6 +109,7 @@ pub(crate) use module::{
 pub(crate) use module::{StepKind, StoredListExpr};
 pub(crate) use source::FunctionCallTarget;
 pub use source::{EchoSite, HostCallSite, PanicSite, SourceContext, SourceSpan};
+pub(crate) use text::Text;
 pub(crate) use value_shape::{
     CustomConstructorRefinement, CustomValueShape, FunctionShape, ValueRepresentation, ValueShape,
     ValueStorageShape,

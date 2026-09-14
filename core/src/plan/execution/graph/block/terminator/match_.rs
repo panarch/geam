@@ -1,12 +1,14 @@
 use super::{Edge, MatchEdge, MatchPattern};
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::graph::ParamLocal;
+use crate::plan::execution::prepared::rust::{Emit, Rust};
 
-pub(crate) struct Match {
-    subject: ParamLocal,
-    pattern: MatchPattern,
-    success: MatchEdge,
-    failure: Edge,
+#[derive(Clone)]
+pub struct Match {
+    pub subject: ParamLocal,
+    pub pattern: MatchPattern,
+    pub success: MatchEdge,
+    pub failure: Edge,
 }
 
 impl Match {
@@ -51,6 +53,26 @@ impl Explain for Match {
         context.write(self.success());
         context.push_str(" failure=");
         context.write(self.failure());
+    }
+}
+
+impl Emit for Match {
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            subject,
+            pattern,
+            success,
+            failure,
+        } = self;
+        output.structure(
+            "graph::Match",
+            &[
+                ("subject", subject),
+                ("pattern", pattern),
+                ("success", success),
+                ("failure", failure),
+            ],
+        );
     }
 }
 
@@ -106,7 +128,6 @@ pub fn main() {
             .body()
             .block_graph()
             .blocks()
-            .iter()
             .map(|block| block.terminator())
             .collect()
     }

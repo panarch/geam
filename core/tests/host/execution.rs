@@ -66,7 +66,6 @@ pub fn main() {
                     .host_template()
                     .expect("dependency should retain host functions")
                     .name()
-                    .as_str()
             })
             .collect::<Vec<_>>(),
         ["subtract", "add", "unused"],

@@ -1,38 +1,40 @@
 use super::{CustomTypeId, ExternalTypeId, FunctionType};
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct ValueShapeId(usize);
+pub struct ValueShapeId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct CustomValueShapeId(usize);
+pub struct CustomValueShapeId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CustomConstructorRefinement {
+pub enum CustomConstructorRefinement {
     Any,
     Exact(usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct CustomValueShape {
-    type_id: CustomTypeId,
-    shape_id: CustomValueShapeId,
+pub struct CustomValueShape {
+    pub type_id: CustomTypeId,
+    pub shape_id: CustomValueShapeId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct FunctionShape {
-    shape_id: ValueShapeId,
-    type_: FunctionType,
+pub struct FunctionShape {
+    pub shape_id: ValueShapeId,
+    pub type_: FunctionType,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CustomValueShapeDescriptor {
-    type_id: CustomTypeId,
-    arguments: Box<[ValueShapeId]>,
-    constructor: CustomConstructorRefinement,
+pub struct CustomValueShapeDescriptor {
+    pub type_id: CustomTypeId,
+    pub arguments: Table<ValueShapeId>,
+    pub constructor: CustomConstructorRefinement,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ValueShapeDescriptor {
+pub enum ValueShapeDescriptor {
     Parameter(crate::plan::TypeParameterId),
     Int,
     Float,
@@ -41,23 +43,21 @@ pub(crate) enum ValueShapeDescriptor {
     UtfCodepoint,
     Bool,
     Nil,
-    Tuple(Box<[ValueShapeId]>),
+    Tuple(Table<ValueShapeId>),
     List(ValueShapeId),
     Function {
-        arguments: Box<[ValueShapeId]>,
+        arguments: Table<ValueShapeId>,
         return_: ValueShapeId,
     },
     Custom(CustomValueShapeId),
     External(ExternalTypeId),
 }
 
-pub(crate) struct ValueShapeTable {
+pub struct ValueShapeTable {
     // The runtime trusts lowered refinements, but the execution IR keeps their canonical graph.
-    #[cfg_attr(not(test), allow(dead_code))]
-    shapes: Vec<ValueShapeDescriptor>,
-    shape_types: Vec<super::ValueType>,
-    #[cfg_attr(not(test), allow(dead_code))]
-    custom_shapes: Vec<CustomValueShapeDescriptor>,
+    pub shapes: Table<ValueShapeDescriptor>,
+    pub shape_types: Table<super::ValueType>,
+    pub custom_shapes: Table<CustomValueShapeDescriptor>,
 }
 
 impl ValueShapeId {
@@ -113,9 +113,9 @@ impl ValueShapeTable {
         custom_shapes: Vec<CustomValueShapeDescriptor>,
     ) -> Self {
         Self {
-            shapes,
-            shape_types,
-            custom_shapes,
+            shapes: shapes.into(),
+            shape_types: shape_types.into(),
+            custom_shapes: custom_shapes.into(),
         }
     }
 
@@ -142,7 +142,7 @@ impl CustomValueShapeDescriptor {
     ) -> Self {
         Self {
             type_id,
-            arguments,
+            arguments: arguments.into(),
             constructor,
         }
     }
@@ -160,6 +160,114 @@ impl CustomValueShapeDescriptor {
     #[cfg(test)]
     pub(crate) fn constructor(&self) -> CustomConstructorRefinement {
         self.constructor
+    }
+}
+
+impl Emit for ValueShapeId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("type_::ValueShapeId", &[field_0]);
+    }
+}
+
+impl Emit for CustomValueShapeId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("type_::CustomValueShapeId", &[field_0]);
+    }
+}
+
+impl Emit for CustomConstructorRefinement {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Any => output.path("type_::CustomConstructorRefinement::Any"),
+            Self::Exact(field_0) => {
+                output.call("type_::CustomConstructorRefinement::Exact", &[field_0])
+            }
+        }
+    }
+}
+
+impl Emit for CustomValueShape {
+    fn emit(&self, output: &mut Rust) {
+        let Self { type_id, shape_id } = self;
+        output.structure(
+            "type_::CustomValueShape",
+            &[("type_id", type_id), ("shape_id", shape_id)],
+        );
+    }
+}
+
+impl Emit for FunctionShape {
+    fn emit(&self, output: &mut Rust) {
+        let Self { shape_id, type_ } = self;
+        output.structure(
+            "type_::FunctionShape",
+            &[("shape_id", shape_id), ("type_", type_)],
+        );
+    }
+}
+
+impl Emit for CustomValueShapeDescriptor {
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            type_id,
+            arguments,
+            constructor,
+        } = self;
+        output.structure(
+            "type_::CustomValueShapeDescriptor",
+            &[
+                ("type_id", type_id),
+                ("arguments", arguments),
+                ("constructor", constructor),
+            ],
+        );
+    }
+}
+
+impl Emit for ValueShapeDescriptor {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Parameter(field_0) => {
+                output.call("type_::ValueShapeDescriptor::Parameter", &[field_0])
+            }
+            Self::Int => output.path("type_::ValueShapeDescriptor::Int"),
+            Self::Float => output.path("type_::ValueShapeDescriptor::Float"),
+            Self::String => output.path("type_::ValueShapeDescriptor::String"),
+            Self::BitArray => output.path("type_::ValueShapeDescriptor::BitArray"),
+            Self::UtfCodepoint => output.path("type_::ValueShapeDescriptor::UtfCodepoint"),
+            Self::Bool => output.path("type_::ValueShapeDescriptor::Bool"),
+            Self::Nil => output.path("type_::ValueShapeDescriptor::Nil"),
+            Self::Tuple(field_0) => output.call("type_::ValueShapeDescriptor::Tuple", &[field_0]),
+            Self::List(field_0) => output.call("type_::ValueShapeDescriptor::List", &[field_0]),
+            Self::Function { arguments, return_ } => output.structure(
+                "type_::ValueShapeDescriptor::Function",
+                &[("arguments", arguments), ("return_", return_)],
+            ),
+            Self::Custom(field_0) => output.call("type_::ValueShapeDescriptor::Custom", &[field_0]),
+            Self::External(field_0) => {
+                output.call("type_::ValueShapeDescriptor::External", &[field_0])
+            }
+        }
+    }
+}
+
+impl Emit for ValueShapeTable {
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            shapes,
+            shape_types,
+            custom_shapes,
+        } = self;
+        output.structure(
+            "type_::ValueShapeTable",
+            &[
+                ("shapes", shapes),
+                ("shape_types", shape_types),
+                ("custom_shapes", custom_shapes),
+            ],
+        );
     }
 }
 

@@ -145,16 +145,16 @@ fn lower_plain(
     let program = ExecutionProgram {
         common: std::sync::Arc::new(ExecutionProgramCommon {
             root,
-            modules: module_contexts.into_boxed_slice(),
+            modules: module_contexts.into(),
             main,
-            constants: lowered.constants,
+            constants: Box::new(lowered.constants).into(),
             function_parameters: std::sync::Arc::new(lowered.function_parameters),
             list_types: std::sync::Arc::new(lowered.list_types),
             custom_types: std::sync::Arc::new(lowered.custom_types),
             external_types: std::sync::Arc::new(lowered.external_types),
-            value_shapes: lowered.value_shapes,
+            value_shapes: Box::new(lowered.value_shapes).into(),
         }),
-        functions: lowered.functions,
+        functions: Box::new(lowered.functions).into(),
     };
     (program, entry_ids)
 }
@@ -301,7 +301,10 @@ mod tests {
 
         assert_eq!(execution.program.common.root, crate::plan::ModuleId::new(0));
         assert_eq!(execution.program.common.modules.len(), 1);
-        assert_eq!(execution.program.common.modules[0].module, "sample");
+        assert_eq!(
+            execution.program.common.modules[0].module.as_str(),
+            "sample"
+        );
         assert_eq!(
             execution.program.common.modules[0].source_context,
             Some(context),

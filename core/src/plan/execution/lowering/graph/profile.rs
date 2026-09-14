@@ -4,16 +4,21 @@ use crate::plan::execution::function::{
     ProfiledRuntimeFunctionId, RuntimeFunctionFunctionTarget,
 };
 use crate::plan::execution::graph::{
-    ProfiledBlock, ProfiledBlockGraph, ProfiledInstruction, ProfiledInstructionKind,
+    ProfiledBlockGraph, ProfiledInstruction, ProfiledInstructionKind,
 };
 use std::convert::Infallible;
 
 pub(in crate::plan::execution::lowering) fn seal_plain_block_graph(
     graph: ProfiledBlockGraph<HostedExecutionGraph>,
 ) -> Representability<ProfiledBlockGraph<Infallible>> {
-    let (entry, blocks) = graph.into_parts();
-    Representability::collect(blocks.into_vec().into_iter().map(seal_plain_block))
-        .map(|blocks| ProfiledBlockGraph::from_parts(entry, blocks))
+    let (entry, blocks, params, instructions) = graph.into_parts();
+    Representability::collect(
+        instructions
+            .into_vec()
+            .into_iter()
+            .map(seal_plain_instruction),
+    )
+    .map(|instructions| ProfiledBlockGraph::from_tables(entry, blocks, params, instructions.into()))
 }
 
 pub(in crate::plan::execution::lowering) fn seal_plain_runtime_function_id(
@@ -74,19 +79,6 @@ fn seal_plain_core_runtime_function_id(
             RuntimeFunctionFunctionTarget::External(_) => Representability::Uninhabited,
         },
     }
-}
-
-fn seal_plain_block(
-    block: ProfiledBlock<HostedExecutionGraph>,
-) -> Representability<ProfiledBlock<Infallible>> {
-    let (params, instructions, terminator) = block.into_parts();
-    Representability::collect(
-        instructions
-            .into_vec()
-            .into_iter()
-            .map(seal_plain_instruction),
-    )
-    .map(|instructions| ProfiledBlock::new(params.into_vec(), instructions, terminator))
 }
 
 fn seal_plain_instruction(
@@ -219,7 +211,7 @@ mod tests {
             std::mem::discriminant(&seal_plain_instruction_kind(
                 ProfiledInstructionKind::ExternalList(ExternalListInstruction::new(
                     list_type,
-                    TypedListInstruction::Value(Box::new([])),
+                    TypedListInstruction::Value(Vec::new().into()),
                 ),)
             )),
             std::mem::discriminant(

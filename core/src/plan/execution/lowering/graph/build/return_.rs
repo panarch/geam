@@ -712,7 +712,7 @@ mod tests {
     fn switch_targets(expected: ExpectedSwitch, terminator: &Terminator) -> (BlockId, BlockId) {
         match (expected, terminator) {
             (ExpectedSwitch::Int, Terminator::IntSwitch(switch)) => {
-                assert_eq!(switch.clauses()[0].0, 1.into());
+                assert_eq!(switch.clauses()[0].0.materialize(), 1.into());
                 (switch.clauses()[0].1.target(), switch.fallback().target())
             }
             (ExpectedSwitch::Float, Terminator::FloatSwitch(switch)) => {
@@ -720,7 +720,7 @@ mod tests {
                 (switch.clauses()[0].1.target(), switch.fallback().target())
             }
             (ExpectedSwitch::String, Terminator::StringSwitch(switch)) => {
-                assert_eq!(switch.clauses()[0].0, "one");
+                assert_eq!(switch.clauses()[0].0.as_str(), "one");
                 (switch.clauses()[0].1.target(), switch.fallback().target())
             }
             _ => panic!("unexpected switch terminator"),

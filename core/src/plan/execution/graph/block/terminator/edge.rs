@@ -2,18 +2,23 @@ use super::super::BlockId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::graph::LocalLabel;
 use crate::plan::execution::graph::ParamLocal;
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 
-pub(crate) struct Edge {
-    target: BlockId,
-    args: Box<[ParamLocal]>,
+#[derive(Clone)]
+pub struct Edge {
+    pub target: BlockId,
+    pub args: Table<ParamLocal>,
 }
 
-pub(crate) struct MatchEdge {
-    target: BlockId,
-    args: Box<[MatchEdgeArgument]>,
+#[derive(Clone)]
+pub struct MatchEdge {
+    pub target: BlockId,
+    pub args: Table<MatchEdgeArgument>,
 }
 
-pub(crate) enum MatchEdgeArgument {
+#[derive(Clone)]
+pub enum MatchEdgeArgument {
     Binding(usize),
     Value(ParamLocal),
 }
@@ -22,7 +27,7 @@ impl Edge {
     pub(in crate::plan::execution) fn new(target: BlockId, args: Vec<ParamLocal>) -> Self {
         Self {
             target,
-            args: args.into_boxed_slice(),
+            args: args.into(),
         }
     }
 
@@ -39,7 +44,7 @@ impl MatchEdge {
     pub(in crate::plan::execution) fn new(target: BlockId, args: Vec<MatchEdgeArgument>) -> Self {
         Self {
             target,
-            args: args.into_boxed_slice(),
+            args: args.into(),
         }
     }
 
@@ -88,6 +93,29 @@ impl Explain for MatchEdge {
     }
 }
 
+impl Emit for Edge {
+    fn emit(&self, output: &mut Rust) {
+        let Self { target, args } = self;
+        output.structure("graph::Edge", &[("target", target), ("args", args)]);
+    }
+}
+
+impl Emit for MatchEdge {
+    fn emit(&self, output: &mut Rust) {
+        let Self { target, args } = self;
+        output.structure("graph::MatchEdge", &[("target", target), ("args", args)]);
+    }
+}
+
+impl Emit for MatchEdgeArgument {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Binding(field_0) => output.call("graph::MatchEdgeArgument::Binding", &[field_0]),
+            Self::Value(field_0) => output.call("graph::MatchEdgeArgument::Value", &[field_0]),
+        }
+    }
+}
+
 #[cfg(test)]
 mod edge_explain_tests {
     use super::super::Terminator;
@@ -121,7 +149,9 @@ pub fn main() {
                 plan.int_function(IntFunctionId(0))
                     .body()
                     .block_graph()
-                    .blocks()[0]
+                    .blocks()
+                    .next()
+                    .unwrap()
                     .terminator(),
             );
         });
@@ -140,7 +170,9 @@ pub fn main() {
                 .int_function(IntFunctionId(0))
                 .body()
                 .block_graph()
-                .blocks()[0]
+                .blocks()
+                .next()
+                .unwrap()
                 .terminator();
             let (true_, false_) = bool_branch_edges(terminator);
             let mut context = explain::ExplainContext::new(plan, output);
@@ -180,7 +212,9 @@ pub fn main() {
                 plan.int_function(IntFunctionId(0))
                     .body()
                     .block_graph()
-                    .blocks()[0]
+                    .blocks()
+                    .next()
+                    .unwrap()
                     .terminator(),
             );
         });
@@ -199,7 +233,9 @@ pub fn main() {
                 .int_function(IntFunctionId(0))
                 .body()
                 .block_graph()
-                .blocks()[0]
+                .blocks()
+                .next()
+                .unwrap()
                 .terminator();
             let mut context = explain::ExplainContext::new(plan, output);
             context.write(match_success_edge(terminator));

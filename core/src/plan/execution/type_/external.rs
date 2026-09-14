@@ -1,20 +1,28 @@
+use super::NominalTypeMetadata;
 use crate::plan;
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 
 #[derive(Clone)]
-pub(crate) struct ExternalTypeTable {
-    types: Vec<plan::ExternalType>,
+pub struct ExternalTypeTable {
+    pub types: Table<NominalTypeMetadata>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct ExternalTypeId(usize);
+pub struct ExternalTypeId(pub usize);
 
 impl ExternalTypeTable {
     pub(in crate::plan::execution) fn new(types: Vec<plan::ExternalType>) -> Self {
-        Self { types }
+        Self {
+            types: types
+                .iter()
+                .map(NominalTypeMetadata::from_external)
+                .collect(),
+        }
     }
 
     pub(crate) fn value_type(&self, id: ExternalTypeId) -> plan::ExternalType {
-        self.types[id.index()].clone()
+        self.types[id.index()].external_type()
     }
 
     #[cfg(test)]
@@ -36,6 +44,20 @@ impl ExternalTypeId {
 
     pub(crate) fn index(self) -> usize {
         self.0
+    }
+}
+
+impl Emit for ExternalTypeTable {
+    fn emit(&self, output: &mut Rust) {
+        let Self { types } = self;
+        output.structure("type_::ExternalTypeTable", &[("types", types)]);
+    }
+}
+
+impl Emit for ExternalTypeId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("type_::ExternalTypeId", &[field_0]);
     }
 }
 

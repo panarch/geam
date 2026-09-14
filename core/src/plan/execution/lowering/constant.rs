@@ -1,3 +1,5 @@
+mod table;
+
 use super::specialization::{
     SpecializationKey, SpecializedCustomValueShape, SpecializedFunctionShape, SpecializedValueShape,
 };
@@ -9,12 +11,13 @@ use crate::plan::execution::constant::{
 };
 use crate::plan::module::ConstantInstantiation;
 use std::collections::HashMap;
+use table::ConstantTableBuilder;
 
 #[derive(Default)]
 pub(super) struct ConstantLowering {
     indices: HashMap<ConstantInstantiation, usize>,
     owners: HashMap<ConstantLocation, SpecializationKey>,
-    table: ConstantTable,
+    table: ConstantTableBuilder<execution::function::HostedExecutionGraph>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -52,98 +55,216 @@ struct ConstantLocation {
 
 trait LoweredConstantValue: ConstantValue {
     const FAMILY: ConstantFamily;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>>;
 }
 
 impl LoweredConstantValue for execution::graph::IntLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::Int;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.ints
+    }
 }
 
 impl LoweredConstantValue for execution::graph::StringLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::String;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.strings
+    }
 }
 
 impl LoweredConstantValue for execution::graph::BitArrayLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::BitArray;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.bit_arrays
+    }
 }
 
 impl LoweredConstantValue for execution::graph::CustomLocal {
     const FAMILY: ConstantFamily = ConstantFamily::Custom;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.customs
+    }
 }
 
 impl LoweredConstantValue for execution::graph::FloatLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::Float;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.floats
+    }
 }
 
 impl LoweredConstantValue for execution::graph::BoolLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::Bool;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.bools
+    }
 }
 
 impl LoweredConstantValue for execution::graph::NilLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::Nil;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.nils
+    }
 }
 
 impl LoweredConstantValue for execution::graph::TupleLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::Tuple;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.tuples
+    }
 }
 
 impl LoweredConstantValue for execution::graph::ParameterListLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::ParameterList;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.parameter_lists
+    }
 }
 
 impl LoweredConstantValue for execution::graph::ParameterListListLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::ParameterListList;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.parameter_list_lists
+    }
 }
 
 impl LoweredConstantValue for execution::graph::IntListLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::IntList;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.int_lists
+    }
 }
 
 impl LoweredConstantValue for execution::graph::StringListLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::StringList;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.string_lists
+    }
 }
 
 impl LoweredConstantValue for execution::graph::BitArrayListLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::BitArrayList;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.bit_array_lists
+    }
 }
 
 impl LoweredConstantValue for execution::graph::UtfCodepointListLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::UtfCodepointList;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.utf_codepoint_lists
+    }
 }
 
 impl LoweredConstantValue for execution::graph::CustomListLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::CustomList;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.custom_lists
+    }
 }
 
 impl LoweredConstantValue for execution::graph::ExternalListLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::ExternalList;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.external_lists
+    }
 }
 
 impl LoweredConstantValue for execution::graph::FloatListLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::FloatList;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.float_lists
+    }
 }
 
 impl LoweredConstantValue for execution::graph::BoolListLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::BoolList;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.bool_lists
+    }
 }
 
 impl LoweredConstantValue for execution::graph::NilListLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::NilList;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.nil_lists
+    }
 }
 
 impl LoweredConstantValue for execution::graph::TupleListLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::TupleList;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.tuple_lists
+    }
 }
 
 impl LoweredConstantValue for execution::graph::ListListLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::ListList;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.list_lists
+    }
 }
 
 impl LoweredConstantValue for execution::graph::FunctionListLocalId {
     const FAMILY: ConstantFamily = ConstantFamily::FunctionList;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.function_lists
+    }
 }
 
 impl LoweredConstantValue for execution::graph::FunctionLocal {
     const FAMILY: ConstantFamily = ConstantFamily::Function;
+    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
+        table: &mut ConstantTableBuilder<Graph>,
+    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
+        &mut table.functions
+    }
 }
 
 impl ConstantLowering {
@@ -172,7 +293,7 @@ impl ConstantLowering {
     pub(super) fn finish_plain(
         mut self,
     ) -> SpecializationOutcome<ProfiledConstantTable<std::convert::Infallible>> {
-        let mut sealed = ProfiledConstantTable::default();
+        let mut sealed = ConstantTableBuilder::default();
         let mut outcome = SpecializationOutcome::Complete(());
 
         outcome = outcome.zip_with(
@@ -264,16 +385,16 @@ impl ConstantLowering {
             |(), ()| (),
         );
 
-        outcome.map(|()| sealed)
+        outcome.map(|()| sealed.finish())
     }
 
     pub(super) fn finish_hosted(self) -> ConstantTable {
-        self.table
+        self.table.finish()
     }
 
     fn seal_plain_family<Return>(
         &mut self,
-        sealed: &mut ProfiledConstantTable<std::convert::Infallible>,
+        sealed: &mut ConstantTableBuilder<std::convert::Infallible>,
     ) -> SpecializationOutcome<()>
     where
         Return: LoweredConstantValue,
@@ -304,9 +425,9 @@ impl ConstantLowering {
 fn seal_plain_constant_program<Return>(
     program: ProfiledConstantProgram<Return, execution::function::HostedExecutionGraph>,
 ) -> specialization::Representability<ProfiledConstantProgram<Return, std::convert::Infallible>> {
-    let (block_graph, returns) = program.into_parts();
+    let (block_graph, returns, shape) = program.into_parts();
     graph::seal_plain_block_graph(block_graph)
-        .map(|block_graph| ProfiledConstantProgram::from_parts(block_graph, returns.into_vec()))
+        .map(|block_graph| ProfiledConstantProgram::from_parts(block_graph, returns, shape))
 }
 
 impl LoweringContext {
@@ -334,7 +455,8 @@ impl LoweringContext {
 
         let value = materialize(self.constant_templates.get(key.module()));
         let owner = self.current_specialization.clone();
-        graph::lower_constant_graph(&value, self, lower)
+        let shape = SpecializedValueShape::instantiate(&instantiation.shape(), &self.substitution);
+        graph::lower_constant_graph(&value, &shape, self, lower)
             .map(|program| self.constants.insert(key, owner, program))
     }
 
@@ -863,10 +985,16 @@ impl LoweringContext {
 
         let value = materialize(self.constant_templates.get(key.module()));
         let owner = self.current_specialization.clone();
-        graph::lower_constant_graph(&value, self, |expression, cursor, graph, context| {
-            lower(expression, cursor, graph, context)
-                .map(|flow| flow.map(graph::DraftFunctionValue::into_function))
-        })
+        let shape = SpecializedValueShape::instantiate(&instantiation.shape(), &self.substitution);
+        graph::lower_constant_graph(
+            &value,
+            &shape,
+            self,
+            |expression, cursor, graph, context| {
+                lower(expression, cursor, graph, context)
+                    .map(|flow| flow.map(graph::DraftFunctionValue::into_function))
+            },
+        )
         .map(|program| self.constants.insert(key, owner, program))
     }
 
@@ -1643,7 +1771,7 @@ mod tests {
             instruction.output().local(),
             &ParamLocal::Int(IntLocalId(0))
         );
-        assert_eq!(int_literal(instruction), &1.into());
+        assert_eq!(int_literal(instruction), 1.into());
         assert_eq!(returned_int(program, block.terminator()), IntLocalId(0));
 
         let main = plan.int_function(crate::plan::execution::function::IntFunctionId(0));
@@ -1737,7 +1865,13 @@ pub fn main() {
         );
 
         let main = plan.tuple_function(crate::plan::execution::function::TupleFunctionId(0));
-        let instructions = main.body().block_graph().blocks()[0].instructions();
+        let instructions = main
+            .body()
+            .block_graph()
+            .blocks()
+            .next()
+            .unwrap()
+            .instructions();
         assert_eq!(
             instructions[..3]
                 .iter()
@@ -1956,7 +2090,7 @@ pub fn main() { selected(1) }
     fn external_function_reference_guard_rejects_other_instructions() {
         external_function_reference(&ProfiledInstruction::<HostedExecutionGraph>::new(
             ParamSlot::new(ParamLocal::Int(IntLocalId(0)), ValueShapeId::new(0)),
-            ProfiledInstructionKind::Int(IntInstruction::Value(1.into())),
+            ProfiledInstructionKind::Int(IntInstruction::Value(BigInt::from(1).into())),
         ));
     }
 
@@ -1969,16 +2103,16 @@ pub fn main() { selected(1) }
                     2,
                     ExternalTypeId::new(0),
                 )),
-                captures: Box::new([]),
+                captures: Vec::new().into(),
             });
         external_function_reference(&instruction);
     }
 
     fn int_literal<Graph: ExecutionGraphProfile>(
         instruction: &ProfiledInstruction<Graph>,
-    ) -> &BigInt {
+    ) -> BigInt {
         match instruction.kind() {
-            ProfiledInstructionKind::Int(IntInstruction::Value(value)) => value,
+            ProfiledInstructionKind::Int(IntInstruction::Value(value)) => value.materialize(),
             _ => panic!("constant fixture should contain an Int literal"),
         }
     }
@@ -2076,7 +2210,8 @@ pub fn main() { selected(1) }
                     Terminator::Exit(BlockGraphExitId::new(0)),
                 )],
             ),
-            vec![FunctionLocal::External(local)],
+            vec![FunctionLocal::External(local)].into(),
+            crate::plan::execution::type_::ValueShapeId::new(0),
         );
         let mut lowering = ConstantLowering::default();
         let id = lowering.table.push(program);

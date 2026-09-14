@@ -1129,7 +1129,7 @@ fn seal_plain_profiled_function_body<Return, TailCall>(
 ) -> Representability<ProfiledFunctionBody<Return, TailCall, Infallible>> {
     let (graph, exits) = body.into_parts();
     crate::plan::execution::lowering::graph::seal_plain_block_graph(graph)
-        .map(|graph| ProfiledFunctionBody::from_parts(graph, exits.into_vec()))
+        .map(|graph| ProfiledFunctionBody::from_parts(graph, exits))
 }
 
 fn profile_functions<Profile, Id, Body>(
@@ -1203,22 +1203,22 @@ where
         .collect()
 }
 
-fn sort_functions<Value>(
+fn sort_functions<Value: 'static>(
     functions: Vec<(usize, LoweredSpecialization<Value>)>,
     erased: &mut HashSet<SpecializationKey>,
-) -> Vec<Value> {
+) -> crate::plan::execution::storage::Table<Value> {
     sort_inhabited(functions, |index| *index, erased)
         .into_iter()
         .map(|(_, function)| function)
         .collect()
 }
 
-fn sort_list_functions<Id, Value>(
+fn sort_list_functions<Id: 'static, Value: 'static>(
     functions: Vec<(Id, LoweredSpecialization<Value>)>,
     index: fn(&Id) -> usize,
     erased: &mut HashSet<SpecializationKey>,
-) -> Vec<(Id, Value)> {
-    sort_inhabited(functions, index, erased)
+) -> crate::plan::execution::storage::Table<(Id, Value)> {
+    sort_inhabited(functions, index, erased).into()
 }
 
 fn sort_inhabited<Id, Value>(

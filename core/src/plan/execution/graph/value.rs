@@ -1,7 +1,7 @@
-mod function;
-mod list;
-mod local;
-mod param;
+pub(in crate::plan::execution) mod function;
+pub(in crate::plan::execution) mod list;
+pub(in crate::plan::execution) mod local;
+pub(in crate::plan::execution) mod param;
 
 pub(crate) use function::{
     BitArrayFunctionLocalId, BitArrayListFunctionLocalId, BoolFunctionLocalId,
@@ -595,10 +595,7 @@ mod explain_tests {
             "%function.external#34",
         );
         let function_function_type = FunctionFunctionType::from_shapes(
-            FunctionType::new(
-                Vec::new(),
-                ValueType::Function(Box::new(value_function_type.clone())),
-            ),
+            FunctionType::new(Vec::new(), ValueType::Function(value_function_type.clone())),
             Vec::new(),
             function_shape,
         );
@@ -953,10 +950,7 @@ mod explain_tests {
         let custom_shape = CustomValueShape::new(custom_type, CustomValueShapeId::new(0));
         let external_type = ExternalTypeId::new(0);
         let function_function_type = FunctionFunctionType::from_shapes(
-            FunctionType::new(
-                Vec::new(),
-                ValueType::Function(Box::new(function_type.clone())),
-            ),
+            FunctionType::new(Vec::new(), ValueType::Function(function_type.clone())),
             Vec::new(),
             function_shape.clone(),
         );
@@ -1081,10 +1075,7 @@ mod explain_tests {
         let external_type = ExternalTypeId::new(0);
         let list_type = IntListTypeId::new(ListTypeId::new(0));
         let function_function_type = FunctionFunctionType::from_shapes(
-            FunctionType::new(
-                Vec::new(),
-                ValueType::Function(Box::new(function_type.clone())),
-            ),
+            FunctionType::new(Vec::new(), ValueType::Function(function_type.clone())),
             Vec::new(),
             function_shape.clone(),
         );
@@ -1110,7 +1101,7 @@ mod explain_tests {
             (
                 ParamLocal::Tuple {
                     local: TupleLocalId(8),
-                    type_: vec![ValueType::Int],
+                    type_: vec![ValueType::Int].into(),
                 },
                 "%tuple#8",
             ),

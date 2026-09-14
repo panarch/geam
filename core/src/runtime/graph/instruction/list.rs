@@ -252,7 +252,7 @@ where
 
 trait RuntimeTypedList {
     type TypeId: Copy;
-    type ElementLocal;
+    type ElementLocal: 'static;
     type Element: Clone;
     type Local: Copy
         + crate::plan::execution::constant::ConstantValue
@@ -1161,7 +1161,7 @@ pub fn main() {
                 ),
                 list_type: int_function_id.type_id(),
             },
-            args: Box::new([]),
+            args: Vec::new().into(),
             site: crate::plan::HostCallSite::unknown(),
         };
 

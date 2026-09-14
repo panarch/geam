@@ -1,9 +1,10 @@
-mod custom;
-mod external;
-mod function;
-mod list;
-mod shape;
-mod value;
+pub(in crate::plan::execution) mod custom;
+pub(in crate::plan::execution) mod external;
+pub(in crate::plan::execution) mod function;
+pub(in crate::plan::execution) mod list;
+pub(in crate::plan::execution) mod metadata;
+pub(in crate::plan::execution) mod shape;
+pub(in crate::plan::execution) mod value;
 
 pub(crate) use custom::{
     CustomConstructorDescriptor, CustomConstructorId, CustomFieldDescriptor, CustomTypeDescriptor,
@@ -20,6 +21,7 @@ pub(crate) use list::{
     ListTypeTable, NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId,
     TupleListTypeId, UtfCodepointListTypeId,
 };
+pub(crate) use metadata::{FunctionMetadata, NominalTypeMetadata, TypeMetadata};
 pub(crate) use shape::{
     CustomConstructorRefinement, CustomValueShape, CustomValueShapeDescriptor, CustomValueShapeId,
     FunctionShape, ValueShapeDescriptor, ValueShapeId, ValueShapeTable,

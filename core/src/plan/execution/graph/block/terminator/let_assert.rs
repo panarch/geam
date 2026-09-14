@@ -1,12 +1,14 @@
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::graph::{ParamLocal, StringLocalId};
+use crate::plan::execution::prepared::rust::{Emit, Rust};
 use crate::plan::{PanicSite, SourceSpan};
 
-pub(crate) struct LetAssertPanic {
-    subject: ParamLocal,
-    message: Option<StringLocalId>,
-    site: PanicSite,
-    pattern_span: SourceSpan,
+#[derive(Clone)]
+pub struct LetAssertPanic {
+    pub subject: ParamLocal,
+    pub message: Option<StringLocalId>,
+    pub site: PanicSite,
+    pub pattern_span: SourceSpan,
 }
 
 impl LetAssertPanic {
@@ -50,6 +52,26 @@ impl Explain for LetAssertPanic {
             Some(message) => context.write(&message),
             None => context.push_str("none"),
         }
+    }
+}
+
+impl Emit for LetAssertPanic {
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            subject,
+            message,
+            site,
+            pattern_span,
+        } = self;
+        output.structure(
+            "graph::LetAssertPanic",
+            &[
+                ("subject", subject),
+                ("message", message),
+                ("site", site),
+                ("pattern_span", pattern_span),
+            ],
+        );
     }
 }
 
@@ -105,7 +127,6 @@ pub fn main() {
             .body()
             .block_graph()
             .blocks()
-            .iter()
             .map(|block| block.terminator())
             .collect()
     }

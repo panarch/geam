@@ -1,6 +1,6 @@
-mod float;
-mod int;
-mod string;
+pub(in crate::plan::execution) mod float;
+pub(in crate::plan::execution) mod int;
+pub(in crate::plan::execution) mod string;
 
 pub(crate) use float::FloatSwitch;
 pub(crate) use int::IntSwitch;

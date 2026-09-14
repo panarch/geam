@@ -352,7 +352,7 @@ mod tests {
         NilFunctionLocalId, NilLocalId, StringExpr, StringFunctionExpr, StringFunctionLocalId,
         StringListLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId,
         TypeParameterId, UtfCodepointExpr, UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId,
-        UtfCodepointLocalId, ValueType,
+        UtfCodepointLocalId, ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionLocalBinding, PlanContext};
     use crate::planner::support::dummy_span;
@@ -1162,7 +1162,7 @@ mod tests {
         context.define_utf_codepoint_local("codepoint".into());
         context.define_nil_local("none".into());
         context.define_tuple_local("pair".into(), vec![ValueType::Int]);
-        context.define_list_local("values".into(), ValueType::String);
+        context.define_list_local_shape("values".into(), ValueShape::String);
         let external_shape = ExternalValueShape::new(
             ExternalTypeName::new("application".into(), "main".into(), "Resource".into()),
             Vec::new(),

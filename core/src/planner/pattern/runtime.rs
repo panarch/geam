@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 pub(in crate::planner) struct PlannedRuntimePattern {
     pub(in crate::planner) pattern: AssertPattern,
+    matched_shape: ValueShape,
     pub(in crate::planner) is_total: bool,
     pub(in crate::planner) total_binding: Option<TotalBindingPattern>,
     pub(in crate::planner) custom_binding: Option<PlannedCustomBinding>,
@@ -22,6 +23,7 @@ pub(in crate::planner) struct PlannedRuntimePattern {
 
 pub(in crate::planner) struct PlannedCustomPattern {
     pub(in crate::planner) pattern: CustomPattern,
+    pub(in crate::planner) matched_shape: CustomValueShape,
     pub(in crate::planner) is_total: bool,
     total_binding: Option<TotalBindingPattern>,
     pub(in crate::planner) custom_binding: Option<PlannedCustomBinding>,
@@ -31,6 +33,7 @@ impl PlannedCustomPattern {
     fn into_runtime(self) -> PlannedRuntimePattern {
         PlannedRuntimePattern {
             pattern: AssertPattern::custom(self.pattern),
+            matched_shape: ValueShape::Custom(self.matched_shape),
             is_total: self.is_total,
             total_binding: self.total_binding,
             custom_binding: self.custom_binding,
@@ -136,18 +139,28 @@ fn plan_validated_runtime_pattern(
 ) -> Result<PlannedRuntimePattern, PlanError> {
     match pattern {
         Pattern::Variable { name, type_, .. } => {
-            let binding = define_binding(name, type_.as_ref(), context);
+            let matched_shape = crate::planner::expression::conversion::refine_value_shape(
+                source_shape,
+                context.value_shape_in_scope(type_.as_ref()),
+            )?;
+            let binding = define_value_binding(name, matched_shape.clone(), context);
             Ok(PlannedRuntimePattern {
                 pattern: AssertPattern::Bind(binding.clone()),
+                matched_shape,
                 is_total: true,
                 total_binding: Some(TotalBindingPattern::bind(binding)),
                 custom_binding: None,
             })
         }
         Pattern::Discard { type_, .. } => {
+            let matched_shape = crate::planner::expression::conversion::refine_value_shape(
+                source_shape,
+                context.value_shape_in_scope(type_.as_ref()),
+            )?;
             let type_ = context.value_type(type_.as_ref());
             Ok(PlannedRuntimePattern {
                 pattern: AssertPattern::Discard,
+                matched_shape,
                 is_total: true,
                 total_binding: Some(TotalBindingPattern::discard(type_)),
                 custom_binding: None,
@@ -155,18 +168,21 @@ fn plan_validated_runtime_pattern(
         }
         Pattern::Int { int_value, .. } => Ok(PlannedRuntimePattern {
             pattern: AssertPattern::Int(int_value),
+            matched_shape: ValueShape::Int,
             is_total: false,
             total_binding: None,
             custom_binding: None,
         }),
         Pattern::Float { float_value, .. } => Ok(PlannedRuntimePattern {
             pattern: AssertPattern::Float(float_value.value()),
+            matched_shape: ValueShape::Float,
             is_total: false,
             total_binding: None,
             custom_binding: None,
         }),
         Pattern::String { value, .. } => Ok(PlannedRuntimePattern {
             pattern: AssertPattern::String(convert_string_escape_chars(&value)),
+            matched_shape: ValueShape::String,
             is_total: false,
             total_binding: None,
             custom_binding: None,
@@ -180,6 +196,7 @@ fn plan_validated_runtime_pattern(
             super::validate_tuple_arity(source_shapes.len(), elements.len())?;
             let mut patterns = Vec::with_capacity(elements.len());
             let mut bindings = Vec::with_capacity(elements.len());
+            let mut matched_shapes = Vec::with_capacity(elements.len());
             let mut is_total = true;
             for (element, source_shape) in elements.into_iter().zip(source_shapes) {
                 let element =
@@ -188,10 +205,12 @@ fn plan_validated_runtime_pattern(
                 if let Some(binding) = element.total_binding {
                     bindings.push(binding);
                 }
+                matched_shapes.push(element.matched_shape);
                 patterns.push(element.pattern);
             }
             Ok(PlannedRuntimePattern {
                 pattern: AssertPattern::Tuple(patterns),
+                matched_shape: ValueShape::Tuple(matched_shapes.into_boxed_slice()),
                 is_total,
                 total_binding: is_total.then(|| TotalBindingPattern::tuple(bindings)),
                 custom_binding: None,
@@ -212,14 +231,17 @@ fn plan_validated_runtime_pattern(
                 };
                 return Err(super::unexpected_pattern(&pattern, &source_shape, context));
             };
-            super::validation::validate_pattern_type(
-                &source_shape,
-                context.value_shape_in_scope(type_.as_ref()),
+            let matched_shape = context.value_shape_in_scope(type_.as_ref());
+            super::validation::validate_pattern_type(&source_shape, matched_shape.clone())?;
+            let matched_shape = crate::planner::expression::conversion::refine_value_shape(
+                source_shape.clone(),
+                matched_shape,
             )?;
             plan_list_pattern(
                 elements,
                 tail.map(|tail| *tail),
                 item_shape.as_ref().clone(),
+                matched_shape,
                 context,
             )
         }
@@ -233,6 +255,7 @@ fn plan_validated_runtime_pattern(
                     None
                 },
                 pattern: AssertPattern::bit_array(pattern),
+                matched_shape: ValueShape::BitArray,
                 is_total,
                 custom_binding: None,
             })
@@ -284,17 +307,18 @@ fn plan_validated_runtime_pattern(
                     left,
                     right,
                 },
+                matched_shape: ValueShape::String,
                 is_total: false,
                 total_binding: None,
                 custom_binding: None,
             })
         }
         Pattern::Assign { name, pattern, .. } => {
-            let planned =
-                plan_runtime_pattern_with_source_shape(*pattern, source_shape.clone(), context)?;
-            let binding = define_value_binding(name, source_shape, context);
+            let planned = plan_runtime_pattern_with_source_shape(*pattern, source_shape, context)?;
+            let binding = define_value_binding(name, planned.matched_shape.clone(), context);
             Ok(PlannedRuntimePattern {
                 pattern: AssertPattern::alias(planned.pattern, binding.clone()),
+                matched_shape: planned.matched_shape,
                 is_total: planned.is_total,
                 total_binding: planned
                     .total_binding
@@ -342,6 +366,7 @@ fn plan_list_pattern(
     elements: Vec<TypedPattern>,
     tail: Option<TailPattern<Arc<Type>>>,
     item_shape: ValueShape,
+    matched_shape: ValueShape,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedRuntimePattern, PlanError> {
     let element_type = item_shape.value_type();
@@ -364,6 +389,7 @@ fn plan_list_pattern(
     };
     Ok(PlannedRuntimePattern {
         pattern: AssertPattern::list(ListAssertPattern::new(element_type, patterns, tail)),
+        matched_shape,
         is_total,
         total_binding,
         custom_binding: None,
@@ -380,6 +406,7 @@ fn plan_list_tail(
         super::ValidatedListTail::Named(name) => Ok(ListAssertTail::bind(
             context.define_list_local_shape(name.clone(), item_shape.clone()),
             name,
+            item_shape.clone(),
         )),
         super::ValidatedListTail::Discard => Ok(ListAssertTail::Ignore),
     }
@@ -388,6 +415,7 @@ fn plan_list_tail(
 fn plan_bool_pattern(value: bool) -> PlannedRuntimePattern {
     PlannedRuntimePattern {
         pattern: AssertPattern::Bool(value),
+        matched_shape: ValueShape::Bool,
         is_total: false,
         total_binding: None,
         custom_binding: None,
@@ -397,6 +425,7 @@ fn plan_bool_pattern(value: bool) -> PlannedRuntimePattern {
 fn plan_nil_pattern() -> PlannedRuntimePattern {
     PlannedRuntimePattern {
         pattern: AssertPattern::Nil,
+        matched_shape: ValueShape::Nil,
         is_total: true,
         total_binding: Some(TotalBindingPattern::discard(ValueType::Nil)),
         custom_binding: None,
@@ -437,6 +466,16 @@ fn plan_custom_pattern(
         == CustomConstructorRefinement::Exact(usize::from(constructor.constructor_index));
     let is_total = fields_are_total && (constructor_count == 1 || matches_exact_constructor);
     let binding_source_shape = source_shape.refine(&pattern_source_shape);
+    // An impossible match still has a conditional binding type; the assertion
+    // fails before that binding can be read.
+    let matched_arguments = binding_source_shape
+        .as_ref()
+        .unwrap_or(&pattern_source_shape);
+    let matched_shape = CustomValueShape::new(
+        pattern_source_shape.type_name().clone(),
+        matched_arguments.arguments().to_vec(),
+        CustomConstructorRefinement::Exact(custom_constructor.index()),
+    );
     let custom_binding =
         (fields_are_bindable && binding_source_shape.is_some()).then(|| PlannedCustomBinding {
             constructor: custom_constructor.clone(),
@@ -460,6 +499,7 @@ fn plan_custom_pattern(
             fields,
             fields_are_total.then_some(binding_fields),
         ),
+        matched_shape,
         is_total,
         total_binding,
         custom_binding,
@@ -501,11 +541,6 @@ fn total_bits_binding(
             )
         }
     }
-}
-
-fn define_binding(name: EcoString, type_: &Type, context: &mut PlanContext<'_>) -> AssertBinding {
-    let shape = context.value_shape(type_);
-    define_value_binding(name, shape, context)
 }
 
 fn define_value_binding(
@@ -563,7 +598,11 @@ mod tests {
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
         let span = crate::planner::support::dummy_span();
-        let tail = ListAssertTail::bind(ListLocal::int(IntListLocalId(0)), EcoString::from("tail"));
+        let tail = ListAssertTail::bind(
+            ListLocal::int(IntListLocalId(0)),
+            EcoString::from("tail"),
+            ValueShape::Int,
+        );
 
         let planned = plan_runtime_pattern(
             Pattern::List {
@@ -994,6 +1033,70 @@ mod tests {
                 .map(super::PlannedCustomBinding::constructor_count),
             Some(2),
         );
+    }
+
+    #[test]
+    fn reject_margin_alias_with_conflicting_constructor_refinement() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let mut pattern_type = type_::result(type_::int(), type_::string());
+        std::sync::Arc::make_mut(&mut pattern_type).set_custom_type_variant(0);
+        let source_shape = ValueShape::Custom(CustomValueShape::new(
+            CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
+            vec![ValueShape::Int, ValueShape::String],
+            CustomConstructorRefinement::Exact(1),
+        ));
+        let span = crate::planner::support::dummy_span();
+        for (pattern, source_shape) in [
+            (
+                Pattern::Variable {
+                    location: span,
+                    name: "value".into(),
+                    type_: pattern_type.clone(),
+                    origin: VariableOrigin::generated(),
+                },
+                source_shape.clone(),
+            ),
+            (
+                Pattern::Discard {
+                    location: span,
+                    name: "_".into(),
+                    type_: pattern_type.clone(),
+                },
+                source_shape.clone(),
+            ),
+            (
+                Pattern::List {
+                    location: span,
+                    elements: Vec::new(),
+                    tail: None,
+                    type_: type_::list(pattern_type),
+                },
+                ValueShape::List(Box::new(source_shape)),
+            ),
+        ] {
+            let type_ = source_shape.value_type();
+            assert_eq!(
+                plan_runtime_pattern_with_source_shape(
+                    Pattern::Assign {
+                        location: span,
+                        name: "alias".into(),
+                        pattern: Box::new(pattern),
+                    },
+                    source_shape,
+                    &mut context,
+                )
+                .map(|_| ()),
+                Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShapeRefinement {
+                        expected: type_.clone(),
+                        actual: type_,
+                    },
+                }),
+            );
+        }
     }
 
     #[test]

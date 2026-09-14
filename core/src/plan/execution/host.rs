@@ -1,9 +1,12 @@
+pub(in crate::plan::execution) mod construction;
 mod error;
-mod function;
-mod native;
+pub(in crate::plan::execution) mod function;
+pub(in crate::plan::execution) mod native;
+pub(in crate::plan::execution) mod registration;
 mod table;
 
 pub(crate) use function::HostConstructionTypes;
+pub(in crate::plan::execution) use function::HostTypeArgument;
 pub(in crate::plan::execution) use function::HostedFunctionParameters;
 pub(crate) use function::{
     HostCallParameter, HostFunctionId, HostNeverFunctionId, HostedFunction, HostedFunctionMetadata,
@@ -13,8 +16,9 @@ pub(crate) use native::{
     NativeConstructor, NativeConversion, NativeConversionId, NativeConversionKind,
     NativeConversions,
 };
+pub(in crate::plan::execution) use registration::RegistrationContract;
 pub(crate) use table::HostFunctionTables;
 
-pub(crate) struct HostedExecutionProfile;
+pub struct HostedExecutionProfile;
 
 pub use error::{HostSpecializationError, HostSpecializationErrorReason};

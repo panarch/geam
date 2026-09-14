@@ -83,6 +83,7 @@ pub(crate) struct ListAssertPattern {
 pub(crate) struct ListAssertTailBinding {
     local: ListLocal,
     name: EcoString,
+    item_shape: crate::plan::ValueShape,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -416,14 +417,26 @@ impl ListAssertPattern {
 }
 
 impl ListAssertTail {
-    pub(crate) fn bind(local: ListLocal, name: EcoString) -> Self {
-        Self::Bind(ListAssertTailBinding { local, name })
+    pub(crate) fn bind(
+        local: ListLocal,
+        name: EcoString,
+        item_shape: crate::plan::ValueShape,
+    ) -> Self {
+        Self::Bind(ListAssertTailBinding {
+            local,
+            name,
+            item_shape,
+        })
     }
 }
 
 impl ListAssertTailBinding {
     pub(crate) fn local(&self) -> &ListLocal {
         &self.local
+    }
+
+    pub(crate) fn item_shape(&self) -> &crate::plan::ValueShape {
+        &self.item_shape
     }
 }
 
@@ -894,7 +907,8 @@ mod tests {
                     vec![AssertPattern::Discard],
                     Some(ListAssertTail::bind(
                         ListLocal::int(IntListLocalId(1)),
-                        "tail".into()
+                        "tail".into(),
+                        crate::plan::ValueShape::Int,
                     )),
                 )),
                 None,
@@ -909,7 +923,8 @@ mod tests {
                     vec![AssertPattern::Discard],
                     Some(ListAssertTail::bind(
                         ListLocal::int(IntListLocalId(1)),
-                        "tail".into()
+                        "tail".into(),
+                        crate::plan::ValueShape::Int,
                     )),
                 )),
                 message: None,

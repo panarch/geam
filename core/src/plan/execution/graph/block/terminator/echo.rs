@@ -1,12 +1,14 @@
 use crate::plan::EchoSite;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::graph::{Edge, ParamLocal, StringLocalId};
+use crate::plan::execution::prepared::rust::{Emit, Rust};
 
-pub(crate) struct Echo {
-    subject: ParamLocal,
-    message: Option<StringLocalId>,
-    site: EchoSite,
-    next: Edge,
+#[derive(Clone)]
+pub struct Echo {
+    pub subject: ParamLocal,
+    pub message: Option<StringLocalId>,
+    pub site: EchoSite,
+    pub next: Edge,
 }
 
 impl Echo {
@@ -63,6 +65,26 @@ impl Explain for Echo {
     }
 }
 
+impl Emit for Echo {
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            subject,
+            message,
+            site,
+            next,
+        } = self;
+        output.structure(
+            "graph::Echo",
+            &[
+                ("subject", subject),
+                ("message", message),
+                ("site", site),
+                ("next", next),
+            ],
+        );
+    }
+}
+
 #[cfg(test)]
 mod explain_tests {
     use super::super::Terminator;
@@ -116,7 +138,6 @@ pub fn main() {
             .body()
             .block_graph()
             .blocks()
-            .iter()
             .map(|block| block.terminator())
             .collect()
     }

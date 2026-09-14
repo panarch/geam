@@ -92,10 +92,18 @@ fn plan_pattern(
         }),
         pattern => {
             let pattern = plan_custom_subject_pattern(pattern, subject.shape().clone(), context)?;
+            let binding_value = if whole_bindings.is_empty() {
+                Expr::custom(subject.clone())
+            } else {
+                crate::planner::expression::conversion::refine_expression_shape(
+                    Expr::custom(subject.clone()),
+                    ValueShape::Custom(pattern.matched_shape),
+                )?
+            };
             Ok(PlannedCustomPattern {
                 pattern: OrderedCasePattern {
                     match_condition: BoolExpr::custom_matches(subject.clone(), pattern.pattern),
-                    branch_bindings: super::branch_bindings(&whole_bindings, Expr::custom(subject)),
+                    branch_bindings: super::branch_bindings(&whole_bindings, binding_value),
                     total_branch_steps: Vec::new(),
                     is_total: pattern.is_total,
                 },
@@ -178,6 +186,96 @@ mod tests {
             super::strip_whole_aliases(pattern),
             (variable, vec!["inner".into(), "outer".into()]),
         );
+    }
+
+    #[test]
+    fn reject_margin_custom_alias_with_conflicting_constructor_refinement() {
+        use gleam_compiler_core::analyse::Inferred;
+        use gleam_compiler_core::ast::{CallArg, Pattern};
+        use gleam_compiler_core::type_::{self, PatternConstructor};
+
+        let module = ecow::EcoString::from("main");
+        let functions = HashMap::<ecow::EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let mut pattern_type = type_::result(type_::int(), type_::string());
+        std::sync::Arc::make_mut(&mut pattern_type).set_custom_type_variant(0);
+        let source_shape = CustomValueShape::new(
+            CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
+            vec![ValueShape::Int, ValueShape::String],
+            crate::plan::CustomConstructorRefinement::Exact(1),
+        );
+        let type_ = ValueType::Custom(source_shape.type_().clone());
+        assert_eq!(
+            super::plan_pattern(
+                Pattern::Assign {
+                    location: dummy_span(),
+                    name: "alias".into(),
+                    pattern: Box::new(Pattern::Constructor {
+                        location: dummy_span(),
+                        name_location: dummy_span(),
+                        name: "Ok".into(),
+                        arguments: vec![CallArg {
+                            location: dummy_span(),
+                            label: None,
+                            value: Pattern::Discard {
+                                location: dummy_span(),
+                                name: "_".into(),
+                                type_: type_::int(),
+                            },
+                            implicit: None,
+                        }],
+                        module: None,
+                        constructor: Inferred::Known(PatternConstructor {
+                            name: "Ok".into(),
+                            module: "gleam".into(),
+                            field_map: None,
+                            documentation: None,
+                            location: dummy_span(),
+                            constructor_index: 0,
+                        }),
+                        spread: None,
+                        type_: pattern_type,
+                    }),
+                },
+                CustomExpr::local_get(
+                    CustomLocal::from_shape(CustomLocalId(0), source_shape),
+                    "source".into(),
+                ),
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShapeRefinement {
+                    expected: type_.clone(),
+                    actual: type_,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn plan_custom_alias_retains_the_matched_constructor_for_field_access() {
+        let plan = plan_module(crate::planner::support::compile(
+            r#"
+pub type Choice { Empty Full(Int) }
+fn value(choice: Choice) {
+  case choice {
+    Full(_) as whole -> { let Full(inner) = whole inner }
+    Empty -> 0
+  }
+}
+pub fn main() { value(Full(42)) }
+"#,
+        ))
+        .unwrap();
+        let execution = crate::ExecutionPlan::from_module_plan(plan);
+        let mut echo = Vec::new();
+        assert_eq!(
+            crate::run_main(&execution, &mut echo).unwrap(),
+            crate::Value::Int(42.into())
+        );
+        assert!(echo.is_empty());
     }
 
     #[test]

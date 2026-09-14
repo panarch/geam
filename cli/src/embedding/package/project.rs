@@ -9,19 +9,41 @@ use gleam_core::config::PackageConfig;
 use serde::Deserialize;
 use serde_json::json;
 
-#[derive(Default, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-struct EmbeddingConfiguration {}
-
 #[derive(Debug)]
 pub(in crate::embedding) struct EmbeddingProject {
     pub(super) package_name: String,
     pub(super) manifest: Utf8PathBuf,
     pub(super) project_root: Utf8PathBuf,
     pub(super) root_module: String,
-    pub(super) output_directory: Utf8PathBuf,
     pub(super) output_path: Utf8PathBuf,
     pub(super) dependencies: Vec<cargo_metadata::Dependency>,
+    pub(super) generation: Generation,
+    pub(super) workspace_root: Utf8PathBuf,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct EmbeddingConfiguration {
+    generate: Generation,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(in crate::embedding) enum Generation {
+    #[default]
+    Dynamic,
+    Prepared,
+    Both,
+}
+
+impl Generation {
+    pub(in crate::embedding) fn dynamic(self) -> bool {
+        self != Self::Prepared
+    }
+
+    pub(in crate::embedding) fn prepared(self) -> bool {
+        self != Self::Dynamic
+    }
 }
 
 impl EmbeddingProject {
@@ -43,6 +65,14 @@ impl EmbeddingProject {
 
     pub(in crate::embedding) fn output_path(&self) -> &Utf8Path {
         &self.output_path
+    }
+
+    pub(in crate::embedding) fn generation(&self) -> Generation {
+        self.generation
+    }
+
+    pub(in crate::embedding) fn cargo_lock_path(&self) -> Utf8PathBuf {
+        self.workspace_root.join("Cargo.lock")
     }
 
     pub(in crate::embedding) fn prepare_features(&self, features: &[&str]) -> Result<(), CliError> {
@@ -73,7 +103,7 @@ impl EmbeddingProject {
                 reason: "embedding uses one Send execution contract; remove `storage` from [package.metadata.geam.embedding] and run `geam embedding sync`".to_owned(),
             });
         }
-        configuration
+        let configuration = configuration
             .map(|value| serde_json::from_value::<EmbeddingConfiguration>(value.clone()))
             .transpose()
             .map_err(|error| CliError::InvalidEmbeddingProject {
@@ -91,16 +121,16 @@ impl EmbeddingProject {
             },
         )?;
         let root = manifest.with_file_name("");
-        let output_directory = root.join("src");
-        let output_path = output_directory.join("geam_bindings.rs");
+        let output_path = root.join("src/geam_bindings.rs");
         Ok(Self {
             package_name,
             manifest,
             project_root: root.join("gleam"),
             root_module,
-            output_directory,
             output_path,
             dependencies: package.dependencies.clone(),
+            generation: configuration.generate,
+            workspace_root: metadata.workspace_root.clone(),
         })
     }
 
@@ -137,12 +167,65 @@ fn find_manifest(start: &Utf8Path) -> Result<Utf8PathBuf, CliError> {
 
 #[cfg(test)]
 mod tests {
-    use super::EmbeddingProject;
+    use super::{EmbeddingProject, Generation};
     use crate::cargo::SystemCargoMetadata;
     use crate::error::CliError;
     use camino::Utf8PathBuf;
     use std::fs;
     use tempfile::{TempDir, tempdir};
+
+    #[test]
+    fn selects_one_generation_choice_and_defaults_to_dynamic() {
+        for (setting, expected, dynamic, prepared) in [
+            ("", Generation::Dynamic, true, false),
+            (
+                "[package.metadata.geam.embedding]\ngenerate = 'dynamic'\n",
+                Generation::Dynamic,
+                true,
+                false,
+            ),
+            (
+                "[package.metadata.geam.embedding]\ngenerate = 'prepared'\n",
+                Generation::Prepared,
+                false,
+                true,
+            ),
+            (
+                "[package.metadata.geam.embedding]\ngenerate = 'both'\n",
+                Generation::Both,
+                true,
+                true,
+            ),
+        ] {
+            let fixture = ProjectFixture::new(&format!(
+                "[package]\nname = 'generation_app'\nversion = '0.1.0'\n{setting}\n[workspace]\n",
+            ));
+            let project = EmbeddingProject::load(&fixture.root).expect("generation setting");
+            assert_eq!(project.generation(), expected);
+            assert_eq!(project.generation().dynamic(), dynamic);
+            assert_eq!(project.generation().prepared(), prepared);
+            assert_eq!(project.cargo_lock_path(), fixture.root.join("Cargo.lock"));
+        }
+        for invalid in ["'none'", "'static'", "true", "['dynamic', 'prepared']"] {
+            let fixture = ProjectFixture::new(&format!(
+                "[package]\nname = 'generation_app'\nversion = '0.1.0'\n[package.metadata.geam.embedding]\ngenerate = {invalid}\n[workspace]\n",
+            ));
+            let error =
+                EmbeddingProject::load(&fixture.root).expect_err("one valid choice required");
+            let message = error.to_string();
+            assert!(
+                matches!(error, CliError::InvalidEmbeddingProject { manifest, .. } if manifest == fixture.root.join("Cargo.toml"))
+            );
+            assert!(message.contains("invalid [package.metadata.geam.embedding]"));
+            if invalid.starts_with('\'') {
+                assert!(
+                    message.contains("`dynamic`, `prepared`, `both`"),
+                    "{message}"
+                );
+            }
+            assert!(!fixture.root.join("Cargo.lock").exists());
+        }
+    }
 
     #[test]
     fn selects_the_cargo_name_before_dependency_resolution_or_gleam_initialization() {
@@ -165,7 +248,6 @@ geam-unresolved-embedding-fixture = "=99.0.0"
         assert_eq!(project.package_name, "inventory-app");
         assert_eq!(project.root_module, "inventory_app");
         assert_eq!(project.project_root, fixture.root.join("gleam"));
-        assert_eq!(project.output_directory, fixture.root.join("src"));
         assert_eq!(
             project.output_path,
             fixture.root.join("src/geam_bindings.rs")
@@ -258,7 +340,7 @@ module = "another_module"
         assert_eq!(
             error.to_string(),
             format!(
-                "invalid Rust embedding project for package inventory at {}: invalid [package.metadata.geam.embedding]: unknown field `module`, there are no fields; embedding uses gleam/ and the Cargo package name",
+                "invalid Rust embedding project for package inventory at {}: invalid [package.metadata.geam.embedding]: unknown field `module`, expected `generate`; embedding uses gleam/ and the Cargo package name",
                 fixture.root.join("Cargo.toml"),
             )
         );

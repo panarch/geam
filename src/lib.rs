@@ -72,6 +72,9 @@ pub mod __macro_support {
     };
 }
 
+#[doc(hidden)]
+#[cfg(feature = "embedding")]
+pub use geam_core::__prepared_support;
 pub use geam_core::List;
 #[cfg(feature = "embedding")]
 pub mod embedding;

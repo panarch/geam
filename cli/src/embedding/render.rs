@@ -1,24 +1,29 @@
 use super::boundary::{DataType, FunctionBinding, PlainBindings};
+use super::package::Generation;
 use super::profile::{ComponentBinding, HostedBindings, HostedCapabilities, HostedComponents};
 use camino::Utf8Path;
 use std::collections::BTreeSet;
 
 mod named;
+mod prepared;
 mod value;
+pub(super) use prepared::{hosted_helper, plain_helper};
 use value::{push_function_field, push_input_shapes};
 
-pub(super) fn plain(bindings: &PlainBindings, project_path: &Utf8Path) -> String {
+pub(super) fn plain(
+    bindings: &PlainBindings,
+    project_path: &Utf8Path,
+    generation: Generation,
+) -> String {
     let mut output = format!("{}\n", super::GENERATED_HEADER);
     let alias = bindings.geam_alias.as_str();
-    let mut imports = BTreeSet::from([
-        "BindingError",
-        "Function",
-        "FunctionDeclaration",
-        "InputShape",
-        "ModuleBindings",
-        "ModuleBuilder",
-        "Project",
-    ]);
+    let mut imports = BTreeSet::from(["Function", "FunctionDeclaration", "InputShape"]);
+    if generation.dynamic() {
+        imports.extend(["BindingError", "ModuleBindings", "ModuleBuilder", "Project"]);
+    }
+    if generation.prepared() {
+        imports.extend(["Module", "PreparedError"]);
+    }
     for function in bindings.functions() {
         for type_ in function
             .arguments
@@ -31,26 +36,49 @@ pub(super) fn plain(bindings: &PlainBindings, project_path: &Utf8Path) -> String
     for import in imports {
         output.push_str(&format!("use {alias}::embedding::{import};\n"));
     }
-    output.push_str(&format!(
-        "\npub const ROOT_MODULE: &str = {:?};\n\n",
-        bindings.root_module
-    ));
-    push_plain_project(&mut output, project_path);
+    if generation.dynamic() {
+        output.push_str(&format!(
+            "\npub const ROOT_MODULE: &str = {:?};\n\n",
+            bindings.root_module
+        ));
+        if generation == Generation::Both {
+            output.push_str("#[allow(dead_code)]\n");
+        }
+        push_plain_project(&mut output, project_path);
+    }
+    if generation.prepared() {
+        if !generation.dynamic() {
+            output.push('\n');
+        }
+        output.push_str("mod program;\n\n");
+    }
     output.push_str("#[allow(dead_code, clippy::type_complexity)]\npub struct Functions {\n");
     for (index, function) in bindings.functions().enumerate() {
         push_function_field(&mut output, index, function);
     }
     output.push_str("}\n\n");
     push_input_shapes(&mut output, bindings);
-    output.push_str(
-        "#[allow(dead_code)]\npub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), BindingError> {\n",
-    );
-    push_bind_body(&mut output, bindings, "Functions", "function");
-    output.push_str("}\n");
+    if generation.dynamic() {
+        output.push_str(
+            "#[allow(dead_code)]\npub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), BindingError> {\n",
+        );
+        push_bind_body(&mut output, bindings, "Functions", "function");
+        output.push_str("}\n");
+    }
+    if generation.prepared() {
+        if generation == Generation::Both {
+            output.push_str("\n#[allow(dead_code)]\n");
+        }
+        prepared::push_plain_load(&mut output, bindings);
+    }
     output
 }
 
-pub(super) fn hosted(bindings: &HostedBindings, project_path: &Utf8Path) -> String {
+pub(super) fn hosted(
+    bindings: &HostedBindings,
+    project_path: &Utf8Path,
+    generation: Generation,
+) -> String {
     let mut output = format!("{}\n", super::GENERATED_HEADER);
     let boundary = &bindings.boundary;
     let alias = boundary.geam_alias.as_str();
@@ -83,15 +111,18 @@ pub(super) fn hosted(bindings: &HostedBindings, project_path: &Utf8Path) -> Stri
         output.push_str(&format!("use {alias}::{import};\n"));
     }
     output.push('\n');
-    let mut embedding_imports = BTreeSet::from([
-        "BindingError",
-        "Function",
-        "FunctionDeclaration",
-        "HostedModuleBindings",
-        "HostedModuleBuilder",
-        "HostedProject",
-        "InputShape",
-    ]);
+    let mut embedding_imports = BTreeSet::from(["Function", "FunctionDeclaration", "InputShape"]);
+    if generation.dynamic() {
+        embedding_imports.extend([
+            "BindingError",
+            "HostedModuleBindings",
+            "HostedModuleBuilder",
+            "HostedProject",
+        ]);
+    }
+    if generation.prepared() {
+        embedding_imports.extend(["HostedModule", "PreparedError"]);
+    }
     for function in boundary.functions() {
         for type_ in function
             .arguments
@@ -108,10 +139,18 @@ pub(super) fn hosted(bindings: &HostedBindings, project_path: &Utf8Path) -> Stri
         output.push_str("use std::marker::PhantomData;\n");
     }
 
-    output.push_str(&format!(
-        "\npub const ROOT_MODULE: &str = {:?};\n\n",
-        boundary.root_module
-    ));
+    if generation.dynamic() {
+        output.push_str(&format!(
+            "\npub const ROOT_MODULE: &str = {:?};\n\n",
+            boundary.root_module
+        ));
+    }
+    if generation.prepared() {
+        if !generation.dynamic() {
+            output.push('\n');
+        }
+        output.push_str("mod program;\n\n");
+    }
     named::push_types(&mut output, alias, &boundary.named_types);
     push_profile_declaration(&mut output, components);
     push_provider_set_alias(&mut output, components);
@@ -132,7 +171,12 @@ pub(super) fn hosted(bindings: &HostedBindings, project_path: &Utf8Path) -> Stri
         push_erlang_profile(&mut output, alias, components);
     }
     push_host_providers(&mut output, alias, components);
-    push_hosted_project(&mut output, alias, components, project_path);
+    if generation.dynamic() {
+        if generation == Generation::Both {
+            output.push_str("#[allow(dead_code)]\n");
+        }
+        push_hosted_project(&mut output, alias, components, project_path);
+    }
 
     output.push_str("#[allow(clippy::type_complexity)]\npub struct Functions {\n");
     for (index, function) in boundary.functions().enumerate() {
@@ -140,7 +184,18 @@ pub(super) fn hosted(bindings: &HostedBindings, project_path: &Utf8Path) -> Stri
     }
     output.push_str("}\n\n");
     push_input_shapes(&mut output, boundary);
-    push_hosted_bind(&mut output, alias, components, boundary);
+    if generation.dynamic() {
+        if generation == Generation::Both {
+            output.push_str("#[allow(dead_code)]\n");
+        }
+        push_hosted_bind(&mut output, alias, components, boundary);
+    }
+    if generation.prepared() {
+        if generation == Generation::Both {
+            output.push_str("\n#[allow(dead_code)]\n");
+        }
+        prepared::push_hosted_load(&mut output, bindings);
+    }
     output
 }
 
@@ -598,12 +653,17 @@ fn push_bind_body(output: &mut String, bindings: &PlainBindings, functions: &str
             method,
         );
     }
-    push_binding_result(output, bindings, functions);
+    push_binding_result(output, bindings, functions, "bindings");
 }
 
-fn push_binding_result(output: &mut String, bindings: &PlainBindings, functions: &str) {
+fn push_binding_result(
+    output: &mut String,
+    bindings: &PlainBindings,
+    functions: &str,
+    module: &str,
+) {
     output.push_str(&format!(
-        "    Ok((\n        bindings,\n        {functions} {{\n"
+        "    Ok((\n        {module},\n        {functions} {{\n"
     ));
     for (index, function) in bindings.functions().enumerate() {
         let name = function.rust_name.as_str();
@@ -800,6 +860,7 @@ mod tests {
     use crate::builtin::BuiltInProvider;
     use crate::embedding::boundary::{DataType, FunctionBinding, PlainBindings};
     use crate::embedding::identifier::RustIdentifier;
+    use crate::embedding::package::Generation;
     use crate::embedding::profile::{ExternalComponent, HostedBindings, HostedComponents};
     use camino::Utf8Path;
     use std::fs;
@@ -878,7 +939,7 @@ mod tests {
             }],
         };
 
-        let source = plain(&bindings, Utf8Path::new("gleam"));
+        let source = plain(&bindings, Utf8Path::new("gleam"), Generation::Dynamic);
         assert_eq!(
             source,
             r#"// Generated by `geam embedding sync`. Do not edit.
@@ -932,7 +993,10 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
 }
 "#,
         );
-        assert_eq!(plain(&bindings, Utf8Path::new("gleam")), source);
+        assert_eq!(
+            plain(&bindings, Utf8Path::new("gleam"), Generation::Dynamic),
+            source
+        );
         assert_rustfmt_stable("all scalar types", &source);
     }
 
@@ -1063,6 +1127,7 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
             Utf8Path::new(
                 "../nested/gleam project with a deliberately long and \"quoted\" directory name for generated Rust loading",
             ),
+            Generation::Dynamic,
         );
         assert!(source.contains(r#""/../nested/gleam project with a deliberately long and \"quoted\" directory name for generated Rust loading""#));
         assert_rustfmt_stable("long plain", &source);
@@ -1287,6 +1352,7 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
                 components,
             },
             Utf8Path::new("gleam"),
+            Generation::Dynamic,
         )
     }
 

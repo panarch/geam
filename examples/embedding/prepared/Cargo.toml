@@ -1,0 +1,18 @@
+[package]
+name = "geam-rust-embedding-prepared"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+publish = false
+
+[package.metadata.geam.embedding]
+generate = "prepared"
+
+[dependencies]
+geam = { version = "=0.2.3", default-features = false, features = ["embedding"] }
+
+[patch.crates-io]
+geam = { path = "../../.." }
+
+[workspace]
+resolver = "3"

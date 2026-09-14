@@ -66,6 +66,7 @@ impl HostTemplateCatalog {
                         HostLoweringTemplate::Host(template) => {
                             local::FunctionEntryTemplate::from_shapes(
                                 template.signature().shape().argument_shapes().to_vec(),
+                                template.signature().shape().return_shape().clone(),
                             )
                         }
                     },
@@ -154,7 +155,7 @@ pub fn main() {
             ]
             .map(|id| match catalog.get(id) {
                 HostLoweringTemplate::Gleam(function) => ("gleam", function.name().as_str()),
-                HostLoweringTemplate::Host(function) => ("host", function.name().as_str()),
+                HostLoweringTemplate::Host(function) => ("host", function.name()),
             }),
             [
                 ("host", "negate"),

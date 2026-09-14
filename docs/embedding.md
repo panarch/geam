@@ -93,6 +93,70 @@ example](../examples/embedding/first_call)
 keeps the runnable Gleam source, generated bindings, handwritten Rust, and test
 together.
 
+## Prepare a program before building
+
+By default, `project().compile()` reads the Gleam project when the Rust
+application initializes. To include the program in the executable instead, add
+this setting to `Cargo.toml`:
+
+```toml
+[package.metadata.geam.embedding]
+generate = "prepared"
+```
+
+Then prepare the program:
+
+```sh
+geam embedding sync
+```
+
+Sync generates the typed bindings and the complete execution plan as Rust data.
+For the same `double` function above, `src/main.rs` becomes:
+
+```rust
+mod geam_bindings;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let (module, functions) = geam_bindings::load()?;
+    let mut echo = Vec::new();
+
+    let value = module.call(&functions.double, (21.into(),), &mut echo)?;
+    println!("{value}");
+    Ok(())
+}
+```
+
+```sh
+geam embedding check
+cargo run --release
+```
+
+The application still prints `42`. `load()` creates a fresh module and its
+typed handles from the included program, without reading Gleam files. Calls
+use the same runtime as dynamic embedding.
+
+The setting controls which interfaces sync generates, not a global execution
+mode:
+
+| `generate` | Generated loading interfaces |
+| --- | --- |
+| `"dynamic"` (default) | `project()` and `bind()` load current source |
+| `"prepared"` | `load()` loads the prepared program |
+| `"both"` | Both interfaces; choose at each initialization site |
+
+All three share the same function and value definitions. With providers,
+`load()` returns the hosted module and handles; keep the same caller-owned
+configuration, state, Echo and execution host used for dynamic calls.
+
+Prepared sync and check can compile and run a Rust preparation helper using
+the application's dependencies. They do not build the application entry point
+or initialize its run state. Ordinary Cargo builds compile the existing
+generated files without running Geam or regenerating the plan. Run sync after
+source or dependency changes, including function-body changes.
+
+The [prepared example](../examples/embedding/prepared) keeps the complete
+project and test together.
+
 ## Learn with runnable examples
 
 The repository examples add one practical feature at a time. Each is a complete
@@ -110,6 +174,7 @@ application that can be run and tested on its own:
 | Opaque session | Keep Gleam-owned private data between calls | [`session`](../examples/embedding/session) |
 | Execution control | Cancel a running Gleam call and continue using its module | [`execution`](../examples/embedding/execution) |
 | Process service | Retain Pid and Subject handles and call a running Gleam service | [`processes`](../examples/embedding/processes) |
+| Prepared program | Include the Gleam program in the Rust executable | [`prepared`](../examples/embedding/prepared) |
 
 Follow the stages in order when learning the API, or open the smallest example
 that contains the feature your application needs. The application example
@@ -150,8 +215,8 @@ edit Gleam source
 
 Sync restores locked Gleam and Cargo dependencies, checks that every public
 function exposed to Rust uses supported types, and updates the generated Rust
-only when its contents change. Run the Rust application and Cargo build scripts
-separately with the usual Cargo commands.
+only when its contents change. Prepared generation also rebuilds the execution
+data. Run the Rust application separately with the usual Cargo commands.
 
 Keep `src/geam_bindings.rs` as generated, tool-owned code and make Rust changes
 in neighboring handwritten modules. If a handwritten file already occupies the
@@ -190,6 +255,10 @@ Commit the Cargo and Gleam manifests and lockfiles, handwritten Gleam and Rust
 source, and generated `src/geam_bindings.rs`. Ignore Cargo's `target/` and
 Gleam's `gleam/build/` cache. Generated Rust is reviewed and committed; no build
 script regenerates it implicitly.
+
+With `generate = "prepared"` or `"both"`, also commit the generated
+`src/geam_bindings/program.rs` child. Cargo packages must include this file
+alongside `src/geam_bindings.rs`.
 
 Embedding commands use one fixed project, module, and output layout. This makes
 checkouts, generated code, CI, and examples agree on the same connection.
@@ -363,7 +432,7 @@ State, retained values, native Futures, and the Echo sink must be `Send`; borrow
 host resources need only live for the execution scope. Geam does not require
 `Sync` for exclusively accessed state or create an executor for embedding.
 
-## Verify a prepared checkout
+## Verify a checkout
 
 Use `check` after cloning, in review, or in CI:
 
@@ -381,8 +450,12 @@ bindings.
 
 Use `init` for an uninitialized package and `sync` after intentional source or
 dependency changes. `embedding check` verifies the generated Gleam-Rust
-connection, while `cargo check` and `cargo test` remain responsible for Rust
-compilation and tests.
+connection. In dynamic mode it does not compile Rust. In prepared or both mode
+it regenerates the expected plan in a disposable helper and compares it with
+the committed data, including source bodies and dependencies. Dependency build
+scripts and native registration can run during this preparation; application
+entry points and run-state initialization do not. `cargo check` and `cargo test`
+remain responsible for compiling and testing the handwritten Rust application.
 
 ## Pass data between Gleam and Rust
 
@@ -424,13 +497,25 @@ values with borrowed item access. Direct module calls return `List<T>` values
 with owned item access. Both retain their source storage. Nested Future values
 keep their execution scope; putting work inside a List does not erase its owner.
 
-## Ship the Gleam sources with your application
+## Deploy the application
 
-The generated project selection reads `gleam/` and its resolved package sources
-from the Cargo manifest directory when the application initializes. A deployment
-therefore includes both the compiled binary and that source graph, kept in the
-layout expected by the binary. Executable source bundling is a separate
-deployment capability.
+Dynamic initialization reads `gleam/` and its resolved package sources from the
+Cargo manifest directory. Deploy that source graph in the layout expected by
+the binary when using `project().compile()`.
+
+Prepared initialization uses the program compiled into the executable. The
+binary can run without the original Gleam project, Geam CLI or Gleam CLI.
+Include both generated Rust files when distributing a Cargo source package;
+building that package does not require the original Gleam project either.
+
+Application resources are separate from code. A program that uses files or
+`gleam/erlang/application.priv_directory` still needs those resources and an
+explicit resource catalog from its Rust host. Preparing a program does not
+bundle resource files or build-machine paths.
+
+After upgrading Geam, run `geam embedding sync` before building. Prepared data
+is tied to its Geam artifact format; an incompatible format or linked provider
+contract is rejected rather than falling back to source compilation.
 
 For the planner, runtime, and host ownership model, continue with
 [architecture](reference/architecture.md) and

@@ -105,6 +105,21 @@ pub(super) struct EntryIds<Graph: ExecutionGraphProfile = HostedExecutionGraph> 
     lists: Vec<LibraryFunctionEntry<LibraryListFunctionId<Graph>>>,
 }
 
+#[derive(Default)]
+struct InputLists {
+    ints: Vec<crate::plan::execution::type_::IntListTypeId>,
+    floats: Vec<crate::plan::execution::type_::FloatListTypeId>,
+    strings: Vec<crate::plan::execution::type_::StringListTypeId>,
+    bit_arrays: Vec<crate::plan::execution::type_::BitArrayListTypeId>,
+    utf_codepoints: Vec<crate::plan::execution::type_::UtfCodepointListTypeId>,
+    customs: Vec<crate::plan::execution::type_::CustomListTypeId>,
+    externals: Vec<crate::plan::execution::type_::ExternalListTypeId>,
+    bools: Vec<crate::plan::execution::type_::BoolListTypeId>,
+    nils: Vec<crate::plan::execution::type_::NilListTypeId>,
+    tuples: Vec<crate::plan::execution::type_::TupleListTypeId>,
+    lists: Vec<crate::plan::execution::type_::ListListTypeId>,
+}
+
 impl<Graph: ExecutionGraphProfile> Default for EntryIds<Graph> {
     fn default() -> Self {
         Self {
@@ -471,7 +486,7 @@ impl<Graph: ExecutionGraphProfile> SealedEntry<Graph> {
                 return_type,
             } => core(ProfiledCoreRuntimeFunctionId::Tuple {
                 id: sealed.function,
-                return_type: return_type.clone(),
+                return_type: return_type.clone().into(),
             }),
         }
     }
@@ -564,17 +579,35 @@ impl<Graph: ExecutionGraphProfile> EntryIds<Graph> {
 
     pub(super) fn finish(self) -> LibraryFunctionEntries<Graph> {
         LibraryFunctionEntries {
-            ints: self.ints.into_boxed_slice(),
-            floats: self.floats.into_boxed_slice(),
-            strings: self.strings.into_boxed_slice(),
-            bit_arrays: self.bit_arrays.into_boxed_slice(),
-            utf_codepoints: self.utf_codepoints.into_boxed_slice(),
-            customs: self.customs.into_boxed_slice(),
-            externals: self.externals.into_boxed_slice(),
-            bools: self.bools.into_boxed_slice(),
-            nils: self.nils.into_boxed_slice(),
-            tuples: self.tuples.into_boxed_slice(),
-            lists: self.lists.into_boxed_slice(),
+            ints: self.ints.into(),
+            floats: self.floats.into(),
+            strings: self.strings.into(),
+            bit_arrays: self.bit_arrays.into(),
+            utf_codepoints: self.utf_codepoints.into(),
+            customs: self.customs.into(),
+            externals: self.externals.into(),
+            bools: self.bools.into(),
+            nils: self.nils.into(),
+            tuples: self.tuples.into(),
+            lists: self.lists.into(),
+        }
+    }
+}
+
+impl InputLists {
+    fn finish(self) -> LibraryListConstructions {
+        LibraryListConstructions {
+            ints: self.ints.into(),
+            floats: self.floats.into(),
+            strings: self.strings.into(),
+            bit_arrays: self.bit_arrays.into(),
+            utf_codepoints: self.utf_codepoints.into(),
+            customs: self.customs.into(),
+            externals: self.externals.into(),
+            bools: self.bools.into(),
+            nils: self.nils.into(),
+            tuples: self.tuples.into(),
+            lists: self.lists.into(),
         }
     }
 }
@@ -631,7 +664,7 @@ impl LoweringContext {
         input_lists: &[LibraryValueType],
     ) -> LibraryInputConstructions {
         let mut constructions = Vec::with_capacity(variants.len());
-        let mut lists = LibraryListConstructions::default();
+        let mut lists = InputLists::default();
         for variant in variants {
             let shape = SpecializedCustomValueShape::instantiate(
                 &CustomValueShape::any(variant.kind.custom_type(variant.arguments.clone())),
@@ -642,14 +675,14 @@ impl LoweringContext {
         for item in input_lists {
             self.collect_library_list_construction(item, key.substitution(), &mut lists);
         }
-        LibraryInputConstructions::new(constructions, lists)
+        LibraryInputConstructions::new(constructions, lists.finish())
     }
 
     fn collect_library_list_construction(
         &mut self,
         item: &LibraryValueType,
         substitution: &SpecializedTypeSubstitution,
-        lists: &mut LibraryListConstructions,
+        lists: &mut InputLists,
     ) {
         match item {
             LibraryValueType::Int => lists.ints.push(self.types.int_list_type()),
@@ -718,6 +751,7 @@ impl LoweringContext {
                         vec![SpecializedCustomConstructorField::new(
                             None,
                             shape.arguments()[0].clone(),
+                            crate::plan::execution::type_::custom::FieldRefinement::Argument(0),
                         )]
                         .into_boxed_slice(),
                     )),
@@ -729,6 +763,7 @@ impl LoweringContext {
                         vec![SpecializedCustomConstructorField::new(
                             None,
                             shape.arguments()[1].clone(),
+                            crate::plan::execution::type_::custom::FieldRefinement::Argument(1),
                         )]
                         .into_boxed_slice(),
                     )),
@@ -742,6 +777,7 @@ impl LoweringContext {
                         vec![SpecializedCustomConstructorField::new(
                             None,
                             shape.arguments()[0].clone(),
+                            crate::plan::execution::type_::custom::FieldRefinement::Argument(0),
                         )]
                         .into_boxed_slice(),
                     )),

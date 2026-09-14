@@ -98,7 +98,7 @@ where
                     position: Position::Graph {
                         body: entry.body(),
                         execution: GraphExecution::new(
-                            entry.body().function_body().block_graph(),
+                            entry.body().function_body().block_graph().as_view(),
                             inputs,
                         ),
                     },

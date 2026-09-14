@@ -4,17 +4,19 @@ use crate::plan::execution::function::ExternalFunctionId;
 use crate::plan::execution::graph::{
     CustomLocal, ExternalFunctionLocal, ExternalListLocalId, ParamLocal, TupleLocalId,
 };
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ExternalInstruction {
+pub enum ExternalInstruction {
     Call {
         function: ExternalFunctionId,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: ExternalFunctionLocal,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     TupleIndex {
@@ -31,14 +33,14 @@ pub(crate) enum ExternalInstruction {
     },
 }
 
-pub(crate) trait ExternalInstructionView {
+pub trait ExternalInstructionView {
     type Function;
 
     fn instruction_ref(&self) -> ExternalInstructionRef<'_, Self::Function>;
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum ExternalInstructionRef<'instruction, Function> {
+pub enum ExternalInstructionRef<'instruction, Function> {
     Call {
         function: &'instruction Function,
         args: &'instruction [ParamLocal],
@@ -133,9 +135,163 @@ impl Explain for ExternalInstruction {
     }
 }
 
+impl Emit for ExternalInstruction {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Call {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::ExternalInstruction::Call",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::FunctionCall {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::ExternalInstruction::FunctionCall",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::TupleIndex { tuple, index } => output.structure(
+                "graph::ExternalInstruction::TupleIndex",
+                &[("tuple", tuple), ("index", index)],
+            ),
+            Self::CustomField { source, index } => output.structure(
+                "graph::ExternalInstruction::CustomField",
+                &[("source", source), ("index", index)],
+            ),
+            Self::ListIndex { list, index } => output.structure(
+                "graph::ExternalInstruction::ListIndex",
+                &[("list", list), ("index", index)],
+            ),
+        }
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::ExternalInstruction;
+    use crate::plan::execution::function::ExternalFunctionId;
+    use crate::plan::execution::graph::ExternalFunctionLocal;
+    use crate::plan::execution::graph::{
+        CustomLocal, CustomLocalId, ExternalFunctionLocalId, ExternalListLocalId, IntLocalId,
+        ParamLocal, TupleLocalId,
+    };
+    use crate::plan::execution::prepared::rust::Rust;
+    use crate::plan::execution::type_::{
+        CustomTypeId, CustomValueShape, CustomValueShapeId, ExternalFunctionType, ExternalTypeId,
+        FunctionType, ValueType,
+    };
+    use crate::plan::{HostCallSite, SourceSpan};
+
+    #[test]
+    fn emits_every_external_instruction_with_its_operands_and_source_site() {
+        let site = HostCallSite::new("example".into(), "main".into(), SourceSpan::new(3, 8));
+        let cases = [
+            (
+                ExternalInstruction::Call {
+                    function: ExternalFunctionId::new(2, ExternalTypeId(3)),
+                    args: vec![ParamLocal::Int(IntLocalId(5))].into(),
+                    site: site.clone(),
+                },
+                r#"
+data::graph::ExternalInstruction::Call {
+    function: data::function::ExternalFunctionId {
+        index: 2,
+        return_type: data::type_::ExternalTypeId(3),
+    },
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                ExternalInstruction::FunctionCall {
+                    function: ExternalFunctionLocal::new(
+                        ExternalFunctionLocalId(2),
+                        ExternalFunctionType::from_shapes(
+                            FunctionType::new(Vec::new(), ValueType::External(ExternalTypeId(3))),
+                            Vec::new(),
+                            ExternalTypeId(3),
+                        ),
+                    ),
+                    args: vec![ParamLocal::Int(IntLocalId(5))].into(),
+                    site,
+                },
+                r#"
+data::graph::ExternalInstruction::FunctionCall {
+    function: data::graph::ExternalFunctionLocal {
+        id: data::graph::ExternalFunctionLocalId(2),
+        type_: data::type_::ExternalFunctionType {
+            type_: data::type_::FunctionType {
+                arguments: data::Storage::Static(&[]),
+                return_: data::Storage::Static(&data::type_::ValueType::External(data::type_::ExternalTypeId(3))),
+            },
+            arguments: data::Storage::Static(&[]),
+            return_: data::type_::ExternalTypeId(3),
+        },
+    },
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                ExternalInstruction::TupleIndex {
+                    tuple: TupleLocalId(2),
+                    index: 1,
+                },
+                r#"
+data::graph::ExternalInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                ExternalInstruction::CustomField {
+                    source: CustomLocal::new(
+                        CustomLocalId(2),
+                        CustomValueShape::new(CustomTypeId(3), CustomValueShapeId(4)),
+                    ),
+                    index: 1,
+                },
+                r#"
+data::graph::ExternalInstruction::CustomField {
+    source: data::graph::CustomLocal {
+        id: data::graph::CustomLocalId(2),
+        shape: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+    index: 1,
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                ExternalInstruction::ListIndex {
+                    list: ExternalListLocalId(2),
+                    index: 1,
+                },
+                r#"
+data::graph::ExternalInstruction::ListIndex {
+    list: data::graph::ExternalListLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
+            ),
+        ];
+        for (instruction, expected) in cases {
+            assert_eq!(Rust::expression(&instruction), expected);
+        }
+    }
+}
+
 #[cfg(test)]
 mod view_tests {
-    use super::{ExternalInstruction, ExternalInstructionRef, ExternalInstructionView};
+    use super::{ExternalInstruction, ExternalInstructionRef, ExternalInstructionView, Table};
     use crate::plan::execution::function::ExternalFunctionId;
     use crate::plan::execution::graph::{
         CustomLocal, CustomLocalId, ExternalFunctionLocal, ExternalFunctionLocalId,
@@ -150,7 +306,7 @@ mod view_tests {
     fn exposes_every_external_instruction_variant() {
         let external_type = ExternalTypeId::new(0);
         let call_function = ExternalFunctionId::new(1, external_type);
-        let call_args = vec![ParamLocal::Int(IntLocalId(0))].into_boxed_slice();
+        let call_args: Table<ParamLocal> = vec![ParamLocal::Int(IntLocalId(0))].into();
         let call_site = crate::plan::HostCallSite::unknown();
         let call = ExternalInstruction::Call {
             function: call_function,
@@ -174,7 +330,7 @@ mod view_tests {
                 external_type,
             ),
         );
-        let function_args: Box<[ParamLocal]> = Box::new([]);
+        let function_args: Table<ParamLocal> = Vec::new().into();
         let function_site = crate::plan::HostCallSite::unknown();
         let function_call = ExternalInstruction::FunctionCall {
             function: function_local.clone(),
@@ -262,7 +418,7 @@ mod explain_tests {
         let external_type = ExternalTypeId::new(0);
         let instruction = ExternalInstruction::Call {
             function: ExternalFunctionId::new(1, external_type),
-            args: vec![ParamLocal::Int(IntLocalId(0))].into_boxed_slice(),
+            args: vec![ParamLocal::Int(IntLocalId(0))].into(),
             site: crate::plan::HostCallSite::unknown(),
         };
         let expected = "external.call external#1 args=[%int#0]";
@@ -283,7 +439,7 @@ mod explain_tests {
         );
         let instruction = ExternalInstruction::FunctionCall {
             function: function_local,
-            args: Box::new([]),
+            args: Vec::new().into(),
             site: crate::plan::HostCallSite::unknown(),
         };
         let expected = "external.function_call %function.external#2 args=[]";

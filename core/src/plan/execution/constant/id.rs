@@ -1,9 +1,10 @@
+use crate::plan::execution::prepared::rust::{Emit, Rust};
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
-pub(crate) struct ConstantId<Value> {
-    index: usize,
-    value: PhantomData<fn() -> Value>,
+pub struct ConstantId<Value> {
+    pub index: usize,
+    pub value: PhantomData<fn() -> Value>,
 }
 
 impl<Value> ConstantId<Value> {
@@ -50,9 +51,20 @@ impl<Value> Hash for ConstantId<Value> {
     }
 }
 
+impl<Value> Emit for ConstantId<Value> {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, value } = self;
+        output.structure(
+            "constant::ConstantId",
+            &[("index", index), ("value", value)],
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::ConstantId;
+    use crate::plan::execution::prepared::rust::Rust;
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
@@ -72,6 +84,15 @@ mod tests {
         assert_eq!(cloned, id);
         assert_ne!(id, different);
         assert_eq!(format!("{id:?}"), "ConstantId(3)");
+        assert_eq!(
+            Rust::expression(&id),
+            r#"
+data::constant::ConstantId {
+    index: 3,
+    value: ::core::marker::PhantomData,
+}"#
+            .trim_start_matches('\n')
+        );
 
         let mut id_hasher = DefaultHasher::new();
         id.hash(&mut id_hasher);

@@ -41,7 +41,6 @@ use super::type_::{
 use super::{ExecutionPlan, ExecutionProgram, HostedProgram};
 use crate::host::HostProfile;
 use crate::plan::SourceContext;
-use ecow::EcoString;
 use std::convert::Infallible;
 
 pub(crate) trait RuntimeExecutionPlan: Sized {
@@ -50,8 +49,8 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
 
     fn program(&self) -> &ExecutionProgram<Self::Profile>;
 
-    fn function_parameters(&self) -> &super::function::FunctionParameterCatalog {
-        &self.program().common.function_parameters
+    fn function_parameters(&self) -> super::function::FunctionParameterView<'_> {
+        self.program().common.function_parameters.as_view()
     }
 
     fn value_metadata(&self) -> RuntimeValueMetadata<'_> {
@@ -67,12 +66,12 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
         id: BoolFunctionId,
     ) -> &ExecutionFunction<Self::Profile, ExecutionBoolFunctionBody<Self::Profile>>;
 
-    fn source_context_for(&self, module: &EcoString) -> Option<&SourceContext> {
+    fn source_context_for(&self, module: &str) -> Option<&SourceContext> {
         self.program()
             .common
             .modules
             .iter()
-            .find(|context| &context.module == module)
+            .find(|context| context.module.as_str() == module)
             .and_then(|context| context.source_context.as_ref())
     }
 
@@ -415,7 +414,7 @@ pub(crate) struct OwnedRuntimeValueMetadata {
 }
 
 impl<'plan> RuntimeValueMetadata<'plan> {
-    pub(crate) fn native_constructor_tags(self) -> impl Iterator<Item = &'plan EcoString> {
+    pub(crate) fn native_constructor_tags(self) -> impl Iterator<Item = &'plan str> {
         self.custom_types.native_constructor_tags()
     }
 

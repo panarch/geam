@@ -109,6 +109,7 @@ pub(super) fn lower_never_function_graph<ModuleExpression, ModuleFunction>(
 
 pub(super) fn lower_constant_graph<ModuleExpression, DraftReturn, FrozenReturn>(
     expression: &ModuleExpression,
+    shape: &super::specialization::SpecializedValueShape,
     context: &mut LoweringContext,
     lower_expression: impl Copy
     + Fn(
@@ -122,5 +123,5 @@ where
     DraftReturn: draft::DraftGraphValue + freeze::FreezeGraphValue<Frozen = FrozenReturn>,
 {
     build::build_constant_graph(expression, context, lower_expression)
-        .map(|graph| freeze::freeze_constant(graph, context))
+        .map(|graph| freeze::freeze_constant(graph, shape, context))
 }

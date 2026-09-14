@@ -852,7 +852,7 @@ impl FunctionTemplateId {
 }
 
 impl ModuleId {
-    pub(crate) fn new(index: usize) -> Self {
+    pub(crate) const fn new(index: usize) -> Self {
         Self(index)
     }
 

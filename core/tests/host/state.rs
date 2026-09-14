@@ -319,7 +319,6 @@ pub fn main() {
                         .host_template()
                         .expect("function should have one body owner")
                         .name()
-                        .as_str()
                 }
             })
             .collect::<Vec<_>>(),

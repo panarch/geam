@@ -68,6 +68,7 @@ pub(super) fn plan(
 
 #[derive(Debug, Clone, PartialEq)]
 struct TupleCasePattern {
+    matched_shape: ValueShape,
     match_condition: Option<BoolExpr>,
     branch_bindings: Vec<(EcoString, Expr)>,
     total_branch_steps: Vec<Step>,
@@ -75,8 +76,9 @@ struct TupleCasePattern {
 }
 
 impl TupleCasePattern {
-    fn any() -> Self {
+    fn any(matched_shape: ValueShape) -> Self {
         Self {
+            matched_shape,
             match_condition: None,
             branch_bindings: Vec::new(),
             total_branch_steps: Vec::new(),
@@ -86,6 +88,7 @@ impl TupleCasePattern {
 
     fn literal(value: Expr, literal: Expr) -> Self {
         Self {
+            matched_shape: literal.value_shape().clone(),
             match_condition: Some(BoolExpr::equal(value, literal)),
             branch_bindings: Vec::new(),
             total_branch_steps: Vec::new(),
@@ -101,6 +104,7 @@ impl TupleCasePattern {
     ) -> Result<Self, PlanError> {
         let value: StringExpr = expect_expression(value)?;
         let mut pattern = Self {
+            matched_shape: ValueShape::String,
             match_condition: Some(BoolExpr::string_starts_with(value.clone(), prefix.clone())),
             branch_bindings: Vec::new(),
             total_branch_steps: Vec::new(),
@@ -137,9 +141,10 @@ impl TupleCasePattern {
 }
 
 impl TupleCasePattern {
-    fn from_list_pattern(pattern: super::list::ListCasePattern) -> Self {
+    fn from_list_pattern(pattern: super::list::ListCasePattern, matched_shape: ValueShape) -> Self {
         let (match_condition, branch_bindings, total_branch_steps, is_total) = pattern.into_parts();
         Self {
+            matched_shape,
             match_condition,
             branch_bindings,
             total_branch_steps,
@@ -150,6 +155,7 @@ impl TupleCasePattern {
     fn from_bit_array_pattern(pattern: super::bit_array::BitArrayCasePattern) -> Self {
         let (match_condition, branch_bindings, is_total) = pattern.into_parts();
         Self {
+            matched_shape: ValueShape::BitArray,
             match_condition: Some(match_condition),
             branch_bindings,
             total_branch_steps: Vec::new(),
@@ -169,16 +175,19 @@ fn plan_tuple_case_pattern_with_context(
             ref name,
             ref type_,
             ..
-        } if matches_type(type_.as_ref(), &subject_type, context) => {
-            Ok(TupleCasePattern::any().with_binding(name.clone(), value))
-        }
+        } if matches_type(type_.as_ref(), &subject_type, context) => Ok(TupleCasePattern::any(
+            context.value_shape_in_scope(type_.as_ref()),
+        )
+        .with_binding(name.clone(), value)),
         ref pattern @ Pattern::Variable { .. } => Err(crate::planner::pattern::unexpected_pattern(
             pattern,
             &ValueShape::from_value_type(subject_type),
             context,
         )),
         Pattern::Discard { type_, .. } if matches_type(type_.as_ref(), &subject_type, context) => {
-            Ok(TupleCasePattern::any())
+            Ok(TupleCasePattern::any(
+                context.value_shape_in_scope(type_.as_ref()),
+            ))
         }
         ref pattern @ Pattern::Discard { .. } => Err(crate::planner::pattern::unexpected_pattern(
             pattern,
@@ -192,7 +201,11 @@ fn plan_tuple_case_pattern_with_context(
                 subject_type,
                 context,
             )?;
-            Ok(pattern.with_binding(name, value))
+            let binding_value = crate::planner::expression::conversion::refine_expression_shape(
+                value,
+                pattern.matched_shape.clone(),
+            )?;
+            Ok(pattern.with_binding(name, binding_value))
         }
         Pattern::Tuple { location, elements } => {
             plan_tuple_structural_case_pattern(location, elements, value, subject_type, context)
@@ -240,7 +253,7 @@ fn plan_tuple_case_pattern_with_context(
             ..
         } if name == "Nil" && arguments.is_empty() && spread.is_none() && type_.is_nil() => {
             if subject_type == ValueType::Nil {
-                Ok(TupleCasePattern::any())
+                Ok(TupleCasePattern::any(ValueShape::Nil))
             } else {
                 Err(crate::planner::pattern::unexpected_pattern(
                     pattern,
@@ -270,20 +283,22 @@ fn plan_tuple_case_pattern_with_context(
                 .map(|binding| total_custom_binding_steps(value.clone(), binding, context))
                 .unwrap_or_default();
             Ok(TupleCasePattern {
+                matched_shape: ValueShape::Custom(pattern.matched_shape),
                 match_condition: Some(BoolExpr::custom_matches(value, pattern.pattern)),
                 branch_bindings: Vec::new(),
                 total_branch_steps,
                 is_total: pattern.is_total,
             })
         }
-        Pattern::List { .. } if matches!(subject_type, ValueType::List(_)) => {
+        Pattern::List { ref type_, .. } if matches!(subject_type, ValueType::List(_)) => {
+            let matched_shape = context.value_shape_in_scope(type_.as_ref());
             let pattern = super::list::plan_list_case_pattern_with_context(
                 pattern,
                 value,
                 subject_type,
                 context,
             )?;
-            Ok(TupleCasePattern::from_list_pattern(pattern))
+            Ok(TupleCasePattern::from_list_pattern(pattern, matched_shape))
         }
         Pattern::StringPrefix {
             left_side_string,
@@ -364,7 +379,13 @@ fn plan_tuple_case_pattern(
 }
 
 fn combine_tuple_case_patterns(patterns: Vec<TupleCasePattern>) -> TupleCasePattern {
-    let mut combined = TupleCasePattern::any();
+    let matched_shape = ValueShape::Tuple(
+        patterns
+            .iter()
+            .map(|pattern| pattern.matched_shape.clone())
+            .collect(),
+    );
+    let mut combined = TupleCasePattern::any(matched_shape);
     for pattern in patterns {
         combined.match_condition = match (combined.match_condition, pattern.match_condition) {
             (Some(left), Some(right)) => Some(BoolExpr::and(left, right)),
@@ -967,7 +988,7 @@ pub fn main() {
                 nil().into(),
                 ValueType::Nil,
             ),
-            Ok(super::TupleCasePattern::any()),
+            Ok(super::TupleCasePattern::any(ValueShape::Nil)),
         );
     }
 
@@ -997,6 +1018,9 @@ pub fn main() {
         assert_eq!(
             actual,
             Ok(super::TupleCasePattern {
+                matched_shape: ValueShape::Tuple(
+                    vec![ValueShape::Int, ValueShape::Int].into_boxed_slice()
+                ),
                 match_condition: Some(BoolExpr::and(
                     BoolExpr::equal(tuple([int(1), int(2)]).index_int(0).into(), int(1).into()),
                     BoolExpr::equal(tuple([int(1), int(2)]).index_int(1).into(), int(2).into()),
@@ -1026,6 +1050,7 @@ pub fn main() {
         assert_eq!(
             actual,
             Ok(super::TupleCasePattern {
+                matched_shape: ValueShape::String,
                 match_condition: Some(BoolExpr::string_starts_with(
                     string("Hello, Geam").into(),
                     "Hello, ".into(),
@@ -1377,6 +1402,50 @@ pub fn main() {
                 InvalidExpressionType::Tuple,
                 InvalidExpressionType::Int,
             )),
+        );
+    }
+
+    #[test]
+    fn reject_margin_tuple_alias_with_conflicting_constructor_refinement() {
+        let mut pattern_type = gleam_compiler_core::type_::result(
+            gleam_compiler_core::type_::int(),
+            gleam_compiler_core::type_::string(),
+        );
+        std::sync::Arc::make_mut(&mut pattern_type).set_custom_type_variant(0);
+        let source_shape = crate::plan::CustomValueShape::new(
+            crate::plan::CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
+            vec![
+                crate::plan::ValueShape::Int,
+                crate::plan::ValueShape::String,
+            ],
+            crate::plan::CustomConstructorRefinement::Exact(1),
+        );
+        let type_ = ValueType::Custom(source_shape.type_().clone());
+        let value = Expr::custom(crate::plan::CustomExpr::local_get(
+            crate::plan::CustomLocal::from_shape(crate::plan::CustomLocalId(0), source_shape),
+            "source".into(),
+        ));
+        assert_eq!(
+            super::plan_tuple_case_pattern(
+                Pattern::Assign {
+                    location: dummy_span(),
+                    name: "alias".into(),
+                    pattern: Box::new(Pattern::Variable {
+                        location: dummy_span(),
+                        name: "value".into(),
+                        type_: pattern_type,
+                        origin: VariableOrigin::generated(),
+                    }),
+                },
+                value,
+                type_.clone(),
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShapeRefinement {
+                    expected: type_.clone(),
+                    actual: type_,
+                },
+            }),
         );
     }
 
@@ -1851,6 +1920,11 @@ pub fn main() {
                 &mut context,
             ),
             Ok(super::TupleCasePattern {
+                matched_shape: ValueShape::Custom(crate::plan::CustomValueShape::new(
+                    value.type_().type_name().clone(),
+                    vec![ValueShape::Int, ValueShape::String],
+                    crate::plan::CustomConstructorRefinement::Exact(0),
+                )),
                 match_condition: Some(BoolExpr::custom_matches(
                     value,
                     CustomPattern::new(constructor, vec![AssertPattern::Int(1.into())], None,),
@@ -1933,6 +2007,7 @@ pub fn main() {
                 &mut context,
             ),
             Ok(super::TupleCasePattern {
+                matched_shape: ValueShape::Custom(value.shape().clone()),
                 match_condition: Some(BoolExpr::custom_matches(
                     value.clone(),
                     CustomPattern::new(

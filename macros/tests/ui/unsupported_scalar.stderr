@@ -19,19 +19,19 @@ note: required by a bound in `HostCall`
    |             ^^^^^^^^ required by this bound in `HostCall`
    = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `i64: host::function::argument::HostArgument` is not satisfied
+error[E0277]: the trait bound `i64: geam_core::host::function::argument::HostArgument` is not satisfied
   --> tests/ui/unsupported_scalar.rs:19:1
    |
 19 | #[geam_macros::module(path = "counter", crate_path = geam_core)]
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `host::function::argument::HostArgument` is not implemented for `i64`
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `geam_core::host::function::argument::HostArgument` is not implemented for `i64`
    |
-help: the trait `host::function::argument::HostArgument` is implemented for `f64`
+help: the trait `geam_core::host::function::argument::HostArgument` is implemented for `f64`
   --> $WORKSPACE/core/src/host/function/argument/float.rs
    |
    | impl HostArgument for f64 {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^
-   = note: required for `i64` to implement `host::function::argument::HostScopedArgument`
-   = note: required for `for<'__geam_call> fn(HostCall<'__geam_call, Profile, __GeamProvider, i64>, i64) -> Result<HostCallCompletion<'__geam_call, i64>, HostCallError> {__geam_host_next::<Profile>}` to implement `host::function::adapter::ScopedHostFunctionAdapter<Profile, __GeamProvider, (i64,), i64>`
+   = note: required for `i64` to implement `geam_core::host::function::argument::HostScopedArgument`
+   = note: required for `for<'__geam_call> fn(HostCall<'__geam_call, Profile, __GeamProvider, i64>, i64) -> Result<HostCallCompletion<'__geam_call, i64>, HostCallError> {__geam_host_next::<Profile>}` to implement `geam_core::host::function::adapter::ScopedHostFunctionAdapter<Profile, __GeamProvider, (i64,), i64>`
    = note: required for `for<'__geam_call> fn(HostCall<'__geam_call, Profile, __GeamProvider, i64>, i64) -> Result<HostCallCompletion<'__geam_call, i64>, HostCallError> {__geam_host_next::<Profile>}` to implement `ScopedHostFunction<Profile, __GeamProvider, (i64,), i64>`
 note: required by a bound in `HostProviderModule::<Profile>::with_scoped_function`
   --> $WORKSPACE/core/src/host/module.rs

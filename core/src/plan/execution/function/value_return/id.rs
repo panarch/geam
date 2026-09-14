@@ -1,45 +1,46 @@
 use crate::plan::execution::explain::FunctionLabel;
 use crate::plan::execution::function::FunctionLabelSource;
+use crate::plan::execution::prepared::rust::{Emit, Rust};
 use crate::plan::execution::type_::{CustomValueShape, ExternalTypeId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NeverFunctionId(pub(crate) usize);
+pub struct NeverFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct IntFunctionId(pub(crate) usize);
+pub struct IntFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FloatFunctionId(pub(crate) usize);
+pub struct FloatFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StringFunctionId(pub(crate) usize);
+pub struct StringFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BitArrayFunctionId(pub(crate) usize);
+pub struct BitArrayFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct UtfCodepointFunctionId(pub(crate) usize);
+pub struct UtfCodepointFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CustomFunctionId {
-    index: usize,
-    return_shape: CustomValueShape,
+    pub index: usize,
+    pub return_shape: CustomValueShape,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExternalFunctionId {
-    index: usize,
-    return_type: ExternalTypeId,
+    pub index: usize,
+    pub return_type: ExternalTypeId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BoolFunctionId(pub(crate) usize);
+pub struct BoolFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NilFunctionId(pub(crate) usize);
+pub struct NilFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TupleFunctionId(pub(crate) usize);
+pub struct TupleFunctionId(pub usize);
 
 impl CustomFunctionId {
     pub(in crate::plan::execution) fn new(index: usize, return_shape: CustomValueShape) -> Self {
@@ -145,6 +146,92 @@ impl FunctionLabelSource for NilFunctionId {
 impl FunctionLabelSource for TupleFunctionId {
     fn function_label(&self) -> FunctionLabel {
         FunctionLabel::new("tuple", self.0)
+    }
+}
+
+impl Emit for NeverFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::NeverFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for IntFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::IntFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for FloatFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::FloatFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for StringFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::StringFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for BitArrayFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::BitArrayFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for UtfCodepointFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::UtfCodepointFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for CustomFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            index,
+            return_shape,
+        } = self;
+        output.structure(
+            "function::CustomFunctionId",
+            &[("index", index), ("return_shape", return_shape)],
+        );
+    }
+}
+
+impl Emit for ExternalFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self { index, return_type } = self;
+        output.structure(
+            "function::ExternalFunctionId",
+            &[("index", index), ("return_type", return_type)],
+        );
+    }
+}
+
+impl Emit for BoolFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::BoolFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for NilFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::NilFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for TupleFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::TupleFunctionId", &[field_0]);
     }
 }
 

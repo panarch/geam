@@ -121,7 +121,7 @@ pub fn main() {
 // function tuple#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %function.generic#0:shape#1(fn(param#0) -> param#0) = function[Generic] reference template#1 shapes=[shape#0]
+//     %function.generic#0:shape#2(fn(param#0) -> param#0) = function[Generic] reference template#1 shapes=[shape#0]
 //     %function.generic#1:shape#4(fn(param#1) -> custom_type#0) = function[Generic] closure target=custom_type#0.constructor#0 captures=[]
 //     %function.list.parameter#0:shape#7(fn() -> list_type#0) = function[List] reference list.parameter#0
 //     %function.list.parameter#1:shape#10(fn() -> list_type#1) = function[List] reference list.parameter#1

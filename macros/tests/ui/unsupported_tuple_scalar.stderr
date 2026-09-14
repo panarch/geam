@@ -1,16 +1,16 @@
-error[E0277]: the trait bound `HostTupleType<HostTypeList<i64, HostTypeList<bool, HostTypeListEnd>>>: host::function::argument::HostScopedArgument` is not satisfied
+error[E0277]: the trait bound `HostTupleType<HostTypeList<i64, HostTypeList<bool, HostTypeListEnd>>>: geam_core::host::function::argument::HostScopedArgument` is not satisfied
  --> tests/ui/unsupported_tuple_scalar.rs:8:1
   |
 8 | #[geam_macros::module(path = "tuples", crate_path = geam_core)]
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
   |
-  = help: the trait `host::function::argument::HostScopedArgument` is not implemented for `HostTupleType<HostTypeList<i64, HostTypeList<bool, HostTypeListEnd>>>`
-help: the trait `host::function::argument::HostScopedArgument` is implemented for `HostTupleType<Elements>`
+  = help: the trait `geam_core::host::function::argument::HostScopedArgument` is not implemented for `HostTupleType<HostTypeList<i64, HostTypeList<bool, HostTypeListEnd>>>`
+help: the trait `geam_core::host::function::argument::HostScopedArgument` is implemented for `HostTupleType<Elements>`
  --> $WORKSPACE/core/src/host/function/argument.rs
   |
   | impl<Elements: HostAbiTypeSequence> HostScopedArgument for HostTupleType<Elements> {
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  = note: required for `for<'__geam_call> fn(HostCall<'__geam_call, Profile, __GeamProvider, bool>, HostTuple<'__geam_call, HostTypeList<i64, HostTypeList<bool, HostTypeListEnd>>>) -> Result<HostCallCompletion<'__geam_call, bool>, HostCallError> {__geam_host_enabled::<Profile>}` to implement `host::function::adapter::ScopedHostFunctionAdapter<Profile, __GeamProvider, (HostTupleType<HostTypeList<i64, HostTypeList<bool, HostTypeListEnd>>>,), bool>`
+  = note: required for `for<'__geam_call> fn(HostCall<'__geam_call, Profile, __GeamProvider, bool>, HostTuple<'__geam_call, HostTypeList<i64, HostTypeList<bool, HostTypeListEnd>>>) -> Result<HostCallCompletion<'__geam_call, bool>, HostCallError> {__geam_host_enabled::<Profile>}` to implement `geam_core::host::function::adapter::ScopedHostFunctionAdapter<Profile, __GeamProvider, (HostTupleType<HostTypeList<i64, HostTypeList<bool, HostTypeListEnd>>>,), bool>`
   = note: required for `for<'__geam_call> fn(HostCall<'__geam_call, Profile, __GeamProvider, bool>, HostTuple<'__geam_call, HostTypeList<i64, HostTypeList<bool, HostTypeListEnd>>>) -> Result<HostCallCompletion<'__geam_call, bool>, HostCallError> {__geam_host_enabled::<Profile>}` to implement `ScopedHostFunction<Profile, __GeamProvider, (HostTupleType<HostTypeList<i64, HostTypeList<bool, HostTypeListEnd>>>,), bool>`
 note: required by a bound in `HostProviderModule::<Profile>::with_scoped_function`
  --> $WORKSPACE/core/src/host/module.rs
@@ -33,10 +33,10 @@ help: the trait `HostType` is implemented for `f64`
   |
   | impl HostType for f64 {
   | ^^^^^^^^^^^^^^^^^^^^^
-  = note: required for `i64` to implement `host::type_::HostAbiType`
+  = note: required for `i64` to implement `geam_core::host::type_::HostAbiType`
   = note: required for `HostTypeList<i64, HostTypeList<bool, HostTypeListEnd>>` to implement `HostTypeSequence`
   = note: required for `HostTupleType<HostTypeList<i64, HostTypeList<bool, HostTypeListEnd>>>` to implement `HostType`
-  = note: required for `for<'__geam_call> fn(HostCall<'__geam_call, Profile, __GeamProvider, bool>, HostTuple<'__geam_call, HostTypeList<i64, HostTypeList<bool, HostTypeListEnd>>>) -> Result<HostCallCompletion<'__geam_call, bool>, HostCallError> {__geam_host_enabled::<Profile>}` to implement `host::function::adapter::ScopedHostFunctionAdapter<Profile, __GeamProvider, (HostTupleType<HostTypeList<i64, HostTypeList<bool, HostTypeListEnd>>>,), bool>`
+  = note: required for `for<'__geam_call> fn(HostCall<'__geam_call, Profile, __GeamProvider, bool>, HostTuple<'__geam_call, HostTypeList<i64, HostTypeList<bool, HostTypeListEnd>>>) -> Result<HostCallCompletion<'__geam_call, bool>, HostCallError> {__geam_host_enabled::<Profile>}` to implement `geam_core::host::function::adapter::ScopedHostFunctionAdapter<Profile, __GeamProvider, (HostTupleType<HostTypeList<i64, HostTypeList<bool, HostTypeListEnd>>>,), bool>`
   = note: required for `for<'__geam_call> fn(HostCall<'__geam_call, Profile, __GeamProvider, bool>, HostTuple<'__geam_call, HostTypeList<i64, HostTypeList<bool, HostTypeListEnd>>>) -> Result<HostCallCompletion<'__geam_call, bool>, HostCallError> {__geam_host_enabled::<Profile>}` to implement `ScopedHostFunction<Profile, __GeamProvider, (HostTupleType<HostTypeList<i64, HostTypeList<bool, HostTypeListEnd>>>,), bool>`
 note: required by a bound in `HostProviderModule::<Profile>::with_scoped_function`
  --> $WORKSPACE/core/src/host/module.rs

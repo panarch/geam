@@ -92,6 +92,7 @@ ryu = "1"
 semver = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 tempfile = "3"
 thiserror = "2"
 tokio = { version = "1.53.1", default-features = false, features = ["rt-multi-thread", "net", "time", "io-util"] }
@@ -150,6 +151,11 @@ required-features = ["gleam-stdlib"]
 name = "future_builtins"
 path = "tests/future_builtins.rs"
 required-features = ["embedding", "provider", "builtins"]
+
+[[test]]
+name = "prepared_embedding"
+path = "tests/prepared_embedding.rs"
+required-features = ["cli", "embedding"]
 
 [[test]]
 name = "provider_examples"

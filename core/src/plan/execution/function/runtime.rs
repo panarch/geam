@@ -5,14 +5,16 @@ use super::{
 };
 use crate::plan::execution::explain::FunctionLabel;
 use crate::plan::execution::graph::ExternalFunctionCallTarget;
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 use crate::plan::execution::type_::{CustomConstructorId, FunctionType, ValueShapeId, ValueType};
 use std::convert::Infallible;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) enum GenericCallableId {
+pub enum GenericCallableId {
     Function {
         template: usize,
-        substitution: Box<[ValueShapeId]>,
+        substitution: Table<ValueShapeId>,
     },
     Constructor(CustomConstructorId),
 }
@@ -24,7 +26,7 @@ impl GenericCallableId {
     ) -> Self {
         Self::Function {
             template,
-            substitution: substitution.into_boxed_slice(),
+            substitution: substitution.into(),
         }
     }
 
@@ -34,13 +36,13 @@ impl GenericCallableId {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ProfiledRuntimeFunctionId<Graph: ExecutionGraphProfile> {
+pub enum ProfiledRuntimeFunctionId<Graph: ExecutionGraphProfile> {
     Core(ProfiledCoreRuntimeFunctionId<Graph>),
     External(Graph::ExternalFunctionId),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ProfiledCoreRuntimeFunctionId<Graph: ExecutionGraphProfile> {
+pub enum ProfiledCoreRuntimeFunctionId<Graph: ExecutionGraphProfile> {
     Never(NeverFunctionId),
     Int(IntFunctionId),
     Float(FloatFunctionId),
@@ -52,7 +54,7 @@ pub(crate) enum ProfiledCoreRuntimeFunctionId<Graph: ExecutionGraphProfile> {
     Nil(NilFunctionId),
     Tuple {
         id: TupleFunctionId,
-        return_type: Vec<ValueType>,
+        return_type: Table<ValueType>,
     },
     List(super::ProfiledListFunctionId<Graph>),
     Function {
@@ -62,7 +64,7 @@ pub(crate) enum ProfiledCoreRuntimeFunctionId<Graph: ExecutionGraphProfile> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum RuntimeFunctionFunctionTarget {
+pub enum RuntimeFunctionFunctionTarget {
     Core(super::ProfiledFunctionFunctionId<Infallible>),
     External(ExternalFunctionCallTarget),
 }
@@ -172,6 +174,331 @@ impl RuntimeFunctionFunctionTarget {
         match self {
             Self::Core(function) => Infallible::function_function(function),
             Self::External(function) => function.runtime_id(),
+        }
+    }
+}
+
+impl Emit for GenericCallableId {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Function {
+                template,
+                substitution,
+            } => output.structure(
+                "function::GenericCallableId::Function",
+                &[("template", template), ("substitution", substitution)],
+            ),
+            Self::Constructor(field_0) => {
+                output.call("function::GenericCallableId::Constructor", &[field_0])
+            }
+        }
+    }
+}
+
+impl<Graph: ExecutionGraphProfile> Emit for ProfiledRuntimeFunctionId<Graph>
+where
+    ProfiledCoreRuntimeFunctionId<Graph>: Emit,
+    Graph::ExternalFunctionId: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Core(field_0) => {
+                output.call("function::ProfiledRuntimeFunctionId::Core", &[field_0])
+            }
+            Self::External(field_0) => {
+                output.call("function::ProfiledRuntimeFunctionId::External", &[field_0])
+            }
+        }
+    }
+}
+
+impl<Graph: ExecutionGraphProfile> Emit for ProfiledCoreRuntimeFunctionId<Graph>
+where
+    super::ProfiledListFunctionId<Graph>: Emit,
+    Graph::RuntimeFunctionFunctionId: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Never(field_0) => {
+                output.call("function::ProfiledCoreRuntimeFunctionId::Never", &[field_0])
+            }
+            Self::Int(field_0) => {
+                output.call("function::ProfiledCoreRuntimeFunctionId::Int", &[field_0])
+            }
+            Self::Float(field_0) => {
+                output.call("function::ProfiledCoreRuntimeFunctionId::Float", &[field_0])
+            }
+            Self::String(field_0) => output.call(
+                "function::ProfiledCoreRuntimeFunctionId::String",
+                &[field_0],
+            ),
+            Self::BitArray(field_0) => output.call(
+                "function::ProfiledCoreRuntimeFunctionId::BitArray",
+                &[field_0],
+            ),
+            Self::UtfCodepoint(field_0) => output.call(
+                "function::ProfiledCoreRuntimeFunctionId::UtfCodepoint",
+                &[field_0],
+            ),
+            Self::Custom(field_0) => output.call(
+                "function::ProfiledCoreRuntimeFunctionId::Custom",
+                &[field_0],
+            ),
+            Self::Bool(field_0) => {
+                output.call("function::ProfiledCoreRuntimeFunctionId::Bool", &[field_0])
+            }
+            Self::Nil(field_0) => {
+                output.call("function::ProfiledCoreRuntimeFunctionId::Nil", &[field_0])
+            }
+            Self::Tuple { id, return_type } => output.structure(
+                "function::ProfiledCoreRuntimeFunctionId::Tuple",
+                &[("id", id), ("return_type", return_type)],
+            ),
+            Self::List(field_0) => {
+                output.call("function::ProfiledCoreRuntimeFunctionId::List", &[field_0])
+            }
+            Self::Function { id, return_type } => output.structure(
+                "function::ProfiledCoreRuntimeFunctionId::Function",
+                &[("id", id), ("return_type", return_type)],
+            ),
+        }
+    }
+}
+
+impl Emit for RuntimeFunctionFunctionTarget {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Core(field_0) => {
+                output.call("function::RuntimeFunctionFunctionTarget::Core", &[field_0])
+            }
+            Self::External(field_0) => output.call(
+                "function::RuntimeFunctionFunctionTarget::External",
+                &[field_0],
+            ),
+        }
+    }
+}
+
+impl Emit for FunctionReturnFamily {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Generic => output.path("function::FunctionReturnFamily::Generic"),
+            Self::Never => output.path("function::FunctionReturnFamily::Never"),
+            Self::Int => output.path("function::FunctionReturnFamily::Int"),
+            Self::Float => output.path("function::FunctionReturnFamily::Float"),
+            Self::String => output.path("function::FunctionReturnFamily::String"),
+            Self::BitArray => output.path("function::FunctionReturnFamily::BitArray"),
+            Self::UtfCodepoint => output.path("function::FunctionReturnFamily::UtfCodepoint"),
+            Self::Custom => output.path("function::FunctionReturnFamily::Custom"),
+            Self::External => output.path("function::FunctionReturnFamily::External"),
+            Self::Bool => output.path("function::FunctionReturnFamily::Bool"),
+            Self::Nil => output.path("function::FunctionReturnFamily::Nil"),
+            Self::Tuple => output.path("function::FunctionReturnFamily::Tuple"),
+            Self::List => output.path("function::FunctionReturnFamily::List"),
+            Self::Function => output.path("function::FunctionReturnFamily::Function"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::{
+        FunctionReturnFamily, ProfiledCoreRuntimeFunctionId, ProfiledRuntimeFunctionId,
+        RuntimeFunctionFunctionTarget,
+    };
+    use crate::plan::execution::function::{
+        BitArrayFunctionId, BoolFunctionId, CustomFunctionId, ExternalFunctionId, FloatFunctionId,
+        HostedExecutionGraph, IntFunctionFunctionId, IntFunctionId, IntListFunctionId,
+        ListFunctionId, NeverFunctionId, NilFunctionId, ProfiledFunctionFunctionId,
+        ProfiledListFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
+    };
+    use crate::plan::execution::prepared::rust::Rust;
+    use crate::plan::execution::type_::{
+        CustomTypeId, CustomValueShape, CustomValueShapeId, ExternalTypeId, FunctionType,
+        IntListTypeId, ListTypeId, ValueType,
+    };
+
+    #[test]
+    fn emits_runtime_entry_ids_without_erasing_return_contracts() {
+        let cases: [(ProfiledCoreRuntimeFunctionId<HostedExecutionGraph>, &str); 12] = [
+            (
+                ProfiledCoreRuntimeFunctionId::Never(NeverFunctionId(2)),
+                "data::function::ProfiledCoreRuntimeFunctionId::Never(data::function::NeverFunctionId(2))",
+            ),
+            (
+                ProfiledCoreRuntimeFunctionId::Int(IntFunctionId(2)),
+                "data::function::ProfiledCoreRuntimeFunctionId::Int(data::function::IntFunctionId(2))",
+            ),
+            (
+                ProfiledCoreRuntimeFunctionId::Float(FloatFunctionId(2)),
+                "data::function::ProfiledCoreRuntimeFunctionId::Float(data::function::FloatFunctionId(2))",
+            ),
+            (
+                ProfiledCoreRuntimeFunctionId::String(StringFunctionId(2)),
+                "data::function::ProfiledCoreRuntimeFunctionId::String(data::function::StringFunctionId(2))",
+            ),
+            (
+                ProfiledCoreRuntimeFunctionId::BitArray(BitArrayFunctionId(2)),
+                "data::function::ProfiledCoreRuntimeFunctionId::BitArray(data::function::BitArrayFunctionId(2))",
+            ),
+            (
+                ProfiledCoreRuntimeFunctionId::UtfCodepoint(UtfCodepointFunctionId(2)),
+                "data::function::ProfiledCoreRuntimeFunctionId::UtfCodepoint(data::function::UtfCodepointFunctionId(2))",
+            ),
+            (
+                ProfiledCoreRuntimeFunctionId::Bool(BoolFunctionId(2)),
+                "data::function::ProfiledCoreRuntimeFunctionId::Bool(data::function::BoolFunctionId(2))",
+            ),
+            (
+                ProfiledCoreRuntimeFunctionId::Nil(NilFunctionId(2)),
+                "data::function::ProfiledCoreRuntimeFunctionId::Nil(data::function::NilFunctionId(2))",
+            ),
+            (
+                ProfiledCoreRuntimeFunctionId::Custom(CustomFunctionId::new(
+                    2,
+                    CustomValueShape::new(CustomTypeId(3), CustomValueShapeId(4)),
+                )),
+                r#"
+data::function::ProfiledCoreRuntimeFunctionId::Custom(data::function::CustomFunctionId {
+    index: 2,
+    return_shape: data::type_::CustomValueShape {
+        type_id: data::type_::CustomTypeId(3),
+        shape_id: data::type_::CustomValueShapeId(4),
+    },
+})"#.trim_start_matches('\n'),
+            ),
+            (
+                ProfiledCoreRuntimeFunctionId::Tuple {
+                    id: TupleFunctionId(2),
+                    return_type: vec![ValueType::Int].into(),
+                },
+                r#"
+data::function::ProfiledCoreRuntimeFunctionId::Tuple {
+    id: data::function::TupleFunctionId(2),
+    return_type: data::Storage::Static(&[
+        data::type_::ValueType::Int,
+    ]),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                ProfiledCoreRuntimeFunctionId::List(ProfiledListFunctionId::Core(
+                    ListFunctionId::Int(IntListFunctionId::new(
+                        2,
+                        IntListTypeId::new(ListTypeId(3)),
+                    )),
+                )),
+                r#"
+data::function::ProfiledCoreRuntimeFunctionId::List(data::function::ProfiledListFunctionId::Core(data::function::ListFunctionId::Int(data::function::IntListFunctionId {
+    index: 2,
+    type_id: data::type_::IntListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})))"#.trim_start_matches('\n'),
+            ),
+            (
+                ProfiledCoreRuntimeFunctionId::Function {
+                    id: RuntimeFunctionFunctionTarget::Core(ProfiledFunctionFunctionId::Int(
+                        IntFunctionFunctionId(2),
+                    )),
+                    return_type: FunctionType::new(Vec::new(), ValueType::Int),
+                },
+                r#"
+data::function::ProfiledCoreRuntimeFunctionId::Function {
+    id: data::function::RuntimeFunctionFunctionTarget::Core(data::function::ProfiledFunctionFunctionId::Int(data::function::IntFunctionFunctionId(2))),
+    return_type: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::Int),
+    },
+}"#.trim_start_matches('\n'),
+            ),
+        ];
+        for (id, expected) in cases {
+            assert_eq!(Rust::expression(&id), expected);
+        }
+        let entries: [(ProfiledRuntimeFunctionId<HostedExecutionGraph>, &str); 2] = [
+            (
+                ProfiledRuntimeFunctionId::Core(ProfiledCoreRuntimeFunctionId::Int(IntFunctionId(
+                    2,
+                ))),
+                "data::function::ProfiledRuntimeFunctionId::Core(data::function::ProfiledCoreRuntimeFunctionId::Int(data::function::IntFunctionId(2)))",
+            ),
+            (
+                ProfiledRuntimeFunctionId::External(ExternalFunctionId::new(2, ExternalTypeId(3))),
+                r#"
+data::function::ProfiledRuntimeFunctionId::External(data::function::ExternalFunctionId {
+    index: 2,
+    return_type: data::type_::ExternalTypeId(3),
+})"#
+                .trim_start_matches('\n'),
+            ),
+        ];
+        for (id, expected) in entries {
+            assert_eq!(Rust::expression(&id), expected);
+        }
+    }
+
+    #[test]
+    fn emits_every_function_return_family() {
+        let cases = [
+            (
+                FunctionReturnFamily::Generic,
+                "data::function::FunctionReturnFamily::Generic",
+            ),
+            (
+                FunctionReturnFamily::Never,
+                "data::function::FunctionReturnFamily::Never",
+            ),
+            (
+                FunctionReturnFamily::Int,
+                "data::function::FunctionReturnFamily::Int",
+            ),
+            (
+                FunctionReturnFamily::Float,
+                "data::function::FunctionReturnFamily::Float",
+            ),
+            (
+                FunctionReturnFamily::String,
+                "data::function::FunctionReturnFamily::String",
+            ),
+            (
+                FunctionReturnFamily::BitArray,
+                "data::function::FunctionReturnFamily::BitArray",
+            ),
+            (
+                FunctionReturnFamily::UtfCodepoint,
+                "data::function::FunctionReturnFamily::UtfCodepoint",
+            ),
+            (
+                FunctionReturnFamily::Custom,
+                "data::function::FunctionReturnFamily::Custom",
+            ),
+            (
+                FunctionReturnFamily::External,
+                "data::function::FunctionReturnFamily::External",
+            ),
+            (
+                FunctionReturnFamily::Bool,
+                "data::function::FunctionReturnFamily::Bool",
+            ),
+            (
+                FunctionReturnFamily::Nil,
+                "data::function::FunctionReturnFamily::Nil",
+            ),
+            (
+                FunctionReturnFamily::Tuple,
+                "data::function::FunctionReturnFamily::Tuple",
+            ),
+            (
+                FunctionReturnFamily::List,
+                "data::function::FunctionReturnFamily::List",
+            ),
+            (
+                FunctionReturnFamily::Function,
+                "data::function::FunctionReturnFamily::Function",
+            ),
+        ];
+        for (family, expected) in cases {
+            assert_eq!(Rust::expression(&family), expected);
         }
     }
 }

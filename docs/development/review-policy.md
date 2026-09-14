@@ -31,6 +31,14 @@ lowering, not another validation boundary. Runtime code assumes it receives a
 valid `ExecutionPlan`. Structural execution failures belong in ModulePlan
 planning as `PlanError`, not in execution lowering or a runtime error enum.
 
+Prepared execution data supplied by another Cargo package has a separate
+admission boundary. Validate its format, typed links, entries, and native
+registration contracts before creating a usable execution owner. Admission
+reads the immutable data directly; it must not re-plan, re-specialize, rebuild
+the complete owned graph, or introduce a second evaluator. Rejection belongs
+to the artifact input boundary, not a runtime invariant. This does not add
+fallibility to compiler-produced execution lowering.
+
 For a linked program, `ModulePlan` owns the root entry and all supplied module
 definitions. Planning must validate every supplied function and constant body,
 not only definitions reachable from the entry. Cross-module references retain
@@ -130,10 +138,11 @@ actual callers before assigning a semantic role.
 
 ## Plan Construction Rules
 
-Plan construction is not a validation layer. Reaching a `ModulePlan` or plan
-node constructor means the planner has already accepted a runtime-executable
-shape. Reaching `ExecutionPlan` means the accepted ModulePlan has been consumed
-into execution-owned nodes and function tables.
+Compiler-owned plan construction is not a validation layer. Reaching a
+`ModulePlan` or plan node constructor means the planner has already accepted a
+runtime-executable shape. Consuming that accepted ModulePlan produces
+execution-owned nodes and function tables. Prepared input reaches the same
+trusted execution boundary through artifact admission.
 
 Generic function and constant templates are validated once in `ModulePlan`.
 Execution lowering must remain total from the validated template and publish a
@@ -472,11 +481,14 @@ embedding ownership may be returned. After boundary validation, every
 embedding-owned operation must be total by construction; any internal error,
 invariant, fallback, or panic is a blocking representation defect.
 
-- Loading and binding own source selection, exact signature agreement,
-  specialization, and sealing selected entries into one execution. Repeated
-  calls use owner-bound typed handles and prevalidated entries; they must not
-  parse source, plan or lower bodies, look up function names, or revalidate
-  runtime shapes. Function handles may be called only through their owner.
+- Source-backed loading and binding own source selection, exact signature
+  agreement, specialization, and sealing selected entries into one execution.
+  Preparation completes those source operations before emission; prepared
+  loading admits the artifact and links fresh native implementations before
+  sealing its typed entries. Repeated calls use owner-bound typed handles and
+  prevalidated entries; they must not parse source, plan or lower bodies,
+  look up function names, or revalidate runtime shapes. Function handles may be
+  called only through their owner.
   Retained values may outlive a call or mutable session, but re-entry must use
   the same loaded owner.
 - Reuse the existing value families, function tables, retained storage, and

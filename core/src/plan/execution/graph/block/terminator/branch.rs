@@ -1,11 +1,13 @@
 use super::Edge;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::graph::BoolLocalId;
+use crate::plan::execution::prepared::rust::{Emit, Rust};
 
-pub(crate) struct BoolBranch {
-    subject: BoolLocalId,
-    true_: Edge,
-    false_: Edge,
+#[derive(Clone)]
+pub struct BoolBranch {
+    pub subject: BoolLocalId,
+    pub true_: Edge,
+    pub false_: Edge,
 }
 
 impl BoolBranch {
@@ -38,6 +40,54 @@ impl Explain for BoolBranch {
         context.write(self.true_());
         context.push_str(" false=");
         context.write(self.false_());
+    }
+}
+
+impl Emit for BoolBranch {
+    fn emit(&self, output: &mut Rust) {
+        let Self {
+            subject,
+            true_,
+            false_,
+        } = self;
+        output.structure(
+            "graph::BoolBranch",
+            &[("subject", subject), ("true_", true_), ("false_", false_)],
+        );
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::BoolBranch;
+    use crate::plan::execution::graph::{BlockId, BoolLocalId, Edge, IntLocalId, ParamLocal};
+    use crate::plan::execution::prepared::rust::Rust;
+
+    #[test]
+    fn emits_branch_with_edge_arguments() {
+        let value = BoolBranch::new(
+            BoolLocalId(2),
+            Edge::new(BlockId(3), vec![ParamLocal::Int(IntLocalId(5))]),
+            Edge::new(BlockId(4), Vec::new()),
+        );
+        assert_eq!(
+            Rust::expression(&value),
+            r#"
+data::graph::BoolBranch {
+    subject: data::graph::BoolLocalId(2),
+    true_: data::graph::Edge {
+        target: data::graph::BlockId(3),
+        args: data::Storage::Static(&[
+            data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+        ]),
+    },
+    false_: data::graph::Edge {
+        target: data::graph::BlockId(4),
+        args: data::Storage::Static(&[]),
+    },
+}"#
+            .trim_start_matches('\n')
+        );
     }
 }
 
@@ -99,7 +149,6 @@ pub fn main() {
             .body()
             .block_graph()
             .blocks()
-            .iter()
             .map(|block| block.terminator())
             .collect()
     }

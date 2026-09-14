@@ -5,22 +5,25 @@ use super::{
 use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::IntFunctionId;
+use crate::plan::execution::graph::IntegerLiteral;
 use crate::plan::execution::graph::{
     CustomLocal, IntFunctionLocalId, IntListLocalId, IntLocalId, ParamLocal, TupleLocalId,
 };
-use num_bigint::BigInt;
+use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::storage::Table;
 
-pub(crate) enum IntInstruction {
-    Value(BigInt),
+#[derive(Clone)]
+pub enum IntInstruction {
+    Value(IntegerLiteral),
     Constant(ConstantId<IntLocalId>),
     Call {
         function: IntFunctionId,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: IntFunctionLocalId,
-        args: Box<[ParamLocal]>,
+        args: Table<ParamLocal>,
         site: crate::plan::HostCallSite,
     },
     TupleIndex {
@@ -87,6 +90,237 @@ impl Explain for IntInstruction {
                 write_binary(output, "int.remainder", left, right);
             }
             IntInstruction::Negate(value) => write_unary(output, "int.negate", value),
+        }
+    }
+}
+
+impl Emit for IntInstruction {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Value(field_0) => output.call("graph::IntInstruction::Value", &[field_0]),
+            Self::Constant(field_0) => output.call("graph::IntInstruction::Constant", &[field_0]),
+            Self::Call {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::IntInstruction::Call",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::FunctionCall {
+                function,
+                args,
+                site,
+            } => output.structure(
+                "graph::IntInstruction::FunctionCall",
+                &[("function", function), ("args", args), ("site", site)],
+            ),
+            Self::TupleIndex { tuple, index } => output.structure(
+                "graph::IntInstruction::TupleIndex",
+                &[("tuple", tuple), ("index", index)],
+            ),
+            Self::CustomField { source, index } => output.structure(
+                "graph::IntInstruction::CustomField",
+                &[("source", source), ("index", index)],
+            ),
+            Self::ListIndex { list, index } => output.structure(
+                "graph::IntInstruction::ListIndex",
+                &[("list", list), ("index", index)],
+            ),
+            Self::Add { left, right } => output.structure(
+                "graph::IntInstruction::Add",
+                &[("left", left), ("right", right)],
+            ),
+            Self::Sub { left, right } => output.structure(
+                "graph::IntInstruction::Sub",
+                &[("left", left), ("right", right)],
+            ),
+            Self::Mult { left, right } => output.structure(
+                "graph::IntInstruction::Mult",
+                &[("left", left), ("right", right)],
+            ),
+            Self::Div { left, right } => output.structure(
+                "graph::IntInstruction::Div",
+                &[("left", left), ("right", right)],
+            ),
+            Self::Remainder { left, right } => output.structure(
+                "graph::IntInstruction::Remainder",
+                &[("left", left), ("right", right)],
+            ),
+            Self::Negate(field_0) => output.call("graph::IntInstruction::Negate", &[field_0]),
+        }
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::IntInstruction;
+    use crate::plan::execution::constant::ConstantId;
+    use crate::plan::execution::function::IntFunctionId;
+    use crate::plan::execution::graph::{
+        CustomLocal, CustomLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId, ParamLocal,
+        TupleLocalId,
+    };
+    use crate::plan::execution::prepared::rust::Rust;
+    use crate::plan::execution::type_::{CustomTypeId, CustomValueShape, CustomValueShapeId};
+    use crate::plan::{HostCallSite, SourceSpan};
+
+    #[test]
+    fn emits_every_integer_instruction_with_its_operands_and_source_site() {
+        let site = HostCallSite::new("example".into(), "main".into(), SourceSpan::new(3, 8));
+        let cases = [
+            (
+                IntInstruction::Value(num_bigint::BigInt::from(-42).into()),
+                r#"
+data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+    sign: data::Sign::Minus,
+    digits: data::Storage::Static(&[
+        42,
+    ]),
+})"#.trim_start_matches('\n'),
+            ),
+            (
+                IntInstruction::Constant(ConstantId::new(3)),
+                r#"
+data::graph::IntInstruction::Constant(data::constant::ConstantId {
+    index: 3,
+    value: ::core::marker::PhantomData,
+})"#.trim_start_matches('\n'),
+            ),
+            (
+                IntInstruction::Call {
+                    function: IntFunctionId(2),
+                    args: vec![ParamLocal::Int(IntLocalId(5))].into(),
+                    site: site.clone(),
+                },
+                r#"
+data::graph::IntInstruction::Call {
+    function: data::function::IntFunctionId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                IntInstruction::FunctionCall {
+                    function: IntFunctionLocalId(2),
+                    args: vec![ParamLocal::Int(IntLocalId(5))].into(),
+                    site,
+                },
+                r#"
+data::graph::IntInstruction::FunctionCall {
+    function: data::graph::IntFunctionLocalId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                IntInstruction::TupleIndex {
+                    tuple: TupleLocalId(2),
+                    index: 1,
+                },
+                r#"
+data::graph::IntInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                IntInstruction::CustomField {
+                    source: CustomLocal::new(
+                        CustomLocalId(2),
+                        CustomValueShape::new(CustomTypeId(3), CustomValueShapeId(4)),
+                    ),
+                    index: 1,
+                },
+                r#"
+data::graph::IntInstruction::CustomField {
+    source: data::graph::CustomLocal {
+        id: data::graph::CustomLocalId(2),
+        shape: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+    index: 1,
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                IntInstruction::ListIndex {
+                    list: IntListLocalId(2),
+                    index: 1,
+                },
+                r#"
+data::graph::IntInstruction::ListIndex {
+    list: data::graph::IntListLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                IntInstruction::Add {
+                    left: IntLocalId(2),
+                    right: IntLocalId(5),
+                },
+                r#"
+data::graph::IntInstruction::Add {
+    left: data::graph::IntLocalId(2),
+    right: data::graph::IntLocalId(5),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                IntInstruction::Sub {
+                    left: IntLocalId(2),
+                    right: IntLocalId(5),
+                },
+                r#"
+data::graph::IntInstruction::Sub {
+    left: data::graph::IntLocalId(2),
+    right: data::graph::IntLocalId(5),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                IntInstruction::Mult {
+                    left: IntLocalId(2),
+                    right: IntLocalId(5),
+                },
+                r#"
+data::graph::IntInstruction::Mult {
+    left: data::graph::IntLocalId(2),
+    right: data::graph::IntLocalId(5),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                IntInstruction::Div {
+                    left: IntLocalId(2),
+                    right: IntLocalId(5),
+                },
+                r#"
+data::graph::IntInstruction::Div {
+    left: data::graph::IntLocalId(2),
+    right: data::graph::IntLocalId(5),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                IntInstruction::Remainder {
+                    left: IntLocalId(2),
+                    right: IntLocalId(5),
+                },
+                r#"
+data::graph::IntInstruction::Remainder {
+    left: data::graph::IntLocalId(2),
+    right: data::graph::IntLocalId(5),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                IntInstruction::Negate(IntLocalId(2)),
+                "data::graph::IntInstruction::Negate(data::graph::IntLocalId(2))",
+            ),
+        ];
+        for (instruction, expected) in cases {
+            assert_eq!(Rust::expression(&instruction), expected);
         }
     }
 }
@@ -178,7 +412,7 @@ pub fn main() {
         explain::assert_rendered(source, expected, |plan, output| {
             let graph = plan.tuple_function(TupleFunctionId(0)).body().block_graph();
             let mut first = true;
-            for instruction in graph.blocks().iter().flat_map(|block| block.instructions()) {
+            for instruction in graph.blocks().flat_map(|block| block.instructions()) {
                 if let ProfiledInstructionKind::Int(instruction) = instruction.kind() {
                     write_separator(output, &mut first);
                     let mut context = explain::ExplainContext::new(plan, output);

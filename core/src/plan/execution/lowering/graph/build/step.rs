@@ -1466,11 +1466,7 @@ impl<'a> MatchPlanner<'a> {
         match tail {
             module::ListAssertTail::Ignore => DraftMatchListTail::Ignore,
             module::ListAssertTail::Bind(binding) => {
-                let item =
-                    self.context
-                        .concrete_value_shape(&crate::plan::ValueShape::from_value_type(
-                            binding.local().item_type(),
-                        ));
+                let item = self.context.concrete_value_shape(binding.item_shape());
                 DraftMatchListTail::Bind(self.bind(
                     super::local::list_local_key(binding.local()),
                     StoredValueShape::List(Box::new(item)),
@@ -2028,7 +2024,7 @@ mod tests {
         let local = ListLocal::int(IntListLocalId(0));
         let bound = TotalBindingPattern::list(
             ValueType::Int,
-            ListAssertTail::bind(local.clone(), "rest".into()),
+            ListAssertTail::bind(local.clone(), "rest".into(), crate::plan::ValueShape::Int),
         );
         let (mut graph, cursor) =
             DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
