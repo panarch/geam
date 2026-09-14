@@ -5,10 +5,20 @@ use cargo_metadata::{Metadata, Package};
 use gleam_core::manifest::{Manifest, ManifestPackageSource};
 use gleam_core::requirement::Requirement;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs;
 
-pub(super) fn inputs(package: &EmbeddingPackage, actual: &Metadata) -> Result<Value, CliError> {
+pub(super) fn fingerprint(
+    package: &EmbeddingPackage,
+    actual: &Metadata,
+) -> Result<String, CliError> {
+    let mut inputs = inputs(package, actual)?;
+    inputs.sort_all_objects();
+    Ok(format!("sha256:{:x}", Sha256::digest(inputs.to_string())))
+}
+
+fn inputs(package: &EmbeddingPackage, actual: &Metadata) -> Result<Value, CliError> {
     let gleam: Manifest = read_toml(
         &package.project_root().join("manifest.toml"),
         "Gleam manifest",
@@ -110,7 +120,7 @@ fn read_toml<Value: serde::de::DeserializeOwned>(
 
 #[cfg(test)]
 mod tests {
-    use super::{inputs, read_toml};
+    use super::{fingerprint, inputs, read_toml};
     use crate::embedding::package::EmbeddingPackage;
     use camino::Utf8PathBuf;
     use cargo_metadata::{Metadata, MetadataCommand, PackageId};
@@ -165,9 +175,24 @@ mod tests {
             "gleam": { "package": "provenance", "version": "1.0.0", "packages": { "local_data": { "version": "0.1.0", "requirements": [], "source": { "source": "local" } } }, "requirements": { "local_data": { "source": "local" } } }
         });
         assert_eq!(inputs(&package, &metadata).unwrap(), expected);
+        let expected_fingerprint =
+            "sha256:8c495a8671ca6847452e255c0770e5587c7c4832130c2a8ac4573416108d8ed8";
+        assert_eq!(
+            fingerprint(&package, &metadata).unwrap(),
+            expected_fingerprint
+        );
         metadata.packages.reverse();
         metadata.resolve.as_mut().unwrap().nodes.reverse();
         assert_eq!(inputs(&package, &metadata).unwrap(), expected);
+        assert_eq!(
+            fingerprint(&package, &metadata).unwrap(),
+            expected_fingerprint
+        );
+        let (_relocated_directory, relocated, relocated_metadata) = fixture();
+        assert_eq!(
+            fingerprint(&relocated, &relocated_metadata).unwrap(),
+            expected_fingerprint
+        );
 
         let original = metadata
             .packages
@@ -208,6 +233,43 @@ mod tests {
         assert_eq!(dependencies[1]["name"], "runtime");
         assert_eq!(dependencies[1]["package"]["version"], "2.0.0");
         assert_eq!(generated["cargo"][1]["features"], json!(["a", "z"]));
+        assert_ne!(
+            fingerprint(&package, &metadata).unwrap(),
+            expected_fingerprint
+        );
+    }
+
+    #[test]
+    fn fingerprints_parsed_locks_and_configuration_not_their_source_text() {
+        let (_directory, package, metadata) = fixture();
+        let original = fingerprint(&package, &metadata).unwrap();
+        let manifest = package.project_root().join("manifest.toml");
+        let source = fs::read_to_string(&manifest).unwrap();
+        fs::write(
+            &manifest,
+            format!(
+                "# Relocated package\n{}",
+                source.replace("/temporary/package", "/another/package")
+            ),
+        )
+        .unwrap();
+        assert_eq!(fingerprint(&package, &metadata).unwrap(), original);
+        fs::write(&manifest, source.replace("0.1.0", "0.1.1")).unwrap();
+        assert_ne!(fingerprint(&package, &metadata).unwrap(), original);
+        fs::write(&manifest, source).unwrap();
+
+        let lock = package.environment().workspace_root.join("Cargo.lock");
+        let source = fs::read_to_string(&lock).unwrap();
+        fs::write(&lock, format!("# Unchanged resolution\n{source}\n")).unwrap();
+        assert_eq!(fingerprint(&package, &metadata).unwrap(), original);
+        fs::write(&lock, source.replace("1.0.0", "1.0.1")).unwrap();
+        assert_ne!(fingerprint(&package, &metadata).unwrap(), original);
+        fs::write(&lock, source).unwrap();
+
+        let config = package.project_root().join("gleam.toml");
+        let source = fs::read_to_string(&config).unwrap();
+        fs::write(&config, source.replace("1.0.0", "1.0.1")).unwrap();
+        assert_ne!(fingerprint(&package, &metadata).unwrap(), original);
     }
 
     #[test]
@@ -227,7 +289,7 @@ mod tests {
         let mut changed = metadata.clone();
         changed.resolve = None;
         assert!(
-            inputs(&package, &changed)
+            fingerprint(&package, &changed)
                 .unwrap_err()
                 .to_string()
                 .contains("helper resolve graph is absent")
@@ -237,7 +299,7 @@ mod tests {
             repr: "missing".into(),
         };
         assert!(
-            inputs(&package, &changed)
+            fingerprint(&package, &changed)
                 .unwrap_err()
                 .to_string()
                 .contains("helper package is absent")
@@ -256,14 +318,14 @@ mod tests {
             repr: "missing".into(),
         };
         assert!(
-            inputs(&package, &changed)
+            fingerprint(&package, &changed)
                 .unwrap_err()
                 .to_string()
                 .contains("helper dependency is absent")
         );
         fs::write(&path, "broken").unwrap();
         assert!(matches!(
-            inputs(&package, &metadata).unwrap_err(),
+            fingerprint(&package, &metadata).unwrap_err(),
             crate::error::CliError::InvalidToml {
                 kind: "Gleam manifest",
                 ..
@@ -271,19 +333,19 @@ mod tests {
         ));
         fs::remove_file(&path).unwrap();
         assert!(matches!(
-            inputs(&package, &metadata).unwrap_err(),
+            fingerprint(&package, &metadata).unwrap_err(),
             crate::error::CliError::FileRead { path: actual, .. } if actual == path
         ));
         fs::write(&path, "packages = []\n[requirements]\n").unwrap();
         let config = package.project_root().join("gleam.toml");
         let original = fs::read(&config).unwrap();
         fs::remove_file(&config).unwrap();
-        let error = inputs(&package, &metadata).unwrap_err();
+        let error = fingerprint(&package, &metadata).unwrap_err();
         assert!(matches!(error, crate::error::CliError::FileRead { path, .. } if path == config));
         fs::write(config, original).unwrap();
         let lock = package.environment().workspace_root.join("Cargo.lock");
         fs::write(&lock, "not toml").unwrap();
-        let error = inputs(&package, &metadata).unwrap_err();
+        let error = fingerprint(&package, &metadata).unwrap_err();
         assert!(matches!(
             error,
             crate::error::CliError::InvalidToml {

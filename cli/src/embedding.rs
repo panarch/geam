@@ -519,6 +519,8 @@ mod tests {
             assert_eq!(fixture.managed_inputs(), updated);
             sync(&fixture.root).unwrap();
             let declarations = fixture.managed_inputs();
+            let child = fixture.root.join("src/geam_bindings/program.rs");
+            let before_dependency_update = fs::read_to_string(&child).unwrap();
             assert!(
                 fs::read_to_string(fixture.root.join("src/geam_bindings.rs"))
                     .unwrap()
@@ -538,12 +540,24 @@ mod tests {
                     .current_dir(fixture.root.join("gleam")),
                 "explicit local dependency update",
             );
+            let updated_lock = fixture.managed_inputs();
+            let error = check(&fixture.root).unwrap_err();
+            assert!(
+                matches!(error, CliError::EmbeddingBindingsOutOfDate { output, .. } if output == child)
+            );
+            assert_eq!(fixture.managed_inputs(), updated_lock);
             sync(&fixture.root).unwrap();
             check(&fixture.root).unwrap();
             let dependencies = fixture.managed_inputs();
             assert_ne!(dependencies, declarations);
-            let child = fixture.root.join("src/geam_bindings/program.rs");
             let program = fs::read_to_string(&child).unwrap();
+            let (before_program, before_fingerprint) = before_dependency_update
+                .split_once("\n// Preparation inputs: ")
+                .unwrap();
+            let (after_program, after_fingerprint) =
+                program.split_once("\n// Preparation inputs: ").unwrap();
+            assert_eq!(after_program, before_program);
+            assert_ne!(after_fingerprint, before_fingerprint);
             assert!(program.contains("{\n    format: 1,"));
             fs::write(
                 &child,
