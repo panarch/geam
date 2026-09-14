@@ -196,12 +196,17 @@ mod emission_tests {
                     args: vec![ParamLocal::Int(IntLocalId(5))].into(),
                     site: site.clone(),
                 },
-                concat!(
-                    "data::graph::ExternalInstruction::Call {function: data::function::ExternalFunctionId {index: 2,return_type: data::type_::ExternalTypeId(3,),},",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::ExternalInstruction::Call {
+    function: data::function::ExternalFunctionId {
+        index: 2,
+        return_type: data::type_::ExternalTypeId(3),
+    },
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 ExternalInstruction::FunctionCall {
@@ -216,22 +221,35 @@ mod emission_tests {
                     args: vec![ParamLocal::Int(IntLocalId(5))].into(),
                     site,
                 },
-                concat!(
-                    "data::graph::ExternalInstruction::FunctionCall {function: data::graph::ExternalFunctionLocal {id: data::graph::ExternalFunctionLocalId(2,),",
-                    "type_: data::type_::ExternalFunctionType {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),",
-                    "return_: data::Storage::Static(&data::type_::ValueType::External(data::type_::ExternalTypeId(3,),)),},",
-                    "arguments: data::Storage::Static(&[]),return_: data::type_::ExternalTypeId(3,),},},",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::ExternalInstruction::FunctionCall {
+    function: data::graph::ExternalFunctionLocal {
+        id: data::graph::ExternalFunctionLocalId(2),
+        type_: data::type_::ExternalFunctionType {
+            type_: data::type_::FunctionType {
+                arguments: data::Storage::Static(&[]),
+                return_: data::Storage::Static(&data::type_::ValueType::External(data::type_::ExternalTypeId(3))),
+            },
+            arguments: data::Storage::Static(&[]),
+            return_: data::type_::ExternalTypeId(3),
+        },
+    },
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 ExternalInstruction::TupleIndex {
                     tuple: TupleLocalId(2),
                     index: 1,
                 },
-                "data::graph::ExternalInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+                r#"
+data::graph::ExternalInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 ExternalInstruction::CustomField {
@@ -241,18 +259,28 @@ mod emission_tests {
                     ),
                     index: 1,
                 },
-                concat!(
-                    "data::graph::ExternalInstruction::CustomField {source: data::graph::CustomLocal {",
-                    "id: data::graph::CustomLocalId(2,),shape: data::type_::CustomValueShape {",
-                    "type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},index: 1,}"
-                ),
+                r#"
+data::graph::ExternalInstruction::CustomField {
+    source: data::graph::CustomLocal {
+        id: data::graph::CustomLocalId(2),
+        shape: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 ExternalInstruction::ListIndex {
                     list: ExternalListLocalId(2),
                     index: 1,
                 },
-                "data::graph::ExternalInstruction::ListIndex {list: data::graph::ExternalListLocalId(2,),index: 1,}",
+                r#"
+data::graph::ExternalInstruction::ListIndex {
+    list: data::graph::ExternalListLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
         ];
         for (instruction, expected) in cases {

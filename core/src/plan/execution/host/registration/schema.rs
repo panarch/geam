@@ -325,7 +325,7 @@ mod tests {
             (
                 H::Parameter(2),
                 S::Parameter(2),
-                "data::host::SchemaType::Parameter(2,)",
+                "data::host::SchemaType::Parameter(2)",
             ),
             (H::Int, S::Int, "data::host::SchemaType::Int"),
             (H::Float, S::Float, "data::host::SchemaType::Float"),
@@ -341,12 +341,17 @@ mod tests {
             (
                 H::List(Box::new(H::Int)),
                 S::List(Box::new(S::Int).into()),
-                "data::host::SchemaType::List(data::Storage::Static(&data::host::SchemaType::Int),)",
+                "data::host::SchemaType::List(data::Storage::Static(&data::host::SchemaType::Int))",
             ),
             (
                 H::Tuple(Box::new([H::Int, H::String])),
                 S::Tuple(vec![S::Int, S::String].into()),
-                "data::host::SchemaType::Tuple(data::Storage::Static(&[data::host::SchemaType::Int,data::host::SchemaType::String,]),)",
+                r#"
+data::host::SchemaType::Tuple(data::Storage::Static(&[
+    data::host::SchemaType::Int,
+    data::host::SchemaType::String,
+]))"#
+                    .trim_start_matches('\n'),
             ),
             (
                 H::Function {
@@ -357,7 +362,14 @@ mod tests {
                     arguments: vec![S::Int].into(),
                     return_: Box::new(S::Bool).into(),
                 },
-                "data::host::SchemaType::Function {arguments: data::Storage::Static(&[data::host::SchemaType::Int,]),return_: data::Storage::Static(&data::host::SchemaType::Bool),}",
+                r#"
+data::host::SchemaType::Function {
+    arguments: data::Storage::Static(&[
+        data::host::SchemaType::Int,
+    ]),
+    return_: data::Storage::Static(&data::host::SchemaType::Bool),
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 H::Custom {
@@ -372,7 +384,16 @@ mod tests {
                     name: "Box".into(),
                     arguments: vec![S::Int].into(),
                 },
-                "data::host::SchemaType::Custom {package: data::Text::Static(\"app\",),module: data::Text::Static(\"types\",),name: data::Text::Static(\"Box\",),arguments: data::Storage::Static(&[data::host::SchemaType::Int,]),}",
+                r#"
+data::host::SchemaType::Custom {
+    package: data::Text::Static("app"),
+    module: data::Text::Static("types"),
+    name: data::Text::Static("Box"),
+    arguments: data::Storage::Static(&[
+        data::host::SchemaType::Int,
+    ]),
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 H::External {
@@ -388,7 +409,19 @@ mod tests {
                     },
                     arguments: vec![S::Int].into(),
                 },
-                "data::host::SchemaType::External {schema: data::host::ExternalSchema {package: data::Text::Static(\"app\",),module: data::Text::Static(\"types\",),name: data::Text::Static(\"Token\",),parameter_count: 1,},arguments: data::Storage::Static(&[data::host::SchemaType::Int,]),}",
+                r#"
+data::host::SchemaType::External {
+    schema: data::host::ExternalSchema {
+        package: data::Text::Static("app"),
+        module: data::Text::Static("types"),
+        name: data::Text::Static("Token"),
+        parameter_count: 1,
+    },
+    arguments: data::Storage::Static(&[
+        data::host::SchemaType::Int,
+    ]),
+}"#
+                .trim_start_matches('\n'),
             ),
         ];
         for (index, (source, expected, expression)) in cases.iter().enumerate() {
@@ -515,13 +548,33 @@ mod tests {
         assert!(expected.matches(&source));
         assert_eq!(
             Rust::expression(&expected),
-            concat!(
-                "data::host::CustomSchema {package: data::Text::Static(\"app\",),module: data::Text::Static(\"types\",),name: data::Text::Static(\"Box\",),parameter_count: 1,constructors: data::Storage::Static(&[",
-                "data::host::ConstructorSchema {name: data::Text::Static(\"Box\",),fields: data::Storage::Static(&[",
-                "data::host::FieldSchema {label: Some(data::Text::Static(\"value\",)),type_: data::host::SchemaType::Parameter(0,),},",
-                "data::host::FieldSchema {label: None,type_: data::host::SchemaType::String,},]),},",
-                "data::host::ConstructorSchema {name: data::Text::Static(\"Empty\",),fields: data::Storage::Static(&[]),},]),}",
-            )
+            r#"
+data::host::CustomSchema {
+    package: data::Text::Static("app"),
+    module: data::Text::Static("types"),
+    name: data::Text::Static("Box"),
+    parameter_count: 1,
+    constructors: data::Storage::Static(&[
+        data::host::ConstructorSchema {
+            name: data::Text::Static("Box"),
+            fields: data::Storage::Static(&[
+                data::host::FieldSchema {
+                    label: Some(data::Text::Static("value")),
+                    type_: data::host::SchemaType::Parameter(0),
+                },
+                data::host::FieldSchema {
+                    label: None,
+                    type_: data::host::SchemaType::String,
+                },
+            ]),
+        },
+        data::host::ConstructorSchema {
+            name: data::Text::Static("Empty"),
+            fields: data::Storage::Static(&[]),
+        },
+    ]),
+}"#
+            .trim_start_matches('\n')
         );
         for (package, module, name, count) in [
             ("other", "types", "Box", 1),

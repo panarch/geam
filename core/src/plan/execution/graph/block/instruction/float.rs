@@ -159,14 +159,15 @@ mod emission_tests {
         let cases = [
             (
                 FloatInstruction::Value(-0.0),
-                "data::graph::FloatInstruction::Value(f64::from_bits(9223372036854775808),)",
+                "data::graph::FloatInstruction::Value(f64::from_bits(9223372036854775808))",
             ),
             (
                 FloatInstruction::Constant(ConstantId::new(3)),
-                concat!(
-                    "data::graph::FloatInstruction::Constant(data::constant::ConstantId {",
-                    "index: 3,value: ::core::marker::PhantomData,},)"
-                ),
+                r#"
+data::graph::FloatInstruction::Constant(data::constant::ConstantId {
+    index: 3,
+    value: ::core::marker::PhantomData,
+})"#.trim_start_matches('\n'),
             ),
             (
                 FloatInstruction::Call {
@@ -174,12 +175,14 @@ mod emission_tests {
                     args: vec![ParamLocal::Float(FloatLocalId(5))].into(),
                     site: site.clone(),
                 },
-                concat!(
-                    "data::graph::FloatInstruction::Call {function: data::function::FloatFunctionId(2,),",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::Float(data::graph::FloatLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::FloatInstruction::Call {
+    function: data::function::FloatFunctionId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Float(data::graph::FloatLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 FloatInstruction::FunctionCall {
@@ -187,19 +190,25 @@ mod emission_tests {
                     args: vec![ParamLocal::Float(FloatLocalId(5))].into(),
                     site,
                 },
-                concat!(
-                    "data::graph::FloatInstruction::FunctionCall {function: data::graph::FloatFunctionLocalId(2,),",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::Float(data::graph::FloatLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::FloatInstruction::FunctionCall {
+    function: data::graph::FloatFunctionLocalId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Float(data::graph::FloatLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 FloatInstruction::TupleIndex {
                     tuple: TupleLocalId(2),
                     index: 1,
                 },
-                "data::graph::FloatInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+                r#"
+data::graph::FloatInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 FloatInstruction::CustomField {
@@ -209,46 +218,72 @@ mod emission_tests {
                     ),
                     index: 1,
                 },
-                concat!(
-                    "data::graph::FloatInstruction::CustomField {source: data::graph::CustomLocal {",
-                    "id: data::graph::CustomLocalId(2,),shape: data::type_::CustomValueShape {",
-                    "type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},index: 1,}"
-                ),
+                r#"
+data::graph::FloatInstruction::CustomField {
+    source: data::graph::CustomLocal {
+        id: data::graph::CustomLocalId(2),
+        shape: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 FloatInstruction::ListIndex {
                     list: FloatListLocalId(2),
                     index: 1,
                 },
-                "data::graph::FloatInstruction::ListIndex {list: data::graph::FloatListLocalId(2,),index: 1,}",
+                r#"
+data::graph::FloatInstruction::ListIndex {
+    list: data::graph::FloatListLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 FloatInstruction::Add {
                     left: FloatLocalId(2),
                     right: FloatLocalId(5),
                 },
-                "data::graph::FloatInstruction::Add {left: data::graph::FloatLocalId(2,),right: data::graph::FloatLocalId(5,),}",
+                r#"
+data::graph::FloatInstruction::Add {
+    left: data::graph::FloatLocalId(2),
+    right: data::graph::FloatLocalId(5),
+}"#.trim_start_matches('\n'),
             ),
             (
                 FloatInstruction::Sub {
                     left: FloatLocalId(2),
                     right: FloatLocalId(5),
                 },
-                "data::graph::FloatInstruction::Sub {left: data::graph::FloatLocalId(2,),right: data::graph::FloatLocalId(5,),}",
+                r#"
+data::graph::FloatInstruction::Sub {
+    left: data::graph::FloatLocalId(2),
+    right: data::graph::FloatLocalId(5),
+}"#.trim_start_matches('\n'),
             ),
             (
                 FloatInstruction::Mult {
                     left: FloatLocalId(2),
                     right: FloatLocalId(5),
                 },
-                "data::graph::FloatInstruction::Mult {left: data::graph::FloatLocalId(2,),right: data::graph::FloatLocalId(5,),}",
+                r#"
+data::graph::FloatInstruction::Mult {
+    left: data::graph::FloatLocalId(2),
+    right: data::graph::FloatLocalId(5),
+}"#.trim_start_matches('\n'),
             ),
             (
                 FloatInstruction::Div {
                     left: FloatLocalId(2),
                     right: FloatLocalId(5),
                 },
-                "data::graph::FloatInstruction::Div {left: data::graph::FloatLocalId(2,),right: data::graph::FloatLocalId(5,),}",
+                r#"
+data::graph::FloatInstruction::Div {
+    left: data::graph::FloatLocalId(2),
+    right: data::graph::FloatLocalId(5),
+}"#.trim_start_matches('\n'),
             ),
         ];
         for (instruction, expected) in cases {

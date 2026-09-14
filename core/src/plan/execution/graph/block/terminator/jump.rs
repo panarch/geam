@@ -42,10 +42,16 @@ mod emission_tests {
         let value = Jump::new(Edge::new(BlockId(3), vec![ParamLocal::Int(IntLocalId(5))]));
         assert_eq!(
             Rust::expression(&value),
-            concat!(
-                "data::graph::Jump {edge: data::graph::Edge {target: data::graph::BlockId(3,),",
-                "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(5,),),]),},}"
-            )
+            r#"
+data::graph::Jump {
+    edge: data::graph::Edge {
+        target: data::graph::BlockId(3),
+        args: data::Storage::Static(&[
+            data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+        ]),
+    },
+}"#
+            .trim_start_matches('\n')
         );
     }
 }

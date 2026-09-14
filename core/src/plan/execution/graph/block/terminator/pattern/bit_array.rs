@@ -454,67 +454,73 @@ mod emission_tests {
         let cases = [
             (
                 BitArrayPatternSizeExpr::Value(num_bigint::BigInt::from(8).into()),
-                "data::graph::BitArrayPatternSizeExpr::Value(data::graph::IntegerLiteral {sign: data::Sign::Plus,digits: data::Storage::Static(&[8,]),},)",
+                r#"
+data::graph::BitArrayPatternSizeExpr::Value(data::graph::IntegerLiteral {
+    sign: data::Sign::Plus,
+    digits: data::Storage::Static(&[
+        8,
+    ]),
+})"#.trim_start_matches('\n'),
             ),
             (
                 BitArrayPatternSizeExpr::Local(IntLocalId(1)),
-                "data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1,),)",
+                "data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1))",
             ),
             (
                 BitArrayPatternSizeExpr::Binding(MatchIntBindingId(2)),
-                "data::graph::BitArrayPatternSizeExpr::Binding(data::graph::MatchIntBindingId(2,),)",
+                "data::graph::BitArrayPatternSizeExpr::Binding(data::graph::MatchIntBindingId(2))",
             ),
             (
                 BitArrayPatternSizeExpr::Add {
                     left: left.clone(),
                     right: right.clone(),
                 },
-                concat!(
-                    "data::graph::BitArrayPatternSizeExpr::Add {",
-                    "left: data::Storage::Static(&data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1,),)),",
-                    "right: data::Storage::Static(&data::graph::BitArrayPatternSizeExpr::Binding(data::graph::MatchIntBindingId(2,),)),}"
-                ),
+                r#"
+data::graph::BitArrayPatternSizeExpr::Add {
+    left: data::Storage::Static(&data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1))),
+    right: data::Storage::Static(&data::graph::BitArrayPatternSizeExpr::Binding(data::graph::MatchIntBindingId(2))),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BitArrayPatternSizeExpr::Subtract {
                     left: left.clone(),
                     right: right.clone(),
                 },
-                concat!(
-                    "data::graph::BitArrayPatternSizeExpr::Subtract {",
-                    "left: data::Storage::Static(&data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1,),)),",
-                    "right: data::Storage::Static(&data::graph::BitArrayPatternSizeExpr::Binding(data::graph::MatchIntBindingId(2,),)),}"
-                ),
+                r#"
+data::graph::BitArrayPatternSizeExpr::Subtract {
+    left: data::Storage::Static(&data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1))),
+    right: data::Storage::Static(&data::graph::BitArrayPatternSizeExpr::Binding(data::graph::MatchIntBindingId(2))),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BitArrayPatternSizeExpr::Multiply {
                     left: left.clone(),
                     right: right.clone(),
                 },
-                concat!(
-                    "data::graph::BitArrayPatternSizeExpr::Multiply {",
-                    "left: data::Storage::Static(&data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1,),)),",
-                    "right: data::Storage::Static(&data::graph::BitArrayPatternSizeExpr::Binding(data::graph::MatchIntBindingId(2,),)),}"
-                ),
+                r#"
+data::graph::BitArrayPatternSizeExpr::Multiply {
+    left: data::Storage::Static(&data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1))),
+    right: data::Storage::Static(&data::graph::BitArrayPatternSizeExpr::Binding(data::graph::MatchIntBindingId(2))),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BitArrayPatternSizeExpr::Divide {
                     left: left.clone(),
                     right: right.clone(),
                 },
-                concat!(
-                    "data::graph::BitArrayPatternSizeExpr::Divide {",
-                    "left: data::Storage::Static(&data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1,),)),",
-                    "right: data::Storage::Static(&data::graph::BitArrayPatternSizeExpr::Binding(data::graph::MatchIntBindingId(2,),)),}"
-                ),
+                r#"
+data::graph::BitArrayPatternSizeExpr::Divide {
+    left: data::Storage::Static(&data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1))),
+    right: data::Storage::Static(&data::graph::BitArrayPatternSizeExpr::Binding(data::graph::MatchIntBindingId(2))),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BitArrayPatternSizeExpr::Remainder { left, right },
-                concat!(
-                    "data::graph::BitArrayPatternSizeExpr::Remainder {",
-                    "left: data::Storage::Static(&data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1,),)),",
-                    "right: data::Storage::Static(&data::graph::BitArrayPatternSizeExpr::Binding(data::graph::MatchIntBindingId(2,),)),}"
-                ),
+                r#"
+data::graph::BitArrayPatternSizeExpr::Remainder {
+    left: data::Storage::Static(&data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1))),
+    right: data::Storage::Static(&data::graph::BitArrayPatternSizeExpr::Binding(data::graph::MatchIntBindingId(2))),
+}"#.trim_start_matches('\n'),
             ),
         ];
         for (value, expected) in cases {
@@ -523,10 +529,12 @@ mod emission_tests {
         let size = BitArrayPatternSize::new(BitArrayPatternSizeExpr::Local(IntLocalId(1)), 8);
         assert_eq!(
             Rust::expression(&size),
-            concat!(
-                "data::graph::BitArrayPatternSize {value: ",
-                "data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1,),),unit: 8,}"
-            )
+            r#"
+data::graph::BitArrayPatternSize {
+    value: data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1)),
+    unit: 8,
+}"#
+            .trim_start_matches('\n')
         );
     }
 
@@ -535,11 +543,22 @@ mod emission_tests {
         let integers = [
             (
                 BitArrayPatternValue::Literal(num_bigint::BigInt::from(-3).into()),
-                "data::graph::BitArrayPatternValue::Literal(data::graph::IntegerLiteral {sign: data::Sign::Minus,digits: data::Storage::Static(&[3,]),},)",
+                r#"
+data::graph::BitArrayPatternValue::Literal(data::graph::IntegerLiteral {
+    sign: data::Sign::Minus,
+    digits: data::Storage::Static(&[
+        3,
+    ]),
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 BitArrayPatternValue::Bind(MatchPatternBinding::new(2)),
-                "data::graph::BitArrayPatternValue::Bind(data::graph::MatchPatternBinding {index: 2,},)",
+                r#"
+data::graph::BitArrayPatternValue::Bind(data::graph::MatchPatternBinding {
+    index: 2,
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 BitArrayPatternValue::Discard,
@@ -550,11 +569,14 @@ mod emission_tests {
                     pattern: Node::Static(&BitArrayPatternValue::Discard),
                     binding: MatchPatternBinding::new(2),
                 },
-                concat!(
-                    "data::graph::BitArrayPatternValue::Alias {",
-                    "pattern: data::Storage::Static(&data::graph::BitArrayPatternValue::Discard),",
-                    "binding: data::graph::MatchPatternBinding {index: 2,},}"
-                ),
+                r#"
+data::graph::BitArrayPatternValue::Alias {
+    pattern: data::Storage::Static(&data::graph::BitArrayPatternValue::Discard),
+    binding: data::graph::MatchPatternBinding {
+        index: 2,
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
         ];
         for (pattern, expected) in integers {
@@ -563,11 +585,15 @@ mod emission_tests {
         let floats = [
             (
                 BitArrayPatternValue::Literal(-0.0f64),
-                "data::graph::BitArrayPatternValue::Literal(f64::from_bits(9223372036854775808),)",
+                "data::graph::BitArrayPatternValue::Literal(f64::from_bits(9223372036854775808))",
             ),
             (
                 BitArrayPatternValue::Bind(MatchPatternBinding::new(3)),
-                "data::graph::BitArrayPatternValue::Bind(data::graph::MatchPatternBinding {index: 3,},)",
+                r#"
+data::graph::BitArrayPatternValue::Bind(data::graph::MatchPatternBinding {
+    index: 3,
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 BitArrayPatternValue::Discard,
@@ -578,11 +604,14 @@ mod emission_tests {
                     pattern: Node::Static(&BitArrayPatternValue::Discard),
                     binding: MatchPatternBinding::new(3),
                 },
-                concat!(
-                    "data::graph::BitArrayPatternValue::Alias {",
-                    "pattern: data::Storage::Static(&data::graph::BitArrayPatternValue::Discard),",
-                    "binding: data::graph::MatchPatternBinding {index: 3,},}"
-                ),
+                r#"
+data::graph::BitArrayPatternValue::Alias {
+    pattern: data::Storage::Static(&data::graph::BitArrayPatternValue::Discard),
+    binding: data::graph::MatchPatternBinding {
+        index: 3,
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
         ];
         for (pattern, expected) in floats {
@@ -595,7 +624,11 @@ mod emission_tests {
         for (pattern, expected) in [
             (
                 BitArrayBindingPattern::Bind(MatchPatternBinding::new(2)),
-                "data::graph::BitArrayBindingPattern::Bind(data::graph::MatchPatternBinding {index: 2,},)",
+                r#"
+data::graph::BitArrayBindingPattern::Bind(data::graph::MatchPatternBinding {
+    index: 2,
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 BitArrayBindingPattern::Discard,
@@ -606,11 +639,14 @@ mod emission_tests {
                     pattern: Node::Static(&BitArrayBindingPattern::Discard),
                     binding: MatchPatternBinding::new(2),
                 },
-                concat!(
-                    "data::graph::BitArrayBindingPattern::Alias {",
-                    "pattern: data::Storage::Static(&data::graph::BitArrayBindingPattern::Discard),",
-                    "binding: data::graph::MatchPatternBinding {index: 2,},}"
-                ),
+                r#"
+data::graph::BitArrayBindingPattern::Alias {
+    pattern: data::Storage::Static(&data::graph::BitArrayBindingPattern::Discard),
+    binding: data::graph::MatchPatternBinding {
+        index: 2,
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
         ] {
             assert_eq!(Rust::expression(&pattern), expected);
@@ -618,7 +654,7 @@ mod emission_tests {
         for (pattern, expected) in [
             (
                 BitArrayStringPattern::Literal("a\n".into()),
-                "data::graph::BitArrayStringPattern::Literal(data::Text::Static(\"a\\n\",),)",
+                "data::graph::BitArrayStringPattern::Literal(data::Text::Static(\"a\\n\"))",
             ),
             (
                 BitArrayStringPattern::Discard,
@@ -648,11 +684,17 @@ mod emission_tests {
                     endianness: Endianness::Little,
                     signedness: Signedness::Signed,
                 },
-                concat!(
-                    "data::graph::BitArrayPatternSegment::Int {pattern: data::graph::BitArrayPatternValue::Discard,",
-                    "size: data::graph::BitArrayPatternSize {value: data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1,),),unit: 8,},",
-                    "endianness: data::graph::Endianness::Little,signedness: data::graph::Signedness::Signed,}"
-                ),
+                r#"
+data::graph::BitArrayPatternSegment::Int {
+    pattern: data::graph::BitArrayPatternValue::Discard,
+    size: data::graph::BitArrayPatternSize {
+        value: data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1)),
+        unit: 8,
+    },
+    endianness: data::graph::Endianness::Little,
+    signedness: data::graph::Signedness::Signed,
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 BitArrayPatternSegment::Float {
@@ -660,11 +702,16 @@ mod emission_tests {
                     size: size.clone(),
                     endianness: Endianness::Big,
                 },
-                concat!(
-                    "data::graph::BitArrayPatternSegment::Float {pattern: data::graph::BitArrayPatternValue::Discard,",
-                    "size: data::graph::BitArrayPatternSize {value: data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1,),),unit: 8,},",
-                    "endianness: data::graph::Endianness::Big,}"
-                ),
+                r#"
+data::graph::BitArrayPatternSegment::Float {
+    pattern: data::graph::BitArrayPatternValue::Discard,
+    size: data::graph::BitArrayPatternSize {
+        value: data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1)),
+        unit: 8,
+    },
+    endianness: data::graph::Endianness::Big,
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 BitArrayPatternSegment::Bits {
@@ -672,10 +719,16 @@ mod emission_tests {
                     size: Some(size),
                     unit: 1,
                 },
-                concat!(
-                    "data::graph::BitArrayPatternSegment::Bits {pattern: data::graph::BitArrayBindingPattern::Discard,",
-                    "size: Some(data::graph::BitArrayPatternSize {value: data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1,),),unit: 8,}),unit: 1,}"
-                ),
+                r#"
+data::graph::BitArrayPatternSegment::Bits {
+    pattern: data::graph::BitArrayBindingPattern::Discard,
+    size: Some(data::graph::BitArrayPatternSize {
+        value: data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1)),
+        unit: 8,
+    }),
+    unit: 1,
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 BitArrayPatternSegment::Bits {
@@ -683,24 +736,37 @@ mod emission_tests {
                     size: None,
                     unit: 8,
                 },
-                "data::graph::BitArrayPatternSegment::Bits {pattern: data::graph::BitArrayBindingPattern::Discard,size: None,unit: 8,}",
+                r#"
+data::graph::BitArrayPatternSegment::Bits {
+    pattern: data::graph::BitArrayBindingPattern::Discard,
+    size: None,
+    unit: 8,
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 BitArrayPatternSegment::String {
                     pattern: BitArrayStringPattern::Discard,
                     encoding: StringEncoding::Utf8,
                 },
-                "data::graph::BitArrayPatternSegment::String {pattern: data::graph::BitArrayStringPattern::Discard,encoding: data::graph::StringEncoding::Utf8,}",
+                r#"
+data::graph::BitArrayPatternSegment::String {
+    pattern: data::graph::BitArrayStringPattern::Discard,
+    encoding: data::graph::StringEncoding::Utf8,
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 BitArrayPatternSegment::UtfCodepoint {
                     pattern: BitArrayBindingPattern::Discard,
                     encoding: StringEncoding::Utf16(Endianness::Little),
                 },
-                concat!(
-                    "data::graph::BitArrayPatternSegment::UtfCodepoint {pattern: data::graph::BitArrayBindingPattern::Discard,",
-                    "encoding: data::graph::StringEncoding::Utf16(data::graph::Endianness::Little,),}"
-                ),
+                r#"
+data::graph::BitArrayPatternSegment::UtfCodepoint {
+    pattern: data::graph::BitArrayBindingPattern::Discard,
+    encoding: data::graph::StringEncoding::Utf16(data::graph::Endianness::Little),
+}"#
+                .trim_start_matches('\n'),
             ),
         ];
         for (segment, expected) in cases {
@@ -712,11 +778,16 @@ mod emission_tests {
         }]);
         assert_eq!(
             Rust::expression(&pattern),
-            concat!(
-                "data::graph::BitArrayPattern {segments: data::Storage::Static(&[",
-                "data::graph::BitArrayPatternSegment::String {pattern: data::graph::BitArrayStringPattern::Discard,",
-                "encoding: data::graph::StringEncoding::Utf8,},]),}"
-            )
+            r#"
+data::graph::BitArrayPattern {
+    segments: data::Storage::Static(&[
+        data::graph::BitArrayPatternSegment::String {
+            pattern: data::graph::BitArrayStringPattern::Discard,
+            encoding: data::graph::StringEncoding::Utf8,
+        },
+    ]),
+}"#
+            .trim_start_matches('\n')
         );
     }
 }

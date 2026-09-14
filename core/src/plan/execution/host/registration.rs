@@ -274,59 +274,64 @@ mod tests {
         let expected = [
             (
                 RegistrationParameter::Int(0),
-                "data::host::RegistrationParameter::Int(0,)",
+                "data::host::RegistrationParameter::Int(0)",
             ),
             (
                 RegistrationParameter::Float(0),
-                "data::host::RegistrationParameter::Float(0,)",
+                "data::host::RegistrationParameter::Float(0)",
             ),
             (
                 RegistrationParameter::String(0),
-                "data::host::RegistrationParameter::String(0,)",
+                "data::host::RegistrationParameter::String(0)",
             ),
             (
                 RegistrationParameter::BitArray(0),
-                "data::host::RegistrationParameter::BitArray(0,)",
+                "data::host::RegistrationParameter::BitArray(0)",
             ),
             (
                 RegistrationParameter::UtfCodepoint(0),
-                "data::host::RegistrationParameter::UtfCodepoint(0,)",
+                "data::host::RegistrationParameter::UtfCodepoint(0)",
             ),
             (
                 RegistrationParameter::Bool(0),
-                "data::host::RegistrationParameter::Bool(0,)",
+                "data::host::RegistrationParameter::Bool(0)",
             ),
             (
                 RegistrationParameter::Nil(0),
-                "data::host::RegistrationParameter::Nil(0,)",
+                "data::host::RegistrationParameter::Nil(0)",
             ),
             (
                 RegistrationParameter::Value(0),
-                "data::host::RegistrationParameter::Value(0,)",
+                "data::host::RegistrationParameter::Value(0)",
             ),
             (
                 RegistrationParameter::List(0),
-                "data::host::RegistrationParameter::List(0,)",
+                "data::host::RegistrationParameter::List(0)",
             ),
             (
                 RegistrationParameter::Tuple(0),
-                "data::host::RegistrationParameter::Tuple(0,)",
+                "data::host::RegistrationParameter::Tuple(0)",
             ),
             (
                 RegistrationParameter::Custom(0),
-                "data::host::RegistrationParameter::Custom(0,)",
+                "data::host::RegistrationParameter::Custom(0)",
             ),
             (
                 RegistrationParameter::External(0),
-                "data::host::RegistrationParameter::External(0,)",
+                "data::host::RegistrationParameter::External(0)",
             ),
             (
                 RegistrationParameter::Function { slot: 0, arity: 2 },
-                "data::host::RegistrationParameter::Function {slot: 0,arity: 2,}",
+                r#"
+data::host::RegistrationParameter::Function {
+    slot: 0,
+    arity: 2,
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 RegistrationParameter::Int(1),
-                "data::host::RegistrationParameter::Int(1,)",
+                "data::host::RegistrationParameter::Int(1)",
             ),
         ];
         assert_eq!(parameters.len(), expected.len());
@@ -540,7 +545,11 @@ pub fn main() { convert(42) }
         assert!(!changed.matches(&schema, &constructions));
         assert_eq!(
             Rust::expression(&original.layout),
-            "data::Storage::Static(&[data::host::RegistrationParameter::Int(0,),])"
+            r#"
+data::Storage::Static(&[
+    data::host::RegistrationParameter::Int(0),
+])"#
+            .trim_start_matches('\n')
         );
     }
 }

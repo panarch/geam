@@ -242,11 +242,14 @@ mod tests {
         let type_ = FunctionType::new(vec![ValueType::Int], ValueType::Bool);
         assert_eq!(
             Rust::expression(&type_),
-            concat!(
-                "data::type_::FunctionType {",
-                "arguments: data::Storage::Static(&[data::type_::ValueType::Int,]),",
-                "return_: data::Storage::Static(&data::type_::ValueType::Bool),}"
-            )
+            r#"
+data::type_::FunctionType {
+    arguments: data::Storage::Static(&[
+        data::type_::ValueType::Int,
+    ]),
+    return_: data::Storage::Static(&data::type_::ValueType::Bool),
+}"#
+            .trim_start_matches('\n')
         );
 
         static ARGUMENTS: [ValueType; 1] = [ValueType::Int];
@@ -277,14 +280,22 @@ mod tests {
         );
         assert_eq!(
             Rust::expression(&custom),
-            concat!(
-                "data::type_::CustomFunctionType {type_: data::type_::FunctionType {",
-                "arguments: data::Storage::Static(&[data::type_::ValueType::Int,]),",
-                "return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(2,),)),},",
-                "arguments: data::Storage::Static(&[data::type_::ValueShapeId(3,),]),",
-                "return_: data::type_::CustomValueShape {type_id: data::type_::CustomTypeId(2,),",
-                "shape_id: data::type_::CustomValueShapeId(4,),},}"
-            )
+            r#"
+data::type_::CustomFunctionType {
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[
+            data::type_::ValueType::Int,
+        ]),
+        return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(2))),
+    },
+    arguments: data::Storage::Static(&[
+        data::type_::ValueShapeId(3),
+    ]),
+    return_: data::type_::CustomValueShape {
+        type_id: data::type_::CustomTypeId(2),
+        shape_id: data::type_::CustomValueShapeId(4),
+    },
+}"#.trim_start_matches('\n')
         );
         let external = ExternalFunctionType::from_shapes(
             FunctionType::new(
@@ -296,28 +307,44 @@ mod tests {
         );
         assert_eq!(
             Rust::expression(&external),
-            concat!(
-                "data::type_::ExternalFunctionType {type_: data::type_::FunctionType {",
-                "arguments: data::Storage::Static(&[data::type_::ValueType::Bool,]),",
-                "return_: data::Storage::Static(&data::type_::ValueType::External(data::type_::ExternalTypeId(2,),)),},",
-                "arguments: data::Storage::Static(&[data::type_::ValueShapeId(3,),]),",
-                "return_: data::type_::ExternalTypeId(2,),}"
-            )
+            r#"
+data::type_::ExternalFunctionType {
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[
+            data::type_::ValueType::Bool,
+        ]),
+        return_: data::Storage::Static(&data::type_::ValueType::External(data::type_::ExternalTypeId(2))),
+    },
+    arguments: data::Storage::Static(&[
+        data::type_::ValueShapeId(3),
+    ]),
+    return_: data::type_::ExternalTypeId(2),
+}"#.trim_start_matches('\n')
         );
         let identity = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         let shape = FunctionShape::new(ValueShapeId(7), identity.clone());
         let generic = GenericFunctionType::from_shapes(identity.clone(), shape.clone());
         assert_eq!(
             Rust::expression(&generic),
-            concat!(
-                "data::type_::GenericFunctionType {type_: data::type_::FunctionType {",
-                "arguments: data::Storage::Static(&[data::type_::ValueType::Int,]),",
-                "return_: data::Storage::Static(&data::type_::ValueType::Int),},",
-                "shape: data::type_::FunctionShape {shape_id: data::type_::ValueShapeId(7,),",
-                "type_: data::type_::FunctionType {",
-                "arguments: data::Storage::Static(&[data::type_::ValueType::Int,]),",
-                "return_: data::Storage::Static(&data::type_::ValueType::Int),},},}"
-            )
+            r#"
+data::type_::GenericFunctionType {
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[
+            data::type_::ValueType::Int,
+        ]),
+        return_: data::Storage::Static(&data::type_::ValueType::Int),
+    },
+    shape: data::type_::FunctionShape {
+        shape_id: data::type_::ValueShapeId(7),
+        type_: data::type_::FunctionType {
+            arguments: data::Storage::Static(&[
+                data::type_::ValueType::Int,
+            ]),
+            return_: data::Storage::Static(&data::type_::ValueType::Int),
+        },
+    },
+}"#
+            .trim_start_matches('\n')
         );
         let function = FunctionFunctionType::from_shapes(
             FunctionType::new(vec![ValueType::Bool], ValueType::Function(identity)),
@@ -326,18 +353,33 @@ mod tests {
         );
         assert_eq!(
             Rust::expression(&function),
-            concat!(
-                "data::type_::FunctionFunctionType {type_: data::type_::FunctionType {",
-                "arguments: data::Storage::Static(&[data::type_::ValueType::Bool,]),",
-                "return_: data::Storage::Static(&data::type_::ValueType::Function(",
-                "data::type_::FunctionType {arguments: data::Storage::Static(&[data::type_::ValueType::Int,]),",
-                "return_: data::Storage::Static(&data::type_::ValueType::Int),},)),},",
-                "arguments: data::Storage::Static(&[data::type_::ValueShapeId(3,),]),",
-                "return_: data::type_::FunctionShape {shape_id: data::type_::ValueShapeId(7,),",
-                "type_: data::type_::FunctionType {",
-                "arguments: data::Storage::Static(&[data::type_::ValueType::Int,]),",
-                "return_: data::Storage::Static(&data::type_::ValueType::Int),},},}"
-            )
+            r#"
+data::type_::FunctionFunctionType {
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[
+            data::type_::ValueType::Bool,
+        ]),
+        return_: data::Storage::Static(&data::type_::ValueType::Function(data::type_::FunctionType {
+            arguments: data::Storage::Static(&[
+                data::type_::ValueType::Int,
+            ]),
+            return_: data::Storage::Static(&data::type_::ValueType::Int),
+        })),
+    },
+    arguments: data::Storage::Static(&[
+        data::type_::ValueShapeId(3),
+    ]),
+    return_: data::type_::FunctionShape {
+        shape_id: data::type_::ValueShapeId(7),
+        type_: data::type_::FunctionType {
+            arguments: data::Storage::Static(&[
+                data::type_::ValueType::Int,
+            ]),
+            return_: data::Storage::Static(&data::type_::ValueType::Int),
+        },
+    },
+}"#
+            .trim_start_matches('\n')
         );
     }
 }

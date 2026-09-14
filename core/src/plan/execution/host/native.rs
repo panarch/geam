@@ -237,14 +237,24 @@ mod tests {
                 NativeConversionKind::Tuple(
                     vec![NativeConversionId(2), NativeConversionId(3)].into(),
                 ),
-                "data::host::NativeConversionKind::Tuple(data::Storage::Static(&[data::host::NativeConversionId(2,),data::host::NativeConversionId(3,),]),)",
+                r#"
+data::host::NativeConversionKind::Tuple(data::Storage::Static(&[
+    data::host::NativeConversionId(2),
+    data::host::NativeConversionId(3),
+]))"#
+                    .trim_start_matches('\n'),
             ),
             (
                 NativeConversionKind::List {
                     storage: ListTypeId(4),
                     item: NativeConversionId(5),
                 },
-                "data::host::NativeConversionKind::List {storage: data::type_::ListTypeId(4,),item: data::host::NativeConversionId(5,),}",
+                r#"
+data::host::NativeConversionKind::List {
+    storage: data::type_::ListTypeId(4),
+    item: data::host::NativeConversionId(5),
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 NativeConversionKind::Custom(
@@ -258,11 +268,28 @@ mod tests {
                     }]
                     .into(),
                 ),
-                "data::host::NativeConversionKind::Custom(data::Storage::Static(&[data::host::NativeConstructor {constructor: data::type_::CustomConstructorId {type_id: data::type_::CustomTypeId(6,),index: 1,},tag: data::Text::Static(\"item\",),fields: data::Storage::Static(&[data::host::NativeConversionId(7,),]),},]),)",
+                r#"
+data::host::NativeConversionKind::Custom(data::Storage::Static(&[
+    data::host::NativeConstructor {
+        constructor: data::type_::CustomConstructorId {
+            type_id: data::type_::CustomTypeId(6),
+            index: 1,
+        },
+        tag: data::Text::Static("item"),
+        fields: data::Storage::Static(&[
+            data::host::NativeConversionId(7),
+        ]),
+    },
+]))"#
+                    .trim_start_matches('\n'),
             ),
             (
                 NativeConversionKind::External { rule: 8 },
-                "data::host::NativeConversionKind::External {rule: 8,}",
+                r#"
+data::host::NativeConversionKind::External {
+    rule: 8,
+}"#
+                .trim_start_matches('\n'),
             ),
         ];
         for (kind, expected) in cases {

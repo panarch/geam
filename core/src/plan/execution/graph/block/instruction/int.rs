@@ -171,17 +171,21 @@ mod emission_tests {
         let cases = [
             (
                 IntInstruction::Value(num_bigint::BigInt::from(-42).into()),
-                concat!(
-                    "data::graph::IntInstruction::Value(data::graph::IntegerLiteral {",
-                    "sign: data::Sign::Minus,digits: data::Storage::Static(&[42,]),},)"
-                ),
+                r#"
+data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+    sign: data::Sign::Minus,
+    digits: data::Storage::Static(&[
+        42,
+    ]),
+})"#.trim_start_matches('\n'),
             ),
             (
                 IntInstruction::Constant(ConstantId::new(3)),
-                concat!(
-                    "data::graph::IntInstruction::Constant(data::constant::ConstantId {",
-                    "index: 3,value: ::core::marker::PhantomData,},)"
-                ),
+                r#"
+data::graph::IntInstruction::Constant(data::constant::ConstantId {
+    index: 3,
+    value: ::core::marker::PhantomData,
+})"#.trim_start_matches('\n'),
             ),
             (
                 IntInstruction::Call {
@@ -189,12 +193,14 @@ mod emission_tests {
                     args: vec![ParamLocal::Int(IntLocalId(5))].into(),
                     site: site.clone(),
                 },
-                concat!(
-                    "data::graph::IntInstruction::Call {function: data::function::IntFunctionId(2,),",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::IntInstruction::Call {
+    function: data::function::IntFunctionId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 IntInstruction::FunctionCall {
@@ -202,19 +208,25 @@ mod emission_tests {
                     args: vec![ParamLocal::Int(IntLocalId(5))].into(),
                     site,
                 },
-                concat!(
-                    "data::graph::IntInstruction::FunctionCall {function: data::graph::IntFunctionLocalId(2,),",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::IntInstruction::FunctionCall {
+    function: data::graph::IntFunctionLocalId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 IntInstruction::TupleIndex {
                     tuple: TupleLocalId(2),
                     index: 1,
                 },
-                "data::graph::IntInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+                r#"
+data::graph::IntInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 IntInstruction::CustomField {
@@ -224,57 +236,87 @@ mod emission_tests {
                     ),
                     index: 1,
                 },
-                concat!(
-                    "data::graph::IntInstruction::CustomField {source: data::graph::CustomLocal {",
-                    "id: data::graph::CustomLocalId(2,),shape: data::type_::CustomValueShape {",
-                    "type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},index: 1,}"
-                ),
+                r#"
+data::graph::IntInstruction::CustomField {
+    source: data::graph::CustomLocal {
+        id: data::graph::CustomLocalId(2),
+        shape: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 IntInstruction::ListIndex {
                     list: IntListLocalId(2),
                     index: 1,
                 },
-                "data::graph::IntInstruction::ListIndex {list: data::graph::IntListLocalId(2,),index: 1,}",
+                r#"
+data::graph::IntInstruction::ListIndex {
+    list: data::graph::IntListLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 IntInstruction::Add {
                     left: IntLocalId(2),
                     right: IntLocalId(5),
                 },
-                "data::graph::IntInstruction::Add {left: data::graph::IntLocalId(2,),right: data::graph::IntLocalId(5,),}",
+                r#"
+data::graph::IntInstruction::Add {
+    left: data::graph::IntLocalId(2),
+    right: data::graph::IntLocalId(5),
+}"#.trim_start_matches('\n'),
             ),
             (
                 IntInstruction::Sub {
                     left: IntLocalId(2),
                     right: IntLocalId(5),
                 },
-                "data::graph::IntInstruction::Sub {left: data::graph::IntLocalId(2,),right: data::graph::IntLocalId(5,),}",
+                r#"
+data::graph::IntInstruction::Sub {
+    left: data::graph::IntLocalId(2),
+    right: data::graph::IntLocalId(5),
+}"#.trim_start_matches('\n'),
             ),
             (
                 IntInstruction::Mult {
                     left: IntLocalId(2),
                     right: IntLocalId(5),
                 },
-                "data::graph::IntInstruction::Mult {left: data::graph::IntLocalId(2,),right: data::graph::IntLocalId(5,),}",
+                r#"
+data::graph::IntInstruction::Mult {
+    left: data::graph::IntLocalId(2),
+    right: data::graph::IntLocalId(5),
+}"#.trim_start_matches('\n'),
             ),
             (
                 IntInstruction::Div {
                     left: IntLocalId(2),
                     right: IntLocalId(5),
                 },
-                "data::graph::IntInstruction::Div {left: data::graph::IntLocalId(2,),right: data::graph::IntLocalId(5,),}",
+                r#"
+data::graph::IntInstruction::Div {
+    left: data::graph::IntLocalId(2),
+    right: data::graph::IntLocalId(5),
+}"#.trim_start_matches('\n'),
             ),
             (
                 IntInstruction::Remainder {
                     left: IntLocalId(2),
                     right: IntLocalId(5),
                 },
-                "data::graph::IntInstruction::Remainder {left: data::graph::IntLocalId(2,),right: data::graph::IntLocalId(5,),}",
+                r#"
+data::graph::IntInstruction::Remainder {
+    left: data::graph::IntLocalId(2),
+    right: data::graph::IntLocalId(5),
+}"#.trim_start_matches('\n'),
             ),
             (
                 IntInstruction::Negate(IntLocalId(2)),
-                "data::graph::IntInstruction::Negate(data::graph::IntLocalId(2,),)",
+                "data::graph::IntInstruction::Negate(data::graph::IntLocalId(2))",
             ),
         ];
         for (instruction, expected) in cases {

@@ -379,10 +379,37 @@ pub fn main() { #(number_box(), text_box(), fn() { Box(True) }) }
                 .unwrap();
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(module).unwrap());
         let source = Rust::expression(&ProgramEmission::new(&plan.program));
-        assert!(source.starts_with("data::ProgramTables {root: data::source::module_id(0,),"));
-        assert!(source.contains("graph::IntInstruction::Mult {left: data::graph::IntLocalId(0,),right: data::graph::IntLocalId(1,),}"));
-        assert!(source.contains("data::Storage::Static(&[21,])"));
-        assert!(source.contains("data::Storage::Static(&[2,])"));
+        assert!(
+            source.starts_with("data::ProgramTables {\n    root: data::source::module_id(0),\n")
+        );
+        assert!(
+            source.contains(
+                r#"
+graph::IntInstruction::Mult {
+                                        left: data::graph::IntLocalId(0),
+                                        right: data::graph::IntLocalId(1),
+                                    }"#
+                .trim_start_matches('\n')
+            )
+        );
+        assert!(
+            source.contains(
+                r#"
+data::Storage::Static(&[
+                                            21,
+                                        ])"#
+                .trim_start_matches('\n')
+            )
+        );
+        assert!(
+            source.contains(
+                r#"
+data::Storage::Static(&[
+                                            2,
+                                        ])"#
+                .trim_start_matches('\n')
+            )
+        );
         assert_eq!(
             crate::run_main(&plan, &mut Vec::new()).unwrap(),
             crate::Value::Int(42.into())

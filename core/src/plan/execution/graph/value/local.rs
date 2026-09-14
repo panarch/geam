@@ -167,58 +167,67 @@ mod tests {
     fn emits_each_local_family_and_preserves_nominal_shapes() {
         assert_eq!(
             Rust::expression(&IntLocalId(2)),
-            "data::graph::IntLocalId(2,)"
+            "data::graph::IntLocalId(2)"
         );
         assert_eq!(
             Rust::expression(&FloatLocalId(3)),
-            "data::graph::FloatLocalId(3,)"
+            "data::graph::FloatLocalId(3)"
         );
         assert_eq!(
             Rust::expression(&StringLocalId(4)),
-            "data::graph::StringLocalId(4,)"
+            "data::graph::StringLocalId(4)"
         );
         assert_eq!(
             Rust::expression(&BitArrayLocalId(5)),
-            "data::graph::BitArrayLocalId(5,)"
+            "data::graph::BitArrayLocalId(5)"
         );
         assert_eq!(
             Rust::expression(&UtfCodepointLocalId(6)),
-            "data::graph::UtfCodepointLocalId(6,)"
+            "data::graph::UtfCodepointLocalId(6)"
         );
         assert_eq!(
             Rust::expression(&CustomLocalId(7)),
-            "data::graph::CustomLocalId(7,)"
+            "data::graph::CustomLocalId(7)"
         );
         assert_eq!(
             Rust::expression(&ExternalLocalId(8)),
-            "data::graph::ExternalLocalId(8,)"
+            "data::graph::ExternalLocalId(8)"
         );
         assert_eq!(
             Rust::expression(&BoolLocalId(9)),
-            "data::graph::BoolLocalId(9,)"
+            "data::graph::BoolLocalId(9)"
         );
         assert_eq!(
             Rust::expression(&NilLocalId(10)),
-            "data::graph::NilLocalId(10,)"
+            "data::graph::NilLocalId(10)"
         );
         assert_eq!(
             Rust::expression(&TupleLocalId(11)),
-            "data::graph::TupleLocalId(11,)"
+            "data::graph::TupleLocalId(11)"
         );
         assert_eq!(
             Rust::expression(&CustomLocal::new(
                 CustomLocalId(3),
                 CustomValueShape::new(CustomTypeId(5), CustomValueShapeId(7)),
             )),
-            concat!(
-                "data::graph::CustomLocal {id: data::graph::CustomLocalId(3,),",
-                "shape: data::type_::CustomValueShape {type_id: data::type_::CustomTypeId(5,),",
-                "shape_id: data::type_::CustomValueShapeId(7,),},}"
-            )
+            r#"
+data::graph::CustomLocal {
+    id: data::graph::CustomLocalId(3),
+    shape: data::type_::CustomValueShape {
+        type_id: data::type_::CustomTypeId(5),
+        shape_id: data::type_::CustomValueShapeId(7),
+    },
+}"#
+            .trim_start_matches('\n')
         );
         assert_eq!(
             Rust::expression(&ExternalLocal::new(ExternalLocalId(3), ExternalTypeId(5))),
-            "data::graph::ExternalLocal {id: data::graph::ExternalLocalId(3,),type_id: data::type_::ExternalTypeId(5,),}"
+            r#"
+data::graph::ExternalLocal {
+    id: data::graph::ExternalLocalId(3),
+    type_id: data::type_::ExternalTypeId(5),
+}"#
+            .trim_start_matches('\n')
         );
     }
 }

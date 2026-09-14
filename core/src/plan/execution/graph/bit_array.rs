@@ -104,19 +104,19 @@ mod emission_tests {
             (StringEncoding::Utf8, "data::graph::StringEncoding::Utf8"),
             (
                 StringEncoding::Utf16(Endianness::Big),
-                "data::graph::StringEncoding::Utf16(data::graph::Endianness::Big,)",
+                "data::graph::StringEncoding::Utf16(data::graph::Endianness::Big)",
             ),
             (
                 StringEncoding::Utf16(Endianness::Little),
-                "data::graph::StringEncoding::Utf16(data::graph::Endianness::Little,)",
+                "data::graph::StringEncoding::Utf16(data::graph::Endianness::Little)",
             ),
             (
                 StringEncoding::Utf32(Endianness::Big),
-                "data::graph::StringEncoding::Utf32(data::graph::Endianness::Big,)",
+                "data::graph::StringEncoding::Utf32(data::graph::Endianness::Big)",
             ),
             (
                 StringEncoding::Utf32(Endianness::Little),
-                "data::graph::StringEncoding::Utf32(data::graph::Endianness::Little,)",
+                "data::graph::StringEncoding::Utf32(data::graph::Endianness::Little)",
             ),
         ] {
             assert_eq!(Rust::expression(&value), expected);

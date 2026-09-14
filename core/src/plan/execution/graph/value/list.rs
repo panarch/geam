@@ -358,49 +358,98 @@ mod emission_tests {
                     local: IntListLocalId(2),
                     type_id: IntListTypeId::new(ListTypeId(3)),
                 },
-                "data::graph::ListLocal::Int {local: data::graph::IntListLocalId(2,),type_id: data::type_::IntListTypeId {list_type: data::type_::ListTypeId(3,),},}",
+                r#"
+data::graph::ListLocal::Int {
+    local: data::graph::IntListLocalId(2),
+    type_id: data::type_::IntListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListLocal::String {
                     local: StringListLocalId(2),
                     type_id: StringListTypeId::new(ListTypeId(3)),
                 },
-                "data::graph::ListLocal::String {local: data::graph::StringListLocalId(2,),type_id: data::type_::StringListTypeId {list_type: data::type_::ListTypeId(3,),},}",
+                r#"
+data::graph::ListLocal::String {
+    local: data::graph::StringListLocalId(2),
+    type_id: data::type_::StringListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListLocal::BitArray {
                     local: BitArrayListLocalId(2),
                     type_id: BitArrayListTypeId::new(ListTypeId(3)),
                 },
-                "data::graph::ListLocal::BitArray {local: data::graph::BitArrayListLocalId(2,),type_id: data::type_::BitArrayListTypeId {list_type: data::type_::ListTypeId(3,),},}",
+                r#"
+data::graph::ListLocal::BitArray {
+    local: data::graph::BitArrayListLocalId(2),
+    type_id: data::type_::BitArrayListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListLocal::UtfCodepoint {
                     local: UtfCodepointListLocalId(2),
                     type_id: UtfCodepointListTypeId::new(ListTypeId(3)),
                 },
-                "data::graph::ListLocal::UtfCodepoint {local: data::graph::UtfCodepointListLocalId(2,),type_id: data::type_::UtfCodepointListTypeId {list_type: data::type_::ListTypeId(3,),},}",
+                r#"
+data::graph::ListLocal::UtfCodepoint {
+    local: data::graph::UtfCodepointListLocalId(2),
+    type_id: data::type_::UtfCodepointListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListLocal::Float {
                     local: FloatListLocalId(2),
                     type_id: FloatListTypeId::new(ListTypeId(3)),
                 },
-                "data::graph::ListLocal::Float {local: data::graph::FloatListLocalId(2,),type_id: data::type_::FloatListTypeId {list_type: data::type_::ListTypeId(3,),},}",
+                r#"
+data::graph::ListLocal::Float {
+    local: data::graph::FloatListLocalId(2),
+    type_id: data::type_::FloatListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListLocal::Bool {
                     local: BoolListLocalId(2),
                     type_id: BoolListTypeId::new(ListTypeId(3)),
                 },
-                "data::graph::ListLocal::Bool {local: data::graph::BoolListLocalId(2,),type_id: data::type_::BoolListTypeId {list_type: data::type_::ListTypeId(3,),},}",
+                r#"
+data::graph::ListLocal::Bool {
+    local: data::graph::BoolListLocalId(2),
+    type_id: data::type_::BoolListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListLocal::Nil {
                     local: NilListLocalId(2),
                     type_id: NilListTypeId::new(ListTypeId(3)),
                 },
-                "data::graph::ListLocal::Nil {local: data::graph::NilListLocalId(2,),type_id: data::type_::NilListTypeId {list_type: data::type_::ListTypeId(3,),},}",
+                r#"
+data::graph::ListLocal::Nil {
+    local: data::graph::NilListLocalId(2),
+    type_id: data::type_::NilListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListLocal::Parameter {
@@ -410,7 +459,15 @@ mod emission_tests {
                         crate::plan::TypeParameterId(4),
                     ),
                 },
-                "data::graph::ListLocal::Parameter {local: data::graph::ParameterListLocalId(2,),type_id: data::type_::ParameterListTypeId {list_type: data::type_::ListTypeId(3,),item: data::type_::parameter_id(4,),},}",
+                r#"
+data::graph::ListLocal::Parameter {
+    local: data::graph::ParameterListLocalId(2),
+    type_id: data::type_::ParameterListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item: data::type_::parameter_id(4),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListLocal::ParameterList {
@@ -420,21 +477,48 @@ mod emission_tests {
                         ParameterListTypeId::new(ListTypeId(4), crate::plan::TypeParameterId(5)),
                     ),
                 },
-                "data::graph::ListLocal::ParameterList {local: data::graph::ParameterListListLocalId(2,),type_id: data::type_::ParameterListListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ParameterListTypeId {list_type: data::type_::ListTypeId(4,),item: data::type_::parameter_id(5,),},},}",
+                r#"
+data::graph::ListLocal::ParameterList {
+    local: data::graph::ParameterListListLocalId(2),
+    type_id: data::type_::ParameterListListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ParameterListTypeId {
+            list_type: data::type_::ListTypeId(4),
+            item: data::type_::parameter_id(5),
+        },
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListLocal::Custom {
                     local: CustomListLocalId(2),
                     type_id: CustomListTypeId::new(ListTypeId(3), CustomTypeId(4)),
                 },
-                "data::graph::ListLocal::Custom {local: data::graph::CustomListLocalId(2,),type_id: data::type_::CustomListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::CustomTypeId(4,),},}",
+                r#"
+data::graph::ListLocal::Custom {
+    local: data::graph::CustomListLocalId(2),
+    type_id: data::type_::CustomListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::CustomTypeId(4),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListLocal::External {
                     local: ExternalListLocalId(2),
                     type_id: ExternalListTypeId::new(ListTypeId(3), ExternalTypeId(4)),
                 },
-                "data::graph::ListLocal::External {local: data::graph::ExternalListLocalId(2,),type_id: data::type_::ExternalListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ExternalTypeId(4,),},}",
+                r#"
+data::graph::ListLocal::External {
+    local: data::graph::ExternalListLocalId(2),
+    type_id: data::type_::ExternalListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ExternalTypeId(4),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListLocal::Tuple {
@@ -444,14 +528,30 @@ mod emission_tests {
                         item_type: TupleItemTypeId(4),
                     },
                 },
-                "data::graph::ListLocal::Tuple {local: data::graph::TupleListLocalId(2,),type_id: data::type_::TupleListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::TupleItemTypeId(4,),},}",
+                r#"
+data::graph::ListLocal::Tuple {
+    local: data::graph::TupleListLocalId(2),
+    type_id: data::type_::TupleListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::TupleItemTypeId(4),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListLocal::List {
                     local: ListListLocalId(2),
                     type_id: ListListTypeId::new(ListTypeId(3), ListTypeId(4)),
                 },
-                "data::graph::ListLocal::List {local: data::graph::ListListLocalId(2,),type_id: data::type_::ListListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ListTypeId(4,),},}",
+                r#"
+data::graph::ListLocal::List {
+    local: data::graph::ListListLocalId(2),
+    type_id: data::type_::ListListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ListTypeId(4),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListLocal::Function {
@@ -461,7 +561,15 @@ mod emission_tests {
                         item_type: FunctionItemTypeId(4),
                     },
                 },
-                "data::graph::ListLocal::Function {local: data::graph::FunctionListLocalId(2,),type_id: data::type_::FunctionListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::FunctionItemTypeId(4,),},}",
+                r#"
+data::graph::ListLocal::Function {
+    local: data::graph::FunctionListLocalId(2),
+    type_id: data::type_::FunctionListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::FunctionItemTypeId(4),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
         ];
         for (local, expected) in cases {
@@ -470,55 +578,55 @@ mod emission_tests {
         let stored = [
             (
                 StoredListLocal::Int(IntListLocalId(2)),
-                "data::graph::StoredListLocal::Int(data::graph::IntListLocalId(2,),)",
+                "data::graph::StoredListLocal::Int(data::graph::IntListLocalId(2))",
             ),
             (
                 StoredListLocal::String(StringListLocalId(2)),
-                "data::graph::StoredListLocal::String(data::graph::StringListLocalId(2,),)",
+                "data::graph::StoredListLocal::String(data::graph::StringListLocalId(2))",
             ),
             (
                 StoredListLocal::BitArray(BitArrayListLocalId(2)),
-                "data::graph::StoredListLocal::BitArray(data::graph::BitArrayListLocalId(2,),)",
+                "data::graph::StoredListLocal::BitArray(data::graph::BitArrayListLocalId(2))",
             ),
             (
                 StoredListLocal::UtfCodepoint(UtfCodepointListLocalId(2)),
-                "data::graph::StoredListLocal::UtfCodepoint(data::graph::UtfCodepointListLocalId(2,),)",
+                "data::graph::StoredListLocal::UtfCodepoint(data::graph::UtfCodepointListLocalId(2))",
             ),
             (
                 StoredListLocal::Float(FloatListLocalId(2)),
-                "data::graph::StoredListLocal::Float(data::graph::FloatListLocalId(2,),)",
+                "data::graph::StoredListLocal::Float(data::graph::FloatListLocalId(2))",
             ),
             (
                 StoredListLocal::Bool(BoolListLocalId(2)),
-                "data::graph::StoredListLocal::Bool(data::graph::BoolListLocalId(2,),)",
+                "data::graph::StoredListLocal::Bool(data::graph::BoolListLocalId(2))",
             ),
             (
                 StoredListLocal::Nil(NilListLocalId(2)),
-                "data::graph::StoredListLocal::Nil(data::graph::NilListLocalId(2,),)",
+                "data::graph::StoredListLocal::Nil(data::graph::NilListLocalId(2))",
             ),
             (
                 StoredListLocal::ParameterList(ParameterListListLocalId(2)),
-                "data::graph::StoredListLocal::ParameterList(data::graph::ParameterListListLocalId(2,),)",
+                "data::graph::StoredListLocal::ParameterList(data::graph::ParameterListListLocalId(2))",
             ),
             (
                 StoredListLocal::Custom(CustomListLocalId(2)),
-                "data::graph::StoredListLocal::Custom(data::graph::CustomListLocalId(2,),)",
+                "data::graph::StoredListLocal::Custom(data::graph::CustomListLocalId(2))",
             ),
             (
                 StoredListLocal::External(ExternalListLocalId(2)),
-                "data::graph::StoredListLocal::External(data::graph::ExternalListLocalId(2,),)",
+                "data::graph::StoredListLocal::External(data::graph::ExternalListLocalId(2))",
             ),
             (
                 StoredListLocal::Tuple(TupleListLocalId(2)),
-                "data::graph::StoredListLocal::Tuple(data::graph::TupleListLocalId(2,),)",
+                "data::graph::StoredListLocal::Tuple(data::graph::TupleListLocalId(2))",
             ),
             (
                 StoredListLocal::List(ListListLocalId(2)),
-                "data::graph::StoredListLocal::List(data::graph::ListListLocalId(2,),)",
+                "data::graph::StoredListLocal::List(data::graph::ListListLocalId(2))",
             ),
             (
                 StoredListLocal::Function(FunctionListLocalId(2)),
-                "data::graph::StoredListLocal::Function(data::graph::FunctionListLocalId(2,),)",
+                "data::graph::StoredListLocal::Function(data::graph::FunctionListLocalId(2))",
             ),
         ];
         for (local, expected) in stored {

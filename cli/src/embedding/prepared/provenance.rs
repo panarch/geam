@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::fs;
 
-pub(super) fn inputs(package: &EmbeddingPackage, actual: &Metadata) -> Result<String, CliError> {
+pub(super) fn inputs(package: &EmbeddingPackage, actual: &Metadata) -> Result<Value, CliError> {
     let gleam: Manifest = read_toml(
         &package.project_root().join("manifest.toml"),
         "Gleam manifest",
@@ -86,7 +86,7 @@ pub(super) fn inputs(package: &EmbeddingPackage, actual: &Metadata) -> Result<St
     Ok(json!({
         "cargo": cargo.into_values().collect::<Vec<_>>(), "cargo_lock": lock,
         "gleam": { "package": config.name, "version": config.version, "packages": packages, "requirements": requirements },
-    }).to_string())
+    }))
 }
 
 fn identity(package: &Package) -> Value {
@@ -114,7 +114,7 @@ mod tests {
     use crate::embedding::package::EmbeddingPackage;
     use camino::Utf8PathBuf;
     use cargo_metadata::{Metadata, MetadataCommand, PackageId};
-    use serde_json::{Value, json};
+    use serde_json::json;
     use std::fs;
     use tempfile::TempDir;
 
@@ -164,10 +164,10 @@ mod tests {
             "cargo_lock": lock,
             "gleam": { "package": "provenance", "version": "1.0.0", "packages": { "local_data": { "version": "0.1.0", "requirements": [], "source": { "source": "local" } } }, "requirements": { "local_data": { "source": "local" } } }
         });
-        assert_eq!(inputs(&package, &metadata).unwrap(), expected.to_string());
+        assert_eq!(inputs(&package, &metadata).unwrap(), expected);
         metadata.packages.reverse();
         metadata.resolve.as_mut().unwrap().nodes.reverse();
-        assert_eq!(inputs(&package, &metadata).unwrap(), expected.to_string());
+        assert_eq!(inputs(&package, &metadata).unwrap(), expected);
 
         let original = metadata
             .packages
@@ -200,7 +200,7 @@ mod tests {
         alternate.pkg = second.id;
         alternate.dep_kinds[0].target = Some("cfg(windows)".parse().unwrap());
         root.deps.push(alternate);
-        let generated: Value = serde_json::from_str(&inputs(&package, &metadata).unwrap()).unwrap();
+        let generated = inputs(&package, &metadata).unwrap();
         let dependencies = generated["cargo"][2]["dependencies"].as_array().unwrap();
         assert_eq!(dependencies.len(), 2);
         assert_eq!(dependencies[0]["name"], "runtime");
@@ -215,7 +215,7 @@ mod tests {
         let (_directory, package, metadata) = fixture();
         let path = package.project_root().join("manifest.toml");
         fs::write(&path, "packages = [{ name = 'published', version = '1.2.0', build_tools = ['gleam'], requirements = [], source = 'hex', outer_checksum = 'ABC123' }]\n[requirements]\npublished = { version = '>= 1.0.0 and < 2.0.0' }\n").unwrap();
-        let generated: Value = serde_json::from_str(&inputs(&package, &metadata).unwrap()).unwrap();
+        let generated = inputs(&package, &metadata).unwrap();
         assert_eq!(
             generated["gleam"]["packages"]["published"]["source"],
             json!({ "source": "hex", "outer_checksum": "ABC123" })

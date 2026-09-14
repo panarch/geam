@@ -208,7 +208,7 @@ mod tests {
         assert_eq!(types[11].value_type(), types[12].value_type());
         assert_ne!(frozen[11], frozen[12]);
         for (index, text) in [
-            (0, "data::host::RegistrationType::Parameter(0,)"),
+            (0, "data::host::RegistrationType::Parameter(0)"),
             (2, "data::host::RegistrationType::Int"),
             (3, "data::host::RegistrationType::Float"),
             (4, "data::host::RegistrationType::String"),
@@ -218,27 +218,71 @@ mod tests {
             (8, "data::host::RegistrationType::Nil"),
             (
                 9,
-                "data::host::RegistrationType::List(data::Storage::Static(&data::host::RegistrationType::Int),)",
+                "data::host::RegistrationType::List(data::Storage::Static(&data::host::RegistrationType::Int))",
             ),
             (
                 10,
-                "data::host::RegistrationType::Tuple(data::Storage::Static(&[data::host::RegistrationType::Int,data::host::RegistrationType::String,]),)",
+                r#"
+data::host::RegistrationType::Tuple(data::Storage::Static(&[
+    data::host::RegistrationType::Int,
+    data::host::RegistrationType::String,
+]))"#
+                    .trim_start_matches('\n'),
             ),
             (
                 11,
-                "data::host::RegistrationType::Function {arguments: data::Storage::Static(&[data::host::RegistrationType::Int,]),return_: data::Storage::Static(&data::host::RegistrationType::String),}",
+                r#"
+data::host::RegistrationType::Function {
+    arguments: data::Storage::Static(&[
+        data::host::RegistrationType::Int,
+    ]),
+    return_: data::Storage::Static(&data::host::RegistrationType::String),
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 12,
-                "data::host::RegistrationType::OpaqueFunction {arguments: data::Storage::Static(&[data::host::RegistrationType::Int,]),return_: data::Storage::Static(&data::host::RegistrationType::String),}",
+                r#"
+data::host::RegistrationType::OpaqueFunction {
+    arguments: data::Storage::Static(&[
+        data::host::RegistrationType::Int,
+    ]),
+    return_: data::Storage::Static(&data::host::RegistrationType::String),
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 13,
-                "data::host::RegistrationType::Custom {schema: data::host::CustomSchema {package: data::Text::Static(\"app\",),module: data::Text::Static(\"types\",),name: data::Text::Static(\"Empty\",),parameter_count: 1,constructors: data::Storage::Static(&[]),},arguments: data::Storage::Static(&[data::host::RegistrationType::Int,]),}",
+                r#"
+data::host::RegistrationType::Custom {
+    schema: data::host::CustomSchema {
+        package: data::Text::Static("app"),
+        module: data::Text::Static("types"),
+        name: data::Text::Static("Empty"),
+        parameter_count: 1,
+        constructors: data::Storage::Static(&[]),
+    },
+    arguments: data::Storage::Static(&[
+        data::host::RegistrationType::Int,
+    ]),
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 14,
-                "data::host::RegistrationType::External {schema: data::host::ExternalSchema {package: data::Text::Static(\"app\",),module: data::Text::Static(\"types\",),name: data::Text::Static(\"Resource\",),parameter_count: 1,},arguments: data::Storage::Static(&[data::host::RegistrationType::Int,]),}",
+                r#"
+data::host::RegistrationType::External {
+    schema: data::host::ExternalSchema {
+        package: data::Text::Static("app"),
+        module: data::Text::Static("types"),
+        name: data::Text::Static("Resource"),
+        parameter_count: 1,
+    },
+    arguments: data::Storage::Static(&[
+        data::host::RegistrationType::Int,
+    ]),
+}"#
+                .trim_start_matches('\n'),
             ),
         ] {
             assert_eq!(Rust::expression(&frozen[index]), text);

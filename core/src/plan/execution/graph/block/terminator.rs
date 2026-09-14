@@ -107,18 +107,28 @@ mod emission_tests {
         let cases = [
             (
                 Terminator::Jump(Jump::new(edge.clone())),
-                concat!(
-                    "data::graph::Terminator::Jump(data::graph::Jump {edge: ",
-                    "data::graph::Edge {target: data::graph::BlockId(2,),args: data::Storage::Static(&[]),},},)"
-                ),
+                r#"
+data::graph::Terminator::Jump(data::graph::Jump {
+    edge: data::graph::Edge {
+        target: data::graph::BlockId(2),
+        args: data::Storage::Static(&[]),
+    },
+})"#.trim_start_matches('\n'),
             ),
             (
                 Terminator::BoolBranch(BoolBranch::new(BoolLocalId(0), edge.clone(), edge.clone())),
-                concat!(
-                    "data::graph::Terminator::BoolBranch(data::graph::BoolBranch {subject: data::graph::BoolLocalId(0,),",
-                    "true_: data::graph::Edge {target: data::graph::BlockId(2,),args: data::Storage::Static(&[]),},",
-                    "false_: data::graph::Edge {target: data::graph::BlockId(2,),args: data::Storage::Static(&[]),},},)"
-                ),
+                r#"
+data::graph::Terminator::BoolBranch(data::graph::BoolBranch {
+    subject: data::graph::BoolLocalId(0),
+    true_: data::graph::Edge {
+        target: data::graph::BlockId(2),
+        args: data::Storage::Static(&[]),
+    },
+    false_: data::graph::Edge {
+        target: data::graph::BlockId(2),
+        args: data::Storage::Static(&[]),
+    },
+})"#.trim_start_matches('\n'),
             ),
             (
                 Terminator::IntSwitch(IntSwitch::new(
@@ -126,10 +136,15 @@ mod emission_tests {
                     Table::Static(&[]),
                     edge.clone(),
                 )),
-                concat!(
-                    "data::graph::Terminator::IntSwitch(data::graph::IntSwitch {subject: data::graph::IntLocalId(0,),clauses: data::Storage::Static(&[]),",
-                    "fallback: data::graph::Edge {target: data::graph::BlockId(2,),args: data::Storage::Static(&[]),},},)"
-                ),
+                r#"
+data::graph::Terminator::IntSwitch(data::graph::IntSwitch {
+    subject: data::graph::IntLocalId(0),
+    clauses: data::Storage::Static(&[]),
+    fallback: data::graph::Edge {
+        target: data::graph::BlockId(2),
+        args: data::Storage::Static(&[]),
+    },
+})"#.trim_start_matches('\n'),
             ),
             (
                 Terminator::FloatSwitch(FloatSwitch::new(
@@ -137,10 +152,15 @@ mod emission_tests {
                     Table::Static(&[]),
                     edge.clone(),
                 )),
-                concat!(
-                    "data::graph::Terminator::FloatSwitch(data::graph::FloatSwitch {subject: data::graph::FloatLocalId(0,),clauses: data::Storage::Static(&[]),",
-                    "fallback: data::graph::Edge {target: data::graph::BlockId(2,),args: data::Storage::Static(&[]),},},)"
-                ),
+                r#"
+data::graph::Terminator::FloatSwitch(data::graph::FloatSwitch {
+    subject: data::graph::FloatLocalId(0),
+    clauses: data::Storage::Static(&[]),
+    fallback: data::graph::Edge {
+        target: data::graph::BlockId(2),
+        args: data::Storage::Static(&[]),
+    },
+})"#.trim_start_matches('\n'),
             ),
             (
                 Terminator::StringSwitch(StringSwitch::new(
@@ -148,10 +168,15 @@ mod emission_tests {
                     Table::Static(&[]),
                     edge.clone(),
                 )),
-                concat!(
-                    "data::graph::Terminator::StringSwitch(data::graph::StringSwitch {subject: data::graph::StringLocalId(0,),clauses: data::Storage::Static(&[]),",
-                    "fallback: data::graph::Edge {target: data::graph::BlockId(2,),args: data::Storage::Static(&[]),},},)"
-                ),
+                r#"
+data::graph::Terminator::StringSwitch(data::graph::StringSwitch {
+    subject: data::graph::StringLocalId(0),
+    clauses: data::Storage::Static(&[]),
+    fallback: data::graph::Edge {
+        target: data::graph::BlockId(2),
+        args: data::Storage::Static(&[]),
+    },
+})"#.trim_start_matches('\n'),
             ),
             (
                 Terminator::Match(Match::new(
@@ -160,11 +185,19 @@ mod emission_tests {
                     MatchEdge::new(BlockId(1), Vec::new()),
                     edge.clone(),
                 )),
-                concat!(
-                    "data::graph::Terminator::Match(data::graph::Match {subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0,),),",
-                    "pattern: data::graph::MatchPattern::Discard,success: data::graph::MatchEdge {target: data::graph::BlockId(1,),args: data::Storage::Static(&[]),},",
-                    "failure: data::graph::Edge {target: data::graph::BlockId(2,),args: data::Storage::Static(&[]),},},)"
-                ),
+                r#"
+data::graph::Terminator::Match(data::graph::Match {
+    subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+    pattern: data::graph::MatchPattern::Discard,
+    success: data::graph::MatchEdge {
+        target: data::graph::BlockId(1),
+        args: data::Storage::Static(&[]),
+    },
+    failure: data::graph::Edge {
+        target: data::graph::BlockId(2),
+        args: data::Storage::Static(&[]),
+    },
+})"#.trim_start_matches('\n'),
             ),
             (
                 Terminator::Echo(Echo::new(
@@ -173,22 +206,29 @@ mod emission_tests {
                     EchoSite::from_static("example", "main", span),
                     edge,
                 )),
-                concat!(
-                    "data::graph::Terminator::Echo(data::graph::Echo {subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0,),),message: None,",
-                    "site: data::source::EchoSite::from_static(\"example\",\"main\",data::source::SourceSpan::new(3,12,),),",
-                    "next: data::graph::Edge {target: data::graph::BlockId(2,),args: data::Storage::Static(&[]),},},)"
-                ),
+                r#"
+data::graph::Terminator::Echo(data::graph::Echo {
+    subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+    message: None,
+    site: data::source::EchoSite::from_static("example", "main", data::source::SourceSpan::new(3, 12)),
+    next: data::graph::Edge {
+        target: data::graph::BlockId(2),
+        args: data::Storage::Static(&[]),
+    },
+})"#.trim_start_matches('\n'),
             ),
             (
                 Terminator::Exit(BlockGraphExitId(3)),
-                "data::graph::Terminator::Exit(data::graph::BlockGraphExitId(3,),)",
+                "data::graph::Terminator::Exit(data::graph::BlockGraphExitId(3))",
             ),
             (
                 Terminator::SourceStop(SourceStop::new(SourceStopKind::Panic, None, panic.clone())),
-                concat!(
-                    "data::graph::Terminator::SourceStop(data::graph::SourceStop {kind: data::graph::SourceStopKind::Panic,message: None,",
-                    "site: data::source::PanicSite::from_static(\"example\",\"main\",data::source::SourceSpan::new(3,12,),),},)"
-                ),
+                r#"
+data::graph::Terminator::SourceStop(data::graph::SourceStop {
+    kind: data::graph::SourceStopKind::Panic,
+    message: None,
+    site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3, 12)),
+})"#.trim_start_matches('\n'),
             ),
             (
                 Terminator::LetAssertPanic(LetAssertPanic::new(
@@ -197,11 +237,13 @@ mod emission_tests {
                     panic,
                     SourceSpan::new(5, 8),
                 )),
-                concat!(
-                    "data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0,),),message: None,",
-                    "site: data::source::PanicSite::from_static(\"example\",\"main\",data::source::SourceSpan::new(3,12,),),",
-                    "pattern_span: data::source::SourceSpan::new(5,8,),},)"
-                ),
+                r#"
+data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+    subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+    message: None,
+    site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3, 12)),
+    pattern_span: data::source::SourceSpan::new(5, 8),
+})"#.trim_start_matches('\n'),
             ),
             (
                 Terminator::NeverCall(NeverCall::new(
@@ -209,10 +251,12 @@ mod emission_tests {
                     Table::Static(&[]),
                     HostCallSite::from_static("example", "main", span),
                 )),
-                concat!(
-                    "data::graph::Terminator::NeverCall(data::graph::NeverCall {function: data::graph::NeverCallTarget::Direct(data::function::NeverFunctionId(0,),),",
-                    "args: data::Storage::Static(&[]),site: data::source::HostCallSite::from_static(\"example\",\"main\",data::source::SourceSpan::new(3,12,),),},)"
-                ),
+                r#"
+data::graph::Terminator::NeverCall(data::graph::NeverCall {
+    function: data::graph::NeverCallTarget::Direct(data::function::NeverFunctionId(0)),
+    args: data::Storage::Static(&[]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 12)),
+})"#.trim_start_matches('\n'),
             ),
         ];
         for (terminator, expected) in cases {

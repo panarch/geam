@@ -393,7 +393,12 @@ mod emission_tests {
                     bit_size: 24,
                     endianness: Endianness::Little,
                 },
-                "data::graph::BitArraySegment::Int {value: data::graph::IntLocalId(2,),bit_size: 24,endianness: data::graph::Endianness::Little,}",
+                r#"
+data::graph::BitArraySegment::Int {
+    value: data::graph::IntLocalId(2),
+    bit_size: 24,
+    endianness: data::graph::Endianness::Little,
+}"#.trim_start_matches('\n'),
             ),
             (
                 BitArraySegment::EvaluatedInt {
@@ -402,12 +407,16 @@ mod emission_tests {
                     endianness: Endianness::Big,
                     site: site.clone(),
                 },
-                concat!(
-                    "data::graph::BitArraySegment::EvaluatedInt {value: data::graph::IntLocalId(2,),",
-                    "size: data::graph::BitArrayEvaluatedSize {value: data::graph::IntLocalId(3,),unit: 8,},",
-                    "endianness: data::graph::Endianness::Big,site: data::source::PanicSite::from_static(",
-                    "\"example\",\"main\",data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::BitArraySegment::EvaluatedInt {
+    value: data::graph::IntLocalId(2),
+    size: data::graph::BitArrayEvaluatedSize {
+        value: data::graph::IntLocalId(3),
+        unit: 8,
+    },
+    endianness: data::graph::Endianness::Big,
+    site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BitArraySegment::Float {
@@ -415,10 +424,12 @@ mod emission_tests {
                     bit_size: FloatBitSize::ThirtyTwo,
                     endianness: Endianness::Little,
                 },
-                concat!(
-                    "data::graph::BitArraySegment::Float {value: data::graph::FloatLocalId(2,),",
-                    "bit_size: data::graph::FloatBitSize::ThirtyTwo,endianness: data::graph::Endianness::Little,}"
-                ),
+                r#"
+data::graph::BitArraySegment::Float {
+    value: data::graph::FloatLocalId(2),
+    bit_size: data::graph::FloatBitSize::ThirtyTwo,
+    endianness: data::graph::Endianness::Little,
+}"#.trim_start_matches('\n'),
             ),
             (
                 BitArraySegment::EvaluatedFloat {
@@ -427,33 +438,42 @@ mod emission_tests {
                     endianness: Endianness::Little,
                     site: site.clone(),
                 },
-                concat!(
-                    "data::graph::BitArraySegment::EvaluatedFloat {value: data::graph::FloatLocalId(2,),",
-                    "size: data::graph::BitArrayEvaluatedSize {value: data::graph::IntLocalId(3,),unit: 1,},",
-                    "endianness: data::graph::Endianness::Little,site: data::source::PanicSite::from_static(",
-                    "\"example\",\"main\",data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::BitArraySegment::EvaluatedFloat {
+    value: data::graph::FloatLocalId(2),
+    size: data::graph::BitArrayEvaluatedSize {
+        value: data::graph::IntLocalId(3),
+        unit: 1,
+    },
+    endianness: data::graph::Endianness::Little,
+    site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BitArraySegment::String {
                     value: StringLocalId(2),
                     encoding: StringEncoding::Utf8,
                 },
-                "data::graph::BitArraySegment::String {value: data::graph::StringLocalId(2,),encoding: data::graph::StringEncoding::Utf8,}",
+                r#"
+data::graph::BitArraySegment::String {
+    value: data::graph::StringLocalId(2),
+    encoding: data::graph::StringEncoding::Utf8,
+}"#.trim_start_matches('\n'),
             ),
             (
                 BitArraySegment::UtfCodepoint {
                     value: UtfCodepointLocalId(2),
                     encoding: StringEncoding::Utf16(Endianness::Little),
                 },
-                concat!(
-                    "data::graph::BitArraySegment::UtfCodepoint {value: data::graph::UtfCodepointLocalId(2,),",
-                    "encoding: data::graph::StringEncoding::Utf16(data::graph::Endianness::Little,),}"
-                ),
+                r#"
+data::graph::BitArraySegment::UtfCodepoint {
+    value: data::graph::UtfCodepointLocalId(2),
+    encoding: data::graph::StringEncoding::Utf16(data::graph::Endianness::Little),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BitArraySegment::Bits(BitArrayLocalId(2)),
-                "data::graph::BitArraySegment::Bits(data::graph::BitArrayLocalId(2,),)",
+                "data::graph::BitArraySegment::Bits(data::graph::BitArrayLocalId(2))",
             ),
             (
                 BitArraySegment::SizedBits {
@@ -461,11 +481,12 @@ mod emission_tests {
                     size: BitArrayBitsSize::Fixed(13),
                     site: site.clone(),
                 },
-                concat!(
-                    "data::graph::BitArraySegment::SizedBits {value: data::graph::BitArrayLocalId(2,),",
-                    "size: data::graph::BitArrayBitsSize::Fixed(13,),site: data::source::PanicSite::from_static(",
-                    "\"example\",\"main\",data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::BitArraySegment::SizedBits {
+    value: data::graph::BitArrayLocalId(2),
+    size: data::graph::BitArrayBitsSize::Fixed(13),
+    site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BitArraySegment::SizedBits {
@@ -473,12 +494,15 @@ mod emission_tests {
                     size: BitArrayBitsSize::Evaluated(BitArrayEvaluatedSize::new(IntLocalId(3), 8)),
                     site,
                 },
-                concat!(
-                    "data::graph::BitArraySegment::SizedBits {value: data::graph::BitArrayLocalId(2,),",
-                    "size: data::graph::BitArrayBitsSize::Evaluated(data::graph::BitArrayEvaluatedSize {",
-                    "value: data::graph::IntLocalId(3,),unit: 8,},),site: data::source::PanicSite::from_static(",
-                    "\"example\",\"main\",data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::BitArraySegment::SizedBits {
+    value: data::graph::BitArrayLocalId(2),
+    size: data::graph::BitArrayBitsSize::Evaluated(data::graph::BitArrayEvaluatedSize {
+        value: data::graph::IntLocalId(3),
+        unit: 8,
+    }),
+    site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
         ];
         for (segment, expected) in cases {
@@ -492,14 +516,18 @@ mod emission_tests {
         let cases = [
             (
                 BitArrayInstruction::Value(vec![BitArraySegment::Bits(BitArrayLocalId(7))].into()),
-                "data::graph::BitArrayInstruction::Value(data::Storage::Static(&[data::graph::BitArraySegment::Bits(data::graph::BitArrayLocalId(7,),),]),)",
+                r#"
+data::graph::BitArrayInstruction::Value(data::Storage::Static(&[
+    data::graph::BitArraySegment::Bits(data::graph::BitArrayLocalId(7)),
+]))"#.trim_start_matches('\n'),
             ),
             (
                 BitArrayInstruction::Constant(ConstantId::new(3)),
-                concat!(
-                    "data::graph::BitArrayInstruction::Constant(data::constant::ConstantId {",
-                    "index: 3,value: ::core::marker::PhantomData,},)"
-                ),
+                r#"
+data::graph::BitArrayInstruction::Constant(data::constant::ConstantId {
+    index: 3,
+    value: ::core::marker::PhantomData,
+})"#.trim_start_matches('\n'),
             ),
             (
                 BitArrayInstruction::Call {
@@ -507,12 +535,14 @@ mod emission_tests {
                     args: vec![ParamLocal::BitArray(BitArrayLocalId(5))].into(),
                     site: site.clone(),
                 },
-                concat!(
-                    "data::graph::BitArrayInstruction::Call {function: data::function::BitArrayFunctionId(2,),",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::BitArrayInstruction::Call {
+    function: data::function::BitArrayFunctionId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BitArrayInstruction::FunctionCall {
@@ -520,19 +550,25 @@ mod emission_tests {
                     args: vec![ParamLocal::BitArray(BitArrayLocalId(5))].into(),
                     site,
                 },
-                concat!(
-                    "data::graph::BitArrayInstruction::FunctionCall {function: data::graph::BitArrayFunctionLocalId(2,),",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::BitArrayInstruction::FunctionCall {
+    function: data::graph::BitArrayFunctionLocalId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BitArrayInstruction::TupleIndex {
                     tuple: TupleLocalId(2),
                     index: 1,
                 },
-                "data::graph::BitArrayInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+                r#"
+data::graph::BitArrayInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 BitArrayInstruction::CustomField {
@@ -542,18 +578,28 @@ mod emission_tests {
                     ),
                     index: 1,
                 },
-                concat!(
-                    "data::graph::BitArrayInstruction::CustomField {source: data::graph::CustomLocal {",
-                    "id: data::graph::CustomLocalId(2,),shape: data::type_::CustomValueShape {",
-                    "type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},index: 1,}"
-                ),
+                r#"
+data::graph::BitArrayInstruction::CustomField {
+    source: data::graph::CustomLocal {
+        id: data::graph::CustomLocalId(2),
+        shape: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 BitArrayInstruction::ListIndex {
                     list: BitArrayListLocalId(2),
                     index: 1,
                 },
-                "data::graph::BitArrayInstruction::ListIndex {list: data::graph::BitArrayListLocalId(2,),index: 1,}",
+                r#"
+data::graph::BitArrayInstruction::ListIndex {
+    list: data::graph::BitArrayListLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
         ];
         for (instruction, expected) in cases {

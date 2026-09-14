@@ -276,14 +276,15 @@ mod emission_tests {
         let cases = [
             (
                 BoolInstruction::Value(true),
-                "data::graph::BoolInstruction::Value(true,)",
+                "data::graph::BoolInstruction::Value(true)",
             ),
             (
                 BoolInstruction::Constant(ConstantId::new(3)),
-                concat!(
-                    "data::graph::BoolInstruction::Constant(data::constant::ConstantId {",
-                    "index: 3,value: ::core::marker::PhantomData,},)"
-                ),
+                r#"
+data::graph::BoolInstruction::Constant(data::constant::ConstantId {
+    index: 3,
+    value: ::core::marker::PhantomData,
+})"#.trim_start_matches('\n'),
             ),
             (
                 BoolInstruction::Call {
@@ -291,12 +292,14 @@ mod emission_tests {
                     args: vec![ParamLocal::Bool(BoolLocalId(5))].into(),
                     site: site.clone(),
                 },
-                concat!(
-                    "data::graph::BoolInstruction::Call {function: data::function::BoolFunctionId(2,),",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::Bool(data::graph::BoolLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::BoolInstruction::Call {
+    function: data::function::BoolFunctionId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BoolInstruction::FunctionCall {
@@ -304,19 +307,25 @@ mod emission_tests {
                     args: vec![ParamLocal::Bool(BoolLocalId(5))].into(),
                     site,
                 },
-                concat!(
-                    "data::graph::BoolInstruction::FunctionCall {function: data::graph::BoolFunctionLocalId(2,),",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::Bool(data::graph::BoolLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::BoolInstruction::FunctionCall {
+    function: data::graph::BoolFunctionLocalId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BoolInstruction::TupleIndex {
                     tuple: TupleLocalId(2),
                     index: 1,
                 },
-                "data::graph::BoolInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+                r#"
+data::graph::BoolInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 BoolInstruction::CustomField {
@@ -326,99 +335,153 @@ mod emission_tests {
                     ),
                     index: 1,
                 },
-                concat!(
-                    "data::graph::BoolInstruction::CustomField {source: data::graph::CustomLocal {",
-                    "id: data::graph::CustomLocalId(2,),shape: data::type_::CustomValueShape {",
-                    "type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},index: 1,}"
-                ),
+                r#"
+data::graph::BoolInstruction::CustomField {
+    source: data::graph::CustomLocal {
+        id: data::graph::CustomLocalId(2),
+        shape: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 BoolInstruction::ListIndex {
                     list: BoolListLocalId(2),
                     index: 1,
                 },
-                "data::graph::BoolInstruction::ListIndex {list: data::graph::BoolListLocalId(2,),index: 1,}",
+                r#"
+data::graph::BoolInstruction::ListIndex {
+    list: data::graph::BoolListLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 BoolInstruction::Not(BoolLocalId(2)),
-                "data::graph::BoolInstruction::Not(data::graph::BoolLocalId(2,),)",
+                "data::graph::BoolInstruction::Not(data::graph::BoolLocalId(2))",
             ),
             (
                 BoolInstruction::LtInt {
                     left: IntLocalId(2),
                     right: IntLocalId(5),
                 },
-                "data::graph::BoolInstruction::LtInt {left: data::graph::IntLocalId(2,),right: data::graph::IntLocalId(5,),}",
+                r#"
+data::graph::BoolInstruction::LtInt {
+    left: data::graph::IntLocalId(2),
+    right: data::graph::IntLocalId(5),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BoolInstruction::LtEqInt {
                     left: IntLocalId(2),
                     right: IntLocalId(5),
                 },
-                "data::graph::BoolInstruction::LtEqInt {left: data::graph::IntLocalId(2,),right: data::graph::IntLocalId(5,),}",
+                r#"
+data::graph::BoolInstruction::LtEqInt {
+    left: data::graph::IntLocalId(2),
+    right: data::graph::IntLocalId(5),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BoolInstruction::GtInt {
                     left: IntLocalId(2),
                     right: IntLocalId(5),
                 },
-                "data::graph::BoolInstruction::GtInt {left: data::graph::IntLocalId(2,),right: data::graph::IntLocalId(5,),}",
+                r#"
+data::graph::BoolInstruction::GtInt {
+    left: data::graph::IntLocalId(2),
+    right: data::graph::IntLocalId(5),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BoolInstruction::GtEqInt {
                     left: IntLocalId(2),
                     right: IntLocalId(5),
                 },
-                "data::graph::BoolInstruction::GtEqInt {left: data::graph::IntLocalId(2,),right: data::graph::IntLocalId(5,),}",
+                r#"
+data::graph::BoolInstruction::GtEqInt {
+    left: data::graph::IntLocalId(2),
+    right: data::graph::IntLocalId(5),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BoolInstruction::LtFloat {
                     left: FloatLocalId(2),
                     right: FloatLocalId(5),
                 },
-                "data::graph::BoolInstruction::LtFloat {left: data::graph::FloatLocalId(2,),right: data::graph::FloatLocalId(5,),}",
+                r#"
+data::graph::BoolInstruction::LtFloat {
+    left: data::graph::FloatLocalId(2),
+    right: data::graph::FloatLocalId(5),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BoolInstruction::LtEqFloat {
                     left: FloatLocalId(2),
                     right: FloatLocalId(5),
                 },
-                "data::graph::BoolInstruction::LtEqFloat {left: data::graph::FloatLocalId(2,),right: data::graph::FloatLocalId(5,),}",
+                r#"
+data::graph::BoolInstruction::LtEqFloat {
+    left: data::graph::FloatLocalId(2),
+    right: data::graph::FloatLocalId(5),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BoolInstruction::GtFloat {
                     left: FloatLocalId(2),
                     right: FloatLocalId(5),
                 },
-                "data::graph::BoolInstruction::GtFloat {left: data::graph::FloatLocalId(2,),right: data::graph::FloatLocalId(5,),}",
+                r#"
+data::graph::BoolInstruction::GtFloat {
+    left: data::graph::FloatLocalId(2),
+    right: data::graph::FloatLocalId(5),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BoolInstruction::GtEqFloat {
                     left: FloatLocalId(2),
                     right: FloatLocalId(5),
                 },
-                "data::graph::BoolInstruction::GtEqFloat {left: data::graph::FloatLocalId(2,),right: data::graph::FloatLocalId(5,),}",
+                r#"
+data::graph::BoolInstruction::GtEqFloat {
+    left: data::graph::FloatLocalId(2),
+    right: data::graph::FloatLocalId(5),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BoolInstruction::Equal {
                     left: ParamLocal::Bool(BoolLocalId(2)),
                     right: ParamLocal::Bool(BoolLocalId(5)),
                 },
-                "data::graph::BoolInstruction::Equal {left: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2,),),right: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(5,),),}",
+                r#"
+data::graph::BoolInstruction::Equal {
+    left: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+    right: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(5)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BoolInstruction::NotEqual {
                     left: ParamLocal::Bool(BoolLocalId(2)),
                     right: ParamLocal::Bool(BoolLocalId(5)),
                 },
-                "data::graph::BoolInstruction::NotEqual {left: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2,),),right: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(5,),),}",
+                r#"
+data::graph::BoolInstruction::NotEqual {
+    left: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+    right: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(5)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BoolInstruction::StringStartsWith {
                     value: StringLocalId(2),
                     prefix: "pre".into(),
                 },
-                "data::graph::BoolInstruction::StringStartsWith {value: data::graph::StringLocalId(2,),prefix: data::Text::Static(\"pre\",),}",
+                r#"
+data::graph::BoolInstruction::StringStartsWith {
+    value: data::graph::StringLocalId(2),
+    prefix: data::Text::Static("pre"),
+}"#.trim_start_matches('\n'),
             ),
             (
                 BoolInstruction::ListLengthEquals {
@@ -428,7 +491,16 @@ mod emission_tests {
                     },
                     length: 3,
                 },
-                "data::graph::BoolInstruction::ListLengthEquals {value: data::graph::ListLocal::Bool {local: data::graph::BoolListLocalId(2,),type_id: data::type_::BoolListTypeId {list_type: data::type_::ListTypeId(4,),},},length: 3,}",
+                r#"
+data::graph::BoolInstruction::ListLengthEquals {
+    value: data::graph::ListLocal::Bool {
+        local: data::graph::BoolListLocalId(2),
+        type_id: data::type_::BoolListTypeId {
+            list_type: data::type_::ListTypeId(4),
+        },
+    },
+    length: 3,
+}"#.trim_start_matches('\n'),
             ),
             (
                 BoolInstruction::ListLengthAtLeast {
@@ -438,7 +510,16 @@ mod emission_tests {
                     },
                     length: 3,
                 },
-                "data::graph::BoolInstruction::ListLengthAtLeast {value: data::graph::ListLocal::Bool {local: data::graph::BoolListLocalId(2,),type_id: data::type_::BoolListTypeId {list_type: data::type_::ListTypeId(4,),},},length: 3,}",
+                r#"
+data::graph::BoolInstruction::ListLengthAtLeast {
+    value: data::graph::ListLocal::Bool {
+        local: data::graph::BoolListLocalId(2),
+        type_id: data::type_::BoolListTypeId {
+            list_type: data::type_::ListTypeId(4),
+        },
+    },
+    length: 3,
+}"#.trim_start_matches('\n'),
             ),
         ];
         for (instruction, expected) in cases {

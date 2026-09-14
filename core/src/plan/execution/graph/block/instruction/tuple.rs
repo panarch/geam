@@ -121,14 +121,18 @@ mod emission_tests {
         let cases = [
             (
                 TupleInstruction::Value(vec![ParamLocal::Int(IntLocalId(7))].into()),
-                "data::graph::TupleInstruction::Value(data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(7,),),]),)",
+                r#"
+data::graph::TupleInstruction::Value(data::Storage::Static(&[
+    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+]))"#.trim_start_matches('\n'),
             ),
             (
                 TupleInstruction::Constant(ConstantId::new(3)),
-                concat!(
-                    "data::graph::TupleInstruction::Constant(data::constant::ConstantId {",
-                    "index: 3,value: ::core::marker::PhantomData,},)"
-                ),
+                r#"
+data::graph::TupleInstruction::Constant(data::constant::ConstantId {
+    index: 3,
+    value: ::core::marker::PhantomData,
+})"#.trim_start_matches('\n'),
             ),
             (
                 TupleInstruction::Call {
@@ -136,12 +140,14 @@ mod emission_tests {
                     args: vec![ParamLocal::Int(IntLocalId(5))].into(),
                     site: site.clone(),
                 },
-                concat!(
-                    "data::graph::TupleInstruction::Call {function: data::function::TupleFunctionId(2,),",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::TupleInstruction::Call {
+    function: data::function::TupleFunctionId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 TupleInstruction::FunctionCall {
@@ -149,19 +155,25 @@ mod emission_tests {
                     args: vec![ParamLocal::Int(IntLocalId(5))].into(),
                     site,
                 },
-                concat!(
-                    "data::graph::TupleInstruction::FunctionCall {function: data::graph::TupleFunctionLocalId(2,),",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::TupleInstruction::FunctionCall {
+    function: data::graph::TupleFunctionLocalId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 TupleInstruction::TupleIndex {
                     tuple: TupleLocalId(2),
                     index: 1,
                 },
-                "data::graph::TupleInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+                r#"
+data::graph::TupleInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 TupleInstruction::CustomField {
@@ -171,18 +183,28 @@ mod emission_tests {
                     ),
                     index: 1,
                 },
-                concat!(
-                    "data::graph::TupleInstruction::CustomField {source: data::graph::CustomLocal {",
-                    "id: data::graph::CustomLocalId(2,),shape: data::type_::CustomValueShape {",
-                    "type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},index: 1,}"
-                ),
+                r#"
+data::graph::TupleInstruction::CustomField {
+    source: data::graph::CustomLocal {
+        id: data::graph::CustomLocalId(2),
+        shape: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 TupleInstruction::ListIndex {
                     list: TupleListLocalId(2),
                     index: 1,
                 },
-                "data::graph::TupleInstruction::ListIndex {list: data::graph::TupleListLocalId(2,),index: 1,}",
+                r#"
+data::graph::TupleInstruction::ListIndex {
+    list: data::graph::TupleListLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
         ];
         for (instruction, expected) in cases {

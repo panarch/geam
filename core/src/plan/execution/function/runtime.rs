@@ -323,49 +323,62 @@ mod emission_tests {
         let cases: [(ProfiledCoreRuntimeFunctionId<HostedExecutionGraph>, &str); 12] = [
             (
                 ProfiledCoreRuntimeFunctionId::Never(NeverFunctionId(2)),
-                "data::function::ProfiledCoreRuntimeFunctionId::Never(data::function::NeverFunctionId(2,),)",
+                "data::function::ProfiledCoreRuntimeFunctionId::Never(data::function::NeverFunctionId(2))",
             ),
             (
                 ProfiledCoreRuntimeFunctionId::Int(IntFunctionId(2)),
-                "data::function::ProfiledCoreRuntimeFunctionId::Int(data::function::IntFunctionId(2,),)",
+                "data::function::ProfiledCoreRuntimeFunctionId::Int(data::function::IntFunctionId(2))",
             ),
             (
                 ProfiledCoreRuntimeFunctionId::Float(FloatFunctionId(2)),
-                "data::function::ProfiledCoreRuntimeFunctionId::Float(data::function::FloatFunctionId(2,),)",
+                "data::function::ProfiledCoreRuntimeFunctionId::Float(data::function::FloatFunctionId(2))",
             ),
             (
                 ProfiledCoreRuntimeFunctionId::String(StringFunctionId(2)),
-                "data::function::ProfiledCoreRuntimeFunctionId::String(data::function::StringFunctionId(2,),)",
+                "data::function::ProfiledCoreRuntimeFunctionId::String(data::function::StringFunctionId(2))",
             ),
             (
                 ProfiledCoreRuntimeFunctionId::BitArray(BitArrayFunctionId(2)),
-                "data::function::ProfiledCoreRuntimeFunctionId::BitArray(data::function::BitArrayFunctionId(2,),)",
+                "data::function::ProfiledCoreRuntimeFunctionId::BitArray(data::function::BitArrayFunctionId(2))",
             ),
             (
                 ProfiledCoreRuntimeFunctionId::UtfCodepoint(UtfCodepointFunctionId(2)),
-                "data::function::ProfiledCoreRuntimeFunctionId::UtfCodepoint(data::function::UtfCodepointFunctionId(2,),)",
+                "data::function::ProfiledCoreRuntimeFunctionId::UtfCodepoint(data::function::UtfCodepointFunctionId(2))",
             ),
             (
                 ProfiledCoreRuntimeFunctionId::Bool(BoolFunctionId(2)),
-                "data::function::ProfiledCoreRuntimeFunctionId::Bool(data::function::BoolFunctionId(2,),)",
+                "data::function::ProfiledCoreRuntimeFunctionId::Bool(data::function::BoolFunctionId(2))",
             ),
             (
                 ProfiledCoreRuntimeFunctionId::Nil(NilFunctionId(2)),
-                "data::function::ProfiledCoreRuntimeFunctionId::Nil(data::function::NilFunctionId(2,),)",
+                "data::function::ProfiledCoreRuntimeFunctionId::Nil(data::function::NilFunctionId(2))",
             ),
             (
                 ProfiledCoreRuntimeFunctionId::Custom(CustomFunctionId::new(
                     2,
                     CustomValueShape::new(CustomTypeId(3), CustomValueShapeId(4)),
                 )),
-                "data::function::ProfiledCoreRuntimeFunctionId::Custom(data::function::CustomFunctionId {index: 2,return_shape: data::type_::CustomValueShape {type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},)",
+                r#"
+data::function::ProfiledCoreRuntimeFunctionId::Custom(data::function::CustomFunctionId {
+    index: 2,
+    return_shape: data::type_::CustomValueShape {
+        type_id: data::type_::CustomTypeId(3),
+        shape_id: data::type_::CustomValueShapeId(4),
+    },
+})"#.trim_start_matches('\n'),
             ),
             (
                 ProfiledCoreRuntimeFunctionId::Tuple {
                     id: TupleFunctionId(2),
                     return_type: vec![ValueType::Int].into(),
                 },
-                "data::function::ProfiledCoreRuntimeFunctionId::Tuple {id: data::function::TupleFunctionId(2,),return_type: data::Storage::Static(&[data::type_::ValueType::Int,]),}",
+                r#"
+data::function::ProfiledCoreRuntimeFunctionId::Tuple {
+    id: data::function::TupleFunctionId(2),
+    return_type: data::Storage::Static(&[
+        data::type_::ValueType::Int,
+    ]),
+}"#.trim_start_matches('\n'),
             ),
             (
                 ProfiledCoreRuntimeFunctionId::List(ProfiledListFunctionId::Core(
@@ -374,7 +387,13 @@ mod emission_tests {
                         IntListTypeId::new(ListTypeId(3)),
                     )),
                 )),
-                "data::function::ProfiledCoreRuntimeFunctionId::List(data::function::ProfiledListFunctionId::Core(data::function::ListFunctionId::Int(data::function::IntListFunctionId {index: 2,type_id: data::type_::IntListTypeId {list_type: data::type_::ListTypeId(3,),},},),),)",
+                r#"
+data::function::ProfiledCoreRuntimeFunctionId::List(data::function::ProfiledListFunctionId::Core(data::function::ListFunctionId::Int(data::function::IntListFunctionId {
+    index: 2,
+    type_id: data::type_::IntListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})))"#.trim_start_matches('\n'),
             ),
             (
                 ProfiledCoreRuntimeFunctionId::Function {
@@ -383,7 +402,14 @@ mod emission_tests {
                     )),
                     return_type: FunctionType::new(Vec::new(), ValueType::Int),
                 },
-                "data::function::ProfiledCoreRuntimeFunctionId::Function {id: data::function::RuntimeFunctionFunctionTarget::Core(data::function::ProfiledFunctionFunctionId::Int(data::function::IntFunctionFunctionId(2,),),),return_type: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Int),},}",
+                r#"
+data::function::ProfiledCoreRuntimeFunctionId::Function {
+    id: data::function::RuntimeFunctionFunctionTarget::Core(data::function::ProfiledFunctionFunctionId::Int(data::function::IntFunctionFunctionId(2))),
+    return_type: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::Int),
+    },
+}"#.trim_start_matches('\n'),
             ),
         ];
         for (id, expected) in cases {
@@ -394,11 +420,16 @@ mod emission_tests {
                 ProfiledRuntimeFunctionId::Core(ProfiledCoreRuntimeFunctionId::Int(IntFunctionId(
                     2,
                 ))),
-                "data::function::ProfiledRuntimeFunctionId::Core(data::function::ProfiledCoreRuntimeFunctionId::Int(data::function::IntFunctionId(2,),),)",
+                "data::function::ProfiledRuntimeFunctionId::Core(data::function::ProfiledCoreRuntimeFunctionId::Int(data::function::IntFunctionId(2)))",
             ),
             (
                 ProfiledRuntimeFunctionId::External(ExternalFunctionId::new(2, ExternalTypeId(3))),
-                "data::function::ProfiledRuntimeFunctionId::External(data::function::ExternalFunctionId {index: 2,return_type: data::type_::ExternalTypeId(3,),},)",
+                r#"
+data::function::ProfiledRuntimeFunctionId::External(data::function::ExternalFunctionId {
+    index: 2,
+    return_type: data::type_::ExternalTypeId(3),
+})"#
+                .trim_start_matches('\n'),
             ),
         ];
         for (id, expected) in entries {

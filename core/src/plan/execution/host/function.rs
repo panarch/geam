@@ -562,7 +562,12 @@ mod tests {
                 type_: crate::plan::execution::type_::TypeMetadata::Int,
                 shape: ValueShapeId(7),
             }),
-            "data::host::HostTypeArgument {type_: data::type_::TypeMetadata::Int,shape: data::type_::ValueShapeId(7,),}"
+            r#"
+data::host::HostTypeArgument {
+    type_: data::type_::TypeMetadata::Int,
+    shape: data::type_::ValueShapeId(7),
+}"#
+            .trim_start_matches('\n')
         );
     }
 
@@ -575,49 +580,61 @@ mod tests {
         let cases = [
             (
                 HostCallParameter::Int(IntLocalId(1)),
-                "data::host::HostCallParameter::Int(data::graph::IntLocalId(1,),)",
+                "data::host::HostCallParameter::Int(data::graph::IntLocalId(1))",
             ),
             (
                 HostCallParameter::Float(FloatLocalId(2)),
-                "data::host::HostCallParameter::Float(data::graph::FloatLocalId(2,),)",
+                "data::host::HostCallParameter::Float(data::graph::FloatLocalId(2))",
             ),
             (
                 HostCallParameter::String(StringLocalId(3)),
-                "data::host::HostCallParameter::String(data::graph::StringLocalId(3,),)",
+                "data::host::HostCallParameter::String(data::graph::StringLocalId(3))",
             ),
             (
                 HostCallParameter::BitArray(BitArrayLocalId(4)),
-                "data::host::HostCallParameter::BitArray(data::graph::BitArrayLocalId(4,),)",
+                "data::host::HostCallParameter::BitArray(data::graph::BitArrayLocalId(4))",
             ),
             (
                 HostCallParameter::UtfCodepoint(UtfCodepointLocalId(5)),
-                "data::host::HostCallParameter::UtfCodepoint(data::graph::UtfCodepointLocalId(5,),)",
+                "data::host::HostCallParameter::UtfCodepoint(data::graph::UtfCodepointLocalId(5))",
             ),
             (
                 HostCallParameter::Bool(BoolLocalId(6)),
-                "data::host::HostCallParameter::Bool(data::graph::BoolLocalId(6,),)",
+                "data::host::HostCallParameter::Bool(data::graph::BoolLocalId(6))",
             ),
             (
                 HostCallParameter::Nil(NilLocalId(7)),
-                "data::host::HostCallParameter::Nil(data::graph::NilLocalId(7,),)",
+                "data::host::HostCallParameter::Nil(data::graph::NilLocalId(7))",
             ),
             (
                 HostCallParameter::Value(ParamLocal::Int(IntLocalId(8))),
-                "data::host::HostCallParameter::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(8,),),)",
+                "data::host::HostCallParameter::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(8)))",
             ),
             (
                 HostCallParameter::List(ParamLocal::List(ListLocal::Int {
                     local: IntListLocalId(9),
                     type_id: IntListTypeId::new(ListTypeId(2)),
                 })),
-                "data::host::HostCallParameter::List(data::graph::ParamLocal::List(data::graph::ListLocal::Int {local: data::graph::IntListLocalId(9,),type_id: data::type_::IntListTypeId {list_type: data::type_::ListTypeId(2,),},},),)",
+                r#"
+data::host::HostCallParameter::List(data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+    local: data::graph::IntListLocalId(9),
+    type_id: data::type_::IntListTypeId {
+        list_type: data::type_::ListTypeId(2),
+    },
+}))"#.trim_start_matches('\n'),
             ),
             (
                 HostCallParameter::Tuple(ParamLocal::Tuple {
                     local: TupleLocalId(10),
                     type_: vec![ValueType::Int].into(),
                 }),
-                "data::host::HostCallParameter::Tuple(data::graph::ParamLocal::Tuple {local: data::graph::TupleLocalId(10,),type_: data::Storage::Static(&[data::type_::ValueType::Int,]),},)",
+                r#"
+data::host::HostCallParameter::Tuple(data::graph::ParamLocal::Tuple {
+    local: data::graph::TupleLocalId(10),
+    type_: data::Storage::Static(&[
+        data::type_::ValueType::Int,
+    ]),
+})"#.trim_start_matches('\n'),
             ),
             (
                 HostCallParameter::Custom(ParamLocal::Custom(CustomLocal {
@@ -627,14 +644,25 @@ mod tests {
                         shape_id: CustomValueShapeId(4),
                     },
                 })),
-                "data::host::HostCallParameter::Custom(data::graph::ParamLocal::Custom(data::graph::CustomLocal {id: data::graph::CustomLocalId(11,),shape: data::type_::CustomValueShape {type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},),)",
+                r#"
+data::host::HostCallParameter::Custom(data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+    id: data::graph::CustomLocalId(11),
+    shape: data::type_::CustomValueShape {
+        type_id: data::type_::CustomTypeId(3),
+        shape_id: data::type_::CustomValueShapeId(4),
+    },
+}))"#.trim_start_matches('\n'),
             ),
             (
                 HostCallParameter::External(ParamLocal::External(ExternalLocal {
                     id: ExternalLocalId(12),
                     type_id: ExternalTypeId(5),
                 })),
-                "data::host::HostCallParameter::External(data::graph::ParamLocal::External(data::graph::ExternalLocal {id: data::graph::ExternalLocalId(12,),type_id: data::type_::ExternalTypeId(5,),},),)",
+                r#"
+data::host::HostCallParameter::External(data::graph::ParamLocal::External(data::graph::ExternalLocal {
+    id: data::graph::ExternalLocalId(12),
+    type_id: data::type_::ExternalTypeId(5),
+}))"#.trim_start_matches('\n'),
             ),
             (
                 HostCallParameter::Function {
@@ -644,7 +672,19 @@ mod tests {
                     },
                     arity: 1,
                 },
-                "data::host::HostCallParameter::Function {local: data::graph::ParamLocal::IntFunction {local: data::graph::IntFunctionLocalId(13,),type_: data::type_::FunctionType {arguments: data::Storage::Static(&[data::type_::ValueType::Int,]),return_: data::Storage::Static(&data::type_::ValueType::Int),},},arity: 1,}",
+                r#"
+data::host::HostCallParameter::Function {
+    local: data::graph::ParamLocal::IntFunction {
+        local: data::graph::IntFunctionLocalId(13),
+        type_: data::type_::FunctionType {
+            arguments: data::Storage::Static(&[
+                data::type_::ValueType::Int,
+            ]),
+            return_: data::Storage::Static(&data::type_::ValueType::Int),
+        },
+    },
+    arity: 1,
+}"#.trim_start_matches('\n'),
             ),
         ];
         for (parameter, expected) in cases {
@@ -662,11 +702,17 @@ mod tests {
         let never = HostedFunctionTarget::<IntFunctionBody>::never(HostNeverFunctionId(4));
         assert_eq!(
             Rust::expression(&value),
-            "data::host::HostedFunctionTarget::Value(data::host::HostFunctionId {index: 3,return_: data::graph::IntLocalId(2,),body: ::core::marker::PhantomData,},)"
+            r#"
+data::host::HostedFunctionTarget::Value(data::host::HostFunctionId {
+    index: 3,
+    return_: data::graph::IntLocalId(2),
+    body: ::core::marker::PhantomData,
+})"#
+            .trim_start_matches('\n')
         );
         assert_eq!(
             Rust::expression(&never),
-            "data::host::HostedFunctionTarget::Never(data::host::HostNeverFunctionId(4,),)"
+            "data::host::HostedFunctionTarget::Never(data::host::HostNeverFunctionId(4))"
         );
     }
 

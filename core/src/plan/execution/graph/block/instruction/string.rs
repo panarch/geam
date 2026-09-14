@@ -150,14 +150,15 @@ mod emission_tests {
         let cases = [
             (
                 StringInstruction::Value("line\n\"quoted\"".into()),
-                "data::graph::StringInstruction::Value(data::Text::Static(\"line\\n\\\"quoted\\\"\",),)",
+                "data::graph::StringInstruction::Value(data::Text::Static(\"line\\n\\\"quoted\\\"\"))",
             ),
             (
                 StringInstruction::Constant(ConstantId::new(3)),
-                concat!(
-                    "data::graph::StringInstruction::Constant(data::constant::ConstantId {",
-                    "index: 3,value: ::core::marker::PhantomData,},)"
-                ),
+                r#"
+data::graph::StringInstruction::Constant(data::constant::ConstantId {
+    index: 3,
+    value: ::core::marker::PhantomData,
+})"#.trim_start_matches('\n'),
             ),
             (
                 StringInstruction::Call {
@@ -165,12 +166,14 @@ mod emission_tests {
                     args: vec![ParamLocal::String(StringLocalId(5))].into(),
                     site: site.clone(),
                 },
-                concat!(
-                    "data::graph::StringInstruction::Call {function: data::function::StringFunctionId(2,),",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::String(data::graph::StringLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::StringInstruction::Call {
+    function: data::function::StringFunctionId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::String(data::graph::StringLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 StringInstruction::FunctionCall {
@@ -178,19 +181,25 @@ mod emission_tests {
                     args: vec![ParamLocal::String(StringLocalId(5))].into(),
                     site,
                 },
-                concat!(
-                    "data::graph::StringInstruction::FunctionCall {function: data::graph::StringFunctionLocalId(2,),",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::String(data::graph::StringLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::StringInstruction::FunctionCall {
+    function: data::graph::StringFunctionLocalId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::String(data::graph::StringLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 StringInstruction::TupleIndex {
                     tuple: TupleLocalId(2),
                     index: 1,
                 },
-                "data::graph::StringInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+                r#"
+data::graph::StringInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 StringInstruction::CustomField {
@@ -200,32 +209,50 @@ mod emission_tests {
                     ),
                     index: 1,
                 },
-                concat!(
-                    "data::graph::StringInstruction::CustomField {source: data::graph::CustomLocal {",
-                    "id: data::graph::CustomLocalId(2,),shape: data::type_::CustomValueShape {",
-                    "type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},index: 1,}"
-                ),
+                r#"
+data::graph::StringInstruction::CustomField {
+    source: data::graph::CustomLocal {
+        id: data::graph::CustomLocalId(2),
+        shape: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 StringInstruction::ListIndex {
                     list: StringListLocalId(2),
                     index: 1,
                 },
-                "data::graph::StringInstruction::ListIndex {list: data::graph::StringListLocalId(2,),index: 1,}",
+                r#"
+data::graph::StringInstruction::ListIndex {
+    list: data::graph::StringListLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 StringInstruction::Concatenate {
                     left: StringLocalId(2),
                     right: StringLocalId(5),
                 },
-                "data::graph::StringInstruction::Concatenate {left: data::graph::StringLocalId(2,),right: data::graph::StringLocalId(5,),}",
+                r#"
+data::graph::StringInstruction::Concatenate {
+    left: data::graph::StringLocalId(2),
+    right: data::graph::StringLocalId(5),
+}"#.trim_start_matches('\n'),
             ),
             (
                 StringInstruction::DropPrefix {
                     value: StringLocalId(2),
                     prefix: "pre".into(),
                 },
-                "data::graph::StringInstruction::DropPrefix {value: data::graph::StringLocalId(2,),prefix: data::Text::Static(\"pre\",),}",
+                r#"
+data::graph::StringInstruction::DropPrefix {
+    value: data::graph::StringLocalId(2),
+    prefix: data::Text::Static("pre"),
+}"#.trim_start_matches('\n'),
             ),
         ];
         for (instruction, expected) in cases {

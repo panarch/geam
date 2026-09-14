@@ -87,23 +87,47 @@ mod emission_tests {
         );
         assert_eq!(
             Rust::expression(&MatchPatternListTail::Bind(MatchPatternBinding::new(2))),
-            "data::graph::MatchPatternListTail::Bind(data::graph::MatchPatternBinding {index: 2,},)"
+            r#"
+data::graph::MatchPatternListTail::Bind(data::graph::MatchPatternBinding {
+    index: 2,
+})"#
+            .trim_start_matches('\n')
         );
         for (tail, expected) in [
             (
                 None,
-                "data::graph::MatchPatternList {elements: data::Storage::Static(&[data::graph::MatchPattern::Discard,]),tail: None,}",
+                r#"
+data::graph::MatchPatternList {
+    elements: data::Storage::Static(&[
+        data::graph::MatchPattern::Discard,
+    ]),
+    tail: None,
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 Some(MatchPatternListTail::Ignore),
-                "data::graph::MatchPatternList {elements: data::Storage::Static(&[data::graph::MatchPattern::Discard,]),tail: Some(data::graph::MatchPatternListTail::Ignore),}",
+                r#"
+data::graph::MatchPatternList {
+    elements: data::Storage::Static(&[
+        data::graph::MatchPattern::Discard,
+    ]),
+    tail: Some(data::graph::MatchPatternListTail::Ignore),
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 Some(MatchPatternListTail::Bind(MatchPatternBinding::new(2))),
-                concat!(
-                    "data::graph::MatchPatternList {elements: data::Storage::Static(&[data::graph::MatchPattern::Discard,]),",
-                    "tail: Some(data::graph::MatchPatternListTail::Bind(data::graph::MatchPatternBinding {index: 2,},)),}"
-                ),
+                r#"
+data::graph::MatchPatternList {
+    elements: data::Storage::Static(&[
+        data::graph::MatchPattern::Discard,
+    ]),
+    tail: Some(data::graph::MatchPatternListTail::Bind(data::graph::MatchPatternBinding {
+        index: 2,
+    })),
+}"#
+                .trim_start_matches('\n'),
             ),
         ] {
             assert_eq!(

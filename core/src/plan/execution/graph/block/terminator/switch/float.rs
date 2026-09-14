@@ -86,12 +86,23 @@ mod emission_tests {
         );
         assert_eq!(
             Rust::expression(&value),
-            concat!(
-                "data::graph::FloatSwitch {subject: data::graph::FloatLocalId(2,),",
-                "clauses: data::Storage::Static(&[(f64::from_bits(9223372036854775808),data::graph::Edge {target: data::graph::BlockId(3,),",
-                "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(5,),),]),},),]),",
-                "fallback: data::graph::Edge {target: data::graph::BlockId(4,),args: data::Storage::Static(&[]),},}"
-            )
+            r#"
+data::graph::FloatSwitch {
+    subject: data::graph::FloatLocalId(2),
+    clauses: data::Storage::Static(&[
+        (f64::from_bits(9223372036854775808), data::graph::Edge {
+            target: data::graph::BlockId(3),
+            args: data::Storage::Static(&[
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+            ]),
+        }),
+    ]),
+    fallback: data::graph::Edge {
+        target: data::graph::BlockId(4),
+        args: data::Storage::Static(&[]),
+    },
+}"#
+            .trim_start_matches('\n')
         );
     }
 }

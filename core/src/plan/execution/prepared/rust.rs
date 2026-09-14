@@ -9,12 +9,14 @@ pub(crate) trait Emit {
 
 pub(crate) struct Rust {
     output: String,
+    indentation: usize,
 }
 
 impl Rust {
     pub(crate) fn expression(value: &impl Emit) -> String {
         let mut output = Self {
             output: String::new(),
+            indentation: 0,
         };
         value.emit(&mut output);
         output.output
@@ -28,11 +30,17 @@ impl Rust {
     pub(crate) fn structure(&mut self, path: &str, fields: &[(&str, &dyn Emit)]) {
         self.path(path);
         self.output.push_str(" {");
+        self.indentation += 1;
         for (name, value) in fields {
+            self.newline();
             self.output.push_str(name);
             self.output.push_str(": ");
             value.emit(self);
             self.output.push(',');
+        }
+        self.indentation -= 1;
+        if !fields.is_empty() {
+            self.newline();
         }
         self.output.push('}');
     }
@@ -49,9 +57,18 @@ impl Rust {
     }
 
     fn tuple_fields(&mut self, fields: &[&dyn Emit]) {
-        for value in fields {
+        for (index, value) in fields.iter().enumerate() {
+            if index != 0 {
+                self.output.push_str(", ");
+            }
             value.emit(self);
-            self.output.push(',');
+        }
+    }
+
+    fn newline(&mut self) {
+        self.output.push('\n');
+        for _ in 0..self.indentation {
+            self.output.push_str("    ");
         }
     }
 }
@@ -68,9 +85,15 @@ impl<Value: Emit + ?Sized + 'static> Emit for Storage<Value> {
 impl<Value: Emit> Emit for [Value] {
     fn emit(&self, output: &mut Rust) {
         output.output.push('[');
+        output.indentation += 1;
         for value in self {
+            output.newline();
             value.emit(output);
             output.output.push(',');
+        }
+        output.indentation -= 1;
+        if !self.is_empty() {
+            output.newline();
         }
         output.output.push(']');
     }
@@ -211,13 +234,18 @@ mod tests {
         let values = Table::from(vec![Some((2usize..5, true)), None]);
         assert_eq!(
             Rust::expression(&values),
-            "data::Storage::Static(&[Some((2..5,true,)),None,])"
+            r#"
+data::Storage::Static(&[
+    Some((2..5, true)),
+    None,
+])"#
+            .trim_start_matches('\n')
         );
         assert_eq!(
             Rust::expression(&Node::from(Box::new(7u32))),
             "data::Storage::Static(&7)"
         );
-        assert_eq!(Rust::expression(&[1usize, 2]), "[1,2,]");
+        assert_eq!(Rust::expression(&[1usize, 2]), "[\n    1,\n    2,\n]");
         assert_eq!(
             Rust::expression(&PhantomData::<str>),
             "::core::marker::PhantomData"
@@ -225,6 +253,53 @@ mod tests {
         assert_eq!(Rust::expression(&"a\n\"b\""), "\"a\\n\\\"b\\\"\"");
         assert_eq!(Rust::expression(&'\n'), "'\\n'");
         assert_eq!(Rust::expression(&false), "false");
+    }
+
+    #[test]
+    fn indents_nested_fields_and_arrays_without_changing_literals() {
+        let mut output = Rust {
+            output: String::new(),
+            indentation: 0,
+        };
+        output.structure(
+            "Record",
+            &[
+                ("rows", &[[1u8, 2], [3, 4]]),
+                ("text", &Some("{a, [b]}\n\"c\"\\")),
+                ("empty", &[] as &[u8; 0]),
+                ("last", &false),
+            ],
+        );
+        assert_eq!(
+            output.output,
+            r#"
+data::Record {
+    rows: [
+        [
+            1,
+            2,
+        ],
+        [
+            3,
+            4,
+        ],
+    ],
+    text: Some("{a, [b]}\n\"c\"\\"),
+    empty: [],
+    last: false,
+}"#
+            .trim_start_matches('\n')
+        );
+        assert_eq!(output.indentation, 0);
+        output.output.clear();
+        output.structure("Empty", &[]);
+        assert_eq!(output.output, "data::Empty {}");
+        output.output.clear();
+        output.call("empty", &[]);
+        assert_eq!(output.output, "data::empty()");
+        output.output.clear();
+        output.variant("Pair", &[&1u8, &2u8]);
+        assert_eq!(output.output, "data::Pair(1, 2)");
     }
 
     #[test]

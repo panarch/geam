@@ -312,7 +312,11 @@ mod emission_tests {
                     index: 1,
                 }),
                 "Int",
-                "data::graph::IntInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+                r#"
+data::graph::IntInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 Kind::Float(FloatInstruction::TupleIndex {
@@ -320,7 +324,11 @@ mod emission_tests {
                     index: 1,
                 }),
                 "Float",
-                "data::graph::FloatInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+                r#"
+data::graph::FloatInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 Kind::String(StringInstruction::TupleIndex {
@@ -328,7 +336,11 @@ mod emission_tests {
                     index: 1,
                 }),
                 "String",
-                "data::graph::StringInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+                r#"
+data::graph::StringInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 Kind::BitArray(BitArrayInstruction::TupleIndex {
@@ -336,7 +348,11 @@ mod emission_tests {
                     index: 1,
                 }),
                 "BitArray",
-                "data::graph::BitArrayInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+                r#"
+data::graph::BitArrayInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 Kind::UtfCodepoint(UtfCodepointInstruction::TupleIndex {
@@ -344,7 +360,11 @@ mod emission_tests {
                     index: 1,
                 }),
                 "UtfCodepoint",
-                "data::graph::UtfCodepointInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+                r#"
+data::graph::UtfCodepointInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 Kind::Custom(CustomInstruction::TupleIndex {
@@ -352,7 +372,11 @@ mod emission_tests {
                     index: 1,
                 }),
                 "Custom",
-                "data::graph::CustomInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+                r#"
+data::graph::CustomInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 Kind::External(ExternalInstruction::TupleIndex {
@@ -360,12 +384,16 @@ mod emission_tests {
                     index: 1,
                 }),
                 "External",
-                "data::graph::ExternalInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+                r#"
+data::graph::ExternalInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 Kind::Bool(BoolInstruction::Value(true)),
                 "Bool",
-                "data::graph::BoolInstruction::Value(true,)",
+                "data::graph::BoolInstruction::Value(true)",
             ),
             (
                 Kind::Nil(NilInstruction::Value),
@@ -375,7 +403,7 @@ mod emission_tests {
             (
                 Kind::Tuple(TupleInstruction::Value(Table::Static(&[]))),
                 "Tuple",
-                "data::graph::TupleInstruction::Value(data::Storage::Static(&[]),)",
+                "data::graph::TupleInstruction::Value(data::Storage::Static(&[]))",
             ),
             (
                 Kind::List(ListInstruction::Int(
@@ -385,7 +413,10 @@ mod emission_tests {
                     TypedListInstruction::Value(Table::Static(&[])),
                 )),
                 "List",
-                "data::graph::ListInstruction::Int(data::type_::IntListTypeId {list_type: data::type_::ListTypeId(3,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+                r#"
+data::graph::ListInstruction::Int(data::type_::IntListTypeId {
+    list_type: data::type_::ListTypeId(3),
+}, data::graph::TypedListInstruction::Value(data::Storage::Static(&[])))"#.trim_start_matches('\n'),
             ),
             (
                 Kind::ExternalList(ExternalListInstruction::new(
@@ -393,7 +424,14 @@ mod emission_tests {
                     TypedListInstruction::Value(Table::Static(&[])),
                 )),
                 "ExternalList",
-                "data::graph::ExternalListInstruction {type_id: data::type_::ExternalListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ExternalTypeId(4,),},instruction: data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),}",
+                r#"
+data::graph::ExternalListInstruction {
+    type_id: data::type_::ExternalListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ExternalTypeId(4),
+    },
+    instruction: data::graph::TypedListInstruction::Value(data::Storage::Static(&[])),
+}"#.trim_start_matches('\n'),
             ),
             (
                 Kind::Function(FunctionInstruction {
@@ -402,10 +440,15 @@ mod emission_tests {
                     kind: FunctionInstructionKind::Reference(FunctionTarget::Int(IntFunctionId(3))),
                 }),
                 "Function",
-                concat!(
-                    "data::graph::FunctionInstruction {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Int),},",
-                    "family: data::function::FunctionReturnFamily::Int,kind: data::graph::FunctionInstructionKind::Reference(data::graph::FunctionTarget::Int(data::function::IntFunctionId(3,),),),}"
-                ),
+                r#"
+data::graph::FunctionInstruction {
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::Int),
+    },
+    family: data::function::FunctionReturnFamily::Int,
+    kind: data::graph::FunctionInstructionKind::Reference(data::graph::FunctionTarget::Int(data::function::IntFunctionId(3))),
+}"#.trim_start_matches('\n'),
             ),
             (
                 Kind::ExternalFunction(ExternalFunctionInstruction {
@@ -419,16 +462,24 @@ mod emission_tests {
                     ),
                 }),
                 "ExternalFunction",
-                concat!(
-                    "data::graph::ExternalFunctionInstruction {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::External(data::type_::ExternalTypeId(4,),)),},",
-                    "family: data::function::FunctionReturnFamily::External,kind: data::graph::ExternalFunctionInstructionKind::Reference(data::graph::ExternalFunctionTarget::Value(data::function::ExternalFunctionId {index: 3,return_type: data::type_::ExternalTypeId(4,),},),),}"
-                ),
+                r#"
+data::graph::ExternalFunctionInstruction {
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::External(data::type_::ExternalTypeId(4))),
+    },
+    family: data::function::FunctionReturnFamily::External,
+    kind: data::graph::ExternalFunctionInstructionKind::Reference(data::graph::ExternalFunctionTarget::Value(data::function::ExternalFunctionId {
+        index: 3,
+        return_type: data::type_::ExternalTypeId(4),
+    })),
+}"#.trim_start_matches('\n'),
             ),
         ];
         for (instruction, family, expected) in cases {
             assert_eq!(
                 Rust::expression(&instruction),
-                format!("data::graph::ProfiledInstructionKind::{family}({expected},)")
+                format!("data::graph::ProfiledInstructionKind::{family}({expected})")
             );
         }
         let instruction = ProfiledInstruction::<HostedExecutionGraph> {
@@ -437,10 +488,15 @@ mod emission_tests {
         };
         assert_eq!(
             Rust::expression(&instruction),
-            concat!(
-                "data::graph::ProfiledInstruction {output: data::graph::ParamSlot {local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2,),),shape: data::type_::ValueShapeId(9,),},",
-                "kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true,),),}"
-            )
+            r#"
+data::graph::ProfiledInstruction {
+    output: data::graph::ParamSlot {
+        local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+        shape: data::type_::ValueShapeId(9),
+    },
+    kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
+}"#
+            .trim_start_matches('\n')
         );
     }
 }

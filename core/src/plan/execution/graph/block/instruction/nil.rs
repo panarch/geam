@@ -118,10 +118,11 @@ mod emission_tests {
             (NilInstruction::Value, "data::graph::NilInstruction::Value"),
             (
                 NilInstruction::Constant(ConstantId::new(3)),
-                concat!(
-                    "data::graph::NilInstruction::Constant(data::constant::ConstantId {",
-                    "index: 3,value: ::core::marker::PhantomData,},)"
-                ),
+                r#"
+data::graph::NilInstruction::Constant(data::constant::ConstantId {
+    index: 3,
+    value: ::core::marker::PhantomData,
+})"#.trim_start_matches('\n'),
             ),
             (
                 NilInstruction::Call {
@@ -129,12 +130,14 @@ mod emission_tests {
                     args: vec![ParamLocal::Nil(NilLocalId(5))].into(),
                     site: site.clone(),
                 },
-                concat!(
-                    "data::graph::NilInstruction::Call {function: data::function::NilFunctionId(2,),",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::Nil(data::graph::NilLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::NilInstruction::Call {
+    function: data::function::NilFunctionId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Nil(data::graph::NilLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 NilInstruction::FunctionCall {
@@ -142,19 +145,25 @@ mod emission_tests {
                     args: vec![ParamLocal::Nil(NilLocalId(5))].into(),
                     site,
                 },
-                concat!(
-                    "data::graph::NilInstruction::FunctionCall {function: data::graph::NilFunctionLocalId(2,),",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::Nil(data::graph::NilLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::NilInstruction::FunctionCall {
+    function: data::graph::NilFunctionLocalId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Nil(data::graph::NilLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 NilInstruction::TupleIndex {
                     tuple: TupleLocalId(2),
                     index: 1,
                 },
-                "data::graph::NilInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+                r#"
+data::graph::NilInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 NilInstruction::CustomField {
@@ -164,18 +173,28 @@ mod emission_tests {
                     ),
                     index: 1,
                 },
-                concat!(
-                    "data::graph::NilInstruction::CustomField {source: data::graph::CustomLocal {",
-                    "id: data::graph::CustomLocalId(2,),shape: data::type_::CustomValueShape {",
-                    "type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},index: 1,}"
-                ),
+                r#"
+data::graph::NilInstruction::CustomField {
+    source: data::graph::CustomLocal {
+        id: data::graph::CustomLocalId(2),
+        shape: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 NilInstruction::ListIndex {
                     list: NilListLocalId(2),
                     index: 1,
                 },
-                "data::graph::NilInstruction::ListIndex {list: data::graph::NilListLocalId(2,),index: 1,}",
+                r#"
+data::graph::NilInstruction::ListIndex {
+    list: data::graph::NilListLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
         ];
         for (instruction, expected) in cases {

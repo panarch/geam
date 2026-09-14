@@ -148,18 +148,24 @@ mod emission_tests {
                     constructor: CustomConstructorId::new(CustomTypeId(3), 1),
                     fields: vec![ParamLocal::Int(IntLocalId(5))].into(),
                 },
-                concat!(
-                    "data::graph::CustomInstruction::Construct {constructor: data::type_::CustomConstructorId {",
-                    "type_id: data::type_::CustomTypeId(3,),index: 1,},",
-                    "fields: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(5,),),]),}"
-                ),
+                r#"
+data::graph::CustomInstruction::Construct {
+    constructor: data::type_::CustomConstructorId {
+        type_id: data::type_::CustomTypeId(3),
+        index: 1,
+    },
+    fields: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+    ]),
+}"#.trim_start_matches('\n'),
             ),
             (
                 CustomInstruction::Constant(ConstantId::new(3)),
-                concat!(
-                    "data::graph::CustomInstruction::Constant(data::constant::ConstantId {",
-                    "index: 3,value: ::core::marker::PhantomData,},)"
-                ),
+                r#"
+data::graph::CustomInstruction::Constant(data::constant::ConstantId {
+    index: 3,
+    value: ::core::marker::PhantomData,
+})"#.trim_start_matches('\n'),
             ),
             (
                 CustomInstruction::Call {
@@ -167,13 +173,20 @@ mod emission_tests {
                     args: vec![ParamLocal::Int(IntLocalId(5))].into(),
                     site: site.clone(),
                 },
-                concat!(
-                    "data::graph::CustomInstruction::Call {function: data::function::CustomFunctionId {index: 2,return_shape: ",
-                    "data::type_::CustomValueShape {type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::CustomInstruction::Call {
+    function: data::function::CustomFunctionId {
+        index: 2,
+        return_shape: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 CustomInstruction::FunctionCall {
@@ -188,23 +201,38 @@ mod emission_tests {
                     args: vec![ParamLocal::Int(IntLocalId(5))].into(),
                     site,
                 },
-                concat!(
-                    "data::graph::CustomInstruction::FunctionCall {function: data::graph::CustomFunctionLocal {id: data::graph::CustomFunctionLocalId(2,),",
-                    "type_: data::type_::CustomFunctionType {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),",
-                    "return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(3,),)),},",
-                    "arguments: data::Storage::Static(&[]),return_: data::type_::CustomValueShape {type_id: data::type_::CustomTypeId(3,),",
-                    "shape_id: data::type_::CustomValueShapeId(4,),},},},",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::CustomInstruction::FunctionCall {
+    function: data::graph::CustomFunctionLocal {
+        id: data::graph::CustomFunctionLocalId(2),
+        type_: data::type_::CustomFunctionType {
+            type_: data::type_::FunctionType {
+                arguments: data::Storage::Static(&[]),
+                return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(3))),
+            },
+            arguments: data::Storage::Static(&[]),
+            return_: data::type_::CustomValueShape {
+                type_id: data::type_::CustomTypeId(3),
+                shape_id: data::type_::CustomValueShapeId(4),
+            },
+        },
+    },
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 CustomInstruction::TupleIndex {
                     tuple: TupleLocalId(2),
                     index: 1,
                 },
-                "data::graph::CustomInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+                r#"
+data::graph::CustomInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 CustomInstruction::CustomField {
@@ -214,18 +242,28 @@ mod emission_tests {
                     ),
                     index: 1,
                 },
-                concat!(
-                    "data::graph::CustomInstruction::CustomField {source: data::graph::CustomLocal {",
-                    "id: data::graph::CustomLocalId(2,),shape: data::type_::CustomValueShape {",
-                    "type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},index: 1,}"
-                ),
+                r#"
+data::graph::CustomInstruction::CustomField {
+    source: data::graph::CustomLocal {
+        id: data::graph::CustomLocalId(2),
+        shape: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 CustomInstruction::ListIndex {
                     list: CustomListLocalId(2),
                     index: 1,
                 },
-                "data::graph::CustomInstruction::ListIndex {list: data::graph::CustomListLocalId(2,),index: 1,}",
+                r#"
+data::graph::CustomInstruction::ListIndex {
+    list: data::graph::CustomListLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
         ];
         for (instruction, expected) in cases {

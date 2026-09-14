@@ -44,29 +44,45 @@ mod tests {
             ),
             (
                 FieldRefinement::Argument(2),
-                "data::type_::FieldRefinement::Argument(2,)",
+                "data::type_::FieldRefinement::Argument(2)",
             ),
             (
                 FieldRefinement::Tuple(Table::Static(&[
                     FieldRefinement::Value,
                     FieldRefinement::Argument(2),
                 ])),
-                "data::type_::FieldRefinement::Tuple(data::Storage::Static(&[data::type_::FieldRefinement::Value,data::type_::FieldRefinement::Argument(2,),]),)",
+                r#"
+data::type_::FieldRefinement::Tuple(data::Storage::Static(&[
+    data::type_::FieldRefinement::Value,
+    data::type_::FieldRefinement::Argument(2),
+]))"#
+                    .trim_start_matches('\n'),
             ),
             (
                 FieldRefinement::List(Node::Static(&FieldRefinement::Argument(2))),
-                "data::type_::FieldRefinement::List(data::Storage::Static(&data::type_::FieldRefinement::Argument(2,)),)",
+                "data::type_::FieldRefinement::List(data::Storage::Static(&data::type_::FieldRefinement::Argument(2)))",
             ),
             (
                 FieldRefinement::Function {
                     arguments: Table::Static(&[FieldRefinement::Argument(2)]),
                     return_: Node::Static(&FieldRefinement::Value),
                 },
-                "data::type_::FieldRefinement::Function {arguments: data::Storage::Static(&[data::type_::FieldRefinement::Argument(2,),]),return_: data::Storage::Static(&data::type_::FieldRefinement::Value),}",
+                r#"
+data::type_::FieldRefinement::Function {
+    arguments: data::Storage::Static(&[
+        data::type_::FieldRefinement::Argument(2),
+    ]),
+    return_: data::Storage::Static(&data::type_::FieldRefinement::Value),
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 FieldRefinement::Custom(Table::Static(&[FieldRefinement::Argument(2)])),
-                "data::type_::FieldRefinement::Custom(data::Storage::Static(&[data::type_::FieldRefinement::Argument(2,),]),)",
+                r#"
+data::type_::FieldRefinement::Custom(data::Storage::Static(&[
+    data::type_::FieldRefinement::Argument(2),
+]))"#
+                    .trim_start_matches('\n'),
             ),
         ] {
             assert_eq!(Rust::expression(&refinement), expected);

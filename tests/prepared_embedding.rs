@@ -98,7 +98,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {{
         checked(command(env!("CARGO_BIN_EXE_geam"), &application).args(["embedding", "sync"]));
         eprintln!("{mode} preparation: {:?}", started.elapsed());
         let files = managed_files(&application);
+        checked(command("cargo", &application).args(["fmt", "--all"]));
+        assert_eq!(managed_files(&application), files);
         checked(command(env!("CARGO_BIN_EXE_geam"), &application).args(["embedding", "check"]));
+        assert_eq!(managed_files(&application), files);
+        checked(command(env!("CARGO_BIN_EXE_geam"), &application).args(["embedding", "sync"]));
         assert_eq!(managed_files(&application), files);
         let output = checked(command("cargo", &application).args(["run", "--quiet", "--locked"]));
         assert_eq!(output.stdout, b"42\n");

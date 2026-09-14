@@ -204,7 +204,31 @@ mod tests {
         };
         assert_eq!(
             Rust::expression(&definition),
-            "data::type_::CustomDefinition {package: data::Text::Static(\"app\",),module: data::Text::Static(\"app/types\",),name: data::Text::Static(\"Box\",),publicity: data::type_::CustomTypePublicity::Public,opaque: true,parameters: 1,constructors: data::Storage::Static(&[data::type_::ConstructorDefinition {name: data::Text::Static(\"Box\",),fields: data::Storage::Static(&[data::type_::FieldDefinition {label: Some(data::Text::Static(\"value\",)),type_: data::type_::TypeMetadata::Parameter(data::type_::parameter_id(0,),),},data::type_::FieldDefinition {label: None,type_: data::type_::TypeMetadata::Int,},]),},]),}"
+            r#"
+data::type_::CustomDefinition {
+    package: data::Text::Static("app"),
+    module: data::Text::Static("app/types"),
+    name: data::Text::Static("Box"),
+    publicity: data::type_::CustomTypePublicity::Public,
+    opaque: true,
+    parameters: 1,
+    constructors: data::Storage::Static(&[
+        data::type_::ConstructorDefinition {
+            name: data::Text::Static("Box"),
+            fields: data::Storage::Static(&[
+                data::type_::FieldDefinition {
+                    label: Some(data::Text::Static("value")),
+                    type_: data::type_::TypeMetadata::Parameter(data::type_::parameter_id(0)),
+                },
+                data::type_::FieldDefinition {
+                    label: None,
+                    type_: data::type_::TypeMetadata::Int,
+                },
+            ]),
+        },
+    ]),
+}"#
+            .trim_start_matches('\n')
         );
         for (publicity, expected) in [
             (

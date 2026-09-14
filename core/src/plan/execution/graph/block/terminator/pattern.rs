@@ -214,56 +214,93 @@ mod emission_tests {
     fn emits_every_match_pattern_and_preserves_nested_bindings() {
         assert_eq!(
             Rust::expression(&MatchPatternBinding::new(3)),
-            "data::graph::MatchPatternBinding {index: 3,}"
+            r#"
+data::graph::MatchPatternBinding {
+    index: 3,
+}"#
+            .trim_start_matches('\n')
         );
         assert_eq!(
             Rust::expression(&MatchIntBindingId::new(2)),
-            "data::graph::MatchIntBindingId(2,)"
+            "data::graph::MatchIntBindingId(2)"
         );
         let cases = [
             (
                 MatchPattern::Bind(MatchPatternBinding::new(3)),
-                "data::graph::MatchPattern::Bind(data::graph::MatchPatternBinding {index: 3,},)",
+                r#"
+data::graph::MatchPattern::Bind(data::graph::MatchPatternBinding {
+    index: 3,
+})"#
+                .trim_start_matches('\n'),
             ),
             (MatchPattern::Discard, "data::graph::MatchPattern::Discard"),
             (
                 MatchPattern::Int(num_bigint::BigInt::from(1).into()),
-                "data::graph::MatchPattern::Int(data::graph::IntegerLiteral {sign: data::Sign::Plus,digits: data::Storage::Static(&[1,]),},)",
+                r#"
+data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+    sign: data::Sign::Plus,
+    digits: data::Storage::Static(&[
+        1,
+    ]),
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 MatchPattern::Float(-0.0),
-                "data::graph::MatchPattern::Float(f64::from_bits(9223372036854775808),)",
+                "data::graph::MatchPattern::Float(f64::from_bits(9223372036854775808))",
             ),
             (
                 MatchPattern::String("test".into()),
-                "data::graph::MatchPattern::String(data::Text::Static(\"test\",),)",
+                "data::graph::MatchPattern::String(data::Text::Static(\"test\"))",
             ),
             (
                 MatchPattern::Bool(true),
-                "data::graph::MatchPattern::Bool(true,)",
+                "data::graph::MatchPattern::Bool(true)",
             ),
             (MatchPattern::Nil, "data::graph::MatchPattern::Nil"),
             (
                 MatchPattern::Tuple(vec![MatchPattern::Nil].into()),
-                "data::graph::MatchPattern::Tuple(data::Storage::Static(&[data::graph::MatchPattern::Nil,]),)",
+                r#"
+data::graph::MatchPattern::Tuple(data::Storage::Static(&[
+    data::graph::MatchPattern::Nil,
+]))"#
+                    .trim_start_matches('\n'),
             ),
             (
                 MatchPattern::List(MatchPatternList::new(vec![MatchPattern::Discard], None)),
-                "data::graph::MatchPattern::List(data::graph::MatchPatternList {elements: data::Storage::Static(&[data::graph::MatchPattern::Discard,]),tail: None,},)",
+                r#"
+data::graph::MatchPattern::List(data::graph::MatchPatternList {
+    elements: data::Storage::Static(&[
+        data::graph::MatchPattern::Discard,
+    ]),
+    tail: None,
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 MatchPattern::BitArray(BitArrayPattern::new(Vec::new())),
-                "data::graph::MatchPattern::BitArray(data::graph::BitArrayPattern {segments: data::Storage::Static(&[]),},)",
+                r#"
+data::graph::MatchPattern::BitArray(data::graph::BitArrayPattern {
+    segments: data::Storage::Static(&[]),
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 MatchPattern::Custom {
                     constructor: CustomConstructorId::new(CustomTypeId(2), 4),
                     fields: vec![MatchPattern::Nil].into(),
                 },
-                concat!(
-                    "data::graph::MatchPattern::Custom {constructor: data::type_::CustomConstructorId {type_id: data::type_::CustomTypeId(2,),index: 4,},",
-                    "fields: data::Storage::Static(&[data::graph::MatchPattern::Nil,]),}"
-                ),
+                r#"
+data::graph::MatchPattern::Custom {
+    constructor: data::type_::CustomConstructorId {
+        type_id: data::type_::CustomTypeId(2),
+        index: 4,
+    },
+    fields: data::Storage::Static(&[
+        data::graph::MatchPattern::Nil,
+    ]),
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 MatchPattern::StringPrefix {
@@ -271,20 +308,29 @@ mod emission_tests {
                     left: None,
                     right: Some(MatchPatternBinding::new(3)),
                 },
-                concat!(
-                    "data::graph::MatchPattern::StringPrefix {prefix: data::Text::Static(\"pre\",),left: None,",
-                    "right: Some(data::graph::MatchPatternBinding {index: 3,}),}"
-                ),
+                r#"
+data::graph::MatchPattern::StringPrefix {
+    prefix: data::Text::Static("pre"),
+    left: None,
+    right: Some(data::graph::MatchPatternBinding {
+        index: 3,
+    }),
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 MatchPattern::Alias {
                     pattern: Node::Static(&MatchPattern::Discard),
                     binding: MatchPatternBinding::new(3),
                 },
-                concat!(
-                    "data::graph::MatchPattern::Alias {pattern: data::Storage::Static(&data::graph::MatchPattern::Discard),",
-                    "binding: data::graph::MatchPatternBinding {index: 3,},}"
-                ),
+                r#"
+data::graph::MatchPattern::Alias {
+    pattern: data::Storage::Static(&data::graph::MatchPattern::Discard),
+    binding: data::graph::MatchPatternBinding {
+        index: 3,
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
         ];
         for (pattern, expected) in cases {

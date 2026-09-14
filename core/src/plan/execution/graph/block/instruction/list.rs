@@ -594,7 +594,11 @@ mod emission_tests {
             ),
             (
                 ParameterListInstruction::Constant(ConstantId::new(2)),
-                "data::graph::ParameterListInstruction::Constant(data::constant::ConstantId {index: 2,value: ::core::marker::PhantomData,},)",
+                r#"
+data::graph::ParameterListInstruction::Constant(data::constant::ConstantId {
+    index: 2,
+    value: ::core::marker::PhantomData,
+})"#.trim_start_matches('\n'),
             ),
             (
                 ParameterListInstruction::Call {
@@ -605,12 +609,18 @@ mod emission_tests {
                     args: Vec::<ParamLocal>::new().into(),
                     site: HostCallSite::new("example".into(), "main".into(), SourceSpan::new(3, 8)),
                 },
-                concat!(
-                    "data::graph::ParameterListInstruction::Call {function: data::function::ParameterListFunctionId {index: 2,",
-                    "type_id: data::type_::ParameterListTypeId {list_type: data::type_::ListTypeId(3,),item: data::type_::parameter_id(4,),},},",
-                    "args: data::Storage::Static(&[]),site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::ParameterListInstruction::Call {
+    function: data::function::ParameterListFunctionId {
+        index: 2,
+        type_id: data::type_::ParameterListTypeId {
+            list_type: data::type_::ListTypeId(3),
+            item: data::type_::parameter_id(4),
+        },
+    },
+    args: data::Storage::Static(&[]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 ParameterListInstruction::FunctionCall {
@@ -625,21 +635,33 @@ mod emission_tests {
                     args: Vec::new().into(),
                     site: HostCallSite::new("example".into(), "main".into(), SourceSpan::new(3, 8)),
                 },
-                concat!(
-                    "data::graph::ParameterListInstruction::FunctionCall {function: data::graph::ListFunctionLocal::Parameter {",
-                    "local: data::graph::ParameterListFunctionLocalId(2,),type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),",
-                    "return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),},",
-                    "list_type: data::type_::ParameterListTypeId {list_type: data::type_::ListTypeId(3,),item: data::type_::parameter_id(4,),},},",
-                    "args: data::Storage::Static(&[]),site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::ParameterListInstruction::FunctionCall {
+    function: data::graph::ListFunctionLocal::Parameter {
+        local: data::graph::ParameterListFunctionLocalId(2),
+        type_: data::type_::FunctionType {
+            arguments: data::Storage::Static(&[]),
+            return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+        },
+        list_type: data::type_::ParameterListTypeId {
+            list_type: data::type_::ListTypeId(3),
+            item: data::type_::parameter_id(4),
+        },
+    },
+    args: data::Storage::Static(&[]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 ParameterListInstruction::TupleIndex {
                     tuple: TupleLocalId(2),
                     index: 1,
                 },
-                "data::graph::ParameterListInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+                r#"
+data::graph::ParameterListInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 ParameterListInstruction::CustomField {
@@ -649,17 +671,28 @@ mod emission_tests {
                     ),
                     index: 1,
                 },
-                concat!(
-                    "data::graph::ParameterListInstruction::CustomField {source: data::graph::CustomLocal {id: data::graph::CustomLocalId(2,),",
-                    "shape: data::type_::CustomValueShape {type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},index: 1,}"
-                ),
+                r#"
+data::graph::ParameterListInstruction::CustomField {
+    source: data::graph::CustomLocal {
+        id: data::graph::CustomLocalId(2),
+        shape: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 ParameterListInstruction::ListIndex {
                     list: ParameterListListLocalId(2),
                     index: 1,
                 },
-                "data::graph::ParameterListInstruction::ListIndex {list: data::graph::ParameterListListLocalId(2,),index: 1,}",
+                r#"
+data::graph::ParameterListInstruction::ListIndex {
+    list: data::graph::ParameterListListLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
         ];
         for (instruction, expected) in cases {
@@ -686,18 +719,31 @@ mod emission_tests {
         ); 9] = [
             (
                 TypedListInstruction::Value(vec![IntLocalId(2)].into()),
-                "data::graph::TypedListInstruction::Value(data::Storage::Static(&[data::graph::IntLocalId(2,),]),)",
+                r#"
+data::graph::TypedListInstruction::Value(data::Storage::Static(&[
+    data::graph::IntLocalId(2),
+]))"#.trim_start_matches('\n'),
             ),
             (
                 TypedListInstruction::Constant(ConstantId::new(2)),
-                "data::graph::TypedListInstruction::Constant(data::constant::ConstantId {index: 2,value: ::core::marker::PhantomData,},)",
+                r#"
+data::graph::TypedListInstruction::Constant(data::constant::ConstantId {
+    index: 2,
+    value: ::core::marker::PhantomData,
+})"#.trim_start_matches('\n'),
             ),
             (
                 TypedListInstruction::Spread {
                     elements: vec![IntLocalId(2)].into(),
                     tail: IntListLocalId(5),
                 },
-                "data::graph::TypedListInstruction::Spread {elements: data::Storage::Static(&[data::graph::IntLocalId(2,),]),tail: data::graph::IntListLocalId(5,),}",
+                r#"
+data::graph::TypedListInstruction::Spread {
+    elements: data::Storage::Static(&[
+        data::graph::IntLocalId(2),
+    ]),
+    tail: data::graph::IntListLocalId(5),
+}"#.trim_start_matches('\n'),
             ),
             (
                 TypedListInstruction::Call {
@@ -705,12 +751,19 @@ mod emission_tests {
                     args: vec![ParamLocal::Int(IntLocalId(5))].into(),
                     site: HostCallSite::new("example".into(), "main".into(), SourceSpan::new(3, 8)),
                 },
-                concat!(
-                    "data::graph::TypedListInstruction::Call {function: data::function::IntListFunctionId {index: 2,",
-                    "type_id: data::type_::IntListTypeId {list_type: data::type_::ListTypeId(3,),},},",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::TypedListInstruction::Call {
+    function: data::function::IntListFunctionId {
+        index: 2,
+        type_id: data::type_::IntListTypeId {
+            list_type: data::type_::ListTypeId(3),
+        },
+    },
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 TypedListInstruction::FunctionCall {
@@ -725,21 +778,36 @@ mod emission_tests {
                     args: vec![ParamLocal::Int(IntLocalId(5))].into(),
                     site: HostCallSite::new("example".into(), "main".into(), SourceSpan::new(3, 8)),
                 },
-                concat!(
-                    "data::graph::TypedListInstruction::FunctionCall {function: data::graph::ListFunctionLocal::Int {",
-                    "local: data::graph::IntListFunctionLocalId(2,),type_: data::type_::FunctionType {arguments: data::Storage::Static(&[data::type_::ValueType::Int,]),",
-                    "return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),},",
-                    "list_type: data::type_::IntListTypeId {list_type: data::type_::ListTypeId(3,),},},",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::TypedListInstruction::FunctionCall {
+    function: data::graph::ListFunctionLocal::Int {
+        local: data::graph::IntListFunctionLocalId(2),
+        type_: data::type_::FunctionType {
+            arguments: data::Storage::Static(&[
+                data::type_::ValueType::Int,
+            ]),
+            return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+        },
+        list_type: data::type_::IntListTypeId {
+            list_type: data::type_::ListTypeId(3),
+        },
+    },
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 TypedListInstruction::TupleIndex {
                     tuple: TupleLocalId(2),
                     index: 1,
                 },
-                "data::graph::TypedListInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+                r#"
+data::graph::TypedListInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 TypedListInstruction::CustomField {
@@ -749,24 +817,39 @@ mod emission_tests {
                     ),
                     index: 1,
                 },
-                concat!(
-                    "data::graph::TypedListInstruction::CustomField {source: data::graph::CustomLocal {id: data::graph::CustomLocalId(2,),",
-                    "shape: data::type_::CustomValueShape {type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},index: 1,}"
-                ),
+                r#"
+data::graph::TypedListInstruction::CustomField {
+    source: data::graph::CustomLocal {
+        id: data::graph::CustomLocalId(2),
+        shape: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 TypedListInstruction::ListIndex {
                     list: ListListLocalId(2),
                     index: 1,
                 },
-                "data::graph::TypedListInstruction::ListIndex {list: data::graph::ListListLocalId(2,),index: 1,}",
+                r#"
+data::graph::TypedListInstruction::ListIndex {
+    list: data::graph::ListListLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 TypedListInstruction::DropFirst {
                     list: IntListLocalId(2),
                     count: 1,
                 },
-                "data::graph::TypedListInstruction::DropFirst {list: data::graph::IntListLocalId(2,),count: 1,}",
+                r#"
+data::graph::TypedListInstruction::DropFirst {
+    list: data::graph::IntListLocalId(2),
+    count: 1,
+}"#.trim_start_matches('\n'),
             ),
         ];
         for (instruction, expected) in cases {
@@ -782,56 +865,89 @@ mod emission_tests {
                     IntListTypeId::new(ListTypeId(3)),
                     TypedListInstruction::Value(Vec::new().into()),
                 ),
-                "data::graph::ListInstruction::Int(data::type_::IntListTypeId {list_type: data::type_::ListTypeId(3,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+                r#"
+data::graph::ListInstruction::Int(data::type_::IntListTypeId {
+    list_type: data::type_::ListTypeId(3),
+}, data::graph::TypedListInstruction::Value(data::Storage::Static(&[])))"#
+                    .trim_start_matches('\n'),
             ),
             (
                 ListInstruction::String(
                     StringListTypeId::new(ListTypeId(3)),
                     TypedListInstruction::Value(Vec::new().into()),
                 ),
-                "data::graph::ListInstruction::String(data::type_::StringListTypeId {list_type: data::type_::ListTypeId(3,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+                r#"
+data::graph::ListInstruction::String(data::type_::StringListTypeId {
+    list_type: data::type_::ListTypeId(3),
+}, data::graph::TypedListInstruction::Value(data::Storage::Static(&[])))"#
+                    .trim_start_matches('\n'),
             ),
             (
                 ListInstruction::BitArray(
                     BitArrayListTypeId::new(ListTypeId(3)),
                     TypedListInstruction::Value(Vec::new().into()),
                 ),
-                "data::graph::ListInstruction::BitArray(data::type_::BitArrayListTypeId {list_type: data::type_::ListTypeId(3,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+                r#"
+data::graph::ListInstruction::BitArray(data::type_::BitArrayListTypeId {
+    list_type: data::type_::ListTypeId(3),
+}, data::graph::TypedListInstruction::Value(data::Storage::Static(&[])))"#
+                    .trim_start_matches('\n'),
             ),
             (
                 ListInstruction::UtfCodepoint(
                     UtfCodepointListTypeId::new(ListTypeId(3)),
                     TypedListInstruction::Value(Vec::new().into()),
                 ),
-                "data::graph::ListInstruction::UtfCodepoint(data::type_::UtfCodepointListTypeId {list_type: data::type_::ListTypeId(3,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+                r#"
+data::graph::ListInstruction::UtfCodepoint(data::type_::UtfCodepointListTypeId {
+    list_type: data::type_::ListTypeId(3),
+}, data::graph::TypedListInstruction::Value(data::Storage::Static(&[])))"#
+                    .trim_start_matches('\n'),
             ),
             (
                 ListInstruction::Float(
                     FloatListTypeId::new(ListTypeId(3)),
                     TypedListInstruction::Value(Vec::new().into()),
                 ),
-                "data::graph::ListInstruction::Float(data::type_::FloatListTypeId {list_type: data::type_::ListTypeId(3,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+                r#"
+data::graph::ListInstruction::Float(data::type_::FloatListTypeId {
+    list_type: data::type_::ListTypeId(3),
+}, data::graph::TypedListInstruction::Value(data::Storage::Static(&[])))"#
+                    .trim_start_matches('\n'),
             ),
             (
                 ListInstruction::Bool(
                     BoolListTypeId::new(ListTypeId(3)),
                     TypedListInstruction::Value(Vec::new().into()),
                 ),
-                "data::graph::ListInstruction::Bool(data::type_::BoolListTypeId {list_type: data::type_::ListTypeId(3,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+                r#"
+data::graph::ListInstruction::Bool(data::type_::BoolListTypeId {
+    list_type: data::type_::ListTypeId(3),
+}, data::graph::TypedListInstruction::Value(data::Storage::Static(&[])))"#
+                    .trim_start_matches('\n'),
             ),
             (
                 ListInstruction::Nil(
                     NilListTypeId::new(ListTypeId(3)),
                     TypedListInstruction::Value(Vec::new().into()),
                 ),
-                "data::graph::ListInstruction::Nil(data::type_::NilListTypeId {list_type: data::type_::ListTypeId(3,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+                r#"
+data::graph::ListInstruction::Nil(data::type_::NilListTypeId {
+    list_type: data::type_::ListTypeId(3),
+}, data::graph::TypedListInstruction::Value(data::Storage::Static(&[])))"#
+                    .trim_start_matches('\n'),
             ),
             (
                 ListInstruction::Parameter(
                     ParameterListTypeId::new(ListTypeId(3), crate::plan::TypeParameterId(4)),
                     ParameterListInstruction::Empty,
                 ),
-                "data::graph::ListInstruction::Parameter(data::type_::ParameterListTypeId {list_type: data::type_::ListTypeId(3,),item: data::type_::parameter_id(4,),},data::graph::ParameterListInstruction::Empty,)",
+                r#"
+data::graph::ListInstruction::Parameter(data::type_::ParameterListTypeId {
+    list_type: data::type_::ListTypeId(3),
+    item: data::type_::parameter_id(4),
+}, data::graph::ParameterListInstruction::Empty)"#
+                    .trim_start_matches('\n'),
             ),
             (
                 ListInstruction::ParameterList(
@@ -841,14 +957,27 @@ mod emission_tests {
                     ),
                     TypedListInstruction::Value(Vec::new().into()),
                 ),
-                "data::graph::ListInstruction::ParameterList(data::type_::ParameterListListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ParameterListTypeId {list_type: data::type_::ListTypeId(4,),item: data::type_::parameter_id(5,),},},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+                r#"
+data::graph::ListInstruction::ParameterList(data::type_::ParameterListListTypeId {
+    list_type: data::type_::ListTypeId(3),
+    item_type: data::type_::ParameterListTypeId {
+        list_type: data::type_::ListTypeId(4),
+        item: data::type_::parameter_id(5),
+    },
+}, data::graph::TypedListInstruction::Value(data::Storage::Static(&[])))"#
+                    .trim_start_matches('\n'),
             ),
             (
                 ListInstruction::Custom(
                     CustomListTypeId::new(ListTypeId(3), CustomTypeId(4)),
                     TypedListInstruction::Value(Vec::new().into()),
                 ),
-                "data::graph::ListInstruction::Custom(data::type_::CustomListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::CustomTypeId(4,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+                r#"
+data::graph::ListInstruction::Custom(data::type_::CustomListTypeId {
+    list_type: data::type_::ListTypeId(3),
+    item_type: data::type_::CustomTypeId(4),
+}, data::graph::TypedListInstruction::Value(data::Storage::Static(&[])))"#
+                    .trim_start_matches('\n'),
             ),
             (
                 ListInstruction::Tuple(
@@ -858,14 +987,24 @@ mod emission_tests {
                     },
                     TypedListInstruction::Value(Vec::new().into()),
                 ),
-                "data::graph::ListInstruction::Tuple(data::type_::TupleListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::TupleItemTypeId(4,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+                r#"
+data::graph::ListInstruction::Tuple(data::type_::TupleListTypeId {
+    list_type: data::type_::ListTypeId(3),
+    item_type: data::type_::TupleItemTypeId(4),
+}, data::graph::TypedListInstruction::Value(data::Storage::Static(&[])))"#
+                    .trim_start_matches('\n'),
             ),
             (
                 ListInstruction::List(
                     ListListTypeId::new(ListTypeId(3), ListTypeId(4)),
                     TypedListInstruction::Value(Vec::new().into()),
                 ),
-                "data::graph::ListInstruction::List(data::type_::ListListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ListTypeId(4,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+                r#"
+data::graph::ListInstruction::List(data::type_::ListListTypeId {
+    list_type: data::type_::ListTypeId(3),
+    item_type: data::type_::ListTypeId(4),
+}, data::graph::TypedListInstruction::Value(data::Storage::Static(&[])))"#
+                    .trim_start_matches('\n'),
             ),
             (
                 ListInstruction::Function(
@@ -875,7 +1014,12 @@ mod emission_tests {
                     },
                     TypedListInstruction::Value(Vec::new().into()),
                 ),
-                "data::graph::ListInstruction::Function(data::type_::FunctionListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::FunctionItemTypeId(4,),},data::graph::TypedListInstruction::Value(data::Storage::Static(&[]),),)",
+                r#"
+data::graph::ListInstruction::Function(data::type_::FunctionListTypeId {
+    list_type: data::type_::ListTypeId(3),
+    item_type: data::type_::FunctionItemTypeId(4),
+}, data::graph::TypedListInstruction::Value(data::Storage::Static(&[])))"#
+                    .trim_start_matches('\n'),
             ),
         ];
         for (instruction, expected) in cases {
@@ -889,12 +1033,20 @@ mod emission_tests {
         );
         assert_eq!(
             Rust::expression(&external),
-            concat!(
-                "data::graph::ExternalListInstruction {type_id: data::type_::ExternalListTypeId {",
-                "list_type: data::type_::ListTypeId(3,),item_type: data::type_::ExternalTypeId(4,),},",
-                "instruction: data::graph::TypedListInstruction::Value(data::Storage::Static(&[",
-                "data::graph::ExternalLocal {id: data::graph::ExternalLocalId(2,),type_id: data::type_::ExternalTypeId(4,),},]),),}"
-            )
+            r#"
+data::graph::ExternalListInstruction {
+    type_id: data::type_::ExternalListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ExternalTypeId(4),
+    },
+    instruction: data::graph::TypedListInstruction::Value(data::Storage::Static(&[
+        data::graph::ExternalLocal {
+            id: data::graph::ExternalLocalId(2),
+            type_id: data::type_::ExternalTypeId(4),
+        },
+    ])),
+}"#
+            .trim_start_matches('\n')
         );
     }
 }

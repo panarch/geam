@@ -544,8 +544,12 @@ mod tests {
             assert_ne!(dependencies, declarations);
             let child = fixture.root.join("src/geam_bindings/program.rs");
             let program = fs::read_to_string(&child).unwrap();
-            assert!(program.contains("{format: 1,"));
-            fs::write(&child, program.replacen("{format: 1,", "{format: 0,", 1)).unwrap();
+            assert!(program.contains("{\n    format: 1,"));
+            fs::write(
+                &child,
+                program.replacen("{\n    format: 1,", "{\n    format: 0,", 1),
+            )
+            .unwrap();
             let incompatible = fixture.managed_inputs();
             let error = check(&fixture.root).unwrap_err();
             assert!(
@@ -1945,11 +1949,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             check(&fixture.root).expect("prepared generic capabilities are current");
             assert_eq!(fixture.managed_inputs(), before);
             assert_success(
-                Command::new("rustfmt")
-                    .arg("--check")
-                    .arg(fixture.root.join("src/geam_bindings.rs")),
+                Command::new("rustfmt").arg(fixture.root.join("src/geam_bindings.rs")),
                 "prepared generic profile formatting",
             );
+            assert_eq!(fixture.managed_inputs(), before);
             assert_success(
                 fixture.cargo("clippy").args([
                     "--locked",

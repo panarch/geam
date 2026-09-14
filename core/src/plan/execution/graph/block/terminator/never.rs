@@ -97,7 +97,7 @@ mod emission_tests {
         let target = NeverCallTarget::Direct(NeverFunctionId(2));
         assert_eq!(
             Rust::expression(&target),
-            "data::graph::NeverCallTarget::Direct(data::function::NeverFunctionId(2,),)"
+            "data::graph::NeverCallTarget::Direct(data::function::NeverFunctionId(2))"
         );
         let signature = FunctionType::new(
             Vec::new(),
@@ -112,14 +112,23 @@ mod emission_tests {
         });
         assert_eq!(
             Rust::expression(&function),
-            concat!(
-                "data::graph::NeverCallTarget::Value(data::graph::NeverFunctionLocal {id: data::graph::NeverFunctionLocalId(3,),",
-                "type_: data::type_::GenericFunctionType {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),",
-                "return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0,),)),},",
-                "shape: data::type_::FunctionShape {shape_id: data::type_::ValueShapeId(1,),",
-                "type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),",
-                "return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0,),)),},},},},)"
-            )
+            r#"
+data::graph::NeverCallTarget::Value(data::graph::NeverFunctionLocal {
+    id: data::graph::NeverFunctionLocalId(3),
+    type_: data::type_::GenericFunctionType {
+        type_: data::type_::FunctionType {
+            arguments: data::Storage::Static(&[]),
+            return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
+        },
+        shape: data::type_::FunctionShape {
+            shape_id: data::type_::ValueShapeId(1),
+            type_: data::type_::FunctionType {
+                arguments: data::Storage::Static(&[]),
+                return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
+            },
+        },
+    },
+})"#.trim_start_matches('\n')
         );
         let call = NeverCall::new(
             target,
@@ -128,11 +137,14 @@ mod emission_tests {
         );
         assert_eq!(
             Rust::expression(&call),
-            concat!(
-                "data::graph::NeverCall {function: data::graph::NeverCallTarget::Direct(data::function::NeverFunctionId(2,),),",
-                "args: data::Storage::Static(&[data::graph::ParamLocal::Int(data::graph::IntLocalId(1,),),]),",
-                "site: data::source::HostCallSite::from_static(\"example\",\"main\",data::source::SourceSpan::new(3,12,),),}"
-            )
+            r#"
+data::graph::NeverCall {
+    function: data::graph::NeverCallTarget::Direct(data::function::NeverFunctionId(2)),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 12)),
+}"#.trim_start_matches('\n')
         );
     }
 }

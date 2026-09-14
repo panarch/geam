@@ -86,7 +86,12 @@ mod tests {
         assert_eq!(format!("{id:?}"), "ConstantId(3)");
         assert_eq!(
             Rust::expression(&id),
-            "data::constant::ConstantId {index: 3,value: ::core::marker::PhantomData,}"
+            r#"
+data::constant::ConstantId {
+    index: 3,
+    value: ::core::marker::PhantomData,
+}"#
+            .trim_start_matches('\n')
         );
 
         let mut id_hasher = DefaultHasher::new();

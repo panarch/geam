@@ -324,39 +324,41 @@ mod tests {
         );
         assert_eq!(
             Rust::expression(&source),
-            r#"data::source::SourceContext::from_static("sources/example.gleam","pub fn main() { \"line\\ntext\" }\n",)"#
+            r#"data::source::SourceContext::from_static("sources/example.gleam", "pub fn main() { \"line\\ntext\" }\n")"#
         );
         let span = SourceSpan::new(3, 12);
         assert_eq!(
             Rust::expression(&span),
-            "data::source::SourceSpan::new(3,12,)"
+            "data::source::SourceSpan::new(3, 12)"
         );
         assert_eq!(
             Rust::expression(&PanicSite::from_static("example", "main", span)),
-            "data::source::PanicSite::from_static(\"example\",\"main\",data::source::SourceSpan::new(3,12,),)"
+            "data::source::PanicSite::from_static(\"example\", \"main\", data::source::SourceSpan::new(3, 12))"
         );
         assert_eq!(
             Rust::expression(&EchoSite::from_static("example", "main", span)),
-            "data::source::EchoSite::from_static(\"example\",\"main\",data::source::SourceSpan::new(3,12,),)"
+            "data::source::EchoSite::from_static(\"example\", \"main\", data::source::SourceSpan::new(3, 12))"
         );
         let call = HostCallSite::from_static("example", "main", span);
         assert_eq!(
             Rust::expression(&call),
-            "data::source::HostCallSite::from_static(\"example\",\"main\",data::source::SourceSpan::new(3,12,),)"
+            "data::source::HostCallSite::from_static(\"example\", \"main\", data::source::SourceSpan::new(3, 12))"
         );
         assert_eq!(
             Rust::expression(&FunctionCallTarget::new(IntFunctionId(2), call.clone())),
-            concat!(
-                "data::source::FunctionCallTarget {function: data::function::IntFunctionId(2,),",
-                "site: data::source::HostCallSite::from_static(\"example\",\"main\",data::source::SourceSpan::new(3,12,),),}"
-            )
+            r#"
+data::source::FunctionCallTarget {
+    function: data::function::IntFunctionId(2),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 12)),
+}"#.trim_start_matches('\n')
         );
         assert_eq!(
             Rust::expression(&FunctionCallTarget::new(2usize, call)),
-            concat!(
-                "data::source::FunctionCallTarget {function: 2,",
-                "site: data::source::HostCallSite::from_static(\"example\",\"main\",data::source::SourceSpan::new(3,12,),),}"
-            )
+            r#"
+data::source::FunctionCallTarget {
+    function: 2,
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 12)),
+}"#.trim_start_matches('\n')
         );
     }
 

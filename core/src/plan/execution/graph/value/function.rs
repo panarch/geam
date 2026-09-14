@@ -786,11 +786,18 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: IntListTypeId::new(ListTypeId(3)),
                 },
-                concat!(
-                    "data::graph::ListFunctionLocal::Int {local: data::graph::IntListFunctionLocalId(2,),",
-                    "type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),},",
-                    "list_type: data::type_::IntListTypeId {list_type: data::type_::ListTypeId(3,),},}"
-                ),
+                r#"
+data::graph::ListFunctionLocal::Int {
+    local: data::graph::IntListFunctionLocalId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::IntListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionLocal::String {
@@ -798,11 +805,18 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: StringListTypeId::new(ListTypeId(3)),
                 },
-                concat!(
-                    "data::graph::ListFunctionLocal::String {local: data::graph::StringListFunctionLocalId(2,),",
-                    "type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),},",
-                    "list_type: data::type_::StringListTypeId {list_type: data::type_::ListTypeId(3,),},}"
-                ),
+                r#"
+data::graph::ListFunctionLocal::String {
+    local: data::graph::StringListFunctionLocalId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::StringListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionLocal::BitArray {
@@ -810,11 +824,18 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: BitArrayListTypeId::new(ListTypeId(3)),
                 },
-                concat!(
-                    "data::graph::ListFunctionLocal::BitArray {local: data::graph::BitArrayListFunctionLocalId(2,),",
-                    "type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),},",
-                    "list_type: data::type_::BitArrayListTypeId {list_type: data::type_::ListTypeId(3,),},}"
-                ),
+                r#"
+data::graph::ListFunctionLocal::BitArray {
+    local: data::graph::BitArrayListFunctionLocalId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::BitArrayListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionLocal::UtfCodepoint {
@@ -822,11 +843,18 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: UtfCodepointListTypeId::new(ListTypeId(3)),
                 },
-                concat!(
-                    "data::graph::ListFunctionLocal::UtfCodepoint {local: data::graph::UtfCodepointListFunctionLocalId(2,),",
-                    "type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),},",
-                    "list_type: data::type_::UtfCodepointListTypeId {list_type: data::type_::ListTypeId(3,),},}"
-                ),
+                r#"
+data::graph::ListFunctionLocal::UtfCodepoint {
+    local: data::graph::UtfCodepointListFunctionLocalId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::UtfCodepointListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionLocal::Float {
@@ -834,11 +862,18 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: FloatListTypeId::new(ListTypeId(3)),
                 },
-                concat!(
-                    "data::graph::ListFunctionLocal::Float {local: data::graph::FloatListFunctionLocalId(2,),",
-                    "type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),},",
-                    "list_type: data::type_::FloatListTypeId {list_type: data::type_::ListTypeId(3,),},}"
-                ),
+                r#"
+data::graph::ListFunctionLocal::Float {
+    local: data::graph::FloatListFunctionLocalId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::FloatListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionLocal::Bool {
@@ -846,11 +881,18 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: BoolListTypeId::new(ListTypeId(3)),
                 },
-                concat!(
-                    "data::graph::ListFunctionLocal::Bool {local: data::graph::BoolListFunctionLocalId(2,),",
-                    "type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),},",
-                    "list_type: data::type_::BoolListTypeId {list_type: data::type_::ListTypeId(3,),},}"
-                ),
+                r#"
+data::graph::ListFunctionLocal::Bool {
+    local: data::graph::BoolListFunctionLocalId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::BoolListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionLocal::Nil {
@@ -858,11 +900,18 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: NilListTypeId::new(ListTypeId(3)),
                 },
-                concat!(
-                    "data::graph::ListFunctionLocal::Nil {local: data::graph::NilListFunctionLocalId(2,),",
-                    "type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),},",
-                    "list_type: data::type_::NilListTypeId {list_type: data::type_::ListTypeId(3,),},}"
-                ),
+                r#"
+data::graph::ListFunctionLocal::Nil {
+    local: data::graph::NilListFunctionLocalId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::NilListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionLocal::Parameter {
@@ -873,11 +922,19 @@ mod emission_tests {
                         crate::plan::TypeParameterId(4),
                     ),
                 },
-                concat!(
-                    "data::graph::ListFunctionLocal::Parameter {local: data::graph::ParameterListFunctionLocalId(2,),",
-                    "type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),},",
-                    "list_type: data::type_::ParameterListTypeId {list_type: data::type_::ListTypeId(3,),item: data::type_::parameter_id(4,),},}"
-                ),
+                r#"
+data::graph::ListFunctionLocal::Parameter {
+    local: data::graph::ParameterListFunctionLocalId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::ParameterListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item: data::type_::parameter_id(4),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionLocal::ParameterList {
@@ -888,11 +945,22 @@ mod emission_tests {
                         ParameterListTypeId::new(ListTypeId(4), crate::plan::TypeParameterId(5)),
                     ),
                 },
-                concat!(
-                    "data::graph::ListFunctionLocal::ParameterList {local: data::graph::ParameterListListFunctionLocalId(2,),",
-                    "type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),},",
-                    "list_type: data::type_::ParameterListListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ParameterListTypeId {list_type: data::type_::ListTypeId(4,),item: data::type_::parameter_id(5,),},},}"
-                ),
+                r#"
+data::graph::ListFunctionLocal::ParameterList {
+    local: data::graph::ParameterListListFunctionLocalId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::ParameterListListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ParameterListTypeId {
+            list_type: data::type_::ListTypeId(4),
+            item: data::type_::parameter_id(5),
+        },
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionLocal::Custom {
@@ -900,11 +968,19 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: CustomListTypeId::new(ListTypeId(3), CustomTypeId(4)),
                 },
-                concat!(
-                    "data::graph::ListFunctionLocal::Custom {local: data::graph::CustomListFunctionLocalId(2,),",
-                    "type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),},",
-                    "list_type: data::type_::CustomListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::CustomTypeId(4,),},}"
-                ),
+                r#"
+data::graph::ListFunctionLocal::Custom {
+    local: data::graph::CustomListFunctionLocalId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::CustomListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::CustomTypeId(4),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionLocal::External {
@@ -912,11 +988,19 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: ExternalListTypeId::new(ListTypeId(3), ExternalTypeId(4)),
                 },
-                concat!(
-                    "data::graph::ListFunctionLocal::External {local: data::graph::ExternalListFunctionLocalId(2,),",
-                    "type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),},",
-                    "list_type: data::type_::ExternalListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ExternalTypeId(4,),},}"
-                ),
+                r#"
+data::graph::ListFunctionLocal::External {
+    local: data::graph::ExternalListFunctionLocalId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::ExternalListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ExternalTypeId(4),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionLocal::Tuple {
@@ -927,11 +1011,19 @@ mod emission_tests {
                         item_type: TupleItemTypeId(4),
                     },
                 },
-                concat!(
-                    "data::graph::ListFunctionLocal::Tuple {local: data::graph::TupleListFunctionLocalId(2,),",
-                    "type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),},",
-                    "list_type: data::type_::TupleListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::TupleItemTypeId(4,),},}"
-                ),
+                r#"
+data::graph::ListFunctionLocal::Tuple {
+    local: data::graph::TupleListFunctionLocalId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::TupleListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::TupleItemTypeId(4),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionLocal::List {
@@ -939,11 +1031,19 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: ListListTypeId::new(ListTypeId(3), ListTypeId(4)),
                 },
-                concat!(
-                    "data::graph::ListFunctionLocal::List {local: data::graph::ListListFunctionLocalId(2,),",
-                    "type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),},",
-                    "list_type: data::type_::ListListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ListTypeId(4,),},}"
-                ),
+                r#"
+data::graph::ListFunctionLocal::List {
+    local: data::graph::ListListFunctionLocalId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::ListListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ListTypeId(4),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionLocal::Function {
@@ -954,11 +1054,19 @@ mod emission_tests {
                         item_type: FunctionItemTypeId(4),
                     },
                 },
-                concat!(
-                    "data::graph::ListFunctionLocal::Function {local: data::graph::FunctionListFunctionLocalId(2,),",
-                    "type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),},",
-                    "list_type: data::type_::FunctionListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::FunctionItemTypeId(4,),},}"
-                ),
+                r#"
+data::graph::ListFunctionLocal::Function {
+    local: data::graph::FunctionListFunctionLocalId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::FunctionListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::FunctionItemTypeId(4),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
         ];
         for (local, expected) in cases {
@@ -976,35 +1084,35 @@ mod emission_tests {
         let cases = [
             (
                 FunctionLocal::Int(IntFunctionLocalId(2)),
-                "data::graph::FunctionLocal::Int(data::graph::IntFunctionLocalId(2,),)",
+                "data::graph::FunctionLocal::Int(data::graph::IntFunctionLocalId(2))",
             ),
             (
                 FunctionLocal::Float(FloatFunctionLocalId(2)),
-                "data::graph::FunctionLocal::Float(data::graph::FloatFunctionLocalId(2,),)",
+                "data::graph::FunctionLocal::Float(data::graph::FloatFunctionLocalId(2))",
             ),
             (
                 FunctionLocal::String(StringFunctionLocalId(2)),
-                "data::graph::FunctionLocal::String(data::graph::StringFunctionLocalId(2,),)",
+                "data::graph::FunctionLocal::String(data::graph::StringFunctionLocalId(2))",
             ),
             (
                 FunctionLocal::BitArray(BitArrayFunctionLocalId(2)),
-                "data::graph::FunctionLocal::BitArray(data::graph::BitArrayFunctionLocalId(2,),)",
+                "data::graph::FunctionLocal::BitArray(data::graph::BitArrayFunctionLocalId(2))",
             ),
             (
                 FunctionLocal::UtfCodepoint(UtfCodepointFunctionLocalId(2)),
-                "data::graph::FunctionLocal::UtfCodepoint(data::graph::UtfCodepointFunctionLocalId(2,),)",
+                "data::graph::FunctionLocal::UtfCodepoint(data::graph::UtfCodepointFunctionLocalId(2))",
             ),
             (
                 FunctionLocal::Bool(BoolFunctionLocalId(2)),
-                "data::graph::FunctionLocal::Bool(data::graph::BoolFunctionLocalId(2,),)",
+                "data::graph::FunctionLocal::Bool(data::graph::BoolFunctionLocalId(2))",
             ),
             (
                 FunctionLocal::Nil(NilFunctionLocalId(2)),
-                "data::graph::FunctionLocal::Nil(data::graph::NilFunctionLocalId(2,),)",
+                "data::graph::FunctionLocal::Nil(data::graph::NilFunctionLocalId(2))",
             ),
             (
                 FunctionLocal::Tuple(TupleFunctionLocalId(2)),
-                "data::graph::FunctionLocal::Tuple(data::graph::TupleFunctionLocalId(2,),)",
+                "data::graph::FunctionLocal::Tuple(data::graph::TupleFunctionLocalId(2))",
             ),
             (
                 FunctionLocal::Generic(GenericFunctionLocal::new(
@@ -1014,10 +1122,23 @@ mod emission_tests {
                         FunctionShape::new(ValueShapeId(3), symbolic.clone()),
                     ),
                 )),
-                concat!(
-                    "data::graph::FunctionLocal::Generic(data::graph::GenericFunctionLocal {id: data::graph::GenericFunctionLocalId(2,),",
-                    "type_: data::type_::GenericFunctionType {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0,),)),},shape: data::type_::FunctionShape {shape_id: data::type_::ValueShapeId(3,),type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0,),)),},},},},)"
-                ),
+                r#"
+data::graph::FunctionLocal::Generic(data::graph::GenericFunctionLocal {
+    id: data::graph::GenericFunctionLocalId(2),
+    type_: data::type_::GenericFunctionType {
+        type_: data::type_::FunctionType {
+            arguments: data::Storage::Static(&[]),
+            return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
+        },
+        shape: data::type_::FunctionShape {
+            shape_id: data::type_::ValueShapeId(3),
+            type_: data::type_::FunctionType {
+                arguments: data::Storage::Static(&[]),
+                return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
+            },
+        },
+    },
+})"#.trim_start_matches('\n'),
             ),
             (
                 FunctionLocal::Never(NeverFunctionLocal::new(
@@ -1027,10 +1148,23 @@ mod emission_tests {
                         FunctionShape::new(ValueShapeId(3), symbolic.clone()),
                     ),
                 )),
-                concat!(
-                    "data::graph::FunctionLocal::Never(data::graph::NeverFunctionLocal {id: data::graph::NeverFunctionLocalId(2,),",
-                    "type_: data::type_::GenericFunctionType {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0,),)),},shape: data::type_::FunctionShape {shape_id: data::type_::ValueShapeId(3,),type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0,),)),},},},},)"
-                ),
+                r#"
+data::graph::FunctionLocal::Never(data::graph::NeverFunctionLocal {
+    id: data::graph::NeverFunctionLocalId(2),
+    type_: data::type_::GenericFunctionType {
+        type_: data::type_::FunctionType {
+            arguments: data::Storage::Static(&[]),
+            return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
+        },
+        shape: data::type_::FunctionShape {
+            shape_id: data::type_::ValueShapeId(3),
+            type_: data::type_::FunctionType {
+                arguments: data::Storage::Static(&[]),
+                return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
+            },
+        },
+    },
+})"#.trim_start_matches('\n'),
             ),
             (
                 FunctionLocal::Custom(CustomFunctionLocal::new(
@@ -1041,10 +1175,21 @@ mod emission_tests {
                         CustomValueShape::new(CustomTypeId(3), CustomValueShapeId(4)),
                     ),
                 )),
-                concat!(
-                    "data::graph::FunctionLocal::Custom(data::graph::CustomFunctionLocal {id: data::graph::CustomFunctionLocalId(2,),",
-                    "type_: data::type_::CustomFunctionType {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(3,),)),},arguments: data::Storage::Static(&[]),return_: data::type_::CustomValueShape {type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},},)"
-                ),
+                r#"
+data::graph::FunctionLocal::Custom(data::graph::CustomFunctionLocal {
+    id: data::graph::CustomFunctionLocalId(2),
+    type_: data::type_::CustomFunctionType {
+        type_: data::type_::FunctionType {
+            arguments: data::Storage::Static(&[]),
+            return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(3))),
+        },
+        arguments: data::Storage::Static(&[]),
+        return_: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+})"#.trim_start_matches('\n'),
             ),
             (
                 FunctionLocal::External(ExternalFunctionLocal::new(
@@ -1055,10 +1200,18 @@ mod emission_tests {
                         ExternalTypeId(3),
                     ),
                 )),
-                concat!(
-                    "data::graph::FunctionLocal::External(data::graph::ExternalFunctionLocal {id: data::graph::ExternalFunctionLocalId(2,),",
-                    "type_: data::type_::ExternalFunctionType {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::External(data::type_::ExternalTypeId(3,),)),},arguments: data::Storage::Static(&[]),return_: data::type_::ExternalTypeId(3,),},},)"
-                ),
+                r#"
+data::graph::FunctionLocal::External(data::graph::ExternalFunctionLocal {
+    id: data::graph::ExternalFunctionLocalId(2),
+    type_: data::type_::ExternalFunctionType {
+        type_: data::type_::FunctionType {
+            arguments: data::Storage::Static(&[]),
+            return_: data::Storage::Static(&data::type_::ValueType::External(data::type_::ExternalTypeId(3))),
+        },
+        arguments: data::Storage::Static(&[]),
+        return_: data::type_::ExternalTypeId(3),
+    },
+})"#.trim_start_matches('\n'),
             ),
             (
                 FunctionLocal::List(ListFunctionLocal::Int {
@@ -1066,11 +1219,17 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: IntListTypeId::new(ListTypeId(3)),
                 }),
-                concat!(
-                    "data::graph::FunctionLocal::List(data::graph::ListFunctionLocal::Int {local: data::graph::IntListFunctionLocalId(2,),",
-                    "type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),},",
-                    "list_type: data::type_::IntListTypeId {list_type: data::type_::ListTypeId(3,),},},)"
-                ),
+                r#"
+data::graph::FunctionLocal::List(data::graph::ListFunctionLocal::Int {
+    local: data::graph::IntListFunctionLocalId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::IntListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#.trim_start_matches('\n'),
             ),
             (
                 FunctionLocal::Function(FunctionFunctionLocal::Core(
@@ -1083,10 +1242,27 @@ mod emission_tests {
                         ),
                     ),
                 )),
-                concat!(
-                    "data::graph::FunctionLocal::Function(data::graph::FunctionFunctionLocal::Core(data::graph::CoreFunctionFunctionLocal {",
-                    "id: data::graph::CoreFunctionFunctionLocalId(2,),type_: data::type_::FunctionFunctionType {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Function(data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Int),},)),},arguments: data::Storage::Static(&[]),return_: data::type_::FunctionShape {shape_id: data::type_::ValueShapeId(7,),type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Int),},},},},),)"
-                ),
+                r#"
+data::graph::FunctionLocal::Function(data::graph::FunctionFunctionLocal::Core(data::graph::CoreFunctionFunctionLocal {
+    id: data::graph::CoreFunctionFunctionLocalId(2),
+    type_: data::type_::FunctionFunctionType {
+        type_: data::type_::FunctionType {
+            arguments: data::Storage::Static(&[]),
+            return_: data::Storage::Static(&data::type_::ValueType::Function(data::type_::FunctionType {
+                arguments: data::Storage::Static(&[]),
+                return_: data::Storage::Static(&data::type_::ValueType::Int),
+            })),
+        },
+        arguments: data::Storage::Static(&[]),
+        return_: data::type_::FunctionShape {
+            shape_id: data::type_::ValueShapeId(7),
+            type_: data::type_::FunctionType {
+                arguments: data::Storage::Static(&[]),
+                return_: data::Storage::Static(&data::type_::ValueType::Int),
+            },
+        },
+    },
+}))"#.trim_start_matches('\n'),
             ),
             (
                 FunctionLocal::Function(FunctionFunctionLocal::External(
@@ -1099,10 +1275,27 @@ mod emission_tests {
                         ),
                     ),
                 )),
-                concat!(
-                    "data::graph::FunctionLocal::Function(data::graph::FunctionFunctionLocal::External(data::graph::ExternalFunctionFunctionLocal {",
-                    "id: data::graph::ExternalFunctionFunctionLocalId(2,),type_: data::type_::FunctionFunctionType {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Function(data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Int),},)),},arguments: data::Storage::Static(&[]),return_: data::type_::FunctionShape {shape_id: data::type_::ValueShapeId(7,),type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Int),},},},},),)"
-                ),
+                r#"
+data::graph::FunctionLocal::Function(data::graph::FunctionFunctionLocal::External(data::graph::ExternalFunctionFunctionLocal {
+    id: data::graph::ExternalFunctionFunctionLocalId(2),
+    type_: data::type_::FunctionFunctionType {
+        type_: data::type_::FunctionType {
+            arguments: data::Storage::Static(&[]),
+            return_: data::Storage::Static(&data::type_::ValueType::Function(data::type_::FunctionType {
+                arguments: data::Storage::Static(&[]),
+                return_: data::Storage::Static(&data::type_::ValueType::Int),
+            })),
+        },
+        arguments: data::Storage::Static(&[]),
+        return_: data::type_::FunctionShape {
+            shape_id: data::type_::ValueShapeId(7),
+            type_: data::type_::FunctionType {
+                arguments: data::Storage::Static(&[]),
+                return_: data::Storage::Static(&data::type_::ValueType::Int),
+            },
+        },
+    },
+}))"#.trim_start_matches('\n'),
             ),
         ];
         for (local, expected) in cases {

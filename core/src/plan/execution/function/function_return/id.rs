@@ -835,35 +835,35 @@ mod emission_tests {
         let cases: [(ProfiledFunctionFunctionId<HostedExecutionGraph>, &str); 14] = [
             (
                 ProfiledFunctionFunctionId::Int(IntFunctionFunctionId(2)),
-                "data::function::ProfiledFunctionFunctionId::Int(data::function::IntFunctionFunctionId(2,),)",
+                "data::function::ProfiledFunctionFunctionId::Int(data::function::IntFunctionFunctionId(2))",
             ),
             (
                 ProfiledFunctionFunctionId::Float(FloatFunctionFunctionId(2)),
-                "data::function::ProfiledFunctionFunctionId::Float(data::function::FloatFunctionFunctionId(2,),)",
+                "data::function::ProfiledFunctionFunctionId::Float(data::function::FloatFunctionFunctionId(2))",
             ),
             (
                 ProfiledFunctionFunctionId::String(StringFunctionFunctionId(2)),
-                "data::function::ProfiledFunctionFunctionId::String(data::function::StringFunctionFunctionId(2,),)",
+                "data::function::ProfiledFunctionFunctionId::String(data::function::StringFunctionFunctionId(2))",
             ),
             (
                 ProfiledFunctionFunctionId::BitArray(BitArrayFunctionFunctionId(2)),
-                "data::function::ProfiledFunctionFunctionId::BitArray(data::function::BitArrayFunctionFunctionId(2,),)",
+                "data::function::ProfiledFunctionFunctionId::BitArray(data::function::BitArrayFunctionFunctionId(2))",
             ),
             (
                 ProfiledFunctionFunctionId::UtfCodepoint(UtfCodepointFunctionFunctionId(2)),
-                "data::function::ProfiledFunctionFunctionId::UtfCodepoint(data::function::UtfCodepointFunctionFunctionId(2,),)",
+                "data::function::ProfiledFunctionFunctionId::UtfCodepoint(data::function::UtfCodepointFunctionFunctionId(2))",
             ),
             (
                 ProfiledFunctionFunctionId::Bool(BoolFunctionFunctionId(2)),
-                "data::function::ProfiledFunctionFunctionId::Bool(data::function::BoolFunctionFunctionId(2,),)",
+                "data::function::ProfiledFunctionFunctionId::Bool(data::function::BoolFunctionFunctionId(2))",
             ),
             (
                 ProfiledFunctionFunctionId::Nil(NilFunctionFunctionId(2)),
-                "data::function::ProfiledFunctionFunctionId::Nil(data::function::NilFunctionFunctionId(2,),)",
+                "data::function::ProfiledFunctionFunctionId::Nil(data::function::NilFunctionFunctionId(2))",
             ),
             (
                 ProfiledFunctionFunctionId::Tuple(TupleFunctionFunctionId(2)),
-                "data::function::ProfiledFunctionFunctionId::Tuple(data::function::TupleFunctionFunctionId(2,),)",
+                "data::function::ProfiledFunctionFunctionId::Tuple(data::function::TupleFunctionFunctionId(2))",
             ),
             (
                 ProfiledFunctionFunctionId::Generic(GenericFunctionFunctionId {
@@ -873,11 +873,23 @@ mod emission_tests {
                         FunctionShape::new(ValueShapeId(3), symbolic.clone()),
                     ),
                 }),
-                concat!(
-                    "data::function::ProfiledFunctionFunctionId::Generic(data::function::GenericFunctionFunctionId {index: 2,type_: ",
-                    "data::type_::GenericFunctionType {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0,),)),},shape: data::type_::FunctionShape {shape_id: data::type_::ValueShapeId(3,),type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0,),)),},},}",
-                    ",},)",
-                ),
+                r#"
+data::function::ProfiledFunctionFunctionId::Generic(data::function::GenericFunctionFunctionId {
+    index: 2,
+    type_: data::type_::GenericFunctionType {
+        type_: data::type_::FunctionType {
+            arguments: data::Storage::Static(&[]),
+            return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
+        },
+        shape: data::type_::FunctionShape {
+            shape_id: data::type_::ValueShapeId(3),
+            type_: data::type_::FunctionType {
+                arguments: data::Storage::Static(&[]),
+                return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
+            },
+        },
+    },
+})"#.trim_start_matches('\n'),
             ),
             (
                 ProfiledFunctionFunctionId::Never(NeverFunctionFunctionId {
@@ -887,11 +899,23 @@ mod emission_tests {
                         FunctionShape::new(ValueShapeId(3), symbolic.clone()),
                     ),
                 }),
-                concat!(
-                    "data::function::ProfiledFunctionFunctionId::Never(data::function::NeverFunctionFunctionId {index: 2,type_: ",
-                    "data::type_::GenericFunctionType {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0,),)),},shape: data::type_::FunctionShape {shape_id: data::type_::ValueShapeId(3,),type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0,),)),},},}",
-                    ",},)",
-                ),
+                r#"
+data::function::ProfiledFunctionFunctionId::Never(data::function::NeverFunctionFunctionId {
+    index: 2,
+    type_: data::type_::GenericFunctionType {
+        type_: data::type_::FunctionType {
+            arguments: data::Storage::Static(&[]),
+            return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
+        },
+        shape: data::type_::FunctionShape {
+            shape_id: data::type_::ValueShapeId(3),
+            type_: data::type_::FunctionType {
+                arguments: data::Storage::Static(&[]),
+                return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
+            },
+        },
+    },
+})"#.trim_start_matches('\n'),
             ),
             (
                 ProfiledFunctionFunctionId::Custom(CustomFunctionFunctionId {
@@ -902,11 +926,21 @@ mod emission_tests {
                         CustomValueShape::new(CustomTypeId(3), CustomValueShapeId(4)),
                     ),
                 }),
-                concat!(
-                    "data::function::ProfiledFunctionFunctionId::Custom(data::function::CustomFunctionFunctionId {index: 2,type_: ",
-                    "data::type_::CustomFunctionType {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(3,),)),},arguments: data::Storage::Static(&[]),return_: data::type_::CustomValueShape {type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},}",
-                    ",},)",
-                ),
+                r#"
+data::function::ProfiledFunctionFunctionId::Custom(data::function::CustomFunctionFunctionId {
+    index: 2,
+    type_: data::type_::CustomFunctionType {
+        type_: data::type_::FunctionType {
+            arguments: data::Storage::Static(&[]),
+            return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(3))),
+        },
+        arguments: data::Storage::Static(&[]),
+        return_: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+})"#.trim_start_matches('\n'),
             ),
             (
                 ProfiledFunctionFunctionId::External(ExternalFunctionFunctionId {
@@ -917,11 +951,18 @@ mod emission_tests {
                         ExternalTypeId(3),
                     ),
                 }),
-                concat!(
-                    "data::function::ProfiledFunctionFunctionId::External(data::function::ExternalFunctionFunctionId {index: 2,type_: ",
-                    "data::type_::ExternalFunctionType {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::External(data::type_::ExternalTypeId(3,),)),},arguments: data::Storage::Static(&[]),return_: data::type_::ExternalTypeId(3,),}",
-                    ",},)",
-                ),
+                r#"
+data::function::ProfiledFunctionFunctionId::External(data::function::ExternalFunctionFunctionId {
+    index: 2,
+    type_: data::type_::ExternalFunctionType {
+        type_: data::type_::FunctionType {
+            arguments: data::Storage::Static(&[]),
+            return_: data::Storage::Static(&data::type_::ValueType::External(data::type_::ExternalTypeId(3))),
+        },
+        arguments: data::Storage::Static(&[]),
+        return_: data::type_::ExternalTypeId(3),
+    },
+})"#.trim_start_matches('\n'),
             ),
             (
                 ProfiledFunctionFunctionId::List(ProfiledListFunctionFunctionId::Int {
@@ -929,11 +970,17 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: IntListTypeId::new(ListTypeId(3)),
                 }),
-                concat!(
-                    "data::function::ProfiledFunctionFunctionId::List(data::function::ProfiledListFunctionFunctionId::Int {id: data::function::IntListFunctionFunctionId(2,),type_: ",
-                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
-                    ",list_type: data::type_::IntListTypeId {list_type: data::type_::ListTypeId(3,),},},)",
-                ),
+                r#"
+data::function::ProfiledFunctionFunctionId::List(data::function::ProfiledListFunctionFunctionId::Int {
+    id: data::function::IntListFunctionFunctionId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::IntListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#.trim_start_matches('\n'),
             ),
             (
                 ProfiledFunctionFunctionId::Function(FunctionFunctionFunctionId {
@@ -944,11 +991,27 @@ mod emission_tests {
                         FunctionShape::new(ValueShapeId(7), inner.clone()),
                     ),
                 }),
-                concat!(
-                    "data::function::ProfiledFunctionFunctionId::Function(data::function::FunctionFunctionFunctionId {index: 2,type_: ",
-                    "data::type_::FunctionFunctionType {type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Function(data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Int),},)),},arguments: data::Storage::Static(&[]),return_: data::type_::FunctionShape {shape_id: data::type_::ValueShapeId(7,),type_: data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::Int),},},}",
-                    ",},)",
-                ),
+                r#"
+data::function::ProfiledFunctionFunctionId::Function(data::function::FunctionFunctionFunctionId {
+    index: 2,
+    type_: data::type_::FunctionFunctionType {
+        type_: data::type_::FunctionType {
+            arguments: data::Storage::Static(&[]),
+            return_: data::Storage::Static(&data::type_::ValueType::Function(data::type_::FunctionType {
+                arguments: data::Storage::Static(&[]),
+                return_: data::Storage::Static(&data::type_::ValueType::Int),
+            })),
+        },
+        arguments: data::Storage::Static(&[]),
+        return_: data::type_::FunctionShape {
+            shape_id: data::type_::ValueShapeId(7),
+            type_: data::type_::FunctionType {
+                arguments: data::Storage::Static(&[]),
+                return_: data::Storage::Static(&data::type_::ValueType::Int),
+            },
+        },
+    },
+})"#.trim_start_matches('\n'),
             ),
         ];
         for (id, expected) in cases {
@@ -965,13 +1028,18 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: IntListTypeId::new(ListTypeId(3)),
                 },
-                concat!(
-                    "data::function::ProfiledListFunctionFunctionId::Int {id: data::function::IntListFunctionFunctionId(2,),type_: ",
-                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
-                    ",list_type: ",
-                    "data::type_::IntListTypeId {list_type: data::type_::ListTypeId(3,),}",
-                    ",}",
-                ),
+                r#"
+data::function::ProfiledListFunctionFunctionId::Int {
+    id: data::function::IntListFunctionFunctionId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::IntListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ProfiledListFunctionFunctionId::String {
@@ -979,13 +1047,18 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: StringListTypeId::new(ListTypeId(3)),
                 },
-                concat!(
-                    "data::function::ProfiledListFunctionFunctionId::String {id: data::function::StringListFunctionFunctionId(2,),type_: ",
-                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
-                    ",list_type: ",
-                    "data::type_::StringListTypeId {list_type: data::type_::ListTypeId(3,),}",
-                    ",}",
-                ),
+                r#"
+data::function::ProfiledListFunctionFunctionId::String {
+    id: data::function::StringListFunctionFunctionId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::StringListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ProfiledListFunctionFunctionId::BitArray {
@@ -993,13 +1066,18 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: BitArrayListTypeId::new(ListTypeId(3)),
                 },
-                concat!(
-                    "data::function::ProfiledListFunctionFunctionId::BitArray {id: data::function::BitArrayListFunctionFunctionId(2,),type_: ",
-                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
-                    ",list_type: ",
-                    "data::type_::BitArrayListTypeId {list_type: data::type_::ListTypeId(3,),}",
-                    ",}",
-                ),
+                r#"
+data::function::ProfiledListFunctionFunctionId::BitArray {
+    id: data::function::BitArrayListFunctionFunctionId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::BitArrayListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ProfiledListFunctionFunctionId::UtfCodepoint {
@@ -1007,13 +1085,18 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: UtfCodepointListTypeId::new(ListTypeId(3)),
                 },
-                concat!(
-                    "data::function::ProfiledListFunctionFunctionId::UtfCodepoint {id: data::function::UtfCodepointListFunctionFunctionId(2,),type_: ",
-                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
-                    ",list_type: ",
-                    "data::type_::UtfCodepointListTypeId {list_type: data::type_::ListTypeId(3,),}",
-                    ",}",
-                ),
+                r#"
+data::function::ProfiledListFunctionFunctionId::UtfCodepoint {
+    id: data::function::UtfCodepointListFunctionFunctionId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::UtfCodepointListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ProfiledListFunctionFunctionId::Float {
@@ -1021,13 +1104,18 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: FloatListTypeId::new(ListTypeId(3)),
                 },
-                concat!(
-                    "data::function::ProfiledListFunctionFunctionId::Float {id: data::function::FloatListFunctionFunctionId(2,),type_: ",
-                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
-                    ",list_type: ",
-                    "data::type_::FloatListTypeId {list_type: data::type_::ListTypeId(3,),}",
-                    ",}",
-                ),
+                r#"
+data::function::ProfiledListFunctionFunctionId::Float {
+    id: data::function::FloatListFunctionFunctionId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::FloatListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ProfiledListFunctionFunctionId::Bool {
@@ -1035,13 +1123,18 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: BoolListTypeId::new(ListTypeId(3)),
                 },
-                concat!(
-                    "data::function::ProfiledListFunctionFunctionId::Bool {id: data::function::BoolListFunctionFunctionId(2,),type_: ",
-                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
-                    ",list_type: ",
-                    "data::type_::BoolListTypeId {list_type: data::type_::ListTypeId(3,),}",
-                    ",}",
-                ),
+                r#"
+data::function::ProfiledListFunctionFunctionId::Bool {
+    id: data::function::BoolListFunctionFunctionId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::BoolListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ProfiledListFunctionFunctionId::Nil {
@@ -1049,13 +1142,18 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: NilListTypeId::new(ListTypeId(3)),
                 },
-                concat!(
-                    "data::function::ProfiledListFunctionFunctionId::Nil {id: data::function::NilListFunctionFunctionId(2,),type_: ",
-                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
-                    ",list_type: ",
-                    "data::type_::NilListTypeId {list_type: data::type_::ListTypeId(3,),}",
-                    ",}",
-                ),
+                r#"
+data::function::ProfiledListFunctionFunctionId::Nil {
+    id: data::function::NilListFunctionFunctionId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::NilListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ProfiledListFunctionFunctionId::Parameter {
@@ -1066,13 +1164,19 @@ mod emission_tests {
                         crate::plan::TypeParameterId(4),
                     ),
                 },
-                concat!(
-                    "data::function::ProfiledListFunctionFunctionId::Parameter {id: data::function::ParameterListFunctionFunctionId(2,),type_: ",
-                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
-                    ",list_type: ",
-                    "data::type_::ParameterListTypeId {list_type: data::type_::ListTypeId(3,),item: data::type_::parameter_id(4,),}",
-                    ",}",
-                ),
+                r#"
+data::function::ProfiledListFunctionFunctionId::Parameter {
+    id: data::function::ParameterListFunctionFunctionId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::ParameterListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item: data::type_::parameter_id(4),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ProfiledListFunctionFunctionId::ParameterList {
@@ -1083,13 +1187,22 @@ mod emission_tests {
                         ParameterListTypeId::new(ListTypeId(4), crate::plan::TypeParameterId(5)),
                     ),
                 },
-                concat!(
-                    "data::function::ProfiledListFunctionFunctionId::ParameterList {id: data::function::ParameterListListFunctionFunctionId(2,),type_: ",
-                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
-                    ",list_type: ",
-                    "data::type_::ParameterListListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ParameterListTypeId {list_type: data::type_::ListTypeId(4,),item: data::type_::parameter_id(5,),},}",
-                    ",}",
-                ),
+                r#"
+data::function::ProfiledListFunctionFunctionId::ParameterList {
+    id: data::function::ParameterListListFunctionFunctionId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::ParameterListListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ParameterListTypeId {
+            list_type: data::type_::ListTypeId(4),
+            item: data::type_::parameter_id(5),
+        },
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ProfiledListFunctionFunctionId::Custom {
@@ -1097,13 +1210,19 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: CustomListTypeId::new(ListTypeId(3), CustomTypeId(4)),
                 },
-                concat!(
-                    "data::function::ProfiledListFunctionFunctionId::Custom {id: data::function::CustomListFunctionFunctionId(2,),type_: ",
-                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
-                    ",list_type: ",
-                    "data::type_::CustomListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::CustomTypeId(4,),}",
-                    ",}",
-                ),
+                r#"
+data::function::ProfiledListFunctionFunctionId::Custom {
+    id: data::function::CustomListFunctionFunctionId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::CustomListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::CustomTypeId(4),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ProfiledListFunctionFunctionId::External {
@@ -1111,13 +1230,19 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: ExternalListTypeId::new(ListTypeId(3), ExternalTypeId(4)),
                 },
-                concat!(
-                    "data::function::ProfiledListFunctionFunctionId::External {id: data::function::ExternalListFunctionFunctionId(2,),type_: ",
-                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
-                    ",list_type: ",
-                    "data::type_::ExternalListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ExternalTypeId(4,),}",
-                    ",}",
-                ),
+                r#"
+data::function::ProfiledListFunctionFunctionId::External {
+    id: data::function::ExternalListFunctionFunctionId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::ExternalListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ExternalTypeId(4),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ProfiledListFunctionFunctionId::Tuple {
@@ -1128,13 +1253,19 @@ mod emission_tests {
                         item_type: TupleItemTypeId(4),
                     },
                 },
-                concat!(
-                    "data::function::ProfiledListFunctionFunctionId::Tuple {id: data::function::TupleListFunctionFunctionId(2,),type_: ",
-                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
-                    ",list_type: ",
-                    "data::type_::TupleListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::TupleItemTypeId(4,),}",
-                    ",}",
-                ),
+                r#"
+data::function::ProfiledListFunctionFunctionId::Tuple {
+    id: data::function::TupleListFunctionFunctionId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::TupleListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::TupleItemTypeId(4),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ProfiledListFunctionFunctionId::List {
@@ -1142,13 +1273,19 @@ mod emission_tests {
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                     list_type: ListListTypeId::new(ListTypeId(3), ListTypeId(4)),
                 },
-                concat!(
-                    "data::function::ProfiledListFunctionFunctionId::List {id: data::function::ListListFunctionFunctionId(2,),type_: ",
-                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
-                    ",list_type: ",
-                    "data::type_::ListListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ListTypeId(4,),}",
-                    ",}",
-                ),
+                r#"
+data::function::ProfiledListFunctionFunctionId::List {
+    id: data::function::ListListFunctionFunctionId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::ListListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ListTypeId(4),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
             (
                 ProfiledListFunctionFunctionId::Function {
@@ -1159,13 +1296,19 @@ mod emission_tests {
                         item_type: FunctionItemTypeId(4),
                     },
                 },
-                concat!(
-                    "data::function::ProfiledListFunctionFunctionId::Function {id: data::function::FunctionListFunctionFunctionId(2,),type_: ",
-                    "data::type_::FunctionType {arguments: data::Storage::Static(&[]),return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3,),)),}",
-                    ",list_type: ",
-                    "data::type_::FunctionListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::FunctionItemTypeId(4,),}",
-                    ",}",
-                ),
+                r#"
+data::function::ProfiledListFunctionFunctionId::Function {
+    id: data::function::FunctionListFunctionFunctionId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::FunctionListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::FunctionItemTypeId(4),
+    },
+}"#
+                .trim_start_matches('\n'),
             ),
         ];
         for (id, expected) in cases {

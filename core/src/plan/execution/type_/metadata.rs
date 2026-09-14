@@ -322,7 +322,7 @@ mod tests {
         let cases = [
             (
                 TypeMetadata::Parameter(plan::TypeParameterId(2)),
-                "data::type_::TypeMetadata::Parameter(data::type_::parameter_id(2,),)",
+                "data::type_::TypeMetadata::Parameter(data::type_::parameter_id(2))",
             ),
             (TypeMetadata::Int, "data::type_::TypeMetadata::Int"),
             (TypeMetadata::Float, "data::type_::TypeMetadata::Float"),
@@ -339,18 +339,29 @@ mod tests {
             (TypeMetadata::Nil, "data::type_::TypeMetadata::Nil"),
             (
                 TypeMetadata::Tuple(Table::Static(&[TypeMetadata::Int])),
-                "data::type_::TypeMetadata::Tuple(data::Storage::Static(&[data::type_::TypeMetadata::Int,]),)",
+                r#"
+data::type_::TypeMetadata::Tuple(data::Storage::Static(&[
+    data::type_::TypeMetadata::Int,
+]))"#
+                    .trim_start_matches('\n'),
             ),
             (
                 TypeMetadata::List(Node::Static(&TypeMetadata::Bool)),
-                "data::type_::TypeMetadata::List(data::Storage::Static(&data::type_::TypeMetadata::Bool),)",
+                "data::type_::TypeMetadata::List(data::Storage::Static(&data::type_::TypeMetadata::Bool))",
             ),
             (
                 TypeMetadata::Function(FunctionMetadata {
                     arguments: Table::Static(&[TypeMetadata::Int]),
                     return_: Node::Static(&TypeMetadata::Bool),
                 }),
-                "data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {arguments: data::Storage::Static(&[data::type_::TypeMetadata::Int,]),return_: data::Storage::Static(&data::type_::TypeMetadata::Bool),},)",
+                r#"
+data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {
+    arguments: data::Storage::Static(&[
+        data::type_::TypeMetadata::Int,
+    ]),
+    return_: data::Storage::Static(&data::type_::TypeMetadata::Bool),
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 TypeMetadata::Custom(NominalTypeMetadata {
@@ -359,7 +370,16 @@ mod tests {
                     name: Text::Static("Box"),
                     arguments: Table::Static(&[TypeMetadata::Int]),
                 }),
-                "data::type_::TypeMetadata::Custom(data::type_::NominalTypeMetadata {package: data::Text::Static(\"app\",),module: data::Text::Static(\"app/types\",),name: data::Text::Static(\"Box\",),arguments: data::Storage::Static(&[data::type_::TypeMetadata::Int,]),},)",
+                r#"
+data::type_::TypeMetadata::Custom(data::type_::NominalTypeMetadata {
+    package: data::Text::Static("app"),
+    module: data::Text::Static("app/types"),
+    name: data::Text::Static("Box"),
+    arguments: data::Storage::Static(&[
+        data::type_::TypeMetadata::Int,
+    ]),
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 TypeMetadata::External(NominalTypeMetadata {
@@ -368,7 +388,16 @@ mod tests {
                     name: Text::Static("Key"),
                     arguments: Table::Static(&[TypeMetadata::String]),
                 }),
-                "data::type_::TypeMetadata::External(data::type_::NominalTypeMetadata {package: data::Text::Static(\"host\",),module: data::Text::Static(\"host/key\",),name: data::Text::Static(\"Key\",),arguments: data::Storage::Static(&[data::type_::TypeMetadata::String,]),},)",
+                r#"
+data::type_::TypeMetadata::External(data::type_::NominalTypeMetadata {
+    package: data::Text::Static("host"),
+    module: data::Text::Static("host/key"),
+    name: data::Text::Static("Key"),
+    arguments: data::Storage::Static(&[
+        data::type_::TypeMetadata::String,
+    ]),
+})"#
+                .trim_start_matches('\n'),
             ),
         ];
         for (metadata, expected) in cases {

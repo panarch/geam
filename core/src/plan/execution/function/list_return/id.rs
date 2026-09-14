@@ -710,53 +710,110 @@ mod emission_tests {
         let cases = [
             (
                 ListFunctionId::Int(IntListFunctionId::new(2, IntListTypeId::new(ListTypeId(3)))),
-                "data::function::ListFunctionId::Int(data::function::IntListFunctionId {index: 2,type_id: data::type_::IntListTypeId {list_type: data::type_::ListTypeId(3,),},},)",
+                r#"
+data::function::ListFunctionId::Int(data::function::IntListFunctionId {
+    index: 2,
+    type_id: data::type_::IntListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionId::String(StringListFunctionId::new(
                     2,
                     StringListTypeId::new(ListTypeId(3)),
                 )),
-                "data::function::ListFunctionId::String(data::function::StringListFunctionId {index: 2,type_id: data::type_::StringListTypeId {list_type: data::type_::ListTypeId(3,),},},)",
+                r#"
+data::function::ListFunctionId::String(data::function::StringListFunctionId {
+    index: 2,
+    type_id: data::type_::StringListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionId::BitArray(BitArrayListFunctionId::new(
                     2,
                     BitArrayListTypeId::new(ListTypeId(3)),
                 )),
-                "data::function::ListFunctionId::BitArray(data::function::BitArrayListFunctionId {index: 2,type_id: data::type_::BitArrayListTypeId {list_type: data::type_::ListTypeId(3,),},},)",
+                r#"
+data::function::ListFunctionId::BitArray(data::function::BitArrayListFunctionId {
+    index: 2,
+    type_id: data::type_::BitArrayListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionId::UtfCodepoint(UtfCodepointListFunctionId::new(
                     2,
                     UtfCodepointListTypeId::new(ListTypeId(3)),
                 )),
-                "data::function::ListFunctionId::UtfCodepoint(data::function::UtfCodepointListFunctionId {index: 2,type_id: data::type_::UtfCodepointListTypeId {list_type: data::type_::ListTypeId(3,),},},)",
+                r#"
+data::function::ListFunctionId::UtfCodepoint(data::function::UtfCodepointListFunctionId {
+    index: 2,
+    type_id: data::type_::UtfCodepointListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionId::Float(FloatListFunctionId::new(
                     2,
                     FloatListTypeId::new(ListTypeId(3)),
                 )),
-                "data::function::ListFunctionId::Float(data::function::FloatListFunctionId {index: 2,type_id: data::type_::FloatListTypeId {list_type: data::type_::ListTypeId(3,),},},)",
+                r#"
+data::function::ListFunctionId::Float(data::function::FloatListFunctionId {
+    index: 2,
+    type_id: data::type_::FloatListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionId::Bool(BoolListFunctionId::new(
                     2,
                     BoolListTypeId::new(ListTypeId(3)),
                 )),
-                "data::function::ListFunctionId::Bool(data::function::BoolListFunctionId {index: 2,type_id: data::type_::BoolListTypeId {list_type: data::type_::ListTypeId(3,),},},)",
+                r#"
+data::function::ListFunctionId::Bool(data::function::BoolListFunctionId {
+    index: 2,
+    type_id: data::type_::BoolListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionId::Nil(NilListFunctionId::new(2, NilListTypeId::new(ListTypeId(3)))),
-                "data::function::ListFunctionId::Nil(data::function::NilListFunctionId {index: 2,type_id: data::type_::NilListTypeId {list_type: data::type_::ListTypeId(3,),},},)",
+                r#"
+data::function::ListFunctionId::Nil(data::function::NilListFunctionId {
+    index: 2,
+    type_id: data::type_::NilListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionId::Parameter(ParameterListFunctionId::new(
                     2,
                     ParameterListTypeId::new(ListTypeId(3), crate::plan::TypeParameterId(4)),
                 )),
-                "data::function::ListFunctionId::Parameter(data::function::ParameterListFunctionId {index: 2,type_id: data::type_::ParameterListTypeId {list_type: data::type_::ListTypeId(3,),item: data::type_::parameter_id(4,),},},)",
+                r#"
+data::function::ListFunctionId::Parameter(data::function::ParameterListFunctionId {
+    index: 2,
+    type_id: data::type_::ParameterListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item: data::type_::parameter_id(4),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionId::ParameterList(ParameterListListFunctionId::new(
@@ -766,14 +823,33 @@ mod emission_tests {
                         ParameterListTypeId::new(ListTypeId(4), crate::plan::TypeParameterId(5)),
                     ),
                 )),
-                "data::function::ListFunctionId::ParameterList(data::function::ParameterListListFunctionId {index: 2,type_id: data::type_::ParameterListListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ParameterListTypeId {list_type: data::type_::ListTypeId(4,),item: data::type_::parameter_id(5,),},},},)",
+                r#"
+data::function::ListFunctionId::ParameterList(data::function::ParameterListListFunctionId {
+    index: 2,
+    type_id: data::type_::ParameterListListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ParameterListTypeId {
+            list_type: data::type_::ListTypeId(4),
+            item: data::type_::parameter_id(5),
+        },
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionId::Custom(CustomListFunctionId::new(
                     2,
                     CustomListTypeId::new(ListTypeId(3), CustomTypeId(4)),
                 )),
-                "data::function::ListFunctionId::Custom(data::function::CustomListFunctionId {index: 2,type_id: data::type_::CustomListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::CustomTypeId(4,),},},)",
+                r#"
+data::function::ListFunctionId::Custom(data::function::CustomListFunctionId {
+    index: 2,
+    type_id: data::type_::CustomListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::CustomTypeId(4),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionId::Tuple(TupleListFunctionId::new(
@@ -783,14 +859,30 @@ mod emission_tests {
                         item_type: TupleItemTypeId(4),
                     },
                 )),
-                "data::function::ListFunctionId::Tuple(data::function::TupleListFunctionId {index: 2,type_id: data::type_::TupleListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::TupleItemTypeId(4,),},},)",
+                r#"
+data::function::ListFunctionId::Tuple(data::function::TupleListFunctionId {
+    index: 2,
+    type_id: data::type_::TupleListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::TupleItemTypeId(4),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionId::List(ListListFunctionId::new(
                     2,
                     ListListTypeId::new(ListTypeId(3), ListTypeId(4)),
                 )),
-                "data::function::ListFunctionId::List(data::function::ListListFunctionId {index: 2,type_id: data::type_::ListListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ListTypeId(4,),},},)",
+                r#"
+data::function::ListFunctionId::List(data::function::ListListFunctionId {
+    index: 2,
+    type_id: data::type_::ListListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ListTypeId(4),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 ListFunctionId::Function(FunctionListFunctionId::new(
@@ -800,7 +892,15 @@ mod emission_tests {
                         item_type: FunctionItemTypeId(4),
                     },
                 )),
-                "data::function::ListFunctionId::Function(data::function::FunctionListFunctionId {index: 2,type_id: data::type_::FunctionListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::FunctionItemTypeId(4,),},},)",
+                r#"
+data::function::ListFunctionId::Function(data::function::FunctionListFunctionId {
+    index: 2,
+    type_id: data::type_::FunctionListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::FunctionItemTypeId(4),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
         ];
         for (id, expected) in cases {
@@ -812,63 +912,128 @@ mod emission_tests {
                     2,
                     IntListTypeId::new(ListTypeId(3)),
                 )),
-                "data::function::LibraryListFunctionId::Int(data::function::IntListFunctionId {index: 2,type_id: data::type_::IntListTypeId {list_type: data::type_::ListTypeId(3,),},},)",
+                r#"
+data::function::LibraryListFunctionId::Int(data::function::IntListFunctionId {
+    index: 2,
+    type_id: data::type_::IntListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 LibraryListFunctionId::String(StringListFunctionId::new(
                     2,
                     StringListTypeId::new(ListTypeId(3)),
                 )),
-                "data::function::LibraryListFunctionId::String(data::function::StringListFunctionId {index: 2,type_id: data::type_::StringListTypeId {list_type: data::type_::ListTypeId(3,),},},)",
+                r#"
+data::function::LibraryListFunctionId::String(data::function::StringListFunctionId {
+    index: 2,
+    type_id: data::type_::StringListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 LibraryListFunctionId::BitArray(BitArrayListFunctionId::new(
                     2,
                     BitArrayListTypeId::new(ListTypeId(3)),
                 )),
-                "data::function::LibraryListFunctionId::BitArray(data::function::BitArrayListFunctionId {index: 2,type_id: data::type_::BitArrayListTypeId {list_type: data::type_::ListTypeId(3,),},},)",
+                r#"
+data::function::LibraryListFunctionId::BitArray(data::function::BitArrayListFunctionId {
+    index: 2,
+    type_id: data::type_::BitArrayListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 LibraryListFunctionId::UtfCodepoint(UtfCodepointListFunctionId::new(
                     2,
                     UtfCodepointListTypeId::new(ListTypeId(3)),
                 )),
-                "data::function::LibraryListFunctionId::UtfCodepoint(data::function::UtfCodepointListFunctionId {index: 2,type_id: data::type_::UtfCodepointListTypeId {list_type: data::type_::ListTypeId(3,),},},)",
+                r#"
+data::function::LibraryListFunctionId::UtfCodepoint(data::function::UtfCodepointListFunctionId {
+    index: 2,
+    type_id: data::type_::UtfCodepointListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 LibraryListFunctionId::Float(FloatListFunctionId::new(
                     2,
                     FloatListTypeId::new(ListTypeId(3)),
                 )),
-                "data::function::LibraryListFunctionId::Float(data::function::FloatListFunctionId {index: 2,type_id: data::type_::FloatListTypeId {list_type: data::type_::ListTypeId(3,),},},)",
+                r#"
+data::function::LibraryListFunctionId::Float(data::function::FloatListFunctionId {
+    index: 2,
+    type_id: data::type_::FloatListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 LibraryListFunctionId::Bool(BoolListFunctionId::new(
                     2,
                     BoolListTypeId::new(ListTypeId(3)),
                 )),
-                "data::function::LibraryListFunctionId::Bool(data::function::BoolListFunctionId {index: 2,type_id: data::type_::BoolListTypeId {list_type: data::type_::ListTypeId(3,),},},)",
+                r#"
+data::function::LibraryListFunctionId::Bool(data::function::BoolListFunctionId {
+    index: 2,
+    type_id: data::type_::BoolListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 LibraryListFunctionId::Nil(NilListFunctionId::new(
                     2,
                     NilListTypeId::new(ListTypeId(3)),
                 )),
-                "data::function::LibraryListFunctionId::Nil(data::function::NilListFunctionId {index: 2,type_id: data::type_::NilListTypeId {list_type: data::type_::ListTypeId(3,),},},)",
+                r#"
+data::function::LibraryListFunctionId::Nil(data::function::NilListFunctionId {
+    index: 2,
+    type_id: data::type_::NilListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 LibraryListFunctionId::Custom(CustomListFunctionId::new(
                     2,
                     CustomListTypeId::new(ListTypeId(3), CustomTypeId(4)),
                 )),
-                "data::function::LibraryListFunctionId::Custom(data::function::CustomListFunctionId {index: 2,type_id: data::type_::CustomListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::CustomTypeId(4,),},},)",
+                r#"
+data::function::LibraryListFunctionId::Custom(data::function::CustomListFunctionId {
+    index: 2,
+    type_id: data::type_::CustomListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::CustomTypeId(4),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 LibraryListFunctionId::External(ExternalListFunctionId::new(
                     2,
                     ExternalListTypeId::new(ListTypeId(3), ExternalTypeId(4)),
                 )),
-                "data::function::LibraryListFunctionId::External(data::function::ExternalListFunctionId {index: 2,type_id: data::type_::ExternalListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ExternalTypeId(4,),},},)",
+                r#"
+data::function::LibraryListFunctionId::External(data::function::ExternalListFunctionId {
+    index: 2,
+    type_id: data::type_::ExternalListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ExternalTypeId(4),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 LibraryListFunctionId::Tuple(TupleListFunctionId::new(
@@ -878,14 +1043,30 @@ mod emission_tests {
                         item_type: TupleItemTypeId(4),
                     },
                 )),
-                "data::function::LibraryListFunctionId::Tuple(data::function::TupleListFunctionId {index: 2,type_id: data::type_::TupleListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::TupleItemTypeId(4,),},},)",
+                r#"
+data::function::LibraryListFunctionId::Tuple(data::function::TupleListFunctionId {
+    index: 2,
+    type_id: data::type_::TupleListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::TupleItemTypeId(4),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
             (
                 LibraryListFunctionId::List(ListListFunctionId::new(
                     2,
                     ListListTypeId::new(ListTypeId(3), ListTypeId(4)),
                 )),
-                "data::function::LibraryListFunctionId::List(data::function::ListListFunctionId {index: 2,type_id: data::type_::ListListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ListTypeId(4,),},},)",
+                r#"
+data::function::LibraryListFunctionId::List(data::function::ListListFunctionId {
+    index: 2,
+    type_id: data::type_::ListListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ListTypeId(4),
+    },
+})"#
+                .trim_start_matches('\n'),
             ),
         ];
         for (id, expected) in library {
@@ -897,20 +1078,27 @@ mod emission_tests {
                     2,
                     IntListTypeId::new(ListTypeId(3)),
                 ))),
-                concat!(
-                    "data::function::ProfiledListFunctionId::Core(data::function::ListFunctionId::Int(",
-                    "data::function::IntListFunctionId {index: 2,type_id: data::type_::IntListTypeId {list_type: data::type_::ListTypeId(3,),},},),)"
-                ),
+                r#"
+data::function::ProfiledListFunctionId::Core(data::function::ListFunctionId::Int(data::function::IntListFunctionId {
+    index: 2,
+    type_id: data::type_::IntListTypeId {
+        list_type: data::type_::ListTypeId(3),
+    },
+}))"#.trim_start_matches('\n'),
             ),
             (
                 ProfiledListFunctionId::External(ExternalListFunctionId::new(
                     2,
                     ExternalListTypeId::new(ListTypeId(3), ExternalTypeId(4)),
                 )),
-                concat!(
-                    "data::function::ProfiledListFunctionId::External(data::function::ExternalListFunctionId {index: 2,",
-                    "type_id: data::type_::ExternalListTypeId {list_type: data::type_::ListTypeId(3,),item_type: data::type_::ExternalTypeId(4,),},},)"
-                ),
+                r#"
+data::function::ProfiledListFunctionId::External(data::function::ExternalListFunctionId {
+    index: 2,
+    type_id: data::type_::ExternalListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::ExternalTypeId(4),
+    },
+})"#.trim_start_matches('\n'),
             ),
         ];
         for (id, expected) in profiled {

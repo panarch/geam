@@ -134,19 +134,21 @@ mod emission_tests {
                 Some(StringLocalId(2)),
                 site.clone()
             )),
-            concat!(
-                "data::graph::SourceStop {kind: data::graph::SourceStopKind::Panic,",
-                "message: Some(data::graph::StringLocalId(2,)),site: data::source::PanicSite::from_static(",
-                "\"example\",\"main\",data::source::SourceSpan::new(3,8,),),}"
-            )
+            r#"
+data::graph::SourceStop {
+    kind: data::graph::SourceStopKind::Panic,
+    message: Some(data::graph::StringLocalId(2)),
+    site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n')
         );
         assert_eq!(
             Rust::expression(&SourceStop::new(SourceStopKind::Todo, None, site)),
-            concat!(
-                "data::graph::SourceStop {kind: data::graph::SourceStopKind::Todo,",
-                "message: None,site: data::source::PanicSite::from_static(",
-                "\"example\",\"main\",data::source::SourceSpan::new(3,8,),),}"
-            )
+            r#"
+data::graph::SourceStop {
+    kind: data::graph::SourceStopKind::Todo,
+    message: None,
+    site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n')
         );
     }
 }

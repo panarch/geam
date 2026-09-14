@@ -113,12 +113,14 @@ mod emission_tests {
                     args: vec![ParamLocal::UtfCodepoint(UtfCodepointLocalId(5))].into(),
                     site: site.clone(),
                 },
-                concat!(
-                    "data::graph::UtfCodepointInstruction::Call {function: data::function::UtfCodepointFunctionId(2,),",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::UtfCodepointInstruction::Call {
+    function: data::function::UtfCodepointFunctionId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 UtfCodepointInstruction::FunctionCall {
@@ -126,19 +128,25 @@ mod emission_tests {
                     args: vec![ParamLocal::UtfCodepoint(UtfCodepointLocalId(5))].into(),
                     site,
                 },
-                concat!(
-                    "data::graph::UtfCodepointInstruction::FunctionCall {function: data::graph::UtfCodepointFunctionLocalId(2,),",
-                    "args: data::Storage::Static(&[data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(5,),),]),",
-                    "site: data::source::HostCallSite::from_static(\"example\",\"main\",",
-                    "data::source::SourceSpan::new(3,8,),),}"
-                ),
+                r#"
+data::graph::UtfCodepointInstruction::FunctionCall {
+    function: data::graph::UtfCodepointFunctionLocalId(2),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(5)),
+    ]),
+    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
+}"#.trim_start_matches('\n'),
             ),
             (
                 UtfCodepointInstruction::TupleIndex {
                     tuple: TupleLocalId(2),
                     index: 1,
                 },
-                "data::graph::UtfCodepointInstruction::TupleIndex {tuple: data::graph::TupleLocalId(2,),index: 1,}",
+                r#"
+data::graph::UtfCodepointInstruction::TupleIndex {
+    tuple: data::graph::TupleLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 UtfCodepointInstruction::CustomField {
@@ -148,18 +156,28 @@ mod emission_tests {
                     ),
                     index: 1,
                 },
-                concat!(
-                    "data::graph::UtfCodepointInstruction::CustomField {source: data::graph::CustomLocal {",
-                    "id: data::graph::CustomLocalId(2,),shape: data::type_::CustomValueShape {",
-                    "type_id: data::type_::CustomTypeId(3,),shape_id: data::type_::CustomValueShapeId(4,),},},index: 1,}"
-                ),
+                r#"
+data::graph::UtfCodepointInstruction::CustomField {
+    source: data::graph::CustomLocal {
+        id: data::graph::CustomLocalId(2),
+        shape: data::type_::CustomValueShape {
+            type_id: data::type_::CustomTypeId(3),
+            shape_id: data::type_::CustomValueShapeId(4),
+        },
+    },
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
             (
                 UtfCodepointInstruction::ListIndex {
                     list: UtfCodepointListLocalId(2),
                     index: 1,
                 },
-                "data::graph::UtfCodepointInstruction::ListIndex {list: data::graph::UtfCodepointListLocalId(2,),index: 1,}",
+                r#"
+data::graph::UtfCodepointInstruction::ListIndex {
+    list: data::graph::UtfCodepointListLocalId(2),
+    index: 1,
+}"#.trim_start_matches('\n'),
             ),
         ];
         for (instruction, expected) in cases {
