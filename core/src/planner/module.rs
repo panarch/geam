@@ -171,7 +171,7 @@ fn plan_module_bodies(
             by_name,
             functions,
             anonymous_functions,
-        } = function_table(declaration.id, &declaration.functions, role)?;
+        } = function_table(declaration.id, declaration.functions, role)?;
         function_declarations.push(ModuleFunctionDeclarations {
             id: declaration.id,
             package: declaration.package,
@@ -272,7 +272,7 @@ struct FunctionToPlan {
 
 fn function_table(
     module: ModuleId,
-    functions: &[gleam_compiler_core::ast::TypedFunction],
+    functions: Vec<gleam_compiler_core::ast::TypedFunction>,
     role: ModuleRole,
 ) -> Result<FunctionTable, PlanError> {
     function_table_with_external_types(module, functions, role, &HashSet::new())
@@ -280,14 +280,14 @@ fn function_table(
 
 fn function_table_with_external_types(
     module: ModuleId,
-    functions: &[gleam_compiler_core::ast::TypedFunction],
+    functions: Vec<gleam_compiler_core::ast::TypedFunction>,
     role: ModuleRole,
     external_types: &HashSet<crate::plan::ExternalTypeName>,
 ) -> Result<FunctionTable, PlanError> {
     let mut seeds = Vec::new();
 
     for function in functions {
-        let name = function_name(function)?;
+        let name = function_name(&function)?;
         let mut type_parameters = TypeParameterScope::default();
         let return_shape =
             function_return_shape_in(&function.return_type, &mut type_parameters, &|name| {
@@ -302,7 +302,7 @@ fn function_table_with_external_types(
         seeds.push(FunctionSeed {
             name,
             definition_span: function.location.into(),
-            function: function.clone(),
+            function,
             params,
             return_shape,
             scheme,
@@ -1509,7 +1509,7 @@ pub fn main() {
         assert_eq!(
             super::function_table(
                 crate::plan::ModuleId::root(),
-                &module.definitions.functions,
+                module.definitions.functions,
                 super::ModuleRole::Root,
             )
             .err(),

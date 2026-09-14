@@ -127,6 +127,36 @@ mod tests {
     use ecow::EcoString;
 
     #[test]
+    fn reject_profile_unused_fallback_descendant_with_pending_sibling() {
+        let source = r#"
+@external(erlang, "host", "fallback")
+fn fallback() -> Int {
+  fn() { fn() { <<1:native>> } }
+  fn() { 2 }
+  3
+}
+pub fn main() { 42 }
+"#;
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            HostProviderSet::new(Vec::<HostModule>::new()).expect("empty provider set"),
+        )
+        .expect("source fallback should compile");
+        assert_eq!(
+            plan_host_program(typed).err(),
+            Some(PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
+            }),
+        );
+    }
+
+    #[test]
     fn selected_external_fallback_body_preserves_its_planning_error() {
         let source = r#"
 @external(erlang, "host", "fallback")

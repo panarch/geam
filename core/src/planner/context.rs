@@ -197,9 +197,14 @@ impl FunctionParam {
 
 pub(super) struct PlanContext<'a> {
     pub(super) module_name: &'a EcoString,
-    current_function: EcoString,
     registry: RegistryAccess<'a>,
     anonymous_functions: &'a mut AnonymousFunctions,
+    pending_functions: std::collections::VecDeque<super::function::AnonymousFunctionBody>,
+    scope: FunctionScope,
+}
+
+pub(super) struct FunctionScope {
+    current_function: EcoString,
     bindings: HashMap<EcoString, LocalBinding>,
     next_generic_local: usize,
     next_int_local: usize,
@@ -239,6 +244,56 @@ pub(super) struct PlanContext<'a> {
     next_function_function_local: usize,
     next_generic_function_local: usize,
     type_parameters: super::type_parameter::TypeParameterScope,
+}
+
+impl FunctionScope {
+    fn new(
+        current_function: EcoString,
+        type_parameters: super::type_parameter::TypeParameterScope,
+    ) -> Self {
+        Self {
+            current_function,
+            type_parameters,
+            bindings: HashMap::new(),
+            next_generic_local: 0,
+            next_int_local: 0,
+            next_float_local: 0,
+            next_string_local: 0,
+            next_bit_array_local: 0,
+            next_utf_codepoint_local: 0,
+            next_custom_local: 0,
+            next_external_local: 0,
+            next_bool_local: 0,
+            next_nil_local: 0,
+            next_tuple_local: 0,
+            next_int_list_local: 0,
+            next_string_list_local: 0,
+            next_bit_array_list_local: 0,
+            next_utf_codepoint_list_local: 0,
+            next_custom_list_local: 0,
+            next_external_list_local: 0,
+            next_float_list_local: 0,
+            next_bool_list_local: 0,
+            next_nil_list_local: 0,
+            next_tuple_list_local: 0,
+            next_list_list_local: 0,
+            next_function_list_local: 0,
+            next_generic_list_local: 0,
+            next_int_function_local: 0,
+            next_float_function_local: 0,
+            next_string_function_local: 0,
+            next_bit_array_function_local: 0,
+            next_utf_codepoint_function_local: 0,
+            next_custom_function_local: 0,
+            next_external_function_local: 0,
+            next_bool_function_local: 0,
+            next_nil_function_local: 0,
+            next_tuple_function_local: 0,
+            next_list_function_local: 0,
+            next_function_function_local: 0,
+            next_generic_function_local: 0,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -419,75 +474,37 @@ impl<'a> PlanContext<'a> {
     ) -> Self {
         Self {
             module_name,
-            current_function: "main".into(),
             registry,
             anonymous_functions,
-            bindings: HashMap::new(),
-            next_generic_local: 0,
-            next_int_local: 0,
-            next_float_local: 0,
-            next_string_local: 0,
-            next_bit_array_local: 0,
-            next_utf_codepoint_local: 0,
-            next_custom_local: 0,
-            next_external_local: 0,
-            next_bool_local: 0,
-            next_nil_local: 0,
-            next_tuple_local: 0,
-            next_int_list_local: 0,
-            next_string_list_local: 0,
-            next_bit_array_list_local: 0,
-            next_utf_codepoint_list_local: 0,
-            next_custom_list_local: 0,
-            next_external_list_local: 0,
-            next_float_list_local: 0,
-            next_bool_list_local: 0,
-            next_nil_list_local: 0,
-            next_tuple_list_local: 0,
-            next_list_list_local: 0,
-            next_function_list_local: 0,
-            next_generic_list_local: 0,
-            next_int_function_local: 0,
-            next_float_function_local: 0,
-            next_string_function_local: 0,
-            next_bit_array_function_local: 0,
-            next_utf_codepoint_function_local: 0,
-            next_custom_function_local: 0,
-            next_external_function_local: 0,
-            next_bool_function_local: 0,
-            next_nil_function_local: 0,
-            next_tuple_function_local: 0,
-            next_list_function_local: 0,
-            next_function_function_local: 0,
-            next_generic_function_local: 0,
-            type_parameters: super::type_parameter::TypeParameterScope::default(),
+            pending_functions: std::collections::VecDeque::new(),
+            scope: FunctionScope::new("main".into(), Default::default()),
         }
     }
 
     pub(super) fn set_current_function(&mut self, name: EcoString) {
-        self.current_function = name;
+        self.scope.current_function = name;
     }
 
     pub(super) fn set_type_parameters(
         &mut self,
         type_parameters: super::type_parameter::TypeParameterScope,
     ) {
-        self.type_parameters = type_parameters;
+        self.scope.type_parameters = type_parameters;
     }
 
     pub(super) fn type_parameters(&self) -> &super::type_parameter::TypeParameterScope {
-        &self.type_parameters
+        &self.scope.type_parameters
     }
 
     pub(super) fn value_shape(&mut self, type_: &Type) -> ValueShape {
         let registry = self.registry;
-        ValueShape::from_gleam_in_with_external(type_, &mut self.type_parameters, &|name| {
+        ValueShape::from_gleam_in_with_external(type_, &mut self.scope.type_parameters, &|name| {
             registry.is_external_type(name)
         })
     }
 
     pub(super) fn value_shape_in_scope(&self, type_: &Type) -> ValueShape {
-        let mut type_parameters = self.type_parameters.clone();
+        let mut type_parameters = self.scope.type_parameters.clone();
         self.value_shape_with_parameters(type_, &mut type_parameters)
     }
 
@@ -512,7 +529,7 @@ impl<'a> PlanContext<'a> {
     pub(super) fn panic_site(&self, location: gleam_compiler_core::ast::SrcSpan) -> PanicSite {
         PanicSite::new(
             self.module_name.clone(),
-            self.current_function.clone(),
+            self.scope.current_function.clone(),
             location.into(),
         )
     }
@@ -523,7 +540,7 @@ impl<'a> PlanContext<'a> {
     ) -> crate::plan::EchoSite {
         crate::plan::EchoSite::new(
             self.module_name.clone(),
-            self.current_function.clone(),
+            self.scope.current_function.clone(),
             location.into(),
         )
     }
@@ -534,7 +551,7 @@ impl<'a> PlanContext<'a> {
     ) -> crate::plan::HostCallSite {
         crate::plan::HostCallSite::new(
             self.module_name.clone(),
-            self.current_function.clone(),
+            self.scope.current_function.clone(),
             location.into(),
         )
     }
@@ -542,31 +559,34 @@ impl<'a> PlanContext<'a> {
     pub(super) fn define_existing_local(&mut self, name: EcoString, local: LocalId) {
         match local {
             LocalId::Generic(local) => {
-                self.next_generic_local = self.next_generic_local.max(local.id().0 + 1);
+                self.scope.next_generic_local = self.scope.next_generic_local.max(local.id().0 + 1);
             }
             LocalId::Int(local) => {
-                self.next_int_local = self.next_int_local.max(local.0 + 1);
+                self.scope.next_int_local = self.scope.next_int_local.max(local.0 + 1);
             }
             LocalId::Float(local) => {
-                self.next_float_local = self.next_float_local.max(local.0 + 1);
+                self.scope.next_float_local = self.scope.next_float_local.max(local.0 + 1);
             }
             LocalId::String(local) => {
-                self.next_string_local = self.next_string_local.max(local.0 + 1);
+                self.scope.next_string_local = self.scope.next_string_local.max(local.0 + 1);
             }
             LocalId::BitArray(local) => {
-                self.next_bit_array_local = self.next_bit_array_local.max(local.0 + 1);
+                self.scope.next_bit_array_local = self.scope.next_bit_array_local.max(local.0 + 1);
             }
             LocalId::UtfCodepoint(local) => {
-                self.next_utf_codepoint_local = self.next_utf_codepoint_local.max(local.0 + 1);
+                self.scope.next_utf_codepoint_local =
+                    self.scope.next_utf_codepoint_local.max(local.0 + 1);
             }
             LocalId::Bool(local) => {
-                self.next_bool_local = self.next_bool_local.max(local.0 + 1);
+                self.scope.next_bool_local = self.scope.next_bool_local.max(local.0 + 1);
             }
             LocalId::Nil(local) => {
-                self.next_nil_local = self.next_nil_local.max(local.0 + 1);
+                self.scope.next_nil_local = self.scope.next_nil_local.max(local.0 + 1);
             }
         }
-        self.bindings.insert(name, LocalBinding::Primitive(local));
+        self.scope
+            .bindings
+            .insert(name, LocalBinding::Primitive(local));
     }
 
     pub(super) fn define_param_local_shape(
@@ -716,15 +736,18 @@ impl<'a> PlanContext<'a> {
                 self.define_existing_local(name, LocalId::UtfCodepoint(*local));
             }
             (ParamLocal::Custom(local), ValueShape::Custom(shape)) if local.shape() == &shape => {
-                self.next_custom_local = self.next_custom_local.max(local.id().0 + 1);
-                self.bindings
+                self.scope.next_custom_local = self.scope.next_custom_local.max(local.id().0 + 1);
+                self.scope
+                    .bindings
                     .insert(name, LocalBinding::Custom(local.clone()));
             }
             (ParamLocal::External(local), ValueShape::External(shape))
                 if local.shape() == &shape =>
             {
-                self.next_external_local = self.next_external_local.max(local.id().0 + 1);
-                self.bindings
+                self.scope.next_external_local =
+                    self.scope.next_external_local.max(local.id().0 + 1);
+                self.scope
+                    .bindings
                     .insert(name, LocalBinding::External(local.clone()));
             }
             (ParamLocal::Bool(local), ValueShape::Bool) => {
@@ -739,8 +762,8 @@ impl<'a> PlanContext<'a> {
                     .map(ValueShape::value_type)
                     .eq(type_.iter().cloned()) =>
             {
-                self.next_tuple_local = self.next_tuple_local.max(local.0 + 1);
-                self.bindings.insert(
+                self.scope.next_tuple_local = self.scope.next_tuple_local.max(local.0 + 1);
+                self.scope.bindings.insert(
                     name,
                     LocalBinding::Tuple {
                         local: *local,
@@ -752,7 +775,7 @@ impl<'a> PlanContext<'a> {
                 if item_shape.value_type() == local.item_type() =>
             {
                 self.bump_list_local(local);
-                self.bindings.insert(
+                self.scope.bindings.insert(
                     name,
                     LocalBinding::List {
                         local: local.clone(),
@@ -763,8 +786,9 @@ impl<'a> PlanContext<'a> {
             (ParamLocal::IntFunction { local, type_ }, ValueShape::Function(shape))
                 if shape.type_() == *type_ =>
             {
-                self.next_int_function_local = self.next_int_function_local.max(local.0 + 1);
-                self.bindings.insert(
+                self.scope.next_int_function_local =
+                    self.scope.next_int_function_local.max(local.0 + 1);
+                self.scope.bindings.insert(
                     name,
                     LocalBinding::Function {
                         binding: FunctionLocalBinding::Int {
@@ -778,8 +802,9 @@ impl<'a> PlanContext<'a> {
             (ParamLocal::FloatFunction { local, type_ }, ValueShape::Function(shape))
                 if shape.type_() == *type_ =>
             {
-                self.next_float_function_local = self.next_float_function_local.max(local.0 + 1);
-                self.bindings.insert(
+                self.scope.next_float_function_local =
+                    self.scope.next_float_function_local.max(local.0 + 1);
+                self.scope.bindings.insert(
                     name,
                     LocalBinding::Function {
                         binding: FunctionLocalBinding::Float {
@@ -793,8 +818,9 @@ impl<'a> PlanContext<'a> {
             (ParamLocal::StringFunction { local, type_ }, ValueShape::Function(shape))
                 if shape.type_() == *type_ =>
             {
-                self.next_string_function_local = self.next_string_function_local.max(local.0 + 1);
-                self.bindings.insert(
+                self.scope.next_string_function_local =
+                    self.scope.next_string_function_local.max(local.0 + 1);
+                self.scope.bindings.insert(
                     name,
                     LocalBinding::Function {
                         binding: FunctionLocalBinding::String {
@@ -808,9 +834,9 @@ impl<'a> PlanContext<'a> {
             (ParamLocal::BitArrayFunction { local, type_ }, ValueShape::Function(shape))
                 if shape.type_() == *type_ =>
             {
-                self.next_bit_array_function_local =
-                    self.next_bit_array_function_local.max(local.0 + 1);
-                self.bindings.insert(
+                self.scope.next_bit_array_function_local =
+                    self.scope.next_bit_array_function_local.max(local.0 + 1);
+                self.scope.bindings.insert(
                     name,
                     LocalBinding::Function {
                         binding: FunctionLocalBinding::BitArray {
@@ -824,9 +850,11 @@ impl<'a> PlanContext<'a> {
             (ParamLocal::UtfCodepointFunction { local, type_ }, ValueShape::Function(shape))
                 if shape.type_() == *type_ =>
             {
-                self.next_utf_codepoint_function_local =
-                    self.next_utf_codepoint_function_local.max(local.0 + 1);
-                self.bindings.insert(
+                self.scope.next_utf_codepoint_function_local = self
+                    .scope
+                    .next_utf_codepoint_function_local
+                    .max(local.0 + 1);
+                self.scope.bindings.insert(
                     name,
                     LocalBinding::Function {
                         binding: FunctionLocalBinding::UtfCodepoint {
@@ -840,9 +868,9 @@ impl<'a> PlanContext<'a> {
             (ParamLocal::CustomFunction(local), ValueShape::Function(shape))
                 if shape.type_() == local.type_().to_function_type() =>
             {
-                self.next_custom_function_local =
-                    self.next_custom_function_local.max(local.id().0 + 1);
-                self.bindings.insert(
+                self.scope.next_custom_function_local =
+                    self.scope.next_custom_function_local.max(local.id().0 + 1);
+                self.scope.bindings.insert(
                     name,
                     LocalBinding::Function {
                         binding: FunctionLocalBinding::Custom(local.clone()),
@@ -853,9 +881,11 @@ impl<'a> PlanContext<'a> {
             (ParamLocal::ExternalFunction(local), ValueShape::Function(shape))
                 if shape.type_() == local.type_().to_function_type() =>
             {
-                self.next_external_function_local =
-                    self.next_external_function_local.max(local.id().0 + 1);
-                self.bindings.insert(
+                self.scope.next_external_function_local = self
+                    .scope
+                    .next_external_function_local
+                    .max(local.id().0 + 1);
+                self.scope.bindings.insert(
                     name,
                     LocalBinding::Function {
                         binding: FunctionLocalBinding::External(local.clone()),
@@ -866,8 +896,9 @@ impl<'a> PlanContext<'a> {
             (ParamLocal::BoolFunction { local, type_ }, ValueShape::Function(shape))
                 if shape.type_() == *type_ =>
             {
-                self.next_bool_function_local = self.next_bool_function_local.max(local.0 + 1);
-                self.bindings.insert(
+                self.scope.next_bool_function_local =
+                    self.scope.next_bool_function_local.max(local.0 + 1);
+                self.scope.bindings.insert(
                     name,
                     LocalBinding::Function {
                         binding: FunctionLocalBinding::Bool {
@@ -881,8 +912,9 @@ impl<'a> PlanContext<'a> {
             (ParamLocal::NilFunction { local, type_ }, ValueShape::Function(shape))
                 if shape.type_() == *type_ =>
             {
-                self.next_nil_function_local = self.next_nil_function_local.max(local.0 + 1);
-                self.bindings.insert(
+                self.scope.next_nil_function_local =
+                    self.scope.next_nil_function_local.max(local.0 + 1);
+                self.scope.bindings.insert(
                     name,
                     LocalBinding::Function {
                         binding: FunctionLocalBinding::Nil {
@@ -896,8 +928,9 @@ impl<'a> PlanContext<'a> {
             (ParamLocal::TupleFunction { local, type_ }, ValueShape::Function(shape))
                 if shape.type_() == *type_ =>
             {
-                self.next_tuple_function_local = self.next_tuple_function_local.max(local.0 + 1);
-                self.bindings.insert(
+                self.scope.next_tuple_function_local =
+                    self.scope.next_tuple_function_local.max(local.0 + 1);
+                self.scope.bindings.insert(
                     name,
                     LocalBinding::Function {
                         binding: FunctionLocalBinding::Tuple {
@@ -911,9 +944,9 @@ impl<'a> PlanContext<'a> {
             (ParamLocal::ListFunction(local), ValueShape::Function(shape))
                 if shape.type_() == *local.type_() =>
             {
-                self.next_list_function_local =
-                    self.next_list_function_local.max(local.index() + 1);
-                self.bindings.insert(
+                self.scope.next_list_function_local =
+                    self.scope.next_list_function_local.max(local.index() + 1);
+                self.scope.bindings.insert(
                     name,
                     LocalBinding::Function {
                         binding: FunctionLocalBinding::List(local.clone()),
@@ -924,9 +957,11 @@ impl<'a> PlanContext<'a> {
             (ParamLocal::FunctionFunction(local), ValueShape::Function(shape))
                 if shape.type_() == local.type_().to_function_type() =>
             {
-                self.next_function_function_local =
-                    self.next_function_function_local.max(local.id().0 + 1);
-                self.bindings.insert(
+                self.scope.next_function_function_local = self
+                    .scope
+                    .next_function_function_local
+                    .max(local.id().0 + 1);
+                self.scope.bindings.insert(
                     name,
                     LocalBinding::Function {
                         binding: FunctionLocalBinding::Function(local.clone()),
@@ -937,9 +972,9 @@ impl<'a> PlanContext<'a> {
             (ParamLocal::GenericFunction(local), ValueShape::Function(shape))
                 if local.type_().shape() == *shape =>
             {
-                self.next_generic_function_local =
-                    self.next_generic_function_local.max(local.id().0 + 1);
-                self.bindings.insert(
+                self.scope.next_generic_function_local =
+                    self.scope.next_generic_function_local.max(local.id().0 + 1);
+                self.scope.bindings.insert(
                     name,
                     LocalBinding::Function {
                         binding: FunctionLocalBinding::Generic(local.clone()),
@@ -974,9 +1009,9 @@ impl<'a> PlanContext<'a> {
         type_: FunctionType,
         shape: FunctionShape,
     ) -> IntFunctionLocalId {
-        let local = IntFunctionLocalId(self.next_int_function_local);
-        self.next_int_function_local += 1;
-        self.bindings.insert(
+        let local = IntFunctionLocalId(self.scope.next_int_function_local);
+        self.scope.next_int_function_local += 1;
+        self.scope.bindings.insert(
             name,
             LocalBinding::Function {
                 binding: FunctionLocalBinding::Int { local, type_ },
@@ -987,8 +1022,8 @@ impl<'a> PlanContext<'a> {
     }
 
     pub(super) fn define_internal_int_function_local(&mut self) -> IntFunctionLocalId {
-        let local = IntFunctionLocalId(self.next_int_function_local);
-        self.next_int_function_local += 1;
+        let local = IntFunctionLocalId(self.scope.next_int_function_local);
+        self.scope.next_int_function_local += 1;
         local
     }
 
@@ -1008,9 +1043,9 @@ impl<'a> PlanContext<'a> {
         type_: FunctionType,
         shape: FunctionShape,
     ) -> StringFunctionLocalId {
-        let local = StringFunctionLocalId(self.next_string_function_local);
-        self.next_string_function_local += 1;
-        self.bindings.insert(
+        let local = StringFunctionLocalId(self.scope.next_string_function_local);
+        self.scope.next_string_function_local += 1;
+        self.scope.bindings.insert(
             name,
             LocalBinding::Function {
                 binding: FunctionLocalBinding::String { local, type_ },
@@ -1021,8 +1056,8 @@ impl<'a> PlanContext<'a> {
     }
 
     pub(super) fn define_internal_string_function_local(&mut self) -> StringFunctionLocalId {
-        let local = StringFunctionLocalId(self.next_string_function_local);
-        self.next_string_function_local += 1;
+        let local = StringFunctionLocalId(self.scope.next_string_function_local);
+        self.scope.next_string_function_local += 1;
         local
     }
 
@@ -1042,9 +1077,9 @@ impl<'a> PlanContext<'a> {
         type_: FunctionType,
         shape: FunctionShape,
     ) -> BitArrayFunctionLocalId {
-        let local = BitArrayFunctionLocalId(self.next_bit_array_function_local);
-        self.next_bit_array_function_local += 1;
-        self.bindings.insert(
+        let local = BitArrayFunctionLocalId(self.scope.next_bit_array_function_local);
+        self.scope.next_bit_array_function_local += 1;
+        self.scope.bindings.insert(
             name,
             LocalBinding::Function {
                 binding: FunctionLocalBinding::BitArray { local, type_ },
@@ -1055,8 +1090,8 @@ impl<'a> PlanContext<'a> {
     }
 
     pub(super) fn define_internal_bit_array_function_local(&mut self) -> BitArrayFunctionLocalId {
-        let local = BitArrayFunctionLocalId(self.next_bit_array_function_local);
-        self.next_bit_array_function_local += 1;
+        let local = BitArrayFunctionLocalId(self.scope.next_bit_array_function_local);
+        self.scope.next_bit_array_function_local += 1;
         local
     }
 
@@ -1066,9 +1101,9 @@ impl<'a> PlanContext<'a> {
         type_: FunctionType,
         shape: FunctionShape,
     ) -> UtfCodepointFunctionLocalId {
-        let local = UtfCodepointFunctionLocalId(self.next_utf_codepoint_function_local);
-        self.next_utf_codepoint_function_local += 1;
-        self.bindings.insert(
+        let local = UtfCodepointFunctionLocalId(self.scope.next_utf_codepoint_function_local);
+        self.scope.next_utf_codepoint_function_local += 1;
+        self.scope.bindings.insert(
             name,
             LocalBinding::Function {
                 binding: FunctionLocalBinding::UtfCodepoint { local, type_ },
@@ -1081,8 +1116,8 @@ impl<'a> PlanContext<'a> {
     pub(super) fn define_internal_utf_codepoint_function_local(
         &mut self,
     ) -> UtfCodepointFunctionLocalId {
-        let local = UtfCodepointFunctionLocalId(self.next_utf_codepoint_function_local);
-        self.next_utf_codepoint_function_local += 1;
+        let local = UtfCodepointFunctionLocalId(self.scope.next_utf_codepoint_function_local);
+        self.scope.next_utf_codepoint_function_local += 1;
         local
     }
 
@@ -1106,11 +1141,11 @@ impl<'a> PlanContext<'a> {
         shape: FunctionShape,
     ) -> CustomFunctionLocal {
         let local = CustomFunctionLocal::new(
-            CustomFunctionLocalId(self.next_custom_function_local),
+            CustomFunctionLocalId(self.scope.next_custom_function_local),
             type_,
         );
-        self.next_custom_function_local += 1;
-        self.bindings.insert(
+        self.scope.next_custom_function_local += 1;
+        self.scope.bindings.insert(
             name,
             LocalBinding::Function {
                 binding: FunctionLocalBinding::Custom(local.clone()),
@@ -1125,10 +1160,10 @@ impl<'a> PlanContext<'a> {
         type_: CustomFunctionType,
     ) -> CustomFunctionLocal {
         let local = CustomFunctionLocal::new(
-            CustomFunctionLocalId(self.next_custom_function_local),
+            CustomFunctionLocalId(self.scope.next_custom_function_local),
             type_,
         );
-        self.next_custom_function_local += 1;
+        self.scope.next_custom_function_local += 1;
         local
     }
 
@@ -1139,11 +1174,11 @@ impl<'a> PlanContext<'a> {
         shape: FunctionShape,
     ) -> ExternalFunctionLocal {
         let local = ExternalFunctionLocal::new(
-            ExternalFunctionLocalId(self.next_external_function_local),
+            ExternalFunctionLocalId(self.scope.next_external_function_local),
             type_,
         );
-        self.next_external_function_local += 1;
-        self.bindings.insert(
+        self.scope.next_external_function_local += 1;
+        self.scope.bindings.insert(
             name,
             LocalBinding::Function {
                 binding: FunctionLocalBinding::External(local.clone()),
@@ -1158,10 +1193,10 @@ impl<'a> PlanContext<'a> {
         type_: ExternalFunctionType,
     ) -> ExternalFunctionLocal {
         let local = ExternalFunctionLocal::new(
-            ExternalFunctionLocalId(self.next_external_function_local),
+            ExternalFunctionLocalId(self.scope.next_external_function_local),
             type_,
         );
-        self.next_external_function_local += 1;
+        self.scope.next_external_function_local += 1;
         local
     }
 
@@ -1181,9 +1216,9 @@ impl<'a> PlanContext<'a> {
         type_: FunctionType,
         shape: FunctionShape,
     ) -> FloatFunctionLocalId {
-        let local = FloatFunctionLocalId(self.next_float_function_local);
-        self.next_float_function_local += 1;
-        self.bindings.insert(
+        let local = FloatFunctionLocalId(self.scope.next_float_function_local);
+        self.scope.next_float_function_local += 1;
+        self.scope.bindings.insert(
             name,
             LocalBinding::Function {
                 binding: FunctionLocalBinding::Float { local, type_ },
@@ -1194,8 +1229,8 @@ impl<'a> PlanContext<'a> {
     }
 
     pub(super) fn define_internal_float_function_local(&mut self) -> FloatFunctionLocalId {
-        let local = FloatFunctionLocalId(self.next_float_function_local);
-        self.next_float_function_local += 1;
+        let local = FloatFunctionLocalId(self.scope.next_float_function_local);
+        self.scope.next_float_function_local += 1;
         local
     }
 
@@ -1215,9 +1250,9 @@ impl<'a> PlanContext<'a> {
         type_: FunctionType,
         shape: FunctionShape,
     ) -> BoolFunctionLocalId {
-        let local = BoolFunctionLocalId(self.next_bool_function_local);
-        self.next_bool_function_local += 1;
-        self.bindings.insert(
+        let local = BoolFunctionLocalId(self.scope.next_bool_function_local);
+        self.scope.next_bool_function_local += 1;
+        self.scope.bindings.insert(
             name,
             LocalBinding::Function {
                 binding: FunctionLocalBinding::Bool { local, type_ },
@@ -1228,8 +1263,8 @@ impl<'a> PlanContext<'a> {
     }
 
     pub(super) fn define_internal_bool_function_local(&mut self) -> BoolFunctionLocalId {
-        let local = BoolFunctionLocalId(self.next_bool_function_local);
-        self.next_bool_function_local += 1;
+        let local = BoolFunctionLocalId(self.scope.next_bool_function_local);
+        self.scope.next_bool_function_local += 1;
         local
     }
 
@@ -1249,9 +1284,9 @@ impl<'a> PlanContext<'a> {
         type_: FunctionType,
         shape: FunctionShape,
     ) -> NilFunctionLocalId {
-        let local = NilFunctionLocalId(self.next_nil_function_local);
-        self.next_nil_function_local += 1;
-        self.bindings.insert(
+        let local = NilFunctionLocalId(self.scope.next_nil_function_local);
+        self.scope.next_nil_function_local += 1;
+        self.scope.bindings.insert(
             name,
             LocalBinding::Function {
                 binding: FunctionLocalBinding::Nil { local, type_ },
@@ -1262,8 +1297,8 @@ impl<'a> PlanContext<'a> {
     }
 
     pub(super) fn define_internal_nil_function_local(&mut self) -> NilFunctionLocalId {
-        let local = NilFunctionLocalId(self.next_nil_function_local);
-        self.next_nil_function_local += 1;
+        let local = NilFunctionLocalId(self.scope.next_nil_function_local);
+        self.scope.next_nil_function_local += 1;
         local
     }
 
@@ -1283,9 +1318,9 @@ impl<'a> PlanContext<'a> {
         type_: FunctionType,
         shape: FunctionShape,
     ) -> TupleFunctionLocalId {
-        let local = TupleFunctionLocalId(self.next_tuple_function_local);
-        self.next_tuple_function_local += 1;
-        self.bindings.insert(
+        let local = TupleFunctionLocalId(self.scope.next_tuple_function_local);
+        self.scope.next_tuple_function_local += 1;
+        self.scope.bindings.insert(
             name,
             LocalBinding::Function {
                 binding: FunctionLocalBinding::Tuple { local, type_ },
@@ -1296,8 +1331,8 @@ impl<'a> PlanContext<'a> {
     }
 
     pub(super) fn define_internal_tuple_function_local(&mut self) -> TupleFunctionLocalId {
-        let local = TupleFunctionLocalId(self.next_tuple_function_local);
-        self.next_tuple_function_local += 1;
+        let local = TupleFunctionLocalId(self.scope.next_tuple_function_local);
+        self.scope.next_tuple_function_local += 1;
         local
     }
 
@@ -1319,10 +1354,13 @@ impl<'a> PlanContext<'a> {
         item_type: ValueType,
         shape: FunctionShape,
     ) -> ListFunctionLocal {
-        let local =
-            ListFunctionLocal::from_item_type(self.next_list_function_local, type_, item_type);
-        self.next_list_function_local += 1;
-        self.bindings.insert(
+        let local = ListFunctionLocal::from_item_type(
+            self.scope.next_list_function_local,
+            type_,
+            item_type,
+        );
+        self.scope.next_list_function_local += 1;
+        self.scope.bindings.insert(
             name,
             LocalBinding::Function {
                 binding: FunctionLocalBinding::List(local.clone()),
@@ -1337,9 +1375,12 @@ impl<'a> PlanContext<'a> {
         type_: FunctionType,
         item_type: ValueType,
     ) -> ListFunctionLocal {
-        let local =
-            ListFunctionLocal::from_item_type(self.next_list_function_local, type_, item_type);
-        self.next_list_function_local += 1;
+        let local = ListFunctionLocal::from_item_type(
+            self.scope.next_list_function_local,
+            type_,
+            item_type,
+        );
+        self.scope.next_list_function_local += 1;
         local
     }
 
@@ -1360,11 +1401,11 @@ impl<'a> PlanContext<'a> {
         shape: FunctionShape,
     ) -> FunctionFunctionLocal {
         let local = FunctionFunctionLocal::new(
-            FunctionFunctionLocalId(self.next_function_function_local),
+            FunctionFunctionLocalId(self.scope.next_function_function_local),
             type_,
         );
-        self.next_function_function_local += 1;
-        self.bindings.insert(
+        self.scope.next_function_function_local += 1;
+        self.scope.bindings.insert(
             name,
             LocalBinding::Function {
                 binding: FunctionLocalBinding::Function(local.clone()),
@@ -1379,17 +1420,18 @@ impl<'a> PlanContext<'a> {
         type_: FunctionFunctionType,
     ) -> FunctionFunctionLocal {
         let local = FunctionFunctionLocal::new(
-            FunctionFunctionLocalId(self.next_function_function_local),
+            FunctionFunctionLocalId(self.scope.next_function_function_local),
             type_,
         );
-        self.next_function_function_local += 1;
+        self.scope.next_function_function_local += 1;
         local
     }
 
     pub(super) fn define_int_local(&mut self, name: EcoString) -> IntLocalId {
-        let local = IntLocalId(self.next_int_local);
-        self.next_int_local += 1;
-        self.bindings
+        let local = IntLocalId(self.scope.next_int_local);
+        self.scope.next_int_local += 1;
+        self.scope
+            .bindings
             .insert(name, LocalBinding::Primitive(LocalId::Int(local)));
         local
     }
@@ -1400,11 +1442,12 @@ impl<'a> PlanContext<'a> {
         parameter: crate::plan::TypeParameterId,
     ) -> crate::plan::GenericLocal {
         let local = crate::plan::GenericLocal::new(
-            crate::plan::GenericLocalId(self.next_generic_local),
+            crate::plan::GenericLocalId(self.scope.next_generic_local),
             parameter,
         );
-        self.next_generic_local += 1;
-        self.bindings
+        self.scope.next_generic_local += 1;
+        self.scope
+            .bindings
             .insert(name, LocalBinding::Primitive(LocalId::Generic(local)));
         local
     }
@@ -1414,10 +1457,10 @@ impl<'a> PlanContext<'a> {
         parameter: crate::plan::TypeParameterId,
     ) -> crate::plan::GenericLocal {
         let local = crate::plan::GenericLocal::new(
-            crate::plan::GenericLocalId(self.next_generic_local),
+            crate::plan::GenericLocalId(self.scope.next_generic_local),
             parameter,
         );
-        self.next_generic_local += 1;
+        self.scope.next_generic_local += 1;
         local
     }
 
@@ -1428,11 +1471,11 @@ impl<'a> PlanContext<'a> {
         shape: FunctionShape,
     ) -> crate::plan::GenericFunctionLocal {
         let local = crate::plan::GenericFunctionLocal::new(
-            crate::plan::GenericFunctionLocalId(self.next_generic_function_local),
+            crate::plan::GenericFunctionLocalId(self.scope.next_generic_function_local),
             type_,
         );
-        self.next_generic_function_local += 1;
-        self.bindings.insert(
+        self.scope.next_generic_function_local += 1;
+        self.scope.bindings.insert(
             name,
             LocalBinding::Function {
                 binding: FunctionLocalBinding::Generic(local.clone()),
@@ -1447,58 +1490,61 @@ impl<'a> PlanContext<'a> {
         type_: crate::plan::GenericFunctionType,
     ) -> crate::plan::GenericFunctionLocal {
         let local = crate::plan::GenericFunctionLocal::new(
-            crate::plan::GenericFunctionLocalId(self.next_generic_function_local),
+            crate::plan::GenericFunctionLocalId(self.scope.next_generic_function_local),
             type_,
         );
-        self.next_generic_function_local += 1;
+        self.scope.next_generic_function_local += 1;
         local
     }
 
     pub(super) fn define_internal_int_local(&mut self) -> IntLocalId {
-        let local = IntLocalId(self.next_int_local);
-        self.next_int_local += 1;
+        let local = IntLocalId(self.scope.next_int_local);
+        self.scope.next_int_local += 1;
         local
     }
 
     pub(super) fn define_string_local(&mut self, name: EcoString) -> StringLocalId {
-        let local = StringLocalId(self.next_string_local);
-        self.next_string_local += 1;
-        self.bindings
+        let local = StringLocalId(self.scope.next_string_local);
+        self.scope.next_string_local += 1;
+        self.scope
+            .bindings
             .insert(name, LocalBinding::Primitive(LocalId::String(local)));
         local
     }
 
     pub(super) fn define_internal_string_local(&mut self) -> StringLocalId {
-        let local = StringLocalId(self.next_string_local);
-        self.next_string_local += 1;
+        let local = StringLocalId(self.scope.next_string_local);
+        self.scope.next_string_local += 1;
         local
     }
 
     pub(super) fn define_bit_array_local(&mut self, name: EcoString) -> BitArrayLocalId {
-        let local = BitArrayLocalId(self.next_bit_array_local);
-        self.next_bit_array_local += 1;
-        self.bindings
+        let local = BitArrayLocalId(self.scope.next_bit_array_local);
+        self.scope.next_bit_array_local += 1;
+        self.scope
+            .bindings
             .insert(name, LocalBinding::Primitive(LocalId::BitArray(local)));
         local
     }
 
     pub(super) fn define_internal_bit_array_local(&mut self) -> BitArrayLocalId {
-        let local = BitArrayLocalId(self.next_bit_array_local);
-        self.next_bit_array_local += 1;
+        let local = BitArrayLocalId(self.scope.next_bit_array_local);
+        self.scope.next_bit_array_local += 1;
         local
     }
 
     pub(super) fn define_utf_codepoint_local(&mut self, name: EcoString) -> UtfCodepointLocalId {
-        let local = UtfCodepointLocalId(self.next_utf_codepoint_local);
-        self.next_utf_codepoint_local += 1;
-        self.bindings
+        let local = UtfCodepointLocalId(self.scope.next_utf_codepoint_local);
+        self.scope.next_utf_codepoint_local += 1;
+        self.scope
+            .bindings
             .insert(name, LocalBinding::Primitive(LocalId::UtfCodepoint(local)));
         local
     }
 
     pub(super) fn define_internal_utf_codepoint_local(&mut self) -> UtfCodepointLocalId {
-        let local = UtfCodepointLocalId(self.next_utf_codepoint_local);
-        self.next_utf_codepoint_local += 1;
+        let local = UtfCodepointLocalId(self.scope.next_utf_codepoint_local);
+        self.scope.next_utf_codepoint_local += 1;
         local
     }
 
@@ -1507,9 +1553,9 @@ impl<'a> PlanContext<'a> {
         name: EcoString,
         shape: CustomValueShape,
     ) -> CustomLocalId {
-        let local = CustomLocalId(self.next_custom_local);
-        self.next_custom_local += 1;
-        self.bindings.insert(
+        let local = CustomLocalId(self.scope.next_custom_local);
+        self.scope.next_custom_local += 1;
+        self.scope.bindings.insert(
             name,
             LocalBinding::Custom(crate::plan::CustomLocal::from_shape(local, shape)),
         );
@@ -1517,8 +1563,8 @@ impl<'a> PlanContext<'a> {
     }
 
     pub(super) fn define_internal_custom_local(&mut self) -> CustomLocalId {
-        let local = CustomLocalId(self.next_custom_local);
-        self.next_custom_local += 1;
+        let local = CustomLocalId(self.scope.next_custom_local);
+        self.scope.next_custom_local += 1;
         local
     }
 
@@ -1527,9 +1573,9 @@ impl<'a> PlanContext<'a> {
         name: EcoString,
         shape: crate::plan::ExternalValueShape,
     ) -> ExternalLocalId {
-        let local = ExternalLocalId(self.next_external_local);
-        self.next_external_local += 1;
-        self.bindings.insert(
+        let local = ExternalLocalId(self.scope.next_external_local);
+        self.scope.next_external_local += 1;
+        self.scope.bindings.insert(
             name,
             LocalBinding::External(crate::plan::ExternalLocal::from_shape(local, shape)),
         );
@@ -1537,50 +1583,53 @@ impl<'a> PlanContext<'a> {
     }
 
     pub(super) fn define_internal_external_local(&mut self) -> ExternalLocalId {
-        let local = ExternalLocalId(self.next_external_local);
-        self.next_external_local += 1;
+        let local = ExternalLocalId(self.scope.next_external_local);
+        self.scope.next_external_local += 1;
         local
     }
 
     pub(super) fn define_float_local(&mut self, name: EcoString) -> FloatLocalId {
-        let local = FloatLocalId(self.next_float_local);
-        self.next_float_local += 1;
-        self.bindings
+        let local = FloatLocalId(self.scope.next_float_local);
+        self.scope.next_float_local += 1;
+        self.scope
+            .bindings
             .insert(name, LocalBinding::Primitive(LocalId::Float(local)));
         local
     }
 
     pub(super) fn define_internal_float_local(&mut self) -> FloatLocalId {
-        let local = FloatLocalId(self.next_float_local);
-        self.next_float_local += 1;
+        let local = FloatLocalId(self.scope.next_float_local);
+        self.scope.next_float_local += 1;
         local
     }
 
     pub(super) fn define_bool_local(&mut self, name: EcoString) -> BoolLocalId {
-        let local = BoolLocalId(self.next_bool_local);
-        self.next_bool_local += 1;
-        self.bindings
+        let local = BoolLocalId(self.scope.next_bool_local);
+        self.scope.next_bool_local += 1;
+        self.scope
+            .bindings
             .insert(name, LocalBinding::Primitive(LocalId::Bool(local)));
         local
     }
 
     pub(super) fn define_internal_bool_local(&mut self) -> BoolLocalId {
-        let local = BoolLocalId(self.next_bool_local);
-        self.next_bool_local += 1;
+        let local = BoolLocalId(self.scope.next_bool_local);
+        self.scope.next_bool_local += 1;
         local
     }
 
     pub(super) fn define_nil_local(&mut self, name: EcoString) -> NilLocalId {
-        let local = NilLocalId(self.next_nil_local);
-        self.next_nil_local += 1;
-        self.bindings
+        let local = NilLocalId(self.scope.next_nil_local);
+        self.scope.next_nil_local += 1;
+        self.scope
+            .bindings
             .insert(name, LocalBinding::Primitive(LocalId::Nil(local)));
         local
     }
 
     pub(super) fn define_internal_nil_local(&mut self) -> NilLocalId {
-        let local = NilLocalId(self.next_nil_local);
-        self.next_nil_local += 1;
+        let local = NilLocalId(self.scope.next_nil_local);
+        self.scope.next_nil_local += 1;
         local
     }
 
@@ -1603,16 +1652,17 @@ impl<'a> PlanContext<'a> {
         name: EcoString,
         shape: Box<[ValueShape]>,
     ) -> TupleLocalId {
-        let local = TupleLocalId(self.next_tuple_local);
-        self.next_tuple_local += 1;
-        self.bindings
+        let local = TupleLocalId(self.scope.next_tuple_local);
+        self.scope.next_tuple_local += 1;
+        self.scope
+            .bindings
             .insert(name, LocalBinding::Tuple { local, shape });
         local
     }
 
     pub(super) fn define_internal_tuple_local(&mut self) -> TupleLocalId {
-        let local = TupleLocalId(self.next_tuple_local);
-        self.next_tuple_local += 1;
+        let local = TupleLocalId(self.scope.next_tuple_local);
+        self.scope.next_tuple_local += 1;
         local
     }
 
@@ -1622,7 +1672,7 @@ impl<'a> PlanContext<'a> {
         item_shape: ValueShape,
     ) -> ListLocal {
         let local = self.next_list_local(item_shape.value_type());
-        self.bindings.insert(
+        self.scope.bindings.insert(
             name,
             LocalBinding::List {
                 local: local.clone(),
@@ -1639,7 +1689,7 @@ impl<'a> PlanContext<'a> {
     ) -> (ListLocal, ListLocalExpr) {
         let item_shape = value.item_shape().clone();
         let (local, value) = self.next_list_local_expr(value);
-        self.bindings.insert(
+        self.scope.bindings.insert(
             name,
             LocalBinding::List {
                 local: local.clone(),
@@ -1663,7 +1713,7 @@ impl<'a> PlanContext<'a> {
         item_shape: ValueShape,
     ) -> PlannedCapture {
         let local = self.next_list_local(item_shape.value_type());
-        self.bindings.insert(
+        self.scope.bindings.insert(
             name,
             LocalBinding::List {
                 local: local.clone(),
@@ -1680,68 +1730,68 @@ impl<'a> PlanContext<'a> {
     fn next_list_local(&mut self, element_type: ValueType) -> ListLocal {
         match element_type {
             ValueType::Parameter(parameter) => {
-                let local = crate::plan::GenericListLocalId(self.next_generic_list_local);
-                self.next_generic_list_local += 1;
+                let local = crate::plan::GenericListLocalId(self.scope.next_generic_list_local);
+                self.scope.next_generic_list_local += 1;
                 ListLocal::generic(local, parameter)
             }
             ValueType::Int => {
-                let local = IntListLocalId(self.next_int_list_local);
-                self.next_int_list_local += 1;
+                let local = IntListLocalId(self.scope.next_int_list_local);
+                self.scope.next_int_list_local += 1;
                 ListLocal::int(local)
             }
             ValueType::String => {
-                let local = StringListLocalId(self.next_string_list_local);
-                self.next_string_list_local += 1;
+                let local = StringListLocalId(self.scope.next_string_list_local);
+                self.scope.next_string_list_local += 1;
                 ListLocal::string(local)
             }
             ValueType::BitArray => {
-                let local = BitArrayListLocalId(self.next_bit_array_list_local);
-                self.next_bit_array_list_local += 1;
+                let local = BitArrayListLocalId(self.scope.next_bit_array_list_local);
+                self.scope.next_bit_array_list_local += 1;
                 ListLocal::bit_array(local)
             }
             ValueType::UtfCodepoint => {
-                let local = UtfCodepointListLocalId(self.next_utf_codepoint_list_local);
-                self.next_utf_codepoint_list_local += 1;
+                let local = UtfCodepointListLocalId(self.scope.next_utf_codepoint_list_local);
+                self.scope.next_utf_codepoint_list_local += 1;
                 ListLocal::utf_codepoint(local)
             }
             ValueType::Custom(item_type) => {
-                let local = CustomListLocalId(self.next_custom_list_local);
-                self.next_custom_list_local += 1;
+                let local = CustomListLocalId(self.scope.next_custom_list_local);
+                self.scope.next_custom_list_local += 1;
                 ListLocal::custom(local, item_type)
             }
             ValueType::External(item_type) => {
-                let local = ExternalListLocalId(self.next_external_list_local);
-                self.next_external_list_local += 1;
+                let local = ExternalListLocalId(self.scope.next_external_list_local);
+                self.scope.next_external_list_local += 1;
                 ListLocal::external(local, item_type)
             }
             ValueType::Float => {
-                let local = FloatListLocalId(self.next_float_list_local);
-                self.next_float_list_local += 1;
+                let local = FloatListLocalId(self.scope.next_float_list_local);
+                self.scope.next_float_list_local += 1;
                 ListLocal::float(local)
             }
             ValueType::Bool => {
-                let local = BoolListLocalId(self.next_bool_list_local);
-                self.next_bool_list_local += 1;
+                let local = BoolListLocalId(self.scope.next_bool_list_local);
+                self.scope.next_bool_list_local += 1;
                 ListLocal::bool(local)
             }
             ValueType::Nil => {
-                let local = NilListLocalId(self.next_nil_list_local);
-                self.next_nil_list_local += 1;
+                let local = NilListLocalId(self.scope.next_nil_list_local);
+                self.scope.next_nil_list_local += 1;
                 ListLocal::nil(local)
             }
             ValueType::Tuple(item_type) => {
-                let local = TupleListLocalId(self.next_tuple_list_local);
-                self.next_tuple_list_local += 1;
+                let local = TupleListLocalId(self.scope.next_tuple_list_local);
+                self.scope.next_tuple_list_local += 1;
                 ListLocal::tuple(local, item_type)
             }
             ValueType::List(item_type) => {
-                let local = ListListLocalId(self.next_list_list_local);
-                self.next_list_list_local += 1;
+                let local = ListListLocalId(self.scope.next_list_list_local);
+                self.scope.next_list_list_local += 1;
                 ListLocal::list(local, *item_type)
             }
             ValueType::Function(item_type) => {
-                let local = FunctionListLocalId(self.next_function_list_local);
-                self.next_function_list_local += 1;
+                let local = FunctionListLocalId(self.scope.next_function_list_local);
+                self.scope.next_function_list_local += 1;
                 ListLocal::function(local, *item_type)
             }
         }
@@ -1750,8 +1800,8 @@ impl<'a> PlanContext<'a> {
     fn next_list_local_expr(&mut self, value: ListExpr) -> (ListLocal, ListLocalExpr) {
         match value {
             ListExpr::Generic(value) => {
-                let local = crate::plan::GenericListLocalId(self.next_generic_list_local);
-                self.next_generic_list_local += 1;
+                let local = crate::plan::GenericListLocalId(self.scope.next_generic_list_local);
+                self.scope.next_generic_list_local += 1;
                 let parameter = value.item().parameter();
                 (
                     ListLocal::generic(local, parameter),
@@ -1763,8 +1813,8 @@ impl<'a> PlanContext<'a> {
                 )
             }
             ListExpr::ParameterList(value) => {
-                let local = ListListLocalId(self.next_list_list_local);
-                self.next_list_list_local += 1;
+                let local = ListListLocalId(self.scope.next_list_list_local);
+                self.scope.next_list_list_local += 1;
                 let parameter = value.item().parameter();
                 (
                     ListLocal::list(local, ValueType::Parameter(parameter)),
@@ -1776,37 +1826,37 @@ impl<'a> PlanContext<'a> {
                 )
             }
             ListExpr::Int(value) => {
-                let local = IntListLocalId(self.next_int_list_local);
-                self.next_int_list_local += 1;
+                let local = IntListLocalId(self.scope.next_int_list_local);
+                self.scope.next_int_list_local += 1;
                 (ListLocal::int(local), ListLocalExpr::Int { local, value })
             }
             ListExpr::String(value) => {
-                let local = StringListLocalId(self.next_string_list_local);
-                self.next_string_list_local += 1;
+                let local = StringListLocalId(self.scope.next_string_list_local);
+                self.scope.next_string_list_local += 1;
                 (
                     ListLocal::string(local),
                     ListLocalExpr::String { local, value },
                 )
             }
             ListExpr::BitArray(value) => {
-                let local = BitArrayListLocalId(self.next_bit_array_list_local);
-                self.next_bit_array_list_local += 1;
+                let local = BitArrayListLocalId(self.scope.next_bit_array_list_local);
+                self.scope.next_bit_array_list_local += 1;
                 (
                     ListLocal::bit_array(local),
                     ListLocalExpr::BitArray { local, value },
                 )
             }
             ListExpr::UtfCodepoint(value) => {
-                let local = UtfCodepointListLocalId(self.next_utf_codepoint_list_local);
-                self.next_utf_codepoint_list_local += 1;
+                let local = UtfCodepointListLocalId(self.scope.next_utf_codepoint_list_local);
+                self.scope.next_utf_codepoint_list_local += 1;
                 (
                     ListLocal::utf_codepoint(local),
                     ListLocalExpr::UtfCodepoint { local, value },
                 )
             }
             ListExpr::Custom(value) => {
-                let local = CustomListLocalId(self.next_custom_list_local);
-                self.next_custom_list_local += 1;
+                let local = CustomListLocalId(self.scope.next_custom_list_local);
+                self.scope.next_custom_list_local += 1;
                 let item_type = value.item().item_type();
                 (
                     ListLocal::custom(local, item_type.clone()),
@@ -1818,8 +1868,8 @@ impl<'a> PlanContext<'a> {
                 )
             }
             ListExpr::External(value) => {
-                let local = ExternalListLocalId(self.next_external_list_local);
-                self.next_external_list_local += 1;
+                let local = ExternalListLocalId(self.scope.next_external_list_local);
+                self.scope.next_external_list_local += 1;
                 let item_type = value.item().item_type();
                 (
                     ListLocal::external(local, item_type.clone()),
@@ -1831,26 +1881,26 @@ impl<'a> PlanContext<'a> {
                 )
             }
             ListExpr::Float(value) => {
-                let local = FloatListLocalId(self.next_float_list_local);
-                self.next_float_list_local += 1;
+                let local = FloatListLocalId(self.scope.next_float_list_local);
+                self.scope.next_float_list_local += 1;
                 (
                     ListLocal::float(local),
                     ListLocalExpr::Float { local, value },
                 )
             }
             ListExpr::Bool(value) => {
-                let local = BoolListLocalId(self.next_bool_list_local);
-                self.next_bool_list_local += 1;
+                let local = BoolListLocalId(self.scope.next_bool_list_local);
+                self.scope.next_bool_list_local += 1;
                 (ListLocal::bool(local), ListLocalExpr::Bool { local, value })
             }
             ListExpr::Nil(value) => {
-                let local = NilListLocalId(self.next_nil_list_local);
-                self.next_nil_list_local += 1;
+                let local = NilListLocalId(self.scope.next_nil_list_local);
+                self.scope.next_nil_list_local += 1;
                 (ListLocal::nil(local), ListLocalExpr::Nil { local, value })
             }
             ListExpr::Tuple(value) => {
-                let local = TupleListLocalId(self.next_tuple_list_local);
-                self.next_tuple_list_local += 1;
+                let local = TupleListLocalId(self.scope.next_tuple_list_local);
+                self.scope.next_tuple_list_local += 1;
                 let item_type = value.item().item_type();
                 (
                     ListLocal::tuple(local, item_type.clone()),
@@ -1862,8 +1912,8 @@ impl<'a> PlanContext<'a> {
                 )
             }
             ListExpr::List(value) => {
-                let local = ListListLocalId(self.next_list_list_local);
-                self.next_list_list_local += 1;
+                let local = ListListLocalId(self.scope.next_list_list_local);
+                self.scope.next_list_list_local += 1;
                 let item_type = value.item().item_type();
                 (
                     ListLocal::list(local, item_type.as_ref().clone()),
@@ -1875,8 +1925,8 @@ impl<'a> PlanContext<'a> {
                 )
             }
             ListExpr::Function(value) => {
-                let local = FunctionListLocalId(self.next_function_list_local);
-                self.next_function_list_local += 1;
+                let local = FunctionListLocalId(self.scope.next_function_list_local);
+                self.scope.next_function_list_local += 1;
                 let item_type = value.item().item_type();
                 (
                     ListLocal::function(local, item_type.clone()),
@@ -1893,51 +1943,59 @@ impl<'a> PlanContext<'a> {
     fn bump_list_local(&mut self, local: &ListLocal) {
         match local {
             ListLocal::Generic { local, .. } => {
-                self.next_generic_list_local = self.next_generic_list_local.max(local.0 + 1);
+                self.scope.next_generic_list_local =
+                    self.scope.next_generic_list_local.max(local.0 + 1);
             }
             ListLocal::Int(local) => {
-                self.next_int_list_local = self.next_int_list_local.max(local.0 + 1);
+                self.scope.next_int_list_local = self.scope.next_int_list_local.max(local.0 + 1);
             }
             ListLocal::String(local) => {
-                self.next_string_list_local = self.next_string_list_local.max(local.0 + 1);
+                self.scope.next_string_list_local =
+                    self.scope.next_string_list_local.max(local.0 + 1);
             }
             ListLocal::BitArray(local) => {
-                self.next_bit_array_list_local = self.next_bit_array_list_local.max(local.0 + 1);
+                self.scope.next_bit_array_list_local =
+                    self.scope.next_bit_array_list_local.max(local.0 + 1);
             }
             ListLocal::UtfCodepoint(local) => {
-                self.next_utf_codepoint_list_local =
-                    self.next_utf_codepoint_list_local.max(local.0 + 1);
+                self.scope.next_utf_codepoint_list_local =
+                    self.scope.next_utf_codepoint_list_local.max(local.0 + 1);
             }
             ListLocal::Custom { local, .. } => {
-                self.next_custom_list_local = self.next_custom_list_local.max(local.0 + 1);
+                self.scope.next_custom_list_local =
+                    self.scope.next_custom_list_local.max(local.0 + 1);
             }
             ListLocal::External { local, .. } => {
-                self.next_external_list_local = self.next_external_list_local.max(local.0 + 1);
+                self.scope.next_external_list_local =
+                    self.scope.next_external_list_local.max(local.0 + 1);
             }
             ListLocal::Float(local) => {
-                self.next_float_list_local = self.next_float_list_local.max(local.0 + 1);
+                self.scope.next_float_list_local =
+                    self.scope.next_float_list_local.max(local.0 + 1);
             }
             ListLocal::Bool(local) => {
-                self.next_bool_list_local = self.next_bool_list_local.max(local.0 + 1);
+                self.scope.next_bool_list_local = self.scope.next_bool_list_local.max(local.0 + 1);
             }
             ListLocal::Nil(local) => {
-                self.next_nil_list_local = self.next_nil_list_local.max(local.0 + 1);
+                self.scope.next_nil_list_local = self.scope.next_nil_list_local.max(local.0 + 1);
             }
             ListLocal::Tuple { local, .. } => {
-                self.next_tuple_list_local = self.next_tuple_list_local.max(local.0 + 1);
+                self.scope.next_tuple_list_local =
+                    self.scope.next_tuple_list_local.max(local.0 + 1);
             }
             ListLocal::List { local, .. } => {
-                self.next_list_list_local = self.next_list_list_local.max(local.0 + 1);
+                self.scope.next_list_list_local = self.scope.next_list_list_local.max(local.0 + 1);
             }
             ListLocal::Function { local, .. } => {
-                self.next_function_list_local = self.next_function_list_local.max(local.0 + 1);
+                self.scope.next_function_list_local =
+                    self.scope.next_function_list_local.max(local.0 + 1);
             }
         }
     }
 
     #[cfg(test)]
     pub(super) fn lookup_local(&self, name: &EcoString) -> Option<(LocalId, ValueType)> {
-        match self.bindings.get(name)? {
+        match self.scope.bindings.get(name)? {
             LocalBinding::Primitive(local) => Some((*local, local.value_type())),
             LocalBinding::Custom(_)
             | LocalBinding::External(_)
@@ -1952,7 +2010,7 @@ impl<'a> PlanContext<'a> {
         &self,
         name: &EcoString,
     ) -> Option<(TupleLocalId, Box<[ValueShape]>)> {
-        match self.bindings.get(name)? {
+        match self.scope.bindings.get(name)? {
             LocalBinding::Tuple { local, shape } => Some((*local, shape.clone())),
             LocalBinding::Primitive(_)
             | LocalBinding::Custom(_)
@@ -1964,7 +2022,7 @@ impl<'a> PlanContext<'a> {
 
     #[cfg(test)]
     pub(super) fn lookup_list_local(&self, name: &EcoString) -> Option<(ListLocal, ValueShape)> {
-        match self.bindings.get(name)? {
+        match self.scope.bindings.get(name)? {
             LocalBinding::List { local, item_shape } => Some((local.clone(), item_shape.clone())),
             LocalBinding::Primitive(_)
             | LocalBinding::Custom(_)
@@ -1979,7 +2037,7 @@ impl<'a> PlanContext<'a> {
         &self,
         name: &EcoString,
     ) -> Option<crate::plan::ExternalLocal> {
-        match self.bindings.get(name)? {
+        match self.scope.bindings.get(name)? {
             LocalBinding::External(local) => Some(local.clone()),
             LocalBinding::Primitive(_)
             | LocalBinding::Custom(_)
@@ -2092,7 +2150,7 @@ impl<'a> PlanContext<'a> {
         &self,
         name: &EcoString,
     ) -> Option<(FunctionLocalBinding, FunctionShape)> {
-        match self.bindings.get(name)? {
+        match self.scope.bindings.get(name)? {
             LocalBinding::Function { binding, shape } => Some((binding.clone(), shape.clone())),
             LocalBinding::Primitive(_)
             | LocalBinding::Custom(_)
@@ -2123,7 +2181,8 @@ impl<'a> PlanContext<'a> {
     }
 
     fn require_local_binding(&self, name: &EcoString) -> Result<&LocalBinding, PlanError> {
-        self.bindings
+        self.scope
+            .bindings
             .get(name)
             .ok_or_else(|| PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
@@ -2160,49 +2219,32 @@ impl<'a> PlanContext<'a> {
     ) -> PlanContext<'_> {
         PlanContext {
             module_name: self.module_name,
-            current_function: function_name,
             registry: self.registry,
             anonymous_functions: self.anonymous_functions,
-            bindings: HashMap::new(),
-            next_generic_local: 0,
-            next_int_local: 0,
-            next_float_local: 0,
-            next_string_local: 0,
-            next_bit_array_local: 0,
-            next_utf_codepoint_local: 0,
-            next_custom_local: 0,
-            next_external_local: 0,
-            next_bool_local: 0,
-            next_nil_local: 0,
-            next_tuple_local: 0,
-            next_int_list_local: 0,
-            next_string_list_local: 0,
-            next_bit_array_list_local: 0,
-            next_utf_codepoint_list_local: 0,
-            next_custom_list_local: 0,
-            next_external_list_local: 0,
-            next_float_list_local: 0,
-            next_bool_list_local: 0,
-            next_nil_list_local: 0,
-            next_tuple_list_local: 0,
-            next_list_list_local: 0,
-            next_function_list_local: 0,
-            next_generic_list_local: 0,
-            next_int_function_local: 0,
-            next_float_function_local: 0,
-            next_string_function_local: 0,
-            next_bit_array_function_local: 0,
-            next_utf_codepoint_function_local: 0,
-            next_custom_function_local: 0,
-            next_external_function_local: 0,
-            next_bool_function_local: 0,
-            next_nil_function_local: 0,
-            next_tuple_function_local: 0,
-            next_list_function_local: 0,
-            next_function_function_local: 0,
-            next_generic_function_local: 0,
-            type_parameters,
+            pending_functions: std::collections::VecDeque::new(),
+            scope: FunctionScope::new(function_name, type_parameters),
         }
+    }
+
+    pub(super) fn into_function_scope(self) -> FunctionScope {
+        self.scope
+    }
+
+    pub(super) fn set_function_scope(&mut self, scope: FunctionScope) {
+        self.scope = scope;
+    }
+
+    pub(super) fn schedule_anonymous_function(
+        &mut self,
+        body: super::function::AnonymousFunctionBody,
+    ) {
+        self.pending_functions.push_back(body);
+    }
+
+    pub(super) fn next_anonymous_function(
+        &mut self,
+    ) -> Option<super::function::AnonymousFunctionBody> {
+        self.pending_functions.pop_front()
     }
 
     pub(super) fn capture_bindings(
@@ -2235,9 +2277,9 @@ impl<'a> PlanContext<'a> {
         &mut self,
         f: impl FnOnce(&mut Self) -> Result<T, E>,
     ) -> Result<T, E> {
-        let bindings = self.bindings.clone();
+        let bindings = self.scope.bindings.clone();
         let result = f(self);
-        self.bindings = bindings;
+        self.scope.bindings = bindings;
         result
     }
 

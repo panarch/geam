@@ -5,7 +5,7 @@ use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError,
 };
-use crate::planner::function::{anonymous_function_plan, plan_anonymous_function_body};
+use crate::planner::function::prepare_anonymous_function_body;
 use crate::planner::module::function_params_in;
 use crate::planner::type_parameter::TypeParameterScope;
 use gleam_compiler_core::ast::{
@@ -181,30 +181,12 @@ fn plan_anonymous_with_captures(
 ) -> Result<Expr, PlanError> {
     let return_shape = function_shape.return_shape().clone();
     let name = context.reserve_anonymous_function_name();
-    let (name, info) = context.allocate_anonymous_function_shape(
-        name,
-        return_shape.clone(),
-        params.clone(),
-        type_parameters.clone(),
-    );
-
-    let planned = {
-        let mut body_context = context.anonymous_function_context(name.clone(), type_parameters);
-        plan_anonymous_function_body(
-            &name,
-            &return_shape,
-            &params,
-            captures,
-            body,
-            &mut body_context,
-        )
-    };
-
-    let planned = planned?;
+    let (name, info) =
+        context.allocate_anonymous_function_shape(name, return_shape, params, type_parameters);
     let instantiation = info.signature.identity_instantiation();
-    let (function, captures) = anonymous_function_plan(info, name, planned);
+    let (body, captures) = prepare_anonymous_function_body(name, info, captures, body, context)?;
     let value = closure_expr(instantiation, captures, &function_shape);
-    context.push_anonymous_function(function);
+    context.schedule_anonymous_function(body);
     Ok(Expr::function(
         value.resolve_constructed_shape(function_shape),
     ))
@@ -491,6 +473,175 @@ pub fn main() {
         );
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_nested_and_sibling_closures_in_discovery_order() {
+        let source = r#"
+pub fn main() {
+  let seed = 40
+  let first = fn() {
+    let one = fn() { seed + 1 }
+    one()
+  }
+  let second = fn() {
+    let two = fn() { seed + 2 }
+    two()
+  }
+  first() + second()
+}
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
+        let expected = module_with_anonymous(
+            "main",
+            function(
+                "main",
+                call_int_function_at(
+                    local_int_function(0, "first", Vec::<ValueType>::new()),
+                    [],
+                    host_call_site(source, "main", "first()"),
+                )
+                .add_int(call_int_function_at(
+                    local_int_function(1, "second", Vec::<ValueType>::new()),
+                    [],
+                    host_call_site(source, "main", "second()"),
+                )),
+            )
+            .let_int(0, "seed", int(40))
+            .step(let_int_function_step(
+                0,
+                "first",
+                int_function_closure(1, Vec::<LocalId>::new(), [capture_int(0)]),
+            ))
+            .step(let_int_function_step(
+                1,
+                "second",
+                int_function_closure(2, Vec::<LocalId>::new(), [capture_int(0)]),
+            )),
+            [],
+            [
+                function(
+                    "<anonymous:0>",
+                    call_int_function_at(
+                        local_int_function(0, "one", Vec::<ValueType>::new()),
+                        [],
+                        host_call_site(source, "<anonymous:0>", "one()"),
+                    ),
+                )
+                .capture(crate::plan::ParamSlot::from_local(ParamLocal::int(
+                    IntLocalId(0),
+                )))
+                .step(let_int_function_step(
+                    0,
+                    "one",
+                    int_function_closure(3, Vec::<LocalId>::new(), [capture_int(0)]),
+                )),
+                function(
+                    "<anonymous:1>",
+                    call_int_function_at(
+                        local_int_function(0, "two", Vec::<ValueType>::new()),
+                        [],
+                        host_call_site(source, "<anonymous:1>", "two()"),
+                    ),
+                )
+                .capture(crate::plan::ParamSlot::from_local(ParamLocal::int(
+                    IntLocalId(0),
+                )))
+                .step(let_int_function_step(
+                    0,
+                    "two",
+                    int_function_closure(4, Vec::<LocalId>::new(), [capture_int(0)]),
+                )),
+                function("<anonymous:2>", local_int(0, "seed").add_int(int(1))).capture(
+                    crate::plan::ParamSlot::from_local(ParamLocal::int(IntLocalId(0))),
+                ),
+                function("<anonymous:3>", local_int(0, "seed").add_int(int(2))).capture(
+                    crate::plan::ParamSlot::from_local(ParamLocal::int(IntLocalId(0))),
+                ),
+            ],
+        );
+        assert_eq!(actual, expected);
+        let execution = crate::ExecutionPlan::from_module_plan(actual);
+        assert_eq!(
+            crate::run_main(&execution, &mut Vec::new()),
+            Ok(crate::Value::Int(83.into()))
+        );
+    }
+
+    #[test]
+    fn reject_margin_unused_callback_with_pending_sibling() {
+        let mut module = compile(
+            r#"
+fn unused() {
+  fn() { 1 }
+  fn() { 2 }
+  3
+}
+pub fn main() { 42 }
+"#,
+        );
+        anonymous_function_body_mut(&mut module)[0] = Statement::Expression(TypedExpr::Invalid {
+            location: dummy_span(),
+            type_: gleam_compiler_core::type_::int(),
+            extra_information: None,
+        });
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidExpressionNode,
+            })
+        );
+    }
+
+    #[test]
+    fn reject_margin_parent_body_before_pending_callback_body() {
+        let mut module = anonymous_function_module();
+        anonymous_function_body_mut(&mut module)[0] = Statement::Expression(TypedExpr::Invalid {
+            location: dummy_span(),
+            type_: gleam_compiler_core::type_::int(),
+            extra_information: None,
+        });
+        module.definitions.functions[0].return_type = gleam_compiler_core::type_::string();
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "main".into(),
+                    reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
+                },
+            })
+        );
+    }
+
+    #[test]
+    fn reject_margin_anonymous_parameter_slot_before_queueing_body() {
+        let module_name = "main".into();
+        let functions = Default::default();
+        let mut anonymous = crate::planner::context::AnonymousFunctions::default();
+        let mut context = super::PlanContext::new(&module_name, &functions, &mut anonymous);
+        let result = super::plan_anonymous_with_captures(
+            crate::plan::FunctionShape::new(vec![ValueShape::String], ValueShape::Int),
+            vec![crate::planner::context::FunctionParam::new(
+                ParamLocal::int(IntLocalId(0)),
+                ValueShape::String,
+                crate::plan::ParamBinding::Named("value".into()),
+                None,
+            )],
+            Vec::new(),
+            vec1::Vec1::new(Statement::Expression(super::super::typed_int_expr(1))),
+            Default::default(),
+            &mut context,
+        );
+        assert_eq!(
+            result,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::LocalBindingShape,
+                },
+            }),
+        );
+        assert!(context.next_anonymous_function().is_none());
+        assert!(anonymous.into_functions().is_empty());
     }
 
     #[test]
