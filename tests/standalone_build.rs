@@ -137,7 +137,7 @@ pub fn main() {
     )
     .unwrap();
     fs::copy(&debug, &binary).unwrap();
-    let mut arguments = vec![
+    let arguments = vec![
         OsString::from("--help"),
         OsString::from(""),
         OsString::from("catalog=config.toml"),
@@ -145,10 +145,12 @@ pub fn main() {
         OsString::from("\u{c548}\u{b155}"),
     ];
     #[cfg(unix)]
-    {
+    let arguments = {
         use std::os::unix::ffi::OsStringExt;
+        let mut arguments = arguments;
         arguments.push(OsString::from_vec(b"native-\xff".to_vec()));
-    }
+        arguments
+    };
     let expected = format!(
         "initialized\narguments:{arguments:?}\n\"count:3/count:4\"\n{}\n{}\ntimer-pending\ntimer-complete\nstate:1\nstate-drop:1\n",
         deployed_root.join("priv/standalone_fixture").display(),
@@ -161,7 +163,7 @@ pub fn main() {
                 .env("GEAM_CONFIG", "../configuration/runtime.toml")
                 .args(&arguments),
         );
-        assert_eq!(output.stdout, expected.as_bytes());
+        assert_application_stdout(&output.stdout, &expected, &deployed_root);
         assert_eq!(output.stderr, expected_echo.as_bytes());
     }
     let counter = deployed_root.join("configuration/counter.toml");
@@ -196,20 +198,19 @@ pub fn main() {
             .env("GEAM_CONFIG", &config)
             .args(&arguments),
     );
-    assert_eq!(
-        changed.stdout,
-        expected
-            .replace(
-                deployed_root
-                    .join("priv/standalone_fixture")
-                    .to_str()
-                    .unwrap(),
-                deployed_root
-                    .join("configuration/custom assets")
-                    .to_str()
-                    .unwrap()
-            )
-            .as_bytes()
+    assert_application_stdout(
+        &changed.stdout,
+        &expected.replace(
+            deployed_root
+                .join("priv/standalone_fixture")
+                .to_str()
+                .unwrap(),
+            deployed_root
+                .join("configuration/custom assets")
+                .to_str()
+                .unwrap(),
+        ),
+        &deployed_root,
     );
     assert!(!deployed_root.join("configuration/custom assets").exists());
 
@@ -297,7 +298,7 @@ pub fn main() {
             .env("GEAM_CONFIG", &config)
             .args(&arguments),
     );
-    assert_eq!(output.stdout, expected.as_bytes());
+    assert_application_stdout(&output.stdout, &expected, &deployed_root);
     assert_eq!(output.stderr, expected_echo.as_bytes());
     let failure = capture(
         deployed(
@@ -312,6 +313,95 @@ pub fn main() {
     assert!(diagnostic.contains("standalone_fixture/src/failure.gleam:2\n7\n"));
     assert!(diagnostic.contains("deployed source failure"));
     assert!(!diagnostic.contains(project.to_str().unwrap()));
+}
+
+fn assert_application_stdout(actual: &[u8], expected: &str, directory: &Path) {
+    let stdout = std::str::from_utf8(actual).unwrap();
+    let actual: Vec<_> = stdout.split('\n').collect();
+    let expected: Vec<_> = expected.split('\n').collect();
+    assert_eq!(actual.len(), expected.len(), "{stdout}");
+    let directory = directory.canonicalize().unwrap();
+    for (index, (actual, expected)) in actual.into_iter().zip(expected).enumerate() {
+        // Only the two resource fields may differ in filesystem path spelling.
+        if matches!(index, 3 | 4) {
+            let suffix = Path::new(expected).strip_prefix(&directory).unwrap();
+            let mut base = PathBuf::from(actual);
+            assert!(
+                base.is_absolute(),
+                "resource path is not absolute: {actual}"
+            );
+            assert!(
+                base.ends_with(suffix),
+                "unexpected resource suffix: {actual}"
+            );
+            for _ in suffix.components() {
+                assert!(base.pop());
+            }
+            // The resource suffix need not exist; only the deployment root does.
+            assert_eq!(base.canonicalize().unwrap(), directory, "{actual}");
+        } else {
+            assert_eq!(actual, expected, "stdout line {}", index + 1);
+        }
+    }
+}
+
+#[test]
+fn application_stdout_checks_resource_locations_without_rewriting_other_output() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().canonicalize().unwrap();
+    fs::create_dir(root.join("configuration")).unwrap();
+    fs::create_dir(root.join("wrong base")).unwrap();
+    let reported_root = directory.path().join("configuration").join("..");
+
+    for resource in ["priv/standalone_fixture", "configuration/custom assets"] {
+        let expected = format!(
+            "initialized\narguments:[\\\\?\\literal]\nvalue\n{}\n{}\ncomplete\n",
+            root.join(resource).display(),
+            root.join("priv/pure_labels").display(),
+        );
+        let actual = format!(
+            "initialized\narguments:[\\\\?\\literal]\nvalue\n{}\n{}\ncomplete\n",
+            reported_root.join(resource).display(),
+            reported_root.join("priv/pure_labels").display(),
+        );
+        assert_application_stdout(actual.as_bytes(), &expected, &root);
+        assert!(!root.join(resource).exists());
+        assert!(!root.join("priv/pure_labels").exists());
+
+        let resource_path = root.join(resource);
+        let resource_path = resource_path.to_str().unwrap();
+        for rejected in [
+            expected.replacen("initialized", "unexpected", 1),
+            expected.replacen(r"\\?\literal", "literal", 1),
+            expected.replacen("complete", "unexpected", 1),
+            expected.replacen(resource_path, resource, 1),
+            expected.replacen(
+                resource_path,
+                root.join("wrong base").join(resource).to_str().unwrap(),
+                1,
+            ),
+            expected.replacen(
+                resource_path,
+                root.join("priv/wrong_package").to_str().unwrap(),
+                1,
+            ),
+            expected.replacen(
+                root.join("priv/pure_labels").to_str().unwrap(),
+                resource_path,
+                1,
+            ),
+            expected.trim_end().into(),
+            format!("{expected}extra\n"),
+        ] {
+            assert!(
+                std::panic::catch_unwind(|| {
+                    assert_application_stdout(rejected.as_bytes(), &expected, &root);
+                })
+                .is_err(),
+                "accepted incorrect stdout: {rejected}"
+            );
+        }
+    }
 }
 
 fn fixture() -> tempfile::TempDir {
