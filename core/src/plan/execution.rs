@@ -57,6 +57,7 @@ pub(crate) use entry::EntryCompletion;
 pub use entry::HostedEntry;
 pub use explain::ExecutionPlanExplanation;
 pub use host::{HostSpecializationError, HostSpecializationErrorReason};
+pub use prepared::PreparedHostedEntry;
 use std::convert::Infallible;
 
 pub struct ExecutionPlan {

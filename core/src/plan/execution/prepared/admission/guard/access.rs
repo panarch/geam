@@ -10,13 +10,13 @@ pub(super) fn instruction<Graph: ExecutionGraphProfile>(
         let length = index.checked_add(1).ok_or(GuardError::LengthOverflow)?;
         return Ok(Some(Access {
             local,
-            requirement: Requirement::Length(length),
+            requirement: Requirement::length(length),
         }));
     }
     Ok(match origin::instruction(value) {
         origin::Origin::ListDrop { source, count } => Some(Access {
             local: source,
-            requirement: Requirement::Length(count),
+            requirement: Requirement::length(count),
         }),
         origin::Origin::TextDrop { source, prefix } => Some(Access {
             local: source,
@@ -53,7 +53,7 @@ mod tests {
                 })),
                 Ok(Some(Access {
                     local: IntListLocalId(2).into(),
-                    requirement: Requirement::Length(expected_length)
+                    requirement: Requirement::length(expected_length)
                 }))
             );
             assert_eq!(
@@ -63,7 +63,7 @@ mod tests {
                 })),
                 Ok(Some(Access {
                     local: ExternalListLocalId(3).into(),
-                    requirement: Requirement::Length(expected_length)
+                    requirement: Requirement::length(expected_length)
                 }))
             );
         }
@@ -91,7 +91,7 @@ mod tests {
                 ))),
                 Ok(Some(Access {
                     local: IntListLocalId(2).into(),
-                    requirement: Requirement::Length(count)
+                    requirement: Requirement::length(count)
                 }))
             );
         }

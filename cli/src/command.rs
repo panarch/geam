@@ -13,6 +13,8 @@ pub(super) enum Command {
     Embedding(Embedding),
     Prepare(EntryCommand),
     Run(RunCommand),
+    /// Build a native executable containing the prepared Gleam program.
+    Build(BuildCommand),
     Provider(Provider),
 }
 
@@ -45,6 +47,16 @@ pub(super) struct RunCommand {
 
     #[arg(long = "provider-config", value_name = "GLEAM_PACKAGE=PATH")]
     pub(super) provider_configs: Vec<String>,
+}
+
+#[derive(Debug, PartialEq, Eq, Args)]
+pub(super) struct BuildCommand {
+    #[arg(short = 'm', long)]
+    pub(super) module: Option<String>,
+
+    /// Compile the executable with Cargo's release profile.
+    #[arg(long)]
+    pub(super) release: bool,
 }
 
 #[derive(Debug, PartialEq, Eq, Args)]
@@ -94,8 +106,8 @@ pub(super) struct RemoveProvider {
 #[cfg(test)]
 mod tests {
     use super::{
-        AddProvider, Cli, Command, Embedding, EmbeddingCommand, EntryCommand, Provider,
-        ProviderCommand, RemoveProvider, RunCommand,
+        AddProvider, BuildCommand, Cli, Command, Embedding, EmbeddingCommand, EntryCommand,
+        Provider, ProviderCommand, RemoveProvider, RunCommand,
     };
     use camino::Utf8PathBuf;
     use clap::{CommandFactory, Parser};
@@ -141,6 +153,43 @@ mod tests {
                 }),
             },
         );
+    }
+
+    #[test]
+    fn builds_debug_or_release_with_the_existing_entry_selection() {
+        for (arguments, module, release) in [
+            (vec!["geam", "build"], None, false),
+            (vec!["geam", "build", "--release"], None, true),
+            (
+                vec!["geam", "build", "-m", "tools/report"],
+                Some("tools/report"),
+                false,
+            ),
+            (
+                vec!["geam", "build", "--module", "tools/report", "--release"],
+                Some("tools/report"),
+                true,
+            ),
+        ] {
+            assert_eq!(
+                Cli::try_parse_from(arguments).unwrap(),
+                Cli {
+                    command: Command::Build(BuildCommand {
+                        module: module.map(str::to_owned),
+                        release
+                    }),
+                }
+            );
+        }
+        for arguments in [
+            vec!["geam", "build", "--provider-config", "catalog=runtime.toml"],
+            vec!["geam", "build", "--", "application argument"],
+        ] {
+            assert_eq!(
+                Cli::try_parse_from(arguments).unwrap_err().kind(),
+                clap::error::ErrorKind::UnknownArgument
+            );
+        }
     }
 
     #[test]

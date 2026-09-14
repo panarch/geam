@@ -24,6 +24,20 @@ impl<Profile: HostWorkProfile> HostedEntry<Profile> {
         plan: HostedModulePlan<Profile>,
     ) -> Result<Self, HostSpecializationError> {
         let execution = HostedExecution::try_from_module_plan(plan)?;
+        Ok(Self::from_execution(execution))
+    }
+
+    /// Executes main once, then completes only its returned outer work.
+    pub async fn run(
+        &mut self,
+        host: &dyn crate::execution::ExecutionHost,
+        state: &mut Profile::RunState,
+        echo: &mut (dyn crate::EchoSink + Send),
+    ) -> Result<(), crate::execution::RunError> {
+        crate::runtime::run_hosted_entry(self, host, state, echo).await
+    }
+
+    pub(super) fn from_execution(execution: HostedExecution<Profile>) -> Self {
         let common = &execution.execution.program.common;
         let completion = match common.main {
             ProfiledRuntimeFunctionId::External(function) => {
@@ -41,20 +55,10 @@ impl<Profile: HostWorkProfile> HostedEntry<Profile> {
             }
             ProfiledRuntimeFunctionId::Core(_) => EntryCompletion::Immediate,
         };
-        Ok(Self {
+        Self {
             execution,
             completion,
-        })
-    }
-
-    /// Executes main once, then completes only its returned outer work.
-    pub async fn run(
-        &mut self,
-        host: &dyn crate::execution::ExecutionHost,
-        state: &mut Profile::RunState,
-        echo: &mut (dyn crate::EchoSink + Send),
-    ) -> Result<(), crate::execution::RunError> {
-        crate::runtime::run_hosted_entry(self, host, state, echo).await
+        }
     }
 }
 

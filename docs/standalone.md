@@ -1,8 +1,9 @@
-# Run a Gleam project
+# Run and build a Gleam project
 
 An existing Gleam application remains an ordinary Gleam project. Run it with
 `geam run`, and Geam prepares and maintains the project-local Rust runner while
 the application source stays in Gleam.
+Use `geam build --release` when you want an executable to run separately.
 
 ## Before you start
 
@@ -59,6 +60,106 @@ geam prepare
 code. `run` continues by starting the application. Normal Gleam IO keeps its
 selected output stream, while Gleam's `echo` output is written to stderr. A
 value returned by `main` is not printed automatically.
+
+## Build an executable
+
+From the same Gleam project, build a release executable:
+
+```sh
+geam build --release
+./build/geam/target/release/hello_geam
+```
+
+Geam prints the executable's path after a successful build. Its name is the
+Gleam root package name; Windows adds `.exe`. Copy it to the machine where you
+want to run it. Execution does not need the original Gleam source, Geam command,
+Gleam compiler, or Cargo. The executable still needs a compatible operating
+system and any native libraries required by its Rust dependencies.
+
+For a debug build or another entry module:
+
+```sh
+geam build
+geam build --release --module tools/report
+```
+
+Debug output goes in `build/geam/target/debug/`. Choosing another module keeps
+the root package's executable name and replaces that profile's output after a
+successful build. Rebuild after changing Gleam code or Rust providers.
+`build` prepares the project itself; there is no separate `prepare` step.
+
+The executable uses the same IO, Echo, Future completion and process shutdown
+behavior as `geam run`. Building does not initialize provider state or execute
+the application. Arguments passed to the executable belong to the application;
+Geam does not interpret them as options.
+
+### Configure the deployed application
+
+An executable whose providers need no configuration can run on its own. When
+configuration is needed, select a TOML file with `GEAM_CONFIG`:
+
+```sh
+GEAM_CONFIG=runtime.toml ./hello_geam
+```
+
+In PowerShell:
+
+```powershell
+$env:GEAM_CONFIG = "runtime.toml"
+.\hello_geam.exe
+```
+
+For example, `runtime.toml` can select the existing configuration files for two
+providers:
+
+```toml
+[providers]
+company_image = "config/company_image.toml"
+search = "config/search.toml"
+```
+
+Keys are the Gleam package names of selected providers. Each provider defines
+the contents of its own configuration file, just as with `geam run
+--provider-config`. An omitted provider receives an empty configuration; it may
+require particular fields before it can start.
+
+A relative `GEAM_CONFIG` path is resolved from the startup working directory.
+Relative paths in the file are resolved from that file's directory. Absolute
+paths are used as supplied. Geam does not rewrite strings inside a provider's
+own configuration.
+
+Without `GEAM_CONFIG`, no configuration file is searched for. Configuration is
+read each time the executable starts, so changing it needs no rebuild. Malformed
+TOML, invalid runtime-file entries and unreadable provider files stop startup
+before provider initialization. Each provider checks its own configuration
+requirements during initialization. Configuration is not included in the executable.
+
+### Deploy package resources
+
+Programs using `gleam/erlang/application.priv_directory` look for each known
+package's resource directory beside the executable:
+
+```text
+hello_geam
+priv/
+  hello_geam/
+  another_package/
+```
+
+Deploy the files your application uses there, or add overrides to the same
+runtime configuration:
+
+```toml
+[resources]
+hello_geam = "assets"
+another_package = "/srv/shared/package-assets"
+```
+
+Relative overrides also use the configuration file's directory. This layout
+does not depend on the application's working directory. `build` does not copy
+resources, and `priv_directory` does not create or check the directory; the
+operation that reads a resource reports missing files. Programs that do not
+use resources need no `priv/` directory.
 
 ## Run async Rust work
 
@@ -183,7 +284,7 @@ an exact registry version, path, or Git revision in the managed Cargo project.
 One Gleam package has at most one selected external provider. Built-in
 components are not stored selections and do not appear in `provider list`.
 
-`prepare` and `run` validate the current selections. If no provider is selected,
+`prepare`, `run`, and `build` validate the current selections. If no provider is selected,
 or the selected version is incompatible, choose one explicitly and rerun the
 command.
 
@@ -215,6 +316,7 @@ adds this Rust-owned state to the Gleam project root:
 Cargo.toml
 Cargo.lock
 build/geam/runner.rs
+build/geam/application.rs
 build/geam/target/
 ```
 
@@ -222,6 +324,8 @@ build/geam/target/
 dependencies. `Cargo.lock` fixes the Rust dependency graph. Commit both files
 so review and CI retain the native-code choices. Ignore `build/geam/`;
 its runner source and Cargo target are reproducible build artifacts.
+`build` also generates `build/geam/program.rs`, containing the prepared program,
+and uses a project-local build lock while assembling the executable.
 
 Geam rewrites the managed manifest canonically and removes selections whose
 Gleam packages are no longer in the resolved project. Geam manages only Cargo
@@ -247,6 +351,8 @@ Cargo decides whether a rebuild is needed.
 succeeds. `run` prints `geam: Starting standalone runner for MODULE` before
 handing stdin, stdout, and stderr to the application. Application output remains
 the final output.
+`build` ends with `geam: Built PATH` only after Cargo successfully produces the
+selected executable.
 
 ## When something fails
 

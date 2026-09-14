@@ -122,6 +122,30 @@ fn prepares_and_runs_pure_projects_without_printing_main_results() {
             "geam: Starting standalone runner for application".to_owned(),
         ],
     );
+
+    let build = geam(&project, ["build"]);
+    assert!(
+        build.status.success(),
+        "{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    assert!(build.stdout.is_empty());
+    let executable = root.join(format!(
+        "build/geam/target/debug/application{}",
+        std::env::consts::EXE_SUFFIX
+    ));
+    assert!(
+        String::from_utf8_lossy(&build.stderr)
+            .ends_with(&format!("geam: Built {}\n", executable.display()))
+    );
+    let output = Command::new(executable)
+        .env("PATH", "")
+        .env_remove("GEAM_CONFIG")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(output.stdout.is_empty());
+    assert!(output.stderr.is_empty());
 }
 
 #[test]

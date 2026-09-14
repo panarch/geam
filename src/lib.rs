@@ -73,8 +73,11 @@ pub mod __macro_support {
 }
 
 #[doc(hidden)]
-#[cfg(feature = "embedding")]
 pub use geam_core::__prepared_support;
+#[cfg(feature = "standalone")]
+#[doc(hidden)]
+#[path = "standalone/mod.rs"]
+pub mod __standalone_support;
 pub use geam_core::List;
 #[cfg(feature = "embedding")]
 pub mod embedding;
@@ -111,7 +114,7 @@ pub use geam_core::host::{
 };
 pub use geam_core::plan::execution::{
     ExecutionPlan, ExecutionPlanExplanation, HostSpecializationError,
-    HostSpecializationErrorReason, HostedEntry, HostedExecution,
+    HostSpecializationErrorReason, HostedEntry, HostedExecution, PreparedHostedEntry,
 };
 pub use geam_core::plan::{
     BitArrayExpr, BitArrayLocalId, BoolExpr, BoolLocalId, CustomType, CustomTypeName, EchoSite,

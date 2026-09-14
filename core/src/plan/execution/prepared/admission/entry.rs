@@ -19,6 +19,13 @@ pub(super) struct Entry<'data> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub(super) enum MainError {
+    Target(CallError),
+    Arguments { count: usize },
+    Captures { count: usize },
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub(super) enum EntryError {
     Empty,
     Main,
@@ -51,6 +58,30 @@ pub(super) enum ExportError {
     NarrowedInput { index: usize },
     ReturnType,
     Input(InputError),
+}
+
+pub(super) fn main<Graph: ExecutionGraphProfile>(
+    main: &crate::plan::execution::function::ProfiledRuntimeFunctionId<Graph>,
+    catalog: &Catalog<'_>,
+    types: &Types<'_>,
+) -> Result<(), MainError>
+where
+    Graph::ExternalFunctionId: Target,
+    Graph::ExternalListFunctionId: Target,
+    Graph::RuntimeFunctionFunctionId: Target,
+{
+    let function = main.resolve(catalog, types).map_err(MainError::Target)?;
+    if !function.parameters.is_empty() {
+        return Err(MainError::Arguments {
+            count: function.parameters.len(),
+        });
+    }
+    if !function.captures.is_empty() {
+        return Err(MainError::Captures {
+            count: function.captures.len(),
+        });
+    }
+    Ok(())
 }
 
 pub(super) fn all<'data, Graph: ExecutionGraphProfile>(
@@ -363,6 +394,107 @@ mod tests {
     use crate::embedding::{BigInt, FunctionDeclaration, List, ModuleBuilder};
     use crate::plan::execution::prepared::PreparedModule;
     use crate::plan::{FunctionType, ValueType};
+
+    #[test]
+    fn standalone_main_uses_the_actual_callable_target_without_library_export_restrictions() {
+        use super::MainError;
+        use crate::plan::execution::function::FunctionTableFamily;
+        use crate::plan::execution::function::{
+            IntFunctionId, ProfiledCoreRuntimeFunctionId as Core,
+            ProfiledRuntimeFunctionId as Runtime,
+        };
+        use crate::plan::execution::prepared::admission::call::CallError;
+        use crate::plan::execution::prepared::admission::catalog::CatalogError;
+
+        for expression in [
+            "42",
+            "1.5",
+            "\"text\"",
+            "True",
+            "Nil",
+            "<<65>>",
+            "{ let assert <<point:utf8_codepoint>> = <<65>> point }",
+            "#(42, True)",
+            "[42]",
+            "Some(42)",
+            "fn(value: Int) { value + 1 }",
+            "fn(value) { value }",
+            "panic",
+        ] {
+            let source =
+                format!("pub type Option(a) {{ Some(a) None }} pub fn main() {{ {expression} }}");
+            let typed = crate::compile_typed_module("main", "src/main.gleam", &source).unwrap();
+            let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+            let common = &plan.program.common;
+            let types = Types::admit(
+                &common.list_types,
+                &common.custom_types,
+                &common.external_types,
+                &common.value_shapes,
+            )
+            .unwrap();
+            let catalog =
+                Catalog::admit(&common.function_parameters, &plan.program.functions, &types)
+                    .unwrap();
+            assert_eq!(super::main(&common.main, &catalog, &types), Ok(()));
+            assert_eq!(
+                super::main(
+                    &Runtime::<std::convert::Infallible>::Core(Core::Int(IntFunctionId(999))),
+                    &catalog,
+                    &types
+                ),
+                Err(MainError::Target(CallError::Catalog(
+                    CatalogError::MissingFunction {
+                        family: FunctionTableFamily::Int,
+                        index: 999,
+                    }
+                )))
+            );
+        }
+    }
+
+    #[test]
+    fn standalone_main_rejects_callable_arguments_and_retained_captures() {
+        use super::MainError;
+        use crate::plan::execution::function::{
+            IntFunctionId, ProfiledCoreRuntimeFunctionId as Core,
+            ProfiledRuntimeFunctionId as Runtime,
+        };
+
+        for (source, expected) in [
+            (
+                "pub fn main() { fn(value: Int) { value + 1 } }",
+                MainError::Arguments { count: 1 },
+            ),
+            (
+                "pub fn main() { let value = 42 fn() { value } }",
+                MainError::Captures { count: 1 },
+            ),
+        ] {
+            let typed = crate::compile_typed_module("main", "src/main.gleam", source).unwrap();
+            let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+            let common = &plan.program.common;
+            let types = Types::admit(
+                &common.list_types,
+                &common.custom_types,
+                &common.external_types,
+                &common.value_shapes,
+            )
+            .unwrap();
+            let catalog =
+                Catalog::admit(&common.function_parameters, &plan.program.functions, &types)
+                    .unwrap();
+            assert_eq!(super::main(&common.main, &catalog, &types), Ok(()));
+            assert_eq!(
+                super::main(
+                    &Runtime::<std::convert::Infallible>::Core(Core::Int(IntFunctionId(0))),
+                    &catalog,
+                    &types
+                ),
+                Err(expected),
+            );
+        }
+    }
 
     #[test]
     fn every_plain_export_family_can_be_the_prepared_main_entry() {

@@ -101,6 +101,10 @@ impl ManagedProject {
         !self.providers.is_empty()
     }
 
+    pub(crate) fn root_package(&self) -> &str {
+        &self.root_package
+    }
+
     pub(super) fn provider(&self, gleam_package: &str) -> Option<&ProviderSelection> {
         self.providers.get(gleam_package)
     }
@@ -140,12 +144,14 @@ impl ManagedProject {
         source.push_str("\n[package]\nname = ");
         source.push_str(&quoted(&format!("{}-geam-runner", self.root_package)));
         source.push_str(
-            "\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[package.metadata.geam.runner]\nschema = 1\n\n[[bin]]\nname = \"geam-runner\"\npath = \"build/geam/runner.rs\"\n\n[dependencies]\n",
+            "\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[package.metadata.geam.runner]\nschema = 1\n\n[[bin]]\nname = \"geam-runner\"\npath = \"build/geam/runner.rs\"\n\n[[bin]]\nname = ",
         );
+        source.push_str(&quoted(&self.root_package));
+        source.push_str("\npath = \"build/geam/application.rs\"\n\n[dependencies]\n");
         source.push_str("geam = { version = ");
         source.push_str(&quoted(&format!("={}", env!("CARGO_PKG_VERSION"))));
         source
-            .push_str(", default-features = false, features = [\"builtins\", \"tokio\"] }\ntoml = \"0.9\"\ntokio = { version = \"1.53.1\", default-features = false, features = [\"rt-multi-thread\", \"net\", \"time\"] }\n");
+            .push_str(", default-features = false, features = [\"standalone\"] }\ntokio = { version = \"1.53.1\", default-features = false, features = [\"rt-multi-thread\", \"net\", \"time\"] }\n");
         for provider in self.providers.values() {
             source.push_str(&provider.alias());
             source.push_str(" = { package = ");
@@ -369,7 +375,7 @@ mod tests {
             .expect("managed manifest should be readable");
         assert!(source.starts_with("# Managed by Geam."));
         assert!(source.contains(&format!(
-            "geam = {{ version = \"={}\", default-features = false, features = [\"builtins\", \"tokio\"] }}",
+            "geam = {{ version = \"={}\", default-features = false, features = [\"standalone\"] }}",
             env!("CARGO_PKG_VERSION"),
         )));
         assert!(source.contains(

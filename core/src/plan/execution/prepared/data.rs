@@ -1,6 +1,6 @@
 //! Compiler-visible data accepted only through prepared loading.
 
-pub use super::{Export, HostedModuleArtifact, ModuleArtifact, ProgramTables};
+pub use super::{Export, HostedEntryArtifact, HostedModuleArtifact, ModuleArtifact, ProgramTables};
 pub use crate::plan::execution::storage::Storage;
 pub use crate::plan::text::Text;
 pub use num_bigint::Sign;

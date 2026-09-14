@@ -22,7 +22,7 @@ mod source;
 mod terminator;
 mod type_;
 
-use super::{FORMAT_VERSION, ModuleArtifact};
+use super::{FORMAT_VERSION, ModuleArtifact, ProgramTables};
 use crate::plan::execution::function::ExecutionProfile;
 use crate::plan::execution::graph::ExternalListInstructionView;
 
@@ -58,6 +58,7 @@ enum Error<HostError> {
     Functions(functions::FunctionError<HostError>),
     Constants(constant::ConstantBodyError),
     Entries(entry::EntryError),
+    Main(entry::MainError),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -88,6 +89,28 @@ pub(super) fn hosted<Profile: crate::HostProfile>(
     Ok(AdmittedHostedModule { program, hosts })
 }
 
+pub(super) fn hosted_entry<Profile: crate::HostProfile>(
+    artifact: &'static super::HostedEntryArtifact,
+    providers: crate::HostProviderSet<Profile>,
+) -> Result<crate::HostedExecution<Profile>, PreparedError> {
+    format(artifact.format)?;
+    let hosts = hosts::NativeFunctions::new(
+        &artifact.value_functions,
+        &artifact.never_functions,
+        providers,
+    )
+    .map_err(PreparedError::from)?;
+    let (types, catalog) = program(&artifact.program, &hosts).map_err(PreparedError::from)?;
+    entry::main(&artifact.program.main, &catalog, &types)
+        .map_err(|error| PreparedError::from(Error::<hosts::NativeError>::Main(error)))?;
+    Ok(crate::HostedExecution::from_program(
+        crate::plan::execution::HostedProgram {
+            program: artifact.program.execution(),
+            host_functions: hosts.into_tables(),
+        },
+    ))
+}
+
 fn format(found: u32) -> Result<(), FormatError> {
     if found != FORMAT_VERSION {
         return Err(FormatError {
@@ -107,7 +130,31 @@ where
     <Profile::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalListFunctionId: call::Target,
     <<Profile::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalListInstruction as ExternalListInstructionView>::FunctionLocal: operand::Operand,
 {
-    let program = &artifact.program;
+    let (types, catalog) = program(&artifact.program, hosts)?;
+    let inputs = entry::all(
+        &artifact.program.main,
+        &artifact.entries,
+        &artifact.exports,
+        &catalog,
+        &types,
+    )
+    .map_err(Error::Entries)?;
+    Ok(AdmittedModule {
+        artifact,
+        types,
+        inputs,
+    })
+}
+
+fn program<'data, Profile: ExecutionProfile, Host: functions::Hosts<Profile>>(
+    program: &'data ProgramTables<Profile>,
+    hosts: &Host,
+) -> Result<(type_::Types<'data>, catalog::Catalog<'data>), Error<Host::Error>>
+where
+    <Profile::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalFunctionId: call::Target,
+    <Profile::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalListFunctionId: call::Target,
+    <<Profile::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalListInstruction as ExternalListInstructionView>::FunctionLocal: operand::Operand,
+{
     let types = type_::Types::admit(
         &program.list_types,
         &program.custom_types,
@@ -127,19 +174,7 @@ where
     hosts.tables(&context).map_err(Error::Hosts)?;
     functions::all(&program.functions, &context, hosts).map_err(Error::Functions)?;
     constant::all(&program.constants, &context).map_err(Error::Constants)?;
-    let inputs = entry::all(
-        &program.main,
-        &artifact.entries,
-        &artifact.exports,
-        &catalog,
-        &types,
-    )
-    .map_err(Error::Entries)?;
-    Ok(AdmittedModule {
-        artifact,
-        types,
-        inputs,
-    })
+    Ok((types, catalog))
 }
 
 impl<Profile: crate::HostProfile> AdmittedHostedModule<Profile> {
@@ -424,7 +459,7 @@ mod tests {
         artifact.format = 2;
         assert_eq!(
             plain(&artifact).err().unwrap().to_string(),
-            "prepared format 2 is incompatible with format 1; regenerate the prepared bindings"
+            "prepared format 2 is incompatible with format 1; regenerate the prepared program"
         );
         artifact.format = FORMAT_VERSION;
 
@@ -534,47 +569,47 @@ mod tests {
             (
                 Change::Format,
                 Some(
-                    "prepared format 2 is incompatible with format 1; regenerate the prepared bindings",
+                    "prepared format 2 is incompatible with format 1; regenerate the prepared program",
                 ),
             ),
             (
                 Change::Span,
                 Some(
-                    "invalid prepared program: Hosts(Contract { value: true, index: 0, reason: Source(SpanBounds { module: \"main\", span: SourceSpan { start: 9999, end: 10000 } }) }); regenerate the prepared bindings",
+                    "invalid prepared program: Hosts(Contract { value: true, index: 0, reason: Source(SpanBounds { module: \"main\", span: SourceSpan { start: 9999, end: 10000 } }) }); regenerate the prepared program",
                 ),
             ),
             (
                 Change::Types,
                 Some(
-                    "invalid prepared program: Types(MissingList { index: 999 }); regenerate the prepared bindings",
+                    "invalid prepared program: Types(MissingList { index: 999 }); regenerate the prepared program",
                 ),
             ),
             (
                 Change::Sources,
                 Some(
-                    "invalid prepared program: Sources(Root { index: 999, modules: 1 }); regenerate the prepared bindings",
+                    "invalid prepared program: Sources(Root { index: 999, modules: 1 }); regenerate the prepared program",
                 ),
             ),
             (
                 Change::Catalog,
                 Some(
-                    "invalid prepared program: Catalog(Type(MissingShape { index: 999 })); regenerate the prepared bindings",
+                    "invalid prepared program: Catalog(Type(MissingShape { index: 999 })); regenerate the prepared program",
                 ),
             ),
             (
                 Change::Function,
                 Some(
-                    "invalid prepared program: Functions(FunctionError { family: Nil, index: 0, kind: Host(MissingValue(99)) }); regenerate the prepared bindings",
+                    "invalid prepared program: Functions(FunctionError { family: Nil, index: 0, kind: Host(MissingValue(99)) }); regenerate the prepared program",
                 ),
             ),
             (
                 Change::Exports,
-                Some("invalid prepared program: Entries(Empty); regenerate the prepared bindings"),
+                Some("invalid prepared program: Entries(Empty); regenerate the prepared program"),
             ),
             (
                 Change::Constant,
                 Some(
-                    "invalid prepared program: Constants(ConstantBodyError { family: \"ints\", index: 0, error: Block(Missing { index: 99 }) }); regenerate the prepared bindings",
+                    "invalid prepared program: Constants(ConstantBodyError { family: \"ints\", index: 0, error: Block(Missing { index: 99 }) }); regenerate the prepared program",
                 ),
             ),
             (
@@ -709,6 +744,120 @@ mod tests {
                     .as_deref(),
                 expected
             );
+        }
+    }
+
+    #[test]
+    fn standalone_admission_checks_format_program_native_linkage_and_main_before_loading() {
+        use crate::plan::execution::function::{
+            IntFunctionId, ProfiledCoreRuntimeFunctionId as Core,
+            ProfiledRuntimeFunctionId as Runtime,
+        };
+        use crate::plan::execution::prepared::HostedEntryArtifact;
+
+        #[derive(Clone, Copy, PartialEq, Eq)]
+        enum Change {
+            Format,
+            Source,
+            Registration,
+            Main,
+            None,
+        }
+        let source = "pub type Key\n@external(erlang, \"native\", \"key\") fn key() -> Key\npub fn main() { echo key() Nil }";
+        for (change, expected) in [
+            (
+                Change::Format,
+                Some(
+                    "prepared format 2 is incompatible with format 1; regenerate the prepared program",
+                ),
+            ),
+            (
+                Change::Source,
+                Some(
+                    "invalid prepared program: Sources(Root { index: 999, modules: 1 }); regenerate the prepared program",
+                ),
+            ),
+            (
+                Change::Registration,
+                Some(
+                    "prepared provider registration mismatch: Registration { package: \"app\", module: \"main\", function: \"key\", reason: Missing }; regenerate with the matching providers",
+                ),
+            ),
+            (
+                Change::Main,
+                Some(
+                    "invalid prepared program: Main(Target(Catalog(MissingFunction { family: Int, index: 999 }))); regenerate the prepared program",
+                ),
+            ),
+            (Change::None, None),
+        ] {
+            let (program, values, nevers) = lowered_native(source);
+            let common = Arc::try_unwrap(program.common).ok().unwrap();
+            let mut artifact = HostedEntryArtifact {
+                format: FORMAT_VERSION,
+                program: ProgramTables {
+                    root: common.root,
+                    modules: common.modules,
+                    main: common.main,
+                    functions: *owned(program.functions),
+                    constants: *owned(common.constants),
+                    function_parameters: Arc::try_unwrap(common.function_parameters).ok().unwrap(),
+                    list_types: Arc::try_unwrap(common.list_types).ok().unwrap(),
+                    custom_types: Arc::try_unwrap(common.custom_types).ok().unwrap(),
+                    external_types: Arc::try_unwrap(common.external_types).ok().unwrap(),
+                    value_shapes: *owned(common.value_shapes),
+                },
+                value_functions: values.into(),
+                never_functions: nevers.into(),
+            };
+            match change {
+                Change::Format => artifact.format = 2,
+                Change::Source => artifact.program.root = crate::plan::ModuleId::new(999),
+                Change::Main => {
+                    artifact.program.main = Runtime::Core(Core::Int(IntFunctionId(999)))
+                }
+                Change::Registration | Change::None => {}
+            }
+            let artifact = Box::leak(Box::new(artifact));
+            let providers = if change == Change::Registration {
+                HostProviderSet::new([]).unwrap()
+            } else {
+                native_hosts()
+            };
+            let result = super::hosted_entry(artifact, providers);
+            assert_eq!(
+                result.as_ref().err().map(ToString::to_string).as_deref(),
+                expected
+            );
+            if let Ok(mut execution) = result {
+                let second = super::hosted_entry(artifact, native_hosts()).unwrap();
+                assert!(!Arc::ptr_eq(&execution.execution, &second.execution));
+                assert!(!Arc::ptr_eq(
+                    &execution.execution.program.common,
+                    &second.execution.program.common
+                ));
+                assert!(std::ptr::eq(
+                    execution.execution.program.functions.as_ref(),
+                    &artifact.program.functions
+                ));
+                assert!(std::ptr::eq(
+                    second.execution.program.functions.as_ref(),
+                    &artifact.program.functions
+                ));
+                assert!(std::ptr::eq(
+                    execution.execution.program.common.constants.as_ref(),
+                    &artifact.program.constants
+                ));
+                let mut echo = Vec::new();
+                assert_eq!(
+                    crate::execution_fixture::run(&mut execution, &mut (), &mut echo).unwrap(),
+                    crate::Value::Nil
+                );
+                assert_eq!(
+                    echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
+                    ["src/main.gleam:3\nKey(42)"]
+                );
+            }
         }
     }
 

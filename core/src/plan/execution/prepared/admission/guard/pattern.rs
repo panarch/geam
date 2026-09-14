@@ -28,9 +28,11 @@ pub(super) fn establishes(
             MatchPattern::Alias { pattern: inner, .. } => pattern = inner,
             MatchPattern::List(list) => {
                 return match requirement {
-                    Requirement::Length(length) if success => list.elements.len() >= *length,
+                    Requirement::Length(length) if success => {
+                        list.elements.len() >= length.minimum()
+                    }
                     Requirement::Length(length) => {
-                        list.elements.is_empty() && list.tail.is_none() && *length <= 1
+                        list.elements.is_empty() && list.tail.is_none() && length.minimum() <= 1
                     }
                     Requirement::Prefix(_) => false,
                 };
@@ -110,7 +112,7 @@ pub(super) fn binding<'data>(
                     if path.is_empty()
                         && let Requirement::Length(length) = requirement
                     {
-                        let Some(length) = length.checked_add(list.elements.len()) else {
+                        let Some(length) = length.before_drop(list.elements.len()) else {
                             return BindingProof::Unknown;
                         };
                         return BindingProof::Source {
@@ -181,7 +183,7 @@ mod tests {
                 tail,
             ));
             assert_eq!(
-                establishes(&pattern, success, &Requirement::Length(minimum)),
+                establishes(&pattern, success, &Requirement::length(minimum)),
                 expected
             );
             assert!(!establishes(
@@ -221,24 +223,24 @@ mod tests {
                 true,
                 &Requirement::Prefix("other".into())
             ));
-            assert!(!establishes(&pattern, true, &Requirement::Length(1)));
+            assert!(!establishes(&pattern, true, &Requirement::length(1)));
         }
         assert!(!establishes(
             &MatchPattern::Discard,
             true,
-            &Requirement::Length(1)
+            &Requirement::length(1)
         ));
     }
 
     #[test]
     fn bindings_preserve_nested_tuple_custom_and_list_projection_paths() {
-        let requirement = Requirement::Length(2);
+        let requirement = Requirement::length(2);
         let direct = MatchPattern::Bind(MatchPatternBinding::new(4));
         assert_eq!(
             binding(&direct, 4, &[Projection::Tuple(1)], &requirement),
             BindingProof::Source {
                 path: vec![Projection::Tuple(1)],
-                requirement: Requirement::Length(2)
+                requirement: Requirement::length(2)
             }
         );
         assert_eq!(
@@ -275,7 +277,7 @@ mod tests {
                     Projection::List(0),
                     Projection::Tuple(1)
                 ],
-                requirement: Requirement::Length(2),
+                requirement: Requirement::length(2),
             }
         );
         assert_eq!(
@@ -295,28 +297,28 @@ mod tests {
             binding: MatchPatternBinding::new(0),
         };
         assert_eq!(
-            binding(&pattern, 0, &[], &Requirement::Length(1)),
+            binding(&pattern, 0, &[], &Requirement::length(1)),
             BindingProof::Proven
         );
         assert_eq!(
-            binding(&pattern, 0, &[], &Requirement::Length(2)),
+            binding(&pattern, 0, &[], &Requirement::length(2)),
             BindingProof::Source {
                 path: vec![],
-                requirement: Requirement::Length(2)
+                requirement: Requirement::length(2)
             }
         );
         assert_eq!(
-            binding(&pattern, 0, &[Projection::List(9)], &Requirement::Length(1)),
+            binding(&pattern, 0, &[Projection::List(9)], &Requirement::length(1)),
             BindingProof::Source {
                 path: vec![Projection::List(9)],
-                requirement: Requirement::Length(1)
+                requirement: Requirement::length(1)
             }
         );
         assert_eq!(
-            binding(&pattern, 1, &[], &Requirement::Length(1)),
+            binding(&pattern, 1, &[], &Requirement::length(1)),
             BindingProof::Source {
                 path: vec![Projection::List(0)],
-                requirement: Requirement::Length(1)
+                requirement: Requirement::length(1)
             }
         );
     }
@@ -331,10 +333,10 @@ mod tests {
             Some(MatchPatternListTail::Bind(MatchPatternBinding::new(1))),
         ));
         assert_eq!(
-            binding(&pattern, 1, &[], &Requirement::Length(3)),
+            binding(&pattern, 1, &[], &Requirement::length(3)),
             BindingProof::Source {
                 path: vec![],
-                requirement: Requirement::Length(5)
+                requirement: Requirement::length(5)
             }
         );
         assert_eq!(
@@ -342,11 +344,11 @@ mod tests {
                 &pattern,
                 1,
                 &[Projection::List(1), Projection::Tuple(0)],
-                &Requirement::Length(3)
+                &Requirement::length(3)
             ),
             BindingProof::Source {
                 path: vec![Projection::List(3), Projection::Tuple(0)],
-                requirement: Requirement::Length(3)
+                requirement: Requirement::length(3)
             }
         );
         assert_eq!(
@@ -354,7 +356,7 @@ mod tests {
                 &pattern,
                 1,
                 &[Projection::Custom(0)],
-                &Requirement::Length(1)
+                &Requirement::length(1)
             ),
             BindingProof::Unknown
         );
@@ -363,7 +365,7 @@ mod tests {
             BindingProof::Unknown
         );
         assert_eq!(
-            binding(&pattern, 1, &[], &Requirement::Length(usize::MAX)),
+            binding(&pattern, 1, &[], &Requirement::length(usize::MAX)),
             BindingProof::Unknown
         );
         assert_eq!(
@@ -371,15 +373,15 @@ mod tests {
                 &pattern,
                 1,
                 &[Projection::List(usize::MAX)],
-                &Requirement::Length(1)
+                &Requirement::length(1)
             ),
             BindingProof::Unknown
         );
         assert_eq!(
-            binding(&pattern, 0, &[], &Requirement::Length(1)),
+            binding(&pattern, 0, &[], &Requirement::length(1)),
             BindingProof::Source {
                 path: vec![Projection::List(0)],
-                requirement: Requirement::Length(1)
+                requirement: Requirement::length(1)
             }
         );
         let ignored = MatchPattern::List(MatchPatternList::new(
@@ -387,7 +389,7 @@ mod tests {
             Some(MatchPatternListTail::Ignore),
         ));
         assert_eq!(
-            binding(&ignored, 1, &[], &Requirement::Length(1)),
+            binding(&ignored, 1, &[], &Requirement::length(1)),
             BindingProof::Unknown
         );
     }
@@ -415,7 +417,7 @@ mod tests {
             }
         );
         assert_eq!(
-            binding(&pattern, 1, &[], &Requirement::Length(1)),
+            binding(&pattern, 1, &[], &Requirement::length(1)),
             BindingProof::Unknown
         );
         assert_eq!(
@@ -448,9 +450,9 @@ mod tests {
             pattern: Node::Static(&CYCLE),
             binding: MatchPatternBinding { index: 0 },
         };
-        assert!(!establishes(&CYCLE, true, &Requirement::Length(1)));
+        assert!(!establishes(&CYCLE, true, &Requirement::length(1)));
         assert_eq!(
-            binding(&CYCLE, 1, &[], &Requirement::Length(1)),
+            binding(&CYCLE, 1, &[], &Requirement::length(1)),
             BindingProof::Unknown
         );
         static UNBOUND: MatchPattern = MatchPattern::Discard;
@@ -465,7 +467,7 @@ mod tests {
             },
         ])));
         assert_eq!(
-            binding(&shared, 2, &[], &Requirement::Length(1)),
+            binding(&shared, 2, &[], &Requirement::length(1)),
             BindingProof::Unknown
         );
     }

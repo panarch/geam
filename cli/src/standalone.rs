@@ -2,6 +2,7 @@ use crate::error::CliError;
 use crate::progress::Progress;
 use crate::project::{compile_resolved_project, read_resolved_project_with_progress};
 use crate::provider::{ManagedProject, ProviderSelectionValidator, SystemProviderValidator};
+use crate::runner::{BuildProfile, BuildSession, ExecutableBuilder};
 use camino::{Utf8Path, Utf8PathBuf};
 use std::collections::BTreeMap;
 
@@ -42,6 +43,27 @@ pub(super) fn run(
     )
 }
 
+pub(super) fn build(
+    project_root: &Utf8Path,
+    module: String,
+    release: bool,
+) -> Result<(), CliError> {
+    let mut progress_output = std::io::stderr();
+    let providers = SystemProviderValidator::new();
+    let profile = if release {
+        BuildProfile::Release
+    } else {
+        BuildProfile::Debug
+    };
+    Preparation {
+        project_root,
+        lock: &crate::runner::SystemCargo,
+        providers: &providers,
+        progress: Progress::Visible(&mut progress_output),
+    }
+    .build(module, profile, &crate::runner::SystemCargo)
+}
+
 struct Preparation<'a> {
     project_root: &'a Utf8Path,
     lock: &'a dyn crate::runner::CargoLock,
@@ -75,6 +97,24 @@ impl Preparation<'_> {
         self.progress
             .report(format_args!("Starting standalone runner for {module}"))?;
         executor.execute(self.project_root, &module, &configurations)
+    }
+
+    fn build(
+        &mut self,
+        module: String,
+        profile: BuildProfile,
+        builder: &dyn ExecutableBuilder,
+    ) -> Result<(), CliError> {
+        let _session = BuildSession::acquire(self.project_root)?;
+        let managed = self.reconcile(&module)?;
+        let executable = builder.build(
+            self.project_root,
+            &module,
+            managed.root_package(),
+            profile,
+            &mut self.progress,
+        )?;
+        self.progress.report(format_args!("Built {executable}"))
     }
 
     fn reconcile(&mut self, module: &str) -> Result<ManagedProject, CliError> {
@@ -149,7 +189,9 @@ mod tests {
     use crate::progress::Progress;
     use crate::project::ResolvedProject;
     use crate::provider::{ManagedProject, ProviderSelectionValidator};
-    use crate::runner::{CargoLock, RunnerChecker, RunnerExecutor};
+    use crate::runner::{
+        BuildProfile, BuildSession, CargoLock, ExecutableBuilder, RunnerChecker, RunnerExecutor,
+    };
     use camino::{Utf8Path, Utf8PathBuf};
     use std::cell::{Cell, RefCell};
     use std::fs;
@@ -206,6 +248,129 @@ mod tests {
             ));
             Ok(())
         }
+    }
+
+    impl ExecutableBuilder for RecordingCargo {
+        fn build(
+            &self,
+            root: &Utf8Path,
+            module: &str,
+            package: &str,
+            profile: BuildProfile,
+            _progress: &mut Progress<'_>,
+        ) -> Result<Utf8PathBuf, CliError> {
+            assert!(
+                matches!(BuildSession::acquire(root).err().unwrap(), CliError::StandaloneBuildLock { path, .. } if path == root.join("build/geam/build.lock"))
+            );
+            assert!(root.join("Cargo.lock").is_file());
+            assert!(root.join("build/geam/application.rs").is_file());
+            self.operations
+                .borrow_mut()
+                .push(format!("build:{module}:{package}:{profile:?}"));
+            Ok(root.join("build/geam/target/selected"))
+        }
+    }
+
+    #[test]
+    fn builds_after_reconciliation_under_one_lock_without_relocking_unchanged_dependencies() {
+        let fixture = project("application", "pub fn main() { 1 }\n");
+        let root = utf8_path(&fixture);
+        let cargo = RecordingCargo::default();
+        let mut output = Vec::new();
+        for profile in [BuildProfile::Debug, BuildProfile::Release] {
+            super::Preparation {
+                project_root: &root,
+                lock: &cargo,
+                providers: &UnchangedProviders,
+                progress: Progress::Visible(&mut output),
+            }
+            .build("application".into(), profile, &cargo)
+            .unwrap();
+            drop(BuildSession::acquire(&root).unwrap());
+        }
+        assert_eq!(
+            *cargo.operations.borrow(),
+            [
+                "lock",
+                "build:application:application:Debug",
+                "build:application:application:Release"
+            ]
+        );
+        let output = String::from_utf8(output).unwrap();
+        assert_eq!(
+            output
+                .matches(&format!(
+                    "geam: Built {}\n",
+                    root.join("build/geam/target/selected")
+                ))
+                .count(),
+            2
+        );
+        assert!(!output.contains("Prepared application"));
+        let held = BuildSession::acquire(&root).unwrap();
+        let error = super::Preparation {
+            project_root: &root,
+            lock: &cargo,
+            providers: &UnchangedProviders,
+            progress: Progress::Hidden,
+        }
+        .build("application".into(), BuildProfile::Debug, &cargo)
+        .unwrap_err();
+        assert!(
+            matches!(error, CliError::StandaloneBuildLock { path, .. } if path == root.join("build/geam/build.lock"))
+        );
+        drop(held);
+    }
+
+    struct FailingBuild;
+
+    impl ExecutableBuilder for FailingBuild {
+        fn build(
+            &self,
+            _root: &Utf8Path,
+            _module: &str,
+            package: &str,
+            _profile: BuildProfile,
+            _progress: &mut Progress<'_>,
+        ) -> Result<Utf8PathBuf, CliError> {
+            Err(CliError::InvalidBuildOutput {
+                package: package.to_owned(),
+                reason: "missing executable".into(),
+            })
+        }
+    }
+
+    #[test]
+    fn rejects_failed_builds_without_announcing_an_executable() {
+        let fixture = project("application", "pub fn main() { 1 }\n");
+        let root = utf8_path(&fixture);
+        let cargo = RecordingCargo::default();
+        let mut output = Vec::new();
+        let error = super::Preparation {
+            project_root: &root,
+            lock: &cargo,
+            providers: &UnchangedProviders,
+            progress: Progress::Visible(&mut output),
+        }
+        .build("application".into(), BuildProfile::Debug, &FailingBuild)
+        .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "invalid Cargo build output for application: missing executable"
+        );
+        assert!(!String::from_utf8(output).unwrap().contains("Built "));
+        drop(BuildSession::acquire(&root).unwrap());
+
+        fs::write(root.join("src/application.gleam"), "invalid Gleam").unwrap();
+        assert_eq!(
+            super::build(&root, "application".into(), true)
+                .unwrap_err()
+                .to_string(),
+            format!(
+                "failed to parse Gleam module {}",
+                root.join("src/application.gleam")
+            )
+        );
     }
 
     struct FailingCheck;

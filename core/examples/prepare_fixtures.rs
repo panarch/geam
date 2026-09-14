@@ -55,6 +55,18 @@ fn main() -> Result<(), Box<dyn Error>> {
         ("values.rs", values.prepare().emit_rust()),
         ("native.rs", native.prepare()?.emit_rust()),
         ("work.rs", work_provider::prepare().emit_rust()),
+        (
+            "entry.rs",
+            work_provider::prepare_entry("entry").emit_rust(),
+        ),
+        (
+            "entry_work.rs",
+            work_provider::prepare_entry("entry_work").emit_rust(),
+        ),
+        (
+            "entry_failure.rs",
+            work_provider::prepare_entry("entry_failure").emit_rust(),
+        ),
     ] {
         let destination = root.join(name);
         std::fs::write(&destination, format!("{data}\n"))?;

@@ -12,7 +12,8 @@ mod standalone;
 
 use clap::Parser;
 use command::{
-    Cli, Command, EmbeddingCommand, EntryCommand, Provider, ProviderCommand, RunCommand,
+    BuildCommand, Cli, Command, EmbeddingCommand, EntryCommand, Provider, ProviderCommand,
+    RunCommand,
 };
 use error::CliError;
 use std::env;
@@ -46,6 +47,7 @@ fn run_command(cli: Cli, current_directory: camino::Utf8PathBuf) -> Result<(), C
         },
         Command::Prepare(command) => ProjectCommand::Prepare(command),
         Command::Run(command) => ProjectCommand::Run(command),
+        Command::Build(command) => ProjectCommand::Build(command),
         Command::Provider(command) => ProjectCommand::Provider(command),
     };
     run_project_command(command, current_directory)
@@ -54,6 +56,7 @@ fn run_command(cli: Cli, current_directory: camino::Utf8PathBuf) -> Result<(), C
 enum ProjectCommand {
     Prepare(EntryCommand),
     Run(RunCommand),
+    Build(BuildCommand),
     Provider(Provider),
 }
 
@@ -74,6 +77,8 @@ fn run_project_command(
                     command.provider_configs,
                 )
             }),
+        ProjectCommand::Build(command) => project::entry_module(&project_root, command.module)
+            .and_then(|module| standalone::build(&project_root, module, command.release)),
         ProjectCommand::Provider(command) => match command.command {
             ProviderCommand::Add(command) => {
                 provider::add(&project_root, current_directory.as_std_path(), command)
@@ -121,7 +126,11 @@ mod tests {
         let root = Utf8PathBuf::from_path_buf(project.path().to_path_buf())
             .expect("temporary path should be valid UTF-8");
 
-        for arguments in [vec!["geam", "prepare"], vec!["geam", "run"]] {
+        for arguments in [
+            vec!["geam", "prepare"],
+            vec!["geam", "run"],
+            vec!["geam", "build"],
+        ] {
             let error = run_command(
                 Cli::try_parse_from(arguments).expect("command should parse"),
                 root.clone(),
@@ -162,6 +171,7 @@ mod tests {
         for arguments in [
             vec!["geam", "prepare", "--module", "missing"],
             vec!["geam", "run", "--module", "missing"],
+            vec!["geam", "build", "--module", "missing"],
         ] {
             let error = run_command(
                 Cli::try_parse_from(arguments).expect("command should parse"),

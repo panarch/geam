@@ -33,6 +33,26 @@ pub(super) enum CliError {
         error: io::Error,
     },
 
+    #[error("refusing to replace user-owned standalone file {path}")]
+    StandaloneFileConflict { path: Utf8PathBuf },
+
+    #[error("cannot acquire standalone build lock {path}: {error}")]
+    StandaloneBuildLock {
+        path: Utf8PathBuf,
+        #[source]
+        error: std::fs::TryLockError,
+    },
+
+    #[error("invalid Cargo build output for {package}: {reason}")]
+    InvalidBuildOutput { package: String, reason: String },
+
+    #[error("failed to read prepared program data from {}", path.display())]
+    PreparedProgramRead {
+        path: std::path::PathBuf,
+        #[source]
+        error: io::Error,
+    },
+
     #[error("failed to create a temporary provider candidate workspace")]
     TemporaryProviderWorkspace(#[source] io::Error),
 

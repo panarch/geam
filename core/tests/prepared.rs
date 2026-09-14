@@ -14,6 +14,95 @@ mod work_provider;
 
 static WORK: data::HostedModuleArtifact = include!("fixtures/prepared/work.rs");
 
+static ENTRY: data::HostedEntryArtifact = include!("fixtures/prepared/entry.rs");
+static ENTRY_WORK: data::HostedEntryArtifact = include!("fixtures/prepared/entry_work.rs");
+static ENTRY_FAILURE: data::HostedEntryArtifact = include!("fixtures/prepared/entry_failure.rs");
+
+#[test]
+fn standalone_artifacts_match_preparation_and_link_without_embedding_exports() {
+    for (module, artifact, expected) in [
+        ("entry", &ENTRY, include_str!("fixtures/prepared/entry.rs")),
+        (
+            "entry_work",
+            &ENTRY_WORK,
+            include_str!("fixtures/prepared/entry_work.rs"),
+        ),
+        (
+            "entry_failure",
+            &ENTRY_FAILURE,
+            include_str!("fixtures/prepared/entry_failure.rs"),
+        ),
+    ] {
+        assert_eq!(
+            work_provider::prepare_entry(module).emit_rust(),
+            expected.trim()
+        );
+        artifact.load(work_provider::hosts()).unwrap();
+    }
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn standalone_entries_preserve_generic_function_outer_work_and_source_failure_behavior() {
+    use geam_core::execution::{RunError, TokioHost};
+    use miette::Diagnostic;
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    for (artifact, expected) in [
+        (&ENTRY, vec!["src/entry.gleam:2\n42"]),
+        (
+            &ENTRY_WORK,
+            vec![
+                "src/entry_work.gleam:4\n\"main\"",
+                "src/entry_work.gleam:6\n42",
+            ],
+        ),
+    ] {
+        for _ in 0..2 {
+            let mut entry = artifact.load(work_provider::hosts()).unwrap();
+            let mut echo = Vec::new();
+            runtime
+                .block_on(entry.run(&host, &mut (), &mut echo))
+                .unwrap();
+            assert_eq!(
+                echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
+                expected
+            );
+        }
+    }
+    let mut entry = ENTRY_FAILURE.load(work_provider::hosts()).unwrap();
+    let mut echo = Vec::new();
+    let RunError::Execution(geam_core::ExecutionError::Panic(panic)) = runtime
+        .block_on(entry.run(&host, &mut (), &mut echo))
+        .unwrap_err()
+    else {
+        panic!("expected source panic from prepared main")
+    };
+    assert_eq!(panic.to_string(), "panic: prepared main failed");
+    assert_eq!(panic.site().module(), "entry_failure");
+    assert_eq!(panic.site().function(), "main");
+    assert_eq!(
+        echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        ["src/entry_failure.gleam:2\n\"before failure\""]
+    );
+    let span = panic.site().span();
+    let code = panic
+        .source_code()
+        .unwrap()
+        .read_span(&(span.start()..span.end()).into(), 0, 0)
+        .unwrap();
+    assert_eq!(code.name(), Some("src/entry_failure.gleam"));
+    assert!(
+        std::str::from_utf8(code.data())
+            .unwrap()
+            .contains("prepared main failed")
+    );
+}
+
 #[test]
 fn incompatible_format_never_produces_a_prepared_binding_owner() {
     static INCOMPATIBLE: data::ModuleArtifact<std::convert::Infallible> = data::ModuleArtifact {
@@ -23,7 +112,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = INCOMPATIBLE.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 0 is incompatible with format 1; regenerate the prepared bindings"
+        "prepared format 0 is incompatible with format 1; regenerate the prepared program"
     );
 }
 
