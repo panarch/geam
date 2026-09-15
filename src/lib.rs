@@ -76,7 +76,7 @@ pub mod __macro_support {
 pub use geam_core::__prepared_support;
 #[cfg(feature = "standalone")]
 #[doc(hidden)]
-#[path = "standalone/mod.rs"]
+#[path = "standalone.rs"]
 pub mod __standalone_support;
 pub use geam_core::List;
 #[cfg(feature = "embedding")]
