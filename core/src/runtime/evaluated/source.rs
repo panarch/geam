@@ -6,6 +6,7 @@ use super::function::{
     EvaluatedCustomFunction, EvaluatedFunction, EvaluatedFunctionFunction,
     EvaluatedFunctionIdentity, EvaluatedFunctionValue, EvaluatedFunctionValueKind,
 };
+use crate::runtime::retained_list::RetainedList;
 use crate::runtime::state::list::StoredListValueId;
 
 pub(in crate::runtime) fn values_equal(
@@ -43,9 +44,11 @@ pub(in crate::runtime) fn values_equal(
         (EvaluatedValue::ParameterList(left), EvaluatedValue::ParameterList(right)) => {
             left.type_id() == right.type_id()
         }
-        (EvaluatedValue::List(left), EvaluatedValue::List(right)) => {
-            lists_equal(storage, left, right)
-        }
+        (EvaluatedValue::List(left), EvaluatedValue::List(right)) => lists_equal(
+            storage,
+            &RetainedList::new(left.clone()),
+            &RetainedList::new(right.clone()),
+        ),
         (EvaluatedValue::Function(left), EvaluatedValue::Function(right)) => {
             functions_equal(left, right)
         }
@@ -225,20 +228,18 @@ fn hash_function_identity(value: &EvaluatedFunctionIdentity, hasher: &mut Defaul
 
 fn lists_equal(
     storage: &crate::runtime::RuntimeListStorage,
-    left: &StoredListValueId,
-    right: &StoredListValueId,
+    left: &RetainedList<StoredListValueId>,
+    right: &RetainedList<StoredListValueId>,
 ) -> bool {
-    if left.list_type() != right.list_type() {
+    if left.handle().list_type() != right.handle().list_type() {
         return false;
     }
 
-    let left = storage.evaluated_values(left);
-    let right = storage.evaluated_values(right);
     left.len() == right.len()
         && left
             .iter()
-            .zip(&right)
-            .all(|(left, right)| values_equal(storage, left, right))
+            .zip(right.iter())
+            .all(|(left, right)| values_equal(storage, &left, &right))
 }
 
 fn functions_equal(left: &EvaluatedFunctionValue, right: &EvaluatedFunctionValue) -> bool {
@@ -332,12 +333,13 @@ mod tests {
     use super::super::{
         EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedValue,
     };
-    use super::{value_source_hash, values_equal};
+    use super::{lists_equal, value_source_hash, values_equal};
     use crate::plan::execution::function::{
         BitArrayFunctionId, BoolFunctionId, FloatFunctionId, IntFunctionFunctionId, IntFunctionId,
         ListFunctionId, NeverFunctionId, NilFunctionId, ProfiledFunctionFunctionId,
         RuntimeListFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
     };
+    use crate::runtime::retained_list::RetainedList;
     use crate::runtime::state::RuntimeState;
     use crate::runtime::state::list::{ListValueId, ParameterListValueId};
     use bitvec::order::Msb0;
@@ -380,6 +382,139 @@ pub fn main() {
   0
 }
 "#;
+    #[test]
+    fn list_inspection_equality_stops_at_length_or_first_unequal_pair() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn ints() -> List(Int) { [] }
+pub fn main() { ints() }
+"#,
+        );
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
+        let type_id = plan.int_list_function_id(0).type_id();
+        for (left, right, expected, reads) in [
+            (vec![], vec![], true, 0),
+            (vec![1, 2, 3], vec![], false, 0),
+            (vec![], vec![1, 2, 3], false, 0),
+            (vec![1, 2, 3], vec![1, 2], false, 0),
+            (vec![1, 2, 3], vec![9, 2, 3], false, 1),
+            (vec![1, 2, 3], vec![1, 9, 3], false, 2),
+            (vec![1, 2, 3], vec![1, 2, 9], false, 3),
+            (vec![1, 2, 3], vec![1, 2, 3], true, 3),
+        ] {
+            let left = RetainedList::new(
+                state
+                    .lists_mut()
+                    .int(type_id, left.into_iter().map(Into::into).collect())
+                    .into(),
+            );
+            let right = RetainedList::new(
+                state
+                    .lists_mut()
+                    .int(type_id, right.into_iter().map(Into::into).collect())
+                    .into(),
+            );
+            assert_eq!(lists_equal(state.lists(), &left, &right), expected);
+            assert_eq!(left.item_reads(), reads);
+            assert_eq!(right.item_reads(), reads);
+        }
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn list_inspection_equality_rejects_different_exact_types_without_reading() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn int_tuples() -> List(#(Int)) { [] }
+fn string_tuples() -> List(#(String)) { [] }
+pub fn main() { #(int_tuples(), string_tuples()) }
+"#,
+        );
+        let storage = crate::runtime::RuntimeListStorage::default();
+        let left = RetainedList::new(
+            storage
+                .tuple(
+                    plan.tuple_list_function_id(0).type_id(),
+                    vec![vec![EvaluatedValue::Int(1.into())]],
+                )
+                .into(),
+        );
+        let right = RetainedList::new(
+            storage
+                .tuple(
+                    plan.tuple_list_function_id(1).type_id(),
+                    vec![vec![EvaluatedValue::String("one".into())]],
+                )
+                .into(),
+        );
+
+        assert!(!lists_equal(&storage, &left, &right));
+        assert_eq!(left.item_reads(), 0);
+        assert_eq!(right.item_reads(), 0);
+    }
+
+    #[test]
+    fn list_inspection_equality_uses_each_escaped_storage_owner() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn ints() -> List(Int) { [] }
+fn lists() -> List(List(Int)) { [] }
+pub fn main() { #(ints(), lists()) }
+"#,
+        );
+        let int_type = plan.int_list_function_id(0).type_id();
+        let list_type = plan.list_list_function_id(0).type_id();
+        let first_owner = crate::runtime::RuntimeListStorage::default();
+        let second_owner = crate::runtime::RuntimeListStorage::default();
+        let first = first_owner.int(int_type, vec![1.into(), 2.into()]);
+        let second = second_owner.int(int_type, vec![1.into(), 2.into()]);
+        let different = second_owner.int(int_type, vec![1.into(), 9.into()]);
+        let left = RetainedList::new(first_owner.list(list_type, vec![first.into()]).into());
+        let right = RetainedList::new(second_owner.list(list_type, vec![second.into()]).into());
+        let unequal =
+            RetainedList::new(second_owner.list(list_type, vec![different.into()]).into());
+        drop(first_owner);
+        drop(second_owner);
+
+        let caller = crate::runtime::RuntimeListStorage::default();
+        let unrelated = caller.int(int_type, vec![999.into()]);
+        let unrelated_lists = caller.list(list_type, vec![unrelated.into()]);
+        assert!(lists_equal(&caller, &left, &right));
+        assert!(!lists_equal(&caller, &left, &unequal));
+        assert_eq!(left.item_reads(), 2);
+        assert_eq!(right.item_reads(), 1);
+        assert_eq!(unequal.item_reads(), 1);
+        drop(unrelated_lists);
+    }
+
+    #[test]
+    fn list_inspection_equality_preserves_nan_and_signed_zero_semantics() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn floats() -> List(Float) { [] }
+pub fn main() { floats() }
+"#,
+        );
+        let storage = crate::runtime::RuntimeListStorage::default();
+        let type_id = plan.float_list_function_id(0).type_id();
+        let nan = RetainedList::new(storage.float(type_id, vec![f64::NAN]).into());
+        assert!(!lists_equal(&storage, &nan, &nan));
+        assert_eq!(nan.item_reads(), 2);
+        let value = EvaluatedValue::List(nan.handle().clone());
+        assert!(!values_equal(&storage, &value, &value));
+
+        let positive = RetainedList::new(storage.float(type_id, vec![0.0]).into());
+        let negative = RetainedList::new(storage.float(type_id, vec![-0.0]).into());
+        assert!(lists_equal(&storage, &positive, &negative));
+        assert_eq!(positive.item_reads(), 1);
+        assert_eq!(negative.item_reads(), 1);
+        assert_eq!(
+            value_source_hash(&storage, &EvaluatedValue::List(positive.handle().clone())),
+            value_source_hash(&storage, &EvaluatedValue::List(negative.handle().clone())),
+        );
+    }
+
     #[test]
     fn semantic_value_equality_covers_every_list_and_function_family() {
         fn external_equal(
