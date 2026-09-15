@@ -146,7 +146,7 @@ jobs:
       - name: Run CLI and binary coverage closure
         run: |
           cargo llvm-cov --no-report --package geam-cli --locked
-          cargo llvm-cov --no-clean --package geam --test binary --locked --summary-only
+          cargo llvm-cov --no-clean --package geam --lib --test binary --locked --summary-only
 
       - name: Check geam-cli coverage
         run: cargo llvm-cov report --package geam-cli --summary-only --fail-under-lines 100 --fail-under-regions 100

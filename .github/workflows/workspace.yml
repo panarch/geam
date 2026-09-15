@@ -181,6 +181,7 @@ jobs:
           cargo check --package geam --no-default-features --features embedding --all-targets --locked
           cargo check --package geam --no-default-features --features embedding,tokio --all-targets --locked
           cargo check --package geam --no-default-features --features provider --all-targets --locked
+          cargo check --package geam --no-default-features --features standalone --all-targets --locked
           cargo check --package geam --no-default-features --features embedding,gleam-stdlib --all-targets --locked
           cargo check --package geam --no-default-features --features embedding,geam-builtin --all-targets --locked
           cargo check --package geam --no-default-features --features embedding,gleam-erlang --all-targets --locked

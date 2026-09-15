@@ -59,7 +59,7 @@ pub use host::{
 };
 pub use plan::execution::{
     ExecutionPlan, ExecutionPlanExplanation, HostSpecializationError,
-    HostSpecializationErrorReason, HostedEntry, HostedExecution,
+    HostSpecializationErrorReason, HostedEntry, HostedExecution, PreparedHostedEntry,
 };
 pub use plan::{
     BitArrayExpr, BitArrayLocalId, BoolExpr, BoolLocalId, CustomType, CustomTypeName, EchoSite,

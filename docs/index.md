@@ -53,6 +53,9 @@ geam run
 ```
 
 Geam prepares the Rust runner and then executes the application's `main`.
+Use `geam build --release` to produce an executable that runs without the
+original source or build tools. The [standalone guide](standalone.md#build-an-executable)
+covers building, deployment, configuration and package resources.
 
 From a new Rust application:
 

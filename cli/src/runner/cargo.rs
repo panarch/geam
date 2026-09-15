@@ -5,7 +5,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use std::fs;
 use std::process::{Command, Stdio};
 
-const TARGET_DIRECTORY: &str = "build/geam/target";
+pub(super) const TARGET_DIRECTORY: &str = "build/geam/target";
 
 pub(crate) trait CargoLock {
     fn generate_lockfile(

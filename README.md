@@ -44,6 +44,14 @@ Geam prepares and maintains the project-local Rust runner while you continue
 working in Gleam. The
 [standalone guide](docs/standalone.md) continues from here.
 
+Build an executable to run without the original Gleam project or build tools:
+
+```sh
+geam build --release
+```
+
+Geam prints its path under `build/geam/target/release/`.
+
 ### Call Gleam from Rust
 
 To call Gleam functions from Rust, create a Rust application and initialize its

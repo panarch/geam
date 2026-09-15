@@ -25,15 +25,15 @@ impl fmt::Display for PreparedError {
             Kind::Provider(error) => error.fmt(output),
             Kind::Format(admission::FormatError { expected, found }) => write!(
                 output,
-                "prepared format {found} is incompatible with format {expected}; regenerate the prepared bindings"
+                "prepared format {found} is incompatible with format {expected}; regenerate the prepared program"
             ),
             Kind::Artifact(error) => write!(
                 output,
-                "invalid prepared program: {error:?}; regenerate the prepared bindings"
+                "invalid prepared program: {error:?}; regenerate the prepared program"
             ),
             Kind::Hosted(error) => write!(
                 output,
-                "invalid prepared program: {error:?}; regenerate the prepared bindings"
+                "invalid prepared program: {error:?}; regenerate the prepared program"
             ),
             Kind::Registration(error) => write!(
                 output,
@@ -136,21 +136,21 @@ mod tests {
                     expected: 1,
                     found: 2,
                 }),
-                "prepared format 2 is incompatible with format 1; regenerate the prepared bindings",
+                "prepared format 2 is incompatible with format 1; regenerate the prepared program",
                 false,
             ),
             (
                 PreparedError::from(admission::Error::<Infallible>::Entries(
                     admission::entry::EntryError::Empty,
                 )),
-                "invalid prepared program: Entries(Empty); regenerate the prepared bindings",
+                "invalid prepared program: Entries(Empty); regenerate the prepared program",
                 false,
             ),
             (
                 PreparedError::from(admission::Error::<admission::hosts::NativeError>::Entries(
                     admission::entry::EntryError::Empty,
                 )),
-                "invalid prepared program: Entries(Empty); regenerate the prepared bindings",
+                "invalid prepared program: Entries(Empty); regenerate the prepared program",
                 false,
             ),
             (

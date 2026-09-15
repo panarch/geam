@@ -17,6 +17,7 @@ default distribution:
 cargo check --package geam --no-default-features --features embedding --all-targets --locked
 cargo check --package geam --no-default-features --features embedding,tokio --all-targets --locked
 cargo check --package geam --no-default-features --features provider --all-targets --locked
+cargo check --package geam --no-default-features --features standalone --all-targets --locked
 cargo check --package geam --no-default-features --features embedding,gleam-stdlib --all-targets --locked
 cargo check --package geam --no-default-features --features embedding,geam-builtin --all-targets --locked
 cargo check --package geam --no-default-features --features embedding,gleam-erlang --all-targets --locked
@@ -302,9 +303,19 @@ normal output and embedded source diagnostics with an empty PATH. It then
 packages the consumer, inspects Cargo's extracted verification tree and builds
 and runs that tree from another directory after removing the original consumer.
 Failing Geam/Gleam command sentinels ensure packaging and rebuilding do not
-silently invoke a generation tool. The Prepared embedding CI matrix runs this
+silently invoke a generation tool. The Prepared distribution CI matrix runs this
 boundary on Linux, macOS and Windows; native feature/registration mismatch and
 rich hosted generation remain CLI owner tests.
+
+The same matrix runs `standalone_build`: real debug/release builds, selected
+modules, source-backed command transitions, and relocated execution with an
+empty PATH. It composes the maintained provider and Future fixtures with
+process execution, configures providers and package resources at startup, and
+verifies untouched application arguments, cancellation, shutdown and source
+diagnostics after removing the source/build tree. CLI owner tests separately
+fix Cargo message admission, output ownership, locking and preparation failure.
+The root standalone support module owns deterministic configuration/path and
+IO tests; its tests run in the CLI/binary coverage closure.
 
 Core owners and `geam-macros`'s `async_provider` target exercise deterministic
 Pending, shared completion, bounded state access, rich callbacks, cancellation,
@@ -514,7 +525,7 @@ fixture package is published. The text-pattern provider and matching Hex package
 are release-coupled public documentation artifacts and share every Geam release
 version.
 
-The root package keeps six explicit acceptance targets:
+The root package keeps seven explicit acceptance targets:
 
 - `binary` starts the installed-shape `geam` process for command dispatch,
   process failures, pure execution, and IO/Echo ordering.
@@ -527,6 +538,7 @@ The root package keeps six explicit acceptance targets:
   JSON, and Time in a caller-driven Rust embedding scope.
 - `prepared_embedding` verifies generated preparation, source-free execution,
   diagnostics and extracted Cargo package consumption.
+- `standalone_build` verifies built executable assembly and source-free deployment.
 - `standalone_distribution` combines built-ins and two independent providers
   in one canonical managed-project flow. Its Future cases verify exact outer
   entry completion and a generated Tokio host using controlled timers, loopback
@@ -592,6 +604,7 @@ cargo test --package geam --test provider_examples --locked
 cargo test --package geam --test future_builtins --locked
 cargo test --package geam --test prepared_embedding --locked
 cargo test --package geam --test standalone_distribution --locked
+cargo test --package geam --test standalone_build --locked
 ```
 
 To run one provider example with the same exact selection used by its CI job:
@@ -672,7 +685,7 @@ Run the CLI and binary closure with Gleam `v1.18.1` available:
 ```sh
 cargo llvm-cov clean --workspace
 cargo llvm-cov --no-report --package geam-cli --locked
-cargo llvm-cov --no-clean --package geam --test binary --locked --summary-only
+cargo llvm-cov --no-clean --package geam --lib --test binary --locked --summary-only
 cargo llvm-cov report --package geam-cli --summary-only --fail-under-lines 100 --fail-under-regions 100
 cargo llvm-cov report --package geam --summary-only --fail-under-lines 100 --fail-under-regions 100
 ```

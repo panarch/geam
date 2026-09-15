@@ -2,9 +2,9 @@ mod return_body;
 
 use self::return_body::function_return_expr;
 use crate::plan::{
-    CaptureArg, FunctionTemplate, Param, ParamBinding, ReturnExpr, Step, ValueShape,
+    CaptureArg, FunctionTemplate, FunctionTemplateSignature, Param, ParamBinding, ParamSlot,
 };
-use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext, PlannedCaptures};
+use crate::planner::context::{FunctionInfo, FunctionParam, FunctionScope, PlanContext};
 use crate::planner::error::{
     InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedFunctionReason,
 };
@@ -13,11 +13,13 @@ use ecow::EcoString;
 use gleam_compiler_core::ast::{TypedFunction, TypedStatement};
 use vec1::Vec1;
 
-pub(super) struct PlannedFunctionBody {
-    pub(super) params: Vec<Param>,
-    captures: PlannedCaptures,
-    pub(super) steps: Vec<Step>,
-    pub(super) return_: ReturnExpr,
+pub(super) struct AnonymousFunctionBody {
+    name: EcoString,
+    signature: FunctionTemplateSignature,
+    params: Vec<Param>,
+    captures: Vec<ParamSlot>,
+    scope: FunctionScope,
+    body: Vec1<TypedStatement>,
 }
 
 pub(super) fn plan_function(
@@ -81,6 +83,11 @@ fn plan_selected_function(
     )?;
     let return_ = function_return_expr(&name, &return_shape, planned.return_)?;
 
+    // Validate the closure worklist before returning this named function's complete plan.
+    while let Some(body) = context.next_anonymous_function() {
+        let function = body.plan(&mut context)?;
+        context.push_anonymous_function(function);
+    }
     Ok(FunctionTemplate::from_signature(
         info.signature,
         name,
@@ -91,48 +98,48 @@ fn plan_selected_function(
     ))
 }
 
-pub(super) fn plan_anonymous_function_body(
-    name: &EcoString,
-    return_shape: &ValueShape,
-    params: &[FunctionParam],
+pub(super) fn prepare_anonymous_function_body(
+    name: EcoString,
+    info: FunctionInfo,
     captures: Vec<crate::planner::context::CaptureBinding>,
     body: Vec1<TypedStatement>,
     context: &mut PlanContext<'_>,
-) -> Result<PlannedFunctionBody, PlanError> {
-    let params = define_params(params, context)?;
-    let captures = context.define_captures(captures);
-    let planned = crate::planner::statement::plan_non_empty_steps_and_return(
-        body,
-        context,
-        Some(return_shape),
-    )?;
-    let return_ = function_return_expr(name, return_shape, planned.return_)?;
-
-    Ok(PlannedFunctionBody {
-        params,
-        captures,
-        steps: planned.steps,
-        return_,
-    })
+) -> Result<(AnonymousFunctionBody, Vec<CaptureArg>), PlanError> {
+    let mut context = context.anonymous_function_context(name.clone(), info.type_parameters);
+    let params = define_params(&info.params, &mut context)?;
+    let (captures, sources) = context.define_captures(captures).into_parts();
+    Ok((
+        AnonymousFunctionBody {
+            name,
+            signature: info.signature,
+            params,
+            captures,
+            scope: context.into_function_scope(),
+            body,
+        },
+        sources,
+    ))
 }
 
-pub(super) fn anonymous_function_plan(
-    info: FunctionInfo,
-    name: EcoString,
-    planned: PlannedFunctionBody,
-) -> (FunctionTemplate, Vec<CaptureArg>) {
-    let (capture_slots, capture_sources) = planned.captures.into_parts();
-    (
-        FunctionTemplate::from_signature(
-            info.signature,
-            name,
-            planned.params,
-            capture_slots,
+impl AnonymousFunctionBody {
+    fn plan(self, context: &mut PlanContext<'_>) -> Result<FunctionTemplate, PlanError> {
+        context.set_function_scope(self.scope);
+        let return_shape = self.signature.shape().return_shape();
+        let planned = crate::planner::statement::plan_non_empty_steps_and_return(
+            self.body,
+            context,
+            Some(return_shape),
+        )?;
+        let return_ = function_return_expr(&self.name, return_shape, planned.return_)?;
+        Ok(FunctionTemplate::from_signature(
+            self.signature,
+            self.name,
+            self.params,
+            self.captures,
             planned.steps,
-            planned.return_,
-        ),
-        capture_sources,
-    )
+            return_,
+        ))
+    }
 }
 
 fn define_params(
@@ -200,6 +207,46 @@ mod tests {
     use crate::planner::{
         InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedFunctionReason,
     };
+
+    #[test]
+    fn plan_consecutive_use_bodies_on_bounded_stack() {
+        let source = r#"
+fn step(value: Int, next: fn(Int) -> Int) -> Int { next(value) }
+pub fn main() {
+  use a <- step(0)
+  use b <- step(1)
+  use c <- step(2)
+  use d <- step(3)
+  use e <- step(4)
+  use f <- step(5)
+  use g <- step(6)
+  use h <- step(7)
+  use i <- step(8)
+  use j <- step(9)
+  use k <- step(10)
+  use l <- step(11)
+  use m <- step(12)
+  use n <- step(13)
+  a + b + c + d + e + f + g + h + i + j + k + l + m + n
+}
+"#;
+        std::thread::Builder::new()
+            .stack_size(1024 * 1024)
+            .spawn(move || {
+                let plan = plan_module(compile(source)).expect("use bodies should plan");
+                assert_eq!(plan.anonymous_functions().len(), 14);
+                let execution = crate::ExecutionPlan::from_module_plan(plan);
+                let mut echo = Vec::new();
+                assert_eq!(
+                    crate::run_main(&execution, &mut echo),
+                    Ok(crate::Value::Int(91.into()))
+                );
+                assert!(echo.is_empty());
+            })
+            .expect("spawn constrained planner thread")
+            .join()
+            .expect("nested use planning should finish");
+    }
 
     #[test]
     fn plan_final_direct_call_as_tail_call() {
@@ -1589,7 +1636,7 @@ pub fn main() -> Int
             ),
             type_parameters: Default::default(),
             return_shape: crate::plan::ValueShape::Int,
-            params: vec![invalid_param.clone()],
+            params: vec![invalid_param],
             definition_span: crate::plan::SourceSpan::new(0, 0),
         };
         let mut anonymous = crate::planner::context::AnonymousFunctions::default();
@@ -1597,7 +1644,7 @@ pub fn main() -> Int
         let functions = Default::default();
         let context = PlanContext::new(&module_name, &functions, &mut anonymous);
         assert_eq!(
-            super::plan_function(info, named_function, context),
+            super::plan_function(info.clone(), named_function, context),
             Err(expected.clone()),
         );
 
@@ -1610,10 +1657,9 @@ pub fn main() -> Int
         let mut context =
             crate::planner::context::PlanContext::new(&module_name, &functions, &mut anonymous);
         assert_eq!(
-            super::plan_anonymous_function_body(
-                &"<anonymous:0>".into(),
-                &crate::plan::ValueShape::Int,
-                &[invalid_param],
+            super::prepare_anonymous_function_body(
+                "<anonymous:0>".into(),
+                info,
                 Vec::new(),
                 anonymous_body,
                 &mut context,

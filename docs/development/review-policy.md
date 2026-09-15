@@ -284,7 +284,9 @@ and registrations; a concrete aggregate profile only projects those owners.
 Configured external components own explicit configuration interpretation and
 initialization through the separate initialization contract. Runner-built IO,
 entropy, unit state, and clocks are capability construction, not hidden provider
-configuration. Initialization failure belongs before planning and execution.
+configuration. Initialization failure belongs before application execution.
+Prepared generation uses static registration without initializing runtime state;
+configured state is initialized by the execution host at startup.
 Do not move component identity, configuration, mutable state, or initialization
 into canonical plans, graphs, Explain metadata, runtime registries, or host
 callback errors.

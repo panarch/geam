@@ -202,7 +202,7 @@ impl PlanContext<'_> {
             Some((field_types, _)) => field_types,
             None => Vec::new(),
         };
-        let mut type_parameters = self.type_parameters.clone();
+        let mut type_parameters = self.type_parameters().clone();
         let field_types = field_types
             .into_iter()
             .map(|field| {
@@ -224,7 +224,7 @@ impl PlanContext<'_> {
         module: &EcoString,
         name: &EcoString,
     ) -> Result<CustomValueShape, PlanError> {
-        let mut type_parameters = self.type_parameters.clone();
+        let mut type_parameters = self.type_parameters().clone();
         let actual =
             ValueShape::from_gleam_in_with_external(type_, &mut type_parameters, &|name| {
                 self.registry.is_external_type(name)

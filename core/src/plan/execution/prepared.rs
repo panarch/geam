@@ -1,10 +1,12 @@
 mod admission;
 pub mod data;
+mod entry;
 mod hosted;
 pub(crate) mod rust;
 
 pub use admission::PreparedError;
 pub(crate) use admission::{AdmittedHostedModule, AdmittedModule};
+pub use entry::{HostedEntryArtifact, PreparedHostedEntry};
 pub use hosted::{HostedModuleArtifact, PreparedHostedModule};
 
 use super::constant::ProfiledConstantTable;

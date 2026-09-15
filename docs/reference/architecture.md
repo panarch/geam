@@ -58,7 +58,8 @@ feature boundary. `ExecutionPlan::explain()` provides a human-readable view of
 lowered functions, values, instructions, and control-flow edges, but its text is
 not a stable serialization format.
 
-Prepared embedding performs this pipeline before the Rust build and emits the
+Prepared embedding and standalone builds perform this pipeline before the final
+Rust build and emit the
 complete immutable execution plan as Rust data. Loading admits that data and
 links the actual native implementations before creating a callable owner.
 Dynamic owned tables and prepared static tables expose the same borrowed reads
@@ -115,6 +116,20 @@ Standalone and embedding are two owners around the same architecture.
 The Gleam project owns source and dependencies. Geam manages a project-local
 Cargo manifest, lockfile, and generated runner. The user selects native provider
 dependencies explicitly and executes the selected module through `geam run`.
+
+`geam build` uses the same static provider composition to prepare main as
+compiler-visible execution data and compile a deployed host. The preparer and
+application share one managed Cargo package, lock and build profile. Preparation
+uses provider registrations but does not initialize application state. The
+executable admits the prepared main, constructs runtime capabilities and
+configured provider state, and runs it through the same `HostedEntry` contract.
+The generated host's `standalone` facade feature supplies configuration and IO
+support without pulling the CLI into its dependency graph.
+
+The deployed host owns `GEAM_CONFIG`, application arguments and
+executable-relative resource locations. Resource package identities are prepared
+data; deployment paths and configuration are startup inputs, not build-machine
+state retained in the plan.
 
 ### Rust Embedding
 

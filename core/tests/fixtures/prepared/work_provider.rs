@@ -76,3 +76,44 @@ pub fn prepare() -> PreparedHostedModule {
         .unwrap();
     bindings.prepare().unwrap()
 }
+
+pub fn prepare_entry(module: &str) -> geam_core::PreparedHostedEntry {
+    let program = geam_core::compile_typed_host_program(
+        "app",
+        module,
+        [
+            PackageSource::new(
+                "work_fixture",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "fixture/work",
+                    "src/fixture/work.gleam",
+                    WorkComponent::SOURCE,
+                )],
+            ),
+            PackageSource::new(
+                "app",
+                ["work_fixture"],
+                [
+                    ModuleSource::new("entry", "src/entry.gleam", include_str!("entry.gleam")),
+                    ModuleSource::new(
+                        "entry_work",
+                        "src/entry_work.gleam",
+                        include_str!("entry_work.gleam"),
+                    ),
+                    ModuleSource::new(
+                        "entry_failure",
+                        "src/entry_failure.gleam",
+                        include_str!("entry_failure.gleam"),
+                    ),
+                ],
+            ),
+        ],
+        hosts(),
+    )
+    .unwrap();
+    geam_core::PreparedHostedEntry::try_from_module_plan(
+        geam_core::plan_host_program(program).unwrap(),
+    )
+    .unwrap()
+}

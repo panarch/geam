@@ -1,7 +1,7 @@
 use ecow::EcoString;
 use gleam_compiler_core::ast::{
-    AssignmentKind, BitArraySize, ClauseGuard, Pattern, Statement, TypedArg, TypedClauseGuard,
-    TypedExpr, TypedPipelineAssignment, TypedStatement,
+    AssignmentKind, BitArraySize, ClauseGuard, Pattern, Statement, TypedArg, TypedClause,
+    TypedClauseGuard, TypedExpr, TypedPipelineAssignment, TypedStatement,
 };
 use gleam_compiler_core::type_::{Type, ValueConstructorVariant};
 use std::collections::HashSet;
@@ -18,13 +18,30 @@ pub(super) fn anonymous_free_variables(
     }
 
     let mut free = FreeVariables::new();
-    collect_statements(body.as_slice(), &mut bound, &mut free);
+    free.collect(Visit::Statements(body.as_slice()), &mut bound);
     free.names
 }
 
 struct FreeVariables {
     names: Vec<EcoString>,
     seen: HashSet<EcoString>,
+}
+
+enum Visit<'a> {
+    Statements(&'a [TypedStatement]),
+    Statement(&'a TypedStatement),
+    Expression(&'a TypedExpr),
+    PipelineAssignment(&'a TypedPipelineAssignment),
+    Clause(&'a TypedClause),
+    Alternative {
+        patterns: &'a [Pattern<Arc<Type>>],
+        outer_bound: HashSet<EcoString>,
+    },
+    Guard(&'a TypedClauseGuard),
+    Pattern(&'a Pattern<Arc<Type>>),
+    BitArraySize(&'a BitArraySize<Arc<Type>>),
+    Bind(&'a EcoString),
+    RestoreBound(HashSet<EcoString>),
 }
 
 impl FreeVariables {
@@ -35,258 +52,287 @@ impl FreeVariables {
         }
     }
 
+    fn collect(&mut self, first: Visit<'_>, bound: &mut HashSet<EcoString>) {
+        let mut pending = vec![first];
+        // Push children in reverse source order; scope exits restore lexical bindings.
+        while let Some(visit) = pending.pop() {
+            match visit {
+                Visit::Statements(statements) => {
+                    pending.extend(statements.iter().rev().map(Visit::Statement));
+                }
+                Visit::Statement(statement) => schedule_statement(statement, &mut pending),
+                Visit::Expression(expression) => {
+                    self.collect_expression(expression, bound, &mut pending);
+                }
+                Visit::PipelineAssignment(assignment) => {
+                    pending.push(Visit::Bind(&assignment.name));
+                    pending.push(Visit::Expression(&assignment.value));
+                }
+                Visit::Clause(clause) => {
+                    pending.push(Visit::RestoreBound(bound.clone()));
+                    pending.push(Visit::Expression(&clause.then));
+                    if let Some(guard) = &clause.guard {
+                        pending.push(Visit::Guard(guard));
+                    }
+                    for patterns in clause.alternative_patterns.iter().rev() {
+                        pending.push(Visit::Alternative {
+                            patterns,
+                            outer_bound: bound.clone(),
+                        });
+                    }
+                    pending.extend(clause.pattern.iter().rev().map(Visit::Pattern));
+                }
+                Visit::Alternative {
+                    patterns,
+                    outer_bound,
+                } => {
+                    pending.push(Visit::RestoreBound(std::mem::replace(bound, outer_bound)));
+                    pending.extend(patterns.iter().rev().map(Visit::Pattern));
+                }
+                Visit::Guard(guard) => self.collect_guard(guard, bound, &mut pending),
+                Visit::Pattern(pattern) => schedule_pattern(pattern, bound, &mut pending),
+                Visit::BitArraySize(size) => self.collect_bit_array_size(size, bound, &mut pending),
+                Visit::Bind(name) => {
+                    bound.insert(name.clone());
+                }
+                Visit::RestoreBound(previous) => *bound = previous,
+            }
+        }
+    }
+
+    fn collect_expression<'a>(
+        &mut self,
+        expression: &'a TypedExpr,
+        bound: &mut HashSet<EcoString>,
+        pending: &mut Vec<Visit<'a>>,
+    ) {
+        match expression {
+            TypedExpr::Int { .. }
+            | TypedExpr::Float { .. }
+            | TypedExpr::String { .. }
+            | TypedExpr::Invalid { .. } => {}
+            TypedExpr::Var {
+                name, constructor, ..
+            } => {
+                if matches!(
+                    constructor.variant,
+                    ValueConstructorVariant::LocalVariable { .. }
+                ) {
+                    self.record(name, bound);
+                }
+            }
+            TypedExpr::Block { statements, .. } => {
+                pending.push(Visit::RestoreBound(bound.clone()));
+                pending.push(Visit::Statements(statements.as_slice()));
+            }
+            TypedExpr::Pipeline {
+                first_value,
+                assignments,
+                finally,
+                ..
+            } => {
+                pending.push(Visit::RestoreBound(bound.clone()));
+                pending.push(Visit::Expression(finally));
+                pending.extend(
+                    assignments
+                        .iter()
+                        .rev()
+                        .map(|(assignment, _)| Visit::PipelineAssignment(assignment)),
+                );
+                pending.push(Visit::PipelineAssignment(first_value));
+            }
+            TypedExpr::Fn {
+                arguments, body, ..
+            } => {
+                pending.push(Visit::RestoreBound(bound.clone()));
+                for argument in arguments {
+                    bound.extend(argument.get_variable_name().cloned());
+                }
+                pending.push(Visit::Statements(body.as_slice()));
+            }
+            TypedExpr::Call { fun, arguments, .. } => {
+                pending.extend(
+                    arguments
+                        .iter()
+                        .rev()
+                        .map(|argument| Visit::Expression(&argument.value)),
+                );
+                pending.push(Visit::Expression(fun));
+            }
+            TypedExpr::BinOp { left, right, .. } => {
+                pending.push(Visit::Expression(right));
+                pending.push(Visit::Expression(left));
+            }
+            TypedExpr::Case {
+                subjects, clauses, ..
+            } => {
+                pending.extend(clauses.iter().rev().map(Visit::Clause));
+                pending.extend(subjects.iter().rev().map(Visit::Expression));
+            }
+            TypedExpr::NegateBool { value, .. } | TypedExpr::NegateInt { value, .. } => {
+                pending.push(Visit::Expression(value));
+            }
+            TypedExpr::Tuple { elements, .. } => {
+                pending.extend(elements.iter().rev().map(Visit::Expression));
+            }
+            TypedExpr::TupleIndex { tuple, .. } => {
+                pending.push(Visit::Expression(tuple));
+            }
+            TypedExpr::List { elements, tail, .. } => {
+                if let Some(tail) = tail {
+                    pending.push(Visit::Expression(tail));
+                }
+                pending.extend(elements.iter().rev().map(Visit::Expression));
+            }
+            TypedExpr::Todo { message, .. } | TypedExpr::Panic { message, .. } => {
+                if let Some(message) = message {
+                    pending.push(Visit::Expression(message));
+                }
+            }
+            TypedExpr::BitArray { segments, .. } => {
+                for segment in segments.iter().rev() {
+                    for option in segment.options.iter().rev() {
+                        if let gleam_compiler_core::ast::BitArrayOption::Size { value, .. } = option
+                        {
+                            pending.push(Visit::Expression(value));
+                        }
+                    }
+                    pending.push(Visit::Expression(&segment.value));
+                }
+            }
+            TypedExpr::RecordAccess { record, .. } => pending.push(Visit::Expression(record)),
+            TypedExpr::RecordUpdate {
+                updated_record,
+                arguments,
+                ..
+            } => {
+                for argument in arguments.iter().rev() {
+                    if argument.implicit.is_none() {
+                        pending.push(Visit::Expression(&argument.value));
+                    }
+                }
+                pending.push(Visit::Expression(updated_record));
+            }
+            TypedExpr::Echo {
+                expression,
+                message,
+                ..
+            } => {
+                if let Some(message) = message {
+                    pending.push(Visit::Expression(message));
+                }
+                if let Some(expression) = expression {
+                    pending.push(Visit::Expression(expression));
+                }
+            }
+            TypedExpr::PositionalAccess { .. } | TypedExpr::ModuleSelect { .. } => {}
+        }
+    }
+
+    fn collect_guard<'a>(
+        &mut self,
+        guard: &'a TypedClauseGuard,
+        bound: &HashSet<EcoString>,
+        pending: &mut Vec<Visit<'a>>,
+    ) {
+        match guard {
+            ClauseGuard::Var { name, .. } => self.record(name, bound),
+            ClauseGuard::Block { value, .. } => pending.push(Visit::Guard(value)),
+            ClauseGuard::BinaryOperator { left, right, .. } => {
+                pending.push(Visit::Guard(right));
+                pending.push(Visit::Guard(left));
+            }
+            ClauseGuard::Not { expression, .. } => pending.push(Visit::Guard(expression)),
+            ClauseGuard::TupleIndex { tuple, .. } => pending.push(Visit::Guard(tuple)),
+            ClauseGuard::FieldAccess { container, .. } => pending.push(Visit::Guard(container)),
+            ClauseGuard::Constant(_)
+            | ClauseGuard::ModuleSelect { .. }
+            | ClauseGuard::Invalid { .. } => {}
+        }
+    }
+
+    fn collect_bit_array_size<'a>(
+        &mut self,
+        size: &'a BitArraySize<Arc<Type>>,
+        bound: &HashSet<EcoString>,
+        pending: &mut Vec<Visit<'a>>,
+    ) {
+        match size {
+            BitArraySize::Variable { name, .. } => self.record(name, bound),
+            BitArraySize::BinaryOperator { left, right, .. } => {
+                pending.push(Visit::BitArraySize(right));
+                pending.push(Visit::BitArraySize(left));
+            }
+            BitArraySize::Block { inner, .. } => pending.push(Visit::BitArraySize(inner)),
+            BitArraySize::Int { .. } => {}
+        }
+    }
+
     fn record(&mut self, name: &EcoString, bound: &HashSet<EcoString>) {
         if bound.contains(name) {
             return;
         }
-
         if self.seen.insert(name.clone()) {
             self.names.push(name.clone());
         }
     }
 }
 
-fn collect_statements(
-    statements: &[TypedStatement],
-    bound: &mut HashSet<EcoString>,
-    free: &mut FreeVariables,
-) {
-    for statement in statements {
-        collect_statement(statement, bound, free);
-    }
-}
-
-fn collect_statement(
-    statement: &TypedStatement,
-    bound: &mut HashSet<EcoString>,
-    free: &mut FreeVariables,
-) {
+fn schedule_statement<'a>(statement: &'a TypedStatement, pending: &mut Vec<Visit<'a>>) {
     match statement {
-        Statement::Expression(expression) => collect_expr(expression, bound, free),
+        Statement::Expression(expression) => pending.push(Visit::Expression(expression)),
         Statement::Assignment(assignment) => {
-            collect_expr(&assignment.value, bound, free);
+            pending.push(Visit::Pattern(&assignment.pattern));
             if let AssignmentKind::Assert {
                 message: Some(message),
                 ..
             } = &assignment.kind
             {
-                collect_expr(message, bound, free);
+                pending.push(Visit::Expression(message));
             }
-            collect_pattern(&assignment.pattern, bound, free);
+            pending.push(Visit::Expression(&assignment.value));
         }
-        Statement::Use(use_) => {
-            collect_expr(&use_.call, bound, free);
-        }
+        Statement::Use(use_) => pending.push(Visit::Expression(&use_.call)),
         Statement::Assert(assert) => {
-            collect_expr(&assert.value, bound, free);
             if let Some(message) = &assert.message {
-                collect_expr(message, bound, free);
+                pending.push(Visit::Expression(message));
             }
+            pending.push(Visit::Expression(&assert.value));
         }
     }
 }
 
-fn collect_expr(expression: &TypedExpr, bound: &mut HashSet<EcoString>, free: &mut FreeVariables) {
-    match expression {
-        TypedExpr::Int { .. }
-        | TypedExpr::Float { .. }
-        | TypedExpr::String { .. }
-        | TypedExpr::Invalid { .. } => {}
-        TypedExpr::Var {
-            name, constructor, ..
-        } => {
-            if matches!(
-                constructor.variant,
-                ValueConstructorVariant::LocalVariable { .. }
-            ) {
-                free.record(name, bound);
-            }
-        }
-        TypedExpr::Block { statements, .. } => {
-            let mut block_bound = bound.clone();
-            collect_statements(statements.as_slice(), &mut block_bound, free);
-        }
-        TypedExpr::Pipeline {
-            first_value,
-            assignments,
-            finally,
-            ..
-        } => {
-            let mut pipeline_bound = bound.clone();
-            collect_pipeline_assignment(first_value, &mut pipeline_bound, free);
-            for (assignment, _) in assignments {
-                collect_pipeline_assignment(assignment, &mut pipeline_bound, free);
-            }
-            collect_expr(finally, &mut pipeline_bound, free);
-        }
-        TypedExpr::Fn {
-            arguments, body, ..
-        } => {
-            for name in anonymous_free_variables(arguments, body) {
-                free.record(&name, bound);
-            }
-        }
-        TypedExpr::Call { fun, arguments, .. } => {
-            collect_expr(fun, bound, free);
-            for argument in arguments {
-                collect_expr(&argument.value, bound, free);
-            }
-        }
-        TypedExpr::BinOp { left, right, .. } => {
-            collect_expr(left, bound, free);
-            collect_expr(right, bound, free);
-        }
-        TypedExpr::Case {
-            subjects, clauses, ..
-        } => {
-            for subject in subjects {
-                collect_expr(subject, bound, free);
-            }
-            for clause in clauses {
-                let mut branch_bound = bound.clone();
-                for pattern in &clause.pattern {
-                    collect_pattern(pattern, &mut branch_bound, free);
-                }
-                for alternative in &clause.alternative_patterns {
-                    let mut alternative_bound = bound.clone();
-                    for pattern in alternative {
-                        collect_pattern(pattern, &mut alternative_bound, free);
-                    }
-                }
-                if let Some(guard) = &clause.guard {
-                    collect_clause_guard(guard, &mut branch_bound, free);
-                }
-                collect_expr(&clause.then, &mut branch_bound, free);
-            }
-        }
-        TypedExpr::NegateBool { value, .. } | TypedExpr::NegateInt { value, .. } => {
-            collect_expr(value, bound, free);
-        }
-        TypedExpr::Tuple { elements, .. } => {
-            for element in elements {
-                collect_expr(element, bound, free);
-            }
-        }
-        TypedExpr::TupleIndex { tuple, .. } => {
-            collect_expr(tuple, bound, free);
-        }
-        TypedExpr::List { elements, tail, .. } => {
-            for element in elements {
-                collect_expr(element, bound, free);
-            }
-            if let Some(tail) = tail {
-                collect_expr(tail, bound, free);
-            }
-        }
-        TypedExpr::Todo { message, .. } | TypedExpr::Panic { message, .. } => {
-            if let Some(message) = message {
-                collect_expr(message, bound, free);
-            }
-        }
-        TypedExpr::BitArray { segments, .. } => {
-            for segment in segments {
-                collect_expr(segment.value.as_ref(), bound, free);
-                for option in &segment.options {
-                    if let gleam_compiler_core::ast::BitArrayOption::Size { value, .. } = option {
-                        collect_expr(value.as_ref(), bound, free);
-                    }
-                }
-            }
-        }
-        TypedExpr::RecordAccess { record, .. } => collect_expr(record, bound, free),
-        TypedExpr::RecordUpdate {
-            updated_record,
-            arguments,
-            ..
-        } => {
-            collect_expr(updated_record, bound, free);
-            for argument in arguments {
-                if argument.implicit.is_none() {
-                    collect_expr(&argument.value, bound, free);
-                }
-            }
-        }
-        TypedExpr::Echo {
-            expression,
-            message,
-            ..
-        } => {
-            if let Some(expression) = expression {
-                collect_expr(expression, bound, free);
-            }
-            if let Some(message) = message {
-                collect_expr(message, bound, free);
-            }
-        }
-        TypedExpr::PositionalAccess { .. } | TypedExpr::ModuleSelect { .. } => {}
-    }
-}
-
-fn collect_pipeline_assignment(
-    assignment: &TypedPipelineAssignment,
+fn schedule_pattern<'a>(
+    pattern: &'a Pattern<Arc<Type>>,
     bound: &mut HashSet<EcoString>,
-    free: &mut FreeVariables,
-) {
-    collect_expr(&assignment.value, bound, free);
-    bound.insert(assignment.name.clone());
-}
-
-fn collect_clause_guard(
-    guard: &TypedClauseGuard,
-    bound: &mut HashSet<EcoString>,
-    free: &mut FreeVariables,
-) {
-    match guard {
-        ClauseGuard::Var { name, .. } => free.record(name, bound),
-        ClauseGuard::Block { value, .. } => collect_clause_guard(value, bound, free),
-        ClauseGuard::BinaryOperator { left, right, .. } => {
-            collect_clause_guard(left, bound, free);
-            collect_clause_guard(right, bound, free);
-        }
-        ClauseGuard::Not { expression, .. } => collect_clause_guard(expression, bound, free),
-        ClauseGuard::TupleIndex { tuple, .. } => collect_clause_guard(tuple, bound, free),
-        ClauseGuard::FieldAccess { container, .. } => collect_clause_guard(container, bound, free),
-        ClauseGuard::Constant(_)
-        | ClauseGuard::ModuleSelect { .. }
-        | ClauseGuard::Invalid { .. } => {}
-    }
-}
-
-fn collect_pattern(
-    pattern: &Pattern<Arc<Type>>,
-    bound: &mut HashSet<EcoString>,
-    free: &mut FreeVariables,
+    pending: &mut Vec<Visit<'a>>,
 ) {
     match pattern {
         Pattern::Variable { name, .. } => {
             bound.insert(name.clone());
         }
         Pattern::Assign { name, pattern, .. } => {
-            collect_pattern(pattern, bound, free);
-            bound.insert(name.clone());
+            pending.push(Visit::Bind(name));
+            pending.push(Visit::Pattern(pattern));
         }
         Pattern::Tuple { elements, .. } => {
-            for element in elements {
-                collect_pattern(element, bound, free);
-            }
+            pending.extend(elements.iter().rev().map(Visit::Pattern));
         }
         Pattern::List { elements, tail, .. } => {
-            for element in elements {
-                collect_pattern(element, bound, free);
-            }
             if let Some(tail) = tail {
-                collect_pattern(&tail.pattern, bound, free);
+                pending.push(Visit::Pattern(&tail.pattern));
             }
+            pending.extend(elements.iter().rev().map(Visit::Pattern));
         }
         Pattern::BitArray { segments, .. } => {
-            for segment in segments {
+            for segment in segments.iter().rev() {
+                pending.push(Visit::Pattern(&segment.value));
                 if let Some(Pattern::BitArraySize(size)) = segment.size() {
-                    collect_bit_array_size(size, bound, free);
+                    pending.push(Visit::BitArraySize(size));
                 }
-                collect_pattern(segment.value.as_ref(), bound, free);
             }
         }
-        Pattern::BitArraySize(size) => collect_bit_array_size(size, bound, free),
+        Pattern::BitArraySize(size) => pending.push(Visit::BitArraySize(size)),
         Pattern::StringPrefix {
             left_side_assignment,
             right_side_assignment,
@@ -300,31 +346,18 @@ fn collect_pattern(
             }
         }
         Pattern::Constructor { arguments, .. } => {
-            for argument in arguments {
-                collect_pattern(&argument.value, bound, free);
-            }
+            pending.extend(
+                arguments
+                    .iter()
+                    .rev()
+                    .map(|argument| Visit::Pattern(&argument.value)),
+            );
         }
         Pattern::Int { .. }
         | Pattern::Float { .. }
         | Pattern::String { .. }
         | Pattern::Discard { .. }
         | Pattern::Invalid { .. } => {}
-    }
-}
-
-fn collect_bit_array_size(
-    size: &BitArraySize<Arc<Type>>,
-    bound: &HashSet<EcoString>,
-    free: &mut FreeVariables,
-) {
-    match size {
-        BitArraySize::Variable { name, .. } => free.record(name, bound),
-        BitArraySize::BinaryOperator { left, right, .. } => {
-            collect_bit_array_size(left, bound, free);
-            collect_bit_array_size(right, bound, free);
-        }
-        BitArraySize::Block { inner, .. } => collect_bit_array_size(inner, bound, free),
-        BitArraySize::Int { .. } => {}
     }
 }
 
@@ -339,6 +372,31 @@ mod tests {
         self, Deprecation, ValueConstructor, ValueConstructorVariant,
     };
     use vec1::Vec1;
+
+    #[test]
+    fn anonymous_free_variables_preserve_descendant_order_and_sibling_scopes() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+pub fn main() {
+  let first = 1
+  let second = 2
+  let third = 3
+  fn(argument) {
+    let nested = fn(second) { fn() { third + second + first + argument } }
+    let local = {
+      let third = 0
+      fn() { third }
+    }
+    #(nested(0)(), local(), second, first)
+  }
+  Nil
+}
+"#
+            ),
+            ["third", "first", "second"],
+        );
+    }
 
     #[test]
     fn anonymous_free_variables_include_use_callback_call() {
@@ -459,17 +517,16 @@ pub fn main() {
         let mut bound = std::collections::HashSet::new();
         let mut free = super::FreeVariables::new();
 
-        super::collect_pattern(
-            &gleam_compiler_core::ast::Pattern::StringPrefix {
+        free.collect(
+            super::Visit::Pattern(&gleam_compiler_core::ast::Pattern::StringPrefix {
                 location: dummy_span(),
                 left_location: dummy_span(),
                 left_side_assignment: Some(("prefix".into(), dummy_span())),
                 right_location: dummy_span(),
                 left_side_string: "Hello, ".into(),
                 right_side_assignment: AssignName::Variable("name".into()),
-            },
+            }),
             &mut bound,
-            &mut free,
         );
 
         assert_eq!(
@@ -484,17 +541,16 @@ pub fn main() {
         let mut bound = std::collections::HashSet::new();
         let mut free = super::FreeVariables::new();
 
-        super::collect_pattern(
-            &gleam_compiler_core::ast::Pattern::StringPrefix {
+        free.collect(
+            super::Visit::Pattern(&gleam_compiler_core::ast::Pattern::StringPrefix {
                 location: dummy_span(),
                 left_location: dummy_span(),
                 left_side_assignment: None,
                 right_location: dummy_span(),
                 left_side_string: "Hello, ".into(),
                 right_side_assignment: AssignName::Discard("_rest".into()),
-            },
+            }),
             &mut bound,
-            &mut free,
         );
 
         assert_eq!(bound, std::collections::HashSet::new());
@@ -678,7 +734,10 @@ pub fn main() {
         });
         let mut free = super::FreeVariables::new();
 
-        super::collect_pattern(&pattern, &mut std::collections::HashSet::new(), &mut free);
+        free.collect(
+            super::Visit::Pattern(&pattern),
+            &mut std::collections::HashSet::new(),
+        );
 
         assert_eq!(free.names, vec!["size".to_string()]);
     }
@@ -706,7 +765,7 @@ pub fn main() {
                 }),
             }),
         };
-        super::collect_clause_guard(&guard, &mut bound, &mut free);
+        free.collect(super::Visit::Guard(&guard), &mut bound);
         let field_guard = ClauseGuard::FieldAccess {
             label_location: dummy_span(),
             index: Some(0),
@@ -714,19 +773,21 @@ pub fn main() {
             type_: type_::int(),
             container: Box::new(guard_var("outer_record", type_::int())),
         };
-        super::collect_clause_guard(&field_guard, &mut bound, &mut free);
-        super::collect_clause_guard(&guard_var("bound", type_::int()), &mut bound, &mut free);
-        super::collect_clause_guard(
-            &ClauseGuard::Constant(Constant::Int {
+        free.collect(super::Visit::Guard(&field_guard), &mut bound);
+        free.collect(
+            super::Visit::Guard(&guard_var("bound", type_::int())),
+            &mut bound,
+        );
+        free.collect(
+            super::Visit::Guard(&ClauseGuard::Constant(Constant::Int {
                 location: dummy_span(),
                 value: "1".into(),
                 int_value: 1.into(),
-            }),
+            })),
             &mut bound,
-            &mut free,
         );
-        super::collect_clause_guard(
-            &ClauseGuard::ModuleSelect {
+        free.collect(
+            super::Visit::Guard(&ClauseGuard::ModuleSelect {
                 location: dummy_span(),
                 field_start: 0,
                 definition_location: dummy_span(),
@@ -735,17 +796,15 @@ pub fn main() {
                 module_name: "main".into(),
                 module_alias: "main".into(),
                 literal: guard_constant_literal(),
-            },
+            }),
             &mut bound,
-            &mut free,
         );
-        super::collect_clause_guard(
-            &ClauseGuard::Invalid {
+        free.collect(
+            super::Visit::Guard(&ClauseGuard::Invalid {
                 location: dummy_span(),
                 type_: type_::int(),
-            },
+            }),
             &mut bound,
-            &mut free,
         );
 
         assert_eq!(

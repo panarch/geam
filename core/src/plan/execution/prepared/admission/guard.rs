@@ -1,4 +1,5 @@
 mod access;
+mod length;
 mod origin;
 mod pattern;
 
@@ -10,6 +11,7 @@ use crate::plan::execution::function::ExecutionGraphProfile;
 use crate::plan::execution::graph::{
     BlockId, BoolInstruction, BoolLocalId, ParamLocal, ProfiledInstruction, ProfiledInstructionKind,
 };
+use length::Length;
 use origin::Origin;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -26,7 +28,7 @@ pub(super) enum GuardError {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum Requirement<'data> {
-    Length(usize),
+    Length(Length),
     Prefix(Cow<'data, str>),
 }
 
@@ -83,7 +85,7 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
                 BoolInstruction::Value(value) => return *value != truth,
                 BoolInstruction::ListLengthAtLeast { value, length } if !truth => (
                     Address::of(&ParamLocal::List(value.clone())),
-                    Requirement::Length(*length),
+                    Requirement::length(*length),
                 ),
                 BoolInstruction::ListLengthEquals { value, length } if truth => {
                     let Some(length) = length.checked_add(1) else {
@@ -91,7 +93,7 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
                     };
                     (
                         Address::of(&ParamLocal::List(value.clone())),
-                        Requirement::Length(length),
+                        Requirement::length(length),
                     )
                 }
                 BoolInstruction::StringStartsWith { value, prefix } if !truth => (
@@ -186,18 +188,18 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
                             else {
                                 return false;
                             };
-                            if self.condition(
+                            let Some(requirement) = self.condition(
                                 input.block,
                                 input.condition,
                                 &source,
                                 &query.requirement,
-                            ) {
+                            ) else {
                                 continue;
-                            }
+                            };
                             pending.push(Visit::Enter(Query {
                                 block: input.block,
                                 place: source,
-                                requirement: query.requirement.clone(),
+                                requirement,
                             }));
                         }
                         Input::Binding { index, matcher } => {
@@ -245,8 +247,8 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
         condition: Condition<'data>,
         source: &Place,
         required: &Requirement<'data>,
-    ) -> bool {
-        match condition {
+    ) -> Option<Requirement<'data>> {
+        let proven = match condition {
             Condition::Always => false,
             Condition::String { subject, value } => {
                 self.same_place(block, Address::from(subject), source)
@@ -256,22 +258,23 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
                 let Some(subject) =
                     Place::local(Address::of(&matcher.subject)).normalize(block, self.blocks)
                 else {
-                    return false;
+                    return Some(required.clone());
                 };
                 if subject.root != source.root || !source.path.starts_with(&subject.path) {
-                    return false;
+                    return Some(required.clone());
                 }
                 let path = &source.path[subject.path.len()..];
                 if !success && !path.is_empty() {
-                    return false;
+                    return Some(required.clone());
                 }
                 place::pattern_at(&matcher.pattern, path)
                     .is_some_and(|pattern| pattern::establishes(pattern, success, required))
             }
             Condition::Bool { subject, truth } => {
-                self.boolean(block, subject, truth, source, required)
+                return self.boolean(block, subject, truth, source, required);
             }
-        }
+        };
+        if proven { None } else { Some(required.clone()) }
     }
 
     fn boolean(
@@ -281,23 +284,23 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
         mut truth: bool,
         source: &Place,
         required: &Requirement<'data>,
-    ) -> bool {
+    ) -> Option<Requirement<'data>> {
         let block_id = block;
         let Ok(block) = self.blocks.block(block_id) else {
-            return false;
+            return Some(required.clone());
         };
         let mut visited = HashSet::new();
         loop {
             if !visited.insert(subject.0) {
-                return false;
+                return Some(required.clone());
             }
             let Some(instruction) = block.instructions().iter().find(|instruction| {
                 Address::of(&instruction.output.local) == Address::from(subject)
             }) else {
-                return false;
+                return Some(required.clone());
             };
             let ProfiledInstructionKind::Bool(value) = &instruction.kind else {
-                return false;
+                return Some(required.clone());
             };
             match value {
                 BoolInstruction::Not(value) => {
@@ -305,33 +308,52 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
                     truth = !truth;
                 }
                 BoolInstruction::StringStartsWith { value, prefix } => {
-                    return truth
+                    return if truth
                         && self.same_place(block_id, Address::from(*value), source)
-                        && required.accepts_text(prefix.as_str());
+                        && required.accepts_text(prefix.as_str())
+                    {
+                        None
+                    } else {
+                        Some(required.clone())
+                    };
                 }
                 BoolInstruction::ListLengthEquals { value, length }
                 | BoolInstruction::ListLengthAtLeast { value, length } => {
-                    let Requirement::Length(required) = required else {
-                        return false;
+                    let Requirement::Length(lengths) = required else {
+                        return Some(required.clone());
                     };
                     if !self.same_place(
                         block_id,
                         Address::of(&ParamLocal::List(value.clone())),
                         source,
                     ) {
-                        return false;
+                        return Some(required.clone());
                     }
-                    return if truth {
-                        length >= required
+                    let exact = matches!(
+                        &instruction.kind,
+                        ProfiledInstructionKind::Bool(BoolInstruction::ListLengthEquals { .. })
+                    );
+                    if truth
+                        && (if exact {
+                            lengths.accepts(*length)
+                        } else {
+                            *length >= lengths.minimum()
+                        })
+                    {
+                        return None;
+                    }
+                    let remaining = if !truth && exact {
+                        Requirement::Length(lengths.excluding(*length))
                     } else {
-                        matches!(
-                            &instruction.kind,
-                            ProfiledInstructionKind::Bool(BoolInstruction::ListLengthEquals { .. })
-                        ) && *length == 0
-                            && *required <= 1
+                        required.clone()
+                    };
+                    return if remaining.is_empty() {
+                        None
+                    } else {
+                        Some(remaining)
                     };
                 }
-                _ => return false,
+                _ => return Some(required.clone()),
             }
         }
     }
@@ -344,16 +366,16 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
     ) -> bool {
         let (local, requirement) = match (origin, &query.requirement) {
             (Origin::List { head, tail }, Requirement::Length(length)) => {
-                if head >= *length {
+                if head >= length.minimum() || (tail.is_none() && length.accepts(head)) {
                     return true;
                 }
                 let Some(tail) = tail else {
                     return false;
                 };
-                (tail, Requirement::Length(length - head))
+                (tail, Requirement::Length(length.after_prepend(head)))
             }
             (Origin::ListDrop { source, count }, Requirement::Length(length)) => {
-                let Some(length) = length.checked_add(count) else {
+                let Some(length) = length.before_drop(count) else {
                     return false;
                 };
                 (source, Requirement::Length(length))
@@ -405,16 +427,20 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
 }
 
 impl Requirement<'_> {
+    fn length(minimum: usize) -> Self {
+        Self::Length(Length::new(minimum))
+    }
+
     fn is_empty(&self) -> bool {
         match self {
-            Self::Length(length) => *length == 0,
+            Self::Length(length) => length.minimum() == 0,
             Self::Prefix(prefix) => prefix.is_empty(),
         }
     }
 
     fn covers(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Length(known), Self::Length(required)) => known >= required,
+            (Self::Length(known), Self::Length(required)) => known.covers(required),
             (Self::Prefix(known), Self::Prefix(required)) => known.starts_with(required.as_ref()),
             _ => false,
         }
@@ -426,7 +452,7 @@ impl Requirement<'_> {
 
     fn description(&self) -> String {
         match self {
-            Self::Length(length) => format!("at least {length} list elements"),
+            Self::Length(length) => format!("at least {} list elements", length.minimum()),
             Self::Prefix(prefix) => format!("string prefix {prefix:?}"),
         }
     }
@@ -452,9 +478,11 @@ mod tests {
         let source = r#"
 fn head(xs) { case xs { [] -> 0 [x, ..] -> x } }
 fn second(xs) { case xs { [_, x, ..] -> x _ -> 0 } }
+fn after_short_lists(xs) { case xs { [] -> 0 [x] -> x [_, y, ..] -> y } }
+fn unordered_lengths(xs) { case xs { [x, _] -> x [] -> 0 [x] -> x [_, _, x, ..] -> x } }
 fn prefix(s) { case s { "pre" <> tail -> tail _ -> "" } }
 fn asserted(xs) { let assert [_, x, ..tail] as whole = xs #(x, tail, whole) }
-pub fn main() { #(head([42]), second([0, 42]), prefix("prefix"), asserted([0, 42, 43])) }
+pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unordered_lengths([0, 0, 42]), prefix("prefix"), asserted([0, 42, 43])) }
 "#;
         let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
@@ -557,14 +585,66 @@ pub fn main() { #(head([42]), second([0, 42]), prefix("prefix"), asserted([0, 42
                     guards.proves(Query {
                         block: BlockId(1),
                         place: Place::local(IntListLocalId(0).into()),
-                        requirement: Requirement::Length(minimum)
+                        requirement: Requirement::length(minimum)
                     }),
                     expected && !bypass
                 );
                 assert!(!guards.proves(Query {
                     block: BlockId(0),
                     place: Place::local(IntListLocalId(0).into()),
-                    requirement: Requirement::Length(1)
+                    requirement: Requirement::length(1)
+                }));
+            }
+        }
+    }
+
+    #[test]
+    fn excluded_lengths_are_path_local_and_cannot_justify_a_bypass() {
+        for order in [[0, 1, 2], [2, 0, 1], [1, 2, 0]] {
+            for bypass in [false, true] {
+                let mut graph_blocks = Vec::new();
+                for (index, length) in order.into_iter().enumerate() {
+                    graph_blocks.push(ProfiledBlock::new(
+                        vec![slot(ParamLocal::List(list(0)))],
+                        vec![instruction(
+                            ParamLocal::Bool(BoolLocalId(0)),
+                            ProfiledInstructionKind::Bool(BoolInstruction::ListLengthEquals {
+                                value: list(0),
+                                length,
+                            }),
+                        )],
+                        Terminator::BoolBranch(BoolBranch {
+                            subject: BoolLocalId(0),
+                            true_: Edge::new(
+                                BlockId(if bypass { 3 } else { 4 }),
+                                vec![ParamLocal::List(list(0))],
+                            ),
+                            false_: Edge::new(BlockId(index + 1), vec![ParamLocal::List(list(0))]),
+                        }),
+                    ));
+                }
+                for _ in 0..2 {
+                    graph_blocks.push(ProfiledBlock::new(
+                        vec![slot(ParamLocal::List(list(0)))],
+                        Vec::new(),
+                        exit(),
+                    ));
+                }
+                let graph = ProfiledBlockGraph::from_parts(BlockId(0), graph_blocks);
+                let blocks = Blocks::admit(&graph).unwrap();
+                let guards = Guards { blocks: &blocks };
+                assert_eq!(
+                    guards.proves(Query {
+                        block: BlockId(3),
+                        place: Place::local(IntListLocalId(0).into()),
+                        requirement: Requirement::length(3),
+                    }),
+                    !bypass
+                );
+                assert!(!guards.proves(Query {
+                    block: BlockId(3),
+                    place: Place::local(IntListLocalId(0).into()),
+                    requirement: Requirement::length(4),
                 }));
             }
         }
@@ -745,7 +825,7 @@ pub fn main() { #(head([42]), second([0, 42]), prefix("prefix"), asserted([0, 42
                 guards.proves(Query {
                     block: BlockId(1),
                     place: Place::local(IntListLocalId(0).into()),
-                    requirement: Requirement::Length(1)
+                    requirement: Requirement::length(1)
                 }),
                 expected
             );
@@ -766,9 +846,9 @@ pub fn main() { #(head([42]), second([0, 42]), prefix("prefix"), asserted([0, 42
     #[test]
     fn requirement_strength_preserves_lengths_and_complete_utf8_prefixes() {
         let cases = [
-            (Requirement::Length(0), Requirement::Length(0), true),
-            (Requirement::Length(2), Requirement::Length(1), true),
-            (Requirement::Length(1), Requirement::Length(2), false),
+            (Requirement::length(0), Requirement::length(0), true),
+            (Requirement::length(2), Requirement::length(1), true),
+            (Requirement::length(1), Requirement::length(2), false),
             (
                 Requirement::Prefix("".into()),
                 Requirement::Prefix("a".into()),
@@ -781,11 +861,11 @@ pub fn main() { #(head([42]), second([0, 42]), prefix("prefix"), asserted([0, 42
             ),
             (
                 Requirement::Prefix("a".into()),
-                Requirement::Length(1),
+                Requirement::length(1),
                 false,
             ),
             (
-                Requirement::Length(1),
+                Requirement::length(1),
                 Requirement::Prefix("a".into()),
                 false,
             ),
@@ -793,12 +873,12 @@ pub fn main() { #(head([42]), second([0, 42]), prefix("prefix"), asserted([0, 42
         for (known, required, expected) in cases {
             assert_eq!(known.covers(&required), expected);
         }
-        assert!(Requirement::Length(0).is_empty());
-        assert!(!Requirement::Length(1).is_empty());
+        assert!(Requirement::length(0).is_empty());
+        assert!(!Requirement::length(1).is_empty());
         assert!(Requirement::Prefix("".into()).is_empty());
         assert!(!Requirement::Prefix("a".into()).is_empty());
         assert_eq!(
-            Requirement::Length(2).description(),
+            Requirement::length(2).description(),
             "at least 2 list elements"
         );
         assert_eq!(
@@ -891,7 +971,7 @@ pub fn main() { #(head([42]), second([0, 42]), prefix("prefix"), asserted([0, 42
                 Guards { blocks: &blocks }.proves(Query {
                     block: BlockId(1),
                     place: Place::local(IntListLocalId(0).into()),
-                    requirement: Requirement::Length(1),
+                    requirement: Requirement::length(1),
                 }),
                 expected
             );
@@ -936,13 +1016,16 @@ pub fn main() { #(head([42]), second([0, 42]), prefix("prefix"), asserted([0, 42
         let guards = Guards { blocks: &blocks };
         let source = Place::local(IntListLocalId(0).into());
         for (block, index) in [(99, 0), (0, 0), (0, 1), (0, 2), (0, 99)] {
-            assert!(!guards.boolean(
-                BlockId(block),
-                BoolLocalId(index),
-                true,
-                &source,
-                &Requirement::Length(1),
-            ));
+            assert_eq!(
+                guards.boolean(
+                    BlockId(block),
+                    BoolLocalId(index),
+                    true,
+                    &source,
+                    &Requirement::length(1),
+                ),
+                Some(Requirement::length(1))
+            );
             assert!(!guards.contradicts(
                 BlockId(block),
                 Condition::Bool {
@@ -951,18 +1034,21 @@ pub fn main() { #(head([42]), second([0, 42]), prefix("prefix"), asserted([0, 42
                 },
             ));
         }
-        assert!(!guards.boolean(
-            BlockId(0),
-            BoolLocalId(3),
-            true,
-            &source,
-            &Requirement::Prefix("pre".into()),
-        ));
+        assert_eq!(
+            guards.boolean(
+                BlockId(0),
+                BoolLocalId(3),
+                true,
+                &source,
+                &Requirement::Prefix("pre".into()),
+            ),
+            Some(Requirement::Prefix("pre".into()))
+        );
         for (block, local) in [(99, 0), (0, 99)] {
             assert!(!guards.proves(Query {
                 block: BlockId(block),
                 place: Place::local(IntListLocalId(local).into()),
-                requirement: Requirement::Length(1),
+                requirement: Requirement::length(1),
             }));
         }
     }
@@ -1009,7 +1095,7 @@ pub fn main() { #(head([42]), second([0, 42]), prefix("prefix"), asserted([0, 42
                     &Place::local(StringLocalId(local).into()),
                     &prefix,
                 ),
-                expected
+                if expected { None } else { Some(prefix.clone()) }
             );
         }
         let matcher = Match {
@@ -1048,9 +1134,13 @@ pub fn main() { #(head([42]), second([0, 42]), prefix("prefix"), asserted([0, 42
                         root: TupleLocalId(root).into(),
                         path
                     },
-                    &Requirement::Length(1),
+                    &Requirement::length(1),
                 ),
-                expected
+                if expected {
+                    None
+                } else {
+                    Some(Requirement::length(1))
+                }
             );
         }
     }
@@ -1116,12 +1206,12 @@ pub fn main() { #(head([42]), second([0, 42]), prefix("prefix"), asserted([0, 42
             assert!(!guards.proves(Query {
                 block: BlockId(1),
                 place: Place::local(TupleLocalId(0).into()),
-                requirement: Requirement::Length(1),
+                requirement: Requirement::length(1),
             }));
             assert!(!guards.proves(Query {
                 block: BlockId(0),
                 place: Place::local(TupleLocalId(0).into()),
-                requirement: Requirement::Length(1),
+                requirement: Requirement::length(1),
             }));
         }
     }
@@ -1331,7 +1421,7 @@ pub fn main() { #(head([42]), second([0, 42]), prefix("prefix"), asserted([0, 42
                     head: 2,
                     tail: None,
                 },
-                Requirement::Length(2),
+                Requirement::length(2),
                 true,
                 None,
             ),
@@ -1340,7 +1430,7 @@ pub fn main() { #(head([42]), second([0, 42]), prefix("prefix"), asserted([0, 42
                     head: 2,
                     tail: None,
                 },
-                Requirement::Length(3),
+                Requirement::length(3),
                 false,
                 None,
             ),
@@ -1349,25 +1439,25 @@ pub fn main() { #(head([42]), second([0, 42]), prefix("prefix"), asserted([0, 42
                     head: 2,
                     tail: Some(IntListLocalId(0).into()),
                 },
-                Requirement::Length(3),
+                Requirement::length(3),
                 true,
-                Some((IntListLocalId(0).into(), Requirement::Length(1))),
+                Some((IntListLocalId(0).into(), Requirement::length(1))),
             ),
             (
                 Origin::ListDrop {
                     source: IntListLocalId(0).into(),
                     count: 2,
                 },
-                Requirement::Length(3),
+                Requirement::length(3),
                 true,
-                Some((IntListLocalId(0).into(), Requirement::Length(5))),
+                Some((IntListLocalId(0).into(), Requirement::length(5))),
             ),
             (
                 Origin::ListDrop {
                     source: IntListLocalId(0).into(),
                     count: usize::MAX,
                 },
-                Requirement::Length(1),
+                Requirement::length(1),
                 false,
                 None,
             ),
@@ -1428,7 +1518,7 @@ pub fn main() { #(head([42]), second([0, 42]), prefix("prefix"), asserted([0, 42
                 true,
                 Some((joined, Requirement::Prefix("pre".into()))),
             ),
-            (Origin::Unknown, Requirement::Length(1), false, None),
+            (Origin::Unknown, Requirement::length(1), false, None),
         ];
         for (origin, requirement, expected, obligation) in cases {
             let mut pending = Vec::new();
