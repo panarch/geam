@@ -24,7 +24,7 @@ pub(crate) use borrowed::BorrowedValue;
 pub use echo::{EchoLocation, EchoOutput, EchoSink};
 pub(crate) use embedding::{
     EmbeddingCustomInput, EmbeddingInput, EmbeddingInputStorage, EmbeddingInputValue,
-    EmbeddingList, EmbeddingListInput, EmbeddingOutput, EmbeddingTupleInput,
+    EmbeddingList, EmbeddingListInput, EmbeddingListIter, EmbeddingOutput, EmbeddingTupleInput,
     run_embedded_bit_array, run_embedded_bool, run_embedded_custom, run_embedded_float,
     run_embedded_int, run_embedded_list, run_embedded_nil, run_embedded_string, run_embedded_tuple,
     run_embedded_utf_codepoint,

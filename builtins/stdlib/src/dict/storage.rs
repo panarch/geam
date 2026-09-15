@@ -3,7 +3,8 @@ use geam_core::provider::advanced::{
     Equality, Hashing, Index0, Inspection, NativeMap, NativeMapEntry, NativeValue, Next, Retained,
     RetainedExternalPayload,
 };
-use im::{HashMap, Vector};
+use im::HashMap;
+use imbl::Vector;
 
 pub struct DictPayload {
     pub(super) storage: DictStorage,

@@ -71,9 +71,10 @@ payload forms supported by the macro; external arguments remain immutable
 payload views and external returns remain owned payloads.
 
 A top-level Gleam `List(T)` argument maps to opaque `List<T>`. Retaining
-that view and asking for its length are O(1); `get` decodes only the requested
-item. Returning a received `List<T>` passes through the original runtime
-List, while returning `Vec<T>` constructs one new source List:
+that view and asking for its length are O(1); `get` locates an item in O(log n)
+and decodes only the requested item. Returning a received `List<T>` passes
+through the original runtime List, while returning `Vec<T>` constructs one
+new source List:
 
 ```rust
 use geam::provider::{BigInt, EcoString, List};

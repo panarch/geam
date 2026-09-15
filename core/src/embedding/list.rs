@@ -23,10 +23,12 @@ use std::sync::Arc;
 /// A foreign retained input returns [`super::CallError::ForeignValue`] before
 /// source execution or mutable host state access.
 ///
-/// [`Self::len`] and [`Self::is_empty`] are O(1). Reading an item decodes only
-/// that item; [`Self::to_vec`] explicitly materializes one List layer. Nested
-/// List items still retain their own source handles and need explicit
-/// materialization before they can become fresh Vec inputs for another owner.
+/// [`Self::len`] and [`Self::is_empty`] are O(1). [`Self::get`] locates an item
+/// in O(log n) and decodes only that item. [`Self::iter`] traverses the storage
+/// in O(n), plus item decoding; [`Self::to_vec`] explicitly materializes one
+/// List layer. Nested List items still retain their own source handles and
+/// need explicit materialization before they can become fresh Vec inputs for
+/// another owner.
 ///
 /// Retained lists own immutable source storage and can be moved or shared
 /// between threads when their Rust item type permits it:
@@ -62,7 +64,7 @@ pub struct List<T> {
 /// An iterator that decodes retained List items only as they are requested.
 pub struct Iter<'a, T> {
     list: &'a List<T>,
-    indices: std::ops::Range<usize>,
+    values: crate::runtime::EmbeddingListIter<'a>,
 }
 
 #[allow(private_bounds)]
@@ -81,6 +83,8 @@ where
     }
 
     /// Decodes one item, returning None for an out-of-range index.
+    ///
+    /// Locating the item takes O(log n), excluding its decoding cost.
     pub fn get(&self, index: usize) -> Option<T> {
         self.value
             .item(index)
@@ -88,10 +92,12 @@ where
     }
 
     /// Iterates over owned Rust items without materializing the whole list.
+    ///
+    /// Traversing the storage takes O(n), excluding item decoding.
     pub fn iter(&self) -> Iter<'_, T> {
         Iter {
             list: self,
-            indices: 0..self.len(),
+            values: self.value.iter(),
         }
     }
 
@@ -108,7 +114,9 @@ where
     type Item = T;
 
     fn next(&mut self) -> Option<T> {
-        self.indices.next().and_then(|index| self.list.get(index))
+        self.values
+            .next()
+            .map(|mut output| T::take(&mut output, &self.list.owner))
     }
 }
 
@@ -432,6 +440,39 @@ pub fn nils(values: List(Nil)) { values }
         drop(module);
         assert_eq!(values.to_vec(), ["one", "two", "three"]);
         assert_eq!(retained.get(2), Some("three".into()));
+    }
+
+    #[test]
+    fn cursor_crosses_chunks_without_eager_decoding() {
+        let (bindings, keep) = library("pub fn keep(values: List(String)) { values }")
+            .function(FunctionDeclaration::<(List<EcoString>,), List<EcoString>>::new("keep"))
+            .expect("list entry");
+        let module = bindings.seal();
+        let mut echo = Vec::new();
+
+        for len in [0, 1, 2, 63, 64, 65, 127, 128, 129, 1_000] {
+            let expected: Vec<EcoString> = (0..len).map(|n| format!("item {n}").into()).collect();
+            let values = module
+                .call(&keep, (expected.clone(),), &mut echo)
+                .expect("fresh list");
+            let alias = module
+                .call(&keep, (&values,), &mut echo)
+                .expect("retained list");
+            assert!(values.value.same_allocation(&alias.value));
+            let mut iter = values.iter();
+            assert_eq!(values.value.item_reads(), 0);
+            for (index, expected) in expected.iter().enumerate() {
+                assert_eq!(iter.next().as_ref(), Some(expected));
+                assert_eq!(values.value.item_reads(), index + 1);
+            }
+            assert_eq!(iter.next(), None);
+            assert_eq!(values.value.item_reads(), len);
+            assert_eq!(alias.value.item_reads(), 0);
+            for index in (0..len).rev() {
+                assert_eq!(alias.get(index).as_ref(), expected.get(index));
+            }
+        }
+        assert!(echo.is_empty());
     }
 
     #[test]

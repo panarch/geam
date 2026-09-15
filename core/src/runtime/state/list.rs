@@ -2,6 +2,7 @@ use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use ecow::EcoString;
+use imbl::Vector;
 use num_bigint::BigInt;
 
 use crate::plan::execution::type_::{
@@ -337,12 +338,13 @@ impl ListHandleCore {
     }
 }
 
-struct ListPool<Value> {
-    slots: Vec<Arc<[Value]>>,
+struct ListPool<Value: Clone> {
+    // Retaining even an inline vector shares its items instead of cloning them.
+    slots: Vec<Arc<Vector<Value>>>,
     free: Vec<usize>,
 }
 
-impl<Value> Default for ListPool<Value> {
+impl<Value: Clone> Default for ListPool<Value> {
     fn default() -> Self {
         Self {
             slots: Vec::new(),
@@ -351,8 +353,8 @@ impl<Value> Default for ListPool<Value> {
     }
 }
 
-impl<Value> ListPool<Value> {
-    fn allocate(&mut self, value: Arc<[Value]>) -> usize {
+impl<Value: Clone> ListPool<Value> {
+    fn allocate(&mut self, value: Arc<Vector<Value>>) -> usize {
         if let Some(slot) = self.free.pop() {
             self.slots[slot] = value;
             slot
@@ -363,11 +365,11 @@ impl<Value> ListPool<Value> {
         }
     }
 
-    fn get(&self, slot: usize) -> Arc<[Value]> {
+    fn get(&self, slot: usize) -> Arc<Vector<Value>> {
         Arc::clone(&self.slots[slot])
     }
 
-    fn release(&mut self, slot: usize) -> Arc<[Value]> {
+    fn release(&mut self, slot: usize) -> Arc<Vector<Value>> {
         let value = std::mem::take(&mut self.slots[slot]);
         self.free.push(slot);
         value
@@ -421,19 +423,19 @@ struct ListPools {
 }
 
 enum ReleasedList {
-    Int(Arc<[BigInt]>),
-    String(Arc<[EcoString]>),
-    BitArray(Arc<[EvaluatedBitArray]>),
-    UtfCodepoint(Arc<[char]>),
-    Custom(Arc<[EvaluatedCustomValue]>),
-    External(Arc<[EvaluatedExternalValue]>),
-    Float(Arc<[f64]>),
-    Bool(Arc<[bool]>),
+    Int(Arc<Vector<BigInt>>),
+    String(Arc<Vector<EcoString>>),
+    BitArray(Arc<Vector<EvaluatedBitArray>>),
+    UtfCodepoint(Arc<Vector<char>>),
+    Custom(Arc<Vector<EvaluatedCustomValue>>),
+    External(Arc<Vector<EvaluatedExternalValue>>),
+    Float(Arc<Vector<f64>>),
+    Bool(Arc<Vector<bool>>),
     Nil(usize),
-    Tuple(Arc<[Vec<EvaluatedValue>]>),
+    Tuple(Arc<Vector<Vec<EvaluatedValue>>>),
     ParameterList(usize),
-    List(Arc<[StoredListValueId]>),
-    Function(Arc<[EvaluatedFunctionValue]>),
+    List(Arc<Vector<StoredListValueId>>),
+    Function(Arc<Vector<EvaluatedFunctionValue>>),
 }
 
 impl ReleasedList {
@@ -531,11 +533,11 @@ impl SharedListStorage {
         }
     }
 
-    fn values<Value>(
+    fn values<Value: Clone>(
         &self,
         core: &ListHandleCore,
         pool: impl FnOnce(&ListPools) -> &ListPool<Value>,
-    ) -> Arc<[Value]> {
+    ) -> Arc<Vector<Value>> {
         let state = lock(&self.state);
         pool(&state.pools).get(core.slot())
     }
@@ -555,24 +557,54 @@ impl Default for RuntimeListStorage {
 }
 
 macro_rules! value_storage {
-    ($allocate:ident, $read:ident, $type_id:ty, $item:ty, $handle:ident, $pool:ident, $key:ident) => {
+    ($allocate:ident, $store:ident, $read:ident, $prepend:ident, $tail:ident,
+     $type_id:ty, $item:ty, $handle:ident, $pool:ident, $key:ident) => {
         pub(in crate::runtime) fn $allocate(
             &self,
             type_id: $type_id,
             values: Vec<$item>,
         ) -> $handle {
-            let slot = lock(&self.storage.state)
-                .pools
-                .$pool
-                .allocate(values.into());
+            self.$store(type_id, values.into())
+        }
+
+        sequence_storage!(
+            $store, $read, $prepend, $tail, $type_id, $item, $handle, $pool, $key
+        );
+    };
+}
+
+macro_rules! sequence_storage {
+    ($store:ident, $read:ident, $prepend:ident, $tail:ident,
+     $type_id:ty, $item:ty, $handle:ident, $pool:ident, $key:ident) => {
+        fn $store(&self, type_id: $type_id, values: Vector<$item>) -> $handle {
+            let values = Arc::new(values);
+            let slot = lock(&self.storage.state).pools.$pool.allocate(values);
             $handle::new(type_id, self.storage.core(ListStorageKey::$key(slot)))
         }
 
-        pub(in crate::runtime) fn $read(&self, value: &$handle) -> Arc<[$item]> {
+        pub(in crate::runtime) fn $read(&self, value: &$handle) -> Arc<Vector<$item>> {
             value
                 .core()
                 .storage()
                 .values(value.core(), |pools| &pools.$pool)
+        }
+
+        pub(in crate::runtime) fn $prepend(
+            &self,
+            type_id: $type_id,
+            prefix: Vec<$item>,
+            tail: &$handle,
+        ) -> $handle {
+            self.$store(type_id, prepend(&self.$read(tail), prefix))
+        }
+
+        pub(in crate::runtime) fn $tail(
+            &self,
+            type_id: $type_id,
+            value: &$handle,
+            count: usize,
+        ) -> $handle {
+            self.$store(type_id, suffix(&self.$read(value), count))
         }
     };
 }
@@ -586,7 +618,10 @@ impl RuntimeListStorage {
 
     value_storage!(
         int,
+        store_int,
         int_values,
+        prepend_int,
+        tail_int,
         IntListTypeId,
         BigInt,
         IntListValueId,
@@ -595,7 +630,10 @@ impl RuntimeListStorage {
     );
     value_storage!(
         string,
+        store_string,
         string_values,
+        prepend_string,
+        tail_string,
         StringListTypeId,
         EcoString,
         StringListValueId,
@@ -604,7 +642,10 @@ impl RuntimeListStorage {
     );
     value_storage!(
         bit_array,
+        store_bit_array,
         bit_array_values,
+        prepend_bit_array,
+        tail_bit_array,
         BitArrayListTypeId,
         EvaluatedBitArray,
         BitArrayListValueId,
@@ -613,7 +654,10 @@ impl RuntimeListStorage {
     );
     value_storage!(
         utf_codepoint,
+        store_utf_codepoint,
         utf_codepoint_values,
+        prepend_utf_codepoint,
+        tail_utf_codepoint,
         UtfCodepointListTypeId,
         char,
         UtfCodepointListValueId,
@@ -622,7 +666,10 @@ impl RuntimeListStorage {
     );
     value_storage!(
         float,
+        store_float,
         float_values,
+        prepend_float,
+        tail_float,
         FloatListTypeId,
         f64,
         FloatListValueId,
@@ -631,7 +678,10 @@ impl RuntimeListStorage {
     );
     value_storage!(
         bool,
+        store_bool,
         bool_values,
+        prepend_bool,
+        tail_bool,
         BoolListTypeId,
         bool,
         BoolListValueId,
@@ -640,7 +690,10 @@ impl RuntimeListStorage {
     );
     value_storage!(
         tuple,
+        store_tuple,
         tuple_values,
+        prepend_tuple,
+        tail_tuple,
         TupleListTypeId,
         Vec<EvaluatedValue>,
         TupleListValueId,
@@ -649,7 +702,10 @@ impl RuntimeListStorage {
     );
     value_storage!(
         list,
+        store_list,
         list_values,
+        prepend_list,
+        tail_list,
         ListListTypeId,
         StoredListValueId,
         ListListValueId,
@@ -658,7 +714,10 @@ impl RuntimeListStorage {
     );
     value_storage!(
         function,
+        store_function,
         function_values,
+        prepend_function,
+        tail_function,
         FunctionListTypeId,
         EvaluatedFunctionValue,
         FunctionListValueId,
@@ -667,49 +726,39 @@ impl RuntimeListStorage {
     );
 
     pub(in crate::runtime) fn custom(&self, allocation: CustomListAllocation) -> CustomListValueId {
-        let slot = lock(&self.storage.state)
-            .pools
-            .customs
-            .allocate(allocation.values.into());
-        CustomListValueId::new(
-            allocation.type_id,
-            self.storage.core(ListStorageKey::Custom(slot)),
-        )
+        self.store_custom(allocation.type_id, allocation.values.into())
     }
 
-    pub(in crate::runtime) fn custom_values(
-        &self,
-        value: &CustomListValueId,
-    ) -> Arc<[EvaluatedCustomValue]> {
-        value
-            .core()
-            .storage()
-            .values(value.core(), |pools| &pools.customs)
-    }
+    sequence_storage!(
+        store_custom,
+        custom_values,
+        prepend_custom,
+        tail_custom,
+        CustomListTypeId,
+        EvaluatedCustomValue,
+        CustomListValueId,
+        customs,
+        Custom
+    );
 
     pub(in crate::runtime) fn external(
         &self,
         allocation: ExternalListAllocation,
     ) -> ExternalListValueId {
-        let slot = lock(&self.storage.state)
-            .pools
-            .externals
-            .allocate(allocation.values.into());
-        ExternalListValueId::new(
-            allocation.type_id,
-            self.storage.core(ListStorageKey::External(slot)),
-        )
+        self.store_external(allocation.type_id, allocation.values.into())
     }
 
-    pub(in crate::runtime) fn external_values(
-        &self,
-        value: &ExternalListValueId,
-    ) -> Arc<[EvaluatedExternalValue]> {
-        value
-            .core()
-            .storage()
-            .values(value.core(), |pools| &pools.externals)
-    }
+    sequence_storage!(
+        store_external,
+        external_values,
+        prepend_external,
+        tail_external,
+        ExternalListTypeId,
+        EvaluatedExternalValue,
+        ExternalListValueId,
+        externals,
+        External
+    );
 
     pub(in crate::runtime) fn nil(&self, type_id: NilListTypeId, len: usize) -> NilListValueId {
         let slot = lock(&self.storage.state).pools.nils.allocate(len);
@@ -918,93 +967,96 @@ impl RuntimeListStorage {
         }
     }
 
+    pub(in crate::runtime) fn tail_nil(
+        &self,
+        type_id: NilListTypeId,
+        value: &NilListValueId,
+        count: usize,
+    ) -> NilListValueId {
+        self.nil(type_id, self.nil_len(value).saturating_sub(count))
+    }
+
+    pub(in crate::runtime) fn prepend_nil(
+        &self,
+        type_id: NilListTypeId,
+        len: usize,
+        tail: &NilListValueId,
+    ) -> NilListValueId {
+        self.nil(type_id, len + self.nil_len(tail))
+    }
+
+    pub(in crate::runtime) fn tail_parameter_list_list(
+        &self,
+        type_id: ParameterListListTypeId,
+        value: &ParameterListListValueId,
+        count: usize,
+    ) -> ParameterListListValueId {
+        self.parameter_list_list(
+            type_id,
+            self.parameter_list_list_len(value).saturating_sub(count),
+        )
+    }
+
+    pub(in crate::runtime) fn prepend_parameter_list_list(
+        &self,
+        type_id: ParameterListListTypeId,
+        len: usize,
+        tail: &ParameterListListValueId,
+    ) -> ParameterListListValueId {
+        self.parameter_list_list(type_id, len + self.parameter_list_list_len(tail))
+    }
+
     pub(in crate::runtime) fn drop_first(
         &self,
         value: &StoredListValueId,
         count: usize,
     ) -> StoredListValueId {
         match value {
-            StoredListValueId::Int(value) => self
-                .int(
-                    value.type_id(),
-                    suffix(&self.int_values(value), count).to_vec(),
-                )
-                .into(),
-            StoredListValueId::String(value) => self
-                .string(
-                    value.type_id(),
-                    suffix(&self.string_values(value), count).to_vec(),
-                )
-                .into(),
-            StoredListValueId::BitArray(value) => self
-                .bit_array(
-                    value.type_id(),
-                    suffix(&self.bit_array_values(value), count).to_vec(),
-                )
-                .into(),
+            StoredListValueId::Int(value) => self.tail_int(value.type_id(), value, count).into(),
+            StoredListValueId::String(value) => {
+                self.tail_string(value.type_id(), value, count).into()
+            }
+            StoredListValueId::BitArray(value) => {
+                self.tail_bit_array(value.type_id(), value, count).into()
+            }
             StoredListValueId::UtfCodepoint(value) => self
-                .utf_codepoint(
-                    value.type_id(),
-                    suffix(&self.utf_codepoint_values(value), count).to_vec(),
-                )
+                .tail_utf_codepoint(value.type_id(), value, count)
                 .into(),
-            StoredListValueId::Custom(value) => self
-                .custom(CustomListAllocation::new(
-                    value.type_id(),
-                    suffix(&self.custom_values(value), count).to_vec(),
-                ))
-                .into(),
-            StoredListValueId::External(value) => self
-                .external(ExternalListAllocation::new(
-                    value.type_id(),
-                    suffix(&self.external_values(value), count).to_vec(),
-                ))
-                .into(),
-            StoredListValueId::Float(value) => self
-                .float(
-                    value.type_id(),
-                    suffix(&self.float_values(value), count).to_vec(),
-                )
-                .into(),
-            StoredListValueId::Bool(value) => self
-                .bool(
-                    value.type_id(),
-                    suffix(&self.bool_values(value), count).to_vec(),
-                )
-                .into(),
-            StoredListValueId::Nil(value) => self
-                .nil(value.type_id(), self.nil_len(value).saturating_sub(count))
-                .into(),
-            StoredListValueId::Tuple(value) => self
-                .tuple(
-                    value.type_id(),
-                    suffix(&self.tuple_values(value), count).to_vec(),
-                )
-                .into(),
+            StoredListValueId::Custom(value) => {
+                self.tail_custom(value.type_id(), value, count).into()
+            }
+            StoredListValueId::External(value) => {
+                self.tail_external(value.type_id(), value, count).into()
+            }
+            StoredListValueId::Float(value) => {
+                self.tail_float(value.type_id(), value, count).into()
+            }
+            StoredListValueId::Bool(value) => self.tail_bool(value.type_id(), value, count).into(),
+            StoredListValueId::Nil(value) => self.tail_nil(value.type_id(), value, count).into(),
+            StoredListValueId::Tuple(value) => {
+                self.tail_tuple(value.type_id(), value, count).into()
+            }
             StoredListValueId::ParameterList(value) => self
-                .parameter_list_list(
-                    value.type_id(),
-                    self.parameter_list_list_len(value).saturating_sub(count),
-                )
+                .tail_parameter_list_list(value.type_id(), value, count)
                 .into(),
-            StoredListValueId::List(value) => self
-                .list(
-                    value.type_id(),
-                    suffix(&self.list_values(value), count).to_vec(),
-                )
-                .into(),
-            StoredListValueId::Function(value) => self
-                .function(
-                    value.type_id(),
-                    suffix(&self.function_values(value), count).to_vec(),
-                )
-                .into(),
+            StoredListValueId::List(value) => self.tail_list(value.type_id(), value, count).into(),
+            StoredListValueId::Function(value) => {
+                self.tail_function(value.type_id(), value, count).into()
+            }
         }
     }
 }
 
-fn suffix<Value>(values: &Arc<[Value]>, count: usize) -> &[Value] {
-    &values[count.min(values.len())..]
+fn suffix<Value: Clone>(values: &Vector<Value>, count: usize) -> Vector<Value> {
+    values.skip(count.min(values.len()))
+}
+
+fn prepend<Value: Clone>(values: &Vector<Value>, prefix: Vec<Value>) -> Vector<Value> {
+    let mut result = values.clone();
+    for item in prefix.into_iter().rev() {
+        result.push_front(item);
+    }
+    result
 }
 
 fn lock<Value>(mutex: &Mutex<Value>) -> MutexGuard<'_, Value> {
@@ -1166,7 +1218,10 @@ pub fn main() -> List(Counter) {
 
         drop(storage);
         let reader = RuntimeListStorage::default();
-        assert_eq!(&*reader.int_values(&retained), &[1.into(), 2.into()]);
+        assert_eq!(
+            reader.int_values(&retained).as_ref(),
+            &imbl::Vector::from(vec![1.into(), 2.into()])
+        );
 
         let owner = Arc::clone(&retained.core().lease.storage);
         drop(retained);
@@ -1185,7 +1240,10 @@ pub fn main() -> List(Counter) {
         let second = storage.int(type_id, vec![2.into()]);
 
         assert_eq!(second.core().slot(), slot);
-        assert_eq!(&*storage.int_values(&second), &[2.into()]);
+        assert_eq!(
+            storage.int_values(&second).as_ref(),
+            &imbl::Vector::from(vec![2.into()])
+        );
     }
 
     #[test]
@@ -1214,6 +1272,177 @@ pub fn main() -> List(List(Int)) { [inner()] }
         assert_eq!(state.pools.lists.free.len(), 10_000);
         assert!(state.releases.is_empty());
         assert!(!state.draining);
+    }
+
+    #[test]
+    fn persistent_operations_bound_item_cloning_and_keep_versions_independent() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct Item {
+            value: usize,
+            clones: Arc<AtomicUsize>,
+        }
+
+        impl Clone for Item {
+            fn clone(&self) -> Self {
+                self.clones.fetch_add(1, Ordering::Relaxed);
+                Self {
+                    value: self.value,
+                    clones: Arc::clone(&self.clones),
+                }
+            }
+        }
+
+        for len in [1_000, 10_000] {
+            let clones = Arc::new(AtomicUsize::new(0));
+            let input: Vec<_> = (0..len)
+                .map(|value| Item {
+                    value,
+                    clones: Arc::clone(&clones),
+                })
+                .collect();
+            let mut pool = super::ListPool::default();
+            let slot = pool.allocate(Arc::new(input.into()));
+            assert_eq!(clones.load(Ordering::Relaxed), 0);
+
+            let original = pool.get(slot);
+            let alias = pool.get(slot);
+            assert!(Arc::ptr_eq(&original, &alias));
+            assert_eq!(clones.load(Ordering::Relaxed), 0);
+            assert_eq!(
+                original.iter().map(|item| item.value).collect::<Vec<_>>(),
+                (0..len).collect::<Vec<_>>()
+            );
+            assert_eq!(clones.load(Ordering::Relaxed), 0);
+
+            let mut remaining = original.as_ref().clone();
+            for first in 0..len {
+                assert_eq!(remaining.front().map(|item| item.value), Some(first));
+                remaining = super::suffix(&remaining, 1);
+                assert_eq!(remaining.len(), len - first - 1);
+            }
+            assert!(remaining.is_empty());
+            assert!(clones.load(Ordering::Relaxed) < 128 * len);
+            assert_eq!(
+                alias.iter().map(|item| item.value).collect::<Vec<_>>(),
+                (0..len).collect::<Vec<_>>()
+            );
+
+            clones.store(0, Ordering::Relaxed);
+            let mut growing = imbl::Vector::new();
+            for value in (0..len).rev() {
+                growing = super::prepend(
+                    &growing,
+                    vec![Item {
+                        value,
+                        clones: Arc::clone(&clones),
+                    }],
+                );
+            }
+            assert!(clones.load(Ordering::Relaxed) < 128 * len);
+            assert_eq!(
+                growing.iter().map(|item| item.value).collect::<Vec<_>>(),
+                (0..len).collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
+    fn tail_and_prepend_preserve_order_at_chunk_and_tree_boundaries() {
+        let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [] }");
+        let type_id = plan.int_list_function_id(0).type_id();
+        let storage = RuntimeListStorage::default();
+
+        for len in [
+            0_usize, 1, 2, 63, 64, 65, 127, 128, 129, 1_000, 4_096, 4_097,
+        ] {
+            let expected: Vec<BigInt> = (0..len).map(BigInt::from).collect();
+            let original = storage.int(type_id, expected.clone());
+            let alias = original.clone();
+            for count in [0, 1, 63, 64, 65, len, len + 1, usize::MAX] {
+                let tail = storage.tail_int(type_id, &original, count);
+                assert_eq!(
+                    storage
+                        .int_values(&tail)
+                        .iter()
+                        .cloned()
+                        .collect::<Vec<_>>(),
+                    expected[count.min(len)..],
+                );
+            }
+            for prefix in [vec![], vec![(-2).into(), (-1).into()]] {
+                let combined = storage.prepend_int(type_id, prefix.clone(), &original);
+                let expected_combined: Vec<_> =
+                    prefix.into_iter().chain(expected.iter().cloned()).collect();
+                assert_eq!(
+                    storage
+                        .int_values(&combined)
+                        .iter()
+                        .cloned()
+                        .collect::<Vec<_>>(),
+                    expected_combined
+                );
+            }
+            assert_eq!(
+                storage
+                    .int_values(&alias)
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<_>>(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn nil_and_parameter_list_updates_use_only_lengths() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn nils() -> List(Nil) { [] }
+fn parameters(values: List(List(a))) { values }
+pub fn main() {
+  let _ = nils()
+  parameters([[]])
+}
+"#,
+        );
+        let storage = RuntimeListStorage::default();
+        let len = usize::MAX / 2;
+        let nil_type = plan.nil_list_function_id(0).type_id();
+        let nils = storage.nil(nil_type, len);
+        let grown_nils = storage.prepend_nil(nil_type, 17, &nils);
+        assert_eq!(storage.nil_len(&nils), len);
+        assert_eq!(storage.nil_len(&grown_nils), len + 17);
+        assert_eq!(
+            storage.nil_len(&storage.tail_nil(nil_type, &grown_nils, 17)),
+            len
+        );
+        assert_eq!(
+            storage.nil_len(&storage.tail_nil(nil_type, &grown_nils, usize::MAX)),
+            0
+        );
+
+        let parameter_type = plan.parameter_list_list_function_id(0).type_id();
+        let parameters = storage.parameter_list_list(parameter_type, len);
+        let grown_parameters = storage.prepend_parameter_list_list(parameter_type, 17, &parameters);
+        assert_eq!(storage.parameter_list_list_len(&parameters), len);
+        assert_eq!(storage.parameter_list_list_len(&grown_parameters), len + 17);
+        assert_eq!(
+            storage.parameter_list_list_len(&storage.tail_parameter_list_list(
+                parameter_type,
+                &grown_parameters,
+                17
+            )),
+            len
+        );
+        assert_eq!(
+            storage.parameter_list_list_len(&storage.tail_parameter_list_list(
+                parameter_type,
+                &grown_parameters,
+                usize::MAX
+            )),
+            0
+        );
     }
 
     #[test]
@@ -1588,7 +1817,10 @@ pub fn main() {
         assert_eq!(lock(&state.lists.storage.state).pools.ints.free, vec![slot],);
         let reused = state.lists_mut().int(type_id, vec![2.into()]);
         assert_eq!(reused.core.slot(), slot);
-        assert_eq!(&*state.lists().int_values(&reused), &[2.into()]);
+        assert_eq!(
+            state.lists().int_values(&reused).as_ref(),
+            &imbl::Vector::from(vec![2.into()])
+        );
     }
 
     #[test]
@@ -1605,8 +1837,11 @@ pub fn main() {
         assert_eq!(lock(&state.lists.storage.state).pools.ints.free, vec![slot]);
         let replacement = state.lists_mut().int(type_id, vec![2.into()]);
         assert_eq!(replacement.core.slot(), slot);
-        assert_eq!(&*items, &[1.into()]);
-        assert_eq!(&*state.lists().int_values(&replacement), &[2.into()]);
+        assert_eq!(items.as_ref(), &imbl::Vector::from(vec![1.into()]));
+        assert_eq!(
+            state.lists().int_values(&replacement).as_ref(),
+            &imbl::Vector::from(vec![2.into()])
+        );
     }
 
     #[test]
@@ -1629,7 +1864,10 @@ pub fn main() {
 
         let second = state.lists_mut().bit_array(type_id, Vec::new());
         assert_eq!(second.core.slot(), slot);
-        assert_eq!(&*state.lists().bit_array_values(&second), &[]);
+        assert_eq!(
+            state.lists().bit_array_values(&second).as_ref(),
+            &imbl::Vector::new()
+        );
 
         let value = ListValueId::BitArray(second.clone());
         assert_eq!(state.lists().list_len(&value), 0);
@@ -1898,7 +2136,10 @@ pub fn main() {
         )
         .expect("tail-recursive list graph should return");
 
-        assert_eq!(&*state.lists().int_values(&value), &[1.into()]);
+        assert_eq!(
+            state.lists().int_values(&value).as_ref(),
+            &imbl::Vector::from(vec![1.into()])
+        );
         {
             let storage_state = lock(&state.lists.storage.state);
             assert_eq!(storage_state.pools.ints.slots.len(), 1);
@@ -2019,7 +2260,7 @@ pub fn main() -> Int {
         drop(discarded);
         assert_eq!(
             lock(&storage.state).pools.ints.get(discarded_slot).as_ref(),
-            &[],
+            &imbl::Vector::new(),
         );
         drop(state);
         assert_eq!(
@@ -2028,7 +2269,7 @@ pub fn main() -> Int {
                 .ints
                 .get(value.core.slot())
                 .as_ref(),
-            &[1.into()],
+            &imbl::Vector::from(vec![1.into()]),
         );
         drop(value);
         assert_eq!(
@@ -2037,7 +2278,7 @@ pub fn main() -> Int {
                 .ints
                 .get(clone.core.slot())
                 .as_ref(),
-            &[1.into()],
+            &imbl::Vector::from(vec![1.into()]),
         );
         drop(clone);
         {
@@ -2349,7 +2590,10 @@ pub fn main() -> Int {
             assert_eq!(storage_state.pools.lists.free.len(), 1);
             assert_eq!(storage_state.pools.ints.free, Vec::<usize>::new());
         }
-        assert_eq!(&*state.lists().int_values(&child), &[1.into()]);
+        assert_eq!(
+            state.lists().int_values(&child).as_ref(),
+            &imbl::Vector::from(vec![1.into()])
+        );
 
         drop(child);
         assert_eq!(
@@ -2389,7 +2633,12 @@ pub fn main() -> Int {
         }
         let allocated_list_slots = lock(&state.lists.storage.state).pools.lists.slots.len();
 
-        drop(value);
+        std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(move || drop(value))
+            .expect("small-stack release worker")
+            .join()
+            .expect("nested lists release without recursion");
         let storage_state = lock(&state.lists.storage.state);
         assert_eq!(storage_state.pools.ints.free.len(), 1);
         assert_eq!(storage_state.pools.lists.free.len(), allocated_list_slots);
@@ -2441,6 +2690,63 @@ pub fn main() -> Int {
         assert_eq!(storage_state.pools.ints.free.len(), 1);
         assert_eq!(storage_state.pools.lists.free.len(), allocated_list_slots);
         assert_eq!(storage_state.releases.as_slice(), &[]);
+    }
+
+    #[test]
+    fn list_suffix_releases_removed_closure_captures_while_preserving_the_rest() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn keep(value: List(Int)) { fn() { value } }
+fn build(count: Int) {
+  case count {
+    0 -> []
+    _ -> [keep([count]), ..build(count - 1)]
+  }
+}
+pub fn main() { build(65) }
+"#,
+        );
+        let main = plan.function_list_function_id(0);
+        assert_eq!(
+            plan.main_runtime(),
+            RuntimeFunctionId::Core(CoreRuntimeFunctionId::List(RuntimeListFunctionId::Core(
+                ListFunctionId::Function(main),
+            )))
+        );
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
+        let original = EvaluatedValue::from(
+            crate::runtime::function::run_list(
+                &plan,
+                &mut state,
+                crate::plan::execution::function::ProfiledListFunctionId::Core(
+                    ListFunctionId::Function(main),
+                ),
+                crate::runtime::error::HostCallOrigin::Entry,
+                RetainedValues::empty(),
+            )
+            .expect("captured lists"),
+        );
+        let suffix = state.lists().drop_first(
+            crate::runtime::BorrowedValue::from_value(&original).stored_list(),
+            1,
+        );
+        {
+            let storage = lock(&state.lists.storage.state);
+            assert_eq!(storage.pools.ints.slots.len(), 65);
+            assert!(storage.pools.ints.free.is_empty());
+        }
+        drop(original);
+        assert_eq!(lock(&state.lists.storage.state).pools.ints.free.len(), 1);
+        assert_eq!(state.lists().list_len(&suffix.clone().into_value()), 64);
+        drop(suffix);
+        let storage = lock(&state.lists.storage.state);
+        assert_eq!(storage.pools.ints.free.len(), 65);
+        assert_eq!(
+            storage.pools.functions.free.len(),
+            storage.pools.functions.slots.len()
+        );
+        assert!(storage.releases.is_empty());
     }
 
     #[test]

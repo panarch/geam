@@ -8,7 +8,7 @@ pub(crate) use input::{
     EmbeddingCustomInput, EmbeddingInput, EmbeddingInputStorage, EmbeddingInputValue,
     EmbeddingListInput, EmbeddingTupleInput,
 };
-pub(crate) use list::EmbeddingList;
+pub(crate) use list::{EmbeddingList, EmbeddingListIter};
 pub(crate) use output::EmbeddingOutput;
 
 use super::error::HostCallOrigin;

@@ -306,14 +306,17 @@ let total = scope.call(&functions.total_quantity, (&checked,)).await?;
 
 Host-driven calls return `SharedList`. Its `read_item` callback borrows one item
 and returns `None` for an out-of-range index. Reading or passing the list back
-does not copy every item. `len` and `is_empty` are O(1).
+does not copy every item. Locating an item takes O(log n); `len` and `is_empty`
+are O(1).
 
 Provider-free direct calls return `List`, whose read-only API makes
 materialization explicit:
 
 - `len` and `is_empty` are O(1) and decode no items.
-- `get` decodes one item and returns `None` for an out-of-range index.
-- `iter` yields owned items lazily.
+- `get` locates an item in O(log n), decodes only that item, and returns `None`
+  for an out-of-range index.
+- `iter` yields owned items lazily, traversing the storage in O(n) plus item
+  decoding.
 - `to_vec` decodes every item into a new Vec.
 
 Retained Lists of plain data own the immutable storage needed for reading.

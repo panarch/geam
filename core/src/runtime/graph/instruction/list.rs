@@ -253,7 +253,7 @@ where
 trait RuntimeTypedList {
     type TypeId: Copy;
     type ElementLocal: 'static;
-    type Element: Clone;
+    type Elements;
     type Local: Copy
         + crate::plan::execution::constant::ConstantValue
         + GraphValue<Evaluated = Self::Handle>;
@@ -262,17 +262,28 @@ trait RuntimeTypedList {
     type FunctionValue: Clone;
     type Handle: Clone;
 
-    fn element(environment: &BlockEnvironment, local: &Self::ElementLocal) -> Self::Element;
+    fn elements(environment: &BlockEnvironment, locals: &[Self::ElementLocal]) -> Self::Elements;
     fn local(environment: &BlockEnvironment, local: Self::Local) -> Self::Handle;
     fn function(environment: &BlockEnvironment, local: &Self::FunctionLocal)
     -> Self::FunctionValue;
     fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture];
     fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError>;
-    fn values<State: RuntimeGraphState>(state: &State, value: &Self::Handle) -> Vec<Self::Element>;
     fn allocate<State: RuntimeGraphState>(
         state: &mut State,
         type_id: Self::TypeId,
-        values: Vec<Self::Element>,
+        values: Self::Elements,
+    ) -> Self::Handle;
+    fn prepend<State: RuntimeGraphState>(
+        state: &mut State,
+        type_id: Self::TypeId,
+        prefix: Self::Elements,
+        tail: &Self::Handle,
+    ) -> Self::Handle;
+    fn drop_first<State: RuntimeGraphState>(
+        state: &mut State,
+        type_id: Self::TypeId,
+        value: &Self::Handle,
+        count: usize,
     ) -> Self::Handle;
     fn projected(value: &StoredListValueId) -> Option<Self::Handle>;
     fn from_core(
@@ -312,20 +323,15 @@ where
         I::Value(elements) => Ok(V::Ready(Family::allocate(
             state,
             type_id,
-            elements
-                .iter()
-                .map(|element| Family::element(environment, element))
-                .collect(),
+            Family::elements(environment, elements),
         ))),
         I::Constant(id) => Ok(V::Constant(*id)),
-        I::Spread { elements, tail } => {
-            let mut values = elements
-                .iter()
-                .map(|element| Family::element(environment, element))
-                .collect::<Vec<_>>();
-            values.extend(Family::values(state, &Family::local(environment, *tail)));
-            Ok(V::Ready(Family::allocate(state, type_id, values)))
-        }
+        I::Spread { elements, tail } => Ok(V::Ready(Family::prepend(
+            state,
+            type_id,
+            Family::elements(environment, elements),
+            &Family::local(environment, *tail),
+        ))),
         I::Call {
             function,
             args,
@@ -391,11 +397,12 @@ where
                 .into()),
             }
         }
-        I::DropFirst { list, count } => {
-            let values = Family::values(state, &Family::local(environment, *list));
-            let values = values[(*count).min(values.len())..].to_vec();
-            Ok(V::Ready(Family::allocate(state, type_id, values)))
-        }
+        I::DropFirst { list, count } => Ok(V::Ready(Family::drop_first(
+            state,
+            type_id,
+            &Family::local(environment, *list),
+            *count,
+        ))),
     }
 }
 
@@ -418,26 +425,30 @@ macro_rules! vector_family {
         $function_variant:ident,
         $element_method:ident,
         $local_method:ident,
-        $values_method:ident,
-        $allocate_method:ident
+        $allocate_method:ident,
+        $prepend_method:ident,
+        $tail_method:ident
     ) => {
         struct $family;
 
         impl RuntimeTypedList for $family {
             type TypeId = $type_id;
             type ElementLocal = $element_local;
-            type Element = $element;
+            type Elements = Vec<$element>;
             type Local = $local;
             type Function = $function;
             type FunctionLocal = ListFunctionLocal;
             type FunctionValue = EvaluatedListFunction;
             type Handle = $handle;
 
-            fn element(
+            fn elements(
                 environment: &BlockEnvironment,
-                local: &Self::ElementLocal,
-            ) -> Self::Element {
-                environment.$element_method(*local)
+                locals: &[Self::ElementLocal],
+            ) -> Self::Elements {
+                locals
+                    .iter()
+                    .map(|local| environment.$element_method(*local))
+                    .collect()
             }
 
             fn local(environment: &BlockEnvironment, local: Self::Local) -> Self::Handle {
@@ -466,19 +477,30 @@ macro_rules! vector_family {
                 }
             }
 
-            fn values<State: RuntimeGraphState>(
-                state: &State,
-                value: &Self::Handle,
-            ) -> Vec<Self::Element> {
-                state.lists().$values_method(value).to_vec()
-            }
-
             fn allocate<State: RuntimeGraphState>(
                 state: &mut State,
                 type_id: Self::TypeId,
-                values: Vec<Self::Element>,
+                values: Self::Elements,
             ) -> Self::Handle {
                 state.lists_mut().$allocate_method(type_id, values)
+            }
+
+            fn prepend<State: RuntimeGraphState>(
+                state: &mut State,
+                type_id: Self::TypeId,
+                prefix: Self::Elements,
+                tail: &Self::Handle,
+            ) -> Self::Handle {
+                state.lists_mut().$prepend_method(type_id, prefix, tail)
+            }
+
+            fn drop_first<State: RuntimeGraphState>(
+                state: &mut State,
+                type_id: Self::TypeId,
+                value: &Self::Handle,
+                count: usize,
+            ) -> Self::Handle {
+                state.lists_mut().$tail_method(type_id, value, count)
             }
 
             fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
@@ -506,8 +528,9 @@ vector_family!(
     Int,
     int,
     int_list,
-    int_values,
-    int
+    int,
+    prepend_int,
+    tail_int
 );
 vector_family!(
     StringFamily,
@@ -520,8 +543,9 @@ vector_family!(
     String,
     string,
     string_list,
-    string_values,
-    string
+    string,
+    prepend_string,
+    tail_string
 );
 vector_family!(
     BitArrayFamily,
@@ -534,8 +558,9 @@ vector_family!(
     BitArray,
     bit_array,
     bit_array_list,
-    bit_array_values,
-    bit_array
+    bit_array,
+    prepend_bit_array,
+    tail_bit_array
 );
 vector_family!(
     UtfCodepointFamily,
@@ -548,8 +573,9 @@ vector_family!(
     UtfCodepoint,
     utf_codepoint,
     utf_codepoint_list,
-    utf_codepoint_values,
-    utf_codepoint
+    utf_codepoint,
+    prepend_utf_codepoint,
+    tail_utf_codepoint
 );
 vector_family!(
     FloatFamily,
@@ -562,8 +588,9 @@ vector_family!(
     Float,
     float,
     float_list,
-    float_values,
-    float
+    float,
+    prepend_float,
+    tail_float
 );
 vector_family!(
     BoolFamily,
@@ -576,8 +603,9 @@ vector_family!(
     Bool,
     bool,
     bool_list,
-    bool_values,
-    bool
+    bool,
+    prepend_bool,
+    tail_bool
 );
 
 struct TupleFamily;
@@ -585,15 +613,18 @@ struct TupleFamily;
 impl RuntimeTypedList for TupleFamily {
     type TypeId = TupleListTypeId;
     type ElementLocal = crate::plan::execution::graph::TupleLocalId;
-    type Element = Vec<EvaluatedValue>;
+    type Elements = Vec<Vec<EvaluatedValue>>;
     type Local = TupleListLocalId;
     type Function = TupleListFunctionId;
     type FunctionLocal = ListFunctionLocal;
     type FunctionValue = EvaluatedListFunction;
     type Handle = TupleListValueId;
 
-    fn element(environment: &BlockEnvironment, local: &Self::ElementLocal) -> Self::Element {
-        environment.tuple(*local)
+    fn elements(environment: &BlockEnvironment, locals: &[Self::ElementLocal]) -> Self::Elements {
+        locals
+            .iter()
+            .map(|local| environment.tuple(*local))
+            .collect()
     }
 
     fn local(environment: &BlockEnvironment, local: Self::Local) -> Self::Handle {
@@ -618,16 +649,30 @@ impl RuntimeTypedList for TupleFamily {
         }
     }
 
-    fn values<State: RuntimeGraphState>(state: &State, value: &Self::Handle) -> Vec<Self::Element> {
-        state.lists().tuple_values(value).to_vec()
-    }
-
     fn allocate<State: RuntimeGraphState>(
         state: &mut State,
         type_id: Self::TypeId,
-        values: Vec<Self::Element>,
+        values: Self::Elements,
     ) -> Self::Handle {
         state.lists_mut().tuple(type_id, values)
+    }
+
+    fn prepend<State: RuntimeGraphState>(
+        state: &mut State,
+        type_id: Self::TypeId,
+        prefix: Self::Elements,
+        tail: &Self::Handle,
+    ) -> Self::Handle {
+        state.lists_mut().prepend_tuple(type_id, prefix, tail)
+    }
+
+    fn drop_first<State: RuntimeGraphState>(
+        state: &mut State,
+        type_id: Self::TypeId,
+        value: &Self::Handle,
+        count: usize,
+    ) -> Self::Handle {
+        state.lists_mut().tail_tuple(type_id, value, count)
     }
 
     fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
@@ -647,15 +692,18 @@ struct CustomFamily;
 impl RuntimeTypedList for CustomFamily {
     type TypeId = CustomListTypeId;
     type ElementLocal = crate::plan::execution::graph::CustomLocal;
-    type Element = EvaluatedCustomValue;
+    type Elements = Vec<EvaluatedCustomValue>;
     type Local = CustomListLocalId;
     type Function = CustomListFunctionId;
     type FunctionLocal = ListFunctionLocal;
     type FunctionValue = EvaluatedListFunction;
     type Handle = CustomListValueId;
 
-    fn element(environment: &BlockEnvironment, local: &Self::ElementLocal) -> Self::Element {
-        environment.custom(*local)
+    fn elements(environment: &BlockEnvironment, locals: &[Self::ElementLocal]) -> Self::Elements {
+        locals
+            .iter()
+            .map(|local| environment.custom(*local))
+            .collect()
     }
 
     fn local(environment: &BlockEnvironment, local: Self::Local) -> Self::Handle {
@@ -680,18 +728,32 @@ impl RuntimeTypedList for CustomFamily {
         }
     }
 
-    fn values<State: RuntimeGraphState>(state: &State, value: &Self::Handle) -> Vec<Self::Element> {
-        state.lists().custom_values(value).to_vec()
-    }
-
     fn allocate<State: RuntimeGraphState>(
         state: &mut State,
         type_id: Self::TypeId,
-        values: Vec<Self::Element>,
+        values: Self::Elements,
     ) -> Self::Handle {
         state
             .lists_mut()
             .custom(CustomListAllocation::new(type_id, values))
+    }
+
+    fn prepend<State: RuntimeGraphState>(
+        state: &mut State,
+        type_id: Self::TypeId,
+        prefix: Self::Elements,
+        tail: &Self::Handle,
+    ) -> Self::Handle {
+        state.lists_mut().prepend_custom(type_id, prefix, tail)
+    }
+
+    fn drop_first<State: RuntimeGraphState>(
+        state: &mut State,
+        type_id: Self::TypeId,
+        value: &Self::Handle,
+        count: usize,
+    ) -> Self::Handle {
+        state.lists_mut().tail_custom(type_id, value, count)
     }
 
     fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
@@ -711,15 +773,18 @@ struct ExternalFamily;
 impl RuntimeTypedList for ExternalFamily {
     type TypeId = ExternalListTypeId;
     type ElementLocal = crate::plan::execution::graph::ExternalLocal;
-    type Element = EvaluatedExternalValue;
+    type Elements = Vec<EvaluatedExternalValue>;
     type Local = ExternalListLocalId;
     type Function = ExternalListFunctionId;
     type FunctionLocal = ExternalListFunctionLocalId;
     type FunctionValue = EvaluatedExternalListFunction;
     type Handle = ExternalListValueId;
 
-    fn element(environment: &BlockEnvironment, local: &Self::ElementLocal) -> Self::Element {
-        environment.external(*local)
+    fn elements(environment: &BlockEnvironment, locals: &[Self::ElementLocal]) -> Self::Elements {
+        locals
+            .iter()
+            .map(|local| environment.external(*local))
+            .collect()
     }
 
     fn local(environment: &BlockEnvironment, local: Self::Local) -> Self::Handle {
@@ -741,18 +806,32 @@ impl RuntimeTypedList for ExternalFamily {
         Ok(function.runtime_id())
     }
 
-    fn values<State: RuntimeGraphState>(state: &State, value: &Self::Handle) -> Vec<Self::Element> {
-        state.lists().external_values(value).to_vec()
-    }
-
     fn allocate<State: RuntimeGraphState>(
         state: &mut State,
         type_id: Self::TypeId,
-        values: Vec<Self::Element>,
+        values: Self::Elements,
     ) -> Self::Handle {
         state
             .lists_mut()
             .external(ExternalListAllocation::new(type_id, values))
+    }
+
+    fn prepend<State: RuntimeGraphState>(
+        state: &mut State,
+        type_id: Self::TypeId,
+        prefix: Self::Elements,
+        tail: &Self::Handle,
+    ) -> Self::Handle {
+        state.lists_mut().prepend_external(type_id, prefix, tail)
+    }
+
+    fn drop_first<State: RuntimeGraphState>(
+        state: &mut State,
+        type_id: Self::TypeId,
+        value: &Self::Handle,
+        count: usize,
+    ) -> Self::Handle {
+        state.lists_mut().tail_external(type_id, value, count)
     }
 
     fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
@@ -772,15 +851,15 @@ struct NilFamily;
 impl RuntimeTypedList for NilFamily {
     type TypeId = NilListTypeId;
     type ElementLocal = crate::plan::execution::graph::NilLocalId;
-    type Element = ();
+    type Elements = usize;
     type Local = NilListLocalId;
     type Function = NilListFunctionId;
     type FunctionLocal = ListFunctionLocal;
     type FunctionValue = EvaluatedListFunction;
     type Handle = NilListValueId;
 
-    fn element(environment: &BlockEnvironment, local: &Self::ElementLocal) -> Self::Element {
-        environment.nil(*local)
+    fn elements(_environment: &BlockEnvironment, locals: &[Self::ElementLocal]) -> Self::Elements {
+        locals.len()
     }
 
     fn local(environment: &BlockEnvironment, local: Self::Local) -> Self::Handle {
@@ -805,16 +884,30 @@ impl RuntimeTypedList for NilFamily {
         }
     }
 
-    fn values<State: RuntimeGraphState>(state: &State, value: &Self::Handle) -> Vec<Self::Element> {
-        vec![(); state.lists().nil_len(value)]
-    }
-
     fn allocate<State: RuntimeGraphState>(
         state: &mut State,
         type_id: Self::TypeId,
-        values: Vec<Self::Element>,
+        values: Self::Elements,
     ) -> Self::Handle {
-        state.lists_mut().nil(type_id, values.len())
+        state.lists_mut().nil(type_id, values)
+    }
+
+    fn prepend<State: RuntimeGraphState>(
+        state: &mut State,
+        type_id: Self::TypeId,
+        prefix: Self::Elements,
+        tail: &Self::Handle,
+    ) -> Self::Handle {
+        state.lists_mut().prepend_nil(type_id, prefix, tail)
+    }
+
+    fn drop_first<State: RuntimeGraphState>(
+        state: &mut State,
+        type_id: Self::TypeId,
+        value: &Self::Handle,
+        count: usize,
+    ) -> Self::Handle {
+        state.lists_mut().tail_nil(type_id, value, count)
     }
 
     fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
@@ -834,15 +927,15 @@ struct ParameterListFamily;
 impl RuntimeTypedList for ParameterListFamily {
     type TypeId = ParameterListListTypeId;
     type ElementLocal = ParameterListLocalId;
-    type Element = ParameterListValueId;
+    type Elements = usize;
     type Local = ParameterListListLocalId;
     type Function = ParameterListListFunctionId;
     type FunctionLocal = ListFunctionLocal;
     type FunctionValue = EvaluatedListFunction;
     type Handle = ParameterListListValueId;
 
-    fn element(environment: &BlockEnvironment, local: &Self::ElementLocal) -> Self::Element {
-        environment.parameter_list(*local)
+    fn elements(_environment: &BlockEnvironment, locals: &[Self::ElementLocal]) -> Self::Elements {
+        locals.len()
     }
 
     fn local(environment: &BlockEnvironment, local: Self::Local) -> Self::Handle {
@@ -867,19 +960,34 @@ impl RuntimeTypedList for ParameterListFamily {
         }
     }
 
-    fn values<State: RuntimeGraphState>(state: &State, value: &Self::Handle) -> Vec<Self::Element> {
-        vec![
-            ParameterListValueId::new(value.type_id().item_type());
-            state.lists().parameter_list_list_len(value)
-        ]
-    }
-
     fn allocate<State: RuntimeGraphState>(
         state: &mut State,
         type_id: Self::TypeId,
-        values: Vec<Self::Element>,
+        values: Self::Elements,
     ) -> Self::Handle {
-        state.lists_mut().parameter_list_list(type_id, values.len())
+        state.lists_mut().parameter_list_list(type_id, values)
+    }
+
+    fn prepend<State: RuntimeGraphState>(
+        state: &mut State,
+        type_id: Self::TypeId,
+        prefix: Self::Elements,
+        tail: &Self::Handle,
+    ) -> Self::Handle {
+        state
+            .lists_mut()
+            .prepend_parameter_list_list(type_id, prefix, tail)
+    }
+
+    fn drop_first<State: RuntimeGraphState>(
+        state: &mut State,
+        type_id: Self::TypeId,
+        value: &Self::Handle,
+        count: usize,
+    ) -> Self::Handle {
+        state
+            .lists_mut()
+            .tail_parameter_list_list(type_id, value, count)
     }
 
     fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
@@ -899,15 +1007,18 @@ struct ListFamily;
 impl RuntimeTypedList for ListFamily {
     type TypeId = ListListTypeId;
     type ElementLocal = StoredListLocal;
-    type Element = StoredListValueId;
+    type Elements = Vec<StoredListValueId>;
     type Local = ListListLocalId;
     type Function = ListListFunctionId;
     type FunctionLocal = ListFunctionLocal;
     type FunctionValue = EvaluatedListFunction;
     type Handle = ListListValueId;
 
-    fn element(environment: &BlockEnvironment, local: &Self::ElementLocal) -> Self::Element {
-        environment.stored_list(local)
+    fn elements(environment: &BlockEnvironment, locals: &[Self::ElementLocal]) -> Self::Elements {
+        locals
+            .iter()
+            .map(|local| environment.stored_list(local))
+            .collect()
     }
 
     fn local(environment: &BlockEnvironment, local: Self::Local) -> Self::Handle {
@@ -932,16 +1043,30 @@ impl RuntimeTypedList for ListFamily {
         }
     }
 
-    fn values<State: RuntimeGraphState>(state: &State, value: &Self::Handle) -> Vec<Self::Element> {
-        state.lists().list_values(value).to_vec()
-    }
-
     fn allocate<State: RuntimeGraphState>(
         state: &mut State,
         type_id: Self::TypeId,
-        values: Vec<Self::Element>,
+        values: Self::Elements,
     ) -> Self::Handle {
         state.lists_mut().list(type_id, values)
+    }
+
+    fn prepend<State: RuntimeGraphState>(
+        state: &mut State,
+        type_id: Self::TypeId,
+        prefix: Self::Elements,
+        tail: &Self::Handle,
+    ) -> Self::Handle {
+        state.lists_mut().prepend_list(type_id, prefix, tail)
+    }
+
+    fn drop_first<State: RuntimeGraphState>(
+        state: &mut State,
+        type_id: Self::TypeId,
+        value: &Self::Handle,
+        count: usize,
+    ) -> Self::Handle {
+        state.lists_mut().tail_list(type_id, value, count)
     }
 
     fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
@@ -961,15 +1086,18 @@ struct FunctionFamily;
 impl RuntimeTypedList for FunctionFamily {
     type TypeId = FunctionListTypeId;
     type ElementLocal = crate::plan::execution::graph::FunctionLocal;
-    type Element = EvaluatedFunctionValue;
+    type Elements = Vec<EvaluatedFunctionValue>;
     type Local = FunctionListLocalId;
     type Function = FunctionListFunctionId;
     type FunctionLocal = ListFunctionLocal;
     type FunctionValue = EvaluatedListFunction;
     type Handle = FunctionListValueId;
 
-    fn element(environment: &BlockEnvironment, local: &Self::ElementLocal) -> Self::Element {
-        environment.function_value(local)
+    fn elements(environment: &BlockEnvironment, locals: &[Self::ElementLocal]) -> Self::Elements {
+        locals
+            .iter()
+            .map(|local| environment.function_value(local))
+            .collect()
     }
 
     fn local(environment: &BlockEnvironment, local: Self::Local) -> Self::Handle {
@@ -994,16 +1122,30 @@ impl RuntimeTypedList for FunctionFamily {
         }
     }
 
-    fn values<State: RuntimeGraphState>(state: &State, value: &Self::Handle) -> Vec<Self::Element> {
-        state.lists().function_values(value).to_vec()
-    }
-
     fn allocate<State: RuntimeGraphState>(
         state: &mut State,
         type_id: Self::TypeId,
-        values: Vec<Self::Element>,
+        values: Self::Elements,
     ) -> Self::Handle {
         state.lists_mut().function(type_id, values)
+    }
+
+    fn prepend<State: RuntimeGraphState>(
+        state: &mut State,
+        type_id: Self::TypeId,
+        prefix: Self::Elements,
+        tail: &Self::Handle,
+    ) -> Self::Handle {
+        state.lists_mut().prepend_function(type_id, prefix, tail)
+    }
+
+    fn drop_first<State: RuntimeGraphState>(
+        state: &mut State,
+        type_id: Self::TypeId,
+        value: &Self::Handle,
+        count: usize,
+    ) -> Self::Handle {
+        state.lists_mut().tail_function(type_id, value, count)
     }
 
     fn projected(value: &StoredListValueId) -> Option<Self::Handle> {

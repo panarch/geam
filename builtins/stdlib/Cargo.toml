@@ -16,6 +16,7 @@ geam-core.workspace = true
 geam-macros.workspace = true
 hex.workspace = true
 im.workspace = true
+imbl.workspace = true
 num-bigint.workspace = true
 num-traits.workspace = true
 rand.workspace = true

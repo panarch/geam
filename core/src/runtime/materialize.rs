@@ -97,8 +97,12 @@ fn list(
     value: &StoredListValueId,
 ) -> ListValue {
     match value {
-        StoredListValueId::Int(value) => ListValue::int(state.int_values(value).to_vec()),
-        StoredListValueId::String(value) => ListValue::string(state.string_values(value).to_vec()),
+        StoredListValueId::Int(value) => {
+            ListValue::int(state.int_values(value).iter().cloned().collect())
+        }
+        StoredListValueId::String(value) => {
+            ListValue::string(state.string_values(value).iter().cloned().collect())
+        }
         StoredListValueId::BitArray(value) => ListValue::bit_array(
             state
                 .bit_array_values(value)
@@ -107,7 +111,7 @@ fn list(
                 .collect(),
         ),
         StoredListValueId::UtfCodepoint(value) => {
-            ListValue::utf_codepoint(state.utf_codepoint_values(value).to_vec())
+            ListValue::utf_codepoint(state.utf_codepoint_values(value).iter().copied().collect())
         }
         StoredListValueId::Custom(value) => ListValue::from_evaluated_custom(
             plan.custom_value_type(value.type_id().item_type()),
@@ -127,8 +131,12 @@ fn list(
                 .map(|value| external(plan, state, value))
                 .collect(),
         ),
-        StoredListValueId::Float(value) => ListValue::float(state.float_values(value).to_vec()),
-        StoredListValueId::Bool(value) => ListValue::bool(state.bool_values(value).to_vec()),
+        StoredListValueId::Float(value) => {
+            ListValue::float(state.float_values(value).iter().copied().collect())
+        }
+        StoredListValueId::Bool(value) => {
+            ListValue::bool(state.bool_values(value).iter().copied().collect())
+        }
         StoredListValueId::Nil(value) => ListValue::nil(state.nil_len(value)),
         StoredListValueId::Tuple(value) => ListValue::from_evaluated_tuple(
             plan.tuple_list_item_type(value.type_id()),
@@ -528,11 +536,11 @@ fn list_capture(
         },
         EvaluatedListCapture::Int { local, value } => CaptureListValue::Int {
             local: *local,
-            value: state.int_values(value).to_vec(),
+            value: state.int_values(value).iter().cloned().collect(),
         },
         EvaluatedListCapture::String { local, value } => CaptureListValue::String {
             local: *local,
-            value: state.string_values(value).to_vec(),
+            value: state.string_values(value).iter().cloned().collect(),
         },
         EvaluatedListCapture::BitArray { local, value } => CaptureListValue::BitArray {
             local: *local,
@@ -544,7 +552,7 @@ fn list_capture(
         },
         EvaluatedListCapture::UtfCodepoint { local, value } => CaptureListValue::UtfCodepoint {
             local: *local,
-            value: state.utf_codepoint_values(value).to_vec(),
+            value: state.utf_codepoint_values(value).iter().copied().collect(),
         },
         EvaluatedListCapture::Custom { local, value } => CaptureListValue::Custom {
             local: *local,
@@ -568,11 +576,11 @@ fn list_capture(
         },
         EvaluatedListCapture::Float { local, value } => CaptureListValue::Float {
             local: *local,
-            value: state.float_values(value).to_vec(),
+            value: state.float_values(value).iter().copied().collect(),
         },
         EvaluatedListCapture::Bool { local, value } => CaptureListValue::Bool {
             local: *local,
-            value: state.bool_values(value).to_vec(),
+            value: state.bool_values(value).iter().copied().collect(),
         },
         EvaluatedListCapture::Nil { local, value } => CaptureListValue::Nil {
             local: *local,

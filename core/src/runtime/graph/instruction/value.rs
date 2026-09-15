@@ -898,7 +898,7 @@ where
 pub(in crate::runtime) fn list_element<Value: Clone, Error>(
     item_type: &ValueType,
     index: usize,
-    values: &[Value],
+    values: &imbl::Vector<Value>,
 ) -> Result<Value, Error>
 where
     Error: From<InvariantError>,
@@ -1067,7 +1067,7 @@ mod tests {
     }
 
     fn assert_missing_list_element<Value: Clone>(type_: ValueType) {
-        let values: &[Value] = &[];
+        let values = &imbl::Vector::<Value>::new();
         assert_eq!(
             list_element(&type_, 2, values).map(|_| ()),
             Err(ExecutionError::<crate::runtime::PanicValue>::Invariant(
