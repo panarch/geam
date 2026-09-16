@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 1,
+    format: 2,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -68,12 +68,39 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(1),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(107),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -86,12 +113,39 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(2),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Float,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(106),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Float,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -104,12 +158,39 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(3),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::String,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(105),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::String,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -122,12 +203,47 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(4),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BitArray,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(104),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BitArray,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -140,12 +256,47 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(5),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(103),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -158,12 +309,31 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(6),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(102),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(3)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                3,
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -176,12 +346,31 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(7),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(101),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -194,12 +383,47 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(8),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(100),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                1,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -212,12 +436,39 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(9),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::UtfCodepoint,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(99),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::UtfCodepoint,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -230,12 +481,47 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(10),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(98),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -248,12 +534,47 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(11),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Float,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::FloatList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(97),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Float,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::FloatList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -266,12 +587,47 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(12),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::String,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::StringList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(96),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::String,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::StringList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -284,12 +640,55 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(13),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BitArray,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BitArrayList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(95),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BitArray,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BitArrayList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -302,12 +701,55 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(14),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::CustomList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(94),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::CustomList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -320,12 +762,39 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(15),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BoolList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(93),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                1,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BoolList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -338,12 +807,39 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(16),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::NilList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(92),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::NilList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -356,12 +852,55 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(17),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::TupleList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(91),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                1,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::TupleList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -374,12 +913,55 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(18),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::ListList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(90),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::ListList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -407,6 +989,23 @@ data::ModuleArtifact {
                                                 args: data::Storage::Static(&[
                                                     data::graph::MatchEdgeArgument::Binding(0),
                                                 ]),
+                                                bindings: data::Storage::Static(&[
+                                                    0,
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::FunctionList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntFunction,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(89),
@@ -419,6 +1018,16 @@ data::ModuleArtifact {
                                                         },
                                                     }),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::FunctionList,
+                                                            positions: data::Storage::Static(&[
+                                                                1,
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -431,12 +1040,47 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(20),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(88),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -449,12 +1093,47 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(21),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::UtfCodepoint,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::UtfCodepointList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(87),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::UtfCodepoint,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::UtfCodepointList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -467,12 +1146,39 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(22),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::UtfCodepointList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(86),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::UtfCodepointList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -485,12 +1191,39 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(23),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::ParameterList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(85),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::ParameterList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -503,12 +1236,39 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(24),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::ParameterListList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(84),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::ParameterListList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -521,12 +1281,47 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(25),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(83),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -539,12 +1334,47 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(26),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Float,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::FloatFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(82),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Float,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::FloatFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -557,12 +1387,47 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(27),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::String,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::StringFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(81),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::String,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::StringFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -575,12 +1440,55 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(28),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BitArray,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BitArrayFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(80),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BitArray,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BitArrayFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -593,12 +1501,55 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(29),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::CustomFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(79),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::CustomFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -611,12 +1562,39 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(30),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BoolFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(78),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                2,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BoolFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -629,12 +1607,39 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(31),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::NilFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(77),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::NilFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -647,12 +1652,55 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(32),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::TupleFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(76),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                1,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::TupleFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -665,12 +1713,47 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(33),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::UtfCodepoint,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::UtfCodepointFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(75),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::UtfCodepoint,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::UtfCodepointFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -683,12 +1766,55 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(34),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(74),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -701,12 +1827,55 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(35),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Float,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::FloatList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::FloatListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(73),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Float,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::FloatList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::FloatListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -719,12 +1888,55 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(36),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::String,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::StringList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::StringListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(72),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::String,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::StringList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::StringListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -737,12 +1949,63 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(37),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BitArray,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BitArrayList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BitArrayListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(71),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BitArray,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BitArrayList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BitArrayListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -755,12 +2018,63 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(38),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::CustomList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::CustomListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(70),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::CustomList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::CustomListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -773,12 +2087,47 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(39),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BoolList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BoolListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(69),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                1,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BoolList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BoolListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -791,12 +2140,47 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(40),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::NilList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::NilListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(68),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::NilList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::NilListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -809,12 +2193,63 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(41),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::TupleList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::TupleListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(67),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                1,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::TupleList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::TupleListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -827,12 +2262,63 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(42),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::ListList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::ListListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(66),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::ListList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::ListListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -845,12 +2331,55 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(43),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::UtfCodepoint,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::UtfCodepointList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::UtfCodepointListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(65),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::UtfCodepoint,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::UtfCodepointList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::UtfCodepointListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -863,12 +2392,47 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(44),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::ParameterList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::ParameterListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(64),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::ParameterList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::ParameterListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -881,12 +2445,47 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(45),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::ParameterListList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::ParameterListListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(63),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::ParameterListList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::ParameterListListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -914,6 +2513,27 @@ data::ModuleArtifact {
                                                 args: data::Storage::Static(&[
                                                     data::graph::MatchEdgeArgument::Binding(0),
                                                 ]),
+                                                bindings: data::Storage::Static(&[
+                                                    0,
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::FunctionList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntFunction,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::FunctionListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(62),
@@ -926,6 +2546,20 @@ data::ModuleArtifact {
                                                         },
                                                     }),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::FunctionList,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::FunctionListFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -938,12 +2572,47 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(47),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(61),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -956,12 +2625,55 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(48),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::CoreFunctionFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(60),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::CoreFunctionFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -974,12 +2686,71 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(49),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::GenericFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::NeverFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(59),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::GenericFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::NeverFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -992,12 +2763,39 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(50),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(58),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -1039,6 +2837,30 @@ data::ModuleArtifact {
                                                     data::graph::MatchEdgeArgument::Binding(0),
                                                     data::graph::MatchEdgeArgument::Binding(1),
                                                 ]),
+                                                bindings: data::Storage::Static(&[
+                                                    0,
+                                                    1,
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            positions: data::Storage::Static(&[
+                                                                1,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            positions: data::Storage::Static(&[
+                                                                1,
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(57),
@@ -1051,6 +2873,24 @@ data::ModuleArtifact {
                                                         },
                                                     }),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -1071,12 +2911,57 @@ data::ModuleArtifact {
                                                         },
                                                     })),
                                                 ]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(56),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -1089,12 +2974,55 @@ data::ModuleArtifact {
                                             success: data::graph::MatchEdge {
                                                 target: data::graph::BlockId(53),
                                                 args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(55),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -1108,6 +3036,14 @@ data::ModuleArtifact {
                                             next: data::graph::Edge {
                                                 target: data::graph::BlockId(54),
                                                 args: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -7880,12 +9816,33 @@ data::ModuleArtifact {
                                                 args: data::Storage::Static(&[
                                                     data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
                                                 ]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(2),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -8056,6 +10013,14 @@ data::ModuleArtifact {
                                                 }, data::graph::Edge {
                                                     target: data::graph::BlockId(1),
                                                     args: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                positions: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
                                                 }),
                                             ]),
                                             fallback: data::graph::Edge {
@@ -8063,6 +10028,16 @@ data::ModuleArtifact {
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -8134,6 +10109,16 @@ data::ModuleArtifact {
                                     args: data::Storage::Static(&[
                                         data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                     ]),
+                                    transfer: data::graph::Transfer {
+                                        families: data::Storage::Static(&[
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Int,
+                                                positions: data::Storage::Static(&[
+                                                    2,
+                                                ]),
+                                            },
+                                        ]),
+                                    },
                                 },
                             ]),
                         },
@@ -8433,12 +10418,47 @@ data::ModuleArtifact {
                                                 args: data::Storage::Static(&[
                                                     data::graph::MatchEdgeArgument::Binding(0),
                                                 ]),
+                                                bindings: data::Storage::Static(&[
+                                                    0,
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BitArray,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::UtfCodepoint,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                             failure: data::graph::Edge {
                                                 target: data::graph::BlockId(2),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                                 ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::BitArray,
+                                                            positions: data::Storage::Static(&[
+                                                                0,
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },
@@ -8552,6 +10572,9 @@ data::ModuleArtifact {
                                         site: data::source::HostCallSite::from_static("example", "<anonymous:9>", data::source::SourceSpan::new(2693, 2704)),
                                     },
                                     args: data::Storage::Static(&[]),
+                                    transfer: data::graph::Transfer {
+                                        families: data::Storage::Static(&[]),
+                                    },
                                 },
                             ]),
                         },

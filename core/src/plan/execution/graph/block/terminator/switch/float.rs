@@ -79,10 +79,22 @@ mod emission_tests {
             FloatLocalId(2),
             vec![(
                 -0.0,
-                Edge::new(BlockId(3), vec![ParamLocal::Int(IntLocalId(5))]),
+                Edge::new(
+                    BlockId(3),
+                    vec![ParamLocal::Int(IntLocalId(5))],
+                    crate::plan::execution::graph::Transfer {
+                        families: crate::plan::execution::storage::Table::Static(&[]),
+                    },
+                ),
             )]
             .into(),
-            Edge::new(BlockId(4), Vec::new()),
+            Edge::new(
+                BlockId(4),
+                Vec::new(),
+                crate::plan::execution::graph::Transfer {
+                    families: crate::plan::execution::storage::Table::Static(&[]),
+                },
+            ),
         );
         assert_eq!(
             Rust::expression(&value),
@@ -95,11 +107,17 @@ data::graph::FloatSwitch {
             args: data::Storage::Static(&[
                 data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
             ]),
+            transfer: data::graph::Transfer {
+                families: data::Storage::Static(&[]),
+            },
         }),
     ]),
     fallback: data::graph::Edge {
         target: data::graph::BlockId(4),
         args: data::Storage::Static(&[]),
+        transfer: data::graph::Transfer {
+            families: data::Storage::Static(&[]),
+        },
     },
 }"#
             .trim_start_matches('\n')

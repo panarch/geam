@@ -20,6 +20,7 @@ mod pattern;
 mod place;
 mod source;
 mod terminator;
+mod transfer;
 mod type_;
 
 use super::{FORMAT_VERSION, ModuleArtifact, ProgramTables};
@@ -456,10 +457,10 @@ mod tests {
         let mut artifact = artifact(bindings.prepare());
         assert_eq!(module(&artifact, &functions::InfallibleHosts).err(), None);
 
-        artifact.format = 2;
+        artifact.format = 1;
         assert_eq!(
             plain(&artifact).err().unwrap().to_string(),
-            "prepared format 2 is incompatible with format 1; regenerate the prepared program"
+            "prepared format 1 is incompatible with format 2; regenerate the prepared program"
         );
         artifact.format = FORMAT_VERSION;
 
@@ -569,7 +570,7 @@ mod tests {
             (
                 Change::Format,
                 Some(
-                    "prepared format 2 is incompatible with format 1; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 2; regenerate the prepared program",
                 ),
             ),
             (
@@ -652,7 +653,11 @@ mod tests {
             };
             let artifact = Box::leak(Box::new(HostedModuleArtifact {
                 module: ModuleArtifact {
-                    format: if change == Change::Format { 2 } else { 1 },
+                    format: if change == Change::Format {
+                        1
+                    } else {
+                        FORMAT_VERSION
+                    },
                     program: ProgramTables {
                         root: common.root,
                         modules: common.modules,
@@ -768,7 +773,7 @@ mod tests {
             (
                 Change::Format,
                 Some(
-                    "prepared format 2 is incompatible with format 1; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 2; regenerate the prepared program",
                 ),
             ),
             (
@@ -811,7 +816,7 @@ mod tests {
                 never_functions: nevers.into(),
             };
             match change {
-                Change::Format => artifact.format = 2,
+                Change::Format => artifact.format = 1,
                 Change::Source => artifact.program.root = crate::plan::ModuleId::new(999),
                 Change::Main => {
                     artifact.program.main = Runtime::Core(Core::Int(IntFunctionId(999)))

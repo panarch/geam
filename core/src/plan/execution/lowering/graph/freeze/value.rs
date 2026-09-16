@@ -82,6 +82,10 @@ pub(in crate::plan::execution::lowering) struct BlockValues {
 }
 
 impl BlockValues {
+    pub(super) fn locals(&self) -> impl Iterator<Item = &execution::graph::ParamLocal> {
+        self.all.values()
+    }
+
     pub(super) fn allocate(
         &mut self,
         value: &DraftValueRef,

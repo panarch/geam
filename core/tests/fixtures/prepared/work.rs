@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 1,
+        format: 2,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -142,6 +142,27 @@ data::HostedModuleArtifact {
                                                         args: data::Storage::Static(&[
                                                             data::graph::MatchEdgeArgument::Binding(0),
                                                         ]),
+                                                        bindings: data::Storage::Static(&[
+                                                            0,
+                                                        ]),
+                                                        transfer: data::graph::Transfer {
+                                                            families: data::Storage::Static(&[
+                                                                data::graph::FamilyTransfer {
+                                                                    family: data::graph::StorageFamily::Int,
+                                                                    positions: data::Storage::Static(&[]),
+                                                                },
+                                                                data::graph::FamilyTransfer {
+                                                                    family: data::graph::StorageFamily::External,
+                                                                    positions: data::Storage::Static(&[
+                                                                        2,
+                                                                    ]),
+                                                                },
+                                                                data::graph::FamilyTransfer {
+                                                                    family: data::graph::StorageFamily::ExternalList,
+                                                                    positions: data::Storage::Static(&[]),
+                                                                },
+                                                            ]),
+                                                        },
                                                     },
                                                     failure: data::graph::Edge {
                                                         target: data::graph::BlockId(4),
@@ -154,6 +175,24 @@ data::HostedModuleArtifact {
                                                                 },
                                                             }),
                                                         ]),
+                                                        transfer: data::graph::Transfer {
+                                                            families: data::Storage::Static(&[
+                                                                data::graph::FamilyTransfer {
+                                                                    family: data::graph::StorageFamily::Int,
+                                                                    positions: data::Storage::Static(&[]),
+                                                                },
+                                                                data::graph::FamilyTransfer {
+                                                                    family: data::graph::StorageFamily::External,
+                                                                    positions: data::Storage::Static(&[]),
+                                                                },
+                                                                data::graph::FamilyTransfer {
+                                                                    family: data::graph::StorageFamily::ExternalList,
+                                                                    positions: data::Storage::Static(&[
+                                                                        1,
+                                                                    ]),
+                                                                },
+                                                            ]),
+                                                        },
                                                     },
                                                 }),
                                             },
@@ -181,6 +220,31 @@ data::HostedModuleArtifact {
                                                         args: data::Storage::Static(&[
                                                             data::graph::MatchEdgeArgument::Binding(0),
                                                         ]),
+                                                        bindings: data::Storage::Static(&[
+                                                            0,
+                                                        ]),
+                                                        transfer: data::graph::Transfer {
+                                                            families: data::Storage::Static(&[
+                                                                data::graph::FamilyTransfer {
+                                                                    family: data::graph::StorageFamily::External,
+                                                                    positions: data::Storage::Static(&[
+                                                                        2,
+                                                                    ]),
+                                                                },
+                                                                data::graph::FamilyTransfer {
+                                                                    family: data::graph::StorageFamily::ExternalList,
+                                                                    positions: data::Storage::Static(&[]),
+                                                                },
+                                                                data::graph::FamilyTransfer {
+                                                                    family: data::graph::StorageFamily::ExternalFunction,
+                                                                    positions: data::Storage::Static(&[]),
+                                                                },
+                                                                data::graph::FamilyTransfer {
+                                                                    family: data::graph::StorageFamily::ExternalListFunction,
+                                                                    positions: data::Storage::Static(&[]),
+                                                                },
+                                                            ]),
+                                                        },
                                                     },
                                                     failure: data::graph::Edge {
                                                         target: data::graph::BlockId(3),
@@ -193,6 +257,28 @@ data::HostedModuleArtifact {
                                                                 },
                                                             }),
                                                         ]),
+                                                        transfer: data::graph::Transfer {
+                                                            families: data::Storage::Static(&[
+                                                                data::graph::FamilyTransfer {
+                                                                    family: data::graph::StorageFamily::External,
+                                                                    positions: data::Storage::Static(&[]),
+                                                                },
+                                                                data::graph::FamilyTransfer {
+                                                                    family: data::graph::StorageFamily::ExternalList,
+                                                                    positions: data::Storage::Static(&[
+                                                                        0,
+                                                                    ]),
+                                                                },
+                                                                data::graph::FamilyTransfer {
+                                                                    family: data::graph::StorageFamily::ExternalFunction,
+                                                                    positions: data::Storage::Static(&[]),
+                                                                },
+                                                                data::graph::FamilyTransfer {
+                                                                    family: data::graph::StorageFamily::ExternalListFunction,
+                                                                    positions: data::Storage::Static(&[]),
+                                                                },
+                                                            ]),
+                                                        },
                                                     },
                                                 }),
                                             },
@@ -676,6 +762,26 @@ data::HostedModuleArtifact {
                                                     },
                                                 },
                                             ]),
+                                            transfer: data::graph::Transfer {
+                                                families: data::Storage::Static(&[
+                                                    data::graph::FamilyTransfer {
+                                                        family: data::graph::StorageFamily::Int,
+                                                        positions: data::Storage::Static(&[]),
+                                                    },
+                                                    data::graph::FamilyTransfer {
+                                                        family: data::graph::StorageFamily::External,
+                                                        positions: data::Storage::Static(&[
+                                                            0,
+                                                        ]),
+                                                    },
+                                                    data::graph::FamilyTransfer {
+                                                        family: data::graph::StorageFamily::IntFunction,
+                                                        positions: data::Storage::Static(&[
+                                                            0,
+                                                        ]),
+                                                    },
+                                                ]),
+                                            },
                                         },
                                     ]),
                                 },
@@ -769,6 +875,24 @@ data::HostedModuleArtifact {
                                                     },
                                                 }),
                                             ]),
+                                            transfer: data::graph::Transfer {
+                                                families: data::Storage::Static(&[
+                                                    data::graph::FamilyTransfer {
+                                                        family: data::graph::StorageFamily::Int,
+                                                        positions: data::Storage::Static(&[]),
+                                                    },
+                                                    data::graph::FamilyTransfer {
+                                                        family: data::graph::StorageFamily::External,
+                                                        positions: data::Storage::Static(&[]),
+                                                    },
+                                                    data::graph::FamilyTransfer {
+                                                        family: data::graph::StorageFamily::ExternalList,
+                                                        positions: data::Storage::Static(&[
+                                                            0,
+                                                        ]),
+                                                    },
+                                                ]),
+                                            },
                                         },
                                     ]),
                                 },
@@ -909,6 +1033,26 @@ data::HostedModuleArtifact {
                                                     },
                                                 },
                                             ]),
+                                            transfer: data::graph::Transfer {
+                                                families: data::Storage::Static(&[
+                                                    data::graph::FamilyTransfer {
+                                                        family: data::graph::StorageFamily::Int,
+                                                        positions: data::Storage::Static(&[]),
+                                                    },
+                                                    data::graph::FamilyTransfer {
+                                                        family: data::graph::StorageFamily::External,
+                                                        positions: data::Storage::Static(&[
+                                                            0,
+                                                        ]),
+                                                    },
+                                                    data::graph::FamilyTransfer {
+                                                        family: data::graph::StorageFamily::IntFunction,
+                                                        positions: data::Storage::Static(&[
+                                                            0,
+                                                        ]),
+                                                    },
+                                                ]),
+                                            },
                                         },
                                     ]),
                                 },

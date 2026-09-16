@@ -144,24 +144,20 @@ impl<'plan, Plan: ExecutableRuntimePlan> Frame<'plan, Plan> {
             self.position.instruction += 1;
             return super::instruction::advance(plan, state, self, returns, instruction);
         }
-        match terminator_action(plan, state, &self.position.environment, block.terminator())? {
+        match terminator_action(plan, state, self.position.environment, block.terminator())? {
             GraphAction::Continue { block, inputs } => {
                 self.position = GraphPosition::new(block, inputs);
                 Ok(Activation::Graph(self))
             }
-            GraphAction::Exit(exit) => (self.exit)(
-                CompletedGraph {
-                    exit,
-                    environment: self.position.environment,
-                },
-                returns,
-            ),
+            GraphAction::Exit { exit, environment } => {
+                (self.exit)(CompletedGraph { exit, environment }, returns)
+            }
             GraphAction::NeverCall {
                 function,
                 mut inputs,
                 site,
             } => {
-                drop(self);
+                drop(self.exit);
                 let function = match function {
                     NeverCall::Direct(function) => function,
                     NeverCall::Value(function) => {
@@ -272,9 +268,11 @@ where
                             let value = map(completed.into_value(value))?;
                             Ok(destination.resume(returns, value))
                         }
-                        FunctionExit::TailCall { function, args } => {
+                        FunctionExit::TailCall {
+                            function, transfer, ..
+                        } => {
                             let (id, origin) = id.next(function);
-                            let inputs = completed.into_retained(args);
+                            let inputs = completed.into_retained(transfer);
                             Ok(enter_function(plan, id, origin, inputs, destination, map))
                         }
                     },
@@ -332,8 +330,10 @@ fn enter_never<'plan, Plan: ExecutableRuntimePlan>(
                 position: GraphPosition::new(graph.entry(), inputs),
                 exit: Box::new(move |completed, _| match body.exit(completed.exit()) {
                     FunctionExit::Return(never) => match *never {},
-                    FunctionExit::TailCall { function, args } => {
-                        let inputs = completed.into_retained(args);
+                    FunctionExit::TailCall {
+                        function, transfer, ..
+                    } => {
+                        let inputs = completed.into_retained(transfer);
                         Ok(enter_never(
                             plan,
                             *function.function(),

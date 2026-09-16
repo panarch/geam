@@ -439,17 +439,20 @@ Each block contains ordered typed parameters, instructions, and one terminator.
 Branches, switches, matches, source stops, returns, and tail calls are explicit
 edges or terminators rather than recursive runtime expression or return nodes.
 
-The runtime evaluates a block iteratively. On an edge it retains the ordered
-edge arguments, drops the old block environment, drains queued list releases,
-and constructs the target environment from those arguments. No function-wide
-default frame is allocated, and a block can only read entry values, block
-parameters, or instruction outputs that dominate the read.
+The runtime evaluates a block iteratively. On an edge it consumes the completed
+environment, moves the ordered edge arguments within its typed storage, and
+releases omitted values. Repeated arguments need only the additional copies;
+successful matches also transfer their selected owned bindings. Freezing
+computes this routing once, and prepared admission verifies it before execution.
+The next block reuses the storage allocation, not discarded payloads. No
+function-wide default frame is allocated, and a block can only read entry
+values, block parameters, or instruction outputs that dominate the read.
 
-Tail calls return control to the typed function-family loop, which replaces the
-current activation without growing the Rust stack. Non-tail call instructions
-currently invoke the callee graph through the Rust stack because the caller has
-a continuation after the instruction; explicit activation-stack execution is a
-separate runtime concern.
+Tail calls replace the current activation and transfer its arguments without
+growing the Rust stack. Non-tail calls preserve the live caller and its typed
+return destination in an owned continuation stack. Their callee inputs remain
+independent of the caller's storage. Completed calls move their selected return
+value out of the consumed environment.
 
 `ExecutionPlan::explain()` reads this frozen representation directly. It shows
 typed entry values, block parameters, instructions, operands, edge arguments,

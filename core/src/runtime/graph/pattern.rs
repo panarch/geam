@@ -40,8 +40,8 @@ impl MatchBindings {
         self.ints[&binding].clone()
     }
 
-    pub(super) fn value(&self, index: usize) -> EvaluatedValue {
-        self.values[index].clone()
+    pub(in crate::runtime::graph) fn into_values(self) -> Vec<EvaluatedValue> {
+        self.values
     }
 }
 
@@ -471,13 +471,66 @@ mod tests {
     use crate::plan::ValueType;
     use crate::plan::execution::ExecutionPlan;
     use crate::plan::execution::function::{CoreRuntimeFunctionId, RuntimeFunctionId};
-    use crate::plan::execution::graph::{MatchPatternList, Terminator};
+    use crate::plan::execution::graph::{MatchPatternBinding, MatchPatternList, Terminator};
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedValue};
     use crate::runtime::retained_list::RetainedList;
     use crate::runtime::state::RuntimeState;
     use crate::runtime::state::list::{CustomListAllocation, ListValueId, ParameterListValueId};
     use crate::runtime::{InvariantError, Value};
+
+    #[test]
+    fn successful_match_moves_selected_binding_buffers_and_duplicates_only_extra_uses() {
+        use crate::plan::execution::graph::{
+            FamilyTransfer, StorageFamily, Transfer, TupleLocalId,
+        };
+
+        let first = vec![EvaluatedValue::Int(10.into())];
+        let second = vec![EvaluatedValue::Int(20.into())];
+        let first_buffer = first.as_ptr();
+        let second_buffer = second.as_ptr();
+        let mut bindings = MatchBindings::new();
+        for (index, value) in [
+            EvaluatedValue::Tuple(first),
+            EvaluatedValue::String("unused".into()),
+            EvaluatedValue::Nil,
+            EvaluatedValue::Tuple(second),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            bindings.bind(&MatchPatternBinding { index }, value);
+        }
+        let environment = BlockEnvironment::from_retained(RetainedValues::empty());
+        let retained = environment.into_match_retained(
+            &Transfer {
+                families: vec![FamilyTransfer {
+                    family: StorageFamily::Tuple,
+                    positions: vec![1, 1, 0].into(),
+                }]
+                .into(),
+            },
+            &[0, 2, 3],
+            bindings,
+        );
+        let environment = BlockEnvironment::from_retained(retained);
+        assert_eq!(
+            environment.tuple(TupleLocalId(0)),
+            vec![EvaluatedValue::Int(20.into())]
+        );
+        assert_eq!(
+            environment.tuple(TupleLocalId(1)),
+            vec![EvaluatedValue::Int(10.into())]
+        );
+        assert_eq!(
+            environment.tuple(TupleLocalId(2)),
+            vec![EvaluatedValue::Int(20.into())]
+        );
+        // Consuming extraction observes the inserted buffers without another copy.
+        let value = super::super::GraphValue::take(&TupleLocalId(1), environment);
+        assert_eq!(value.as_ptr(), first_buffer);
+        assert_ne!(value.as_ptr(), second_buffer);
+    }
 
     #[test]
     fn recursive_matcher_executes_every_supported_pattern_family() {
@@ -739,7 +792,7 @@ pub fn main() {
         );
         assert_eq!(values.item_reads(), 1);
         assert_eq!(bindings.values.len(), 5);
-        assert_eq!(bindings.value(3), EvaluatedValue::List(first.into()));
+        assert_eq!(bindings.values[3], EvaluatedValue::List(first.into()));
         drop(values);
         drop(unrelated_lists);
 
@@ -1155,7 +1208,7 @@ pub fn main() {
         .expect("string-prefix matching should not be an execution error")
         .expect("the prefix should match");
 
-        assert_eq!(bindings.value(0), EvaluatedValue::String("pre".into()));
+        assert_eq!(bindings.values[0], EvaluatedValue::String("pre".into()));
     }
 
     #[test]
@@ -1178,7 +1231,7 @@ pub fn main() {
         .expect("Bool matching should not be an execution error")
         .expect("the Bool pattern should match");
 
-        assert_eq!(bindings.value(0), EvaluatedValue::Bool(true));
+        assert_eq!(bindings.values[0], EvaluatedValue::Bool(true));
     }
 
     #[test]

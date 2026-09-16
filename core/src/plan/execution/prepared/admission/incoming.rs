@@ -135,7 +135,7 @@ mod tests {
         BlockGraphExitId, BlockHeader, BlockId, BoolBranch, BoolLocalId, Echo, Edge, FloatLocalId,
         FloatSwitch, IntLocalId, IntSwitch, Jump, Match, MatchEdge, MatchEdgeArgument,
         MatchPattern, MatchPatternBinding, ParamLocal, ParamSlot, ProfiledBlockGraph,
-        StringLocalId, StringSwitch, Terminator,
+        StringLocalId, StringSwitch, Terminator, Transfer,
     };
     use crate::plan::execution::storage::Table;
     use crate::plan::execution::type_::ValueShapeId;
@@ -144,7 +144,13 @@ mod tests {
 
     #[test]
     fn regular_edges_retain_branch_conditions_and_source_order() {
-        let first = Edge::new(BlockId(1), vec![ParamLocal::Int(IntLocalId(0))]);
+        let first = Edge::new(
+            BlockId(1),
+            vec![ParamLocal::Int(IntLocalId(0))],
+            Transfer {
+                families: Table::Static(&[]),
+            },
+        );
         for (kind, terminator) in regular_terminators(first.clone(), first) {
             let graph = graph(terminator);
             let blocks = Blocks::admit(&graph).unwrap();
@@ -202,8 +208,20 @@ mod tests {
 
     #[test]
     fn any_missing_regular_argument_prevents_partial_incoming_evidence() {
-        let present = Edge::new(BlockId(1), vec![ParamLocal::Int(IntLocalId(0))]);
-        let absent = Edge::new(BlockId(1), Vec::new());
+        let present = Edge::new(
+            BlockId(1),
+            vec![ParamLocal::Int(IntLocalId(0))],
+            Transfer {
+                families: Table::Static(&[]),
+            },
+        );
+        let absent = Edge::new(
+            BlockId(1),
+            Vec::new(),
+            Transfer {
+                families: Table::Static(&[]),
+            },
+        );
         for (first, second) in [(absent.clone(), present.clone()), (present, absent)] {
             for (kind, terminator) in regular_terminators(first.clone(), second.clone()) {
                 let graph = graph(terminator);
@@ -228,8 +246,21 @@ mod tests {
             let graph = graph(Terminator::Match(Match {
                 subject: ParamLocal::Int(IntLocalId(0)),
                 pattern: MatchPattern::Bind(MatchPatternBinding::new(0)),
-                success: MatchEdge::new(BlockId(1), vec![argument]),
-                failure: Edge::new(BlockId(1), vec![ParamLocal::Int(IntLocalId(0))]),
+                success: MatchEdge::new(
+                    BlockId(1),
+                    vec![argument],
+                    Vec::new(),
+                    Transfer {
+                        families: Table::Static(&[]),
+                    },
+                ),
+                failure: Edge::new(
+                    BlockId(1),
+                    vec![ParamLocal::Int(IntLocalId(0))],
+                    Transfer {
+                        families: Table::Static(&[]),
+                    },
+                ),
             }));
             let blocks = Blocks::admit(&graph).unwrap();
             let incoming = parameter(&blocks, BlockId(1), 0).unwrap();
@@ -272,12 +303,38 @@ mod tests {
         }
         for (success, failure) in [
             (
-                MatchEdge::new(BlockId(1), Vec::new()),
-                Edge::new(BlockId(2), Vec::new()),
+                MatchEdge::new(
+                    BlockId(1),
+                    Vec::new(),
+                    Vec::new(),
+                    Transfer {
+                        families: Table::Static(&[]),
+                    },
+                ),
+                Edge::new(
+                    BlockId(2),
+                    Vec::new(),
+                    Transfer {
+                        families: Table::Static(&[]),
+                    },
+                ),
             ),
             (
-                MatchEdge::new(BlockId(2), Vec::new()),
-                Edge::new(BlockId(1), Vec::new()),
+                MatchEdge::new(
+                    BlockId(2),
+                    Vec::new(),
+                    Vec::new(),
+                    Transfer {
+                        families: Table::Static(&[]),
+                    },
+                ),
+                Edge::new(
+                    BlockId(1),
+                    Vec::new(),
+                    Transfer {
+                        families: Table::Static(&[]),
+                    },
+                ),
             ),
         ] {
             let graph = graph(Terminator::Match(Match {

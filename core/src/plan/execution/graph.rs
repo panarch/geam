@@ -3,6 +3,7 @@ pub(in crate::plan::execution) mod bit_array;
 pub(in crate::plan::execution) mod block;
 pub(in crate::plan::execution) mod exit;
 pub(in crate::plan::execution) mod integer;
+pub(in crate::plan::execution) mod transfer;
 pub(in crate::plan::execution) mod value;
 
 pub(crate) use bit_array::{Endianness, FloatBitSize, StringEncoding};
@@ -25,6 +26,8 @@ pub(crate) use block::{
 };
 pub(crate) use exit::BlockGraphExitId;
 pub(crate) use integer::IntegerLiteral;
+pub(in crate::plan::execution) use transfer::StorageSlot;
+pub(crate) use transfer::{FamilyTransfer, StorageFamily, Transfer};
 pub(crate) use value::{
     BitArrayFunctionLocalId, BitArrayListFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
     BoolFunctionLocalId, BoolListFunctionLocalId, BoolListLocalId, BoolLocalId,

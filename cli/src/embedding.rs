@@ -558,10 +558,10 @@ mod tests {
                 program.split_once("\n// Preparation inputs: ").unwrap();
             assert_eq!(after_program, before_program);
             assert_ne!(after_fingerprint, before_fingerprint);
-            assert!(program.contains("{\n    format: 1,"));
+            assert!(program.contains("{\n    format: 2,"));
             fs::write(
                 &child,
-                program.replacen("{\n    format: 1,", "{\n    format: 0,", 1),
+                program.replacen("{\n    format: 2,", "{\n    format: 0,", 1),
             )
             .unwrap();
             let incompatible = fixture.managed_inputs();

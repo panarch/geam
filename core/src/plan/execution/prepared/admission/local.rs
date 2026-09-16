@@ -87,6 +87,16 @@ pub(super) enum LocalError {
 }
 
 impl<'data> Locals<'data> {
+    pub(super) fn storage_slots(&self) -> impl Iterator<Item = graph::StorageSlot> {
+        self.definitions
+            .values()
+            .flatten()
+            .map(|slot| &slot.local)
+            .chain(self.tuples.iter().map(|slot| &slot.slot.local))
+            .chain(self.lists.values().flatten().map(|slot| &slot.slot.local))
+            .filter_map(ParamLocal::storage_slot)
+    }
+
     pub(super) fn set_constructor(&mut self, local: &ParamLocal, constructor: usize) {
         self.exact_constructors
             .insert(Address::of(local), constructor);

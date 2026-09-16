@@ -134,14 +134,15 @@ where
                             }
                             FunctionExit::TailCall {
                                 function: target,
-                                args,
+                                transfer,
+                                ..
                             } => {
                                 let (function, origin) = function.next(target);
                                 Progress::Continue(Self {
                                     function,
                                     position: Position::Entry {
                                         origin,
-                                        inputs: completed.into_retained(args),
+                                        inputs: completed.into_retained(transfer),
                                     },
                                     returns,
                                 })

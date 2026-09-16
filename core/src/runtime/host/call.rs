@@ -106,7 +106,7 @@ where
     {
         let mut retained = RetainedValues::empty();
         self.scoped.retain(returned, &mut retained);
-        local.read(&BlockEnvironment::from_retained(retained))
+        local.take(BlockEnvironment::from_retained(retained))
     }
 }
 

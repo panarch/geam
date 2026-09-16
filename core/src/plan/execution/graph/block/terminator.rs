@@ -101,7 +101,13 @@ mod emission_tests {
 
     #[test]
     fn emits_every_terminator_with_its_own_control_and_source_data() {
-        let edge = Edge::new(BlockId(2), Vec::new());
+        let edge = Edge::new(
+            BlockId(2),
+            Vec::new(),
+            crate::plan::execution::graph::Transfer {
+                families: crate::plan::execution::storage::Table::Static(&[]),
+            },
+        );
         let span = SourceSpan::new(3, 12);
         let panic = PanicSite::from_static("example", "main", span);
         let cases = [
@@ -112,6 +118,9 @@ data::graph::Terminator::Jump(data::graph::Jump {
     edge: data::graph::Edge {
         target: data::graph::BlockId(2),
         args: data::Storage::Static(&[]),
+        transfer: data::graph::Transfer {
+            families: data::Storage::Static(&[]),
+        },
     },
 })"#.trim_start_matches('\n'),
             ),
@@ -123,10 +132,16 @@ data::graph::Terminator::BoolBranch(data::graph::BoolBranch {
     true_: data::graph::Edge {
         target: data::graph::BlockId(2),
         args: data::Storage::Static(&[]),
+        transfer: data::graph::Transfer {
+            families: data::Storage::Static(&[]),
+        },
     },
     false_: data::graph::Edge {
         target: data::graph::BlockId(2),
         args: data::Storage::Static(&[]),
+        transfer: data::graph::Transfer {
+            families: data::Storage::Static(&[]),
+        },
     },
 })"#.trim_start_matches('\n'),
             ),
@@ -143,6 +158,9 @@ data::graph::Terminator::IntSwitch(data::graph::IntSwitch {
     fallback: data::graph::Edge {
         target: data::graph::BlockId(2),
         args: data::Storage::Static(&[]),
+        transfer: data::graph::Transfer {
+            families: data::Storage::Static(&[]),
+        },
     },
 })"#.trim_start_matches('\n'),
             ),
@@ -159,6 +177,9 @@ data::graph::Terminator::FloatSwitch(data::graph::FloatSwitch {
     fallback: data::graph::Edge {
         target: data::graph::BlockId(2),
         args: data::Storage::Static(&[]),
+        transfer: data::graph::Transfer {
+            families: data::Storage::Static(&[]),
+        },
     },
 })"#.trim_start_matches('\n'),
             ),
@@ -175,6 +196,9 @@ data::graph::Terminator::StringSwitch(data::graph::StringSwitch {
     fallback: data::graph::Edge {
         target: data::graph::BlockId(2),
         args: data::Storage::Static(&[]),
+        transfer: data::graph::Transfer {
+            families: data::Storage::Static(&[]),
+        },
     },
 })"#.trim_start_matches('\n'),
             ),
@@ -182,7 +206,7 @@ data::graph::Terminator::StringSwitch(data::graph::StringSwitch {
                 Terminator::Match(Match::new(
                     ParamLocal::Int(IntLocalId(0)),
                     MatchPattern::Discard,
-                    MatchEdge::new(BlockId(1), Vec::new()),
+                    MatchEdge::new(BlockId(1), Vec::new(), Vec::new(), crate::plan::execution::graph::Transfer { families: crate::plan::execution::storage::Table::Static(&[]) }),
                     edge.clone(),
                 )),
                 r#"
@@ -192,10 +216,17 @@ data::graph::Terminator::Match(data::graph::Match {
     success: data::graph::MatchEdge {
         target: data::graph::BlockId(1),
         args: data::Storage::Static(&[]),
+        bindings: data::Storage::Static(&[]),
+        transfer: data::graph::Transfer {
+            families: data::Storage::Static(&[]),
+        },
     },
     failure: data::graph::Edge {
         target: data::graph::BlockId(2),
         args: data::Storage::Static(&[]),
+        transfer: data::graph::Transfer {
+            families: data::Storage::Static(&[]),
+        },
     },
 })"#.trim_start_matches('\n'),
             ),
@@ -214,6 +245,9 @@ data::graph::Terminator::Echo(data::graph::Echo {
     next: data::graph::Edge {
         target: data::graph::BlockId(2),
         args: data::Storage::Static(&[]),
+        transfer: data::graph::Transfer {
+            families: data::Storage::Static(&[]),
+        },
     },
 })"#.trim_start_matches('\n'),
             ),
@@ -249,12 +283,15 @@ data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                 Terminator::NeverCall(NeverCall::new(
                     NeverCallTarget::Direct(NeverFunctionId(0)),
                     Table::Static(&[]),
-                    HostCallSite::from_static("example", "main", span),
+                    crate::plan::execution::graph::Transfer { families: crate::plan::execution::storage::Table::Static(&[]) }, HostCallSite::from_static("example", "main", span),
                 )),
                 r#"
 data::graph::Terminator::NeverCall(data::graph::NeverCall {
     function: data::graph::NeverCallTarget::Direct(data::function::NeverFunctionId(0)),
     args: data::Storage::Static(&[]),
+    transfer: data::graph::Transfer {
+        families: data::Storage::Static(&[]),
+    },
     site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 12)),
 })"#.trim_start_matches('\n'),
             ),

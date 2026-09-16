@@ -34,6 +34,7 @@ pub enum FunctionExit<Return, TailCall> {
     TailCall {
         function: TailCall,
         args: Table<crate::plan::execution::graph::ParamLocal>,
+        transfer: crate::plan::execution::graph::Transfer,
     },
 }
 
@@ -123,7 +124,7 @@ where
                 context.push_str("return ");
                 context.write(value);
             }
-            FunctionExit::TailCall { function, args } => {
+            FunctionExit::TailCall { function, args, .. } => {
                 context.push_str("tail ");
                 FunctionLabel::new(self.family, function.tail_call_label_index())
                     .write(context.output());
@@ -404,11 +405,69 @@ where
     fn emit(&self, output: &mut Rust) {
         match self {
             Self::Return(field_0) => output.call("function::FunctionExit::Return", &[field_0]),
-            Self::TailCall { function, args } => output.structure(
+            Self::TailCall {
+                function,
+                args,
+                transfer,
+            } => output.structure(
                 "function::FunctionExit::TailCall",
-                &[("function", function), ("args", args)],
+                &[
+                    ("function", function),
+                    ("args", args),
+                    ("transfer", transfer),
+                ],
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::FunctionExit;
+    use crate::plan::execution::graph::{
+        FamilyTransfer, IntLocalId, ParamLocal, StorageFamily, Transfer,
+    };
+    use crate::plan::execution::prepared::rust::Rust;
+
+    #[test]
+    fn emits_return_and_tail_exit_with_logical_arguments_and_transfer() {
+        let returned: FunctionExit<IntLocalId, usize> = FunctionExit::Return(IntLocalId(2));
+        assert_eq!(
+            Rust::expression(&returned),
+            "data::function::FunctionExit::Return(data::graph::IntLocalId(2))",
+        );
+        let tail: FunctionExit<IntLocalId, usize> = FunctionExit::TailCall {
+            function: 7,
+            args: vec![ParamLocal::Int(IntLocalId(2))].into(),
+            transfer: Transfer {
+                families: vec![FamilyTransfer {
+                    family: StorageFamily::Int,
+                    positions: vec![2].into(),
+                }]
+                .into(),
+            },
+        };
+        assert_eq!(
+            Rust::expression(&tail),
+            r#"
+data::function::FunctionExit::TailCall {
+    function: 7,
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+    ]),
+    transfer: data::graph::Transfer {
+        families: data::Storage::Static(&[
+            data::graph::FamilyTransfer {
+                family: data::graph::StorageFamily::Int,
+                positions: data::Storage::Static(&[
+                    2,
+                ]),
+            },
+        ]),
+    },
+}"#
+            .trim_start_matches('\n')
+        );
     }
 }
 

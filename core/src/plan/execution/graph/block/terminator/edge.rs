@@ -1,7 +1,7 @@
 use super::super::BlockId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::graph::LocalLabel;
-use crate::plan::execution::graph::ParamLocal;
+use crate::plan::execution::graph::{ParamLocal, Transfer};
 use crate::plan::execution::prepared::rust::{Emit, Rust};
 use crate::plan::execution::storage::Table;
 
@@ -9,12 +9,15 @@ use crate::plan::execution::storage::Table;
 pub struct Edge {
     pub target: BlockId,
     pub args: Table<ParamLocal>,
+    pub transfer: Transfer,
 }
 
 #[derive(Clone)]
 pub struct MatchEdge {
     pub target: BlockId,
     pub args: Table<MatchEdgeArgument>,
+    pub bindings: Table<usize>,
+    pub transfer: Transfer,
 }
 
 #[derive(Clone)]
@@ -24,10 +27,15 @@ pub enum MatchEdgeArgument {
 }
 
 impl Edge {
-    pub(in crate::plan::execution) fn new(target: BlockId, args: Vec<ParamLocal>) -> Self {
+    pub(in crate::plan::execution) fn new(
+        target: BlockId,
+        args: Vec<ParamLocal>,
+        transfer: Transfer,
+    ) -> Self {
         Self {
             target,
             args: args.into(),
+            transfer,
         }
     }
 
@@ -41,10 +49,17 @@ impl Edge {
 }
 
 impl MatchEdge {
-    pub(in crate::plan::execution) fn new(target: BlockId, args: Vec<MatchEdgeArgument>) -> Self {
+    pub(in crate::plan::execution) fn new(
+        target: BlockId,
+        args: Vec<MatchEdgeArgument>,
+        bindings: Vec<usize>,
+        transfer: Transfer,
+    ) -> Self {
         Self {
             target,
             args: args.into(),
+            bindings: bindings.into(),
+            transfer,
         }
     }
 
@@ -95,15 +110,35 @@ impl Explain for MatchEdge {
 
 impl Emit for Edge {
     fn emit(&self, output: &mut Rust) {
-        let Self { target, args } = self;
-        output.structure("graph::Edge", &[("target", target), ("args", args)]);
+        let Self {
+            target,
+            args,
+            transfer,
+        } = self;
+        output.structure(
+            "graph::Edge",
+            &[("target", target), ("args", args), ("transfer", transfer)],
+        );
     }
 }
 
 impl Emit for MatchEdge {
     fn emit(&self, output: &mut Rust) {
-        let Self { target, args } = self;
-        output.structure("graph::MatchEdge", &[("target", target), ("args", args)]);
+        let Self {
+            target,
+            args,
+            bindings,
+            transfer,
+        } = self;
+        output.structure(
+            "graph::MatchEdge",
+            &[
+                ("target", target),
+                ("args", args),
+                ("bindings", bindings),
+                ("transfer", transfer),
+            ],
+        );
     }
 }
 
@@ -113,6 +148,90 @@ impl Emit for MatchEdgeArgument {
             Self::Binding(field_0) => output.call("graph::MatchEdgeArgument::Binding", &[field_0]),
             Self::Value(field_0) => output.call("graph::MatchEdgeArgument::Value", &[field_0]),
         }
+    }
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::{BlockId, Edge, MatchEdge, MatchEdgeArgument, ParamLocal, Transfer};
+    use crate::plan::execution::graph::{FamilyTransfer, IntLocalId, StorageFamily};
+    use crate::plan::execution::prepared::rust::Rust;
+
+    #[test]
+    fn emits_regular_edge_with_its_exact_transfer() {
+        let edge = Edge::new(
+            BlockId(3),
+            vec![ParamLocal::Int(IntLocalId(2))],
+            Transfer {
+                families: vec![FamilyTransfer {
+                    family: StorageFamily::Int,
+                    positions: vec![2].into(),
+                }]
+                .into(),
+            },
+        );
+        assert_eq!(
+            Rust::expression(&edge),
+            r#"
+data::graph::Edge {
+    target: data::graph::BlockId(3),
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+    ]),
+    transfer: data::graph::Transfer {
+        families: data::Storage::Static(&[
+            data::graph::FamilyTransfer {
+                family: data::graph::StorageFamily::Int,
+                positions: data::Storage::Static(&[
+                    2,
+                ]),
+            },
+        ]),
+    },
+}"#
+            .trim_start_matches('\n')
+        );
+    }
+
+    #[test]
+    fn emits_match_edge_with_selected_bindings_and_transfer_order() {
+        let edge = MatchEdge::new(
+            BlockId(3),
+            vec![
+                MatchEdgeArgument::Binding(4),
+                MatchEdgeArgument::Value(ParamLocal::Int(IntLocalId(0))),
+            ],
+            vec![4],
+            Transfer {
+                families: vec![FamilyTransfer {
+                    family: StorageFamily::Int,
+                    positions: vec![1, 1].into(),
+                }]
+                .into(),
+            },
+        );
+        assert_eq!(Rust::expression(&edge), r#"
+data::graph::MatchEdge {
+    target: data::graph::BlockId(3),
+    args: data::Storage::Static(&[
+        data::graph::MatchEdgeArgument::Binding(4),
+        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+    ]),
+    bindings: data::Storage::Static(&[
+        4,
+    ]),
+    transfer: data::graph::Transfer {
+        families: data::Storage::Static(&[
+            data::graph::FamilyTransfer {
+                family: data::graph::StorageFamily::Int,
+                positions: data::Storage::Static(&[
+                    1,
+                    1,
+                ]),
+            },
+        ]),
+    },
+}"#.trim_start_matches('\n'));
     }
 }
 

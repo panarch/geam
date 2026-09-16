@@ -2,8 +2,7 @@ use super::environment::{BlockEnvironment, RetainedValues};
 use super::pattern;
 use crate::plan::execution::function::NeverFunctionId;
 use crate::plan::execution::graph::{
-    BlockGraphExitId, BlockId, Edge, MatchEdge, MatchEdgeArgument, NeverCallTarget, SourceStopKind,
-    Terminator,
+    BlockGraphExitId, BlockId, Edge, MatchEdge, NeverCallTarget, SourceStopKind, Terminator,
 };
 use crate::runtime::ExecutionError;
 
@@ -17,7 +16,10 @@ pub(in crate::runtime) enum GraphAction {
         block: BlockId,
         inputs: RetainedValues,
     },
-    Exit(BlockGraphExitId),
+    Exit {
+        exit: BlockGraphExitId,
+        environment: BlockEnvironment,
+    },
     NeverCall {
         function: NeverCall,
         inputs: RetainedValues,
@@ -119,7 +121,7 @@ impl<Host> RuntimeGraphState for RuntimeState<'_, Host> {
 pub(in crate::runtime) fn terminator_action<Plan, State>(
     plan: &Plan,
     state: &mut State,
-    environment: &BlockEnvironment,
+    environment: BlockEnvironment,
     terminator: &Terminator,
 ) -> Result<GraphAction, State::Error>
 where
@@ -177,7 +179,7 @@ where
             let matched = pattern::match_pattern(
                 plan,
                 state.lists_mut(),
-                environment,
+                &environment,
                 matcher.pattern(),
                 &subject,
             );
@@ -201,7 +203,10 @@ where
             state.emit_echo(crate::runtime::EchoOutput::new(location, message, value));
             Ok(transition(environment, echo.next()))
         }
-        Terminator::Exit(exit) => Ok(GraphAction::Exit(*exit)),
+        Terminator::Exit(exit) => Ok(GraphAction::Exit {
+            exit: *exit,
+            environment,
+        }),
         Terminator::SourceStop(stop) => {
             let message = stop.message().map(|message| environment.string(message));
             Err(state.source_panic(
@@ -224,13 +229,13 @@ where
             ))
         }
         Terminator::NeverCall(call) => {
-            let inputs = environment.retain(call.args());
             let function = match call.function() {
                 NeverCallTarget::Direct(function) => NeverCall::Direct(*function),
                 NeverCallTarget::Value(function) => {
                     NeverCall::Value(environment.never_function(function))
                 }
             };
+            let inputs = environment.into_retained(&call.transfer);
             Ok(GraphAction::NeverCall {
                 function,
                 inputs,
@@ -240,30 +245,19 @@ where
     }
 }
 
-fn transition(environment: &BlockEnvironment, edge: &Edge) -> GraphAction {
+fn transition(environment: BlockEnvironment, edge: &Edge) -> GraphAction {
     GraphAction::Continue {
         block: edge.target(),
-        inputs: environment.retain(edge.args()),
+        inputs: environment.into_retained(&edge.transfer),
     }
 }
 
 fn transition_match(
-    environment: &BlockEnvironment,
+    environment: BlockEnvironment,
     edge: &MatchEdge,
     bindings: pattern::MatchBindings,
 ) -> GraphAction {
-    let mut inputs = RetainedValues::empty();
-    for argument in edge.args() {
-        match argument {
-            MatchEdgeArgument::Binding(index) => {
-                inputs.push_evaluated(bindings.value(*index));
-            }
-            MatchEdgeArgument::Value(local) => {
-                inputs.push_evaluated(environment.value(local));
-            }
-        }
-    }
-    drop(bindings);
+    let inputs = environment.into_match_retained(&edge.transfer, &edge.bindings, bindings);
     GraphAction::Continue {
         block: edge.target(),
         inputs,

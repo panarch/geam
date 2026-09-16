@@ -106,13 +106,13 @@ fn standalone_entries_preserve_generic_function_outer_work_and_source_failure_be
 #[test]
 fn incompatible_format_never_produces_a_prepared_binding_owner() {
     static INCOMPATIBLE: data::ModuleArtifact<std::convert::Infallible> = data::ModuleArtifact {
-        format: 0,
+        format: 1,
         ..include!("fixtures/prepared/arithmetic.rs")
     };
     let error = INCOMPATIBLE.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 0 is incompatible with format 1; regenerate the prepared program"
+        "prepared format 1 is incompatible with format 2; regenerate the prepared program"
     );
 }
 
