@@ -495,6 +495,11 @@ struct SharedListStorage {
     state: Mutex<ListStorageState>,
 }
 
+struct FinishReleaseOnUnwind<'storage> {
+    storage: &'storage SharedListStorage,
+    armed: bool,
+}
+
 impl SharedListStorage {
     fn core(self: &Arc<Self>, key: ListStorageKey) -> ListHandleCore {
         ListHandleCore {
@@ -519,12 +524,20 @@ impl SharedListStorage {
         if !should_drain {
             return;
         }
+        self.drain();
+    }
 
+    fn drain(&self) {
+        let mut finish = FinishReleaseOnUnwind {
+            storage: self,
+            armed: true,
+        };
         loop {
             let released = {
                 let mut state = lock(&self.state);
                 let Some(key) = state.releases.pop() else {
                     state.draining = false;
+                    finish.armed = false;
                     return;
                 };
                 state.pools.release(key)
@@ -545,6 +558,14 @@ impl SharedListStorage {
     fn len(&self, core: &ListHandleCore, pool: impl FnOnce(&ListPools) -> &LengthPool) -> usize {
         let state = lock(&self.state);
         pool(&state.pools).get(core.slot())
+    }
+}
+
+impl Drop for FinishReleaseOnUnwind<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            self.storage.drain();
+        }
     }
 }
 
@@ -1478,7 +1499,7 @@ pub fn main() {
         let int_function = EvaluatedIntFunction::reference(
             crate::plan::execution::function::IntFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::Int,
@@ -2307,7 +2328,7 @@ pub fn main() -> Int {
         let int_function = EvaluatedIntFunction::reference(
             crate::plan::execution::function::IntFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::Int,
@@ -2762,12 +2783,12 @@ pub fn main() { build(65) }
         let closure = EvaluatedIntFunction::reference(
             crate::plan::execution::function::IntFunctionId(0),
             Vec::new(),
-            vec![EvaluatedCapture::list(
+            state.captures().capture(vec![EvaluatedCapture::list(
                 crate::runtime::EvaluatedListCapture::Int {
                     local: crate::plan::execution::graph::IntListLocalId(0),
                     value: value.clone(),
                 },
-            )],
+            )]),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::Int,

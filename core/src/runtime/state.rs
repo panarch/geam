@@ -93,6 +93,7 @@ pub(in crate::runtime) struct RuntimeState<'run, Host = ()> {
     echo: &'run mut dyn crate::runtime::EchoSink,
     host: Host,
     lists: crate::runtime::RuntimeListStorage,
+    captures: crate::runtime::CaptureStorage,
 }
 
 pub(in crate::runtime) type RuntimeStateFor<'run, Plan> =
@@ -104,17 +105,24 @@ impl<'run> RuntimeState<'run, ()> {
             echo,
             host: (),
             lists: Default::default(),
+            captures: Default::default(),
         }
     }
 }
 
 impl<'run, Host> RuntimeState<'run, Host> {
-    pub(super) fn with_host_and_lists(
+    pub(super) fn with_host_storage(
         echo: &'run mut dyn crate::runtime::EchoSink,
         host: Host,
         lists: crate::runtime::RuntimeListStorage,
+        captures: crate::runtime::CaptureStorage,
     ) -> Self {
-        Self { echo, host, lists }
+        Self {
+            echo,
+            host,
+            lists,
+            captures,
+        }
     }
 
     pub(super) fn host(&self) -> &Host {
@@ -135,6 +143,10 @@ impl<'run, Host> RuntimeState<'run, Host> {
 
     pub(super) fn lists(&self) -> &crate::runtime::RuntimeListStorage {
         &self.lists
+    }
+
+    pub(super) fn captures(&self) -> &crate::runtime::CaptureStorage {
+        &self.captures
     }
 
     pub(super) fn lists_mut(&mut self) -> &mut crate::runtime::RuntimeListStorage {
@@ -164,8 +176,12 @@ mod tests {
 
         let mut host = (num_bigint::BigInt::from(41), true);
         let mut echo = Vec::new();
-        let mut hosted: RuntimeState<'_, _> =
-            RuntimeState::with_host_and_lists(&mut echo, &mut host, Default::default());
+        let mut hosted: RuntimeState<'_, _> = RuntimeState::with_host_storage(
+            &mut echo,
+            &mut host,
+            Default::default(),
+            Default::default(),
+        );
         hosted.host_state().0 += 1;
 
         assert!(hosted.host_state().1);

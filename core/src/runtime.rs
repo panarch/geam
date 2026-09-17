@@ -1,4 +1,6 @@
 mod borrowed;
+mod captures;
+mod drain;
 mod echo;
 mod embedding;
 pub(crate) use embedding::EmbeddingEntry;
@@ -21,6 +23,7 @@ mod value;
 pub(crate) mod work;
 
 pub(crate) use borrowed::BorrowedValue;
+pub(crate) use captures::CaptureStorage;
 pub use echo::{EchoLocation, EchoOutput, EchoSink};
 pub(crate) use embedding::{
     EmbeddingCustomInput, EmbeddingInput, EmbeddingInputStorage, EmbeddingInputValue,
@@ -92,13 +95,14 @@ pub(crate) async fn run_hosted_main<Profile: crate::HostProfile>(
     state: &mut Profile::RunState,
     echo: &mut (dyn EchoSink + Send),
 ) -> Result<Value, crate::execution::RunError> {
-    let (plan, stores) = plan.parts_mut();
+    let (plan, stores, captures) = plan.parts_mut();
     let domain = execution::Domain::new(
         std::sync::Arc::clone(plan),
         host,
         state,
         stores,
         echo,
+        captures.clone(),
         execution::Domain::<Profile>::DEFAULT_BUDGET,
     );
     let context = domain.context();

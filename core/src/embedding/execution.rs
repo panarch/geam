@@ -28,13 +28,14 @@ impl<Profile: HostProfile> HostedModule<Profile> {
         echo: &mut (dyn crate::EchoSink + Send),
         run: impl for<'scope> AsyncFnOnce(ExecutionScope<'scope, '_, Profile>) -> Output,
     ) -> Result<Output, DriverError> {
-        let (plan, stores) = self.execution.parts_mut();
+        let (plan, stores, captures) = self.execution.parts_mut();
         let domain = Domain::new(
             Arc::clone(plan),
             host,
             state,
             stores,
             echo,
+            captures.clone(),
             Domain::<Profile>::DEFAULT_BUDGET,
         );
         let scope = ExecutionScope {
@@ -314,13 +315,14 @@ mod plain_outputs {
         let host = crate::execution_fixture::TestHost::default();
         let mut state = ();
         let mut echo = Echo::default();
-        let (plan, stores) = module.execution.parts_mut();
+        let (plan, stores, captures) = module.execution.parts_mut();
         let domain = Domain::new(
             Arc::clone(plan),
             &host,
             &mut state,
             stores,
             &mut echo,
+            captures.clone(),
             Domain::<Profile>::DEFAULT_BUDGET,
         );
         let scope = ExecutionScope {

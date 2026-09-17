@@ -10,6 +10,7 @@ use crate::plan::execution::function::{
 };
 use crate::plan::execution::graph::ParamLocal;
 use crate::plan::execution::type_::{CustomConstructorId, FunctionType};
+use crate::runtime::captures::Captures;
 
 static NEXT_FUNCTION_INSTANCE_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -18,7 +19,7 @@ pub(crate) struct EvaluatedFunction<Id> {
     pub(super) identity: EvaluatedFunctionIdentity,
     runtime_id: Id,
     params: Vec<ParamLocal>,
-    captures: Vec<EvaluatedCapture>,
+    captures: Captures,
     type_: FunctionType,
 }
 
@@ -431,7 +432,7 @@ impl<Id: Clone + FunctionReferenceId> EvaluatedFunction<Id> {
     pub(in crate::runtime) fn reference(
         runtime_id: Id,
         params: Vec<ParamLocal>,
-        captures: Vec<EvaluatedCapture>,
+        captures: Captures,
         type_: FunctionType,
     ) -> Self {
         let identity = EvaluatedFunctionIdentity::Reference(runtime_id.reference_identity());
@@ -449,7 +450,7 @@ impl<Id: Clone> EvaluatedFunction<Id> {
     pub(in crate::runtime) fn closure(
         runtime_id: Id,
         params: Vec<ParamLocal>,
-        captures: Vec<EvaluatedCapture>,
+        captures: Captures,
         type_: FunctionType,
     ) -> Self {
         Self {
@@ -472,7 +473,7 @@ impl<Id: Clone> EvaluatedFunction<Id> {
     }
 
     pub(in crate::runtime) fn captures(&self) -> &[EvaluatedCapture] {
-        &self.captures
+        self.captures.values()
     }
 
     pub(in crate::runtime) fn type_(&self) -> &FunctionType {
@@ -503,7 +504,7 @@ impl EvaluatedCustomFunction {
     pub(in crate::runtime) fn reference(
         runtime_id: CustomFunctionId,
         params: Vec<ParamLocal>,
-        captures: Vec<EvaluatedCapture>,
+        captures: Captures,
         type_: FunctionType,
     ) -> Self {
         Self::Function(EvaluatedFunction::reference(
@@ -518,7 +519,7 @@ impl EvaluatedCustomFunction {
         Self::Constructor(EvaluatedFunction::closure(
             constructor,
             Vec::new(),
-            Vec::new(),
+            Captures::default(),
             type_,
         ))
     }
@@ -733,6 +734,7 @@ mod tests {
         TupleListFunctionFunctionId, UtfCodepointListFunctionFunctionId,
     };
     use crate::plan::execution::graph::{IntLocalId, ParamLocal};
+    use crate::plan::execution::type_::{FunctionType, ValueType};
     use crate::runtime::state::RuntimeState;
 
     const EVERY_LIST_FAMILY_SOURCE: &str = r#"
@@ -784,13 +786,13 @@ pub fn main() {
         let reference: EvaluatedIntFunction = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             int_type.clone(),
         );
         let same_target_with_different_metadata = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             vec![ParamLocal::Int(IntLocalId(0))],
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 vec![crate::plan::execution::type_::ValueType::Int],
                 crate::plan::execution::type_::ValueType::Int,
@@ -799,21 +801,25 @@ pub fn main() {
         let different_target = EvaluatedIntFunction::reference(
             IntFunctionId(1),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             int_type.clone(),
         );
         let reference_for_instance_comparison = reference.clone();
         let closure = EvaluatedIntFunction::closure(
             IntFunctionId(0),
             Vec::new(),
-            vec![EvaluatedCapture::int(IntLocalId(0), 1.into())],
+            state
+                .captures()
+                .capture(vec![EvaluatedCapture::int(IntLocalId(0), 1.into())]),
             int_type.clone(),
         );
         let same_closure = closure.clone();
         let separate_closure = EvaluatedIntFunction::closure(
             IntFunctionId(0),
             Vec::new(),
-            vec![EvaluatedCapture::int(IntLocalId(0), 1.into())],
+            state
+                .captures()
+                .capture(vec![EvaluatedCapture::int(IntLocalId(0), 1.into())]),
             int_type,
         );
 
@@ -846,6 +852,119 @@ pub fn main() {
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(closure)),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(separate_closure)),
         ));
+    }
+
+    #[test]
+    fn specialized_views_share_captures_across_every_plain_concrete_return_family() {
+        let plan = crate::runtime::plan_src(
+            r#"
+pub type Boxed { Boxed(Int) }
+fn keep(value) { fn() { value } }
+pub fn main() {
+  let assert <<codepoint:utf8_codepoint>> = <<"a":utf8>>
+  #(
+    keep(42), keep(4.25), keep("text"), keep(<<42>>), keep(codepoint),
+    keep(Boxed(42)), keep(True), keep(Nil), keep(#(42, "text")),
+    keep([42]), keep(["text"]), keep([<<42>>]), keep([codepoint]),
+    keep([Boxed(42)]), keep([4.25]), keep([True]), keep([Nil]),
+    keep([#(42)]), keep([[42]]), keep([fn() { 42 }]),
+    keep(fn(value: Int) { value }),
+  )
+}
+"#,
+        );
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
+        let values = crate::runtime::function::run_tuple(
+            &plan,
+            &mut state,
+            crate::plan::execution::function::TupleFunctionId(0),
+            crate::runtime::HostCallOrigin::Entry,
+            crate::runtime::RetainedValues::empty(),
+        )
+        .expect("specialized closures");
+        use crate::plan::execution::function::FunctionReturnFamily as F;
+        let expected = [
+            F::Int,
+            F::Float,
+            F::String,
+            F::BitArray,
+            F::UtfCodepoint,
+            F::Custom,
+            F::Bool,
+            F::Nil,
+            F::Tuple,
+            F::List,
+            F::List,
+            F::List,
+            F::List,
+            F::List,
+            F::List,
+            F::List,
+            F::List,
+            F::List,
+            F::List,
+            F::List,
+            F::Function,
+        ];
+        macro_rules! shared {
+            ($value:expr) => {{
+                let value = $value;
+                assert_eq!(value.captures().len(), 1);
+                let alias = value.clone();
+                let refined = value.clone().with_type(value.type_().clone());
+                let mapped = value.clone().map_runtime_id(|id| id);
+                assert!(std::ptr::eq(value.captures(), alias.captures()));
+                assert!(std::ptr::eq(value.captures(), refined.captures()));
+                assert!(std::ptr::eq(value.captures(), mapped.captures()));
+                assert_eq!(value.identity, alias.identity);
+                assert_eq!(value.identity, refined.identity);
+                assert_eq!(value.identity, mapped.identity);
+                assert_eq!(value.runtime_id(), mapped.runtime_id());
+                assert_eq!(value.type_(), refined.type_());
+            }};
+        }
+        let check = |value| {
+            let EvaluatedValue::Function(value) = value else {
+                panic!("expected a captured function");
+            };
+            let family = value.kind().family();
+            use super::EvaluatedFunctionValueKind as V;
+            match value.into_kind() {
+                V::Int(value) => shared!(value),
+                V::Float(value) => shared!(value),
+                V::String(value) => shared!(value),
+                V::BitArray(value) => shared!(value),
+                V::UtfCodepoint(value) => shared!(value),
+                V::Custom(EvaluatedCustomFunction::Function(value)) => shared!(value),
+                V::Bool(value) => shared!(value),
+                V::Nil(value) => shared!(value),
+                V::Tuple(value) => shared!(value),
+                V::List(value) => shared!(value),
+                V::Function(super::EvaluatedFunctionFunction::Core(value)) => shared!(value),
+                _ => panic!("expected a plain concrete closure"),
+            }
+            family
+        };
+        assert_eq!(values.into_iter().map(check).collect::<Vec<_>>(), expected);
+        assert!(std::panic::catch_unwind(|| check(EvaluatedValue::Nil)).is_err());
+        let constructor_id = plan.custom_constructor_id(0, 0);
+        let constructor = EvaluatedCustomFunction::constructor(
+            constructor_id,
+            FunctionType::new(
+                vec![ValueType::Int],
+                ValueType::Custom(constructor_id.type_id()),
+            ),
+        );
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                check(EvaluatedValue::Function(EvaluatedFunctionValue::from(
+                    constructor,
+                )))
+            }))
+            .is_err()
+        );
+        assert!(echo.is_empty());
     }
 
     #[test]

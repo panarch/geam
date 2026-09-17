@@ -188,7 +188,7 @@ pub fn main() {
         let function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             FunctionType::new(Vec::new(), ValueType::Int),
         );
         let mut output = EmbeddingOutput::empty();

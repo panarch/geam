@@ -7,10 +7,12 @@ use std::task::Context;
 
 pub(in crate::runtime) struct Services<Plan: ExecutableRuntimePlan> {
     requests: Requests<Request<Plan>>,
+    captures: crate::runtime::CaptureStorage,
 }
 
 pub(in crate::runtime) struct ServiceContext<Plan: ExecutableRuntimePlan> {
     requests: Sender<Request<Plan>>,
+    captures: crate::runtime::CaptureStorage,
     unit: Option<crate::execution::ExecutionUnit>,
 }
 
@@ -35,15 +37,17 @@ struct TypedOperation<Function, Output> {
 pub(in crate::runtime) struct Delivery(Box<dyn FnOnce() + Send>);
 
 impl<Plan: ExecutableRuntimePlan> Services<Plan> {
-    pub(in crate::runtime) fn new() -> Self {
+    pub(in crate::runtime) fn new(captures: crate::runtime::CaptureStorage) -> Self {
         Self {
             requests: Requests::new(),
+            captures,
         }
     }
 
     pub(in crate::runtime) fn context(&self) -> ServiceContext<Plan> {
         ServiceContext {
             requests: self.requests.sender(),
+            captures: self.captures.clone(),
             unit: None,
         }
     }
@@ -78,12 +82,17 @@ impl<Plan: ExecutableRuntimePlan> Clone for ServiceContext<Plan> {
     fn clone(&self) -> Self {
         Self {
             requests: self.requests.clone(),
+            captures: self.captures.clone(),
             unit: self.unit.clone(),
         }
     }
 }
 
 impl<Plan: ExecutableRuntimePlan> ServiceContext<Plan> {
+    pub(in crate::runtime) fn captures(&self) -> &crate::runtime::CaptureStorage {
+        &self.captures
+    }
+
     pub(super) fn same_domain(&self, other: &Self) -> bool {
         self.requests.same_queue(&other.requests)
     }
@@ -95,6 +104,7 @@ impl<Plan: ExecutableRuntimePlan> ServiceContext<Plan> {
     pub(super) fn with_unit(&self, unit: Option<crate::execution::ExecutionUnit>) -> Self {
         Self {
             requests: self.requests.clone(),
+            captures: self.captures.clone(),
             unit,
         }
     }

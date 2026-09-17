@@ -70,6 +70,7 @@ where
 
 pub(in crate::runtime) fn advance_external_function_instruction<'plan, Plan>(
     plan: &'plan Plan,
+    captures: &crate::runtime::CaptureStorage,
     frame: Frame<'plan, Plan>,
     returns: &mut Returns<'plan, Plan>,
     instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
@@ -77,7 +78,7 @@ pub(in crate::runtime) fn advance_external_function_instruction<'plan, Plan>(
 where
     Plan: ExecutableRuntimePlan<Profile = crate::plan::execution::host::HostedExecutionProfile>,
 {
-    instruction::advance_external_function(plan, frame, returns, instruction)
+    instruction::advance_external_function(plan, captures, frame, returns, instruction)
 }
 
 #[cfg(test)]

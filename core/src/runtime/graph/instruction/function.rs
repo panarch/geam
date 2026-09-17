@@ -13,6 +13,7 @@ use crate::plan::execution::graph::{
 };
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::runtime::InvariantError;
+use crate::runtime::captures::Captures;
 use crate::runtime::evaluated::{
     EvaluatedCapture, EvaluatedCustomFunction, EvaluatedFunction, EvaluatedFunctionFunction,
     EvaluatedFunctionValue, EvaluatedListCapture, EvaluatedValue, FunctionReferenceId,
@@ -58,14 +59,16 @@ where
         I::Reference(target) => Ok(V::Ready(target_value(
             plan,
             target,
-            Vec::new(),
+            Captures::default(),
             instruction.type_().clone(),
             FunctionIdentity::Reference,
         ))),
         I::Closure { target, captures } => Ok(V::Ready(target_value(
             plan,
             target,
-            capture_values(environment, captures),
+            state
+                .captures()
+                .capture(capture_values(environment, captures)),
             instruction.type_().clone(),
             FunctionIdentity::Instance,
         ))),
@@ -139,6 +142,7 @@ where
 
 pub(in crate::runtime) fn evaluate_external_action<Plan>(
     plan: &Plan,
+    storage: &crate::runtime::CaptureStorage,
     environment: &BlockEnvironment,
     instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
 ) -> ExternalFunctionInstructionValue
@@ -153,14 +157,14 @@ where
         I::Reference(target) => V::Ready(external_target_value(
             plan,
             target,
-            Vec::new(),
+            Captures::default(),
             instruction.type_().clone(),
             FunctionIdentity::Reference,
         )),
         I::Closure { target, captures } => V::Ready(external_target_value(
             plan,
             target,
-            capture_values(environment, captures),
+            storage.capture(capture_values(environment, captures)),
             instruction.type_().clone(),
             FunctionIdentity::Instance,
         )),
@@ -193,7 +197,7 @@ where
 fn target_value<Plan>(
     plan: &Plan,
     target: &FunctionTarget,
-    captures: Vec<EvaluatedCapture>,
+    captures: Captures,
     type_: crate::plan::execution::type_::FunctionType,
     identity: FunctionIdentity,
 ) -> EvaluatedFunctionValue
@@ -258,7 +262,7 @@ where
 fn external_target_value<Plan>(
     plan: &Plan,
     target: &ExternalFunctionTarget,
-    captures: Vec<EvaluatedCapture>,
+    captures: Captures,
     type_: crate::plan::execution::type_::FunctionType,
     identity: FunctionIdentity,
 ) -> EvaluatedFunctionValue
@@ -310,7 +314,7 @@ where
 fn evaluated_function<Id>(
     function: Id,
     params: Vec<ParamLocal>,
-    captures: Vec<EvaluatedCapture>,
+    captures: Captures,
     type_: crate::plan::execution::type_::FunctionType,
     identity: FunctionIdentity,
 ) -> EvaluatedFunction<Id>

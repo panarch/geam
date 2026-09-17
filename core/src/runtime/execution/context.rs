@@ -14,6 +14,7 @@ use std::task::Context;
 
 pub(in crate::runtime) struct ExecutionServices<Profile: HostProfile> {
     initialized: OnceLock<Initialized<Profile>>,
+    captures: crate::runtime::CaptureStorage,
 }
 
 struct Initialized<Profile: HostProfile> {
@@ -43,15 +44,16 @@ pub(in crate::runtime) enum Request<Profile: HostProfile> {
 }
 
 impl<Profile: HostProfile> ExecutionServices<Profile> {
-    pub(in crate::runtime) fn new() -> Self {
+    pub(in crate::runtime) fn new(captures: crate::runtime::CaptureStorage) -> Self {
         Self {
             initialized: OnceLock::new(),
+            captures,
         }
     }
 
     pub(in crate::runtime) fn context(&self) -> ExecutionContext<Profile> {
         let initialized = self.initialized.get_or_init(|| Initialized {
-            services: Services::new(),
+            services: Services::new(self.captures.clone()),
             callbacks: Requests::new(),
             callback_first: AtomicBool::new(false),
         });
@@ -223,8 +225,8 @@ mod tests {
 
     #[test]
     fn invocation_inherits_only_the_callers_unit_in_the_original_domain() {
-        let original = ExecutionServices::<StatelessHostProfile>::new();
-        let foreign = ExecutionServices::<StatelessHostProfile>::new();
+        let original = ExecutionServices::<StatelessHostProfile>::new(Default::default());
+        let foreign = ExecutionServices::<StatelessHostProfile>::new(Default::default());
         let (finished, _) = futures_channel::mpsc::unbounded();
         let owner = UnitOwner::new(finished);
         let unit = owner.handle();

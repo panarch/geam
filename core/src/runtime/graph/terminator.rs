@@ -37,6 +37,7 @@ pub(in crate::runtime) trait RuntimeGraphState {
 
     fn lists(&self) -> &crate::runtime::RuntimeListStorage;
     fn lists_mut(&mut self) -> &mut crate::runtime::RuntimeListStorage;
+    fn captures(&self) -> &crate::runtime::CaptureStorage;
     fn emit_echo(&mut self, output: crate::runtime::EchoOutput);
 
     fn source_panic(
@@ -76,6 +77,10 @@ impl<Host> RuntimeGraphState for RuntimeState<'_, Host> {
 
     fn lists_mut(&mut self) -> &mut crate::runtime::RuntimeListStorage {
         self.lists_mut()
+    }
+
+    fn captures(&self) -> &crate::runtime::CaptureStorage {
+        self.captures()
     }
 
     fn emit_echo(&mut self, output: crate::runtime::EchoOutput) {

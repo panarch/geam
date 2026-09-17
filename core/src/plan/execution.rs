@@ -146,6 +146,7 @@ impl LibraryInputConstructions {
 pub struct HostedExecution<Profile: HostProfile> {
     execution: std::sync::Arc<HostedProgram<Profile>>,
     external_stores: Profile::ExternalStores,
+    captures: crate::runtime::CaptureStorage,
 }
 
 pub(crate) struct HostedProgram<Profile: HostProfile> {
@@ -255,6 +256,7 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
         Self {
             execution: std::sync::Arc::new(execution),
             external_stores: Profile::ExternalStores::default(),
+            captures: crate::runtime::CaptureStorage::default(),
         }
     }
     /// Seals all entry-reachable host specializations into executable storage.
@@ -302,8 +304,9 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
     ) -> (
         &std::sync::Arc<HostedProgram<Profile>>,
         &mut Profile::ExternalStores,
+        &crate::runtime::CaptureStorage,
     ) {
-        (&self.execution, &mut self.external_stores)
+        (&self.execution, &mut self.external_stores, &self.captures)
     }
 
     #[cfg(test)]

@@ -196,7 +196,7 @@ mod tests {
             Completion::Failure,
         ] {
             for cancelled in [false, true] {
-                let services = Services::new();
+                let services = Services::new(Default::default());
                 let context = services.context();
                 let error = source_error.clone();
                 let outcome = match completion {

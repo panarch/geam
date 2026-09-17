@@ -499,14 +499,17 @@ pub fn main() {
         let mut execution = Execution::new(body.block_graph().as_view(), RetainedValues::empty());
         let mut returns = Returns::new();
         let mut lists = RuntimeListStorage::default();
+        let captures = crate::runtime::CaptureStorage::default();
         let mut output = Vec::new();
         let mut steps = 0;
         let (completed, output) = std::thread::scope(|scope| {
             loop {
                 let plan = &plan;
+                let captures = captures.clone();
                 let (step, retained_returns, retained_lists, retained_output) = scope
                     .spawn(move || {
-                        let mut state = RuntimeState::with_host_and_lists(&mut output, (), lists);
+                        let mut state =
+                            RuntimeState::with_host_storage(&mut output, (), lists, captures);
                         let step = execution
                             .step(plan, &mut state, &mut returns)
                             .expect("one actual evaluator step");
@@ -720,7 +723,7 @@ pub fn main() { #(apply_int, apply_float, integer, floating, forward, fn() { 1.5
         let mut execution =
             crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
                 .unwrap();
-        let (plan, stores) = execution.parts_mut();
+        let (plan, stores, captures) = execution.parts_mut();
         let host = TestHost::default();
         let mut state = 0;
         let mut echo = Vec::new();
@@ -730,6 +733,7 @@ pub fn main() { #(apply_int, apply_float, integer, floating, forward, fn() { 1.5
             &mut state,
             stores,
             &mut echo,
+            captures.clone(),
             Domain::<Profile>::DEFAULT_BUDGET,
         );
         let context = domain.context();

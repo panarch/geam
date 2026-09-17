@@ -908,7 +908,7 @@ pub fn main() -> List(Counter) {
         let int_function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::Int,
@@ -1080,13 +1080,13 @@ pub fn main() -> List(Counter) {
         let int_function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             execution_int_type.clone(),
         );
         let float_function = EvaluatedFloatFunction::reference(
             FloatFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::Float,
@@ -1095,7 +1095,7 @@ pub fn main() -> List(Counter) {
         let string_function = EvaluatedStringFunction::reference(
             StringFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::String,
@@ -1104,7 +1104,7 @@ pub fn main() -> List(Counter) {
         let bit_array_function = EvaluatedBitArrayFunction::reference(
             BitArrayFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::BitArray,
@@ -1113,7 +1113,7 @@ pub fn main() -> List(Counter) {
         let utf_codepoint_function = EvaluatedUtfCodepointFunction::reference(
             UtfCodepointFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::UtfCodepoint,
@@ -1122,7 +1122,7 @@ pub fn main() -> List(Counter) {
         let custom_function = EvaluatedCustomFunction::reference(
             plan.custom_function_id(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::Custom(custom_type_id),
@@ -1131,7 +1131,7 @@ pub fn main() -> List(Counter) {
         let bool_function = EvaluatedBoolFunction::reference(
             BoolFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::Bool,
@@ -1140,7 +1140,7 @@ pub fn main() -> List(Counter) {
         let nil_function = EvaluatedNilFunction::reference(
             NilFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::Nil,
@@ -1149,7 +1149,7 @@ pub fn main() -> List(Counter) {
         let tuple_function = EvaluatedTupleFunction::reference(
             TupleFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::Tuple(
@@ -1162,7 +1162,7 @@ pub fn main() -> List(Counter) {
         let list_function = EvaluatedListFunction::reference(
             list_function_id.clone(),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::List(
@@ -1173,7 +1173,7 @@ pub fn main() -> List(Counter) {
         let function_function = EvaluatedFunctionFunction::Core(EvaluatedFunction::reference(
             ProfiledFunctionFunctionId::<std::convert::Infallible>::Int(IntFunctionFunctionId(0)),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::Function(execution_int_type.clone()),
@@ -1537,7 +1537,9 @@ pub fn main() -> List(Counter) {
             vec![crate::plan::execution::graph::ParamLocal::Int(IntLocalId(
                 0,
             ))],
-            vec![EvaluatedCapture::int(IntLocalId(1), 42.into())],
+            state
+                .captures()
+                .capture(vec![EvaluatedCapture::int(IntLocalId(1), 42.into())]),
             function_type,
         );
 

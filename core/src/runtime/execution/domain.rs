@@ -58,6 +58,7 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
         state: &'host mut Profile::RunState,
         stores: &'host mut Profile::ExternalStores,
         echo: &'host mut (dyn EchoSink + Send),
+        captures: crate::runtime::CaptureStorage,
         budget: NonZeroUsize,
     ) -> Self {
         let mut services = Profile::initialize_execution(state);
@@ -71,7 +72,7 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
             echo,
             budget,
             lists: RuntimeListStorage::default(),
-            work: ExecutionWork::new(),
+            work: ExecutionWork::new(captures),
             entries: Requests::new(),
             tasks: FuturesUnordered::new(),
             units,
@@ -180,7 +181,8 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
             Request::Service(request) => {
                 let context = self.work.execution().with_unit(request.unit().cloned());
                 let delivery = {
-                    let mut runtime = RuntimeState::with_host_and_lists(
+                    let captures = context.services().captures().clone();
+                    let mut runtime = RuntimeState::with_host_storage(
                         &mut *self.echo,
                         RuntimeHost::<Profile>::new(
                             &mut *self.state,
@@ -191,6 +193,7 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
                             ExecutionClock::new(self.host),
                         ),
                         self.lists.clone(),
+                        captures,
                     );
                     request.service(&self.plan, &mut runtime)
                 };
@@ -552,6 +555,7 @@ mod tests {
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 Domain::<Profile>::DEFAULT_BUDGET,
             );
             let context = domain.context();
@@ -588,6 +592,7 @@ mod tests {
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::new(17).unwrap(),
         );
         let context = domain.context();
@@ -709,6 +714,7 @@ pub fn main() { echo 41 increment(sum(2_000, 0) - 1959) }
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::new(37).unwrap(),
         );
         let entry = domain.context();
@@ -753,6 +759,7 @@ pub fn main() { echo 41 increment(sum(2_000, 0) - 1959) }
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         // Both are actual host tasks; their completion is already available when
@@ -791,6 +798,7 @@ pub fn main() { echo 41 increment(sum(2_000, 0) - 1959) }
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         for _ in 0..3 {
@@ -828,6 +836,7 @@ pub fn main() { echo 41 increment(sum(2_000, 0) - 1959) }
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let context = domain.context().execution;
@@ -875,6 +884,7 @@ pub fn main() { #(fn() { echo 41 count(2_000, 0) - 1958 }) }
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::new(37).unwrap(),
         );
         let context = domain.context();
@@ -939,6 +949,7 @@ pub fn main() { #(fn() { echo 41 count(2_000, 0) - 1958 }) }
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         let context = domain.context();
@@ -1009,6 +1020,7 @@ pub fn main() { #(fn() { echo 41 count(2_000, 0) - 1958 }) }
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         let context = domain.context();
@@ -1085,6 +1097,7 @@ pub fn main() { #(fn() { echo 41 count(2_000, 0) - 1958 }) }
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let context = domain.context();
@@ -1239,6 +1252,7 @@ mod source_work {
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         assert!(
@@ -1331,6 +1345,7 @@ mod source_work {
             &mut host,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         let entered = Arc::new(Barrier::new(2));
@@ -1434,6 +1449,7 @@ mod source_work {
             &mut host,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         let entries = driver.context();
@@ -1493,6 +1509,7 @@ mod source_work {
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let entries = driver.context();
@@ -1820,6 +1837,7 @@ pub fn make() {{
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let work = {
@@ -1916,6 +1934,7 @@ pub fn make() {{
                         &mut state,
                         &mut stores,
                         &mut echo,
+                        Default::default(),
                         NonZeroUsize::MIN,
                     );
                     let work = {
@@ -2101,6 +2120,7 @@ pub fn make() {{ echo 7 #({expression}, future.ready(7)) }}
                     &mut state,
                     &mut stores,
                     &mut output,
+                    Default::default(),
                     NonZeroUsize::MIN,
                 );
                 let (work, independent) = {
@@ -2296,6 +2316,7 @@ pub fn make() {{ echo 7 #({expression}, future.ready(7)) }}
                     &mut state,
                     &mut stores,
                     &mut echo,
+                    Default::default(),
                     NonZeroUsize::MIN,
                 );
                 let entries = driver.context();
@@ -2336,6 +2357,7 @@ pub fn make() {{ echo 7 #({expression}, future.ready(7)) }}
                     &mut state,
                     &mut stores,
                     &mut echo,
+                    Default::default(),
                     NonZeroUsize::MIN,
                 );
                 let (mapped, original) = {
@@ -2637,6 +2659,7 @@ pub fn make() {
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let (all, sibling) = {
@@ -2883,6 +2906,7 @@ pub fn make() {
                 &mut host,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let work = {
@@ -3171,6 +3195,7 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let work = {
@@ -3255,6 +3280,7 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let (outer, inner) = {
@@ -3343,6 +3369,7 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
                 &mut fresh,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let restored = {
@@ -3504,7 +3531,7 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
         let function = crate::runtime::evaluated::EvaluatedNilFunction::reference(
             crate::plan::execution::function::NilFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::Nil,
@@ -3666,6 +3693,7 @@ mod work_requests {
             &mut host,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         let callback = int_callback(&mut execution, &executor, entry);
@@ -3729,6 +3757,7 @@ mod work_requests {
             &mut host,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         let callback = int_callback(&mut execution, &executor, entry);
@@ -3763,6 +3792,7 @@ mod work_requests {
                 &mut host,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let callback = int_callback(&mut execution, &executor, entry);
@@ -3913,6 +3943,7 @@ pub fn make() { #(fn(value: Int) {
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let callback = int_callback(&mut execution, &executor, *entries.tuples[0].function());
@@ -4001,6 +4032,7 @@ pub fn make() { #(fn(value: Int) {
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let context = execution.work.execution();
@@ -4054,6 +4086,7 @@ pub fn make() { #(fn(value: Int) {
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let context = execution.work.execution();
@@ -4091,6 +4124,7 @@ pub fn make() { #(fn(value: Int) {
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let context = execution.work.execution();
@@ -4156,6 +4190,7 @@ pub fn make() { #(fn(value: Int) {
             &mut host,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         let callback = int_callback(&mut execution, &executor, entry);
@@ -4213,6 +4248,7 @@ pub fn make() { #(fn(value: Int) {
             &mut host,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         let callback = int_callback(&mut execution, &executor, entry);
@@ -4257,6 +4293,7 @@ pub fn make() { #(fn(value: Int) {
             &mut host,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         let callback = int_callback(&mut execution, &executor, entry);
@@ -4314,6 +4351,7 @@ pub fn make() { #(fn(value: Int) {
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         int_callback(&mut execution, &host, entry);
@@ -4334,6 +4372,7 @@ pub fn make() { #(fn(value: Int) {
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         int_callback(&mut execution, &host, entry);

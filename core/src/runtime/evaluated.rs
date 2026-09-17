@@ -217,7 +217,7 @@ pub fn main() {
         let function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::Int,

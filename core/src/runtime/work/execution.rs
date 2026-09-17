@@ -24,10 +24,10 @@ pub(crate) type Completion = Result<Shared<StoredRuntimeValue>, Shared<crate::Ex
 pub(crate) type SourceWork = Work<Completion>;
 
 impl<Profile: HostProfile> ExecutionWork<Profile> {
-    pub(in crate::runtime) fn new() -> Self {
+    pub(in crate::runtime) fn new(captures: crate::runtime::CaptureStorage) -> Self {
         Self {
             initialized: OnceLock::new(),
-            execution: ExecutionServices::new(),
+            execution: ExecutionServices::new(captures),
         }
     }
 
@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn ordinary_execution_does_not_initialize_work_and_work_contexts_share_closure() {
-        let execution = ExecutionWork::<Profile>::new();
+        let execution = ExecutionWork::<Profile>::new(Default::default());
         let mut cx = Context::from_waker(Waker::noop());
         assert!(execution.next(&mut cx).is_none());
         assert!(execution.initialized.get().is_none());
@@ -180,7 +180,7 @@ mod tests {
 
     #[test]
     fn source_work_forwards_shared_completion_without_replaying_native_work() {
-        let execution = ExecutionWork::<Profile>::new();
+        let execution = ExecutionWork::<Profile>::new(Default::default());
         let context = execution.context();
         let polls = Arc::new(AtomicUsize::new(0));
         let work = context.create({

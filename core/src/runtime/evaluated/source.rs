@@ -542,14 +542,14 @@ pub fn main() { floats() }
         let int_function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             execution_int_type.clone(),
         );
         let custom_type = plan.custom_list_function_id(0).type_id().item_type();
         let custom_function = EvaluatedCustomFunction::reference(
             plan.custom_function_id(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::Custom(custom_type),
@@ -571,7 +571,7 @@ pub fn main() { floats() }
         let never_function = EvaluatedNeverFunction::reference(
             NeverFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::Parameter(crate::plan::TypeParameterId(
@@ -592,7 +592,7 @@ pub fn main() { floats() }
                 EvaluatedFunctionValue::from(EvaluatedFloatFunction::reference(
                     FloatFunctionId(0),
                     Vec::new(),
-                    Vec::new(),
+                    Default::default(),
                     crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
                         crate::plan::execution::type_::ValueType::Float,
@@ -601,7 +601,7 @@ pub fn main() { floats() }
                 EvaluatedFunctionValue::from(EvaluatedFloatFunction::reference(
                     FloatFunctionId(0),
                     Vec::new(),
-                    Vec::new(),
+                    Default::default(),
                     crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
                         crate::plan::execution::type_::ValueType::Float,
@@ -612,7 +612,7 @@ pub fn main() { floats() }
                 EvaluatedFunctionValue::from(EvaluatedStringFunction::reference(
                     StringFunctionId(0),
                     Vec::new(),
-                    Vec::new(),
+                    Default::default(),
                     crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
                         crate::plan::execution::type_::ValueType::String,
@@ -621,7 +621,7 @@ pub fn main() { floats() }
                 EvaluatedFunctionValue::from(EvaluatedStringFunction::reference(
                     StringFunctionId(0),
                     Vec::new(),
-                    Vec::new(),
+                    Default::default(),
                     crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
                         crate::plan::execution::type_::ValueType::String,
@@ -632,7 +632,7 @@ pub fn main() { floats() }
                 EvaluatedFunctionValue::from(EvaluatedBitArrayFunction::reference(
                     BitArrayFunctionId(0),
                     Vec::new(),
-                    Vec::new(),
+                    Default::default(),
                     crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
                         crate::plan::execution::type_::ValueType::BitArray,
@@ -641,7 +641,7 @@ pub fn main() { floats() }
                 EvaluatedFunctionValue::from(EvaluatedBitArrayFunction::reference(
                     BitArrayFunctionId(0),
                     Vec::new(),
-                    Vec::new(),
+                    Default::default(),
                     crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
                         crate::plan::execution::type_::ValueType::BitArray,
@@ -652,7 +652,7 @@ pub fn main() { floats() }
                 EvaluatedFunctionValue::from(EvaluatedUtfCodepointFunction::reference(
                     UtfCodepointFunctionId(0),
                     Vec::new(),
-                    Vec::new(),
+                    Default::default(),
                     crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
                         crate::plan::execution::type_::ValueType::UtfCodepoint,
@@ -661,7 +661,7 @@ pub fn main() { floats() }
                 EvaluatedFunctionValue::from(EvaluatedUtfCodepointFunction::reference(
                     UtfCodepointFunctionId(0),
                     Vec::new(),
-                    Vec::new(),
+                    Default::default(),
                     crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
                         crate::plan::execution::type_::ValueType::UtfCodepoint,
@@ -680,7 +680,7 @@ pub fn main() { floats() }
                 EvaluatedFunctionValue::from(EvaluatedBoolFunction::reference(
                     BoolFunctionId(0),
                     Vec::new(),
-                    Vec::new(),
+                    Default::default(),
                     crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
                         crate::plan::execution::type_::ValueType::Bool,
@@ -689,7 +689,7 @@ pub fn main() { floats() }
                 EvaluatedFunctionValue::from(EvaluatedBoolFunction::reference(
                     BoolFunctionId(0),
                     Vec::new(),
-                    Vec::new(),
+                    Default::default(),
                     crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
                         crate::plan::execution::type_::ValueType::Bool,
@@ -700,7 +700,7 @@ pub fn main() { floats() }
                 EvaluatedFunctionValue::from(EvaluatedNilFunction::reference(
                     NilFunctionId(0),
                     Vec::new(),
-                    Vec::new(),
+                    Default::default(),
                     crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
                         crate::plan::execution::type_::ValueType::Nil,
@@ -709,7 +709,7 @@ pub fn main() { floats() }
                 EvaluatedFunctionValue::from(EvaluatedNilFunction::reference(
                     NilFunctionId(0),
                     Vec::new(),
-                    Vec::new(),
+                    Default::default(),
                     crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
                         crate::plan::execution::type_::ValueType::Nil,
@@ -720,7 +720,7 @@ pub fn main() { floats() }
                 EvaluatedFunctionValue::from(EvaluatedTupleFunction::reference(
                     TupleFunctionId(0),
                     Vec::new(),
-                    Vec::new(),
+                    Default::default(),
                     crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
                         crate::plan::execution::type_::ValueType::Tuple(
@@ -731,7 +731,7 @@ pub fn main() { floats() }
                 EvaluatedFunctionValue::from(EvaluatedTupleFunction::reference(
                     TupleFunctionId(0),
                     Vec::new(),
-                    Vec::new(),
+                    Default::default(),
                     crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
                         crate::plan::execution::type_::ValueType::Tuple(
@@ -744,7 +744,7 @@ pub fn main() { floats() }
                 EvaluatedFunctionValue::from(EvaluatedListFunction::reference(
                     RuntimeListFunctionId::Core(ListFunctionId::Int(plan.int_list_function_id(0))),
                     Vec::new(),
-                    Vec::new(),
+                    Default::default(),
                     crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
                         crate::plan::execution::type_::ValueType::List(
@@ -755,7 +755,7 @@ pub fn main() { floats() }
                 EvaluatedFunctionValue::from(EvaluatedListFunction::reference(
                     RuntimeListFunctionId::Core(ListFunctionId::Int(plan.int_list_function_id(0))),
                     Vec::new(),
-                    Vec::new(),
+                    Default::default(),
                     crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
                         crate::plan::execution::type_::ValueType::List(
@@ -771,7 +771,7 @@ pub fn main() { floats() }
                             IntFunctionFunctionId(0),
                         ),
                         Vec::new(),
-                        Vec::new(),
+                        Default::default(),
                         crate::plan::execution::type_::FunctionType::new(
                             Vec::new(),
                             crate::plan::execution::type_::ValueType::Function(
@@ -786,7 +786,7 @@ pub fn main() { floats() }
                             IntFunctionFunctionId(0),
                         ),
                         Vec::new(),
-                        Vec::new(),
+                        Default::default(),
                         crate::plan::execution::type_::FunctionType::new(
                             Vec::new(),
                             crate::plan::execution::type_::ValueType::Function(
@@ -821,7 +821,7 @@ pub fn main() { floats() }
                 EvaluatedFloatFunction::reference(
                     FloatFunctionId(0),
                     Vec::new(),
-                    Vec::new(),
+                    Default::default(),
                     crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
                         crate::plan::execution::type_::ValueType::Float,

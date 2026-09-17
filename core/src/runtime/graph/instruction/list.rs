@@ -1222,7 +1222,7 @@ pub fn main() {
         EvaluatedListFunction::reference(
             RuntimeListFunctionId::Core(ListFunctionId::Int(function)),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::List(function.type_id().list_type()),
@@ -1235,7 +1235,7 @@ pub fn main() {
         EvaluatedListFunction::reference(
             RuntimeListFunctionId::Core(ListFunctionId::Nil(function)),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::List(function.type_id().list_type()),
@@ -1774,6 +1774,7 @@ pub fn boxed() -> CounterListBox {
             &mut host,
             &mut stores,
             &mut echo,
+            Default::default(),
             std::num::NonZeroUsize::MIN,
         );
         let context = domain.context();
@@ -1786,9 +1787,9 @@ pub fn boxed() -> CounterListBox {
             .expect("host cleanup")
             .expect("active entry")
             .expect("boxed external List should evaluate");
-        let work = crate::runtime::work::execution::ExecutionWork::new();
+        let work = crate::runtime::work::execution::ExecutionWork::new(Default::default());
         let mut units = crate::runtime::execution::Units::new(());
-        let mut runtime = RuntimeState::with_host_and_lists(
+        let mut runtime = RuntimeState::with_host_storage(
             &mut echo,
             crate::runtime::state::RuntimeHost::<ProjectionProfile>::new(
                 &mut host,
@@ -1799,6 +1800,7 @@ pub fn boxed() -> CounterListBox {
                 crate::execution::ExecutionClock::new(&executor),
             ),
             Default::default(),
+            work.execution().services().captures().clone(),
         );
         {
             let state = &mut runtime;

@@ -66,6 +66,13 @@ module-qualified function template target. Equal local indices in different
 modules are distinct references, while qualified and unqualified imports of
 the same target share one identity.
 
+Runtime function copies share immutable capture storage. Specializing a callable
+view does not duplicate its captured function graph or change its source
+identity. Final capture ownership drains acyclic capture chains iteratively,
+including chains through lists and retained native values; live aliases keep
+their captures. This does not make arbitrary nested non-callable values
+stack-independent.
+
 ## Rust Host Functions
 
 Rust host functions enter through package-qualified source-less host modules
@@ -292,10 +299,10 @@ expose this decode surface.
 External leases determine payload lifetime. The profile store keeps a typed
 index only while at least one lease exists; dropping the final lease removes
 the index entry, so the store cannot extend payload lifetime beyond its leases.
-Retained list and capture graphs continue to use the shared iterative release
-queue, including after the original runtime state has been dropped. Geam does
-not support cyclic evaluated graphs or moving stored values between hosted
-executions.
+Retained lists and callable captures have iterative release owners that remain
+alive with their handles, including after the original runtime state has been
+dropped. Geam does not support cyclic evaluated graphs or moving stored values
+between hosted executions.
 
 Providers that model private transient-style builders use persistent external
 payload versions. Each operation may share immutable retained entries with its

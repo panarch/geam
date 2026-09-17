@@ -176,7 +176,7 @@ where
         context: &ServiceContext<Plan>,
         budget: NonZeroUsize,
     ) -> Result<ExecutionResult<EntryValue<Plan, Id>>, crate::runtime::work::Cancelled> {
-        let mut evaluation = Evaluation::default();
+        let mut evaluation = Evaluation::new(context.captures().clone());
         let mut progress = Ok(Progress::Continue(self));
         loop {
             progress = match progress {

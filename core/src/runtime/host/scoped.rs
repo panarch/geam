@@ -944,10 +944,11 @@ mod tests {
         use crate::runtime::evaluated::{EvaluatedCapture, EvaluatedIntFunction};
 
         let captured = num_bigint::BigInt::from(1u8) << 1024usize;
+        let storage = crate::runtime::CaptureStorage::default();
         let function = EvaluatedIntFunction::closure(
             IntFunctionId(0),
             Vec::new(),
-            vec![EvaluatedCapture::int(IntLocalId(0), captured.clone())],
+            storage.capture(vec![EvaluatedCapture::int(IntLocalId(0), captured.clone())]),
             FunctionType::new(Vec::new(), ValueType::Int),
         );
         let original_captures = function.captures().as_ptr();
@@ -1308,7 +1309,7 @@ pub fn main() {
         let function = crate::runtime::evaluated::EvaluatedNilFunction::reference(
             crate::plan::execution::function::NilFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::Nil,

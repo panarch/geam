@@ -67,6 +67,7 @@ pub(in crate::runtime) trait ExecutableRuntimePlan:
 
     fn advance_external_function_instruction<'plan>(
         &'plan self,
+        captures: &crate::runtime::CaptureStorage,
         frame: graph::Frame<'plan, Self>,
         returns: &mut graph::Returns<'plan, Self>,
         instruction: &<RuntimeGraph<Self> as ExecutionGraphProfile>::ExternalFunctionInstruction,
@@ -127,6 +128,7 @@ impl ExecutableRuntimePlan for ExecutionPlan {
 
     fn advance_external_function_instruction<'plan>(
         &'plan self,
+        _captures: &crate::runtime::CaptureStorage,
         _frame: graph::Frame<'plan, Self>,
         _returns: &mut graph::Returns<'plan, Self>,
         instruction: &Infallible,
@@ -206,11 +208,12 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
 
     fn advance_external_function_instruction<'plan>(
         &'plan self,
+        captures: &crate::runtime::CaptureStorage,
         frame: graph::Frame<'plan, Self>,
         returns: &mut graph::Returns<'plan, Self>,
         instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
     ) -> graph::Activation<'plan, Self> {
-        graph::advance_external_function_instruction(self, frame, returns, instruction)
+        graph::advance_external_function_instruction(self, captures, frame, returns, instruction)
     }
 }
 
@@ -730,6 +733,7 @@ pub fn run(fails: Bool) {
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 std::num::NonZeroUsize::MIN,
             );
             let context = domain.context();

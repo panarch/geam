@@ -48,9 +48,8 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
         ProfiledInstructionKind::ExternalList(instruction) => {
             plan.advance_external_list_instruction(state, frame, returns, instruction, &expected)
         }
-        ProfiledInstructionKind::ExternalFunction(instruction) => {
-            Ok(plan.advance_external_function_instruction(frame, returns, instruction))
-        }
+        ProfiledInstructionKind::ExternalFunction(instruction) => Ok(plan
+            .advance_external_function_instruction(state.captures(), frame, returns, instruction)),
         ProfiledInstructionKind::Bool(instruction) => advance_value!(bool, instruction),
         ProfiledInstructionKind::Nil(instruction) => advance_value!(nil, instruction),
         ProfiledInstructionKind::Tuple(instruction) => advance_value!(tuple, instruction),
@@ -222,6 +221,7 @@ fn advance_function<'plan, Plan: ExecutableRuntimePlan>(
 
 pub(super) fn advance_external_function<'plan, Plan: ExecutableRuntimePlan>(
     plan: &'plan Plan,
+    captures: &crate::runtime::CaptureStorage,
     frame: Frame<'plan, Plan>,
     returns: &mut Returns<'plan, Plan>,
     instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
@@ -233,7 +233,12 @@ pub(super) fn advance_external_function<'plan, Plan: ExecutableRuntimePlan>(
     let family = metadata.family();
     let type_ = metadata.type_().clone();
     let validate = move |value| function::validate_return_family(value, family, type_);
-    match function::evaluate_external_action(plan, &frame.position.environment, instruction) {
+    match function::evaluate_external_action(
+        plan,
+        captures,
+        &frame.position.environment,
+        instruction,
+    ) {
         InstructionValueWithoutConstant::Ready(value) => frame.store(value),
         InstructionValueWithoutConstant::Call {
             function,
@@ -376,7 +381,7 @@ pub fn main() {{ #(project, {sample}) }}
             let mut execution =
                 HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
                     .unwrap();
-            let (plan, stores) = execution.parts_mut();
+            let (plan, stores, captures) = execution.parts_mut();
             let host = TestHost::default();
             let mut state = ();
             let mut echo = Vec::new();
@@ -386,6 +391,7 @@ pub fn main() {{ #(project, {sample}) }}
                 &mut state,
                 stores,
                 &mut echo,
+                captures.clone(),
                 Domain::<Profile>::DEFAULT_BUDGET,
             );
             let context = domain.context();
