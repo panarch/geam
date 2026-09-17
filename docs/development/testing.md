@@ -314,8 +314,11 @@ process execution, configures providers and package resources at startup, and
 verifies untouched application arguments, cancellation, shutdown and source
 diagnostics after removing the source/build tree. CLI owner tests separately
 fix Cargo message admission, output ownership, locking and preparation failure.
-The root standalone support module owns deterministic configuration/path and
-IO tests; its tests run in the CLI/binary coverage closure.
+The root standalone support module owns configuration/path, IO and driver-join
+tests; its tests run in the CLI/binary coverage closure. Join tests cover owned
+state, panic payloads and cancellation without detaching the driver. The
+`future_builtins` target also checks process and timer progress with the driver
+and a CPU-bound Gleam process sharing one Tokio worker.
 
 Core owners and `geam-macros`'s `async_provider` target exercise deterministic
 Pending, shared completion, bounded state access, rich callbacks, cancellation,

@@ -94,13 +94,17 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
         mut self,
         body: impl Future<Output = Output>,
     ) -> Result<Output, DriverError> {
-        let output = {
+        let mut output = {
             let mut body = pin!(body);
             poll_fn(|cx| self.poll_body(body.as_mut(), cx)).await
         };
         self.close();
         poll_fn(|cx| {
-            self.reap(cx);
+            if let Some(error) = self.reap(cx)
+                && !matches!(output, Err(DriverError::Failed(_)))
+            {
+                output = Err(error);
+            }
             if self.tasks.is_empty() {
                 Poll::Ready(())
             } else {
@@ -237,13 +241,15 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
         for _ in 0..self.budget.get() {
             match self.tasks.poll_next_unpin(cx) {
                 Poll::Pending | Poll::Ready(None) => return failure,
-                Poll::Ready(Some(TaskExit::Completed)) => {}
-                Poll::Ready(Some(TaskExit::Cancelled)) => {
+                Poll::Ready(Some(TaskExit::Cancelled)) if !self.closed => {
                     failure.get_or_insert(DriverError::Cancelled);
                 }
                 Poll::Ready(Some(TaskExit::Failed(error))) => {
-                    failure.get_or_insert(DriverError::Failed(error));
+                    if !matches!(failure, Some(DriverError::Failed(_))) {
+                        failure = Some(DriverError::Failed(error));
+                    }
                 }
+                Poll::Ready(Some(TaskExit::Completed | TaskExit::Cancelled)) => {}
             }
         }
         if !self.tasks.is_empty() {
@@ -372,6 +378,7 @@ mod tests {
     struct ManualHost {
         workers: Mutex<Vec<Worker>>,
         next_exit: Mutex<Option<TaskExit>>,
+        acknowledgement_delay: AtomicUsize,
         released: Arc<AtomicUsize>,
         started: AtomicUsize,
         turns: AtomicUsize,
@@ -380,6 +387,8 @@ mod tests {
     struct ManualTask {
         abort: AbortHandle,
         exit: oneshot::Receiver<TaskExit>,
+        acknowledgement_delay: usize,
+        completed: Option<TaskExit>,
     }
 
     struct Release(Arc<AtomicUsize>);
@@ -412,7 +421,12 @@ mod tests {
                 };
                 let _ = reply.send(exit);
             }));
-            Box::new(ManualTask { abort, exit })
+            Box::new(ManualTask {
+                abort,
+                exit,
+                acknowledgement_delay: self.acknowledgement_delay.load(Ordering::SeqCst),
+                completed: None,
+            })
         }
 
         fn now(&self) -> Instant {
@@ -426,9 +440,19 @@ mod tests {
     impl Future for ManualTask {
         type Output = TaskExit;
         fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-            Pin::new(&mut self.exit)
-                .poll(cx)
-                .map(|exit| exit.unwrap_or(TaskExit::Cancelled))
+            let exit = match self.completed.take() {
+                Some(exit) => exit,
+                None => std::task::ready!(Pin::new(&mut self.exit).poll(cx))
+                    .unwrap_or(TaskExit::Cancelled),
+            };
+            if self.acknowledgement_delay == 0 {
+                Poll::Ready(exit)
+            } else {
+                self.acknowledgement_delay -= 1;
+                self.completed = Some(exit);
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
         }
     }
 
@@ -572,6 +596,197 @@ mod tests {
             assert_eq!(state.get(), 7);
             assert!(echo.is_empty());
             assert!(host.workers.lock().is_empty());
+        }
+    }
+
+    #[test]
+    fn late_executor_failure_survives_entry_cancellation_and_complete_shutdown() {
+        let (plan, functions) = program("pub fn main() { echo 42 42 }", LibraryValueType::Int);
+        let host = ManualHost::default();
+        host.acknowledgement_delay.store(2, Ordering::SeqCst);
+        *host.next_exit.lock() = Some(TaskExit::Failed(
+            std::io::Error::other("worker failed before acknowledgement").into(),
+        ));
+        let mut state = Cell::new(7);
+        let mut stores = Cell::new(());
+        let mut echo = Vec::new();
+        let domain = Domain::new(
+            plan,
+            &host,
+            &mut state,
+            &mut stores,
+            &mut echo,
+            Default::default(),
+            NonZeroUsize::MIN,
+        );
+        let context = domain.context();
+        let result = host.finish(domain.drive(context.call(
+            *functions.ints[0].function(),
+            HostCallOrigin::Entry,
+            RetainedValues::empty(),
+        )));
+        assert_eq!(
+            result.err().map(|error| error.to_string()).as_deref(),
+            Some("the host executor failed: worker failed before acknowledgement")
+        );
+        assert_eq!(host.started.load(Ordering::SeqCst), 1);
+        assert_eq!(host.released.load(Ordering::SeqCst), 1);
+        assert!(host.workers.lock().is_empty());
+        assert_eq!(state.get(), 7);
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn failed_tasks_take_precedence_over_cancellation_in_driving_and_shutdown() {
+        let (plan, _) = program("pub fn main() { 42 }", LibraryValueType::Int);
+        for budget in [NonZeroUsize::MIN, Domain::<Profile>::DEFAULT_BUDGET] {
+            for body_ready in [false, true] {
+                for cancelled_first in [false, true] {
+                    for delay in [0, 2] {
+                        let host = ManualHost::default();
+                        host.acknowledgement_delay.store(delay, Ordering::SeqCst);
+                        let mut state = Cell::new(7);
+                        let mut stores = Cell::new(());
+                        let mut echo = Vec::new();
+                        let domain = Domain::new(
+                            Arc::clone(&plan),
+                            &host,
+                            &mut state,
+                            &mut stores,
+                            &mut echo,
+                            Default::default(),
+                            budget,
+                        );
+                        for cancelled in [cancelled_first, !cancelled_first] {
+                            *host.next_exit.lock() = Some(if cancelled {
+                                TaskExit::Cancelled
+                            } else {
+                                TaskExit::Failed(std::io::Error::other("original failure").into())
+                            });
+                            domain
+                                .tasks
+                                .push(host.spawn(Box::pin(std::future::pending())));
+                        }
+                        host.turn();
+                        let result = host.finish(domain.drive(poll_fn(|_| {
+                            if body_ready {
+                                Poll::Ready(42)
+                            } else {
+                                Poll::Pending
+                            }
+                        })));
+                        let error = result.unwrap_err();
+                        assert_eq!(
+                            error.to_string(),
+                            "the host executor failed: original failure"
+                        );
+                        assert_eq!(
+                            std::error::Error::source(&error).unwrap().to_string(),
+                            "original failure"
+                        );
+                        assert_eq!(host.started.load(Ordering::SeqCst), 2);
+                        assert_eq!(host.released.load(Ordering::SeqCst), 2);
+                        assert!(host.workers.lock().is_empty());
+                        assert_eq!(state.get(), 7);
+                        assert!(echo.is_empty());
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_selected_host_failure_survives_later_failures_and_requested_cancellation() {
+        let (plan, _) = program("pub fn main() { Nil }", LibraryValueType::Nil);
+        for budget in [NonZeroUsize::MIN, Domain::<Profile>::DEFAULT_BUDGET] {
+            // Equal simultaneous causes do not impose an order on independent failures.
+            for (delay, later) in [(0, "first"), (2, "later")] {
+                let host = ManualHost::default();
+                let mut state = Cell::new(0);
+                let mut stores = Cell::new(());
+                let mut echo = Vec::new();
+                let domain = Domain::new(
+                    Arc::clone(&plan),
+                    &host,
+                    &mut state,
+                    &mut stores,
+                    &mut echo,
+                    Default::default(),
+                    budget,
+                );
+                *host.next_exit.lock() =
+                    Some(TaskExit::Failed(std::io::Error::other("first").into()));
+                domain
+                    .tasks
+                    .push(host.spawn(Box::pin(std::future::pending())));
+                host.acknowledgement_delay.store(delay, Ordering::SeqCst);
+                *host.next_exit.lock() =
+                    Some(TaskExit::Failed(std::io::Error::other(later).into()));
+                domain
+                    .tasks
+                    .push(host.spawn(Box::pin(std::future::pending())));
+                domain
+                    .tasks
+                    .push(host.spawn(Box::pin(std::future::pending())));
+                let error = host
+                    .finish(domain.drive(std::future::pending::<()>()))
+                    .unwrap_err();
+                assert_eq!(error.to_string(), "the host executor failed: first");
+                assert_eq!(host.started.load(Ordering::SeqCst), 3);
+                assert_eq!(host.released.load(Ordering::SeqCst), 3);
+                assert!(host.workers.lock().is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn requested_shutdown_cancellation_preserves_source_results_and_errors() {
+        for (source, expected) in [
+            ("pub fn main() { echo 41 42 }", Ok("42")),
+            (
+                "pub fn main() -> Int { echo 41 panic as \"source failure\" }",
+                Err("panic: source failure"),
+            ),
+        ] {
+            let (plan, functions) = program(source, LibraryValueType::Int);
+            let host = ManualHost::default();
+            host.acknowledgement_delay.store(2, Ordering::SeqCst);
+            let mut state = Cell::new(7);
+            let mut stores = Cell::new(());
+            let mut echo = Vec::new();
+            let domain = Domain::new(
+                plan,
+                &host,
+                &mut state,
+                &mut stores,
+                &mut echo,
+                Default::default(),
+                NonZeroUsize::MIN,
+            );
+            domain
+                .tasks
+                .push(host.spawn(Box::pin(std::future::pending())));
+            let context = domain.context();
+            let result = host
+                .finish(domain.drive(context.call(
+                    *functions.ints[0].function(),
+                    HostCallOrigin::Entry,
+                    RetainedValues::empty(),
+                )))
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                result
+                    .map(|value| value.to_string())
+                    .map_err(|error| error.to_string()),
+                expected.map(str::to_owned).map_err(str::to_owned),
+            );
+            assert_eq!(host.started.load(Ordering::SeqCst), 2);
+            assert_eq!(host.released.load(Ordering::SeqCst), 2);
+            assert!(host.workers.lock().is_empty());
+            assert_eq!(echo.len(), 1);
+            assert_eq!(echo[0].value(), &crate::Value::Int(41.into()));
+            assert_eq!(state.get(), 7);
         }
     }
 

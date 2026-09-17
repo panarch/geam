@@ -44,7 +44,7 @@ pub struct Component;
 #[geam::module(path = "standalone_future/native")]
 mod native {
     use super::State;
-    use geam::provider::{BigInt, Call, HostFailure, HostResult, StringValue};
+    use geam::provider::{BigInt, Call, Callback, HostFailure, HostResult, StringValue};
     use std::future::{Future, poll_fn};
     use std::task::Poll;
     use std::time::Duration;
@@ -78,6 +78,34 @@ mod native {
         let count = call.state().calls.get();
         println!("state:{count}");
         count.into()
+    }
+
+    #[geam::function(await)]
+    async fn apply(
+        #[geam::call] call: &mut Call<State>,
+        callback: Callback<fn(BigInt) -> BigInt>,
+    ) -> HostResult<BigInt> {
+        let count = call
+            .with_state(|state| {
+                state.calls.set(state.calls.get() + 1);
+                state.calls.get()
+            })
+            .await?;
+        println!("before-callback");
+        tokio::task::yield_now().await;
+        let result = call.invoke(&callback, (count.into(),)).await?;
+        println!("after-callback");
+        Ok(result)
+    }
+
+    #[geam::function]
+    fn panic_driver() -> () {
+        panic!("native driver panic");
+    }
+
+    #[geam::function(await)]
+    async fn panic_worker() -> HostResult<()> {
+        panic!("native worker panic");
     }
 
     #[geam::function]

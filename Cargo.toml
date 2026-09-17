@@ -108,7 +108,7 @@ vec1 = "1"
 default = ["full"]
 full = ["cli", "embedding", "provider", "builtins", "standalone"]
 cli = ["dep:geam-cli"]
-standalone = ["builtins", "tokio", "dep:toml"]
+standalone = ["builtins", "tokio", "dep:tokio", "dep:toml"]
 embedding = []
 tokio = ["geam-core/tokio"]
 provider = ["dep:geam-macros"]
@@ -128,6 +128,7 @@ geam-macros = { workspace = true, optional = true }
 geam-builtin = { workspace = true, optional = true }
 geam-stdlib = { workspace = true, optional = true }
 geam-time = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
 toml = { workspace = true, optional = true }
 
 [[bin]]

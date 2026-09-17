@@ -71,6 +71,44 @@ pub fn main() {{ {returned} }}
         );
     }
 
+    fs::write(
+        project.join("src/standalone_future.gleam"),
+        "import standalone_future/native\npub fn main() { let assert 2 = native.apply(fn(_) { native.current() + 1 }) Nil }\n",
+    )
+    .expect("awaited callback source");
+    let run = geam_at(&project, ["run"]);
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "initialized\nbefore-callback\nstate:1\nafter-callback\nstate-drop:1\n"
+    );
+
+    for (function, diagnostic) in [
+        ("panic_driver", "native driver panic"),
+        ("panic_worker", "geam runner: the host executor failed:"),
+    ] {
+        fs::write(
+            project.join("src/standalone_future.gleam"),
+            format!("import standalone_future/native\npub fn main() {{ native.{function}() }}\n"),
+        )
+        .expect("Rust panic source");
+        let run = geam_at(&project, ["run"]);
+        assert!(!run.status.success());
+        assert_eq!(
+            String::from_utf8_lossy(&run.stdout),
+            "initialized\nstate-drop:0\n"
+        );
+        let error = String::from_utf8_lossy(&run.stderr);
+        assert!(error.contains(diagnostic), "{error}");
+        if function == "panic_driver" {
+            assert!(!error.contains("geam runner:"), "{error}");
+        }
+    }
+
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_io()
         .build()
