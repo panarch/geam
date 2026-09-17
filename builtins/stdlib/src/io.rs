@@ -2,7 +2,7 @@ mod function;
 
 use crate::{GleamStdlibProviderProfile, GleamStdlibRunState};
 use crate::{HostProviderModule, HostRegistrationError};
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::provider::Call;
 
 /// A caller-owned destination for official Gleam standard-library IO events.
@@ -15,7 +15,7 @@ pub trait IoSink: Send {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IoOutput {
     stream: IoStream,
-    text: EcoString,
+    text: StringValue,
 }
 
 /// The standard stream selected by a Gleam IO operation.
@@ -28,7 +28,7 @@ pub enum IoStream {
 }
 
 impl IoOutput {
-    pub(super) fn new(stream: IoStream, text: EcoString) -> Self {
+    pub(super) fn new(stream: IoStream, text: StringValue) -> Self {
         Self { stream, text }
     }
 
@@ -38,7 +38,7 @@ impl IoOutput {
     }
 
     /// Returns the exact text emitted by the Gleam IO operation.
-    pub fn text(&self) -> &EcoString {
+    pub fn text(&self) -> &StringValue {
         &self.text
     }
 }
@@ -56,12 +56,12 @@ impl IoSink for Vec<IoOutput> {
     component = crate::Component<Profile::Io>,
 )]
 mod provider {
-    use super::{Call, EcoString, GleamStdlibRunState, function};
+    use super::{Call, GleamStdlibRunState, StringValue, function};
 
     #[geam_macros::function(profile = Profile)]
     fn print(
         #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
-        text: EcoString,
+        text: StringValue,
     ) -> () {
         function::print(call.state_mut().io_sink(), text)
     }
@@ -69,7 +69,7 @@ mod provider {
     #[geam_macros::function(profile = Profile)]
     fn print_error(
         #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
-        text: EcoString,
+        text: StringValue,
     ) -> () {
         function::print_error(call.state_mut().io_sink(), text)
     }
@@ -77,7 +77,7 @@ mod provider {
     #[geam_macros::function(profile = Profile)]
     fn println(
         #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
-        text: EcoString,
+        text: StringValue,
     ) -> () {
         function::println(call.state_mut().io_sink(), text)
     }
@@ -85,7 +85,7 @@ mod provider {
     #[geam_macros::function(profile = Profile)]
     fn println_error(
         #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
-        text: EcoString,
+        text: StringValue,
     ) -> () {
         function::println_error(call.state_mut().io_sink(), text)
     }

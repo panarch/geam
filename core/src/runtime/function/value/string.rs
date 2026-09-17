@@ -1,10 +1,10 @@
 use super::super::run;
+use crate::StringValue;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::function::StringFunctionId;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::RuntimeState;
-use ecow::EcoString;
 
 pub(in crate::runtime) fn run_string(
     plan: &ExecutionPlan,
@@ -12,12 +12,13 @@ pub(in crate::runtime) fn run_string(
     function: StringFunctionId,
     origin: HostCallOrigin,
     inputs: RetainedValues,
-) -> ExecutionResult<EcoString> {
+) -> ExecutionResult<StringValue> {
     run(plan, state, function, origin, inputs)
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::StringValue;
     use crate::plan::execution::function::StringFunctionId;
     use crate::plan::execution::graph::FunctionTarget;
     use crate::plan::execution::graph::{ParamLocal, StringLocalId};
@@ -26,7 +27,6 @@ mod tests {
         HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource, Value,
         compile_typed_host_program, compile_typed_module, plan_host_program, plan_module, run_main,
     };
-    use ecow::EcoString;
 
     #[test]
     fn plain_string_function_protocol_executes_graph_entries() {
@@ -59,7 +59,7 @@ pub fn main() {
     fn hosted_string_function_protocol_executes_graph_and_host_entries() {
         let text = HostModule::new("host_support", "host/text")
             .expect("host module should be valid")
-            .with_function("identity", |value: EcoString| value)
+            .with_function("identity", |value: StringValue| value)
             .expect("host function should be valid");
         let hosts = HostProviderSet::new([text]).expect("host modules should be unique");
         let source = r#"

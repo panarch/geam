@@ -48,9 +48,9 @@ impl CallbackInputs {
 #[cfg(test)]
 mod tests {
     use super::{CallbackInputs, EvaluatedValue, RetainedInputs};
+    use crate::StringValue;
     use crate::host::{HostCallArguments, HostParameterLayout};
     use crate::runtime::EmbeddingInputValue;
-    use ecow::EcoString;
     use num_bigint::BigInt;
 
     #[test]
@@ -71,15 +71,15 @@ mod tests {
             ]
         );
         let mut layout = HostParameterLayout::default();
-        let first = layout.register::<EcoString>();
+        let first = layout.register::<StringValue>();
         let number = layout.register::<BigInt>();
         let nil = layout.register::<()>();
-        let last = layout.register::<EcoString>();
+        let last = layout.register::<StringValue>();
         let mut direct = RetainedInputs::empty();
-        direct.push_input(EcoString::from("first").into_input());
+        direct.push_input(StringValue::from("first").into_input());
         direct.push_input(BigInt::from(42).into_input());
         direct.push_input(().into_input());
-        direct.push_input(EcoString::from("last").into_input());
+        direct.push_input(StringValue::from("last").into_input());
         let direct = direct.into_retained();
         assert_eq!(direct.string(first), "first");
         assert_eq!(direct.int(number), BigInt::from(42));

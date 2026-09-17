@@ -59,7 +59,7 @@ pub enum NativeKind {
 enum Node<'value> {
     Int(Cow<'value, BigInt>),
     Float(f64),
-    Binary(&'value BitSlice<u8, Msb0>),
+    Binary(Binary<'value>),
     Symbol(&'value str),
     Tuple(Sequence<'value>),
     List(Sequence<'value>),
@@ -67,6 +67,11 @@ enum Node<'value> {
     External(RetainedValueRef<'value>),
     Function(RetainedValueRef<'value>, RuntimeValueMetadata<'value>),
     Closure(&'value NativeClosure),
+}
+
+enum Binary<'value> {
+    String(&'value crate::StringValue),
+    Bits(&'value BitSlice<u8, Msb0>),
 }
 
 enum Sequence<'value> {
@@ -244,10 +249,10 @@ impl NativeValue {
         })
     }
 
-    /// Reads a byte-aligned UTF-8 binary as a string.
-    pub fn as_string(&self) -> Option<EcoString> {
+    /// Reads a byte-aligned UTF-8 binary, preserving a source string's storage.
+    pub fn as_string(&self) -> Option<crate::StringValue> {
         self.with_node(|node| match node {
-            Node::Binary(bits) => binary_string(bits),
+            Node::Binary(value) => value.string(),
             _ => None,
         })
     }
@@ -255,7 +260,9 @@ impl NativeValue {
     /// Reads the exact bits of a string or bit array.
     pub fn as_bit_array(&self) -> Option<crate::BitArrayValue> {
         self.with_node(|node| match node {
-            Node::Binary(bits) => Some(crate::BitArrayValue::from_evaluated(bits.to_bitvec())),
+            Node::Binary(value) => Some(crate::BitArrayValue::from_evaluated(
+                value.bits().to_bitvec(),
+            )),
             _ => None,
         })
     }
@@ -263,7 +270,7 @@ impl NativeValue {
     /// Returns a native binary's bit length without copying its contents.
     pub fn bit_len(&self) -> Option<usize> {
         self.with_node(|node| match node {
-            Node::Binary(bits) => Some(bits.len()),
+            Node::Binary(value) => Some(value.bits().len()),
             _ => None,
         })
     }
@@ -505,8 +512,8 @@ fn with_source_node<Output>(
         EvaluatedValue::Int(value) => Node::Int(Cow::Borrowed(value)),
         EvaluatedValue::UtfCodepoint(value) => Node::Int(Cow::Owned(u32::from(*value).into())),
         EvaluatedValue::Float(value) => Node::Float(*value),
-        EvaluatedValue::String(value) => Node::Binary(value.as_bytes().view_bits::<Msb0>()),
-        EvaluatedValue::BitArray(value) => Node::Binary(value.bits()),
+        EvaluatedValue::String(value) => Node::Binary(Binary::String(value)),
+        EvaluatedValue::BitArray(value) => Node::Binary(Binary::Bits(value.bits())),
         EvaluatedValue::Bool(true) => Node::Symbol("true"),
         EvaluatedValue::Bool(false) => Node::Symbol("false"),
         EvaluatedValue::Nil => Node::Symbol("nil"),
@@ -562,7 +569,7 @@ fn nodes_equal(left: Node<'_>, right: Node<'_>, context: &HostExternalEquality<'
     match (left, right) {
         (Node::Int(left), Node::Int(right)) => left == right,
         (Node::Float(left), Node::Float(right)) => left == right,
-        (Node::Binary(left), Node::Binary(right)) => left == right,
+        (Node::Binary(left), Node::Binary(right)) => left.bits() == right.bits(),
         (Node::Symbol(left), Node::Symbol(right)) => left == right,
         (Node::Tuple(left), Node::Tuple(right)) | (Node::List(left), Node::List(right)) => {
             left.len() == right.len()
@@ -610,7 +617,7 @@ fn hash_node(node: Node<'_>, context: &HostExternalHashing<'_>) -> u64 {
     match node {
         Node::Int(value) => value.hash(&mut hash),
         Node::Float(value) => (if value == 0.0 { 0 } else { value.to_bits() }).hash(&mut hash),
-        Node::Binary(value) => value.hash(&mut hash),
+        Node::Binary(value) => value.bits().hash(&mut hash),
         Node::Symbol(value) => value.hash(&mut hash),
         Node::Tuple(values) | Node::List(values) => {
             values.len().hash(&mut hash);
@@ -649,7 +656,23 @@ fn hash_node(node: Node<'_>, context: &HostExternalHashing<'_>) -> u64 {
     hash.finish()
 }
 
-fn binary_string(bits: &BitSlice<u8, Msb0>) -> Option<EcoString> {
+impl Binary<'_> {
+    fn bits(&self) -> &BitSlice<u8, Msb0> {
+        match self {
+            Self::String(value) => value.as_bytes().view_bits::<Msb0>(),
+            Self::Bits(value) => value,
+        }
+    }
+
+    fn string(&self) -> Option<crate::StringValue> {
+        match self {
+            Self::String(value) => Some((*value).clone()),
+            Self::Bits(value) => binary_string(value),
+        }
+    }
+}
+
+fn binary_string(bits: &BitSlice<u8, Msb0>) -> Option<crate::StringValue> {
     if !bits.len().is_multiple_of(8) {
         return None;
     }
@@ -668,12 +691,14 @@ fn inspect_node(node: Node<'_>, context: &HostExternalInspection<'_>) -> EcoStri
     match node {
         Node::Int(value) => value.to_string().into(),
         Node::Float(value) => crate::Value::Float(value).inspect().to_string().into(),
-        Node::Binary(bits) => match binary_string(bits) {
+        Node::Binary(value) => match value.string() {
             Some(value) => crate::Value::String(value).inspect().to_string().into(),
-            None => crate::Value::BitArray(crate::BitArrayValue::from_evaluated(bits.to_bitvec()))
-                .inspect()
-                .to_string()
-                .into(),
+            None => crate::Value::BitArray(crate::BitArrayValue::from_evaluated(
+                value.bits().to_bitvec(),
+            ))
+            .inspect()
+            .to_string()
+            .into(),
         },
         Node::Symbol(value) => match value {
             "true" => "True".into(),

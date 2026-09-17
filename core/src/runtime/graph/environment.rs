@@ -3,6 +3,7 @@ mod value;
 
 pub(in crate::runtime) use value::GraphValue;
 
+use crate::StringValue;
 use crate::host::{
     HostBitArrayArgumentSlot, HostBoolArgumentSlot, HostCallArguments, HostFloatArgumentSlot,
     HostIntArgumentSlot, HostNilArgumentSlot, HostStringArgumentSlot, HostUtfCodepointArgumentSlot,
@@ -35,14 +36,13 @@ use crate::runtime::state::list::{
     ParameterListListValueId, ParameterListValueId, StoredListValueId, StringListValueId,
     TupleListValueId, UtfCodepointListValueId,
 };
-use ecow::EcoString;
 use num_bigint::BigInt;
 
 #[derive(Default)]
 struct BlockValues {
     ints: Vec<BigInt>,
     floats: Vec<f64>,
-    strings: Vec<EcoString>,
+    strings: Vec<StringValue>,
     bit_arrays: Vec<EvaluatedBitArray>,
     utf_codepoints: Vec<char>,
     customs: Vec<EvaluatedCustomValue>,
@@ -203,11 +203,11 @@ impl BlockEnvironment {
         self.values.floats[local.0]
     }
 
-    pub(super) fn push_string(&mut self, value: EcoString) {
+    pub(super) fn push_string(&mut self, value: StringValue) {
         self.values.strings.push(value);
     }
 
-    pub(super) fn string(&self, local: StringLocalId) -> EcoString {
+    pub(super) fn string(&self, local: StringLocalId) -> StringValue {
         self.values.strings[local.0].clone()
     }
 
@@ -699,7 +699,7 @@ impl RetainedValues {
         self.values.floats.push(value);
     }
 
-    pub(in crate::runtime) fn push_string(&mut self, value: EcoString) {
+    pub(in crate::runtime) fn push_string(&mut self, value: StringValue) {
         self.values.strings.push(value);
     }
 
@@ -902,7 +902,7 @@ impl HostCallArguments for RetainedValues {
         self.values.floats[slot.index()]
     }
 
-    fn string(&self, slot: HostStringArgumentSlot) -> EcoString {
+    fn string(&self, slot: HostStringArgumentSlot) -> StringValue {
         self.values.strings[slot.index()].clone()
     }
 

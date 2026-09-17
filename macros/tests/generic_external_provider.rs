@@ -1,7 +1,7 @@
 #[path = "../../tests/support/execution_host.rs"]
 mod execution_fixture;
 
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::provider::{Call, Callback, HostResult, Stored, Value};
 use geam_core::{
     HostComponentProfile, HostExternalTypeSchema, HostModule, HostProfile, HostProviderComponent,
@@ -19,11 +19,11 @@ pub struct Component;
 
 #[geam_macros::module(path = "generic_box", crate_path = geam_core)]
 mod generic_box {
-    use super::{Call, Callback, EcoString, HostResult, Stored, Value};
+    use super::{Call, Callback, HostResult, Stored, StringValue, Value};
 
     #[geam_macros::external(name = "Token")]
     #[derive(PartialEq, Eq, Hash)]
-    struct Token(EcoString);
+    struct Token(StringValue);
 
     impl Clone for Token {
         fn clone(&self) -> Self {
@@ -54,7 +54,7 @@ mod generic_box {
     }
 
     #[geam_macros::function]
-    fn token(value: EcoString) -> Token {
+    fn token(value: StringValue) -> Token {
         Token(value)
     }
 
@@ -355,20 +355,20 @@ fn generic_external_values_retain_specialized_values_persistently() {
     assert_eq!(
         returned,
         RuntimeValue::Tuple(vec![
-            RuntimeValue::String(EcoString::from("alpha")),
+            RuntimeValue::String(StringValue::from("alpha")),
             RuntimeValue::Int(7.into()),
             RuntimeValue::Int(8.into()),
             RuntimeValue::Bool(true),
             RuntimeValue::Bool(true),
             RuntimeValue::Bool(true),
             RuntimeValue::Bool(true),
-            RuntimeValue::String(EcoString::from("left")),
+            RuntimeValue::String(StringValue::from("left")),
             RuntimeValue::Int(7.into()),
             RuntimeValue::Int(7.into()),
-            RuntimeValue::String(EcoString::from("left")),
+            RuntimeValue::String(StringValue::from("left")),
             RuntimeValue::Bool(true),
             RuntimeValue::Int(9.into()),
-            RuntimeValue::String(EcoString::from("callback")),
+            RuntimeValue::String(StringValue::from("callback")),
             RuntimeValue::Bool(true),
         ]),
     );

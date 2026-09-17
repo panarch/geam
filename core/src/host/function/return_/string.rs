@@ -1,10 +1,10 @@
 use super::{HostReturn, OwnedHostCallback, OwnedHostFunctionImplementation};
+use crate::StringValue;
 use crate::host::{HostAbiType, HostCallArguments, HostFailure, HostProfile};
-use ecow::EcoString;
 
-pub(super) type HostStringFunction<Profile> = OwnedHostCallback<Profile, EcoString>;
+pub(super) type HostStringFunction<Profile> = OwnedHostCallback<Profile, StringValue>;
 
-impl HostReturn for EcoString {
+impl HostReturn for StringValue {
     fn descriptor() -> crate::host::HostTypeDescriptor {
         <Self as HostAbiType>::descriptor()
     }
@@ -22,19 +22,19 @@ impl HostReturn for EcoString {
 #[cfg(test)]
 mod tests {
     use super::HostReturn;
+    use crate::StringValue;
     use crate::host::function::argument::{CallArguments, HostParameterLayout};
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
         HostScopedValue, HostTypeDescriptor, HostValueFamily, expect_value_implementation,
     };
-    use ecow::EcoString;
 
     #[test]
     fn string_return_owns_typed_callback_and_family() {
         let mut layout = HostParameterLayout::default();
-        let slot = layout.register::<EcoString>();
+        let slot = layout.register::<StringValue>();
         let implementation =
-            <EcoString as HostReturn>::implementation::<TestHostProfile>(move |_, arguments| {
+            <StringValue as HostReturn>::implementation::<TestHostProfile>(move |_, arguments| {
                 Ok(format!("{}!", arguments.string(slot)).into())
             });
         let implementation = implementation.into_immediate();
@@ -50,7 +50,7 @@ mod tests {
         let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
 
         assert_eq!(
-            <EcoString as HostReturn>::descriptor(),
+            <StringValue as HostReturn>::descriptor(),
             HostTypeDescriptor::String,
         );
         assert_eq!(

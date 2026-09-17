@@ -1,36 +1,42 @@
 use crate::HostFailure;
-use ecow::EcoString;
+use geam_core::StringValue;
 use num_bigint::{BigInt, Sign};
 use num_traits::ToPrimitive;
 use unicode_segmentation::UnicodeSegmentation;
 
 pub(in crate::string) fn grapheme_slice(
-    string: EcoString,
+    string: StringValue,
     index: BigInt,
     length: BigInt,
-) -> Result<EcoString, HostFailure> {
+) -> Result<StringValue, HostFailure> {
     if index.sign() == Sign::Minus || length.sign() == Sign::Minus {
         return Err(HostFailure::new(
             "string grapheme slice requires non-negative bounds",
         ));
     }
     let Some(index) = index.to_usize() else {
-        return Ok(EcoString::new());
+        return Ok(StringValue::new());
     };
     let length = length.to_usize().unwrap_or(usize::MAX);
-    Ok(string
-        .graphemes(true)
-        .skip(index)
-        .take(length)
-        .collect::<String>()
-        .into())
+    if length == 0 {
+        return Ok(StringValue::new());
+    }
+    let mut graphemes = string.grapheme_indices(true).skip(index);
+    let Some((start, first)) = graphemes.next() else {
+        return Ok(StringValue::new());
+    };
+    let end = graphemes
+        .take(length - 1)
+        .last()
+        .map_or(start + first.len(), |(offset, text)| offset + text.len());
+    Ok(string.slice(start..end))
 }
 
 pub(in crate::string) fn unsafe_byte_slice(
-    string: EcoString,
+    string: StringValue,
     index: BigInt,
     length: BigInt,
-) -> Result<EcoString, HostFailure> {
+) -> Result<StringValue, HostFailure> {
     let index = index
         .to_usize()
         .ok_or_else(|| HostFailure::new("string byte slice index is not representable"))?;
@@ -42,26 +48,29 @@ pub(in crate::string) fn unsafe_byte_slice(
         .ok_or_else(|| HostFailure::new("string byte slice range is not representable"))?;
     string
         .get(index..end)
-        .map(EcoString::from)
         .ok_or_else(|| HostFailure::new("string byte slice is outside UTF-8 boundaries"))
 }
 
-pub(in crate::string) fn erl_split(string: EcoString, pattern: EcoString) -> Vec<EcoString> {
+pub(in crate::string) fn erl_split(string: StringValue, pattern: StringValue) -> Vec<StringValue> {
     match string.split_once(pattern.as_str()) {
         Some((first, rest)) if !pattern.is_empty() => {
-            vec![EcoString::from(first), EcoString::from(rest)]
+            vec![
+                string.slice(0..first.len()),
+                string.slice(string.len() - rest.len()..string.len()),
+            ]
         }
         _ => vec![string],
     }
 }
 
-pub(in crate::string) fn erl_trim(string: EcoString, leading: bool) -> EcoString {
+pub(in crate::string) fn erl_trim(string: StringValue, leading: bool) -> StringValue {
     if leading {
-        string.trim_start_matches(is_pattern_whitespace)
+        let rest = string.trim_start_matches(is_pattern_whitespace);
+        string.slice(string.len() - rest.len()..string.len())
     } else {
-        string.trim_end_matches(is_pattern_whitespace)
+        let rest = string.trim_end_matches(is_pattern_whitespace);
+        string.slice(0..rest.len())
     }
-    .into()
 }
 
 fn is_pattern_whitespace(codepoint: char) -> bool {
@@ -80,8 +89,47 @@ fn is_pattern_whitespace(codepoint: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{grapheme_slice, is_pattern_whitespace, unsafe_byte_slice};
+    use super::{erl_split, erl_trim, grapheme_slice, is_pattern_whitespace, unsafe_byte_slice};
+    use geam_core::StringValue;
     use num_bigint::BigInt;
+
+    #[test]
+    fn byte_grapheme_split_and_trim_views_share_selected_ranges() {
+        let text = StringValue::from("  abcdefghijklmnopqrstuvwxyz,ABCDEFGHIJKLMNOPQRSTUVWXYZ  ");
+        let bytes = unsafe_byte_slice(text.clone(), 2.into(), 26.into()).expect("valid bytes");
+        let graphemes = grapheme_slice(text.clone(), 2.into(), 26.into()).expect("valid graphemes");
+        for selected in [bytes, graphemes] {
+            assert_eq!(selected, "abcdefghijklmnopqrstuvwxyz");
+            assert_eq!(selected.as_ptr(), text.as_ptr().wrapping_add(2));
+        }
+        let parts = erl_split(text.clone(), ",".into());
+        assert_eq!(
+            parts,
+            [
+                "  abcdefghijklmnopqrstuvwxyz",
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZ  "
+            ]
+        );
+        assert_eq!(parts[0].as_ptr(), text.as_ptr());
+        assert_eq!(parts[1].as_ptr(), text.as_ptr().wrapping_add(29));
+        let trimmed = erl_trim(erl_trim(text.clone(), true), false);
+        assert_eq!(
+            trimmed,
+            "abcdefghijklmnopqrstuvwxyz,ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        );
+        assert_eq!(trimmed.as_ptr(), text.as_ptr().wrapping_add(2));
+        for (index, length) in [(0, 0), (text.len(), 1), (text.len() + 1, 3)] {
+            assert_eq!(
+                grapheme_slice(text.clone(), index.into(), length.into()),
+                Ok(StringValue::new())
+            );
+        }
+        let unicode = StringValue::from("\u{1f1e6}\u{1f1e7}\u{1f1e8}abcdefghijklmnopqrstuvwxyz");
+        assert_eq!(
+            grapheme_slice(unicode.slice(4..unicode.len()), 0.into(), 1.into()),
+            Ok("\u{1f1e7}\u{1f1e8}".into())
+        );
+    }
 
     #[test]
     fn slices_graphemes_with_checked_unbounded_lengths() {

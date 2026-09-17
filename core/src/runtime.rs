@@ -65,7 +65,7 @@ pub(crate) use value::{
 };
 pub use value::{
     BitArrayValue, BitArrayValueLengthError, CustomFieldValue, CustomValue, ExternalValue,
-    ExternalValueIdentity, FunctionValue, ListValue, ListValueItemTypeMismatch, Value,
+    ExternalValueIdentity, FunctionValue, ListValue, ListValueItemTypeMismatch, StringValue, Value,
     ValueInspection,
 };
 

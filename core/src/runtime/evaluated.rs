@@ -1,6 +1,6 @@
+use crate::StringValue;
 use bitvec::order::Msb0;
 use bitvec::vec::BitVec;
-use ecow::EcoString;
 use num_bigint::BigInt;
 
 mod capture;
@@ -106,7 +106,7 @@ impl EvaluatedCustomValue {
 pub(in crate::runtime) enum EvaluatedValue {
     Int(BigInt),
     Float(f64),
-    String(EcoString),
+    String(StringValue),
     BitArray(EvaluatedBitArray),
     UtfCodepoint(char),
     Custom(EvaluatedCustomValue),

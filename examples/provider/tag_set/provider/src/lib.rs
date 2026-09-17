@@ -1,4 +1,4 @@
-use geam::provider::{BigInt, EcoString};
+use geam::provider::{BigInt, StringValue};
 use std::collections::BTreeSet;
 
 #[geam::provider(
@@ -9,12 +9,12 @@ pub struct Component;
 
 #[geam::module(path = "example_tag_set")]
 mod tag_set {
-    use super::{BTreeSet, BigInt, EcoString};
+    use super::{BTreeSet, BigInt, StringValue};
 
     #[geam::external(name = "TagSet")]
     #[derive(Clone, Default, PartialEq, Eq, Hash)]
     struct TagSet {
-        tags: BTreeSet<EcoString>,
+        tags: BTreeSet<StringValue>,
     }
 
     #[geam::function]
@@ -23,14 +23,14 @@ mod tag_set {
     }
 
     #[geam::function]
-    fn insert(tags: &TagSet, tag: EcoString) -> TagSet {
+    fn insert(tags: &TagSet, tag: StringValue) -> TagSet {
         let mut updated = tags.clone();
         updated.tags.insert(tag);
         updated
     }
 
     #[geam::function]
-    fn contains(tags: &TagSet, tag: EcoString) -> bool {
+    fn contains(tags: &TagSet, tag: StringValue) -> bool {
         tags.tags.contains(&tag)
     }
 

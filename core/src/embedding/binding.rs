@@ -63,7 +63,7 @@ pub(super) struct BindingParts<Plan: BindingPlan> {
 /// A typed declaration for one Gleam function selected for Rust embedding.
 ///
 /// Arguments are represented by Rust tuples with arity `0..=7`. Supported
-/// values are [`super::BigInt`], `f64`, [`super::EcoString`],
+/// values are [`super::BigInt`], `f64`, [`super::StringValue`],
 /// [`super::BitArrayValue`], `char`, `bool`, `()`, Rust tuples with arity
 /// `1..=7`, `Result`, `Option`, and lists. Compound values may contain one
 /// another. [`super::List`] describes a source List in either composition;
@@ -437,13 +437,13 @@ impl LibraryEntryCounts {
 #[cfg(test)]
 mod tests {
     use super::{BindingError, FunctionDeclaration, ModuleBuilder};
+    use crate::StringValue;
     use crate::plan::{CustomType, CustomTypeName, StandardVariant};
     use crate::planner::UnsupportedFunctionReason;
     use crate::{
         FunctionType, ModuleSource, PackageSource, PlanError, ValueType, compile_typed_module,
         compile_typed_package_program, compile_typed_program,
     };
-    use ecow::EcoString;
     use num_bigint::BigInt;
 
     fn compile(source: &str) -> gleam_compiler_core::ast::TypedModule {
@@ -477,14 +477,14 @@ pub fn selected(value: String) { value <> support.support_only(":root") }
         .expect("program should compile");
         let builder = ModuleBuilder::from_program(program).expect("library program should plan");
         let (mut bindings, selected) = builder
-            .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+            .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
                 "selected",
             ))
             .expect("same-named root function should bind");
 
         assert_eq!(
             bindings
-                .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+                .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
                     "support_only",
                 ))
                 .err(),
@@ -506,7 +506,7 @@ pub fn selected(value: String) { value <> support.support_only(":root") }
 
         assert_eq!(
             builder
-                .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+                .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
                     "missing",
                 ))
                 .err(),
@@ -532,7 +532,7 @@ pub fn number(value: Int) { value }
 
         assert_eq!(
             bindings
-                .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+                .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
                     "missing",
                 ))
                 .err(),
@@ -542,7 +542,7 @@ pub fn number(value: Int) { value }
         );
         assert_eq!(
             bindings
-                .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+                .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
                     "private",
                 ))
                 .err(),
@@ -552,7 +552,7 @@ pub fn number(value: Int) { value }
         );
         assert_eq!(
             bindings
-                .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+                .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
                     "generic",
                 ))
                 .err(),
@@ -562,7 +562,7 @@ pub fn number(value: Int) { value }
         );
         assert_eq!(
             bindings
-                .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+                .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
                     "number",
                 ))
                 .err(),
@@ -594,7 +594,7 @@ pub fn text(value: String) { value }
 
         assert_eq!(
             bindings
-                .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+                .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
                     "other_number",
                 ))
                 .err(),
@@ -605,7 +605,9 @@ pub fn text(value: String) { value }
             }),
         );
         let text = bindings
-            .function(FunctionDeclaration::<(EcoString,), EcoString>::new("text"))
+            .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
+                "text",
+            ))
             .expect("a valid selection should follow the mismatch");
 
         let module = bindings.seal();
@@ -614,8 +616,8 @@ pub fn text(value: String) { value }
             Ok(BigInt::from(11)),
         );
         assert_eq!(
-            module.call(&text, (EcoString::from("kept"),), &mut Vec::new()),
-            Ok(EcoString::from("kept")),
+            module.call(&text, (StringValue::from("kept"),), &mut Vec::new()),
+            Ok(StringValue::from("kept")),
         );
     }
 
@@ -655,7 +657,9 @@ pub fn text(value: String) { value }
         );
 
         let text = bindings
-            .function(FunctionDeclaration::<(EcoString,), EcoString>::new("text"))
+            .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
+                "text",
+            ))
             .expect("a valid selection should follow the mismatch");
         let module = bindings.seal();
         assert_eq!(
@@ -676,7 +680,7 @@ pub fn text(value: String) { value }
             [
                 PackageSource::new(
                     "gleam_stdlib",
-                    Vec::<EcoString>::new(),
+                    Vec::<ecow::EcoString>::new(),
                     [ModuleSource::new(
                         "gleam/option",
                         "gleam_stdlib/src/gleam/option.gleam",

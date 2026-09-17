@@ -389,7 +389,7 @@ macro_rules! provider_list_scalar {
 
 provider_list_scalar!(num_bigint::BigInt, into_int);
 provider_list_scalar!(f64, into_float);
-provider_list_scalar!(ecow::EcoString, into_string);
+provider_list_scalar!(crate::StringValue, into_string);
 provider_list_scalar!(crate::BitArrayValue, into_bit_array);
 provider_list_scalar!(char, into_utf_codepoint);
 provider_list_scalar!(bool, into_bool);

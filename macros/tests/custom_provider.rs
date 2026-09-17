@@ -1,7 +1,7 @@
 #[path = "../../tests/support/execution_host.rs"]
 mod execution_fixture;
 
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::{
     HostComponentProfile, HostCustomConstructorSchema, HostCustomFieldSchema, HostCustomTypeSchema,
     HostModule, HostProfile, HostProviderComponent, HostProviderComponentRegistration,
@@ -19,24 +19,24 @@ pub struct Component;
 
 #[geam_macros::module(path = "customs", crate_path = geam_core)]
 mod customs {
-    use super::{BigInt, EcoString};
+    use super::{BigInt, StringValue};
 
     #[geam_macros::external(name = "Tag")]
     #[derive(Clone, PartialEq, Eq, Hash)]
-    struct Tag(EcoString);
+    struct Tag(StringValue);
 
     #[geam_macros::custom(input = StatusInput)]
     enum Status {
         Idle,
         Code(BigInt),
-        Detail { label: EcoString, enabled: bool },
+        Detail { label: StringValue, enabled: bool },
         Qualified(std::primitive::bool),
     }
 
     #[geam_macros::custom(input = EnvelopeInput)]
     enum Envelope {
         Wrapped(Status),
-        Labels(Vec<EcoString>),
+        Labels(Vec<StringValue>),
         Tagged(Tag),
         Paired((Status, Tag)),
         Batch(Vec<(Status, Tag)>),
@@ -58,7 +58,7 @@ mod customs {
     }
 
     #[geam_macros::function]
-    fn detail(label: EcoString, enabled: bool) -> Status {
+    fn detail(label: StringValue, enabled: bool) -> Status {
         Status::Detail { label, enabled }
     }
 
@@ -68,7 +68,7 @@ mod customs {
     }
 
     #[geam_macros::function]
-    fn status_text(value: StatusInput) -> EcoString {
+    fn status_text(value: StatusInput) -> StringValue {
         match value {
             StatusInput::Idle => "idle".into(),
             StatusInput::Code(value) => format!("code:{value}").into(),
@@ -83,7 +83,7 @@ mod customs {
     }
 
     #[geam_macros::function]
-    fn labels(values: geam_core::List<EcoString>) -> Envelope {
+    fn labels(values: geam_core::List<StringValue>) -> Envelope {
         Envelope::Labels(
             (0..values.len())
                 .map(|index| values.get(index).expect("index comes from the List length"))
@@ -92,17 +92,17 @@ mod customs {
     }
 
     #[geam_macros::function]
-    fn tag(value: EcoString) -> Envelope {
+    fn tag(value: StringValue) -> Envelope {
         Envelope::Tagged(Tag(value))
     }
 
     #[geam_macros::function]
-    fn batch(value: BigInt, tag: EcoString) -> Envelope {
+    fn batch(value: BigInt, tag: StringValue) -> Envelope {
         Envelope::Batch(vec![(Status::Code(value), Tag(tag))])
     }
 
     #[geam_macros::function]
-    fn pair(value: BigInt, tag: EcoString) -> Envelope {
+    fn pair(value: BigInt, tag: StringValue) -> Envelope {
         Envelope::Paired((Status::Code(value), Tag(tag)))
     }
 
@@ -112,7 +112,7 @@ mod customs {
     }
 
     #[geam_macros::function]
-    fn envelope_text(value: EnvelopeInput) -> EcoString {
+    fn envelope_text(value: EnvelopeInput) -> StringValue {
         match value {
             EnvelopeInput::Wrapped(StatusInput::Idle) => "wrapped:idle".into(),
             EnvelopeInput::Wrapped(StatusInput::Code(value)) => {
@@ -154,12 +154,12 @@ mod customs {
     }
 
     #[geam_macros::function]
-    fn first_status(values: geam_core::List<StatusInput>) -> EcoString {
+    fn first_status(values: geam_core::List<StatusInput>) -> StringValue {
         values.get(0).map_or_else(|| "missing".into(), status_text)
     }
 
     #[geam_macros::function]
-    fn first_envelope(values: geam_core::List<EnvelopeInput>) -> EcoString {
+    fn first_envelope(values: geam_core::List<EnvelopeInput>) -> StringValue {
         values
             .get(0)
             .map_or_else(|| "missing".into(), envelope_text)
@@ -171,7 +171,7 @@ mod customs {
     }
 
     #[geam_macros::function]
-    fn pair_text(left: StatusInput, right: StatusInput) -> EcoString {
+    fn pair_text(left: StatusInput, right: StatusInput) -> StringValue {
         format!("{}|{}", status_text(left), status_text(right)).into()
     }
 }
@@ -352,11 +352,11 @@ fn generated_custom_schema_preserves_constructor_field_and_function_order() {
     assert_eq!(status_schema.constructors()[3].name(), "Qualified");
     assert_eq!(
         status_schema.constructors()[2].fields()[0].label(),
-        Some(&EcoString::from("label")),
+        Some(&ecow::EcoString::from("label")),
     );
     assert_eq!(
         status_schema.constructors()[2].fields()[1].label(),
-        Some(&EcoString::from("enabled")),
+        Some(&ecow::EcoString::from("enabled")),
     );
     assert_eq!(
         functions[4].type_().argument_types(),
@@ -452,7 +452,10 @@ fn status_schema(code_type: HostSchemaType) -> HostCustomTypeSchema {
             HostCustomConstructorSchema::new("Idle", []),
             HostCustomConstructorSchema::new(
                 "Code",
-                [HostCustomFieldSchema::new(None::<EcoString>, code_type)],
+                [HostCustomFieldSchema::new(
+                    None::<ecow::EcoString>,
+                    code_type,
+                )],
             ),
             HostCustomConstructorSchema::new(
                 "Detail",
@@ -464,7 +467,7 @@ fn status_schema(code_type: HostSchemaType) -> HostCustomTypeSchema {
             HostCustomConstructorSchema::new(
                 "Qualified",
                 [HostCustomFieldSchema::new(
-                    None::<EcoString>,
+                    None::<ecow::EcoString>,
                     HostSchemaType::Bool,
                 )],
             ),

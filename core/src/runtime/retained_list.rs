@@ -5,7 +5,7 @@ use super::evaluated::{
 use super::state::list::{
     ListValueId, ParameterListValueId, RuntimeListStorage, StoredListValueId,
 };
-use ecow::EcoString;
+use crate::StringValue;
 use imbl::Vector;
 use num_bigint::BigInt;
 use std::sync::Arc;
@@ -84,7 +84,7 @@ enum ListRead {
     Nil(usize),
     ParameterList(ParameterListValueId, usize),
     Int(Arc<Vector<BigInt>>),
-    String(Arc<Vector<EcoString>>),
+    String(Arc<Vector<StringValue>>),
     BitArray(Arc<Vector<EvaluatedBitArray>>),
     UtfCodepoint(Arc<Vector<char>>),
     Custom(Arc<Vector<EvaluatedCustomValue>>),
@@ -101,7 +101,7 @@ enum ListReadIter<'a> {
     Nil(std::ops::Range<usize>),
     ParameterList(ParameterListValueId, std::ops::Range<usize>),
     Int(SequenceIter<'a, BigInt>),
-    String(SequenceIter<'a, EcoString>),
+    String(SequenceIter<'a, StringValue>),
     BitArray(SequenceIter<'a, EvaluatedBitArray>),
     UtfCodepoint(SequenceIter<'a, char>),
     Custom(SequenceIter<'a, EvaluatedCustomValue>),

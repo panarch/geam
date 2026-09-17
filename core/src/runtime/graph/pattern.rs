@@ -174,14 +174,17 @@ where
             let EvaluatedValue::String(value) = value else {
                 return Ok(false);
             };
-            let Some(suffix) = value.strip_prefix(prefix.as_str()) else {
+            if !value.starts_with(prefix.as_str()) {
                 return Ok(false);
-            };
+            }
             if let Some(binding) = left {
-                bindings.bind(binding, EvaluatedValue::String(prefix.materialize()));
+                bindings.bind(binding, EvaluatedValue::String(prefix.materialize().into()));
             }
             if let Some(binding) = right {
-                bindings.bind(binding, EvaluatedValue::String(suffix.into()));
+                bindings.bind(
+                    binding,
+                    EvaluatedValue::String(value.slice(prefix.len()..value.len())),
+                );
             }
             Ok(true)
         }

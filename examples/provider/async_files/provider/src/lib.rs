@@ -3,13 +3,13 @@ pub struct Component;
 
 #[geam::module(path = "example_async_files")]
 mod files {
-    use geam::provider::EcoString;
+    use geam::provider::StringValue;
 
     #[geam::function]
-    async fn read(path: EcoString) -> Result<EcoString, EcoString> {
+    async fn read(path: StringValue) -> Result<StringValue, StringValue> {
         async_fs::read_to_string(path.as_str())
             .await
-            .map(EcoString::from)
-            .map_err(|error| EcoString::from(error.to_string()))
+            .map(StringValue::from)
+            .map_err(|error| StringValue::from(error.to_string()))
     }
 }

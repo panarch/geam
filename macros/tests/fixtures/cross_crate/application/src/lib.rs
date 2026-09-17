@@ -267,8 +267,8 @@ pub fn program() -> HostedTypedProgram<Profile> {
 #[cfg(test)]
 mod tests {
     use super::program;
-    use ecow::EcoString;
     use geam_builtin::embedding::FutureType;
+    use geam_core::StringValue;
     use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder, List};
     use geam_core::{EchoOutput, EchoSink};
     use num_bigint::BigInt;
@@ -291,15 +291,15 @@ mod tests {
 
         let (mut bindings, direct) = HostedModuleBuilder::new(program())
             .expect("cross-crate provider plan")
-            .function(FunctionDeclaration::<(BigInt,), EcoString>::new("direct"))
+            .function(FunctionDeclaration::<(BigInt,), StringValue>::new("direct"))
             .expect("direct cross-crate binding");
         let run = bindings
             .function(FunctionDeclaration::<
                 (BigInt,),
                 FutureType<(
-                    EcoString,
-                    Result<BigInt, EcoString>,
-                    EcoString,
+                    StringValue,
+                    Result<BigInt, StringValue>,
+                    StringValue,
                     List<BigInt>,
                     BigInt,
                     BigInt,
@@ -321,7 +321,7 @@ mod tests {
                             .call(&direct, (BigInt::from(5),))
                             .await
                             .expect("direct entry"),
-                        EcoString::from("one:count:5")
+                        StringValue::from("one:count:5")
                     );
                     let work = scope
                         .call(&run, (BigInt::from(7),))
@@ -359,8 +359,8 @@ mod tests {
         let (bindings, saved) = HostedModuleBuilder::new(program())
             .expect("cross-crate provider plan")
             .function(FunctionDeclaration::<
-                (EcoString,),
-                FutureType<(EcoString, EcoString, EcoString)>,
+                (StringValue,),
+                FutureType<(StringValue, StringValue, StringValue)>,
             >::new("saved"))
             .expect("custom field binding");
         let mut module = bindings.seal().expect("custom field module");
@@ -373,7 +373,7 @@ mod tests {
                 &mut echo,
                 async |scope| {
                     let work = scope
-                        .call(&saved, (EcoString::from("shared"),))
+                        .call(&saved, (StringValue::from("shared"),))
                         .await
                         .expect("construct custom work");
                     scope.observe(&work).await

@@ -567,9 +567,9 @@ mod tests {
 
     fn key<'call>(
         mut call: Call<'call, GleamErlangProfile, Key>,
-        text: EcoString,
+        text: geam_core::StringValue,
     ) -> Result<HostCallCompletion<'call, Key>, HostCallError> {
-        let key = call.create_external(text);
+        let key = call.create_external(text.into_ecostring());
         Ok(call.return_value(key))
     }
 
@@ -785,7 +785,7 @@ mod tests {
             .unwrap()
             .with_external_type::<Component<GleamErlangProfile>, KeySchema>()
             .unwrap()
-            .with_scoped_function::<Component<GleamErlangProfile>, (EcoString,), Key, _>(
+            .with_scoped_function::<Component<GleamErlangProfile>, (geam_core::StringValue,), Key, _>(
                 "key", key,
             )
             .unwrap()
@@ -934,7 +934,7 @@ pub fn main() {
             .with_external_type::<Component<GleamErlangProfile>, NameSchema>().unwrap()
             .with_external_type::<Component<GleamErlangProfile>, MonitorSchema>().unwrap()
             .with_external_type::<Component<GleamErlangProfile>, SelectorSchema>().unwrap()
-            .with_scoped_function::<Component<GleamErlangProfile>, (EcoString,), Name<A>, _>(
+            .with_scoped_function::<Component<GleamErlangProfile>, (geam_core::StringValue,), Name<A>, _>(
                 "new_name", super::super::new_name,
             ).unwrap()
             .with_scoped_function::<Component<GleamErlangProfile>, (), Selector<A>, _>(

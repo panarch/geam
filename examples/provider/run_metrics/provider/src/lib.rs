@@ -1,4 +1,4 @@
-use geam::provider::{BigInt, EcoString, ExternalPayload};
+use geam::provider::{BigInt, ExternalPayload, StringValue};
 use std::collections::BTreeMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -11,12 +11,12 @@ pub struct Component;
 
 #[geam::module(path = "example_run_metrics")]
 mod metrics {
-    use super::{BTreeMap, BigInt, DefaultHasher, EcoString, ExternalPayload, Hash, Hasher};
+    use super::{BTreeMap, BigInt, DefaultHasher, ExternalPayload, Hash, Hasher, StringValue};
 
     #[geam::external(name = "Metrics", manual)]
     #[derive(Clone, Default, PartialEq)]
     struct Metrics {
-        entries: BTreeMap<EcoString, Metric>,
+        entries: BTreeMap<StringValue, Metric>,
     }
 
     #[derive(Clone, Default, PartialEq)]
@@ -40,7 +40,7 @@ mod metrics {
             hasher.finish()
         }
 
-        fn inspect(&self) -> EcoString {
+        fn inspect(&self) -> geam::provider::EcoString {
             let entries = self
                 .entries
                 .iter()
@@ -60,7 +60,7 @@ mod metrics {
     }
 
     #[geam::function]
-    fn record(metrics: &Metrics, name: EcoString, value: f64) -> Metrics {
+    fn record(metrics: &Metrics, name: StringValue, value: f64) -> Metrics {
         let mut updated = metrics.clone();
         let metric = updated.entries.entry(name).or_default();
         metric.count += 1u8;
@@ -69,7 +69,7 @@ mod metrics {
     }
 
     #[geam::function]
-    fn count(metrics: &Metrics, name: EcoString) -> BigInt {
+    fn count(metrics: &Metrics, name: StringValue) -> BigInt {
         metrics
             .entries
             .get(&name)
@@ -78,7 +78,7 @@ mod metrics {
     }
 
     #[geam::function]
-    fn total(metrics: &Metrics, name: EcoString) -> f64 {
+    fn total(metrics: &Metrics, name: StringValue) -> f64 {
         metrics
             .entries
             .get(&name)

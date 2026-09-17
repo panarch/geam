@@ -1,21 +1,21 @@
 use super::parse::{decimal, format_radix, radix};
 use crate::HostFailure;
-use ecow::EcoString;
+use geam_core::StringValue;
 use num_bigint::{BigInt, Sign};
 use num_traits::ToPrimitive;
-pub(super) fn parse(source: EcoString) -> Result<BigInt, ()> {
+pub(super) fn parse(source: StringValue) -> Result<BigInt, ()> {
     decimal(&source).ok_or(())
 }
 
-pub(super) fn do_base_parse(source: EcoString, base: BigInt) -> Result<BigInt, ()> {
+pub(super) fn do_base_parse(source: StringValue, base: BigInt) -> Result<BigInt, ()> {
     radix(&source, &base).ok_or(())
 }
 
-pub(super) fn to_string(value: BigInt) -> EcoString {
+pub(super) fn to_string(value: BigInt) -> StringValue {
     value.to_string().into()
 }
 
-pub(super) fn do_to_base_string(value: BigInt, base: BigInt) -> Result<EcoString, HostFailure> {
+pub(super) fn do_to_base_string(value: BigInt, base: BigInt) -> Result<StringValue, HostFailure> {
     format_radix(&value, &base)
         .ok_or_else(|| HostFailure::new("base must be an Int from 2 through 36"))
 }
@@ -148,7 +148,7 @@ pub fn bitwise_shift_right(value: Int, shift: Int) -> Int
     fn implements_integer_formatting_conversion_and_bitwise_operations() {
         let large = BigInt::from(10u8).pow(100);
 
-        assert_eq!(to_string(large.clone()), large.to_string());
+        assert_eq!(to_string(large.clone()).as_str(), large.to_string());
         assert_eq!(do_to_base_string(255.into(), 16.into()), Ok("FF".into()));
         assert_eq!(to_float(7.into()), Ok(7.0));
         assert_eq!(bitwise_and(5.into(), 3.into()), BigInt::from(1));

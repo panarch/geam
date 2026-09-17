@@ -642,9 +642,9 @@ mod native {
 #[cfg(feature = "changed")]
 #[geam::module(path = "example_native")]
 mod native {
-    use geam::provider::EcoString;
+    use geam::provider::StringValue;
     #[geam::function]
-    fn answer() -> EcoString { "changed".into() }
+    fn answer() -> StringValue { "changed".into() }
 }
 "#,
         )
@@ -1030,7 +1030,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .expect("exact plain bindings should pass checking from a nested directory");
         let generated_path = fixture.root.join("src/geam_bindings.rs");
         let generated = fs::read(&generated_path).expect("generated source should be readable");
-        assert!(String::from_utf8_lossy(&generated).contains("use runtime::embedding::EcoString;"));
+        assert!(
+            String::from_utf8_lossy(&generated).contains("use runtime::embedding::StringValue;")
+        );
         assert!(
             String::from_utf8_lossy(&generated)
                 .contains("pub double: Function<(BigInt,), BigInt, Function1Input>")
@@ -2493,7 +2495,7 @@ resolver = "3"
                 r#"mod geam_bindings;
 
 use std::error::Error;
-use runtime::embedding::{BigInt, EcoString};
+use runtime::embedding::{BigInt, StringValue};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let program = geam_bindings::project().compile()?;
@@ -2552,13 +2554,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     assert_eq!(nested_again.get(0).expect("retained nested row").get(0), Some("nested".into()));
     let optional = module.call(&functions.optional_rows, (Some(&rows),), &mut echo)?;
     assert_eq!(optional.expect("populated Option").to_vec(), rows.to_vec());
-    let absent: Option<Vec<(EcoString, BigInt)>> = None;
+    let absent: Option<Vec<(StringValue, BigInt)>> = None;
     assert!(module.call(&functions.optional_rows, (absent,), &mut echo)?.is_none());
     let accepted = module.call(
         &functions.result_rows, (Ok(vec![("accepted".into(), 5.into())]),), &mut echo,
     )?;
     assert_eq!(accepted.expect("Ok rows").get(0), Some(("accepted".into(), BigInt::from(5))));
-    let rejected: Result<Vec<(EcoString, BigInt)>, EcoString> = Err("rejected".into());
+    let rejected: Result<Vec<(StringValue, BigInt)>, StringValue> = Err("rejected".into());
     assert_eq!(module.call(&functions.result_rows, (rejected,), &mut echo)?.err(), Some("rejected".into()));
     let (numbers, labels, tag) = module.call(
         &functions.mixed_data, ((vec![8.into()], Some(vec!["label".into()]), "tag".into()),), &mut echo,

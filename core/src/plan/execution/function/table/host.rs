@@ -605,7 +605,7 @@ mod tests {
             .expect("host function should be valid")
             .with_function("float", || 2.5)
             .expect("host function should be valid")
-            .with_function("string", EcoString::default)
+            .with_function("string", crate::StringValue::default)
             .expect("host function should be valid")
             .with_function("bit_array", std::convert::identity::<BitArrayValue>)
             .expect("host function should be valid")

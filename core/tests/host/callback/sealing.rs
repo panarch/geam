@@ -1,4 +1,4 @@
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::{
     BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostCustom,
     HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
@@ -265,7 +265,7 @@ impl HostCustomField for FloatField {
 impl HostCustomField for StringField {
     const LABEL: Option<&'static str> = None;
 
-    type Type = EcoString;
+    type Type = StringValue;
 }
 
 impl HostCustomField for BitArrayField {

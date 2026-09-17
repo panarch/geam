@@ -825,7 +825,7 @@ impl DataType {
                 imports.insert("BigInt");
             }
             Self::String => {
-                imports.insert("EcoString");
+                imports.insert("StringValue");
             }
             Self::BitArray => {
                 imports.insert("BitArrayValue");
@@ -947,13 +947,13 @@ mod tests {
 use runtime::embedding::BigInt;
 use runtime::embedding::BindingError;
 use runtime::embedding::BitArrayValue;
-use runtime::embedding::EcoString;
 use runtime::embedding::Function;
 use runtime::embedding::FunctionDeclaration;
 use runtime::embedding::InputShape;
 use runtime::embedding::ModuleBindings;
 use runtime::embedding::ModuleBuilder;
 use runtime::embedding::Project;
+use runtime::embedding::StringValue;
 
 pub const ROOT_MODULE: &str = "inventory_rules";
 
@@ -965,8 +965,8 @@ pub fn project() -> Project {
 pub struct Functions {
     pub r#async: Function<(), (), Function0Input>,
     pub all_values: Function<
-        (BigInt, f64, EcoString, BitArrayValue, char, bool, ()),
-        EcoString,
+        (BigInt, f64, StringValue, BitArrayValue, char, bool, ()),
+        StringValue,
         Function1Input,
     >,
 }
@@ -977,7 +977,7 @@ impl InputShape<()> for Function0Input {}
 
 pub struct Function1Input;
 
-impl InputShape<(BigInt, f64, EcoString, BitArrayValue, char, bool, ())> for Function1Input {}
+impl InputShape<(BigInt, f64, StringValue, BitArrayValue, char, bool, ())> for Function1Input {}
 
 #[allow(dead_code)]
 pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), BindingError> {
@@ -1013,7 +1013,13 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         type_.collect_imports(&mut imports);
         assert_eq!(
             imports.into_iter().collect::<Vec<_>>(),
-            ["BigInt", "BitArrayValue", "EcoString", "FutureType", "List"]
+            [
+                "BigInt",
+                "BitArrayValue",
+                "FutureType",
+                "List",
+                "StringValue"
+            ]
         );
     }
 

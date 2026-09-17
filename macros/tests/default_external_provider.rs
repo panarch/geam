@@ -1,7 +1,7 @@
 #[path = "../../tests/support/execution_host.rs"]
 mod execution_fixture;
 
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::provider::{Configuration, ExternalPayload};
 use geam_core::{
     HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
@@ -20,19 +20,19 @@ pub struct Component;
 
 #[geam_macros::module(path = "tags", crate_path = geam_core)]
 mod tags {
-    use super::{Arc, EcoString};
+    use super::{Arc, StringValue};
 
     #[geam_macros::external(name = "Tag")]
     #[derive(Clone, PartialEq, Eq, Hash)]
-    pub(super) struct Tag(Arc<EcoString>);
+    pub(super) struct Tag(Arc<StringValue>);
 
     #[geam_macros::function]
-    pub(super) fn new(value: EcoString) -> Tag {
+    pub(super) fn new(value: StringValue) -> Tag {
         Tag(Arc::new(value))
     }
 
     #[geam_macros::function]
-    fn append(tag: &Tag, suffix: EcoString) -> Tag {
+    fn append(tag: &Tag, suffix: StringValue) -> Tag {
         Tag(Arc::new(format!("{}{suffix}", tag.0).into()))
     }
 }

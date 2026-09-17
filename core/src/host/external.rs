@@ -638,7 +638,7 @@ pub fn run() { read_later(make()) }
         }
         let provider = scalar!(provider, "int", BigInt);
         let provider = scalar!(provider, "float", f64);
-        let provider = scalar!(provider, "string", EcoString);
+        let provider = scalar!(provider, "string", crate::StringValue);
         let provider = scalar!(provider, "bits", crate::BitArrayValue);
         let provider = scalar!(provider, "codepoint", char);
         let provider = scalar!(provider, "bool", bool);
@@ -666,7 +666,15 @@ pub fn run(i: Int, f: Float, s: String, b: BitArray, c: UtfCodepoint, flag: Bool
   #(int(i), float(f), string(s), bits(b), codepoint(c), bool(flag), nil(n))
 }
 "#;
-        type Scalars = (BigInt, f64, EcoString, crate::BitArrayValue, char, bool, ());
+        type Scalars = (
+            BigInt,
+            f64,
+            crate::StringValue,
+            crate::BitArrayValue,
+            char,
+            bool,
+            (),
+        );
         let (bindings, run) = HostedModuleBuilder::new(program(source, provider))
             .expect("plan")
             .function(FunctionDeclaration::<Scalars, Scalars>::new("run"))

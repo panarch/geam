@@ -1,5 +1,5 @@
-use ecow::EcoString;
 use geam::compile_typed_project;
+use geam::embedding::StringValue;
 use geam::embedding::{FunctionDeclaration, ModuleBuilder};
 use num_bigint::BigInt;
 use std::error::Error;
@@ -11,8 +11,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     )?;
 
     let builder = ModuleBuilder::from_program(program)?;
-    let (mut bindings, label) =
-        builder.function(FunctionDeclaration::<(EcoString, EcoString), EcoString>::new("label"))?;
+    let (mut bindings, label) = builder
+        .function(FunctionDeclaration::<(StringValue, StringValue), StringValue>::new("label"))?;
     let double = bindings.function(FunctionDeclaration::<(BigInt,), BigInt>::new("double"))?;
     let choose = bindings.function(FunctionDeclaration::<(bool, f64, f64), f64>::new("choose"))?;
     let module = bindings.seal();

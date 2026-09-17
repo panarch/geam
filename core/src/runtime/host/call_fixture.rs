@@ -446,7 +446,7 @@ impl HostTokenRuntime for TestHostCallRuntime<'_> {
         0.0
     }
 
-    fn string(&self, _value: HostValueToken) -> ecow::EcoString {
+    fn string(&self, _value: HostValueToken) -> crate::StringValue {
         "".into()
     }
 

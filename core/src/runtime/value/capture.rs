@@ -1,4 +1,4 @@
-use ecow::EcoString;
+use crate::StringValue;
 use num_bigint::BigInt;
 
 use super::{
@@ -37,7 +37,7 @@ pub(crate) enum CaptureValueKind {
     },
     String {
         local: StringLocalId,
-        value: EcoString,
+        value: StringValue,
     },
     BitArray {
         local: BitArrayLocalId,
@@ -142,7 +142,7 @@ pub(crate) enum CaptureListValue {
     },
     String {
         local: StringListLocalId,
-        value: Vec<EcoString>,
+        value: Vec<StringValue>,
     },
     BitArray {
         local: BitArrayListLocalId,
@@ -204,7 +204,7 @@ impl CaptureValue {
         }
     }
 
-    pub(crate) fn string(local: StringLocalId, value: EcoString) -> Self {
+    pub(crate) fn string(local: StringLocalId, value: StringValue) -> Self {
         Self {
             kind: CaptureValueKind::String { local, value },
         }

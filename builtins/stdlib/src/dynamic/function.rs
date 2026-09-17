@@ -5,6 +5,7 @@ use crate::{
     HostTypeListEnd,
 };
 use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::provider::advanced::{
     Equality, Hashing, Inspection, NativeValue, RetainedExternalPayload,
 };
@@ -21,7 +22,8 @@ use num_bigint::BigInt;
 pub(super) mod provider {
     use super::{
         BigInt, Call, DynamicRepresentation, DynamicValue, EcoString, Equality,
-        GleamStdlibRunState, Hashing, Inspection, NativeValue, RetainedExternalPayload, Value,
+        GleamStdlibRunState, Hashing, Inspection, NativeValue, RetainedExternalPayload,
+        StringValue, Value,
     };
 
     #[geam_macros::external(name = "Dynamic", retained)]
@@ -75,7 +77,7 @@ pub(super) mod provider {
     }
 
     #[geam_macros::function]
-    fn classify(value: &DynamicPayload) -> EcoString {
+    fn classify(value: &DynamicPayload) -> StringValue {
         value.representation().name().into()
     }
 
@@ -90,7 +92,7 @@ pub(super) mod provider {
     #[geam_macros::function(profile = Profile)]
     fn string(
         #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
-        value: EcoString,
+        value: StringValue,
     ) -> DynamicPayload {
         DynamicPayload::stored(call.store_dynamic(value))
     }
@@ -286,19 +288,21 @@ mod tests {
 
         fn native<'call>(
             mut call: HostCall<'call, Profile, Snapshot, Dynamic>,
-            name: EcoString,
+            name: geam_core::StringValue,
         ) -> Result<HostCallCompletion<'call, Dynamic>, HostCallError> {
-            let value =
-                call.create_external(DynamicPayload::from_native(NativeValue::symbol(name)));
+            let value = call.create_external(DynamicPayload::from_native(NativeValue::symbol(
+                name.into_ecostring(),
+            )));
             Ok(call.return_value(value))
         }
 
         fn snapshot<'call>(
             mut call: HostCall<'call, Profile, Snapshot, SnapshotType>,
-            name: EcoString,
+            name: geam_core::StringValue,
         ) -> Result<HostCallCompletion<'call, SnapshotType>, HostCallError> {
-            let value =
-                call.create_external(DynamicPayload::from_native(NativeValue::symbol(name)));
+            let value = call.create_external(DynamicPayload::from_native(NativeValue::symbol(
+                name.into_ecostring(),
+            )));
             Ok(call.return_value(value))
         }
 
@@ -316,9 +320,11 @@ mod tests {
                 .unwrap()
                 .with_external_type::<Snapshot, Snapshot>()
                 .unwrap()
-                .with_scoped_function::<Snapshot, (EcoString,), Dynamic, _>("native", native)
+                .with_scoped_function::<Snapshot, (geam_core::StringValue,), Dynamic, _>(
+                    "native", native,
+                )
                 .unwrap()
-                .with_scoped_function::<Snapshot, (EcoString,), SnapshotType, _>(
+                .with_scoped_function::<Snapshot, (geam_core::StringValue,), SnapshotType, _>(
                     "snapshot", snapshot,
                 )
                 .unwrap()

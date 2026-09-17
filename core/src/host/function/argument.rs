@@ -7,12 +7,12 @@ mod string;
 mod utf_codepoint;
 
 use crate::BitArrayValue;
+use crate::StringValue;
 use crate::host::{
     HostAbiType, HostAbiTypeSequence, HostCall, HostCustomSchema, HostCustomType,
     HostExternalSchema, HostExternalType, HostFunctionType, HostListType, HostOpaqueFunctionType,
     HostProfile, HostProvider, HostTupleType, HostTypeParameter,
 };
-use ecow::EcoString;
 use num_bigint::BigInt;
 
 pub(crate) use bit_array::HostBitArrayArgumentSlot;
@@ -82,7 +82,7 @@ pub(crate) struct HostParameterLayout {
 pub(crate) trait HostCallArguments {
     fn int(&self, slot: HostIntArgumentSlot) -> BigInt;
     fn float(&self, slot: HostFloatArgumentSlot) -> f64;
-    fn string(&self, slot: HostStringArgumentSlot) -> EcoString;
+    fn string(&self, slot: HostStringArgumentSlot) -> StringValue;
     fn bit_array(&self, slot: HostBitArrayArgumentSlot) -> BitArrayValue;
     fn utf_codepoint(&self, slot: HostUtfCodepointArgumentSlot) -> char;
     fn bool(&self, slot: HostBoolArgumentSlot) -> bool;
@@ -389,7 +389,7 @@ where
 pub(crate) struct CallArguments {
     ints: Vec<BigInt>,
     floats: Vec<f64>,
-    strings: Vec<EcoString>,
+    strings: Vec<StringValue>,
     bit_arrays: Vec<BitArrayValue>,
     utf_codepoints: Vec<char>,
     bools: Vec<bool>,
@@ -413,7 +413,7 @@ impl CallArguments {
     pub(crate) fn with_scalar_values(
         mut self,
         floats: Vec<f64>,
-        strings: Vec<EcoString>,
+        strings: Vec<StringValue>,
         bit_arrays: Vec<BitArrayValue>,
         utf_codepoints: Vec<char>,
         nils: usize,
@@ -437,7 +437,7 @@ impl HostCallArguments for CallArguments {
         self.floats[slot.index()]
     }
 
-    fn string(&self, slot: HostStringArgumentSlot) -> EcoString {
+    fn string(&self, slot: HostStringArgumentSlot) -> StringValue {
         self.strings[slot.index()].clone()
     }
 
@@ -462,6 +462,7 @@ impl HostCallArguments for CallArguments {
 mod tests {
     use super::{HostParameter, HostParameterLayout, HostScopedArgument};
     use crate::BitArrayValue;
+    use crate::StringValue;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
         HostCall, HostCustomConstructorDefinition, HostCustomConstructorList,
@@ -471,7 +472,6 @@ mod tests {
         HostTupleToken, HostTupleType, HostTypeList, HostTypeListEnd, HostTypeParameter,
         HostValueFamily, HostValueToken,
     };
-    use ecow::EcoString;
     use num_bigint::BigInt;
 
     struct Provider;
@@ -519,14 +519,14 @@ mod tests {
         let first_int = layout.register::<BigInt>();
         let first_bool = layout.register::<bool>();
         let first_float = layout.register::<f64>();
-        let first_string = layout.register::<EcoString>();
+        let first_string = layout.register::<StringValue>();
         let first_bit_array = layout.register::<BitArrayValue>();
         let first_utf_codepoint = layout.register::<char>();
         let first_nil = layout.register::<()>();
         let second_int = layout.register::<BigInt>();
         let second_bool = layout.register::<bool>();
         let second_float = layout.register::<f64>();
-        let second_string = layout.register::<EcoString>();
+        let second_string = layout.register::<StringValue>();
         let second_bit_array = layout.register::<BitArrayValue>();
         let second_utf_codepoint = layout.register::<char>();
         let second_nil = layout.register::<()>();
@@ -578,7 +578,7 @@ mod tests {
         let mut layout = HostParameterLayout::default();
         let int_slot = <BigInt as HostScopedArgument>::register(&mut layout);
         let float_slot = <f64 as HostScopedArgument>::register(&mut layout);
-        let string_slot = <EcoString as HostScopedArgument>::register(&mut layout);
+        let string_slot = <StringValue as HostScopedArgument>::register(&mut layout);
         let bit_array_slot = <BitArrayValue as HostScopedArgument>::register(&mut layout);
         let utf_codepoint_slot = <char as HostScopedArgument>::register(&mut layout);
         let bool_slot = <bool as HostScopedArgument>::register(&mut layout);
@@ -628,7 +628,7 @@ mod tests {
             *call.state() += 1;
             let int = <BigInt as HostScopedArgument>::read(&call, int_slot);
             let float = <f64 as HostScopedArgument>::read(&call, float_slot);
-            let string = <EcoString as HostScopedArgument>::read(&call, string_slot);
+            let string = <StringValue as HostScopedArgument>::read(&call, string_slot);
             let bit_array = <BitArrayValue as HostScopedArgument>::read(&call, bit_array_slot);
             let utf_codepoint = <char as HostScopedArgument>::read(&call, utf_codepoint_slot);
             let bool_ = <bool as HostScopedArgument>::read(&call, bool_slot);

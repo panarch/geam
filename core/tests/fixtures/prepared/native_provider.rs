@@ -1,4 +1,4 @@
-use geam_core::embedding::{BigInt, EcoString};
+use geam_core::embedding::{BigInt, StringValue};
 use geam_core::host::native::{NativeCall, NativeRules};
 use geam_core::{
     HostCall, HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
@@ -61,7 +61,7 @@ impl HostCustomField for Children {
 
 type Source = HostTypeParameter<0>;
 type Target = HostTypeParameter<1>;
-type TextTree = HostCustomType<TreeSchema, HostTypeList<EcoString, HostTypeListEnd>>;
+type TextTree = HostCustomType<TreeSchema, HostTypeList<StringValue, HostTypeListEnd>>;
 type Targets = HostTypeList<Target, HostTypeList<TextTree, HostTypeListEnd>>;
 type IntArgs = HostTypeList<BigInt, HostTypeListEnd>;
 type Callback = HostFunctionType<IntArgs, BigInt>;

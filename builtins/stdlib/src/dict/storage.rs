@@ -262,12 +262,12 @@ mod tests {
 
     fn snapshot<'call>(
         mut call: HostCall<'call, Profile, Snapshot, SnapshotType>,
-        dict: HostExternal<'call, DictOf<BigInt, EcoString>>,
+        dict: HostExternal<'call, DictOf<BigInt, geam_core::StringValue>>,
     ) -> Result<HostCallCompletion<'call, SnapshotType>, HostCallError> {
         let view = call.provider_external_view_with::<
             Snapshot,
             DictSchema,
-            HostTypeList<BigInt, HostTypeList<EcoString, HostTypeListEnd>>,
+            HostTypeList<BigInt, HostTypeList<geam_core::StringValue, HostTypeListEnd>>,
         >(dict);
         let storage: DictStorage = view.storage.clone();
         drop(view);
@@ -289,7 +289,7 @@ mod tests {
             .unwrap()
             .with_external_type::<Snapshot, Snapshot>()
             .unwrap()
-            .with_scoped_function::<Snapshot, (DictOf<BigInt, EcoString>,), SnapshotType, _>(
+            .with_scoped_function::<Snapshot, (DictOf<BigInt, geam_core::StringValue>,), SnapshotType, _>(
                 "snapshot", snapshot,
             )
             .unwrap()

@@ -1,4 +1,4 @@
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::provider::Stored;
 
 #[geam_macros::provider(
@@ -13,7 +13,7 @@ pub struct Component;
     crate_path = geam_core,
 )]
 mod generic_external_input_guard_escape {
-    use super::{EcoString, Stored};
+    use super::{StringValue, Stored};
 
     #[geam_macros::external(
         name = "Box",
@@ -28,7 +28,7 @@ mod generic_external_input_guard_escape {
     fn retain<Input: 'static>(_: Input) {}
 
     #[geam_macros::function]
-    fn own_input(boxed: BoxInput<EcoString>) -> bool {
+    fn own_input(boxed: BoxInput<StringValue>) -> bool {
         retain(boxed);
         true
     }

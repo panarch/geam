@@ -28,7 +28,7 @@ pub(crate) use return_::{
 /// A Rust function that can be registered as a Geam host function.
 ///
 /// Owned host functions accept zero through seven scalar arguments. Supported
-/// Rust values are `BigInt`, `f64`, `EcoString`, `BitArrayValue`, `char`,
+/// Rust values are `BigInt`, `f64`, `StringValue`, `BitArrayValue`, `char`,
 /// `bool`, and `()`. A host function returns one value from the same set, or
 /// `Infallible` when it cannot return successfully.
 ///
@@ -581,6 +581,7 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
 mod tests {
     use super::{HostFunctionDefinition, HostFunctionSchema, RegisteredHostConstructions};
     use crate::BitArrayValue;
+    use crate::StringValue;
     use crate::host::function::argument::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
@@ -591,7 +592,6 @@ mod tests {
         HostTypeListEnd, HostTypeParameter, HostValueFamily, expect_value_implementation,
     };
     use crate::plan::ValueType;
-    use ecow::EcoString;
     use num_bigint::BigInt;
 
     struct ConstructionProvider;
@@ -696,7 +696,7 @@ mod tests {
     fn definition_assembles_every_scalar_parameter_from_one_layout() {
         let definition: HostFunctionDefinition<TestHostProfile> = HostFunctionDefinition::new(
             "consume".into(),
-            |_: BigInt, _: f64, _: EcoString, _: BitArrayValue, _: char, _: bool, (): ()| (),
+            |_: BigInt, _: f64, _: StringValue, _: BitArrayValue, _: char, _: bool, (): ()| (),
         )
         .expect("monomorphic scalar function should register");
 

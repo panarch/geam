@@ -2011,7 +2011,7 @@ mod tests {
             quote!(
                 mod values {
                     #[geam::external(name = "Text", manual)]
-                    struct Text(EcoString);
+                    struct Text(StringValue);
 
                     #[geam::custom(input = TextsInput)]
                     enum Texts {
@@ -2155,7 +2155,7 @@ mod tests {
                         struct BoxValue<Item>;
 
                         #[geam::custom(input = PacketInput)]
-                        enum Packet { Values(Vec<BigInt>), Text(EcoString) }
+                        enum Packet { Values(Vec<BigInt>), Text(StringValue) }
                         #[geam::function]
                         fn is_text(value: PacketInput) -> bool {
                             matches!(value, PacketInput::Text(_))
@@ -2170,7 +2170,7 @@ mod tests {
                 expansion
                     .contains("enum PacketInput < __GeamContext : __GeamPacketInputShape = __GeamImmediatePacketInputShape >")
             );
-            assert!(expansion.contains("Text (EcoString)"));
+            assert!(expansion.contains("Text (StringValue)"));
             assert!(!expansion.contains("__GeamOwnedHostProfile"));
         }
     }
@@ -2276,7 +2276,7 @@ mod tests {
             expansion_error(quote! {
                 mod native {
                     #[geam::function]
-                    async fn receive(work: Future<BigInt, EcoString>) -> BigInt { todo!() }
+                    async fn receive(work: Future<BigInt, StringValue>) -> BigInt { todo!() }
                 }
             }),
             "Future requires exactly one type argument"
@@ -2377,7 +2377,7 @@ mod tests {
             quote!(path = "native", crate_path = geam_core),
             quote! {
                 mod native {
-                    use ecow::EcoString;
+                    use geam_core::StringValue;
                     use geam_core::provider::{BigInt, Call, Callback, HostResult, Stored, Value};
                     use geam_core::provider::advanced::External;
 
@@ -2498,13 +2498,13 @@ mod tests {
                         #[geam::call] call: &mut Call<BigInt>,
                         callback: Callback<
                             fn(
-                                (BigInt, EcoString),
-                                Result<BigInt, EcoString>,
+                                (BigInt, StringValue),
+                                Result<BigInt, StringValue>,
                                 Option<BigInt>,
                                 Vec<BigInt>,
                             ) -> (
-                                (BigInt, EcoString),
-                                Result<BigInt, EcoString>,
+                                (BigInt, StringValue),
+                                Result<BigInt, StringValue>,
                                 Option<BigInt>,
                                 geam_core::List<BigInt>,
                             ),
@@ -3520,7 +3520,7 @@ mod tests {
                     }
 
                     #[geam::function]
-                    fn concrete<Item>(value: Value<(Item, EcoString)>) -> Value<(Item, EcoString)> {
+                    fn concrete<Item>(value: Value<(Item, StringValue)>) -> Value<(Item, StringValue)> {
                         value
                     }
 
@@ -3579,8 +3579,8 @@ mod tests {
 
                     #[geam::function]
                     fn failure_value<Item>(
-                        value: Value<Result<EcoString, Item>>,
-                    ) -> Value<Result<EcoString, Item>> {
+                        value: Value<Result<StringValue, Item>>,
+                    ) -> Value<Result<StringValue, Item>> {
                         value
                     }
 
@@ -3819,7 +3819,7 @@ mod tests {
                 quote! {
                     mod counter {
                         #[geam::function]
-                        fn identity(value: Value<(EcoString, bool)>) -> bool { true }
+                        fn identity(value: Value<(StringValue, bool)>) -> bool { true }
                     }
                 },
                 "Value<T> is reserved for generic source shapes and opaque function values; use the concrete provider type directly",
@@ -4021,7 +4021,7 @@ mod tests {
                 quote! {
                     mod counter {
                         #[geam::function]
-                        fn identity<Item>(value: Value<List<EcoString>>) -> Value<Item> { todo!() }
+                        fn identity<Item>(value: Value<List<StringValue>>) -> Value<Item> { todo!() }
                     }
                 },
                 "Value<T> is reserved for generic source shapes and opaque function values; use the concrete provider type directly",
@@ -4030,7 +4030,7 @@ mod tests {
                 quote! {
                     mod counter {
                         #[geam::function]
-                        fn identity<Item>(value: Value<Option<EcoString>>) -> Value<Item> { todo!() }
+                        fn identity<Item>(value: Value<Option<StringValue>>) -> Value<Item> { todo!() }
                     }
                 },
                 "Value<T> is reserved for generic source shapes and opaque function values; use the concrete provider type directly",
@@ -4039,7 +4039,7 @@ mod tests {
                 quote! {
                     mod counter {
                         #[geam::function]
-                        fn identity<Item>(value: Value<Result<EcoString, bool>>) -> Value<Item> { todo!() }
+                        fn identity<Item>(value: Value<Result<StringValue, bool>>) -> Value<Item> { todo!() }
                     }
                 },
                 "Value<T> is reserved for generic source shapes and opaque function values; use the concrete provider type directly",
@@ -5116,7 +5116,7 @@ mod tests {
                         Code(BigInt),
                         Pair((BigInt, bool)),
                         Detail {
-                            label: EcoString,
+                            label: StringValue,
                             tag: Tag,
                             sibling: sibling::Value,
                         },
@@ -5138,7 +5138,7 @@ mod tests {
                         value: EnvelopeInput,
                         values: geam::List<StatusInput>,
                         sibling: &sibling::External,
-                    ) -> EcoString {
+                    ) -> StringValue {
                         todo!()
                     }
 
@@ -5160,7 +5160,7 @@ mod tests {
                     }
 
                     #[geam::function]
-                    fn flags(values: geam::List<FlagInput>) -> EcoString {
+                    fn flags(values: geam::List<FlagInput>) -> StringValue {
                         todo!()
                     }
 
@@ -5640,7 +5640,7 @@ mod tests {
                 quote! {
                     mod tuples {
                         #[geam::function]
-                        fn borrowed(value: &(EcoString, bool)) -> bool { true }
+                        fn borrowed(value: &(StringValue, bool)) -> bool { true }
                     }
                 },
                 "tuple arguments must be passed by value",
@@ -5649,7 +5649,7 @@ mod tests {
                 quote! {
                     mod tuples {
                         #[geam::function]
-                        fn borrowed(value: &mut (EcoString, bool)) -> bool { true }
+                        fn borrowed(value: &mut (StringValue, bool)) -> bool { true }
                     }
                 },
                 "tuple arguments must be passed by value",
@@ -5658,7 +5658,7 @@ mod tests {
                 quote! {
                     mod tuples {
                         #[geam::function]
-                        fn borrowed(value: EcoString) -> &(EcoString, bool) { todo!() }
+                        fn borrowed(value: StringValue) -> &(StringValue, bool) { todo!() }
                     }
                 },
                 "tuple returns must be owned",
@@ -5667,7 +5667,7 @@ mod tests {
                 quote! {
                     mod tuples {
                         #[geam::function]
-                        fn borrowed(value: (EcoString, &EcoString)) -> bool { true }
+                        fn borrowed(value: (StringValue, &StringValue)) -> bool { true }
                     }
                 },
                 "provider source arguments may borrow only declared external payloads",
@@ -5676,7 +5676,7 @@ mod tests {
                 quote! {
                     mod tuples {
                         #[geam::function]
-                        fn borrowed(value: EcoString) -> (EcoString, &EcoString) { todo!() }
+                        fn borrowed(value: StringValue) -> (StringValue, &StringValue) { todo!() }
                     }
                 },
                 "provider source returns must be owned values",
@@ -5698,7 +5698,7 @@ mod tests {
                         struct Token;
 
                         #[geam::function]
-                        fn consume(value: (Token, EcoString)) -> bool { true }
+                        fn consume(value: (Token, StringValue)) -> bool { true }
                     }
                 },
                 "external payload `Token` arguments must be immutable references",
@@ -5710,7 +5710,7 @@ mod tests {
                         struct Token;
 
                         #[geam::function]
-                        fn consume(value: (&mut Token, EcoString)) -> bool { true }
+                        fn consume(value: (&mut Token, StringValue)) -> bool { true }
                     }
                 },
                 "external payload `Token` arguments must be immutable references",
@@ -5722,7 +5722,7 @@ mod tests {
                         struct Token;
 
                         #[geam::function]
-                        fn create() -> (&Token, EcoString) { todo!() }
+                        fn create() -> (&Token, StringValue) { todo!() }
                     }
                 },
                 "external payload `Token` returns must be owned",
@@ -5947,7 +5947,7 @@ mod tests {
                         struct Token;
 
                         #[geam::function]
-                        fn output() -> Vec<(EcoString, &Token)> { Vec::new() }
+                        fn output() -> Vec<(StringValue, &Token)> { Vec::new() }
                     }
                 },
                 "external payload `Token` returns must be owned",
@@ -6162,15 +6162,15 @@ mod tests {
                 mod lists {
                     #[geam::external(name = "Token")]
                     #[derive(PartialEq, Eq, Hash)]
-                    struct Token(EcoString);
+                    struct Token(StringValue);
 
                     #[geam::function]
-                    fn labels(values: geam::List<(EcoString, Token, Token)>) -> Vec<EcoString> {
+                    fn labels(values: geam::List<(StringValue, Token, Token)>) -> Vec<StringValue> {
                         Vec::new()
                     }
 
                     #[geam::function]
-                    fn created() -> Vec<(EcoString, Token)> {
+                    fn created() -> Vec<(StringValue, Token)> {
                         Vec::new()
                     }
                 }
@@ -6199,7 +6199,7 @@ mod tests {
             quote! {
                 mod tuples {
                     #[geam::function]
-                    fn swap(value: (EcoString, BigInt)) -> (BigInt, EcoString) {
+                    fn swap(value: (StringValue, BigInt)) -> (BigInt, StringValue) {
                         let (label, count) = value;
                         (count, label)
                     }
@@ -6223,20 +6223,20 @@ mod tests {
                 mod tuples {
                     #[geam::external(name = "Token")]
                     #[derive(Clone, PartialEq, Eq, Hash)]
-                    struct Token(EcoString);
+                    struct Token(StringValue);
 
                     #[geam::function]
-                    fn consume(value: (&Token, (EcoString,))) -> EcoString { value.1.0 }
+                    fn consume(value: (&Token, (StringValue,))) -> StringValue { value.1.0 }
 
                     #[geam::function]
-                    fn create(value: EcoString) -> (Token, (EcoString,)) {
+                    fn create(value: StringValue) -> (Token, (StringValue,)) {
                         (Token(value.clone()), (value,))
                     }
 
                     #[geam::function]
                     fn reassociate(
-                        value: (EcoString, (BigInt, bool)),
-                    ) -> ((EcoString, BigInt), bool) {
+                        value: (StringValue, (BigInt, bool)),
+                    ) -> ((StringValue, BigInt), bool) {
                         let (label, (count, enabled)) = value;
                         ((label, count), enabled)
                     }
@@ -6296,7 +6296,7 @@ mod tests {
                     fn copy(
                         #[geam::call] call: &Call<RunState>,
                         value: &Metrics,
-                        label: EcoString,
+                        label: StringValue,
                     ) -> Metrics { value.clone() }
 
                     #[geam::external(name = "Metrics")]
@@ -6472,14 +6472,14 @@ mod tests {
             quote! {
                 mod consumer {
                     #[geam::function]
-                    fn token_text(value: &declarations::Token) -> EcoString {
+                    fn token_text(value: &declarations::Token) -> StringValue {
                         value.0.clone()
                     }
 
                     #[geam::function]
                     fn tuple_token_text(
                         value: (&declarations::Token, bool),
-                    ) -> EcoString {
+                    ) -> StringValue {
                         value.0.0.clone()
                     }
 
@@ -6655,7 +6655,7 @@ mod tests {
                     mod values {
                         #[geam::function]
                         fn inspect(
-                            value: (Result<Vec<EcoString>, BigInt>, bool),
+                            value: (Result<Vec<StringValue>, BigInt>, bool),
                         ) -> bool { true }
                     }
                 },
@@ -6666,7 +6666,7 @@ mod tests {
                     mod values {
                         #[geam::function]
                         fn inspect(
-                            value: (Result<BigInt, Vec<EcoString>>, bool),
+                            value: (Result<BigInt, Vec<StringValue>>, bool),
                         ) -> bool { true }
                     }
                 },
@@ -6697,7 +6697,7 @@ mod tests {
                     mod values {
                         #[geam::function]
                         fn inspect(
-                            value: Result<Vec<EcoString>, BigInt>,
+                            value: Result<Vec<StringValue>, BigInt>,
                         ) -> bool { true }
                     }
                 },
@@ -6708,7 +6708,7 @@ mod tests {
                     mod values {
                         #[geam::function]
                         fn inspect(
-                            value: Result<BigInt, Vec<EcoString>>,
+                            value: Result<BigInt, Vec<StringValue>>,
                         ) -> bool { true }
                     }
                 },
@@ -6737,7 +6737,7 @@ mod tests {
                 mod values {
                     #[geam::function]
                     fn inspect(
-                        value: Result<geam_core::List<BigInt>, EcoString>,
+                        value: Result<geam_core::List<BigInt>, StringValue>,
                     ) -> bool { true }
                 }
             },
@@ -6746,7 +6746,7 @@ mod tests {
         .to_string();
 
         assert!(expansion.contains(
-            "ProviderResult < geam_core :: __macro_support :: HostListType < BigInt > , EcoString >"
+            "ProviderResult < geam_core :: __macro_support :: HostListType < BigInt > , StringValue >"
         ));
 
         let return_cases = [
@@ -6754,7 +6754,7 @@ mod tests {
                 quote! {
                     mod values {
                         #[geam::function]
-                        fn inspect() -> Result<geam_core::List<BigInt>, EcoString> {
+                        fn inspect() -> Result<geam_core::List<BigInt>, StringValue> {
                             unreachable!()
                         }
                     }
@@ -6785,7 +6785,7 @@ mod tests {
                 quote! {
                     mod values {
                         #[geam::function]
-                        fn inspect() -> Option<BigInt, EcoString> { unreachable!() }
+                        fn inspect() -> Option<BigInt, StringValue> { unreachable!() }
                     }
                 },
                 "Option requires exactly 1 type argument",
@@ -6812,7 +6812,7 @@ mod tests {
                 quote! {
                     mod values {
                         #[geam::function]
-                        fn inspect() -> Result<Vec<BigInt, EcoString>, ()> {
+                        fn inspect() -> Result<Vec<BigInt, StringValue>, ()> {
                             unreachable!()
                         }
                     }
@@ -6875,7 +6875,7 @@ mod tests {
                 mod values {
                     #[geam::function]
                     fn inspect(
-                        values: geam_core::List<Result<geam_core::List<BigInt>, EcoString>>,
+                        values: geam_core::List<Result<geam_core::List<BigInt>, StringValue>>,
                     ) -> bool { true }
                 }
             },
@@ -6883,7 +6883,7 @@ mod tests {
                 mod values {
                     #[geam::function]
                     fn inspect(
-                        values: geam_core::List<Result<BigInt, Vec<EcoString>>>,
+                        values: geam_core::List<Result<BigInt, Vec<StringValue>>>,
                     ) -> bool { true }
                 }
             },
@@ -6898,7 +6898,7 @@ mod tests {
             quote! {
                 mod values {
                     #[geam::function]
-                    fn inspect() -> Vec<Result<geam_core::List<BigInt>, EcoString>> {
+                    fn inspect() -> Vec<Result<geam_core::List<BigInt>, StringValue>> {
                         Vec::new()
                     }
                 }
@@ -6929,7 +6929,7 @@ mod tests {
             quote! {
                 mod values {
                     #[geam::function]
-                    fn parse_query() -> Result<Vec<(EcoString, EcoString)>, ()> {
+                    fn parse_query() -> Result<Vec<(StringValue, StringValue)>, ()> {
                         Ok(Vec::new())
                     }
                 }
@@ -6955,7 +6955,7 @@ mod tests {
                 mod values {
                     #[geam::function]
                     fn inspect(
-                        values: geam_core::List<Option<BigInt, EcoString>>,
+                        values: geam_core::List<Option<BigInt, StringValue>>,
                     ) -> bool { true }
                 }
             },
@@ -6968,7 +6968,7 @@ mod tests {
             quote! {
                 mod values {
                     #[geam::function]
-                    fn inspect() -> Vec<Option<BigInt, EcoString>> { Vec::new() }
+                    fn inspect() -> Vec<Option<BigInt, StringValue>> { Vec::new() }
                 }
             },
         ];
@@ -6988,7 +6988,7 @@ mod tests {
                 mod values {
                     #[geam::custom(input = EnvelopeInput)]
                     enum Envelope {
-                        Invalid(Result<Vec<BigInt>, EcoString>),
+                        Invalid(Result<Vec<BigInt>, StringValue>),
                     }
                 }
             },
@@ -6996,7 +6996,7 @@ mod tests {
                 mod values {
                     #[geam::custom(input = EnvelopeInput)]
                     enum Envelope {
-                        Invalid(Result<BigInt, Vec<EcoString>>),
+                        Invalid(Result<BigInt, Vec<StringValue>>),
                     }
                 }
             },
@@ -7034,7 +7034,7 @@ mod tests {
                     mod values {
                         #[geam::custom(input = EnvelopeInput)]
                         enum Envelope {
-                            Invalid(Option<BigInt, EcoString>),
+                            Invalid(Option<BigInt, StringValue>),
                         }
                     }
                 },

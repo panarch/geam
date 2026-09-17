@@ -75,6 +75,9 @@ pub fn float_identity(value: Float) -> Float
 @external(erlang, "native", "string_identity")
 pub fn string_identity(value: String) -> String
 
+@external(erlang, "native", "string_callback")
+pub fn string_callback(callback: fn() -> String) -> String
+
 @external(erlang, "native", "bit_array_identity")
 pub fn bit_array_identity(value: BitArray) -> BitArray
 

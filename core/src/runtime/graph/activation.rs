@@ -1,5 +1,6 @@
 use super::RuntimeGraphState;
 use super::{BlockEnvironment, CompletedGraph, GraphPosition, RetainedValues};
+use crate::StringValue;
 use crate::plan::execution::constant::{ConstantId, ConstantValue};
 use crate::plan::execution::function::{
     ExecutionFunctionEntry, ExecutionFunctionRef, FunctionBodyOwner, FunctionExit,
@@ -17,7 +18,6 @@ use crate::runtime::state::list::{
     ParameterListValueId, StringListValueId, TupleListValueId, UtfCodepointListValueId,
 };
 use crate::runtime::{ExecutableRuntimePlan, RuntimeGraph};
-use ecow::EcoString;
 use num_bigint::BigInt;
 use std::marker::PhantomData;
 
@@ -369,7 +369,7 @@ macro_rules! return_value {
 
 return_value!(BigInt, ints, push_int);
 return_value!(f64, floats, push_float);
-return_value!(EcoString, strings, push_string);
+return_value!(StringValue, strings, push_string);
 return_value!(EvaluatedBitArray, bit_arrays, push_bit_array);
 return_value!(char, utf_codepoints, push_utf_codepoint);
 return_value!(EvaluatedCustomValue, customs, push_custom);

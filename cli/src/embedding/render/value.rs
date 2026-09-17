@@ -92,7 +92,7 @@ impl DataType {
         match self {
             Self::Int => TypeExpression::Name("BigInt".to_owned()),
             Self::Float => TypeExpression::Name("f64".to_owned()),
-            Self::String => TypeExpression::Name("EcoString".to_owned()),
+            Self::String => TypeExpression::Name("StringValue".to_owned()),
             Self::BitArray => TypeExpression::Name("BitArrayValue".to_owned()),
             Self::UtfCodepoint => TypeExpression::Name("char".to_owned()),
             Self::Bool => TypeExpression::Name("bool".to_owned()),
@@ -236,18 +236,18 @@ mod tests {
         ]);
         assert_eq!(
             data.rust_type().inline(),
-            "(Result<List<List<BigInt>>, EcoString>, Option<List<bool>>, (BitArrayValue,))"
+            "(Result<List<List<BigInt>>, StringValue>, Option<List<bool>>, (BitArrayValue,))"
         );
         assert_eq!(
             DataType::Future(Box::new(data.clone()))
                 .rust_type()
                 .inline(),
-            "FutureType<(Result<List<List<BigInt>>, EcoString>, Option<List<bool>>, (BitArrayValue,))>"
+            "FutureType<(Result<List<List<BigInt>>, StringValue>, Option<List<bool>>, (BitArrayValue,))>"
         );
         let mut parameters = Vec::new();
         assert_eq!(
             data.input_type(&mut parameters).inline(),
-            "(Result<Input0, EcoString>, Option<Input1>, (BitArrayValue,))"
+            "(Result<Input0, StringValue>, Option<Input1>, (BitArrayValue,))"
         );
         assert_eq!(parameters, ["Input0", "Input1"]);
         assert_eq!(TypeExpression::Tuple(Vec::new()).inline(), "()");
@@ -272,7 +272,7 @@ mod tests {
         push_input_shapes(&mut output, &bindings);
         assert_eq!(
             output,
-            "pub struct Function0Input;\n\nimpl<Input0, Input1> InputShape<(Input0, Option<Input1>, EcoString)> for Function0Input {}\n\n"
+            "pub struct Function0Input;\n\nimpl<Input0, Input1> InputShape<(Input0, Option<Input1>, StringValue)> for Function0Input {}\n\n"
         );
         assert_rustfmt_stable(&output);
     }
@@ -344,7 +344,7 @@ mod tests {
         source.push_str("}\n");
         assert_eq!(
             source,
-            "pub struct Functions {\n    pub normalize_inventory_code_before_exporting:\n        Function<(EcoString,), EcoString, Function0Input>,\n}\n"
+            "pub struct Functions {\n    pub normalize_inventory_code_before_exporting:\n        Function<(StringValue,), StringValue, Function0Input>,\n}\n"
         );
         assert_rustfmt_stable(&source);
     }
@@ -369,8 +369,8 @@ mod tests {
             source,
             r#"pub struct Functions {
     pub mixed_data: Function<
-        ((List<BigInt>, Option<List<EcoString>>, EcoString),),
-        (List<BigInt>, Option<List<EcoString>>, EcoString),
+        ((List<BigInt>, Option<List<StringValue>>, StringValue),),
+        (List<BigInt>, Option<List<StringValue>>, StringValue),
         Function0Input,
     >,
 }
@@ -410,7 +410,7 @@ mod tests {
                 BitArrayValue,
                 BitArrayValue,
                 BitArrayValue,
-                EcoString,
+                StringValue,
             ),
             Option<f64>,
         >,

@@ -1,7 +1,6 @@
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use ecow::EcoString;
 use imbl::Vector;
 use num_bigint::BigInt;
 
@@ -408,7 +407,7 @@ impl LengthPool {
 #[derive(Default)]
 struct ListPools {
     ints: ListPool<BigInt>,
-    strings: ListPool<EcoString>,
+    strings: ListPool<crate::StringValue>,
     bit_arrays: ListPool<EvaluatedBitArray>,
     utf_codepoints: ListPool<char>,
     customs: ListPool<EvaluatedCustomValue>,
@@ -424,7 +423,7 @@ struct ListPools {
 
 enum ReleasedList {
     Int(Arc<Vector<BigInt>>),
-    String(Arc<Vector<EcoString>>),
+    String(Arc<Vector<crate::StringValue>>),
     BitArray(Arc<Vector<EvaluatedBitArray>>),
     UtfCodepoint(Arc<Vector<char>>),
     Custom(Arc<Vector<EvaluatedCustomValue>>),
@@ -656,7 +655,7 @@ impl RuntimeListStorage {
         prepend_string,
         tail_string,
         StringListTypeId,
-        EcoString,
+        crate::StringValue,
         StringListValueId,
         strings,
         String

@@ -411,7 +411,6 @@ mod tests {
         use crate::{
             Component, GleamStdlibHostProfile, GleamStdlibRunState, GleamStdlibStores, IoOutput,
         };
-        use ecow::EcoString;
         use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder};
         use geam_core::frontend::compile_typed_host_program;
         use geam_core::host::{HostCall, HostComponentProfile, HostExternalBinding};
@@ -441,7 +440,7 @@ mod tests {
                 self.0.push(output.value().inspect().to_string());
             }
         }
-        type Dict = DictOf<EcoString, geam_core::HostListType<BigInt>>;
+        type Dict = DictOf<geam_core::StringValue, geam_core::HostListType<BigInt>>;
 
         impl HostProfile for Profile {
             type RunState = State;
@@ -1060,7 +1059,7 @@ pub fn main() {
                 .expect("failure module should be valid")
                 .with_fallible_function(
                     "reject",
-                    |_: EcoString, _: BigInt| -> Result<BigInt, HostFailure> {
+                    |_: geam_core::StringValue, _: BigInt| -> Result<BigInt, HostFailure> {
                         Err(HostFailure::new("value is unavailable"))
                     },
                 )
@@ -1093,7 +1092,10 @@ pub fn main() {
                 .expect("failure module should be valid")
                 .with_fallible_function(
                     "reject",
-                    |_: EcoString, _: BigInt, _: BigInt| -> Result<BigInt, HostFailure> {
+                    |_: geam_core::StringValue,
+                     _: BigInt,
+                     _: BigInt|
+                     -> Result<BigInt, HostFailure> {
                         Err(HostFailure::new("fold is unavailable"))
                     },
                 )

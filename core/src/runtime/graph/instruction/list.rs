@@ -1,6 +1,7 @@
 use super::super::environment::BlockEnvironment;
 use super::super::{GraphValue, RuntimeGraphState};
 use super::value::{InstructionValue, custom_projection, ensure_list_index, tuple_projection};
+use crate::StringValue;
 use crate::plan::ValueType;
 use crate::plan::execution::function::{
     BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, ExternalListFunctionId,
@@ -34,7 +35,6 @@ use crate::runtime::state::list::{
     ParameterListValueId, StoredListValueId, StringListValueId, TupleListValueId,
     UtfCodepointListValueId,
 };
-use ecow::EcoString;
 use num_bigint::BigInt;
 
 pub(in crate::runtime) enum ListInstructionValue {
@@ -536,7 +536,7 @@ vector_family!(
     StringFamily,
     StringListTypeId,
     crate::plan::execution::graph::StringLocalId,
-    EcoString,
+    StringValue,
     StringListLocalId,
     StringListFunctionId,
     StringListValueId,

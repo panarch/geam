@@ -122,7 +122,7 @@ where
         self.scoped.float(value)
     }
 
-    fn string(&self, value: HostValueToken) -> EcoString {
+    fn string(&self, value: HostValueToken) -> crate::StringValue {
         self.scoped.string(value)
     }
 

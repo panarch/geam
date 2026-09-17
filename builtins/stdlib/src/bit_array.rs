@@ -4,7 +4,7 @@ use super::GleamStdlibProviderProfile;
 use crate::{BitArrayValue, HostProviderModule, HostRegistrationError};
 use bitvec::order::Msb0;
 use bitvec::vec::BitVec;
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::provider_support::{bit_array_bits, bit_array_from_bits};
 use num_bigint::BigInt;
 
@@ -16,13 +16,13 @@ use num_bigint::BigInt;
 )]
 mod provider {
     use super::{
-        BigInt, BitArrayValue, BitVec, EcoString, Msb0, bit_array_bits, bit_array_from_bits,
+        BigInt, BitArrayValue, BitVec, Msb0, StringValue, bit_array_bits, bit_array_from_bits,
         function,
     };
     use geam_core::provider::HostResult;
 
     #[geam_macros::function]
-    fn from_string(value: EcoString) -> BitArrayValue {
+    fn from_string(value: StringValue) -> BitArrayValue {
         function::from_string(value)
     }
 
@@ -47,7 +47,7 @@ mod provider {
     }
 
     #[geam_macros::function]
-    fn unsafe_to_string(value: BitArrayValue) -> HostResult<EcoString> {
+    fn unsafe_to_string(value: BitArrayValue) -> HostResult<StringValue> {
         function::unsafe_to_string(value).map_err(Into::into)
     }
 
@@ -63,22 +63,22 @@ mod provider {
     }
 
     #[geam_macros::function]
-    fn base64_encode(value: BitArrayValue, padding: bool) -> EcoString {
+    fn base64_encode(value: BitArrayValue, padding: bool) -> StringValue {
         function::base64_encode(value, padding)
     }
 
     #[geam_macros::function]
-    fn decode64(value: EcoString) -> Result<BitArrayValue, ()> {
+    fn decode64(value: StringValue) -> Result<BitArrayValue, ()> {
         function::decode64(value)
     }
 
     #[geam_macros::function]
-    fn base16_encode(value: BitArrayValue) -> EcoString {
+    fn base16_encode(value: BitArrayValue) -> StringValue {
         function::base16_encode(value)
     }
 
     #[geam_macros::function]
-    fn base16_decode(value: EcoString) -> Result<BitArrayValue, ()> {
+    fn base16_decode(value: StringValue) -> Result<BitArrayValue, ()> {
         function::base16_decode(value)
     }
 

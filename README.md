@@ -132,11 +132,11 @@ pub struct Component;
 
 #[geam::module(path = "example_text_tools/casing")]
 mod casing {
-    use geam::provider::EcoString;
+    use geam::provider::StringValue;
 
     #[geam::function]
-    fn upper(value: EcoString) -> EcoString {
-        value.to_uppercase()
+    fn upper(value: StringValue) -> StringValue {
+        value.to_uppercase().into()
     }
 }
 ```

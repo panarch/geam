@@ -1,4 +1,4 @@
-use geam::provider::{BigInt, EcoString};
+use geam::provider::{BigInt, EcoString, StringValue};
 use geam::{
     HostCall, HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
     HostComponentProfile, HostConstructions, HostCustomConstructorAt,
@@ -34,12 +34,12 @@ struct SummaryDefinition;
 struct SummaryCountField;
 struct SummaryItemsField;
 
-type TransformArguments = HostTypeList<EcoString, HostTypeListEnd>;
-type Transform = HostFunctionType<TransformArguments, EcoString>;
+type TransformArguments = HostTypeList<StringValue, HostTypeListEnd>;
+type Transform = HostFunctionType<TransformArguments, StringValue>;
 type HostCatalog = HostExternalType<CatalogSchema>;
 type Summary = HostCustomType<SummarySchema>;
 type SummaryConstructor = HostCustomConstructorAt<Summary, HostCustomIndex0, SummaryDefinition>;
-type SummaryItems = HostListType<EcoString>;
+type SummaryItems = HostListType<StringValue>;
 type SummaryConstructions = HostTypeList<SummaryItems, HostTypeListEnd>;
 
 impl HostProviderComponent for Component {
@@ -81,7 +81,7 @@ where
             .and_then(|provider| {
                 provider.with_scoped_function::<
                     Provider,
-                    (HostCatalog, EcoString, EcoString),
+                    (HostCatalog, StringValue, StringValue),
                     HostCatalog,
                     _,
                 >("insert", catalog_insert::<Profile>)
@@ -200,8 +200,8 @@ where
 fn catalog_insert<'call, Profile>(
     mut call: HostCall<'call, Profile, Provider, HostCatalog>,
     catalog: HostExternal<'call, HostCatalog>,
-    key: EcoString,
-    value: EcoString,
+    key: StringValue,
+    value: StringValue,
 ) -> Result<HostCallCompletion<'call, HostCatalog>, HostCallError>
 where
     Profile: HostComponentProfile<Component>,
@@ -216,7 +216,7 @@ fn summarize<'call, Profile>(
     call: HostCall<'call, Profile, Provider, Summary>,
     constructions: HostConstructions<'call, SummaryConstructions>,
     catalog: HostExternal<'call, HostCatalog>,
-    transform: HostCallable<'call, TransformArguments, EcoString>,
+    transform: HostCallable<'call, TransformArguments, StringValue>,
 ) -> Result<HostCallContinuation<'call, Summary>, HostCallError>
 where
     Profile: HostComponentProfile<Component>,
@@ -224,7 +224,7 @@ where
     let values = call
         .external_payload(catalog)
         .entries()
-        .map(|(_, value)| EcoString::from(value.as_str()))
+        .map(|(_, value)| StringValue::from(value.as_str()))
         .collect::<Vec<_>>();
     let transform = call.owned_callable(transform, &constructions);
     Ok(call.resume(constructions, move |context| {

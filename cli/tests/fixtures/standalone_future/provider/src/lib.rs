@@ -44,7 +44,7 @@ pub struct Component;
 #[geam::module(path = "standalone_future/native")]
 mod native {
     use super::State;
-    use geam::provider::{BigInt, Call, EcoString, HostFailure, HostResult};
+    use geam::provider::{BigInt, Call, HostFailure, HostResult, StringValue};
     use std::future::{Future, poll_fn};
     use std::task::Poll;
     use std::time::Duration;
@@ -81,7 +81,7 @@ mod native {
     }
 
     #[geam::function]
-    async fn request(address: EcoString) -> HostResult<EcoString> {
+    async fn request(address: StringValue) -> HostResult<StringValue> {
         let mut stream = tokio::net::TcpStream::connect(address.as_str())
             .await
             .map_err(|error| HostFailure::new(error.to_string()))?;

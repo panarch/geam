@@ -1,4 +1,4 @@
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::{
     BitArrayValue, ExecutionError, HostCall, HostCallCompletion, HostCallError, HostFailure,
     HostModule, HostProfile, HostProvider, HostProviderModule, HostProviderSet, HostTypeParameter,
@@ -49,7 +49,7 @@ fn source_less_modules_use_the_same_stateful_profile_registration() {
         .expect("host function should be valid")
         .with_function("float", std::convert::identity::<f64>)
         .expect("host function should be valid")
-        .with_function("string", std::convert::identity::<EcoString>)
+        .with_function("string", std::convert::identity::<StringValue>)
         .expect("host function should be valid")
         .with_function("bit_array", std::convert::identity::<BitArrayValue>)
         .expect("host function should be valid")
@@ -197,7 +197,7 @@ pub fn main() {
         "main",
         [PackageSource::new(
             "application",
-            Vec::<EcoString>::new(),
+            Vec::<ecow::EcoString>::new(),
             [ModuleSource::new("main", "src/main.gleam", source)],
         )],
         HostProviderSet::with_providers(Vec::<HostModule<StatefulProfile>>::new(), [provider])
@@ -238,7 +238,7 @@ pub fn main() {
         "main",
         [PackageSource::new(
             "application",
-            Vec::<EcoString>::new(),
+            Vec::<ecow::EcoString>::new(),
             [ModuleSource::new("main", "src/main.gleam", source)],
         )],
         HostProviderSet::new(Vec::<HostModule<StatefulProfile>>::new())

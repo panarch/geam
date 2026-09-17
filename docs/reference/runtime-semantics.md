@@ -121,7 +121,7 @@ equality.
 
 The direct host boundary accepts infallible and fallible Rust closures with
 zero through seven arguments. Each argument and return is one of `BigInt`,
-`f64`, `EcoString`, `BitArrayValue`, `char`, `bool`, or `()`. A provider that
+`f64`, `StringValue`, `BitArrayValue`, `char`, `bool`, or `()`. A provider that
 never succeeds may use `Infallible` as its return; `Infallible` is not an
 argument or materialized value family. Seven is an intentional profile limit
 aligned with Clippy's default `too_many_arguments` threshold. Registration

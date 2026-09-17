@@ -198,7 +198,9 @@ where
         }
         Terminator::Echo(echo) => {
             let subject = environment.value(echo.subject());
-            let message = echo.message().map(|message| environment.string(message));
+            let message = echo
+                .message()
+                .map(|message| environment.string(message).into_ecostring());
             let value =
                 crate::runtime::materialize::value(plan.value_metadata(), state.lists(), subject);
             let location = crate::runtime::EchoLocation::from_context(
@@ -213,7 +215,9 @@ where
             environment,
         }),
         Terminator::SourceStop(stop) => {
-            let message = stop.message().map(|message| environment.string(message));
+            let message = stop
+                .message()
+                .map(|message| environment.string(message).into_ecostring());
             Err(state.source_panic(
                 plan.source_context_for(stop.site().module()),
                 panic_kind(stop.kind()),
@@ -223,7 +227,9 @@ where
         }
         Terminator::LetAssertPanic(panic) => {
             let subject = environment.value(panic.subject());
-            let message = panic.message().map(|message| environment.string(message));
+            let message = panic
+                .message()
+                .map(|message| environment.string(message).into_ecostring());
             Err(state.let_assert_panic(
                 plan,
                 plan.source_context_for(panic.site().module()),

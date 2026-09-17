@@ -1,4 +1,4 @@
-use geam::provider::{BigInt, EcoString};
+use geam::provider::{BigInt, EcoString, StringValue};
 use geam::{
     HostCall, HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
     HostComponentProfile, HostConstructions, HostCustomConstructorAt,
@@ -42,12 +42,12 @@ struct SummaryCountField;
 
 struct SummaryItemsField;
 
-type TransformArguments = HostTypeList<EcoString, HostTypeListEnd>;
-type Transform = HostFunctionType<TransformArguments, EcoString>;
+type TransformArguments = HostTypeList<StringValue, HostTypeListEnd>;
+type Transform = HostFunctionType<TransformArguments, StringValue>;
 type HostCatalog = HostExternalType<CatalogSchema>;
 type Summary = HostCustomType<SummarySchema>;
 type SummaryConstructor = HostCustomConstructorAt<Summary, HostCustomIndex0, SummaryDefinition>;
-type SummaryItems = HostListType<EcoString>;
+type SummaryItems = HostListType<StringValue>;
 type SummaryConstructions = HostTypeList<SummaryItems, HostTypeListEnd>;
 
 impl HostProviderComponent for Component {
@@ -82,7 +82,7 @@ where
         HostProviderModule::new("provider_sdk_example", "provider/sdk")
             .and_then(HostProviderModule::with_external_type::<Provider, CatalogSchema>)
             .and_then(|provider| {
-                provider.with_resumable_function::<Provider, (EcoString, Transform), EcoString, HostTypeListEnd, _>(
+                provider.with_resumable_function::<Provider, (StringValue, Transform), StringValue, HostTypeListEnd, _>(
                     "decorate",
                     decorate::<Profile>,
                 )
@@ -96,7 +96,7 @@ where
             .and_then(|provider| {
                 provider.with_scoped_function::<
                     Provider,
-                    (HostCatalog, EcoString, EcoString),
+                    (HostCatalog, StringValue, StringValue),
                     HostCatalog,
                     _,
                 >("catalog_insert", catalog_insert::<Profile>)
@@ -110,7 +110,7 @@ where
             .and_then(|provider| {
                 provider.with_resumable_function::<
                     Provider,
-                    (EcoString, Transform),
+                    (StringValue, Transform),
                     Summary,
                     SummaryConstructions,
                     _,
@@ -223,11 +223,11 @@ impl RunState {
 }
 
 fn decorate<'call, Profile>(
-    mut call: HostCall<'call, Profile, Provider, EcoString>,
+    mut call: HostCall<'call, Profile, Provider, StringValue>,
     constructions: HostConstructions<'call, HostTypeListEnd>,
-    value: EcoString,
-    transform: HostCallable<'call, TransformArguments, EcoString>,
-) -> Result<HostCallContinuation<'call, EcoString>, HostCallError>
+    value: StringValue,
+    transform: HostCallable<'call, TransformArguments, StringValue>,
+) -> Result<HostCallContinuation<'call, StringValue>, HostCallError>
 where
     Profile: HostComponentProfile<Component>,
 {
@@ -266,8 +266,8 @@ where
 fn catalog_insert<'call, Profile>(
     mut call: HostCall<'call, Profile, Provider, HostCatalog>,
     catalog: HostExternal<'call, HostCatalog>,
-    key: EcoString,
-    value: EcoString,
+    key: StringValue,
+    value: StringValue,
 ) -> Result<HostCallCompletion<'call, HostCatalog>, HostCallError>
 where
     Profile: HostComponentProfile<Component>,
@@ -293,8 +293,8 @@ where
 fn summarize<'call, Profile>(
     call: HostCall<'call, Profile, Provider, Summary>,
     constructions: HostConstructions<'call, SummaryConstructions>,
-    value: EcoString,
-    transform: HostCallable<'call, TransformArguments, EcoString>,
+    value: StringValue,
+    transform: HostCallable<'call, TransformArguments, StringValue>,
 ) -> Result<HostCallContinuation<'call, Summary>, HostCallError>
 where
     Profile: HostComponentProfile<Component>,

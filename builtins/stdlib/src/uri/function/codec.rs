@@ -1,8 +1,8 @@
-use ecow::EcoString;
+use geam_core::StringValue;
 
 const HEX_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
 
-pub(super) fn parse_query(query: &str) -> Option<Vec<(EcoString, EcoString)>> {
+pub(super) fn parse_query(query: &str) -> Option<Vec<(StringValue, StringValue)>> {
     if query.is_empty() {
         return Some(Vec::new());
     }
@@ -16,7 +16,7 @@ pub(super) fn parse_query(query: &str) -> Option<Vec<(EcoString, EcoString)>> {
         .collect()
 }
 
-pub(super) fn percent_encode(value: &str) -> EcoString {
+pub(super) fn percent_encode(value: &str) -> StringValue {
     let mut encoded = String::with_capacity(value.len());
     for byte in value.bytes() {
         if is_unescaped(byte) {
@@ -30,11 +30,11 @@ pub(super) fn percent_encode(value: &str) -> EcoString {
     encoded.into()
 }
 
-pub(super) fn percent_decode(value: &str) -> Option<EcoString> {
+pub(super) fn percent_decode(value: &str) -> Option<StringValue> {
     decode(value, false)
 }
 
-fn decode(value: &str, plus_as_space: bool) -> Option<EcoString> {
+fn decode(value: &str, plus_as_space: bool) -> Option<StringValue> {
     let input = value.as_bytes();
     let mut decoded = Vec::with_capacity(input.len());
     let mut index = 0;

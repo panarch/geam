@@ -2,7 +2,7 @@
 
 This example adds `gleam_stdlib` to a nested Gleam project. Its public function
 uses `gleam/list.first` and converts the Result into `gleam/option.Option`, which
-the generated Rust binding exposes as `Option<EcoString>`.
+the generated Rust binding exposes as `Option<StringValue>`.
 
 ## Read The Example
 

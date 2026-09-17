@@ -13,10 +13,10 @@ use std::sync::Arc;
 /// independently require the private adapter for their validated signature:
 ///
 /// ```compile_fail
-/// use geam_core::embedding::{EcoString, Function, InputShape, Module};
+/// use geam_core::embedding::{StringValue, Function, InputShape, Module};
 /// struct Forged;
 /// impl InputShape<(bool,)> for Forged {}
-/// fn invalid(module: &Module, function: Function<(EcoString,), ()>) {
+/// fn invalid(module: &Module, function: Function<(StringValue,), ()>) {
 ///     let function = function.with_input_shape::<Forged>();
 ///     let _ = module.call(&function, (true,), &mut Vec::new());
 /// }
@@ -183,7 +183,7 @@ macro_rules! scalar_input {
 
 scalar_input!(super::BigInt, ints);
 scalar_input!(f64, floats);
-scalar_input!(super::EcoString, strings);
+scalar_input!(super::StringValue, strings);
 scalar_input!(super::BitArrayValue, bit_arrays);
 scalar_input!(char, utf_codepoints);
 scalar_input!(bool, bools);
@@ -220,7 +220,7 @@ macro_rules! scoped_scalar_input {
 
 scoped_scalar_input!(super::BigInt, ints);
 scoped_scalar_input!(f64, floats);
-scoped_scalar_input!(super::EcoString, strings);
+scoped_scalar_input!(super::StringValue, strings);
 scoped_scalar_input!(super::BitArrayValue, bit_arrays);
 scoped_scalar_input!(char, utf_codepoints);
 scoped_scalar_input!(bool, bools);
@@ -591,14 +591,14 @@ where
 #[cfg(test)]
 mod tests {
     use crate::embedding::{
-        BigInt, EcoString, FunctionDeclaration, InputShape, List, ModuleBuilder,
+        BigInt, FunctionDeclaration, InputShape, List, ModuleBuilder, StringValue,
     };
     use crate::{ModuleSource, PackageSource, compile_typed_module, compile_typed_package_program};
 
     #[test]
     fn generated_shapes_preserve_scalar_inference_and_the_bound_function_owner() {
         struct KeepInput;
-        impl<Values> InputShape<(Values, EcoString)> for KeepInput {}
+        impl<Values> InputShape<(Values, StringValue)> for KeepInput {}
 
         let typed = compile_typed_module(
             "library",
@@ -609,8 +609,8 @@ mod tests {
         let (bindings, function) = ModuleBuilder::new(typed)
             .expect("input shape plan")
             .function(FunctionDeclaration::<
-                (List<EcoString>, EcoString),
-                (List<EcoString>, EcoString),
+                (List<StringValue>, StringValue),
+                (List<StringValue>, StringValue),
             >::new("keep"))
             .expect("input shape declaration");
         let function = function.with_input_shape::<KeepInput>();
@@ -639,7 +639,7 @@ mod tests {
             [
                 PackageSource::new(
                     "gleam_stdlib",
-                    Vec::<EcoString>::new(),
+                    Vec::<ecow::EcoString>::new(),
                     [ModuleSource::new(
                         "gleam/option",
                         "gleam_stdlib/src/gleam/option.gleam",
@@ -674,20 +674,20 @@ pub fn optional(values: Option(List(List(String)))) { values }
             .expect("Option items");
         let pair = bindings
             .function(FunctionDeclaration::<
-                ((List<BigInt>, List<EcoString>),),
-                (List<BigInt>, List<EcoString>),
+                ((List<BigInt>, List<StringValue>),),
+                (List<BigInt>, List<StringValue>),
             >::new("pair"))
             .expect("List pair declaration");
         let result = bindings
             .function(FunctionDeclaration::<
-                (Result<List<BigInt>, List<EcoString>>,),
-                Result<List<BigInt>, List<EcoString>>,
+                (Result<List<BigInt>, List<StringValue>>,),
+                Result<List<BigInt>, List<StringValue>>,
             >::new("result"))
             .expect("Result List declaration");
         let optional = bindings
             .function(FunctionDeclaration::<
-                (Option<List<List<EcoString>>>,),
-                Option<List<List<EcoString>>>,
+                (Option<List<List<StringValue>>>,),
+                Option<List<List<StringValue>>>,
             >::new("optional"))
             .expect("Option List declaration");
         let module = bindings.seal();
@@ -704,7 +704,7 @@ pub fn optional(values: Option(List(List(String)))) { values }
         let pair_values = module
             .call(
                 &pair,
-                ((vec![BigInt::from(4)], vec![EcoString::from("label")]),),
+                ((vec![BigInt::from(4)], vec![StringValue::from("label")]),),
                 &mut echo,
             )
             .expect("List pair");
@@ -718,7 +718,7 @@ pub fn optional(values: Option(List(List(String)))) { values }
 
         for input in [
             Ok(vec![BigInt::from(6)]),
-            Err(vec![EcoString::from("error")]),
+            Err(vec![StringValue::from("error")]),
         ] {
             let output = module
                 .call(&result, (input.clone(),), &mut echo)
@@ -734,7 +734,7 @@ pub fn optional(values: Option(List(List(String)))) { values }
         let some = module
             .call(
                 &optional,
-                (Some(vec![vec![EcoString::from("nested")]]),),
+                (Some(vec![vec![StringValue::from("nested")]]),),
                 &mut echo,
             )
             .expect("Some nested List")
@@ -744,7 +744,7 @@ pub fn optional(values: Option(List(List(String)))) { values }
             .expect("retained Some")
             .expect("Some");
         assert_eq!(retained.get(0).expect("child").to_vec(), ["nested"]);
-        let absent: Option<Vec<Vec<EcoString>>> = None;
+        let absent: Option<Vec<Vec<StringValue>>> = None;
         assert!(
             module
                 .call(&optional, (absent,), &mut echo)

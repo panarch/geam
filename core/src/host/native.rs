@@ -313,6 +313,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::{NativeCall, NativeRules, NativeValue};
+    use crate::StringValue;
     use crate::host::{
         HostCall, HostCallCompletion, HostCallError, HostCallable, HostConstruction,
         HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
@@ -324,7 +325,6 @@ mod tests {
         HostTypeList, HostTypeListEnd, HostTypeParameter, HostTypeSequence, HostValue,
         StatelessHostProfile,
     };
-    use ecow::EcoString;
 
     struct Converter;
 
@@ -457,7 +457,7 @@ mod tests {
     fn native_targets_keep_declaration_order_including_duplicate_target_types() {
         use num_bigint::BigInt;
         type Targets =
-            HostTypeList<EcoString, HostTypeList<BigInt, HostTypeList<BigInt, HostTypeListEnd>>>;
+            HostTypeList<StringValue, HostTypeList<BigInt, HostTypeList<BigInt, HostTypeListEnd>>>;
         let provider = HostProviderModule::new("application", "main").unwrap()
             .with_native_function::<Converter, (BigInt,), bool, Targets, _>(
                 "targets", NativeRules::default(),
@@ -530,7 +530,7 @@ pub fn main() {
     fn native_recursive_conversion_preserves_generic_arguments_and_invokes_real_callbacks() {
         let value = run::<
             HostTypeList<
-                HostCustomType<TreeSchema, HostTypeList<EcoString, HostTypeListEnd>>,
+                HostCustomType<TreeSchema, HostTypeList<StringValue, HostTypeListEnd>>,
                 HostTypeListEnd,
             >,
         >(
@@ -611,7 +611,7 @@ pub fn main() {
         assert_eq!(
             run::<
                 HostTypeList<
-                    HostCustomType<PacketSchema, HostTypeList<EcoString, HostTypeListEnd>>,
+                    HostCustomType<PacketSchema, HostTypeList<StringValue, HostTypeListEnd>>,
                     HostTypeListEnd,
                 >,
             >(source)
@@ -632,7 +632,7 @@ pub fn main() {
             ), Output, HostTypeList<
                 CallbackTarget,
                 HostTypeList<
-                    HostCustomType<TreeSchema, HostTypeList<EcoString, HostTypeListEnd>>,
+                    HostCustomType<TreeSchema, HostTypeList<StringValue, HostTypeListEnd>>,
                     HostTypeListEnd,
                 >,
             >, _>(
@@ -640,7 +640,7 @@ pub fn main() {
                 NativeRules::default(),
                 apply_native::<
                     HostTypeList<
-                        HostCustomType<TreeSchema, HostTypeList<EcoString, HostTypeListEnd>>,
+                        HostCustomType<TreeSchema, HostTypeList<StringValue, HostTypeListEnd>>,
                         HostTypeListEnd,
                     >,
                 >,
@@ -814,9 +814,9 @@ pub fn main() {
     #[test]
     fn native_custom_conversion_checks_native_tags_arity_and_each_field() {
         type Targets = HostTypeList<
-            HostCustomType<EmptySchema, HostTypeList<EcoString, HostTypeListEnd>>,
+            HostCustomType<EmptySchema, HostTypeList<StringValue, HostTypeListEnd>>,
             HostTypeList<
-                HostCustomType<PacketSchema, HostTypeList<EcoString, HostTypeListEnd>>,
+                HostCustomType<PacketSchema, HostTypeList<StringValue, HostTypeListEnd>>,
                 HostTypeListEnd,
             >,
         >;
@@ -904,13 +904,13 @@ pub fn main() {
     }
 
     impl HostProfile for NativeProfile {
-        type RunState = Vec<EcoString>;
+        type RunState = Vec<StringValue>;
         type ExternalStores = NativeStores;
         type ExecutionState = ();
     }
 
     impl HostProvider<NativeProfile> for Converter {
-        type State = Vec<EcoString>;
+        type State = Vec<StringValue>;
 
         fn project(state: &mut Self::State) -> &mut Self::State {
             state
@@ -1001,7 +1001,7 @@ pub fn main() {
         fn source_hash(context: &HostExternalHashing<'_>, value: &NativeValue) -> u64 {
             value.source_hash(context)
         }
-        fn inspect(context: &HostExternalInspection<'_>, value: &NativeValue) -> EcoString {
+        fn inspect(context: &HostExternalInspection<'_>, value: &NativeValue) -> ecow::EcoString {
             value.inspect(context)
         }
         fn native_view(value: &NativeValue) -> Option<NativeValue> {
@@ -1011,9 +1011,9 @@ pub fn main() {
 
     fn name<'call>(
         mut call: HostCall<'call, NativeProfile, Converter, HostExternalType<NameSchema>>,
-        value: EcoString,
+        value: StringValue,
     ) -> Result<HostCallCompletion<'call, HostExternalType<NameSchema>>, HostCallError> {
-        let value = call.create_external(NativeValue::symbol(value));
+        let value = call.create_external(NativeValue::symbol(value.into_ecostring()));
         Ok(call.return_value(value))
     }
 
@@ -1028,12 +1028,12 @@ pub fn main() {
 
     #[test]
     fn native_conversion_combines_external_rules_with_structural_targets() {
-        type Tree = HostCustomType<TreeSchema, HostTypeList<EcoString, HostTypeListEnd>>;
+        type Tree = HostCustomType<TreeSchema, HostTypeList<StringValue, HostTypeListEnd>>;
         type Envelope = HostExternalType<EnvelopeSchema, HostTypeList<Tree, HostTypeListEnd>>;
         type Extra = HostTypeList<
-            HostCustomType<PacketSchema, HostTypeList<EcoString, HostTypeListEnd>>,
+            HostCustomType<PacketSchema, HostTypeList<StringValue, HostTypeListEnd>>,
             HostTypeList<
-                HostCustomType<EmptySchema, HostTypeList<EcoString, HostTypeListEnd>>,
+                HostCustomType<EmptySchema, HostTypeList<StringValue, HostTypeListEnd>>,
                 HostTypeListEnd,
             >,
         >;
@@ -1047,19 +1047,19 @@ pub fn main() {
         }
         fn opaque_value<'call>(
             mut call: HostCall<'call, NativeProfile, Converter, HostExternalType<OpaqueSchema>>,
-            value: EcoString,
+            value: StringValue,
         ) -> Result<HostCallCompletion<'call, HostExternalType<OpaqueSchema>>, HostCallError>
         {
-            let value = call.create_external(NativeValue::symbol(value));
+            let value = call.create_external(NativeValue::symbol(value.into_ecostring()));
             Ok(call.return_value(value))
         }
         let provider = HostProviderModule::new("application", "main").unwrap()
             .with_external_type::<Converter, NameSchema>().unwrap()
             .with_external_type::<Converter, EnvelopeSchema>().unwrap()
             .with_external_type::<Converter, OpaqueSchema>().unwrap()
-            .with_scoped_function::<Converter, (EcoString,), HostExternalType<NameSchema>, _>("name", name).unwrap()
+            .with_scoped_function::<Converter, (StringValue,), HostExternalType<NameSchema>, _>("name", name).unwrap()
             .with_scoped_function::<Converter, (Tree,), Envelope, _>("envelope", envelope).unwrap()
-            .with_scoped_function::<Converter, (EcoString,), HostExternalType<OpaqueSchema>, _>(
+            .with_scoped_function::<Converter, (StringValue,), HostExternalType<OpaqueSchema>, _>(
                 "opaque_value",
                 opaque_value,
             ).unwrap()
@@ -1334,7 +1334,7 @@ pub fn main() { ready(1, 2) }
     fn native_rules_register_nested_recursive_custom_construction_schemas() {
         let mut execution = prepare_ready(
             NativeRules::default().external::<EnvelopeSchema, HostTypeList<
-                HostCustomType<TreeSchema, HostTypeList<EcoString, HostTypeListEnd>>,
+                HostCustomType<TreeSchema, HostTypeList<StringValue, HostTypeListEnd>>,
                 HostTypeListEnd,
             >>(|_, _, _| None),
             r#"
@@ -1364,7 +1364,7 @@ pub fn main() { ready(1, "two") }
                 .unwrap()
                 .with_external_type::<Converter, NameSchema>()
                 .unwrap()
-                .with_scoped_function::<Converter, (EcoString,), Name, _>("name", name)
+                .with_scoped_function::<Converter, (StringValue,), Name, _>("name", name)
                 .unwrap()
                 .with_native_function::<Converter, (Name,), bool, Targets, _>(
                     "restore_previous",
@@ -1433,9 +1433,9 @@ pub fn main() { restore_previous(name("key")) }
         type Targets = HostTypeList<Opaque, HostTypeList<bool, HostTypeListEnd>>;
         fn opaque<'call>(
             mut call: HostCall<'call, NativeProfile, Converter, Opaque>,
-            name: EcoString,
+            name: StringValue,
         ) -> Result<HostCallCompletion<'call, Opaque>, HostCallError> {
-            let value = call.create_external(NativeValue::symbol(name));
+            let value = call.create_external(NativeValue::symbol(name.into_ecostring()));
             Ok(call.return_value(value))
         }
         fn check<'call>(
@@ -1463,7 +1463,8 @@ pub fn main() { restore_previous(name("key")) }
                 call.call().source_hash::<Opaque>(right)
             );
             assert_eq!(call.call().inspect::<Opaque>(left), "Item");
-            let inspect = |_: &crate::runtime::RetainedValueRef| EcoString::from("opaque-source");
+            let inspect =
+                |_: &crate::runtime::RetainedValueRef| ecow::EcoString::from("opaque-source");
             let inspection = crate::host::RetainedValueInspection::new(&inspect);
             assert_eq!(
                 first.inspect(&HostExternalInspection(&inspection)),
@@ -1480,7 +1481,7 @@ pub fn main() { restore_previous(name("key")) }
             .unwrap()
             .with_external_type::<Converter, OpaqueSchema>()
             .unwrap()
-            .with_scoped_function::<Converter, (EcoString,), Opaque, _>("make_opaque", opaque)
+            .with_scoped_function::<Converter, (StringValue,), Opaque, _>("make_opaque", opaque)
             .unwrap()
             .with_native_function::<Converter, (Opaque, Opaque), bool, Targets, _>(
                 "check",
@@ -1560,7 +1561,7 @@ pub fn main() { check(make_opaque("item"), make_opaque("item")) }
                 .unwrap()
                 .with_external_type::<Converter, BoxSchema>()
                 .unwrap()
-                .with_scoped_function::<Converter, (EcoString,), HostExternalType<NameSchema>, _>(
+                .with_scoped_function::<Converter, (StringValue,), HostExternalType<NameSchema>, _>(
                     "name", name,
                 )
                 .unwrap()
@@ -1575,7 +1576,7 @@ pub fn main() { check(make_opaque("item"), make_opaque("item")) }
                 ), Output, HostTypeList<
                     CallbackTarget,
                     HostTypeList<
-                        HostCustomType<PacketSchema, HostTypeList<EcoString, HostTypeListEnd>>,
+                        HostCustomType<PacketSchema, HostTypeList<StringValue, HostTypeListEnd>>,
                         HostTypeListEnd,
                     >,
                 >, _>(
@@ -1583,7 +1584,10 @@ pub fn main() { check(make_opaque("item"), make_opaque("item")) }
                     rules,
                     apply_external::<
                         HostTypeList<
-                            HostCustomType<PacketSchema, HostTypeList<EcoString, HostTypeListEnd>>,
+                            HostCustomType<
+                                PacketSchema,
+                                HostTypeList<StringValue, HostTypeListEnd>,
+                            >,
                             HostTypeListEnd,
                         >,
                     >,

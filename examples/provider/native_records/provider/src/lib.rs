@@ -1,7 +1,7 @@
 use geam::provider::advanced::{
     Equality, Hashing, Inspection, NativeKind, NativeValue, RetainedExternalPayload,
 };
-use geam::provider::{BigInt, Call, Callback, EcoString, HostResult, Value};
+use geam::provider::{BigInt, Call, Callback, HostResult, StringValue, Value};
 
 #[geam::provider(package = "example_native_records", modules = [records])]
 pub struct Component;
@@ -9,8 +9,8 @@ pub struct Component;
 #[geam::module(path = "example_native_records")]
 mod records {
     use super::{
-        BigInt, Call, Callback, EcoString, Equality, Hashing, HostResult, Inspection, NativeKind,
-        NativeValue, RetainedExternalPayload, Value,
+        BigInt, Call, Callback, Equality, Hashing, HostResult, Inspection, NativeKind, NativeValue,
+        RetainedExternalPayload, StringValue, Value,
     };
 
     #[geam::external(name = "Key", retained)]
@@ -27,7 +27,7 @@ mod records {
             self.value.source_hash(context)
         }
 
-        fn inspect(&self, context: &Inspection<'_>) -> EcoString {
+        fn inspect(&self, context: &Inspection<'_>) -> geam::provider::EcoString {
             self.value.inspect(context)
         }
 
@@ -50,7 +50,7 @@ mod records {
             self.value.source_hash(context)
         }
 
-        fn inspect(&self, context: &Inspection<'_>) -> EcoString {
+        fn inspect(&self, context: &Inspection<'_>) -> geam::provider::EcoString {
             self.value.inspect(context)
         }
 
@@ -60,14 +60,14 @@ mod records {
     }
 
     #[geam::function]
-    fn key(name: EcoString) -> Key {
+    fn key(name: StringValue) -> Key {
         Key {
-            value: NativeValue::symbol(name),
+            value: NativeValue::symbol(name.into_ecostring()),
         }
     }
 
     #[geam::function]
-    fn record(#[geam::call] call: &mut Call<()>, label: EcoString, count: BigInt) -> Record {
+    fn record(#[geam::call] call: &mut Call<()>, label: StringValue, count: BigInt) -> Record {
         let label = call.store_dynamic::<_, Record>(label).native_view();
         let count = call.store_dynamic::<_, Record>(count).native_view();
         Record {
@@ -88,7 +88,7 @@ mod records {
     async fn map<Output>(
         #[geam::call] call: &mut Call<()>,
         value: geam::provider::advanced::External<geam::gleam_stdlib::Dynamic>,
-        transform: Callback<fn(EcoString, BigInt) -> Value<Output>>,
+        transform: Callback<fn(StringValue, BigInt) -> Value<Output>>,
     ) -> HostResult<Result<Value<Output>, ()>> {
         let native = value.with(|value| value.native_value().clone());
         drop(value);
@@ -98,7 +98,7 @@ mod records {
         }
     }
 
-    fn record_fields(value: &NativeValue) -> Option<(EcoString, BigInt)> {
+    fn record_fields(value: &NativeValue) -> Option<(StringValue, BigInt)> {
         if value.kind() != NativeKind::Tuple || value.len() != Some(3) {
             return None;
         }

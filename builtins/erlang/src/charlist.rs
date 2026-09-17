@@ -1,6 +1,7 @@
 use crate::schema::{Charlist, CharlistSchema};
 use crate::{Component, GleamErlangHostProfile};
 use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::host::{
     HostCall, HostCallCompletion, HostCallError, HostComponentProfile, HostConstructions,
     HostExternal, HostExternalBinding, HostExternalEquality, HostExternalHashing,
@@ -16,14 +17,14 @@ pub(crate) fn host_provider<Profile: GleamErlangHostProfile>()
 -> Result<HostProviderModule<Profile>, HostRegistrationError> {
     HostProviderModule::new("gleam_erlang", "gleam/erlang/charlist")
         .and_then(|module| module.with_external_type::<Component<Profile>, CharlistSchema>())
-        .and_then(|module| module.with_scoped_function_and_constructions::<Component<Profile>, (EcoString,), Charlist, HostTypeList<HostListType<char>, HostTypeListEnd>, _>("from_string", from_string::<Profile>))
-        .and_then(|module| module.with_scoped_function::<Component<Profile>, (Charlist,), EcoString, _>("to_string", to_string::<Profile>))
+        .and_then(|module| module.with_scoped_function_and_constructions::<Component<Profile>, (StringValue,), Charlist, HostTypeList<HostListType<char>, HostTypeListEnd>, _>("from_string", from_string::<Profile>))
+        .and_then(|module| module.with_scoped_function::<Component<Profile>, (Charlist,), StringValue, _>("to_string", to_string::<Profile>))
 }
 
 fn from_string<'call, Profile: GleamErlangHostProfile>(
     mut call: HostCall<'call, Profile, Component<Profile>, Charlist>,
     constructions: HostConstructions<'call, HostTypeList<HostListType<char>, HostTypeListEnd>>,
-    string: EcoString,
+    string: StringValue,
 ) -> Result<HostCallCompletion<'call, Charlist>, HostCallError> {
     let characters = call.construct_list(constructions.at::<HostTypeIndex0>(), string.chars());
     let value =
@@ -32,9 +33,9 @@ fn from_string<'call, Profile: GleamErlangHostProfile>(
 }
 
 fn to_string<'call, Profile: GleamErlangHostProfile>(
-    mut call: HostCall<'call, Profile, Component<Profile>, EcoString>,
+    mut call: HostCall<'call, Profile, Component<Profile>, StringValue>,
     characters: HostExternal<'call, Charlist>,
-) -> Result<HostCallCompletion<'call, EcoString>, HostCallError> {
+) -> Result<HostCallCompletion<'call, StringValue>, HostCallError> {
     let characters = call
         .external_payload(characters)
         .restore(&mut call, |characters| characters);
@@ -44,7 +45,7 @@ fn to_string<'call, Profile: GleamErlangHostProfile>(
         output.push(character);
         index += 1;
     }
-    Ok(call.return_value(output))
+    Ok(call.return_value(output.into()))
 }
 
 impl<Profile: GleamErlangHostProfile> HostExternalBinding<Profile, CharlistSchema>

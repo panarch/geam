@@ -3,8 +3,8 @@ use crate::schema::{
     DynamicList, JsonDynamicResult,
 };
 use crate::{GleamJsonHostProfile, HostCall, HostExternal, HostProvider};
-use ecow::EcoString;
 use geam_core::HostType;
+use geam_core::StringValue;
 use geam_core::provider::ProviderConstructions;
 use geam_stdlib::provider_support::{Dynamic, create_dynamic_dict, create_dynamic_value};
 
@@ -47,11 +47,11 @@ where
 
     pub(super) fn object(
         &mut self,
-        entries: Vec<(EcoString, HostExternal<'call, Dynamic>)>,
+        entries: Vec<(StringValue, HostExternal<'call, Dynamic>)>,
     ) -> HostExternal<'call, Dynamic> {
         let entries = entries
             .into_iter()
-            .map(|(key, value)| (self.scalar::<EcoString>(key), value))
+            .map(|(key, value)| (self.scalar::<StringValue>(key), value))
             .collect::<Vec<_>>();
         let dict = create_dynamic_dict(
             self.call,

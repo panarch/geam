@@ -111,7 +111,7 @@ impl<'scope, Profile: HostProfile> ExecutionScope<'scope, '_, Profile> {
 
 #[cfg(all(test, feature = "tokio"))]
 mod tests {
-    use crate::embedding::{BigInt, EcoString, FunctionDeclaration, HostedModuleBuilder, List};
+    use crate::embedding::{BigInt, FunctionDeclaration, HostedModuleBuilder, List, StringValue};
     use crate::execution::TokioHost;
     use crate::host::{HostProfile, HostProviderSet};
     use crate::{ModuleSource, PackageSource};
@@ -143,11 +143,19 @@ mod tests {
 
     #[test]
     fn drives_typed_plain_data_on_the_callers_runtime_without_a_work_component() {
-        type Scalars = (BigInt, f64, EcoString, crate::BitArrayValue, char, bool, ());
+        type Scalars = (
+            BigInt,
+            f64,
+            StringValue,
+            crate::BitArrayValue,
+            char,
+            bool,
+            (),
+        );
         type Data = (
             Scalars,
-            Result<BigInt, EcoString>,
-            List<(BigInt, EcoString)>,
+            Result<BigInt, StringValue>,
+            List<(BigInt, StringValue)>,
         );
         let (mut bindings, identity) = program(
             r#"
@@ -163,8 +171,8 @@ pub fn count(rows: List(#(Int, String))) { rows }
         .unwrap();
         let rows = bindings
             .function(FunctionDeclaration::<
-                (List<(BigInt, EcoString)>,),
-                List<(BigInt, EcoString)>,
+                (List<(BigInt, StringValue)>,),
+                List<(BigInt, StringValue)>,
             >::new("count"))
             .unwrap();
         let mut module = bindings.seal().unwrap();
@@ -202,7 +210,7 @@ pub fn count(rows: List(#(Int, String))) { rows }
         assert_eq!(result.len(), 1);
         assert_eq!(
             result.read_item(0, |(number, text)| (number.clone(), text.clone())),
-            Some((BigInt::from(5), EcoString::from("five")))
+            Some((BigInt::from(5), StringValue::from("five")))
         );
         assert_eq!(state.get(), 7);
         assert!(echo.is_empty());
@@ -245,12 +253,12 @@ pub fn count(rows: List(#(Int, String))) { rows }
 
 #[cfg(test)]
 mod plain_outputs {
+    use crate::StringValue;
     use crate::embedding::HostedModuleBuilder;
     use crate::embedding::{CallError, FunctionDeclaration, List};
     use crate::frontend::{HostedTypedProgram, compile_typed_host_program};
     use crate::host::{HostProfile, HostProviderSet};
     use crate::{EchoOutput, EchoSink, ModuleSource, PackageSource, PlanError};
-    use ecow::EcoString;
 
     use num_bigint::BigInt;
 
@@ -304,7 +312,7 @@ mod plain_outputs {
         use std::sync::Arc;
         use std::task::{Context, Poll, Waker};
 
-        type Strings = List<EcoString>;
+        type Strings = List<StringValue>;
         let (bindings, run) = HostedModuleBuilder::new(program(
             "pub fn run(values: List(String)) { echo \"entered\" values }",
         ))
@@ -331,7 +339,7 @@ mod plain_outputs {
             owner: &module.owner,
             brand: ScopeBrand::new(),
         };
-        let mut call = std::pin::pin!(scope.call(&run, (vec![EcoString::from("retained")],)));
+        let mut call = std::pin::pin!(scope.call(&run, (vec![StringValue::from("retained")],)));
         let mut cx = Context::from_waker(Waker::noop());
         assert!(call.as_mut().poll(&mut cx).is_pending());
         drop(domain);
@@ -352,7 +360,7 @@ pub fn keep(values: List(String)) {
   values
 }
 "#;
-        type Strings = List<EcoString>;
+        type Strings = List<StringValue>;
         let (left, keep) = HostedModuleBuilder::new(program(source))
             .expect("left plan")
             .function(FunctionDeclaration::<(Strings,), Strings>::new("keep"))
@@ -373,13 +381,13 @@ pub fn keep(values: List(String)) {
                 async |scope| {
                     assert_eq!(
                         scope
-                            .call(&foreign, (vec![EcoString::from("unused")],))
+                            .call(&foreign, (vec![StringValue::from("unused")],))
                             .await
                             .err(),
                         Some(CallError::ForeignFunction)
                     );
                     scope
-                        .call(&keep, (vec![EcoString::from("first"), "second".into()],))
+                        .call(&keep, (vec![StringValue::from("first"), "second".into()],))
                         .await
                         .expect("fresh input")
                 },
@@ -424,7 +432,7 @@ pub fn keep(values: List(String)) {
         assert_eq!(retained.len(), 2);
         assert_eq!(
             retained.read_item(1, Clone::clone),
-            Some(EcoString::from("second"))
+            Some(StringValue::from("second"))
         );
         assert_eq!(left_echo.0.len(), 2);
     }
@@ -434,11 +442,11 @@ pub fn keep(values: List(String)) {
         let execution_host = crate::execution_fixture::TestHost::default();
 
         use crate::runtime::BitArrayValue;
-        type Scalars = (BigInt, f64, EcoString, BitArrayValue, char, bool, ());
+        type Scalars = (BigInt, f64, StringValue, BitArrayValue, char, bool, ());
         type Data = (
             Scalars,
-            Result<BigInt, EcoString>,
-            List<(BigInt, EcoString)>,
+            Result<BigInt, StringValue>,
+            List<(BigInt, StringValue)>,
         );
         let source = r#"
 pub fn identity(
@@ -460,7 +468,7 @@ pub fn empty() -> List(Int) { [] }
         let scalars = (
             BigInt::from(1),
             2.5,
-            EcoString::from("three"),
+            StringValue::from("three"),
             bits,
             '四',
             true,
@@ -474,14 +482,14 @@ pub fn empty() -> List(Int) { [] }
                 &mut state,
                 &mut echo,
                 async |scope| {
-                    for choice in [Ok(BigInt::from(4)), Err(EcoString::from("failed"))] {
+                    for choice in [Ok(BigInt::from(4)), Err(StringValue::from("failed"))] {
                         let (actual, result, rows) = scope
                             .call(
                                 &identity,
                                 (
                                     scalars.clone(),
                                     choice.clone(),
-                                    vec![(BigInt::from(5), EcoString::from("five"))],
+                                    vec![(BigInt::from(5), StringValue::from("five"))],
                                 ),
                             )
                             .await
@@ -490,7 +498,7 @@ pub fn empty() -> List(Int) { [] }
                         assert_eq!(result, choice);
                         assert_eq!(
                             rows.read_item(0, |(number, text)| (number.clone(), text.clone())),
-                            Some((BigInt::from(5), EcoString::from("five")))
+                            Some((BigInt::from(5), StringValue::from("five")))
                         );
                         assert_eq!(rows.read_item(1, |_| ()), None);
                     }
@@ -526,7 +534,7 @@ pub fn results(value: List(Result(Int, String))) { value }
             .function(FunctionDeclaration::<(f64,), f64>::new("float"))
             .expect("float binding");
         let string = bindings
-            .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+            .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
                 "string",
             ))
             .expect("string binding");
@@ -548,7 +556,7 @@ pub fn results(value: List(Result(Int, String))) { value }
         let lists = bindings
             .function(FunctionDeclaration::<(Nils,), Nils>::new("lists"))
             .expect("nested lists");
-        type Results = List<Result<BigInt, EcoString>>;
+        type Results = List<Result<BigInt, StringValue>>;
         let results = bindings
             .function(FunctionDeclaration::<(Results,), Results>::new("results"))
             .expect("result list");
@@ -585,7 +593,7 @@ pub fn results(value: List(Result(Int, String))) { value }
                     let choices = scope
                         .call(
                             &results,
-                            (vec![Ok(BigInt::from(42)), Err(EcoString::from("failed"))],),
+                            (vec![Ok(BigInt::from(42)), Err(StringValue::from("failed"))],),
                         )
                         .await
                         .expect("result items");
@@ -595,7 +603,7 @@ pub fn results(value: List(Result(Int, String))) { value }
                     );
                     assert_eq!(
                         choices.read_item(1, |value| value.cloned().map_err(Clone::clone)),
-                        Some(Err(EcoString::from("failed")))
+                        Some(Err(StringValue::from("failed")))
                     );
                 },
             ))

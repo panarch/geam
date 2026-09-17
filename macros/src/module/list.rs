@@ -742,7 +742,7 @@ mod tests {
                 value: Box::new(StaticValueType::Scalar(syn::parse_quote!(BigInt))),
             }),
             failure: Box::new(StaticValueType::Option {
-                value: Box::new(StaticValueType::Scalar(syn::parse_quote!(EcoString))),
+                value: Box::new(StaticValueType::Scalar(syn::parse_quote!(StringValue))),
             }),
         };
 
@@ -754,7 +754,7 @@ mod tests {
                 InputOwnership::Borrowed,
             )
             .to_string(),
-            ":: core :: result :: Result < :: core :: option :: Option < BigInt > , :: core :: option :: Option < EcoString > >",
+            ":: core :: result :: Result < :: core :: option :: Option < BigInt > , :: core :: option :: Option < StringValue > >",
         );
     }
 }

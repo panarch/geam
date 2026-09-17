@@ -15,3 +15,9 @@ pub fn run() {
     fold(fn(value) { value + 1 }, 40),
   )
 }
+
+pub fn substring(value: String) {
+  let assert "prefix:" <> rest = value
+  let read = fn() { rest }
+  #(equal_native(#(rest, [rest]), #(read(), [read()])), read())
+}

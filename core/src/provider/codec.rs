@@ -352,7 +352,7 @@ macro_rules! provider_scalar {
 
 provider_scalar!(num_bigint::BigInt);
 provider_scalar!(f64);
-provider_scalar!(ecow::EcoString);
+provider_scalar!(crate::StringValue);
 provider_scalar!(crate::BitArrayValue);
 provider_scalar!(char);
 provider_scalar!(bool);
@@ -571,19 +571,20 @@ mod tests {
         ProviderConstruction, ProviderConstructionList, ProviderConstructionRequirements,
         ProviderNoConstructions,
     };
-    use crate::{HostListType, HostTypeList, HostTypeListEnd};
-    use ecow::EcoString;
+    use crate::{HostListType, HostTypeList, HostTypeListEnd, StringValue};
     use num_bigint::BigInt;
 
     type Requirements = ProviderConstructionList<
         ProviderNoConstructions,
         ProviderConstructionList<
             ProviderConstruction<HostListType<BigInt>>,
-            ProviderConstruction<HostListType<EcoString>>,
+            ProviderConstruction<HostListType<StringValue>>,
         >,
     >;
-    type Expected =
-        HostTypeList<HostListType<BigInt>, HostTypeList<HostListType<EcoString>, HostTypeListEnd>>;
+    type Expected = HostTypeList<
+        HostListType<BigInt>,
+        HostTypeList<HostListType<StringValue>, HostTypeListEnd>,
+    >;
 
     #[test]
     fn construction_requirements_preserve_exact_type_order() {

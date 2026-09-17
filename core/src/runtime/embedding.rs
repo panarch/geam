@@ -48,7 +48,7 @@ pub(crate) fn run_embedded_string(
     function: StringFunctionId,
     inputs: RetainedValues,
     echo: &mut dyn EchoSink,
-) -> Result<ecow::EcoString, ExecutionError> {
+) -> Result<crate::StringValue, ExecutionError> {
     let mut state = RuntimeState::new(echo);
     function::run_string(plan, &mut state, function, HostCallOrigin::Entry, inputs)
 }

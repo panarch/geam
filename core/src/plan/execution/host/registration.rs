@@ -252,13 +252,13 @@ mod tests {
     #[test]
     fn emits_original_parameter_slots_for_every_storage_family() {
         use crate::BitArrayValue;
+        use crate::StringValue;
         use crate::host::HostParameterLayout;
-        use ecow::EcoString;
 
         let mut layout = HostParameterLayout::default();
         layout.register::<BigInt>();
         layout.register::<f64>();
-        layout.register::<EcoString>();
+        layout.register::<StringValue>();
         layout.register::<BitArrayValue>();
         layout.register::<char>();
         layout.register::<bool>();

@@ -1,4 +1,4 @@
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::{
     BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostCustom,
     HostCustomConstructorAt, HostCustomConstructorDefinition, HostCustomConstructorList,
@@ -1512,7 +1512,7 @@ fn reads_every_scalar_from_a_tuple_list_item_and_preserves_typed_equality() {
     type Sixth = HostTypeList<bool, Seventh>;
     type Fifth = HostTypeList<char, Sixth>;
     type Fourth = HostTypeList<BitArrayValue, Fifth>;
-    type Third = HostTypeList<EcoString, Fourth>;
+    type Third = HostTypeList<StringValue, Fourth>;
     type Second = HostTypeList<f64, Third>;
     type Elements = HostTypeList<BigInt, Second>;
     type Tuple = HostTupleType<Elements>;
@@ -1532,7 +1532,7 @@ fn reads_every_scalar_from_a_tuple_list_item_and_preserves_typed_equality() {
             call.tuple_values(value);
         let matches = call.equal::<BigInt>(int, 1.into())
             && call.equal::<f64>(float, 1.5)
-            && call.equal::<EcoString>(string, "text".into())
+            && call.equal::<StringValue>(string, "text".into())
             && call.equal::<BitArrayValue>(bits, BitArrayValue::from_bytes(vec![1]))
             && call.equal::<char>(codepoint, 'A')
             && call.equal::<bool>(bool_, true)

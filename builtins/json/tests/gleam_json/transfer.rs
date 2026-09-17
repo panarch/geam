@@ -81,8 +81,8 @@ pub(super) fn fixture(root_module: &str) -> TransferFixture<Profile> {
 fn non_finite_json_preserves_the_host_failure_and_allows_the_next_call() {
     let execution_host = crate::execution_fixture::TestHost::default();
 
-    use ecow::EcoString;
     use geam_core::ExecutionError;
+    use geam_core::StringValue;
     use geam_core::embedding::{CallError, FunctionDeclaration, HostedModuleBuilder};
     use std::pin::pin;
     use std::task::Poll;
@@ -98,7 +98,7 @@ fn non_finite_json_preserves_the_host_failure_and_allows_the_next_call() {
     .expect("official JSON source linkage");
     let (bindings, entry) = HostedModuleBuilder::new(program)
         .expect("JSON plan")
-        .function(FunctionDeclaration::<(f64,), EcoString>::new(
+        .function(FunctionDeclaration::<(f64,), StringValue>::new(
             "encode_number",
         ))
         .expect("typed probe");

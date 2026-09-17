@@ -11,11 +11,11 @@ pub struct Component;
     crate_path = geam_core
 )]
 mod declarations {
-    use ecow::EcoString;
+    use geam_core::StringValue;
 
     #[geam_macros::external(name = "Token")]
     #[derive(Clone, PartialEq, Eq, Hash)]
-    pub struct Token(pub(super) EcoString);
+    pub struct Token(pub(super) StringValue);
 }
 
 #[geam_macros::module(
@@ -24,8 +24,7 @@ mod declarations {
 )]
 mod native {
     use super::declarations;
-    use ecow::EcoString;
-    use geam_core::BitArrayValue;
+    use geam_core::{BitArrayValue, StringValue};
     use geam_core::provider::{
         BigInt, Call, Callback, ExternalPayload, Future, HostFailure, HostResult, Stored, Value,
     };
@@ -52,7 +51,7 @@ mod native {
             self.value.get() as u64
         }
 
-        fn inspect(&self) -> EcoString {
+        fn inspect(&self) -> ecow::EcoString {
             format!("Counter({})", self.value.get()).into()
         }
     }
@@ -65,7 +64,7 @@ mod native {
     #[geam_macros::custom(input = BatchInput)]
     enum Batch {
         Numbers(Vec<BigInt>),
-        Pairs(Vec<(EcoString, BigInt)>),
+        Pairs(Vec<(StringValue, BigInt)>),
         Counters(Vec<Counter>),
     }
 
@@ -96,7 +95,7 @@ mod native {
         fn source_hash(&self, context: &Hashing<'_>) -> u64 {
             self.value.source_hash(context)
         }
-        fn inspect(&self, context: &Inspection<'_>) -> EcoString {
+        fn inspect(&self, context: &Inspection<'_>) -> ecow::EcoString {
             format!("Manual({})", self.value.inspect(context)).into()
         }
     }
@@ -222,7 +221,7 @@ mod native {
     }
 
     #[geam_macros::function]
-    async fn arity_three(a: EcoString, b: EcoString, c: EcoString) -> EcoString {
+    async fn arity_three(a: StringValue, b: StringValue, c: StringValue) -> StringValue {
         format!("{a}{b}{c}").into()
     }
 
@@ -243,8 +242,8 @@ mod native {
     }
 
     #[geam_macros::function]
-    async fn arity_seven(a: BigInt, b: f64, c: EcoString, d: BitArrayValue, e: char, f: bool, g: ())
-        -> (BigInt, f64, EcoString, BitArrayValue, char, bool, ()) {
+    async fn arity_seven(a: BigInt, b: f64, c: StringValue, d: BitArrayValue, e: char, f: bool, g: ())
+        -> (BigInt, f64, StringValue, BitArrayValue, char, bool, ()) {
         (a, b, c, d, e, f, g)
     }
 
@@ -286,8 +285,25 @@ mod native {
     }
 
     #[geam_macros::function]
-    fn string_identity(value: EcoString) -> EcoString {
+    fn string_identity(value: StringValue) -> StringValue {
         value
+    }
+
+    #[geam_macros::function(await)]
+    async fn string_callback(
+        #[geam_macros::call] call: &mut Call<BigInt>,
+        callback: Callback<fn() -> StringValue>,
+    ) -> HostResult<StringValue> {
+        let mut pending = true;
+        poll_fn(|context| {
+            if std::mem::take(&mut pending) {
+                context.waker().wake_by_ref();
+                Poll::Pending
+            } else {
+                Poll::Ready(())
+            }
+        }).await;
+        call.invoke(&callback, ()).await
     }
 
     #[geam_macros::function]
@@ -311,7 +327,7 @@ mod native {
     }
 
     #[geam_macros::function]
-    fn tuple_identity(value: (EcoString, BigInt)) -> (EcoString, BigInt) {
+    fn tuple_identity(value: (StringValue, BigInt)) -> (StringValue, BigInt) {
         value
     }
 
@@ -341,19 +357,19 @@ mod native {
     }
 
     #[geam_macros::function]
-    fn new_token(value: EcoString) -> declarations::Token {
+    fn new_token(value: StringValue) -> declarations::Token {
         declarations::Token(value)
     }
 
     #[geam_macros::function]
-    fn first_token(values: geam_core::List<declarations::Token>) -> EcoString {
+    fn first_token(values: geam_core::List<declarations::Token>) -> StringValue {
         values
             .get(0)
             .map_or_else(|| "missing".into(), |token| token.0.clone())
     }
 
     #[geam_macros::function]
-    async fn first_token_async(values: geam_core::List<declarations::Token>) -> EcoString {
+    async fn first_token_async(values: geam_core::List<declarations::Token>) -> StringValue {
         let value = values.get(0).map_or_else(
             || "missing".into(),
             |token| token.with(|token| token.0.clone()),
@@ -526,13 +542,13 @@ mod native {
         #[geam_macros::call] call: &mut Call<BigInt>,
         callback: Callback<
             fn(
-                (BigInt, EcoString),
-                Result<BigInt, EcoString>,
+                (BigInt, StringValue),
+                Result<BigInt, StringValue>,
                 Option<BigInt>,
                 Vec<BigInt>,
             ) -> (
-                (BigInt, EcoString),
-                Result<BigInt, EcoString>,
+                (BigInt, StringValue),
+                Result<BigInt, StringValue>,
                 Option<BigInt>,
                 geam_core::List<BigInt>,
             ),
@@ -646,7 +662,7 @@ mod native {
     }
 
     #[geam_macros::function]
-    fn nested_list_matches(values: geam_core::List<(EcoString, (BigInt, bool))>) -> bool {
+    fn nested_list_matches(values: geam_core::List<(StringValue, (BigInt, bool))>) -> bool {
         let Some((label, (number, flag))) = values.get(0) else {
             return false;
         };
@@ -674,13 +690,13 @@ mod native {
     }
 
     #[geam_macros::function]
-    async fn make_pairs(label: EcoString, value: BigInt) -> Batch {
+    async fn make_pairs(label: StringValue, value: BigInt) -> Batch {
         std::future::ready(()).await;
         Batch::Pairs(vec![(label, value)])
     }
 
     #[geam_macros::function]
-    fn summarize_batch(value: BatchInput) -> (EcoString, BigInt) {
+    fn summarize_batch(value: BatchInput) -> (StringValue, BigInt) {
         match value {
             BatchInput::Numbers(values) => {
                 assert_eq!(values.len(), 2);
@@ -707,14 +723,14 @@ mod native {
     }
 
     #[geam_macros::function]
-    fn summarize_first_batch(values: geam_core::List<BatchInput>) -> (EcoString, BigInt) {
+    fn summarize_first_batch(values: geam_core::List<BatchInput>) -> (StringValue, BigInt) {
         summarize_batch(values.get(0).expect("the test List contains a batch value"))
     }
 
     #[geam_macros::function]
     async fn summarize_first_batch_async(
         values: geam_core::List<BatchInput>,
-    ) -> (EcoString, BigInt) {
+    ) -> (StringValue, BigInt) {
         let BatchInput::Counters(counters) = values
             .get(0)
             .expect("the test List contains a counter batch")
@@ -730,7 +746,7 @@ mod native {
     }
 
     #[geam_macros::function]
-    async fn summarize_batch_async(value: BatchInput) -> (EcoString, BigInt) {
+    async fn summarize_batch_async(value: BatchInput) -> (StringValue, BigInt) {
         std::future::ready(()).await;
         match value {
             BatchInput::Numbers(values) => {

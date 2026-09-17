@@ -71,7 +71,7 @@ pub(crate) enum OwnedHostFunctionImplementation<Profile: HostProfile> {
     Never(OwnedHostCallback<Profile, std::convert::Infallible>),
     Int(OwnedHostCallback<Profile, num_bigint::BigInt>),
     Float(OwnedHostCallback<Profile, f64>),
-    String(OwnedHostCallback<Profile, ecow::EcoString>),
+    String(OwnedHostCallback<Profile, crate::StringValue>),
     BitArray(OwnedHostCallback<Profile, crate::BitArrayValue>),
     UtfCodepoint(OwnedHostCallback<Profile, char>),
     Bool(OwnedHostCallback<Profile, bool>),

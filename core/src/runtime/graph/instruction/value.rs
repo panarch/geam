@@ -1,5 +1,6 @@
 use super::super::RuntimeGraphState;
 use super::super::environment::BlockEnvironment;
+use crate::StringValue;
 use crate::plan::ValueType;
 use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::graph::{
@@ -10,7 +11,6 @@ use crate::runtime::InvariantError;
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedValue, values_equal,
 };
-use ecow::EcoString;
 use num_bigint::BigInt;
 
 pub(in crate::runtime) enum InstructionValue<Value, Function, Constant> {
@@ -233,7 +233,7 @@ pub(in crate::runtime) fn string<Plan, State>(
     expected: &ValueType,
 ) -> Result<
     InstructionValue<
-        EcoString,
+        StringValue,
         crate::plan::execution::function::StringFunctionId,
         crate::plan::execution::graph::StringLocalId,
     >,
@@ -247,7 +247,7 @@ where
     use StringInstruction as I;
 
     match instruction {
-        I::Value(value) => Ok(V::Ready(value.materialize())),
+        I::Value(value) => Ok(V::Ready(value.materialize().into())),
         I::Constant(id) => Ok(V::Constant(*id)),
         I::Call {
             function,
@@ -310,7 +310,7 @@ where
         )),
         I::DropPrefix { value, prefix } => {
             let value = environment.string(*value);
-            Ok(V::Ready(value[prefix.len()..].into()))
+            Ok(V::Ready(value.slice(prefix.len()..value.len())))
         }
     }
 }
@@ -948,6 +948,7 @@ pub(in crate::runtime) fn inputs_with_captures(
 mod tests {
     use super::super::super::environment::{BlockEnvironment, RetainedValues};
     use super::{ensure_list_index, list_element, tuple_projection};
+    use crate::StringValue;
     use crate::plan::execution::graph::TupleLocalId;
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::plan::{
@@ -962,10 +963,9 @@ mod tests {
         EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedValue,
         ExecutionError, InvariantError, Value,
     };
-    use ecow::EcoString;
     use num_bigint::BigInt;
 
-    fn string_value(value: &EvaluatedValue) -> Option<EcoString> {
+    fn string_value(value: &EvaluatedValue) -> Option<StringValue> {
         match value {
             EvaluatedValue::String(value) => Some(value.clone()),
             _ => None,
@@ -1044,7 +1044,7 @@ mod tests {
     fn every_leaf_list_storage_reports_the_exact_missing_index() {
         assert_missing_list_element::<BigInt>(ValueType::Int);
         assert_missing_list_element::<f64>(ValueType::Float);
-        assert_missing_list_element::<EcoString>(ValueType::String);
+        assert_missing_list_element::<StringValue>(ValueType::String);
         assert_missing_list_element::<EvaluatedBitArray>(ValueType::BitArray);
         assert_missing_list_element::<char>(ValueType::UtfCodepoint);
         assert_missing_list_element::<EvaluatedCustomValue>(ValueType::Custom(boxed_type()));

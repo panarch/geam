@@ -1,7 +1,6 @@
 use super::{NativeValue, value_hash, values_equal};
 use crate::plan::execution::runtime::RuntimeValueMetadata;
 use crate::runtime::{EvaluatedValue, RuntimeListStorage, StoredRuntimeValue};
-use ecow::EcoString;
 use num_bigint::BigInt;
 
 /// Call-borrowed native value operations, without mutable host or execution access.
@@ -37,7 +36,7 @@ impl<'call> NativeValues<'call> {
         ))
     }
 
-    pub fn string(self, value: EcoString) -> NativeValue {
+    pub fn string(self, value: crate::StringValue) -> NativeValue {
         NativeValue::from_stored(StoredRuntimeValue::new(
             EvaluatedValue::String(value),
             self.metadata,
@@ -50,6 +49,45 @@ mod tests {
     use super::NativeValues;
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::runtime::{NativeKind, NativeValue, RuntimeListStorage};
+
+    #[test]
+    fn native_nested_string_reads_retain_visible_storage_and_binary_semantics() {
+        let plan = crate::runtime::plan_src("pub fn main() { Nil }");
+        let lists = RuntimeListStorage::default();
+        let values = NativeValues::new(&lists, plan.value_metadata());
+        let root = crate::StringValue::from("hidden:abcdefghijklmnopqrstuvwxyz:hidden");
+        let slice = root.slice(7..33);
+        let pointer = slice.as_ptr();
+        let native = values.string(slice.clone());
+        let tuple = NativeValue::tuple([NativeValue::tuple([native.clone()])]);
+        let nested = tuple
+            .index(0)
+            .expect("outer tuple element")
+            .index(0)
+            .expect("retained string element");
+        let independent = values.string("abcdefghijklmnopqrstuvwxyz".into());
+        let binary = NativeValue::from_stored(crate::runtime::StoredRuntimeValue::new(
+            crate::runtime::EvaluatedValue::BitArray(
+                crate::runtime::evaluated::EvaluatedBitArray::from_value(
+                    crate::BitArrayValue::from_bytes(b"abcdefghijklmnopqrstuvwxyz".to_vec()),
+                ),
+            ),
+            plan.value_metadata(),
+        ));
+        assert_eq!(native.bit_len(), Some(208));
+        assert!(values.equal(&native, &independent));
+        assert!(values.equal(&native, &binary));
+        assert_eq!(values.hash(&native), values.hash(&binary));
+        assert_eq!(binary.as_string(), Some(slice));
+        drop(root);
+        drop(native);
+        drop(tuple);
+        let text = nested
+            .as_string()
+            .expect("native String should stay a String");
+        assert_eq!(text, "abcdefghijklmnopqrstuvwxyz");
+        assert_eq!(text.as_ptr(), pointer);
+    }
 
     #[test]
     fn native_scalars_preserve_kind_contents_and_structural_comparison() {

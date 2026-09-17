@@ -1,7 +1,7 @@
 #[path = "../../tests/support/execution_host.rs"]
 mod execution_fixture;
 
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::provider::{Call, Configuration, HostResult, InitializationError};
 use geam_core::{
     ExecutionError, HostComponentProfile, HostFailure, HostModule, HostProfile,
@@ -36,14 +36,14 @@ pub struct Component;
 
 #[geam_macros::module(path = "counter", crate_path = geam_core)]
 mod counter {
-    use super::{Call, EcoString, HostFailure, HostResult, RunState};
+    use super::{Call, HostFailure, HostResult, RunState, StringValue};
 
-    fn render(label: EcoString, next: i64) -> EcoString {
+    fn render(label: StringValue, next: i64) -> StringValue {
         format!("{label}:{next}").into()
     }
 
     #[geam_macros::function]
-    fn next(#[geam_macros::call] call: &mut Call<RunState>, label: EcoString) -> EcoString {
+    fn next(#[geam_macros::call] call: &mut Call<RunState>, label: StringValue) -> StringValue {
         let state = call.state_mut();
         let next = state.next;
         state.next += 1;
@@ -51,23 +51,23 @@ mod counter {
     }
 
     #[geam_macros::function]
-    fn peek(#[geam_macros::call] call: &Call<RunState>, label: EcoString) -> EcoString {
+    fn peek(#[geam_macros::call] call: &Call<RunState>, label: StringValue) -> StringValue {
         render(label, call.state().next)
     }
 
     #[geam_macros::function]
     fn try_peek(
         #[geam_macros::call] call: &Call<RunState>,
-        label: EcoString,
-    ) -> HostResult<EcoString> {
+        label: StringValue,
+    ) -> HostResult<StringValue> {
         Ok(render(label, call.state().next))
     }
 
     #[geam_macros::function]
     fn stop(
         #[geam_macros::call] call: &mut Call<RunState>,
-        label: EcoString,
-    ) -> HostResult<EcoString> {
+        label: StringValue,
+    ) -> HostResult<StringValue> {
         let next = call.state_mut().next;
         Err(HostFailure::new(format!("{label}:{next}")).into())
     }
@@ -75,10 +75,10 @@ mod counter {
 
 #[geam_macros::module(path = "counter/labels", crate_path = geam_core)]
 mod labels {
-    use super::EcoString;
+    use super::StringValue;
 
     #[geam_macros::function]
-    fn identity(label: EcoString) -> EcoString {
+    fn identity(label: StringValue) -> StringValue {
         label
     }
 }
@@ -139,7 +139,10 @@ pub fn identity(label: String) -> String
 "#;
 
 fn configuration(start: i64) -> Configuration {
-    Configuration::new(BTreeMap::from([(EcoString::from("start"), start.into())]))
+    Configuration::new(BTreeMap::from([(
+        ecow::EcoString::from("start"),
+        start.into(),
+    )]))
 }
 
 fn providers() -> Vec<geam_core::HostProviderModule<Profile>> {

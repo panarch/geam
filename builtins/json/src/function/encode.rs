@@ -1,11 +1,11 @@
 use super::provider::JsonPayload;
-use ecow::EcoString;
 use geam_core::HostFailure;
+use geam_core::StringValue;
 use geam_stdlib::provider_support::{StoredStringTree, StringTreePayload};
 use num_bigint::BigInt;
 use std::ops::Deref;
 
-pub(super) fn do_to_string(json: impl Deref<Target = JsonPayload>) -> EcoString {
+pub(super) fn do_to_string(json: impl Deref<Target = JsonPayload>) -> StringValue {
     json.tree().flatten()
 }
 
@@ -13,7 +13,7 @@ pub(super) fn to_string_tree(json: impl Deref<Target = JsonPayload>) -> StringTr
     StringTreePayload::from_stored(json.tree().clone())
 }
 
-pub(super) fn do_string(value: EcoString) -> JsonPayload {
+pub(super) fn do_string(value: StringValue) -> JsonPayload {
     JsonPayload::from_tree(StoredStringTree::text(encode_string(&value)))
 }
 
@@ -39,7 +39,7 @@ pub(super) fn do_null() -> JsonPayload {
     JsonPayload::from_tree(StoredStringTree::text("null".into()))
 }
 
-pub(super) fn encode_string(value: &str) -> EcoString {
+pub(super) fn encode_string(value: &str) -> StringValue {
     let mut output = String::with_capacity(value.len() + 2);
     output.push('"');
     for character in value.chars() {

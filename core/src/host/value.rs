@@ -1,5 +1,5 @@
 use crate::BitArrayValue;
-use ecow::EcoString;
+use crate::StringValue;
 use num_bigint::BigInt;
 use std::marker::PhantomData;
 
@@ -132,7 +132,7 @@ pub(crate) struct HostFunctionToken(pub usize);
 pub(crate) enum HostScopedValue {
     Int(BigInt),
     Float(f64),
-    String(EcoString),
+    String(StringValue),
     BitArray(BitArrayValue),
     UtfCodepoint(char),
     Bool(bool),

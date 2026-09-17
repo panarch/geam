@@ -1,4 +1,5 @@
 use super::BlockEnvironment;
+use crate::StringValue;
 use crate::plan::execution::graph::{
     BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
     BoolListLocalId, BoolLocalId, CustomFunctionLocal, CustomListLocalId, CustomLocal,
@@ -26,7 +27,6 @@ use crate::runtime::{
     EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
     EvaluatedUtfCodepointFunction,
 };
-use ecow::EcoString;
 use num_bigint::BigInt;
 use std::convert::Infallible;
 
@@ -64,7 +64,7 @@ macro_rules! local_value {
 
 local_value!(IntLocalId, BigInt, ints);
 local_value!(FloatLocalId, f64, floats);
-local_value!(StringLocalId, EcoString, strings);
+local_value!(StringLocalId, StringValue, strings);
 local_value!(BitArrayLocalId, EvaluatedBitArray, bit_arrays);
 local_value!(UtfCodepointLocalId, char, utf_codepoints);
 local_value!(BoolLocalId, bool, bools);

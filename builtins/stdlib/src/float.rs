@@ -5,7 +5,7 @@ pub(super) use self::function::do_to_float;
 
 use super::{GleamStdlibProviderProfile, GleamStdlibRunState};
 use crate::{HostProviderModule, HostRegistrationError};
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::provider::Call;
 use num_bigint::BigInt;
 
@@ -16,16 +16,16 @@ use num_bigint::BigInt;
     component = crate::Component<Profile::Io>,
 )]
 mod provider {
-    use super::{BigInt, Call, EcoString, GleamStdlibRunState, function};
+    use super::{BigInt, Call, GleamStdlibRunState, StringValue, function};
     use geam_core::provider::HostResult;
 
     #[geam_macros::function]
-    fn parse(source: EcoString) -> Result<f64, ()> {
+    fn parse(source: StringValue) -> Result<f64, ()> {
         function::parse(source)
     }
 
     #[geam_macros::function]
-    fn to_string(value: f64) -> EcoString {
+    fn to_string(value: f64) -> StringValue {
         function::to_string(value)
     }
 

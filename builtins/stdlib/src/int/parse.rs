@@ -1,22 +1,22 @@
-use ecow::EcoString;
+use geam_core::StringValue;
 use num_bigint::BigInt;
 use num_traits::ToPrimitive;
 
-pub(super) fn decimal(source: &EcoString) -> Option<BigInt> {
+pub(super) fn decimal(source: &StringValue) -> Option<BigInt> {
     parse_digits(source, 10, true)
 }
 
-pub(super) fn radix(source: &EcoString, base: &BigInt) -> Option<BigInt> {
+pub(super) fn radix(source: &StringValue, base: &BigInt) -> Option<BigInt> {
     let base = base.to_u32().filter(|base| (2..=36).contains(base))?;
     parse_digits(source, base, false)
 }
 
-pub(super) fn format_radix(value: &BigInt, base: &BigInt) -> Option<EcoString> {
+pub(super) fn format_radix(value: &BigInt, base: &BigInt) -> Option<StringValue> {
     let base = base.to_u32().filter(|base| (2..=36).contains(base))?;
     Some(value.to_str_radix(base).to_uppercase().into())
 }
 
-fn parse_digits(source: &EcoString, base: u32, allow_plus: bool) -> Option<BigInt> {
+fn parse_digits(source: &StringValue, base: u32, allow_plus: bool) -> Option<BigInt> {
     let bytes = source.as_bytes();
     let digits = match bytes.first() {
         Some(b'-') => &bytes[1..],

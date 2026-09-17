@@ -95,7 +95,7 @@ macro_rules! scalar_input {
 
 scalar_input!(num_bigint::BigInt, IntListTypeId, Int, int);
 scalar_input!(f64, FloatListTypeId, Float, float);
-scalar_input!(ecow::EcoString, StringListTypeId, String, string);
+scalar_input!(crate::StringValue, StringListTypeId, String, string);
 scalar_input!(char, UtfCodepointListTypeId, UtfCodepoint, utf_codepoint);
 scalar_input!(bool, BoolListTypeId, Bool, bool);
 

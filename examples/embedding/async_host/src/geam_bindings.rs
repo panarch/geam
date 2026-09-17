@@ -13,7 +13,6 @@ use geam::HostWorkProfile;
 
 use geam::embedding::BigInt;
 use geam::embedding::BindingError;
-use geam::embedding::EcoString;
 use geam::embedding::Function;
 use geam::embedding::FunctionDeclaration;
 use geam::embedding::FutureType;
@@ -21,6 +20,7 @@ use geam::embedding::HostedModuleBindings;
 use geam::embedding::HostedModuleBuilder;
 use geam::embedding::HostedProject;
 use geam::embedding::InputShape;
+use geam::embedding::StringValue;
 
 pub const ROOT_MODULE: &str = "geam_rust_embedding_async_host";
 
@@ -114,7 +114,8 @@ pub fn project() -> HostedProject<Profile> {
 #[allow(clippy::type_complexity)]
 pub struct Functions {
     pub double: Function<(BigInt,), BigInt, Function0Input>,
-    pub greeting: Function<(EcoString,), FutureType<Result<EcoString, EcoString>>, Function1Input>,
+    pub greeting:
+        Function<(StringValue,), FutureType<Result<StringValue, StringValue>>, Function1Input>,
 }
 
 pub struct Function0Input;
@@ -123,7 +124,7 @@ impl InputShape<(BigInt,)> for Function0Input {}
 
 pub struct Function1Input;
 
-impl InputShape<(EcoString,)> for Function1Input {}
+impl InputShape<(StringValue,)> for Function1Input {}
 
 pub fn bind(
     builder: HostedModuleBuilder<Profile>,

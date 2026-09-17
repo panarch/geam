@@ -777,15 +777,77 @@ fn native_data_matches_preparation_output() {
         native_provider::hosts(),
     )
     .unwrap();
-    let (bindings, _) = HostedModuleBuilder::new(program)
+    let (mut bindings, _) = HostedModuleBuilder::new(program)
         .unwrap()
         .function(FunctionDeclaration::<(), (bool, bool, BigInt)>::new("run"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<
+            (geam_core::StringValue,),
+            (bool, geam_core::StringValue),
+        >::new("substring"))
         .unwrap();
     assert_eq!(
         bindings.prepare().unwrap().emit_rust(),
         include_str!("fixtures/prepared/native.rs").trim()
     );
     NATIVE.load(native_provider::hosts()).unwrap();
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn dynamic_and_prepared_strings_share_input_storage_after_native_calls() {
+    use geam_core::embedding::{HostedModuleBuilder, StringValue};
+    use geam_core::{ModuleSource, PackageSource, compile_typed_host_program};
+
+    let program = compile_typed_host_program(
+        "application",
+        "main",
+        [PackageSource::new(
+            "application",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "main",
+                "src/main.gleam",
+                include_str!("fixtures/prepared/native.gleam"),
+            )],
+        )],
+        native_provider::hosts(),
+    )
+    .unwrap();
+    let (dynamic, dynamic_entry) = HostedModuleBuilder::new(program)
+        .unwrap()
+        .function(FunctionDeclaration::<(StringValue,), (bool, StringValue)>::new("substring"))
+        .unwrap();
+    let mut prepared = NATIVE.load(native_provider::hosts()).unwrap();
+    let prepared_entry = prepared
+        .function(FunctionDeclaration::<(StringValue,), (bool, StringValue)>::new("substring"))
+        .unwrap();
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let host = geam_core::execution::TokioHost::new(runtime.handle().clone());
+    for (mut module, entry) in [
+        (dynamic.seal().unwrap(), dynamic_entry),
+        (prepared.seal(), prepared_entry),
+    ] {
+        let input = StringValue::from("prefix:abcdefghijklmnopqrstuvwxyz");
+        let address = input.as_ptr().addr() + 7;
+        let mut echo = Vec::new();
+        let (same, text) = runtime
+            .block_on(
+                module.with_execution(&host, &mut (), &mut echo, async move |scope| {
+                    scope.call(&entry, (input,)).await.unwrap()
+                }),
+            )
+            .unwrap();
+        drop(module);
+        assert!(same);
+        assert_eq!(text.as_str(), "abcdefghijklmnopqrstuvwxyz");
+        assert_eq!(text.as_ptr().addr(), address);
+        assert!(echo.is_empty());
+    }
 }
 
 #[cfg(feature = "tokio")]

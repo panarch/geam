@@ -7,23 +7,23 @@ pub struct Component;
 
 #[geam_macros::module(path = "macro_declarations/values", crate_path = geam_core)]
 pub mod values {
-    use ecow::EcoString;
+    use geam_core::StringValue;
     use geam_core::provider::ExternalPayload;
     use num_bigint::BigInt;
     use std::sync::Arc;
 
     #[geam_macros::external(name = "SavedText", manual)]
     pub struct SavedText {
-        text: Arc<EcoString>,
+        text: Arc<StringValue>,
     }
 
     impl SavedText {
-        pub fn new(text: EcoString) -> Self {
+        pub fn new(text: StringValue) -> Self {
             Self {
                 text: Arc::new(text),
             }
         }
-        pub fn text(&self) -> EcoString {
+        pub fn text(&self) -> StringValue {
             (*self.text).clone()
         }
     }
@@ -46,8 +46,8 @@ pub mod values {
             self.text.hash(&mut hash);
             hash.finish()
         }
-        fn inspect(&self) -> EcoString {
-            self.text()
+        fn inspect(&self) -> ecow::EcoString {
+            self.text().into_ecostring()
         }
     }
 
@@ -60,7 +60,7 @@ pub mod values {
 
     #[geam_macros::external(name = "Token")]
     #[derive(Clone, PartialEq, Eq, Hash)]
-    pub struct Token(pub EcoString);
+    pub struct Token(pub StringValue);
 
     #[geam_macros::custom(input = StatusInput)]
     pub enum Status {

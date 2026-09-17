@@ -285,8 +285,8 @@ macro_rules! scalar {
 scalar!(super::super::BigInt, &'value super::super::BigInt, int);
 scalar!(f64, f64, float);
 scalar!(
-    super::super::EcoString,
-    &'value super::super::EcoString,
+    super::super::StringValue,
+    &'value super::super::StringValue,
     string
 );
 scalar!(
@@ -513,13 +513,13 @@ impl<Profile: HostWorkProfile, Value: ScopedOutput<Profile>> ScopedOutput<Profil
 
 #[cfg(test)]
 mod tests {
+    use crate::StringValue;
     use crate::embedding::{FunctionDeclaration, HostedModuleBuilder, List};
     use crate::frontend::compile_typed_host_program;
     use crate::host::{HostComponentProfile, HostFutureStore, HostProfile, HostProviderSet};
     use crate::work_fixture::WorkComponent;
     use crate::work_fixture::WorkType;
     use crate::{EchoOutput, EchoSink, ModuleSource, PackageSource};
-    use ecow::EcoString;
 
     struct Profile;
     impl HostProfile for Profile {
@@ -567,7 +567,7 @@ mod tests {
         .expect("typed source");
         let (bindings, keep) = HostedModuleBuilder::new(program)
             .expect("plan")
-            .function(FunctionDeclaration::<(List<EcoString>,), List<EcoString>>::new("keep"))
+            .function(FunctionDeclaration::<(List<StringValue>,), List<StringValue>>::new("keep"))
             .expect("list binding");
         let mut module = bindings.seal().expect("list seal");
         let mut state = ();
@@ -579,7 +579,7 @@ mod tests {
                 &mut echo,
                 async |scope| {
                     let list = scope
-                        .call(&keep, (vec![EcoString::from("first"), "second".into()],))
+                        .call(&keep, (vec![StringValue::from("first"), "second".into()],))
                         .await
                         .expect("fresh list");
                     assert_eq!(list.len(), 2);
@@ -1081,13 +1081,13 @@ pub fn work(values: List(future.Work(Int))) { values }
         }
         bind_list!(ints, BigInt);
         bind_list!(floats, f64);
-        bind_list!(strings, EcoString);
+        bind_list!(strings, StringValue);
         bind_list!(bits, BitArrayValue);
         bind_list!(codepoints, char);
         bind_list!(bools, bool);
         bind_list!(nils, ());
-        bind_list!(tuples, (BigInt, EcoString));
-        bind_list!(choices, Result<BigInt, EcoString>);
+        bind_list!(tuples, (BigInt, StringValue));
+        bind_list!(choices, Result<BigInt, StringValue>);
         bind_list!(nested, List<BigInt>);
         bind_list!(work, WorkType<BigInt>);
         let mut module = bindings.seal().expect("all list families seal together");
@@ -1114,11 +1114,11 @@ pub fn work(values: List(future.Work(Int))) { values }
                     );
                     assert_eq!(
                         scope
-                            .call(&strings, (vec![EcoString::from("hello")],))
+                            .call(&strings, (vec![StringValue::from("hello")],))
                             .await
                             .expect("string list")
                             .read_item(0, Clone::clone),
-                        Some(EcoString::from("hello"))
+                        Some(StringValue::from("hello"))
                     );
                     let bytes = BitArrayValue::try_from_parts(vec![0xa0], 3).expect("three bits");
                     assert_eq!(
@@ -1157,12 +1157,12 @@ pub fn work(values: List(future.Work(Int))) { values }
                         scope
                             .call(
                                 &tuples,
-                                (vec![(BigInt::from(42), EcoString::from("hello"))],)
+                                (vec![(BigInt::from(42), StringValue::from("hello"))],)
                             )
                             .await
                             .expect("tuple list")
                             .read_item(0, |(number, text)| (number.clone(), text.clone())),
-                        Some((BigInt::from(42), EcoString::from("hello")))
+                        Some((BigInt::from(42), StringValue::from("hello")))
                     );
                     assert_eq!(
                         scope

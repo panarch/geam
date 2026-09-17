@@ -38,24 +38,24 @@ The
 is the canonical map
 from Gleam source values to macro-authored Rust signatures. Its scalar module
 maps `String`, `Int`, `Float`, `BitArray`, `UtfCodepoint`, `Bool`, and `Nil` to
-`EcoString`, `BigInt`, `f64`, `BitArrayValue`, `char`, `bool`, and `()`. Its
+`StringValue`, `BigInt`, `f64`, `BitArrayValue`, `char`, `bool`, and `()`. Its
 tuple module recursively composes those leaves with native Rust tuples, and its
 List module provides lazy indexed views plus explicit new-list construction. A
 tuple remains one Gleam source argument even when it contains several elements:
 
 ```rust
-use geam::provider::{BigInt, EcoString};
+use geam::provider::{BigInt, StringValue};
 
 #[geam::function]
-fn swap(value: (EcoString, BigInt)) -> (BigInt, EcoString) {
+fn swap(value: (StringValue, BigInt)) -> (BigInt, StringValue) {
     let (label, count) = value;
     (count, label)
 }
 
 #[geam::function]
 fn reassociate(
-    value: (EcoString, (BigInt, bool)),
-) -> ((EcoString, BigInt), bool) {
+    value: (StringValue, (BigInt, bool)),
+) -> ((StringValue, BigInt), bool) {
     let (label, (count, enabled)) = value;
     ((label, count), enabled)
 }
@@ -64,6 +64,18 @@ fn reassociate(
 Provider crates import the Geam-owned boundary types from `geam::provider`;
 they do not add direct dependencies on `ecow` or `num-bigint` merely to name
 Gleam values. `BitArrayValue` and `List` follow the same rule.
+
+`StringValue` is immutable. Construct it with `"text".into()`, read it through
+`as_str()` or ordinary `str` methods, and return an input directly to preserve
+its storage. Clones and larger substrings share their original buffer; a small
+visible range can therefore keep a large allocation alive. `detached()` copies
+the visible text into independent storage. `into_ecostring()` converts to flat
+text, copying a substring when needed; metadata and `ExternalPayload::inspect`
+continue to use `EcoString`.
+
+Providers migrating from the previous String mapping should use `StringValue`
+in source-value signatures and stored source fields. Transformations such as
+`value.to_uppercase()` return a Rust `String`; convert the result with `.into()`.
 
 Rust `(T,)` corresponds to Gleam `#(T)`, while Rust `()` keeps its existing
 Gleam `Nil` meaning. Tuple elements can recursively use the scalar and external
@@ -77,13 +89,13 @@ through the original runtime List, while returning `Vec<T>` constructs one
 new source List:
 
 ```rust
-use geam::provider::{BigInt, EcoString, List};
+use geam::provider::{BigInt, StringValue, List};
 
 #[geam::function]
 fn first_or(
-    values: List<EcoString>,
-    fallback: EcoString,
-) -> EcoString {
+    values: List<StringValue>,
+    fallback: StringValue,
+) -> StringValue {
     values.get(0).unwrap_or(fallback)
 }
 
@@ -93,7 +105,7 @@ fn identity(values: List<BigInt>) -> List<BigInt> {
 }
 
 #[geam::function]
-fn reverse(values: List<EcoString>) -> Vec<EcoString> {
+fn reverse(values: List<StringValue>) -> Vec<StringValue> {
     (0..values.len())
         .rev()
         .filter_map(|index| values.get(index))
@@ -127,14 +139,14 @@ pub type Job {
 #[geam::custom(input = JobInput)]
 enum Job {
     Pending,
-    Named(EcoString),
-    Scheduled { label: EcoString, attempt: BigInt },
+    Named(StringValue),
+    Scheduled { label: StringValue, attempt: BigInt },
     Prioritized(Priority),
-    Tags(Vec<EcoString>),
+    Tags(Vec<StringValue>),
 }
 
 #[geam::function]
-fn describe(job: JobInput) -> EcoString {
+fn describe(job: JobInput) -> StringValue {
     // Match the source constructors directly.
     todo!()
 }
@@ -182,7 +194,7 @@ The matching Rust module declares the payload and source semantics at the same
 site as its functions:
 
 ```rust
-use geam::provider::{BigInt, EcoString, ExternalPayload};
+use geam::provider::{BigInt, EcoString, ExternalPayload, StringValue};
 use std::collections::BTreeMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -195,12 +207,15 @@ pub struct Component;
 
 #[geam::module(path = "example_run_metrics")]
 mod metrics {
-    use super::*;
+    use super::{
+        BigInt, BTreeMap, DefaultHasher, EcoString, ExternalPayload, Hash, Hasher,
+        StringValue,
+    };
 
     #[geam::external(name = "Metrics", manual)]
     #[derive(Clone, Default, PartialEq)]
     struct Metrics {
-        entries: BTreeMap<EcoString, Metric>,
+        entries: BTreeMap<StringValue, Metric>,
     }
 
     #[derive(Clone, Default, PartialEq)]
@@ -244,7 +259,7 @@ mod metrics {
     }
 
     #[geam::function]
-    fn record(metrics: &Metrics, name: EcoString, value: f64) -> Metrics {
+    fn record(metrics: &Metrics, name: StringValue, value: f64) -> Metrics {
         let mut updated = metrics.clone();
         let metric = updated.entries.entry(name).or_default();
         metric.count += 1u8;
@@ -253,14 +268,14 @@ mod metrics {
     }
 
     #[geam::function]
-    fn count(metrics: &Metrics, name: EcoString) -> BigInt {
+    fn count(metrics: &Metrics, name: StringValue) -> BigInt {
         metrics.entries.get(&name)
             .map(|metric| metric.count.clone())
             .unwrap_or_default()
     }
 
     #[geam::function]
-    fn total(metrics: &Metrics, name: EcoString) -> f64 {
+    fn total(metrics: &Metrics, name: StringValue) -> f64 {
         metrics.entries.get(&name).map_or(0.0, |metric| metric.total)
     }
 }
@@ -279,7 +294,7 @@ external source return is an owned `Metrics` that Geam seals into the store.
 `record` therefore returns a persistent update rather than mutating the old
 source value.
 
-Scalar positions still use Geam's existing host types: `EcoString`, `f64`, and
+Scalar positions still use Geam's existing host types: `StringValue`, `f64`, and
 `BigInt` correspond to `String`, `Float`, and `Int`. Native tuples recursively
 compose those scalars and declared external payloads. The macro does not parse
 Gleam source or maintain another Rust-to-Gleam type table. Erlang annotation
@@ -341,7 +356,7 @@ unmarked async function below, which returns explicit work to Gleam.
 An ordinary `#[geam::function] async fn` constructs the canonical
 `geam/future` operation. The source declaration returns
 `geam/future.Future(T)`, where `T` is the mapped Rust completion type.
-`async fn read(...) -> Result<EcoString, EcoString>`, for example, implements
+`async fn read(...) -> Result<StringValue, StringValue>`, for example, implements
 `Future(Result(String, String))`. A source declaration returning plain
 `Result(String, String)` does not match it.
 
@@ -718,7 +733,7 @@ methods. Intermediate lists, tuples, ordinary custom values, and externals must
 be declared when the callback is registered:
 
 ```rust
-type Constructions = HostTypeList<HostListType<EcoString>, HostTypeListEnd>;
+type Constructions = HostTypeList<HostListType<StringValue>, HostTypeListEnd>;
 
 provider.with_scoped_function_and_constructions::<
     Provider,

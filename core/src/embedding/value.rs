@@ -100,7 +100,7 @@ macro_rules! scalar_value {
 
 scalar_value!(super::BigInt, Int, take_int);
 scalar_value!(f64, Float, take_float);
-scalar_value!(super::EcoString, String, take_string);
+scalar_value!(super::StringValue, String, take_string);
 scalar_value!(super::BitArrayValue, BitArray, take_bit_array);
 scalar_value!(char, UtfCodepoint, take_utf_codepoint);
 scalar_value!(bool, Bool, take_bool);
@@ -357,7 +357,7 @@ macro_rules! scalar_return {
 
 scalar_return!(super::BigInt, ints, run_embedded_int);
 scalar_return!(f64, floats, run_embedded_float);
-scalar_return!(super::EcoString, strings, run_embedded_string);
+scalar_return!(super::StringValue, strings, run_embedded_string);
 scalar_return!(super::BitArrayValue, bit_arrays, run_embedded_bit_array);
 scalar_return!(char, utf_codepoints, run_embedded_utf_codepoint);
 scalar_return!(bool, bools, run_embedded_bool);

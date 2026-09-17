@@ -1,7 +1,7 @@
 #[path = "../../tests/support/execution_host.rs"]
 mod execution_fixture;
 
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::provider::advanced::{
     Equality, Hashing, Inspection, NativeValue, RetainedExternalPayload,
 };
@@ -27,8 +27,8 @@ pub struct Component;
 #[geam_macros::module(path = "native_views", crate_path = geam_core)]
 mod native {
     use super::{
-        Arc, AtomicUsize, BigInt, Call, Callback, EcoString, Equality, Hashing, HostResult,
-        Inspection, NativeValue, Ordering, RetainedExternalPayload, State, Value,
+        Arc, AtomicUsize, BigInt, Call, Callback, Equality, Hashing, HostResult, Inspection,
+        NativeValue, Ordering, RetainedExternalPayload, State, StringValue, Value,
     };
     use std::cell::RefCell;
 
@@ -50,7 +50,7 @@ mod native {
             self.value.borrow().source_hash(context)
         }
 
-        fn inspect(&self, context: &Inspection<'_>) -> EcoString {
+        fn inspect(&self, context: &Inspection<'_>) -> ecow::EcoString {
             self.value.borrow().inspect(context)
         }
 
@@ -80,7 +80,7 @@ mod native {
             self.value.source_hash(context)
         }
 
-        fn inspect(&self, context: &Inspection<'_>) -> EcoString {
+        fn inspect(&self, context: &Inspection<'_>) -> ecow::EcoString {
             self.value.inspect(context)
         }
 
@@ -90,9 +90,9 @@ mod native {
     }
 
     #[geam_macros::function]
-    fn key(#[geam_macros::call] call: &mut Call<State>, name: EcoString) -> Key {
+    fn key(#[geam_macros::call] call: &mut Call<State>, name: StringValue) -> Key {
         Key {
-            value: RefCell::new(NativeValue::symbol(name)),
+            value: RefCell::new(NativeValue::symbol(name.into_ecostring())),
             projections: Arc::clone(&call.state().projections),
             drops: Arc::clone(&call.state().drops),
         }
@@ -118,12 +118,13 @@ mod native {
     }
 
     #[geam_macros::function]
-    fn at(value: &Envelope, index: BigInt) -> Result<EcoString, ()> {
+    fn at(value: &Envelope, index: BigInt) -> Result<StringValue, ()> {
         let index = usize::try_from(&index).map_err(|_| ())?;
         value
             .value
             .index(index)
             .and_then(|value| value.as_symbol())
+            .map(Into::into)
             .ok_or(())
     }
 
@@ -140,16 +141,19 @@ mod native {
     }
 
     #[geam_macros::function]
-    fn inspect<Item>(#[geam_macros::call] call: &mut Call<State>, value: Value<Item>) -> EcoString {
-        call.inspect(&value)
+    fn inspect<Item>(
+        #[geam_macros::call] call: &mut Call<State>,
+        value: Value<Item>,
+    ) -> StringValue {
+        call.inspect(&value).into()
     }
 
     #[geam_macros::function(await)]
     async fn reenter(
         #[geam_macros::call] call: &mut Call<State>,
         value: geam_core::provider::advanced::External<Envelope>,
-        callback: Callback<fn(EcoString) -> EcoString>,
-    ) -> HostResult<EcoString> {
+        callback: Callback<fn(StringValue) -> StringValue>,
+    ) -> HostResult<StringValue> {
         let value_view = value.with(|value| value.value.clone());
         drop(value);
         call.invoke(
@@ -157,7 +161,8 @@ mod native {
             (value_view
                 .index(0)
                 .and_then(|value| value.as_symbol())
-                .unwrap_or_default(),),
+                .unwrap_or_default()
+                .into(),),
         )
         .await
     }
@@ -166,8 +171,8 @@ mod native {
     fn string(
         #[geam_macros::call] call: &mut Call<State>,
         value: &Envelope,
-    ) -> Result<EcoString, ()> {
-        call.restore_native::<EcoString>(&value.value).ok_or(())
+    ) -> Result<StringValue, ()> {
+        call.restore_native::<StringValue>(&value.value).ok_or(())
     }
 }
 

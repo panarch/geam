@@ -110,6 +110,7 @@ impl<Profile: HostProfile> HostedModuleBindings<Profile> {
 #[cfg(test)]
 mod tests {
     use super::{HostedModuleBindings, HostedModuleBuilder};
+    use crate::StringValue;
     use crate::embedding::{
         Arguments, BindingError, CallError, Function, FunctionDeclaration, ReturnValue,
     };
@@ -121,7 +122,6 @@ mod tests {
         PackageSource, PanicKind, PanicSite, PlanError, SourceSpan, StatelessHostProfile, Value,
         ValueType, compile_typed_host_program,
     };
-    use ecow::EcoString;
     use num_bigint::BigInt;
     use std::convert::Infallible;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -224,7 +224,7 @@ mod tests {
             "library",
             [PackageSource::new(
                 "application",
-                Vec::<EcoString>::new(),
+                Vec::<ecow::EcoString>::new(),
                 [ModuleSource::new("library", "src/library.gleam", source)],
             )],
             hosts,
@@ -242,7 +242,7 @@ mod tests {
             [
                 PackageSource::new(
                     "gleam_stdlib",
-                    Vec::<EcoString>::new(),
+                    Vec::<ecow::EcoString>::new(),
                     [ModuleSource::new(
                         "gleam/option",
                         "gleam_stdlib/src/gleam/option.gleam",
@@ -270,7 +270,7 @@ mod tests {
             "library",
             [PackageSource::new(
                 "application",
-                Vec::<EcoString>::new(),
+                Vec::<ecow::EcoString>::new(),
                 [ModuleSource::new(
                     "library",
                     "src/library.gleam",
@@ -337,12 +337,12 @@ pub fn mixed(
             .function(FunctionDeclaration::<(BigInt,), BigInt>::new("keep_int"))
             .expect("first function should bind");
         let float = bind::<_, (f64,), f64>(&mut bindings, "keep_float");
-        let string = bind::<_, (EcoString,), EcoString>(&mut bindings, "keep_string");
+        let string = bind::<_, (StringValue,), StringValue>(&mut bindings, "keep_string");
         let bits = bind::<_, (BitArrayValue,), BitArrayValue>(&mut bindings, "keep_bits");
         let codepoint = bind::<_, (char,), char>(&mut bindings, "keep_codepoint");
         let bool_ = bind::<_, (bool,), bool>(&mut bindings, "keep_bool");
         let nil = bind::<_, ((),), ()>(&mut bindings, "keep_nil");
-        let mixed = bind::<_, (BigInt, f64, EcoString, BitArrayValue, char, bool, ()), bool>(
+        let mixed = bind::<_, (BigInt, f64, StringValue, BitArrayValue, char, bool, ()), bool>(
             &mut bindings,
             "mixed",
         );
@@ -533,7 +533,7 @@ pub fn inspect(values: List(Result(#(String, Int), String))) {
   case values { [] -> 0 [_, ..] -> count }
 }
 "#;
-        type Row = Result<(EcoString, BigInt), EcoString>;
+        type Row = Result<(StringValue, BigInt), StringValue>;
         let collect_rows = |list: &crate::embedding::SharedList<Row>| {
             (0..list.len())
                 .map(|index| {
@@ -636,7 +636,7 @@ pub fn keep_result(value: Result(#(Int, String), #(Bool, Nil))) {
 }
 "#,
         );
-        type Input = Result<(BigInt, EcoString), (bool, ())>;
+        type Input = Result<(BigInt, StringValue), (bool, ())>;
         let (mut bindings, inspect) = builder
             .function(FunctionDeclaration::<(Input,), (Input, BigInt)>::new(
                 "inspect",
@@ -721,7 +721,7 @@ import gleam/option.{type Option as Maybe}
 pub fn keep(value: Maybe(Result(Int, String))) { value }
 "#,
         );
-        type Value = Option<Result<BigInt, EcoString>>;
+        type Value = Option<Result<BigInt, StringValue>>;
         let (bindings, keep) = builder
             .function(FunctionDeclaration::<(Value,), Value>::new("keep"))
             .expect("hosted Option entry should bind");
@@ -766,7 +766,7 @@ pub fn keep(value: Maybe(Result(Int, String))) { value }
             "library",
             [PackageSource::new(
                 "application",
-                Vec::<EcoString>::new(),
+                Vec::<ecow::EcoString>::new(),
                 [ModuleSource::new(
                     "library",
                     "src/library.gleam",
@@ -863,7 +863,7 @@ pub fn around_next() { counter.around(counter.next) }
             "library",
             [PackageSource::new(
                 "application",
-                Vec::<EcoString>::new(),
+                Vec::<ecow::EcoString>::new(),
                 [ModuleSource::new("library", "src/library.gleam", source)],
             )],
             hosts,
@@ -998,7 +998,7 @@ pub fn explode(_value: String) -> String { panic as "stopped" }
 "#;
         let builder = stateless_builder(source);
         let (bindings, explode) = builder
-            .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+            .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
                 "explode",
             ))
             .expect("explode should bind");
@@ -1164,7 +1164,7 @@ pub fn nested() { counter.around(counter.stop) }
                 "library",
                 [PackageSource::new(
                     "application",
-                    Vec::<EcoString>::new(),
+                    Vec::<ecow::EcoString>::new(),
                     [ModuleSource::new(
                         "library",
                         "src/library.gleam",
@@ -1262,7 +1262,7 @@ pub fn run(value: Int) -> Int {
             "library",
             [PackageSource::new(
                 "application",
-                Vec::<EcoString>::new(),
+                Vec::<ecow::EcoString>::new(),
                 [ModuleSource::new(
                     "library",
                     "src/library.gleam",
@@ -1323,7 +1323,7 @@ pub fn words(value: String) { value }
 
         assert_eq!(
             bindings
-                .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+                .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
                     "missing",
                 ))
                 .err(),
@@ -1333,7 +1333,7 @@ pub fn words(value: String) { value }
         );
         assert_eq!(
             bindings
-                .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+                .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
                     "private",
                 ))
                 .err(),
@@ -1343,7 +1343,7 @@ pub fn words(value: String) { value }
         );
         assert_eq!(
             bindings
-                .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+                .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
                     "generic",
                 ))
                 .err(),
