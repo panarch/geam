@@ -62,7 +62,7 @@ pub(in crate::runtime) trait ExecutableRuntimePlan:
         frame: graph::Frame<'plan, Self>,
         returns: &mut graph::Returns<'plan, Self>,
         instruction: &<RuntimeGraph<Self> as ExecutionGraphProfile>::ExternalListInstruction,
-        expected: &crate::plan::ValueType,
+        expected: &crate::plan::execution::type_::ValueType,
     ) -> ExecutionResult<graph::Activation<'plan, Self>>;
 
     fn advance_external_function_instruction<'plan>(
@@ -121,7 +121,7 @@ impl ExecutableRuntimePlan for ExecutionPlan {
         _frame: graph::Frame<'plan, Self>,
         _returns: &mut graph::Returns<'plan, Self>,
         instruction: &Infallible,
-        _expected: &crate::plan::ValueType,
+        _expected: &crate::plan::execution::type_::ValueType,
     ) -> ExecutionResult<graph::Activation<'plan, Self>> {
         match *instruction {}
     }
@@ -201,7 +201,7 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
         frame: graph::Frame<'plan, Self>,
         returns: &mut graph::Returns<'plan, Self>,
         instruction: &crate::plan::execution::graph::ExternalListInstruction,
-        expected: &crate::plan::ValueType,
+        expected: &crate::plan::execution::type_::ValueType,
     ) -> ExecutionResult<graph::Activation<'plan, Self>> {
         graph::advance_external_list_instruction(self, state, frame, returns, instruction, expected)
     }

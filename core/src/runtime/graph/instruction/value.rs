@@ -1,12 +1,12 @@
 use super::super::RuntimeGraphState;
 use super::super::environment::BlockEnvironment;
 use crate::StringValue;
-use crate::plan::ValueType;
 use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::graph::{
     BitArrayInstruction, BoolInstruction, CustomInstruction, FloatInstruction, IntInstruction,
     NilInstruction, ParamLocal, StringInstruction, TupleInstruction, UtfCodepointInstruction,
 };
+use crate::plan::execution::type_::ValueType;
 use crate::runtime::InvariantError;
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedValue, values_equal,
@@ -78,7 +78,7 @@ where
             })
         }
         I::TupleIndex { tuple, index } => tuple_projection(
-            plan.value_metadata(),
+            plan,
             environment,
             *tuple,
             *index,
@@ -102,6 +102,7 @@ where
         )
         .map(V::Ready),
         I::ListIndex { list, index } => list_element(
+            plan,
             expected,
             *index,
             &state.lists().int_values(&environment.int_list(*list)),
@@ -176,7 +177,7 @@ where
             })
         }
         I::TupleIndex { tuple, index } => tuple_projection(
-            plan.value_metadata(),
+            plan,
             environment,
             *tuple,
             *index,
@@ -200,6 +201,7 @@ where
         )
         .map(V::Ready),
         I::ListIndex { list, index } => list_element(
+            plan,
             expected,
             *index,
             &state.lists().float_values(&environment.float_list(*list)),
@@ -271,7 +273,7 @@ where
             })
         }
         I::TupleIndex { tuple, index } => tuple_projection(
-            plan.value_metadata(),
+            plan,
             environment,
             *tuple,
             *index,
@@ -295,6 +297,7 @@ where
         )
         .map(V::Ready),
         I::ListIndex { list, index } => list_element(
+            plan,
             expected,
             *index,
             &state.lists().string_values(&environment.string_list(*list)),
@@ -363,7 +366,7 @@ where
             })
         }
         I::TupleIndex { tuple, index } => tuple_projection(
-            plan.value_metadata(),
+            plan,
             environment,
             *tuple,
             *index,
@@ -387,6 +390,7 @@ where
         )
         .map(V::Ready),
         I::ListIndex { list, index } => list_element(
+            plan,
             expected,
             *index,
             &state
@@ -437,7 +441,7 @@ where
             })
         }
         I::TupleIndex { tuple, index } => tuple_projection(
-            plan.value_metadata(),
+            plan,
             environment,
             *tuple,
             *index,
@@ -461,6 +465,7 @@ where
         )
         .map(V::Ready),
         I::ListIndex { list, index } => list_element(
+            plan,
             expected,
             *index,
             &state
@@ -531,7 +536,7 @@ where
             }
         }
         I::TupleIndex { tuple, index } => tuple_projection(
-            plan.value_metadata(),
+            plan,
             environment,
             *tuple,
             *index,
@@ -555,6 +560,7 @@ where
         )
         .map(V::Ready),
         I::ListIndex { list, index } => list_element(
+            plan,
             expected,
             *index,
             &state.lists().custom_values(&environment.custom_list(*list)),
@@ -609,7 +615,7 @@ where
             })
         }
         I::TupleIndex { tuple, index } => tuple_projection(
-            plan.value_metadata(),
+            plan,
             environment,
             *tuple,
             *index,
@@ -633,6 +639,7 @@ where
         )
         .map(V::Ready),
         I::ListIndex { list, index } => list_element(
+            plan,
             expected,
             *index,
             &state.lists().bool_values(&environment.bool_list(*list)),
@@ -726,15 +733,12 @@ where
                 inputs: inputs_with_captures(environment, args, function.captures()),
             })
         }
-        I::TupleIndex { tuple, index } => tuple_projection(
-            plan.value_metadata(),
-            environment,
-            *tuple,
-            *index,
-            expected,
-            |value| matches!(value, EvaluatedValue::Nil).then_some(()),
-        )
-        .map(V::Ready),
+        I::TupleIndex { tuple, index } => {
+            tuple_projection(plan, environment, *tuple, *index, expected, |value| {
+                matches!(value, EvaluatedValue::Nil).then_some(())
+            })
+            .map(V::Ready)
+        }
         I::CustomField { source, index } => {
             custom_projection(plan, environment, source, *index, expected, |value| {
                 matches!(value, EvaluatedValue::Nil).then_some(())
@@ -743,7 +747,7 @@ where
         }
         I::ListIndex { list, index } => {
             let length = state.lists().nil_len(&environment.nil_list(*list));
-            ensure_list_index(expected, *index, length).map(V::Ready)
+            ensure_list_index(plan, expected, *index, length).map(V::Ready)
         }
     }
 }
@@ -793,7 +797,7 @@ where
             })
         }
         I::TupleIndex { tuple, index } => tuple_projection(
-            plan.value_metadata(),
+            plan,
             environment,
             *tuple,
             *index,
@@ -817,6 +821,7 @@ where
         )
         .map(V::Ready),
         I::ListIndex { list, index } => list_element(
+            plan,
             expected,
             *index,
             &state.lists().tuple_values(&environment.tuple_list(*list)),
@@ -826,7 +831,7 @@ where
 }
 
 pub(in crate::runtime) fn tuple_projection<Value, Error>(
-    metadata: crate::plan::execution::runtime::RuntimeValueMetadata<'_>,
+    plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
     environment: &BlockEnvironment,
     tuple: crate::plan::execution::graph::TupleLocalId,
     index: usize,
@@ -836,11 +841,13 @@ pub(in crate::runtime) fn tuple_projection<Value, Error>(
 where
     Error: From<InvariantError>,
 {
+    let expected = plan.value_type(expected);
+    let metadata = plan.value_metadata();
     let values = environment.tuple(tuple);
     let Some(value) = values.get(index) else {
         return Err(InvariantError::TupleIndexFamilyMismatch {
-            expected: expected.clone(),
-            actual: ValueType::Tuple(
+            expected,
+            actual: crate::plan::ValueType::Tuple(
                 values
                     .iter()
                     .map(|value| value.value_type(metadata))
@@ -851,16 +858,12 @@ where
     };
     let actual = value.value_type(metadata);
     if let Some(value) = project(value)
-        && actual == *expected
+        && actual == expected
     {
         return Ok(value);
     }
 
-    Err(InvariantError::TupleIndexFamilyMismatch {
-        expected: expected.clone(),
-        actual,
-    }
-    .into())
+    Err(InvariantError::TupleIndexFamilyMismatch { expected, actual }.into())
 }
 
 pub(in crate::runtime) fn custom_projection<Value, Error>(
@@ -874,12 +877,13 @@ pub(in crate::runtime) fn custom_projection<Value, Error>(
 where
     Error: From<InvariantError>,
 {
+    let expected = plan.value_type(expected);
     let source = environment.custom(*source);
     let constructor = source.constructor();
     let value = &source.fields()[index];
     let actual = value.value_type(plan.value_metadata());
     if let Some(value) = project(value)
-        && actual == *expected
+        && actual == expected
     {
         return Ok(value);
     }
@@ -889,13 +893,14 @@ where
         custom_type: plan.custom_value_type(constructor.type_id()),
         constructor: descriptor.name().into(),
         field_index: index,
-        expected: expected.clone(),
+        expected,
         actual,
     }
     .into())
 }
 
 pub(in crate::runtime) fn list_element<Value: Clone, Error>(
+    plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
     item_type: &ValueType,
     index: usize,
     values: &imbl::Vector<Value>,
@@ -906,7 +911,7 @@ where
     match values.get(index) {
         Some(value) => Ok(value.clone()),
         None => Err(InvariantError::ListIndexOutOfBounds {
-            item_type: item_type.clone(),
+            item_type: plan.value_type(item_type),
             index,
             length: values.len(),
         }
@@ -915,6 +920,7 @@ where
 }
 
 pub(super) fn ensure_list_index<Error>(
+    plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
     item_type: &ValueType,
     index: usize,
     length: usize,
@@ -926,7 +932,7 @@ where
         Ok(())
     } else {
         Err(InvariantError::ListIndexOutOfBounds {
-            item_type: item_type.clone(),
+            item_type: plan.value_type(item_type),
             index,
             length,
         }
@@ -950,7 +956,7 @@ mod tests {
     use super::{ensure_list_index, list_element, tuple_projection};
     use crate::StringValue;
     use crate::plan::execution::graph::TupleLocalId;
-    use crate::plan::execution::runtime::RuntimeExecutionPlan;
+    use crate::plan::execution::type_::ValueType as ExecutionValueType;
     use crate::plan::{
         CustomConstructor, CustomConstructorDefinition, CustomConstructorField, CustomExpr,
         CustomFieldAccess, CustomFieldDefinition, CustomType, CustomTypeDefinition, CustomTypeName,
@@ -981,11 +987,11 @@ mod tests {
 
         assert_eq!(
             tuple_projection(
-                plan.value_metadata(),
+                &plan,
                 &environment,
                 TupleLocalId(0),
                 1,
-                &ValueType::String,
+                &ExecutionValueType::String,
                 string_value,
             ),
             Err(ExecutionError::<crate::runtime::PanicValue>::Invariant(
@@ -1009,11 +1015,11 @@ mod tests {
         let valid = BlockEnvironment::from_retained(valid);
         assert_eq!(
             tuple_projection(
-                plan.value_metadata(),
+                &plan,
                 &valid,
                 TupleLocalId(0),
                 0,
-                &expected,
+                &ExecutionValueType::String,
                 string_value,
             ),
             Ok::<_, ExecutionError>("value".into()),
@@ -1024,11 +1030,11 @@ mod tests {
         let wrong = BlockEnvironment::from_retained(wrong);
         assert_eq!(
             tuple_projection(
-                plan.value_metadata(),
+                &plan,
                 &wrong,
                 TupleLocalId(0),
                 0,
-                &expected,
+                &ExecutionValueType::String,
                 string_value,
             ),
             Err(ExecutionError::<crate::runtime::PanicValue>::Invariant(
@@ -1042,20 +1048,46 @@ mod tests {
 
     #[test]
     fn every_leaf_list_storage_reports_the_exact_missing_index() {
-        assert_missing_list_element::<BigInt>(ValueType::Int);
-        assert_missing_list_element::<f64>(ValueType::Float);
-        assert_missing_list_element::<StringValue>(ValueType::String);
-        assert_missing_list_element::<EvaluatedBitArray>(ValueType::BitArray);
-        assert_missing_list_element::<char>(ValueType::UtfCodepoint);
-        assert_missing_list_element::<EvaluatedCustomValue>(ValueType::Custom(boxed_type()));
-        assert_missing_list_element::<bool>(ValueType::Bool);
-        assert_missing_list_element::<Vec<EvaluatedValue>>(ValueType::Tuple(vec![ValueType::Int]));
-        assert_missing_list_element::<EvaluatedFunctionValue>(ValueType::Function(Box::new(
-            FunctionType::new(Vec::new(), ValueType::Int),
-        )));
+        let plan = crate::runtime::plan_src("pub type Boxed { Boxed } pub fn main() { Boxed }");
+        assert_missing_list_element::<BigInt>(&plan, ExecutionValueType::Int, ValueType::Int);
+        assert_missing_list_element::<f64>(&plan, ExecutionValueType::Float, ValueType::Float);
+        assert_missing_list_element::<StringValue>(
+            &plan,
+            ExecutionValueType::String,
+            ValueType::String,
+        );
+        assert_missing_list_element::<EvaluatedBitArray>(
+            &plan,
+            ExecutionValueType::BitArray,
+            ValueType::BitArray,
+        );
+        assert_missing_list_element::<char>(
+            &plan,
+            ExecutionValueType::UtfCodepoint,
+            ValueType::UtfCodepoint,
+        );
+        assert_missing_list_element::<EvaluatedCustomValue>(
+            &plan,
+            ExecutionValueType::Custom(plan.custom_constructor_id(0, 0).type_id()),
+            ValueType::Custom(boxed_type()),
+        );
+        assert_missing_list_element::<bool>(&plan, ExecutionValueType::Bool, ValueType::Bool);
+        assert_missing_list_element::<Vec<EvaluatedValue>>(
+            &plan,
+            ExecutionValueType::Tuple(vec![ExecutionValueType::Int].into()),
+            ValueType::Tuple(vec![ValueType::Int]),
+        );
+        assert_missing_list_element::<EvaluatedFunctionValue>(
+            &plan,
+            ExecutionValueType::Function(crate::plan::execution::type_::FunctionType::new(
+                Vec::new(),
+                ExecutionValueType::Int,
+            )),
+            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+        );
 
         assert_eq!(
-            ensure_list_index(&ValueType::Nil, 2, 0),
+            ensure_list_index(&plan, &ExecutionValueType::Nil, 2, 0),
             Err(ExecutionError::<crate::runtime::PanicValue>::Invariant(
                 InvariantError::ListIndexOutOfBounds {
                     item_type: ValueType::Nil,
@@ -1066,10 +1098,14 @@ mod tests {
         );
     }
 
-    fn assert_missing_list_element<Value: Clone>(type_: ValueType) {
+    fn assert_missing_list_element<Value: Clone>(
+        plan: &crate::ExecutionPlan,
+        planned: ExecutionValueType,
+        type_: ValueType,
+    ) {
         let values = &imbl::Vector::<Value>::new();
         assert_eq!(
-            list_element(&type_, 2, values).map(|_| ()),
+            list_element(plan, &planned, 2, values).map(|_| ()),
             Err(ExecutionError::<crate::runtime::PanicValue>::Invariant(
                 InvariantError::ListIndexOutOfBounds {
                     item_type: type_,

@@ -60,7 +60,7 @@ pub(in crate::runtime) fn advance_external_list_instruction<'plan, Plan>(
     frame: Frame<'plan, Plan>,
     returns: &mut Returns<'plan, Plan>,
     instruction: &crate::plan::execution::graph::ExternalListInstruction,
-    expected: &crate::plan::ValueType,
+    expected: &crate::plan::execution::type_::ValueType,
 ) -> ExecutionResult<Activation<'plan, Plan>>
 where
     Plan: ExecutableRuntimePlan<Profile = crate::plan::execution::host::HostedExecutionProfile>,

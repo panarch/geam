@@ -1,9 +1,9 @@
 use super::super::environment::BlockEnvironment;
 use super::InstructionValueWithoutConstant;
 use super::value::{custom_projection, inputs_with_captures, list_element, tuple_projection};
-use crate::plan::ValueType;
 use crate::plan::execution::function::ExecutionGraphProfile;
 use crate::plan::execution::graph::{ExternalInstructionRef, ExternalInstructionView};
+use crate::plan::execution::type_::ValueType;
 use crate::runtime::RuntimeGraph;
 use crate::runtime::evaluated::{EvaluatedExternalValue, EvaluatedValue};
 use crate::runtime::graph::RuntimeGraphState;
@@ -49,15 +49,10 @@ where
                 inputs: inputs_with_captures(environment, args, function.captures()),
             })
         }
-        ExternalInstructionRef::TupleIndex { tuple, index } => tuple_projection(
-            plan.value_metadata(),
-            environment,
-            tuple,
-            index,
-            expected,
-            external_value,
-        )
-        .map(V::Ready),
+        ExternalInstructionRef::TupleIndex { tuple, index } => {
+            tuple_projection(plan, environment, tuple, index, expected, external_value)
+                .map(V::Ready)
+        }
         ExternalInstructionRef::CustomField { source, index } => {
             custom_projection(plan, environment, source, index, expected, external_value)
                 .map(V::Ready)
@@ -65,7 +60,7 @@ where
         ExternalInstructionRef::ListIndex { list, index } => {
             let list = environment.external_list(list);
             let values = state.lists().external_values(&list);
-            list_element(expected, index, &values).map(V::Ready)
+            list_element(plan, expected, index, &values).map(V::Ready)
         }
     }
 }

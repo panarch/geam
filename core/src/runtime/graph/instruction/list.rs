@@ -2,7 +2,6 @@ use super::super::environment::BlockEnvironment;
 use super::super::{GraphValue, RuntimeGraphState};
 use super::value::{InstructionValue, custom_projection, ensure_list_index, tuple_projection};
 use crate::StringValue;
-use crate::plan::ValueType;
 use crate::plan::execution::function::{
     BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, ExternalListFunctionId,
     FloatListFunctionId, FunctionListFunctionId, IntListFunctionId, ListFunctionId,
@@ -20,7 +19,7 @@ use crate::plan::execution::graph::{
 use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, ExternalListTypeId, FloatListTypeId,
     FunctionListTypeId, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId,
-    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
+    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId, ValueType,
 };
 use crate::runtime::InvariantError;
 use crate::runtime::error::HostCallOrigin;
@@ -217,7 +216,7 @@ where
             }
         }
         I::TupleIndex { tuple, index } => tuple_projection(
-            plan.value_metadata(),
+            plan,
             environment,
             *tuple,
             *index,
@@ -244,7 +243,7 @@ where
             let length = state
                 .lists()
                 .parameter_list_list_len(&environment.parameter_list_list(*list));
-            ensure_list_index(expected, *index, length)
+            ensure_list_index(plan, expected, *index, length)
                 .map(|()| V::Ready(ParameterListValueId::new(type_id)))
         }
     }
@@ -358,7 +357,7 @@ where
                 .map_err(Into::into)
         }
         I::TupleIndex { tuple, index } => tuple_projection(
-            plan.value_metadata(),
+            plan,
             environment,
             *tuple,
             *index,
@@ -390,7 +389,7 @@ where
                     value.clone().into_core(),
                 ))),
                 None => Err(InvariantError::ListIndexOutOfBounds {
-                    item_type: expected.clone(),
+                    item_type: plan.value_type(expected),
                     index: *index,
                     length: values.len(),
                 }
@@ -1181,7 +1180,10 @@ mod tests {
         TypedListInstruction,
     };
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
-    use crate::plan::execution::type_::{IntListTypeId, ListListTypeId, StringListTypeId};
+    use crate::plan::execution::type_::{
+        IntListTypeId, ListListTypeId, ListTypeId, StringListTypeId,
+        ValueType as ExecutionValueType,
+    };
     use crate::plan::{
         CustomType, CustomTypeName, FunctionType, LibraryEntry, LibraryValueType, TypeParameterId,
         ValueType,
@@ -1315,7 +1317,9 @@ pub fn main() {
                     &environment,
                     plan.parameter_list_function_id(0).type_id(),
                     &instruction,
-                    &ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(0)))),
+                    &ExecutionValueType::List(
+                        plan.parameter_list_function_id(0).type_id().list_type()
+                    ),
                 ),
                 "a parameter list call must reject a different list family",
             ),
@@ -1348,7 +1352,7 @@ pub fn main() {
             },
         );
         let expected = ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Parameter(
-            TypeParameterId(0),
+            TypeParameterId(1),
         )))));
 
         assert_eq!(
@@ -1357,7 +1361,7 @@ pub fn main() {
                 &mut RuntimeState::new(&mut Vec::new()),
                 &environment,
                 &instruction,
-                &expected,
+                &ExecutionValueType::List(type_id.list_type()),
             )
             .map(|_| ()),
             Err(ExecutionError::Invariant(
@@ -1391,7 +1395,7 @@ pub fn main() {
                 &mut RuntimeState::new(&mut Vec::new()),
                 &environment,
                 &instruction,
-                &expected,
+                &ExecutionValueType::List(type_id.list_type()),
             )
             .map(|_| ()),
             Err(ExecutionError::Invariant(
@@ -1530,7 +1534,7 @@ pub fn main() {
             plan.parameter_list_list_function_id(0).type_id(),
             plan.list_list_function_id(0).type_id(),
             ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Parameter(
-                TypeParameterId(0),
+                TypeParameterId(1),
             ))))),
         );
     }
@@ -1591,66 +1595,77 @@ pub fn main() {
         assert_projection_mismatches::<IntFamily>(
             &context,
             plan.int_list_function_id(0).type_id(),
+            plan.int_list_function_id(0).type_id().list_type(),
             ValueType::List(Box::new(ValueType::Int)),
             wrong_string_list,
         );
         assert_projection_mismatches::<StringFamily>(
             &context,
             plan.string_list_function_id(0).type_id(),
+            plan.string_list_function_id(0).type_id().list_type(),
             ValueType::List(Box::new(ValueType::String)),
             wrong_int_list,
         );
         assert_projection_mismatches::<BitArrayFamily>(
             &context,
             plan.bit_array_list_function_id(0).type_id(),
+            plan.bit_array_list_function_id(0).type_id().list_type(),
             ValueType::List(Box::new(ValueType::BitArray)),
             wrong_int_list,
         );
         assert_projection_mismatches::<UtfCodepointFamily>(
             &context,
             plan.utf_codepoint_list_function_id(0).type_id(),
+            plan.utf_codepoint_list_function_id(0).type_id().list_type(),
             ValueType::List(Box::new(ValueType::UtfCodepoint)),
             wrong_int_list,
         );
         assert_projection_mismatches::<CustomFamily>(
             &context,
             plan.custom_list_function_id(0).type_id(),
+            plan.custom_list_function_id(0).type_id().list_type(),
             ValueType::List(Box::new(ValueType::Custom(boxed))),
             wrong_int_list,
         );
         assert_projection_mismatches::<FloatFamily>(
             &context,
             plan.float_list_function_id(0).type_id(),
+            plan.float_list_function_id(0).type_id().list_type(),
             ValueType::List(Box::new(ValueType::Float)),
             wrong_int_list,
         );
         assert_projection_mismatches::<BoolFamily>(
             &context,
             plan.bool_list_function_id(0).type_id(),
+            plan.bool_list_function_id(0).type_id().list_type(),
             ValueType::List(Box::new(ValueType::Bool)),
             wrong_int_list,
         );
         assert_projection_mismatches::<NilFamily>(
             &context,
             plan.nil_list_function_id(0).type_id(),
+            plan.nil_list_function_id(0).type_id().list_type(),
             ValueType::List(Box::new(ValueType::Nil)),
             wrong_int_list,
         );
         assert_projection_mismatches::<TupleFamily>(
             &context,
             plan.tuple_list_function_id(0).type_id(),
+            plan.tuple_list_function_id(0).type_id().list_type(),
             ValueType::List(Box::new(ValueType::Tuple(vec![ValueType::Int]))),
             wrong_int_list,
         );
         assert_projection_mismatches::<ListFamily>(
             &context,
             plan.list_list_function_id(0).type_id(),
+            plan.list_list_function_id(0).type_id().list_type(),
             ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
             wrong_int_list,
         );
         assert_projection_mismatches::<FunctionFamily>(
             &context,
             plan.function_list_function_id(0).type_id(),
+            plan.function_list_function_id(0).type_id().list_type(),
             ValueType::List(Box::new(ValueType::Function(Box::new(FunctionType::new(
                 vec![ValueType::Int],
                 ValueType::Int,
@@ -1660,8 +1675,11 @@ pub fn main() {
         assert_projection_mismatches::<ParameterListFamily>(
             &context,
             plan.parameter_list_list_function_id(0).type_id(),
+            plan.parameter_list_list_function_id(0)
+                .type_id()
+                .list_type(),
             ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Parameter(
-                TypeParameterId(0),
+                TypeParameterId(1),
             ))))),
             wrong_int_list,
         );
@@ -1836,7 +1854,7 @@ pub fn boxed() -> CounterListBox {
                         &tuple_environment,
                         list_type,
                         &tuple_instruction,
-                        &expected,
+                        &ExecutionValueType::List(list_type.list_type()),
                     ),
                     "corrupted external List tuple projection should fail"
                 )
@@ -1866,7 +1884,7 @@ pub fn boxed() -> CounterListBox {
                         &custom_environment,
                         list_type,
                         &custom_instruction,
-                        &expected,
+                        &ExecutionValueType::List(list_type.list_type()),
                     ),
                     "corrupted external List custom projection should fail"
                 )
@@ -1894,11 +1912,13 @@ pub fn boxed() -> CounterListBox {
     fn assert_projection_mismatches<Family: RuntimeTypedList<FunctionLocal = ListFunctionLocal>>(
         context: &ProjectionContext<'_>,
         type_id: Family::TypeId,
+        list_type: ListTypeId,
         expected: ValueType,
         wrong_list: fn(&mut RuntimeState, &ProjectionContext<'_>) -> ListValueId,
     ) where
         Family::Handle: std::fmt::Debug,
     {
+        let planned = ExecutionValueType::List(list_type);
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
         let wrong_list = wrong_list(&mut state, context);
@@ -1909,6 +1929,7 @@ pub fn boxed() -> CounterListBox {
             context,
             &mut state,
             type_id,
+            &planned,
             &expected,
             wrong_value.clone(),
             actual.clone(),
@@ -1917,6 +1938,7 @@ pub fn boxed() -> CounterListBox {
             context,
             &mut state,
             type_id,
+            &planned,
             &expected,
             wrong_value,
             actual,
@@ -1925,6 +1947,7 @@ pub fn boxed() -> CounterListBox {
             context,
             &mut state,
             type_id,
+            &planned,
             &expected,
             EvaluatedValue::Int(1.into()),
             ValueType::Int,
@@ -1933,6 +1956,7 @@ pub fn boxed() -> CounterListBox {
             context,
             &mut state,
             type_id,
+            &planned,
             &expected,
             EvaluatedValue::Int(1.into()),
             ValueType::Int,
@@ -1951,6 +1975,8 @@ pub fn boxed() -> CounterListBox {
     }
 
     fn assert_parameter_list_projection_mismatches(context: &ProjectionContext<'_>) {
+        let type_id = context.plan.parameter_list_function_id(0).type_id();
+        let planned = ExecutionValueType::List(type_id.list_type());
         let expected = ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(0))));
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
@@ -1967,12 +1993,12 @@ pub fn boxed() -> CounterListBox {
                     context.plan,
                     &state,
                     &tuple_environment,
-                    context.plan.parameter_list_function_id(0).type_id(),
+                    type_id,
                     &ParameterListInstruction::TupleIndex {
                         tuple: TupleLocalId(0),
                         index: 0,
                     },
-                    &expected,
+                    &planned,
                 ),
                 "a tuple projection must preserve its list family",
             ),
@@ -1995,12 +2021,12 @@ pub fn boxed() -> CounterListBox {
                     context.plan,
                     &state,
                     &custom_environment,
-                    context.plan.parameter_list_function_id(0).type_id(),
+                    type_id,
                     &ParameterListInstruction::CustomField {
                         source: context.custom_local,
                         index: 0,
                     },
-                    &expected,
+                    &planned,
                 ),
                 "a custom projection must preserve its list family",
             ),
@@ -2025,12 +2051,12 @@ pub fn boxed() -> CounterListBox {
                     context.plan,
                     &state,
                     &list_environment,
-                    context.plan.parameter_list_function_id(0).type_id(),
+                    type_id,
                     &ParameterListInstruction::ListIndex {
                         list: ParameterListListLocalId(0),
                         index: 0,
                     },
-                    &expected,
+                    &planned,
                 ),
                 "a list projection must remain in bounds",
             ),
@@ -2046,6 +2072,7 @@ pub fn boxed() -> CounterListBox {
         context: &ProjectionContext<'_>,
         state: &mut RuntimeState,
         type_id: Family::TypeId,
+        planned: &ExecutionValueType,
         expected: &ValueType,
         value: EvaluatedValue,
         actual: ValueType,
@@ -2070,7 +2097,7 @@ pub fn boxed() -> CounterListBox {
             &environment,
             type_id,
             &instruction,
-            expected,
+            planned,
             ExecutionError::Invariant(InvariantError::TupleIndexFamilyMismatch {
                 expected: expected.clone(),
                 actual,
@@ -2082,6 +2109,7 @@ pub fn boxed() -> CounterListBox {
         context: &ProjectionContext<'_>,
         state: &mut RuntimeState,
         type_id: Family::TypeId,
+        planned: &ExecutionValueType,
         expected: &ValueType,
         value: EvaluatedValue,
         actual: ValueType,
@@ -2108,7 +2136,7 @@ pub fn boxed() -> CounterListBox {
             &environment,
             type_id,
             &instruction,
-            expected,
+            planned,
             ExecutionError::Invariant(InvariantError::CustomFieldFamilyMismatch {
                 custom_type: context.custom_type.clone(),
                 constructor: "Boxed".into(),
@@ -2125,7 +2153,7 @@ pub fn boxed() -> CounterListBox {
         environment: &BlockEnvironment,
         type_id: Family::TypeId,
         instruction: &TypedListInstruction<Family::ElementLocal, Family::Local, Family::Function>,
-        expected: &ValueType,
+        expected: &ExecutionValueType,
         expected_error: ExecutionError,
     ) where
         Family::Handle: std::fmt::Debug,
@@ -2187,7 +2215,7 @@ pub fn boxed() -> CounterListBox {
                     &environment,
                     child_type,
                     &instruction,
-                    &expected,
+                    &ExecutionValueType::List(parent_type.item_type),
                 ),
                 "missing nested list index should fail",
             ),
