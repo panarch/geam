@@ -110,14 +110,24 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
         }
     }
 
-    pub(in crate::runtime) fn step(
+    pub(in crate::runtime) fn advance(
         self,
         plan: &'plan Plan,
         state: &mut impl RuntimeGraphState<Error = crate::ExecutionError>,
         returns: &mut Returns<'plan, Plan>,
+        remaining: &mut usize,
     ) -> ExecutionResult<Progress<'plan, Plan>> {
         let active = match self.active {
-            Activation::Graph(frame) => frame.step(plan, state, returns)?,
+            // The caller charged this activation; only additional steps consume remaining budget.
+            Activation::Graph(mut frame) => loop {
+                match frame.step(plan, state, returns)? {
+                    Activation::Graph(next) if *remaining > 0 => {
+                        *remaining -= 1;
+                        frame = next;
+                    }
+                    active => break active,
+                }
+            },
             Activation::Host(invoke) => {
                 return Ok(Progress::Host(Plan::map_host(invoke, |active| {
                     Ok(Self { active })
@@ -446,7 +456,10 @@ mod tests {
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
         loop {
-            match execution.step(plan, &mut state, &mut returns).unwrap() {
+            match execution
+                .advance(plan, &mut state, &mut returns, &mut 0)
+                .unwrap()
+            {
                 Progress::Continue(next) => execution = next,
                 Progress::Complete(completed) => return completed,
                 Progress::Host(invoke) => match invoke {},
@@ -511,7 +524,7 @@ pub fn main() {
                         let mut state =
                             RuntimeState::with_host_storage(&mut output, (), lists, captures);
                         let step = execution
-                            .step(plan, &mut state, &mut returns)
+                            .advance(plan, &mut state, &mut returns, &mut 0)
                             .expect("one actual evaluator step");
                         let lists = state.lists().clone();
                         drop(state);
@@ -584,7 +597,7 @@ pub fn main() { count(0) + 1 }
                 for _ in 0..50_000 {
                     execution = continuing(
                         execution
-                            .step(&plan, &mut state, &mut returns)
+                            .advance(&plan, &mut state, &mut returns, &mut 0)
                             .expect("recursive source step"),
                     );
                 }

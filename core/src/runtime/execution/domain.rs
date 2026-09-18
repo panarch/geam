@@ -956,6 +956,182 @@ pub fn main() { echo 41 increment(sum(2_000, 0) - 1959) }
     }
 
     #[test]
+    fn native_waits_and_reentrant_callbacks_preserve_effects_across_budget_boundaries() {
+        use crate::{
+            HostCall, HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
+            HostConstructions, HostFailure, HostFunctionType, HostOwnedCompletion, HostProvider,
+            HostProviderModule, HostTypeList, HostTypeListEnd, ModuleSource, PackageSource,
+        };
+        use num_bigint::BigInt;
+
+        struct Provider;
+        impl HostProvider<Profile> for Provider {
+            type State = Cell<usize>;
+            fn project(state: &mut Self::State) -> &mut Self::State {
+                state
+            }
+        }
+        fn bump<'call>(
+            mut call: HostCall<'call, Profile, Provider, BigInt>,
+            fail: bool,
+        ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+            let state = call.state();
+            state.set(state.get() + 1);
+            if fail {
+                return Err(HostFailure::new("inside callback").into());
+            }
+            Ok(call.return_value(1.into()))
+        }
+        fn invoke<'call>(
+            mut call: HostCall<'call, Profile, Provider, BigInt>,
+            constructions: HostConstructions<'call, HostTypeListEnd>,
+            callback: HostCallable<'call, HostTypeList<BigInt, HostTypeListEnd>, BigInt>,
+            fail: bool,
+        ) -> Result<HostCallContinuation<'call, BigInt>, HostCallError> {
+            let state = call.state();
+            state.set(state.get() + 10);
+            let callback = call.owned_callable(callback, &constructions);
+            Ok(call.resume(constructions, move |context| {
+                Box::pin(async move {
+                    crate::runtime::execution::Yield::new().await;
+                    let value = callback
+                        .invoke(
+                            &context,
+                            |_, _| (39.into(), ()),
+                            |mut call, _, value| {
+                                let state = call.state();
+                                state.set(state.get() + 100);
+                                Ok(value)
+                            },
+                        )
+                        .await?;
+                    if fail {
+                        return Err(HostFailure::new("after callback").into());
+                    }
+                    Ok(HostOwnedCompletion::new(move |call, _| {
+                        Ok(call.return_value(value))
+                    }))
+                })
+            }))
+        }
+
+        for (fail_inside, fail_after) in [(false, false), (true, false), (false, true)] {
+            let provider = HostProviderModule::new("application", "library")
+                .unwrap()
+                .with_scoped_function::<Provider, (bool,), BigInt, _>("bump", bump)
+                .unwrap()
+                .with_resumable_function::<Provider, (
+                    HostFunctionType<HostTypeList<BigInt, HostTypeListEnd>, BigInt>,
+                    bool,
+                ), BigInt, HostTypeListEnd, _>("invoke", invoke)
+                .unwrap();
+            let source = format!(
+                r#"
+@external(erlang, "native", "bump")
+fn bump(fail: Bool) -> Int
+@external(erlang, "native", "invoke")
+fn invoke(callback: fn(Int) -> Int, fail: Bool) -> Int
+pub fn main() {{
+  echo "before"
+  let captured = 2
+  let answer = invoke(fn(value) {{
+    echo value
+    value + bump({}) + captured
+  }}, {})
+  echo answer
+  answer
+}}
+"#,
+                if fail_inside { "True" } else { "False" },
+                if fail_after { "True" } else { "False" },
+            );
+            let typed = crate::compile_typed_host_program(
+                "application",
+                "library",
+                [PackageSource::new(
+                    "application",
+                    Vec::<String>::new(),
+                    [ModuleSource::new("library", "src/library.gleam", source)],
+                )],
+                HostProviderSet::from_providers([provider]).unwrap(),
+            )
+            .unwrap();
+            let library = crate::planner::plan_host_library_program(typed).unwrap();
+            let function = library
+                .functions()
+                .iter()
+                .find(|function| function.name() == "main")
+                .unwrap();
+            let entry = LibraryEntry::new(
+                function.signature().id(),
+                LibraryValueType::Int,
+                Vec::new(),
+                Vec::new(),
+            );
+            let (plan, entries) =
+                HostedProgram::from_library_plan(library, entry, Vec::new()).unwrap();
+            let plan = Arc::new(plan);
+            for budget in (1..=16).chain([1024]) {
+                let host = ManualHost::default();
+                let mut state = Cell::new(0);
+                let mut stores = Cell::new(());
+                let mut echo = Vec::new();
+                let domain = Domain::new(
+                    Arc::clone(&plan),
+                    &host,
+                    &mut state,
+                    &mut stores,
+                    &mut echo,
+                    Default::default(),
+                    NonZeroUsize::new(budget).unwrap(),
+                );
+                let context = domain.context();
+                let result = host
+                    .finish(domain.drive(context.call(
+                        *entries.ints[0].function(),
+                        HostCallOrigin::Entry,
+                        RetainedValues::empty(),
+                    )))
+                    .unwrap()
+                    .unwrap();
+                let (expected, expected_echo) = if fail_inside {
+                    (
+                        Err("host function application::library.bump failed: inside callback"),
+                        vec!["\"before\"", "39"],
+                    )
+                } else if fail_after {
+                    (
+                        Err("host function application::library.invoke failed: after callback"),
+                        vec!["\"before\"", "39"],
+                    )
+                } else {
+                    (Ok(BigInt::from(42)), vec!["\"before\"", "39", "42"])
+                };
+                assert_eq!(
+                    result.map_err(|error| error.to_string()),
+                    expected.map_err(str::to_owned)
+                );
+                assert_eq!(
+                    state.get(),
+                    if fail_inside { 11 } else { 111 },
+                    "budget {budget}, inside {fail_inside}, after {fail_after}",
+                );
+                assert_eq!(
+                    echo.iter()
+                        .map(|output| output.value().inspect().to_string())
+                        .collect::<Vec<_>>(),
+                    expected_echo,
+                );
+                assert_eq!(
+                    host.started.load(Ordering::SeqCst),
+                    host.released.load(Ordering::SeqCst)
+                );
+                assert!(host.workers.lock().is_empty());
+            }
+        }
+    }
+
+    #[test]
     fn bounded_cleanup_wakes_for_unpolled_tasks_even_after_completed_tasks_are_removed() {
         struct WakeCount(AtomicUsize);
         impl std::task::Wake for WakeCount {
