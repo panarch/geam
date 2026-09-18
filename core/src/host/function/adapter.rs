@@ -594,6 +594,7 @@ mod tests {
         ScopedDivergingHostFunctionAdapter, ScopedHostFunctionAdapter,
     };
     use crate::BitArrayValue;
+    use crate::StringValue;
     use crate::host::function::HostFunctionImplementation;
     use crate::host::function::argument::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
@@ -602,7 +603,6 @@ mod tests {
         HostProvider, HostScopedValue, HostTypeDescriptor, HostTypeIndex0, HostTypeList,
         HostTypeListEnd, expect_never_implementation, expect_value_implementation,
     };
-    use ecow::EcoString;
     use num_bigint::BigInt;
     use std::convert::Infallible;
 
@@ -1453,12 +1453,12 @@ pub fn main() {
     #[test]
     fn supports_every_scalar_argument_family_in_one_sealed_layout() {
         let registration = <_ as HostFunctionAdapter<
-            (BigInt, f64, EcoString, BitArrayValue, char, bool, ()),
-            EcoString,
+            (BigInt, f64, StringValue, BitArrayValue, char, bool, ()),
+            StringValue,
         >>::register::<TestHostProfile>(
             |int: BigInt,
              float: f64,
-             string: EcoString,
+             string: StringValue,
              bits: BitArrayValue,
              codepoint: char,
              bool_: bool,
@@ -1495,7 +1495,7 @@ pub fn main() {
 
         assert_eq!(
             call_string(registration.implementation, arguments),
-            EcoString::from("1:1.5:one:8:A:true"),
+            StringValue::from("1:1.5:one:8:A:true"),
         );
     }
 
@@ -1568,7 +1568,7 @@ pub fn main() {
     fn call_string(
         implementation: HostFunctionImplementation<TestHostProfile>,
         arguments: CallArguments,
-    ) -> EcoString {
+    ) -> StringValue {
         let implementation = expect_value_implementation(&implementation);
         let mut state = TestRunState::default();
         let mut runtime = TestHostCallRuntime::new(&mut state, arguments);

@@ -66,6 +66,13 @@ module-qualified function template target. Equal local indices in different
 modules are distinct references, while qualified and unqualified imports of
 the same target share one identity.
 
+Runtime function copies share immutable capture storage. Specializing a callable
+view does not duplicate its captured function graph or change its source
+identity. Final capture ownership drains acyclic capture chains iteratively,
+including chains through lists and retained native values; live aliases keep
+their captures. This does not make arbitrary nested non-callable values
+stack-independent.
+
 ## Rust Host Functions
 
 Rust host functions enter through package-qualified source-less host modules
@@ -114,7 +121,7 @@ equality.
 
 The direct host boundary accepts infallible and fallible Rust closures with
 zero through seven arguments. Each argument and return is one of `BigInt`,
-`f64`, `EcoString`, `BitArrayValue`, `char`, `bool`, or `()`. A provider that
+`f64`, `StringValue`, `BitArrayValue`, `char`, `bool`, or `()`. A provider that
 never succeeds may use `Infallible` as its return; `Infallible` is not an
 argument or materialized value family. Seven is an intentional profile limit
 aligned with Clippy's default `too_many_arguments` threshold. Registration
@@ -292,10 +299,10 @@ expose this decode surface.
 External leases determine payload lifetime. The profile store keeps a typed
 index only while at least one lease exists; dropping the final lease removes
 the index entry, so the store cannot extend payload lifetime beyond its leases.
-Retained list and capture graphs continue to use the shared iterative release
-queue, including after the original runtime state has been dropped. Geam does
-not support cyclic evaluated graphs or moving stored values between hosted
-executions.
+Retained lists and callable captures have iterative release owners that remain
+alive with their handles, including after the original runtime state has been
+dropped. Geam does not support cyclic evaluated graphs or moving stored values
+between hosted executions.
 
 Providers that model private transient-style builders use persistent external
 payload versions. Each operation may share immutable retained entries with its
@@ -439,17 +446,20 @@ Each block contains ordered typed parameters, instructions, and one terminator.
 Branches, switches, matches, source stops, returns, and tail calls are explicit
 edges or terminators rather than recursive runtime expression or return nodes.
 
-The runtime evaluates a block iteratively. On an edge it retains the ordered
-edge arguments, drops the old block environment, drains queued list releases,
-and constructs the target environment from those arguments. No function-wide
-default frame is allocated, and a block can only read entry values, block
-parameters, or instruction outputs that dominate the read.
+The runtime evaluates a block iteratively. On an edge it consumes the completed
+environment, moves the ordered edge arguments within its typed storage, and
+releases omitted values. Repeated arguments need only the additional copies;
+successful matches also transfer their selected owned bindings. Freezing
+computes this routing once, and prepared admission verifies it before execution.
+The next block reuses the storage allocation, not discarded payloads. No
+function-wide default frame is allocated, and a block can only read entry
+values, block parameters, or instruction outputs that dominate the read.
 
-Tail calls return control to the typed function-family loop, which replaces the
-current activation without growing the Rust stack. Non-tail call instructions
-currently invoke the callee graph through the Rust stack because the caller has
-a continuation after the instruction; explicit activation-stack execution is a
-separate runtime concern.
+Tail calls replace the current activation and transfer its arguments without
+growing the Rust stack. Non-tail calls preserve the live caller and its typed
+return destination in an owned continuation stack. Their callee inputs remain
+independent of the caller's storage. Completed calls move their selected return
+value out of the consumed environment.
 
 `ExecutionPlan::explain()` reads this frozen representation directly. It shows
 typed entry values, block parameters, instructions, operands, edge arguments,

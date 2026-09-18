@@ -1,7 +1,7 @@
 #[path = "../../tests/support/execution_host.rs"]
 mod execution_fixture;
 
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::provider::{Call, Value};
 use geam_core::{
     HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
@@ -20,17 +20,17 @@ pub struct Component;
 
 #[geam_macros::module(path = "generic_values", crate_path = geam_core)]
 mod generic_values {
-    use super::{BigInt, Call, EcoString, Value};
+    use super::{BigInt, Call, StringValue, Value};
 
     #[geam_macros::external(name = "Token")]
     #[derive(PartialEq, Eq, Hash)]
-    struct Token(EcoString);
+    struct Token(StringValue);
 
     #[geam_macros::custom(input = ProblemInput)]
     #[allow(dead_code)]
     enum Problem {
         Missing,
-        Label(EcoString),
+        Label(StringValue),
     }
 
     #[geam_macros::function]
@@ -61,7 +61,7 @@ mod generic_values {
     }
 
     #[geam_macros::function]
-    fn problem_text(problem: ProblemInput) -> EcoString {
+    fn problem_text(problem: ProblemInput) -> StringValue {
         match problem {
             ProblemInput::Missing => "missing".into(),
             ProblemInput::Label(label) => label,
@@ -76,7 +76,7 @@ mod generic_values {
     }
 
     #[geam_macros::function]
-    fn token(label: EcoString) -> Token {
+    fn token(label: StringValue) -> Token {
         Token(label)
     }
 
@@ -95,11 +95,11 @@ mod generic_values {
         #[geam_macros::call] call: &mut Call<()>,
         left: Value<Item>,
         right: Value<Item>,
-    ) -> (bool, bool, EcoString) {
+    ) -> (bool, bool, StringValue) {
         let equal = call.equal(&left, &right);
         let same_hash = call.source_hash(&left) == call.source_hash(&right);
         let inspected = call.inspect(&left);
-        (equal, same_hash, inspected)
+        (equal, same_hash, inspected.into())
     }
 
     #[geam_macros::function]

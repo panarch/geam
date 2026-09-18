@@ -80,102 +80,13 @@ where
         }
     }
 
-    pub(in crate::runtime) fn step(
-        self,
-        plan: &'plan Plan,
-        state: &mut impl RuntimeGraphState<Error = crate::ExecutionError>,
-    ) -> ExecutionResult<Progress<'plan, Plan, Id>> {
-        let Self {
-            function,
-            position,
-            mut returns,
-        } = self;
-        match position {
-            Position::Entry { origin, inputs } => match function.entry(plan) {
-                ExecutionFunctionRef::Graph(entry) => Ok(Progress::Continue(Self {
-                    function,
-                    returns,
-                    position: Position::Graph {
-                        body: entry.body(),
-                        execution: GraphExecution::new(
-                            entry.body().function_body().block_graph().as_view(),
-                            inputs,
-                        ),
-                    },
-                })),
-                ExecutionFunctionRef::Host(target) => Ok(Progress::Host(Plan::map_host(
-                    Id::prepare_host(plan, origin, target, inputs),
-                    |value| Ok(Progress::Complete(value)),
-                ))),
-            },
-            Position::Graph { body, execution } => {
-                match execution.step(plan, state, &mut returns)? {
-                    GraphProgress::Host(invoke) => {
-                        Ok(Progress::Host(Plan::map_host(invoke, move |execution| {
-                            Ok(Progress::Continue(Self {
-                                function,
-                                position: Position::Graph { body, execution },
-                                returns,
-                            }))
-                        })))
-                    }
-                    GraphProgress::Continue(next) => Ok(Progress::Continue(Self {
-                        function,
-                        returns,
-                        position: Position::Graph {
-                            body,
-                            execution: next,
-                        },
-                    })),
-                    GraphProgress::Complete(completed) => {
-                        Ok(match body.function_body().exit(completed.exit()) {
-                            FunctionExit::Return(value) => {
-                                Progress::Complete(completed.into_value(value))
-                            }
-                            FunctionExit::TailCall {
-                                function: target,
-                                args,
-                            } => {
-                                let (function, origin) = function.next(target);
-                                Progress::Continue(Self {
-                                    function,
-                                    position: Position::Entry {
-                                        origin,
-                                        inputs: completed.into_retained(args),
-                                    },
-                                    returns,
-                                })
-                            }
-                        })
-                    }
-                }
-            }
-        }
-    }
-
-    pub(in crate::runtime) fn advance(
-        mut self,
-        plan: &'plan Plan,
-        state: &mut impl RuntimeGraphState<Error = crate::ExecutionError>,
-        budget: NonZeroUsize,
-    ) -> ExecutionResult<Progress<'plan, Plan, Id>> {
-        for _ in 0..budget.get() {
-            match self.step(plan, state)? {
-                Progress::Continue(next) => self = next,
-                host @ Progress::Host(_) => return Ok(host),
-                complete @ Progress::Complete(_) => return Ok(complete),
-            }
-        }
-        Ok(Progress::Continue(self))
-    }
-
     pub(in crate::runtime) async fn drive(
         self,
         plan: &'plan Plan,
         context: &ServiceContext<Plan>,
         budget: NonZeroUsize,
     ) -> Result<ExecutionResult<EntryValue<Plan, Id>>, crate::runtime::work::Cancelled> {
-        let mut evaluation = Evaluation::default();
+        let mut evaluation = Evaluation::new(context.captures().clone());
         let mut progress = Ok(Progress::Continue(self));
         loop {
             progress = match progress {
@@ -202,6 +113,99 @@ where
             };
         }
     }
+
+    pub(in crate::runtime) fn advance(
+        mut self,
+        plan: &'plan Plan,
+        state: &mut impl RuntimeGraphState<Error = crate::ExecutionError>,
+        budget: NonZeroUsize,
+    ) -> ExecutionResult<Progress<'plan, Plan, Id>> {
+        let mut remaining = budget.get();
+        while remaining > 0 {
+            remaining -= 1;
+            match self.advance_position(plan, state, &mut remaining)? {
+                Progress::Continue(next) => self = next,
+                host @ Progress::Host(_) => return Ok(host),
+                complete @ Progress::Complete(_) => return Ok(complete),
+            }
+        }
+        Ok(Progress::Continue(self))
+    }
+
+    fn advance_position(
+        self,
+        plan: &'plan Plan,
+        state: &mut impl RuntimeGraphState<Error = crate::ExecutionError>,
+        remaining: &mut usize,
+    ) -> ExecutionResult<Progress<'plan, Plan, Id>> {
+        let Self {
+            function,
+            position,
+            mut returns,
+        } = self;
+        match position {
+            Position::Entry { origin, inputs } => match function.entry(plan) {
+                ExecutionFunctionRef::Graph(entry) => Ok(Progress::Continue(Self {
+                    function,
+                    returns,
+                    position: Position::Graph {
+                        body: entry.body(),
+                        execution: GraphExecution::new(
+                            entry.body().function_body().block_graph().as_view(),
+                            inputs,
+                        ),
+                    },
+                })),
+                ExecutionFunctionRef::Host(target) => Ok(Progress::Host(Plan::map_host(
+                    Id::prepare_host(plan, origin, target, inputs),
+                    |value| Ok(Progress::Complete(value)),
+                ))),
+            },
+            Position::Graph { body, execution } => {
+                match execution.advance(plan, state, &mut returns, remaining)? {
+                    GraphProgress::Host(invoke) => {
+                        Ok(Progress::Host(Plan::map_host(invoke, move |execution| {
+                            Ok(Progress::Continue(Self {
+                                function,
+                                position: Position::Graph { body, execution },
+                                returns,
+                            }))
+                        })))
+                    }
+                    GraphProgress::Continue(next) => Ok(Progress::Continue(Self {
+                        function,
+                        returns,
+                        position: Position::Graph {
+                            body,
+                            execution: next,
+                        },
+                    })),
+                    GraphProgress::Complete(completed) => {
+                        Ok(match body.function_body().exit(completed.exit()) {
+                            FunctionExit::Return(value) => {
+                                Progress::Complete(completed.into_value(value))
+                            }
+                            FunctionExit::TailCall {
+                                function: target,
+                                transfer,
+                                ..
+                            } => {
+                                let (function, origin) = function.next(target);
+                                Progress::Continue(Self {
+                                    function,
+                                    position: Position::Entry {
+                                        origin,
+                                        inputs: completed.into_retained(transfer),
+                                    },
+                                    returns,
+                                })
+                            }
+                        })
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -226,6 +230,110 @@ mod tests {
         let mut state = RuntimeState::new(&mut echo);
         let result = execution.advance(&plan, &mut state, NonZeroUsize::new(100).unwrap());
         assert!(matches!(result, Ok(Progress::Complete(value)) if value == 42.into()));
+    }
+
+    #[test]
+    fn bounded_calls_preserve_exact_echo_and_completion_turns() {
+        let plan = crate::runtime::plan_src(
+            r#"
+const adjustment = 2
+
+fn apply(value, callback) { callback(value) + adjustment }
+
+fn walk(remaining, total, callback) {
+  case remaining {
+    0 -> total
+    n -> {
+      let value = apply(n, callback)
+      walk(n - 1, total + value, callback)
+    }
+  }
+}
+
+pub fn main() {
+  let offset = 5
+  walk(12, 0, fn(value) {
+    echo value
+    value + offset
+  })
+}
+"#,
+        );
+        for (budget, turns, echo_turns) in [
+            (
+                1,
+                215,
+                [12, 29, 46, 63, 80, 97, 114, 131, 148, 165, 182, 199],
+            ),
+            (2, 108, [6, 15, 23, 32, 40, 49, 57, 66, 74, 83, 91, 100]),
+            (3, 72, [4, 10, 16, 21, 27, 33, 38, 44, 50, 55, 61, 67]),
+            (7, 31, [2, 5, 7, 9, 12, 14, 17, 19, 22, 24, 26, 29]),
+            (29, 8, [1, 1, 2, 3, 3, 4, 4, 5, 6, 6, 7, 7]),
+            (128, 2, [1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2]),
+            (215, 1, [1; 12]),
+            (1024, 1, [1; 12]),
+            (usize::MAX, 1, [1; 12]),
+        ] {
+            let trace = trace_int_turns(&plan, NonZeroUsize::new(budget).unwrap());
+            assert_eq!(trace.turns, turns, "budget {budget}");
+            assert_eq!(trace.result, Ok(162.into()), "budget {budget}");
+            assert_eq!(
+                trace.echo,
+                echo_turns
+                    .into_iter()
+                    .zip([
+                        "12", "11", "10", "9", "8", "7", "6", "5", "4", "3", "2", "1"
+                    ])
+                    .map(|(turn, value)| (turn, value.to_owned()))
+                    .collect::<Vec<_>>(),
+                "budget {budget}",
+            );
+        }
+    }
+
+    #[test]
+    fn a_source_panic_preserves_its_exact_turn_echo_and_origin() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn walk(remaining) {
+  echo remaining
+  case remaining {
+    0 -> panic as "probe stop"
+    n -> walk(n - 1)
+  }
+}
+
+pub fn main() { walk(5) + 1 }
+"#,
+        );
+        for (budget, turns, echo_turns) in [
+            (1, 32, [4, 9, 14, 19, 24, 29]),
+            (2, 16, [2, 5, 7, 10, 12, 15]),
+            (3, 11, [2, 3, 5, 7, 8, 10]),
+            (7, 5, [1, 2, 2, 3, 4, 5]),
+            (29, 2, [1; 6]),
+            (32, 1, [1; 6]),
+            (128, 1, [1; 6]),
+            (1024, 1, [1; 6]),
+            (usize::MAX, 1, [1; 6]),
+        ] {
+            let trace = trace_int_turns(&plan, NonZeroUsize::new(budget).unwrap());
+            assert_eq!(trace.turns, turns, "budget {budget}");
+            assert_eq!(
+                trace.echo,
+                echo_turns
+                    .into_iter()
+                    .zip(["5", "4", "3", "2", "1", "0"])
+                    .map(|(turn, value)| (turn, value.to_owned()))
+                    .collect::<Vec<_>>(),
+                "budget {budget}",
+            );
+            let error = trace.result.unwrap_err().into_materialized();
+            assert_eq!(
+                format!("{error:?}"),
+                r#"Panic(Panic { kind: Panic, message: Explicit("probe stop"), site: PanicSite { module: "main", function: "walk", span: SourceSpan { start: 67, end: 88 } }, source: None, details: None })"#,
+            );
+        }
     }
 
     #[test]
@@ -297,6 +405,45 @@ pub fn main() { count(0) }
                 .advance(&plan, &mut state, NonZeroUsize::MAX)
                 .unwrap(),
         );
+    }
+
+    struct TurnTrace {
+        turns: usize,
+        echo: Vec<(usize, String)>,
+        result: crate::runtime::error::ExecutionResult<num_bigint::BigInt>,
+    }
+
+    fn trace_int_turns(plan: &ExecutionPlan, budget: NonZeroUsize) -> TurnTrace {
+        let mut execution = Execution::new(
+            IntFunctionId(0),
+            HostCallOrigin::Entry,
+            RetainedValues::empty(),
+        );
+        let mut echo = Vec::new();
+        let mut turns = 0;
+        let mut observed = Vec::new();
+        loop {
+            turns += 1;
+            let result = execution.advance(plan, &mut RuntimeState::new(&mut echo), budget);
+            observed.extend(
+                echo.drain(..)
+                    .map(|output| (turns, output.value().inspect().to_string())),
+            );
+            let result = match result {
+                Ok(Progress::Continue(next)) => {
+                    execution = next;
+                    continue;
+                }
+                Ok(Progress::Host(invoke)) => match invoke {},
+                Ok(Progress::Complete(value)) => Ok(value),
+                Err(error) => Err(error),
+            };
+            return TurnTrace {
+                turns,
+                echo: observed,
+                result,
+            };
+        }
     }
 
     fn continuing(

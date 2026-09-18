@@ -1,9 +1,9 @@
 #[path = "../../tests/support/execution_host.rs"]
 mod execution_fixture;
 
-use ecow::EcoString;
 use geam_builtin::FutureComponent;
 use geam_builtin::embedding::FutureType;
+use geam_core::StringValue;
 use geam_core::embedding::{BigInt as EmbeddingInt, FunctionDeclaration, HostedModuleBuilder};
 use geam_core::host::HostFutureStore;
 use geam_core::provider::advanced::{
@@ -27,15 +27,15 @@ pub struct Component;
 
 #[geam_macros::module(path = "dynamic_provider/declarations", crate_path = geam_core)]
 mod declarations {
-    use super::EcoString;
+    use super::StringValue;
     use geam_core::provider::advanced::External;
 
     #[geam_macros::external(name = "Token")]
     #[derive(PartialEq, Eq, Hash)]
-    pub(super) struct Token(pub(super) EcoString);
+    pub(super) struct Token(pub(super) StringValue);
 
     #[geam_macros::function]
-    fn token(value: EcoString) -> Token {
+    fn token(value: StringValue) -> Token {
         Token(value)
     }
 
@@ -81,8 +81,8 @@ mod declarations {
 mod dynamic_provider {
     use super::declarations::Token;
     use super::{
-        BigInt, Call, DynamicKind, EcoString, Equality, Hashing, Index0, Inspection, List,
-        Retained, RetainedExternalPayload, Stored, StoredDynamic, Value,
+        BigInt, Call, DynamicKind, Equality, Hashing, Index0, Inspection, List, Retained,
+        RetainedExternalPayload, Stored, StoredDynamic, StringValue, Value,
     };
 
     #[geam_macros::external(name = "Dynamic", retained)]
@@ -110,7 +110,7 @@ mod dynamic_provider {
             self.value.source_hash(context)
         }
 
-        fn inspect(&self, context: &Inspection<'_>) -> EcoString {
+        fn inspect(&self, context: &Inspection<'_>) -> ecow::EcoString {
             self.value.inspect(context)
         }
     }
@@ -124,7 +124,7 @@ mod dynamic_provider {
             self.value.source_hash(context)
         }
 
-        fn inspect(&self, context: &Inspection<'_>) -> EcoString {
+        fn inspect(&self, context: &Inspection<'_>) -> ecow::EcoString {
             format!("Snapshot({})", self.value.inspect(context)).into()
         }
     }
@@ -168,17 +168,17 @@ mod dynamic_provider {
     }
 
     #[geam_macros::function]
-    fn kind(value: &Dynamic) -> EcoString {
+    fn kind(value: &Dynamic) -> StringValue {
         kind_name(value.value.kind())
     }
 
     #[geam_macros::function]
-    async fn kind_async(value: &Dynamic) -> EcoString {
+    async fn kind_async(value: &Dynamic) -> StringValue {
         std::future::ready(()).await;
         value.with(|value| kind_name(value.value.kind()))
     }
 
-    fn kind_name(kind: DynamicKind) -> EcoString {
+    fn kind_name(kind: DynamicKind) -> StringValue {
         match kind {
             DynamicKind::Int => "Int",
             DynamicKind::Float => "Float",
@@ -229,7 +229,7 @@ mod dynamic_provider {
     fn token_text(
         #[geam_macros::call] call: &mut Call<()>,
         value: &Dynamic,
-    ) -> Result<EcoString, ()> {
+    ) -> Result<StringValue, ()> {
         let token = call
             .restore_dynamic::<Token, Dynamic>(&value.value)
             .ok_or(())?;
@@ -252,7 +252,7 @@ mod dynamic_provider {
     fn boxed_token_text(
         #[geam_macros::call] call: &mut Call<()>,
         value: &Dynamic,
-    ) -> Result<EcoString, ()> {
+    ) -> Result<StringValue, ()> {
         let boxed = call
             .restore_dynamic::<BoxValue<Token>, Dynamic>(&value.value)
             .ok_or(())?;
@@ -300,8 +300,8 @@ mod dynamic_provider {
     fn inspect_value<Item>(
         #[geam_macros::call] call: &mut Call<()>,
         value: Value<Item>,
-    ) -> EcoString {
-        call.inspect(&value)
+    ) -> StringValue {
+        call.inspect(&value).into()
     }
 
     #[geam_macros::function]
@@ -614,7 +614,7 @@ pub fn direct() { dynamic_provider.transfer_flow() }
     let flow = bindings
         .function(FunctionDeclaration::<
             (EmbeddingInt,),
-            FutureType<(EcoString, EcoString, Result<EmbeddingInt, ()>)>,
+            FutureType<(StringValue, StringValue, Result<EmbeddingInt, ()>)>,
         >::new("flow"))
         .expect("dynamic flow should bind");
     let mut module = bindings.seal().expect("dynamic flow should seal");

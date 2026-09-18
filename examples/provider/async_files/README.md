@@ -4,11 +4,11 @@ A Rust `async fn` supplies explicit work to Gleam:
 
 ```rust
 #[geam::function]
-async fn read(path: EcoString) -> Result<EcoString, EcoString> {
+async fn read(path: StringValue) -> Result<StringValue, StringValue> {
     async_fs::read_to_string(path.as_str())
         .await
-        .map(EcoString::from)
-        .map_err(|error| EcoString::from(error.to_string()))
+        .map(StringValue::from)
+        .map_err(|error| StringValue::from(error.to_string()))
 }
 ```
 

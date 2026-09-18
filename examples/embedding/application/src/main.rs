@@ -4,7 +4,7 @@ mod geam_bindings;
 mod inventory;
 
 use geam::HostProviderConfiguration;
-use geam::embedding::{BigInt, EcoString, HostedModuleBuilder};
+use geam::embedding::{BigInt, HostedModuleBuilder, StringValue};
 use geam::gleam_stdlib::{GleamStdlibRunState, IoStream};
 use std::error::Error;
 use std::io::{self, Write};
@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     .initialize()?;
     let mut echo = Vec::new();
 
-    let rows: Vec<(EcoString, BigInt)> = vec![
+    let rows: Vec<(StringValue, BigInt)> = vec![
         (" ab-12 ".into(), 3.into()),
         ("invalid".into(), 2.into()),
         (" c-7 ".into(), 4.into()),

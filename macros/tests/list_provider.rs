@@ -1,8 +1,8 @@
 #[path = "../../tests/support/execution_host.rs"]
 mod execution_fixture;
 
-use ecow::EcoString;
 use geam_core::BitArrayValue;
+use geam_core::StringValue;
 use geam_core::provider::{Call, HostResult};
 use geam_core::{
     HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
@@ -30,12 +30,12 @@ pub struct Component;
 #[geam_macros::module(path = "lists", crate_path = geam_core)]
 mod lists {
     use super::{
-        BigInt, BitArrayValue, Call, EcoString, HostResult, Ordering, PAYLOAD_CLONES, RunState,
+        BigInt, BitArrayValue, Call, HostResult, Ordering, PAYLOAD_CLONES, RunState, StringValue,
     };
 
     #[geam_macros::external(name = "Tag")]
     #[derive(PartialEq, Eq, Hash)]
-    struct Tag(EcoString);
+    struct Tag(StringValue);
 
     impl Clone for Tag {
         fn clone(&self) -> Self {
@@ -50,7 +50,7 @@ mod lists {
     }
 
     #[geam_macros::function]
-    fn first_or(values: geam_core::List<EcoString>, fallback: EcoString) -> EcoString {
+    fn first_or(values: geam_core::List<StringValue>, fallback: StringValue) -> StringValue {
         values.get(0).unwrap_or(fallback)
     }
 
@@ -60,7 +60,7 @@ mod lists {
     }
 
     #[geam_macros::function]
-    fn reverse(values: geam_core::List<EcoString>) -> Vec<EcoString> {
+    fn reverse(values: geam_core::List<StringValue>) -> Vec<StringValue> {
         (0..values.len())
             .rev()
             .map(|index| values.get(index).expect("index comes from the List length"))
@@ -68,7 +68,7 @@ mod lists {
     }
 
     #[geam_macros::function]
-    fn labels(values: geam_core::List<(EcoString, BigInt)>) -> Vec<EcoString> {
+    fn labels(values: geam_core::List<(StringValue, BigInt)>) -> Vec<StringValue> {
         (0..values.len())
             .map(|index| {
                 let (label, _) = values.get(index).expect("index comes from the List length");
@@ -86,7 +86,7 @@ mod lists {
     }
 
     #[geam_macros::function]
-    fn nested_items_match(values: geam_core::List<(EcoString, (BigInt, bool))>) -> bool {
+    fn nested_items_match(values: geam_core::List<(StringValue, (BigInt, bool))>) -> bool {
         let Some((label, (count, enabled))) = values.get(0) else {
             return false;
         };
@@ -94,12 +94,12 @@ mod lists {
     }
 
     #[geam_macros::function]
-    fn tag(label: EcoString) -> Tag {
+    fn tag(label: StringValue) -> Tag {
         Tag(label)
     }
 
     #[geam_macros::function]
-    fn first_tag(values: geam_core::List<Tag>) -> EcoString {
+    fn first_tag(values: geam_core::List<Tag>) -> StringValue {
         values
             .get(0)
             .map_or_else(|| "missing".into(), |tag| tag.0.clone())
@@ -111,7 +111,7 @@ mod lists {
     }
 
     #[geam_macros::function]
-    fn tagged() -> Vec<(EcoString, Tag)> {
+    fn tagged() -> Vec<(StringValue, Tag)> {
         vec![("label".into(), Tag("value".into()))]
     }
 
@@ -136,7 +136,7 @@ mod lists {
     fn combined_length(
         #[geam_macros::call] call: &Call<RunState>,
         numbers: geam_core::List<BigInt>,
-        labels: geam_core::List<EcoString>,
+        labels: geam_core::List<StringValue>,
     ) -> BigInt {
         (call.state().selections + numbers.len() + labels.len()).into()
     }

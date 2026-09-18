@@ -2,7 +2,7 @@ mod function;
 
 use super::GleamStdlibProviderProfile;
 use crate::{HostProviderModule, HostRegistrationError};
-use ecow::EcoString;
+use geam_core::StringValue;
 use num_bigint::BigInt;
 
 #[geam_macros::module(
@@ -12,31 +12,35 @@ use num_bigint::BigInt;
     component = crate::Component<Profile::Io>,
 )]
 mod provider {
-    use super::{BigInt, EcoString, function};
+    use super::{BigInt, StringValue, function};
     use geam_core::provider::HostResult;
 
     #[geam_macros::function]
-    fn pop_codeunit(string: EcoString) -> (BigInt, EcoString) {
+    fn pop_codeunit(string: StringValue) -> (BigInt, StringValue) {
         function::pop_codeunit(string)
     }
 
     #[geam_macros::function]
-    fn codeunit_slice(string: EcoString, from: BigInt, length: BigInt) -> HostResult<EcoString> {
+    fn codeunit_slice(
+        string: StringValue,
+        from: BigInt,
+        length: BigInt,
+    ) -> HostResult<StringValue> {
         function::codeunit_slice(string, from, length).map_err(Into::into)
     }
 
     #[geam_macros::function]
-    fn parse_query(query: EcoString) -> Result<Vec<(EcoString, EcoString)>, ()> {
+    fn parse_query(query: StringValue) -> Result<Vec<(StringValue, StringValue)>, ()> {
         function::parse_query(query)
     }
 
     #[geam_macros::function]
-    fn percent_encode(value: EcoString) -> EcoString {
+    fn percent_encode(value: StringValue) -> StringValue {
         function::percent_encode(value)
     }
 
     #[geam_macros::function]
-    fn percent_decode(value: EcoString) -> Result<EcoString, ()> {
+    fn percent_decode(value: StringValue) -> Result<StringValue, ()> {
         function::percent_decode(value)
     }
 }

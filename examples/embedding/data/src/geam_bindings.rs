@@ -2,7 +2,6 @@
 
 use geam::embedding::BigInt;
 use geam::embedding::BindingError;
-use geam::embedding::EcoString;
 use geam::embedding::Function;
 use geam::embedding::FunctionDeclaration;
 use geam::embedding::InputShape;
@@ -10,6 +9,7 @@ use geam::embedding::List;
 use geam::embedding::ModuleBindings;
 use geam::embedding::ModuleBuilder;
 use geam::embedding::Project;
+use geam::embedding::StringValue;
 
 pub const ROOT_MODULE: &str = "geam_rust_embedding_data";
 
@@ -20,11 +20,12 @@ pub fn project() -> Project {
 #[allow(dead_code, clippy::type_complexity)]
 pub struct Functions {
     pub review: Function<
-        (List<(EcoString, BigInt)>,),
-        List<Result<(EcoString, BigInt), EcoString>>,
+        (List<(StringValue, BigInt)>,),
+        List<Result<(StringValue, BigInt), StringValue>>,
         Function0Input,
     >,
-    pub total: Function<(List<Result<(EcoString, BigInt), EcoString>>,), BigInt, Function1Input>,
+    pub total:
+        Function<(List<Result<(StringValue, BigInt), StringValue>>,), BigInt, Function1Input>,
 }
 
 pub struct Function0Input;

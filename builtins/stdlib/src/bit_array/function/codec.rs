@@ -4,7 +4,7 @@ use base64::alphabet;
 use base64::engine::general_purpose::{
     GeneralPurpose, GeneralPurposeConfig, STANDARD, STANDARD_NO_PAD,
 };
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::provider_support::bit_array_pad_to_bytes;
 
 const ERLANG_BASE64: GeneralPurpose = GeneralPurpose::new(
@@ -12,7 +12,7 @@ const ERLANG_BASE64: GeneralPurpose = GeneralPurpose::new(
     GeneralPurposeConfig::new().with_decode_allow_trailing_bits(true),
 );
 
-pub(in crate::bit_array) fn base64_encode(value: BitArrayValue, padding: bool) -> EcoString {
+pub(in crate::bit_array) fn base64_encode(value: BitArrayValue, padding: bool) -> StringValue {
     let value = bit_array_pad_to_bytes(&value);
     if padding {
         STANDARD.encode(value.bytes()).into()
@@ -21,17 +21,17 @@ pub(in crate::bit_array) fn base64_encode(value: BitArrayValue, padding: bool) -
     }
 }
 
-pub(in crate::bit_array) fn decode64(value: EcoString) -> Result<BitArrayValue, ()> {
+pub(in crate::bit_array) fn decode64(value: StringValue) -> Result<BitArrayValue, ()> {
     decode_base64(&value)
         .map(BitArrayValue::from_bytes)
         .map_err(|_| ())
 }
 
-pub(in crate::bit_array) fn base16_encode(value: BitArrayValue) -> EcoString {
+pub(in crate::bit_array) fn base16_encode(value: BitArrayValue) -> StringValue {
     hex::encode_upper(bit_array_pad_to_bytes(&value).bytes()).into()
 }
 
-pub(in crate::bit_array) fn base16_decode(value: EcoString) -> Result<BitArrayValue, ()> {
+pub(in crate::bit_array) fn base16_decode(value: StringValue) -> Result<BitArrayValue, ()> {
     hex::decode(value.as_bytes())
         .map(BitArrayValue::from_bytes)
         .map_err(|_| ())

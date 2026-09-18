@@ -44,16 +44,17 @@ pub struct Component;
 
 #[geam::module(path = "example_feature_flags")]
 mod feature_flags {
-    use super::{Call, EcoString, RunState};
+    use super::{Call, RunState};
+    use geam::provider::StringValue;
 
     #[geam::function]
-    fn environment(#[geam::call] call: &Call<RunState>) -> EcoString {
-        call.state().environment.clone()
+    fn environment(#[geam::call] call: &Call<RunState>) -> StringValue {
+        call.state().environment.clone().into()
     }
 
     #[geam::function]
-    fn enabled(#[geam::call] call: &Call<RunState>, name: EcoString) -> bool {
-        call.state().enabled.contains(&name)
+    fn enabled(#[geam::call] call: &Call<RunState>, name: StringValue) -> bool {
+        call.state().enabled.contains(name.as_str())
     }
 }
 

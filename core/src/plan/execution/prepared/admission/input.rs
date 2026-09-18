@@ -715,7 +715,7 @@ pub fn inspect(a: Result(List(Int), String), b: List(#(Int, Bool)), c: List(List
             .unwrap()
             .function(FunctionDeclaration::<
                 (
-                    Result<List<BigInt>, ecow::EcoString>,
+                    Result<List<BigInt>, crate::StringValue>,
                     List<(BigInt, bool)>,
                     List<List<BigInt>>,
                 ),

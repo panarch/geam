@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 1,
+    format: 2,
     program: data::ProgramTables {
         root: data::source::module_id(2),
         modules: data::Storage::Static(&[
@@ -42,6 +42,14 @@ data::HostedEntryArtifact {
                                             next: data::graph::Edge {
                                                 target: data::graph::BlockId(1),
                                                 args: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::String,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
                                             },
                                         }),
                                     },

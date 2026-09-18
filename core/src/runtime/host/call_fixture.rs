@@ -86,7 +86,7 @@ impl<'state> TestHostCallRuntime<'state> {
             crate::runtime::evaluated::EvaluatedIntFunction::reference(
                 crate::plan::execution::function::IntFunctionId(0),
                 Vec::new(),
-                Vec::new(),
+                Default::default(),
                 crate::plan::execution::type_::FunctionType::new(
                     Vec::new(),
                     crate::plan::execution::type_::ValueType::Int,
@@ -103,7 +103,7 @@ impl<'state> TestHostCallRuntime<'state> {
             external_leases: Vec::new(),
             list_builds: 0,
             execution,
-            work: crate::runtime::work::execution::ExecutionWork::new(),
+            work: crate::runtime::work::execution::ExecutionWork::new(Default::default()),
             scoped,
             lists: Default::default(),
         }
@@ -446,7 +446,7 @@ impl HostTokenRuntime for TestHostCallRuntime<'_> {
         0.0
     }
 
-    fn string(&self, _value: HostValueToken) -> ecow::EcoString {
+    fn string(&self, _value: HostValueToken) -> crate::StringValue {
         "".into()
     }
 

@@ -1,4 +1,4 @@
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::execution::{RunError, TokioHost};
 use geam_core::provider::{Call, Callback, HostFailure, HostResult, List, Value};
 use geam_core::{
@@ -11,7 +11,7 @@ use num_bigint::BigInt;
 
 #[derive(Default)]
 pub struct RunState {
-    entries: Vec<EcoString>,
+    entries: Vec<StringValue>,
 }
 
 #[geam_macros::provider(
@@ -25,26 +25,26 @@ pub struct Component;
 #[geam_macros::module(path = "callback_provider", crate_path = geam_core)]
 mod callback_provider {
     use super::{
-        BigInt, Call, Callback, EcoString, HostFailure, HostResult, List, RunState, Value,
+        BigInt, Call, Callback, HostFailure, HostResult, List, RunState, StringValue, Value,
     };
 
     #[geam_macros::external(name = "Token")]
     #[derive(PartialEq, Eq, Hash)]
-    struct Token(EcoString);
+    struct Token(StringValue);
 
     #[geam_macros::custom(input = DecisionInput)]
     enum Decision {
-        Accepted(EcoString),
+        Accepted(StringValue),
         Rejected,
     }
 
     #[geam_macros::function]
-    fn record(#[geam_macros::call] call: &mut Call<RunState>, entry: EcoString) -> () {
+    fn record(#[geam_macros::call] call: &mut Call<RunState>, entry: StringValue) -> () {
         call.state_mut().entries.push(entry);
     }
 
     #[geam_macros::function]
-    fn entries(#[geam_macros::call] call: &Call<RunState>) -> EcoString {
+    fn entries(#[geam_macros::call] call: &Call<RunState>) -> StringValue {
         call.state().entries.join("/").into()
     }
 
@@ -73,10 +73,10 @@ mod callback_provider {
     #[geam_macros::function(await)]
     async fn rotate(
         #[geam_macros::call] call: &mut Call<RunState>,
-        callback: Callback<fn(EcoString, BigInt) -> (BigInt, EcoString)>,
-        label: EcoString,
+        callback: Callback<fn(StringValue, BigInt) -> (BigInt, StringValue)>,
+        label: StringValue,
         number: BigInt,
-    ) -> HostResult<(BigInt, EcoString)> {
+    ) -> HostResult<(BigInt, StringValue)> {
         call.invoke(&callback, (label, number)).await
     }
 
@@ -84,7 +84,7 @@ mod callback_provider {
     async fn decide(
         #[geam_macros::call] call: &mut Call<RunState>,
         callback: Callback<fn(Token, Decision) -> DecisionInput>,
-        label: EcoString,
+        label: StringValue,
     ) -> HostResult<Decision> {
         let returned = call
             .invoke(&callback, (Token(label.clone()), Decision::Accepted(label)))
@@ -98,7 +98,9 @@ mod callback_provider {
     #[geam_macros::function(await)]
     async fn list_total(
         #[geam_macros::call] call: &mut Call<RunState>,
-        callback: Callback<fn(Vec<((BigInt, EcoString), self::Token)>) -> geam_core::List<BigInt>>,
+        callback: Callback<
+            fn(Vec<((BigInt, StringValue), self::Token)>) -> geam_core::List<BigInt>,
+        >,
     ) -> HostResult<BigInt> {
         let values = call
             .invoke(
@@ -121,7 +123,11 @@ mod callback_provider {
     async fn classify(
         #[geam_macros::call] call: &mut Call<RunState>,
         callback: Callback<
-            fn((EcoString, BigInt), Result<EcoString, Decision>, Option<BigInt>) -> Option<BigInt>,
+            fn(
+                (StringValue, BigInt),
+                Result<StringValue, Decision>,
+                Option<BigInt>,
+            ) -> Option<BigInt>,
         >,
     ) -> HostResult<Option<BigInt>> {
         call.invoke(
@@ -138,7 +144,7 @@ mod callback_provider {
     #[geam_macros::function(await)]
     async fn inspect_callback<Item>(
         #[geam_macros::call] call: &mut Call<RunState>,
-        callback: Callback<fn() -> (Value<Item>, List<EcoString>)>,
+        callback: Callback<fn() -> (Value<Item>, List<StringValue>)>,
     ) -> HostResult<(Value<Item>, BigInt)> {
         let (value, messages) = call.invoke(&callback, ()).await?;
         Ok((value, messages.len().into()))

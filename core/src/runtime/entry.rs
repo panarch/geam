@@ -11,7 +11,7 @@ pub(crate) async fn run_hosted_entry<Profile: HostWorkProfile>(
     state: &mut Profile::RunState,
     echo: &mut (dyn EchoSink + Send),
 ) -> Result<(), RunError> {
-    let (plan, stores) = entry.execution.parts_mut();
+    let (plan, stores, captures) = entry.execution.parts_mut();
     let store = crate::host::work_store::<Profile>(stores).clone_handle();
     let domain = Domain::new(
         Arc::clone(plan),
@@ -19,6 +19,7 @@ pub(crate) async fn run_hosted_entry<Profile: HostWorkProfile>(
         state,
         stores,
         echo,
+        captures.clone(),
         Domain::<Profile>::DEFAULT_BUDGET,
     );
     let context = domain.context();

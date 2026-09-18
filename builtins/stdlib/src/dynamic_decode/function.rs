@@ -1,7 +1,7 @@
 use crate::dict::DictDeclaration;
 use crate::dynamic::DynamicPayload;
 use crate::{Component, GleamStdlibRunState};
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::provider::{Call, Callback, List, Value};
 use num_bigint::BigInt;
 use num_traits::ToPrimitive;
@@ -14,8 +14,8 @@ use num_traits::ToPrimitive;
 )]
 pub(super) mod provider {
     use super::{
-        BigInt, Call, Callback, DictDeclaration, DynamicPayload, EcoString, GleamStdlibRunState,
-        List, ToPrimitive, Value,
+        BigInt, Call, Callback, DictDeclaration, DynamicPayload, GleamStdlibRunState, List,
+        StringValue, ToPrimitive, Value,
     };
     use geam_core::provider::HostResult;
     use geam_core::provider::advanced::NativeKind;
@@ -23,9 +23,9 @@ pub(super) mod provider {
     #[geam_macros::custom(input = DecodeErrorInput)]
     pub enum DecodeError {
         DecodeError {
-            expected: EcoString,
-            found: EcoString,
-            path: Vec<EcoString>,
+            expected: StringValue,
+            found: StringValue,
+            path: Vec<StringValue>,
         },
     }
 
@@ -34,7 +34,7 @@ pub(super) mod provider {
         #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
         data: geam_core::provider::advanced::External<DynamicPayload>,
         key: Value<Key>,
-    ) -> Result<Option<crate::dynamic::DynamicPayload>, EcoString> {
+    ) -> Result<Option<crate::dynamic::DynamicPayload>, StringValue> {
         let value = data.native_value().clone();
         drop(data);
         let key = call.store_dynamic::<_, DynamicPayload>(key).native_view();
@@ -73,10 +73,10 @@ pub(super) mod provider {
     #[geam_macros::function]
     fn dynamic_string(
         data: geam_core::provider::advanced::External<DynamicPayload>,
-    ) -> Result<EcoString, EcoString> {
+    ) -> Result<StringValue, StringValue> {
         data.native_value()
             .as_string()
-            .ok_or_else(EcoString::default)
+            .ok_or_else(StringValue::default)
     }
 
     #[geam_macros::function]
@@ -490,6 +490,70 @@ pub fn main() {
   decode.decode_items(dynamic.list([dynamic.int(1)]), fail)
 }
 "#;
+
+    #[test]
+    fn decoded_strings_retain_their_visible_storage_after_execution() {
+        use geam_core::StringValue;
+        use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder};
+
+        let source = r#"
+pub fn retained_string() {
+  let original = "prefix:abcdefghijklmnopqrstuvwxyz:suffix"
+  let assert "prefix:" <> rest = original
+  let assert Ok(decoded) = dynamic_string(dynamic.string(rest))
+  #(original, decoded)
+}
+"#;
+        let providers = [
+            crate::dict::host_provider::<GleamStdlibProfile>().unwrap(),
+            crate::dynamic::host_provider::<GleamStdlibProfile>().unwrap(),
+            crate::dynamic_decode::host_provider::<GleamStdlibProfile>().unwrap(),
+        ];
+        let typed = compile_typed_host_program(
+            "gleam_stdlib",
+            "gleam/dynamic/decode",
+            [PackageSource::new(
+                "gleam_stdlib",
+                Vec::<EcoString>::new(),
+                [
+                    ModuleSource::new("gleam/option", "src/gleam/option.gleam", OPTION_SOURCE),
+                    ModuleSource::new("gleam/dict", "src/gleam/dict.gleam", DICT_SOURCE),
+                    ModuleSource::new("gleam/dynamic", "src/gleam/dynamic.gleam", DYNAMIC_SOURCE),
+                    ModuleSource::new(
+                        "gleam/dynamic/decode",
+                        "src/gleam/dynamic/decode.gleam",
+                        format!("{DECODE_SOURCE}\n{source}"),
+                    ),
+                ],
+            )],
+            HostProviderSet::with_providers(
+                Vec::<HostModule<GleamStdlibProfile>>::new(),
+                providers,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let (bindings, main) = HostedModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), (StringValue, StringValue)>::new(
+                "retained_string",
+            ))
+            .unwrap();
+        let mut module = bindings.seal().unwrap();
+        let host = crate::execution_fixture::TestHost::default();
+        let (original, decoded) = host
+            .block_on(module.with_execution(
+                &host,
+                &mut GleamStdlibRunState::from_seed([0; 32]),
+                &mut Vec::new(),
+                async |scope| scope.call(&main, ()).await,
+            ))
+            .unwrap()
+            .unwrap();
+        drop(module);
+        assert_eq!(decoded.as_str(), "abcdefghijklmnopqrstuvwxyz:suffix");
+        assert_eq!(decoded.as_ptr(), original.as_ptr().wrapping_add(7));
+    }
 
     #[test]
     fn executes_every_dynamic_decode_provider_through_the_hosted_pipeline() {

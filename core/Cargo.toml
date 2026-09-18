@@ -20,6 +20,7 @@ futures-util.workspace = true
 gleam-compiler-core.workspace = true
 half.workspace = true
 im.workspace = true
+imbl.workspace = true
 miette.workspace = true
 num-bigint.workspace = true
 parking_lot.workspace = true

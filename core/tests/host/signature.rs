@@ -1,4 +1,4 @@
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::{
     BitArrayValue, ExecutionError, HostFailure, HostLocation, HostModule, HostProviderSet,
     HostedExecution, ModuleSource, PackageSource, Value, ValueType, compile_typed_host_program,
@@ -98,8 +98,8 @@ fn executes_every_scalar_family_through_direct_tail_and_function_value_calls() {
         .expect("host function should be valid")
         .with_function("float", |value: f64| value + 0.5)
         .expect("host function should be valid")
-        .with_function("string", |value: EcoString| -> EcoString {
-            value.to_uppercase()
+        .with_function("string", |value: StringValue| -> StringValue {
+            value.to_uppercase().into()
         })
         .expect("host function should be valid")
         .with_function("bit_array", |value: BitArrayValue| value)
@@ -236,7 +236,7 @@ fn reports_every_scalar_host_failure_at_the_source_call_site() {
         (
             HostModule::new("host_support", "host/scalars")
                 .expect("host module should be valid")
-                .with_fallible_function("fail", || -> Result<EcoString, HostFailure> {
+                .with_fallible_function("fail", || -> Result<StringValue, HostFailure> {
                     Err(HostFailure::new("string unavailable"))
                 })
                 .expect("host function should be valid"),

@@ -58,6 +58,7 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
         state: &'host mut Profile::RunState,
         stores: &'host mut Profile::ExternalStores,
         echo: &'host mut (dyn EchoSink + Send),
+        captures: crate::runtime::CaptureStorage,
         budget: NonZeroUsize,
     ) -> Self {
         let mut services = Profile::initialize_execution(state);
@@ -71,7 +72,7 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
             echo,
             budget,
             lists: RuntimeListStorage::default(),
-            work: ExecutionWork::new(),
+            work: ExecutionWork::new(captures),
             entries: Requests::new(),
             tasks: FuturesUnordered::new(),
             units,
@@ -93,13 +94,17 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
         mut self,
         body: impl Future<Output = Output>,
     ) -> Result<Output, DriverError> {
-        let output = {
+        let mut output = {
             let mut body = pin!(body);
             poll_fn(|cx| self.poll_body(body.as_mut(), cx)).await
         };
         self.close();
         poll_fn(|cx| {
-            self.reap(cx);
+            if let Some(error) = self.reap(cx)
+                && !matches!(output, Err(DriverError::Failed(_)))
+            {
+                output = Err(error);
+            }
             if self.tasks.is_empty() {
                 Poll::Ready(())
             } else {
@@ -180,7 +185,8 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
             Request::Service(request) => {
                 let context = self.work.execution().with_unit(request.unit().cloned());
                 let delivery = {
-                    let mut runtime = RuntimeState::with_host_and_lists(
+                    let captures = context.services().captures().clone();
+                    let mut runtime = RuntimeState::with_host_storage(
                         &mut *self.echo,
                         RuntimeHost::<Profile>::new(
                             &mut *self.state,
@@ -191,6 +197,7 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
                             ExecutionClock::new(self.host),
                         ),
                         self.lists.clone(),
+                        captures,
                     );
                     request.service(&self.plan, &mut runtime)
                 };
@@ -234,13 +241,15 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
         for _ in 0..self.budget.get() {
             match self.tasks.poll_next_unpin(cx) {
                 Poll::Pending | Poll::Ready(None) => return failure,
-                Poll::Ready(Some(TaskExit::Completed)) => {}
-                Poll::Ready(Some(TaskExit::Cancelled)) => {
+                Poll::Ready(Some(TaskExit::Cancelled)) if !self.closed => {
                     failure.get_or_insert(DriverError::Cancelled);
                 }
                 Poll::Ready(Some(TaskExit::Failed(error))) => {
-                    failure.get_or_insert(DriverError::Failed(error));
+                    if !matches!(failure, Some(DriverError::Failed(_))) {
+                        failure = Some(DriverError::Failed(error));
+                    }
                 }
+                Poll::Ready(Some(TaskExit::Completed | TaskExit::Cancelled)) => {}
             }
         }
         if !self.tasks.is_empty() {
@@ -369,6 +378,7 @@ mod tests {
     struct ManualHost {
         workers: Mutex<Vec<Worker>>,
         next_exit: Mutex<Option<TaskExit>>,
+        acknowledgement_delay: AtomicUsize,
         released: Arc<AtomicUsize>,
         started: AtomicUsize,
         turns: AtomicUsize,
@@ -377,6 +387,8 @@ mod tests {
     struct ManualTask {
         abort: AbortHandle,
         exit: oneshot::Receiver<TaskExit>,
+        acknowledgement_delay: usize,
+        completed: Option<TaskExit>,
     }
 
     struct Release(Arc<AtomicUsize>);
@@ -409,7 +421,12 @@ mod tests {
                 };
                 let _ = reply.send(exit);
             }));
-            Box::new(ManualTask { abort, exit })
+            Box::new(ManualTask {
+                abort,
+                exit,
+                acknowledgement_delay: self.acknowledgement_delay.load(Ordering::SeqCst),
+                completed: None,
+            })
         }
 
         fn now(&self) -> Instant {
@@ -423,9 +440,19 @@ mod tests {
     impl Future for ManualTask {
         type Output = TaskExit;
         fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-            Pin::new(&mut self.exit)
-                .poll(cx)
-                .map(|exit| exit.unwrap_or(TaskExit::Cancelled))
+            let exit = match self.completed.take() {
+                Some(exit) => exit,
+                None => std::task::ready!(Pin::new(&mut self.exit).poll(cx))
+                    .unwrap_or(TaskExit::Cancelled),
+            };
+            if self.acknowledgement_delay == 0 {
+                Poll::Ready(exit)
+            } else {
+                self.acknowledgement_delay -= 1;
+                self.completed = Some(exit);
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
         }
     }
 
@@ -552,6 +579,7 @@ mod tests {
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 Domain::<Profile>::DEFAULT_BUDGET,
             );
             let context = domain.context();
@@ -572,6 +600,197 @@ mod tests {
     }
 
     #[test]
+    fn late_executor_failure_survives_entry_cancellation_and_complete_shutdown() {
+        let (plan, functions) = program("pub fn main() { echo 42 42 }", LibraryValueType::Int);
+        let host = ManualHost::default();
+        host.acknowledgement_delay.store(2, Ordering::SeqCst);
+        *host.next_exit.lock() = Some(TaskExit::Failed(
+            std::io::Error::other("worker failed before acknowledgement").into(),
+        ));
+        let mut state = Cell::new(7);
+        let mut stores = Cell::new(());
+        let mut echo = Vec::new();
+        let domain = Domain::new(
+            plan,
+            &host,
+            &mut state,
+            &mut stores,
+            &mut echo,
+            Default::default(),
+            NonZeroUsize::MIN,
+        );
+        let context = domain.context();
+        let result = host.finish(domain.drive(context.call(
+            *functions.ints[0].function(),
+            HostCallOrigin::Entry,
+            RetainedValues::empty(),
+        )));
+        assert_eq!(
+            result.err().map(|error| error.to_string()).as_deref(),
+            Some("the host executor failed: worker failed before acknowledgement")
+        );
+        assert_eq!(host.started.load(Ordering::SeqCst), 1);
+        assert_eq!(host.released.load(Ordering::SeqCst), 1);
+        assert!(host.workers.lock().is_empty());
+        assert_eq!(state.get(), 7);
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn failed_tasks_take_precedence_over_cancellation_in_driving_and_shutdown() {
+        let (plan, _) = program("pub fn main() { 42 }", LibraryValueType::Int);
+        for budget in [NonZeroUsize::MIN, Domain::<Profile>::DEFAULT_BUDGET] {
+            for body_ready in [false, true] {
+                for cancelled_first in [false, true] {
+                    for delay in [0, 2] {
+                        let host = ManualHost::default();
+                        host.acknowledgement_delay.store(delay, Ordering::SeqCst);
+                        let mut state = Cell::new(7);
+                        let mut stores = Cell::new(());
+                        let mut echo = Vec::new();
+                        let domain = Domain::new(
+                            Arc::clone(&plan),
+                            &host,
+                            &mut state,
+                            &mut stores,
+                            &mut echo,
+                            Default::default(),
+                            budget,
+                        );
+                        for cancelled in [cancelled_first, !cancelled_first] {
+                            *host.next_exit.lock() = Some(if cancelled {
+                                TaskExit::Cancelled
+                            } else {
+                                TaskExit::Failed(std::io::Error::other("original failure").into())
+                            });
+                            domain
+                                .tasks
+                                .push(host.spawn(Box::pin(std::future::pending())));
+                        }
+                        host.turn();
+                        let result = host.finish(domain.drive(poll_fn(|_| {
+                            if body_ready {
+                                Poll::Ready(42)
+                            } else {
+                                Poll::Pending
+                            }
+                        })));
+                        let error = result.unwrap_err();
+                        assert_eq!(
+                            error.to_string(),
+                            "the host executor failed: original failure"
+                        );
+                        assert_eq!(
+                            std::error::Error::source(&error).unwrap().to_string(),
+                            "original failure"
+                        );
+                        assert_eq!(host.started.load(Ordering::SeqCst), 2);
+                        assert_eq!(host.released.load(Ordering::SeqCst), 2);
+                        assert!(host.workers.lock().is_empty());
+                        assert_eq!(state.get(), 7);
+                        assert!(echo.is_empty());
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_selected_host_failure_survives_later_failures_and_requested_cancellation() {
+        let (plan, _) = program("pub fn main() { Nil }", LibraryValueType::Nil);
+        for budget in [NonZeroUsize::MIN, Domain::<Profile>::DEFAULT_BUDGET] {
+            // Equal simultaneous causes do not impose an order on independent failures.
+            for (delay, later) in [(0, "first"), (2, "later")] {
+                let host = ManualHost::default();
+                let mut state = Cell::new(0);
+                let mut stores = Cell::new(());
+                let mut echo = Vec::new();
+                let domain = Domain::new(
+                    Arc::clone(&plan),
+                    &host,
+                    &mut state,
+                    &mut stores,
+                    &mut echo,
+                    Default::default(),
+                    budget,
+                );
+                *host.next_exit.lock() =
+                    Some(TaskExit::Failed(std::io::Error::other("first").into()));
+                domain
+                    .tasks
+                    .push(host.spawn(Box::pin(std::future::pending())));
+                host.acknowledgement_delay.store(delay, Ordering::SeqCst);
+                *host.next_exit.lock() =
+                    Some(TaskExit::Failed(std::io::Error::other(later).into()));
+                domain
+                    .tasks
+                    .push(host.spawn(Box::pin(std::future::pending())));
+                domain
+                    .tasks
+                    .push(host.spawn(Box::pin(std::future::pending())));
+                let error = host
+                    .finish(domain.drive(std::future::pending::<()>()))
+                    .unwrap_err();
+                assert_eq!(error.to_string(), "the host executor failed: first");
+                assert_eq!(host.started.load(Ordering::SeqCst), 3);
+                assert_eq!(host.released.load(Ordering::SeqCst), 3);
+                assert!(host.workers.lock().is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn requested_shutdown_cancellation_preserves_source_results_and_errors() {
+        for (source, expected) in [
+            ("pub fn main() { echo 41 42 }", Ok("42")),
+            (
+                "pub fn main() -> Int { echo 41 panic as \"source failure\" }",
+                Err("panic: source failure"),
+            ),
+        ] {
+            let (plan, functions) = program(source, LibraryValueType::Int);
+            let host = ManualHost::default();
+            host.acknowledgement_delay.store(2, Ordering::SeqCst);
+            let mut state = Cell::new(7);
+            let mut stores = Cell::new(());
+            let mut echo = Vec::new();
+            let domain = Domain::new(
+                plan,
+                &host,
+                &mut state,
+                &mut stores,
+                &mut echo,
+                Default::default(),
+                NonZeroUsize::MIN,
+            );
+            domain
+                .tasks
+                .push(host.spawn(Box::pin(std::future::pending())));
+            let context = domain.context();
+            let result = host
+                .finish(domain.drive(context.call(
+                    *functions.ints[0].function(),
+                    HostCallOrigin::Entry,
+                    RetainedValues::empty(),
+                )))
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                result
+                    .map(|value| value.to_string())
+                    .map_err(|error| error.to_string()),
+                expected.map(str::to_owned).map_err(str::to_owned),
+            );
+            assert_eq!(host.started.load(Ordering::SeqCst), 2);
+            assert_eq!(host.released.load(Ordering::SeqCst), 2);
+            assert!(host.workers.lock().is_empty());
+            assert_eq!(echo.len(), 1);
+            assert_eq!(echo[0].value(), &crate::Value::Int(41.into()));
+            assert_eq!(state.get(), 7);
+        }
+    }
+
+    #[test]
     fn independent_cpu_entries_yield_cancel_and_leave_borrowed_state_with_the_driver() {
         let (plan, functions) = program(
             "pub fn main(identity: Int) -> Int { echo identity main(identity) }",
@@ -588,6 +807,7 @@ mod tests {
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::new(17).unwrap(),
         );
         let context = domain.context();
@@ -709,6 +929,7 @@ pub fn main() { echo 41 increment(sum(2_000, 0) - 1959) }
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::new(37).unwrap(),
         );
         let entry = domain.context();
@@ -735,6 +956,182 @@ pub fn main() { echo 41 increment(sum(2_000, 0) - 1959) }
     }
 
     #[test]
+    fn native_waits_and_reentrant_callbacks_preserve_effects_across_budget_boundaries() {
+        use crate::{
+            HostCall, HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
+            HostConstructions, HostFailure, HostFunctionType, HostOwnedCompletion, HostProvider,
+            HostProviderModule, HostTypeList, HostTypeListEnd, ModuleSource, PackageSource,
+        };
+        use num_bigint::BigInt;
+
+        struct Provider;
+        impl HostProvider<Profile> for Provider {
+            type State = Cell<usize>;
+            fn project(state: &mut Self::State) -> &mut Self::State {
+                state
+            }
+        }
+        fn bump<'call>(
+            mut call: HostCall<'call, Profile, Provider, BigInt>,
+            fail: bool,
+        ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+            let state = call.state();
+            state.set(state.get() + 1);
+            if fail {
+                return Err(HostFailure::new("inside callback").into());
+            }
+            Ok(call.return_value(1.into()))
+        }
+        fn invoke<'call>(
+            mut call: HostCall<'call, Profile, Provider, BigInt>,
+            constructions: HostConstructions<'call, HostTypeListEnd>,
+            callback: HostCallable<'call, HostTypeList<BigInt, HostTypeListEnd>, BigInt>,
+            fail: bool,
+        ) -> Result<HostCallContinuation<'call, BigInt>, HostCallError> {
+            let state = call.state();
+            state.set(state.get() + 10);
+            let callback = call.owned_callable(callback, &constructions);
+            Ok(call.resume(constructions, move |context| {
+                Box::pin(async move {
+                    crate::runtime::execution::Yield::new().await;
+                    let value = callback
+                        .invoke(
+                            &context,
+                            |_, _| (39.into(), ()),
+                            |mut call, _, value| {
+                                let state = call.state();
+                                state.set(state.get() + 100);
+                                Ok(value)
+                            },
+                        )
+                        .await?;
+                    if fail {
+                        return Err(HostFailure::new("after callback").into());
+                    }
+                    Ok(HostOwnedCompletion::new(move |call, _| {
+                        Ok(call.return_value(value))
+                    }))
+                })
+            }))
+        }
+
+        for (fail_inside, fail_after) in [(false, false), (true, false), (false, true)] {
+            let provider = HostProviderModule::new("application", "library")
+                .unwrap()
+                .with_scoped_function::<Provider, (bool,), BigInt, _>("bump", bump)
+                .unwrap()
+                .with_resumable_function::<Provider, (
+                    HostFunctionType<HostTypeList<BigInt, HostTypeListEnd>, BigInt>,
+                    bool,
+                ), BigInt, HostTypeListEnd, _>("invoke", invoke)
+                .unwrap();
+            let source = format!(
+                r#"
+@external(erlang, "native", "bump")
+fn bump(fail: Bool) -> Int
+@external(erlang, "native", "invoke")
+fn invoke(callback: fn(Int) -> Int, fail: Bool) -> Int
+pub fn main() {{
+  echo "before"
+  let captured = 2
+  let answer = invoke(fn(value) {{
+    echo value
+    value + bump({}) + captured
+  }}, {})
+  echo answer
+  answer
+}}
+"#,
+                if fail_inside { "True" } else { "False" },
+                if fail_after { "True" } else { "False" },
+            );
+            let typed = crate::compile_typed_host_program(
+                "application",
+                "library",
+                [PackageSource::new(
+                    "application",
+                    Vec::<String>::new(),
+                    [ModuleSource::new("library", "src/library.gleam", source)],
+                )],
+                HostProviderSet::from_providers([provider]).unwrap(),
+            )
+            .unwrap();
+            let library = crate::planner::plan_host_library_program(typed).unwrap();
+            let function = library
+                .functions()
+                .iter()
+                .find(|function| function.name() == "main")
+                .unwrap();
+            let entry = LibraryEntry::new(
+                function.signature().id(),
+                LibraryValueType::Int,
+                Vec::new(),
+                Vec::new(),
+            );
+            let (plan, entries) =
+                HostedProgram::from_library_plan(library, entry, Vec::new()).unwrap();
+            let plan = Arc::new(plan);
+            for budget in (1..=16).chain([1024]) {
+                let host = ManualHost::default();
+                let mut state = Cell::new(0);
+                let mut stores = Cell::new(());
+                let mut echo = Vec::new();
+                let domain = Domain::new(
+                    Arc::clone(&plan),
+                    &host,
+                    &mut state,
+                    &mut stores,
+                    &mut echo,
+                    Default::default(),
+                    NonZeroUsize::new(budget).unwrap(),
+                );
+                let context = domain.context();
+                let result = host
+                    .finish(domain.drive(context.call(
+                        *entries.ints[0].function(),
+                        HostCallOrigin::Entry,
+                        RetainedValues::empty(),
+                    )))
+                    .unwrap()
+                    .unwrap();
+                let (expected, expected_echo) = if fail_inside {
+                    (
+                        Err("host function application::library.bump failed: inside callback"),
+                        vec!["\"before\"", "39"],
+                    )
+                } else if fail_after {
+                    (
+                        Err("host function application::library.invoke failed: after callback"),
+                        vec!["\"before\"", "39"],
+                    )
+                } else {
+                    (Ok(BigInt::from(42)), vec!["\"before\"", "39", "42"])
+                };
+                assert_eq!(
+                    result.map_err(|error| error.to_string()),
+                    expected.map_err(str::to_owned)
+                );
+                assert_eq!(
+                    state.get(),
+                    if fail_inside { 11 } else { 111 },
+                    "budget {budget}, inside {fail_inside}, after {fail_after}",
+                );
+                assert_eq!(
+                    echo.iter()
+                        .map(|output| output.value().inspect().to_string())
+                        .collect::<Vec<_>>(),
+                    expected_echo,
+                );
+                assert_eq!(
+                    host.started.load(Ordering::SeqCst),
+                    host.released.load(Ordering::SeqCst)
+                );
+                assert!(host.workers.lock().is_empty());
+            }
+        }
+    }
+
+    #[test]
     fn bounded_cleanup_wakes_for_unpolled_tasks_even_after_completed_tasks_are_removed() {
         struct WakeCount(AtomicUsize);
         impl std::task::Wake for WakeCount {
@@ -753,6 +1150,7 @@ pub fn main() { echo 41 increment(sum(2_000, 0) - 1959) }
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         // Both are actual host tasks; their completion is already available when
@@ -791,6 +1189,7 @@ pub fn main() { echo 41 increment(sum(2_000, 0) - 1959) }
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         for _ in 0..3 {
@@ -828,6 +1227,7 @@ pub fn main() { echo 41 increment(sum(2_000, 0) - 1959) }
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let context = domain.context().execution;
@@ -875,6 +1275,7 @@ pub fn main() { #(fn() { echo 41 count(2_000, 0) - 1958 }) }
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::new(37).unwrap(),
         );
         let context = domain.context();
@@ -939,6 +1340,7 @@ pub fn main() { #(fn() { echo 41 count(2_000, 0) - 1958 }) }
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         let context = domain.context();
@@ -1009,6 +1411,7 @@ pub fn main() { #(fn() { echo 41 count(2_000, 0) - 1958 }) }
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         let context = domain.context();
@@ -1085,6 +1488,7 @@ pub fn main() { #(fn() { echo 41 count(2_000, 0) - 1958 }) }
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let context = domain.context();
@@ -1239,6 +1643,7 @@ mod source_work {
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         assert!(
@@ -1331,6 +1736,7 @@ mod source_work {
             &mut host,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         let entered = Arc::new(Barrier::new(2));
@@ -1434,6 +1840,7 @@ mod source_work {
             &mut host,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         let entries = driver.context();
@@ -1493,6 +1900,7 @@ mod source_work {
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let entries = driver.context();
@@ -1820,6 +2228,7 @@ pub fn make() {{
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let work = {
@@ -1916,6 +2325,7 @@ pub fn make() {{
                         &mut state,
                         &mut stores,
                         &mut echo,
+                        Default::default(),
                         NonZeroUsize::MIN,
                     );
                     let work = {
@@ -2101,6 +2511,7 @@ pub fn make() {{ echo 7 #({expression}, future.ready(7)) }}
                     &mut state,
                     &mut stores,
                     &mut output,
+                    Default::default(),
                     NonZeroUsize::MIN,
                 );
                 let (work, independent) = {
@@ -2296,6 +2707,7 @@ pub fn make() {{ echo 7 #({expression}, future.ready(7)) }}
                     &mut state,
                     &mut stores,
                     &mut echo,
+                    Default::default(),
                     NonZeroUsize::MIN,
                 );
                 let entries = driver.context();
@@ -2336,6 +2748,7 @@ pub fn make() {{ echo 7 #({expression}, future.ready(7)) }}
                     &mut state,
                     &mut stores,
                     &mut echo,
+                    Default::default(),
                     NonZeroUsize::MIN,
                 );
                 let (mapped, original) = {
@@ -2637,6 +3050,7 @@ pub fn make() {
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let (all, sibling) = {
@@ -2883,6 +3297,7 @@ pub fn make() {
                 &mut host,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let work = {
@@ -3171,6 +3586,7 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let work = {
@@ -3255,6 +3671,7 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let (outer, inner) = {
@@ -3343,6 +3760,7 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
                 &mut fresh,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let restored = {
@@ -3504,7 +3922,7 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
         let function = crate::runtime::evaluated::EvaluatedNilFunction::reference(
             crate::plan::execution::function::NilFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::Nil,
@@ -3666,6 +4084,7 @@ mod work_requests {
             &mut host,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         let callback = int_callback(&mut execution, &executor, entry);
@@ -3729,6 +4148,7 @@ mod work_requests {
             &mut host,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         let callback = int_callback(&mut execution, &executor, entry);
@@ -3763,6 +4183,7 @@ mod work_requests {
                 &mut host,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let callback = int_callback(&mut execution, &executor, entry);
@@ -3913,6 +4334,7 @@ pub fn make() { #(fn(value: Int) {
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let callback = int_callback(&mut execution, &executor, *entries.tuples[0].function());
@@ -4001,6 +4423,7 @@ pub fn make() { #(fn(value: Int) {
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let context = execution.work.execution();
@@ -4054,6 +4477,7 @@ pub fn make() { #(fn(value: Int) {
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let context = execution.work.execution();
@@ -4091,6 +4515,7 @@ pub fn make() { #(fn(value: Int) {
                 &mut state,
                 &mut stores,
                 &mut echo,
+                Default::default(),
                 NonZeroUsize::MIN,
             );
             let context = execution.work.execution();
@@ -4156,6 +4581,7 @@ pub fn make() { #(fn(value: Int) {
             &mut host,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         let callback = int_callback(&mut execution, &executor, entry);
@@ -4213,6 +4639,7 @@ pub fn make() { #(fn(value: Int) {
             &mut host,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         let callback = int_callback(&mut execution, &executor, entry);
@@ -4257,6 +4684,7 @@ pub fn make() { #(fn(value: Int) {
             &mut host,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         let callback = int_callback(&mut execution, &executor, entry);
@@ -4314,6 +4742,7 @@ pub fn make() { #(fn(value: Int) {
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         int_callback(&mut execution, &host, entry);
@@ -4334,6 +4763,7 @@ pub fn make() { #(fn(value: Int) {
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             NonZeroUsize::MIN,
         );
         int_callback(&mut execution, &host, entry);

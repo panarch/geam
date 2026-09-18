@@ -1,4 +1,4 @@
-use geam::provider::{EcoString, ExternalPayload};
+use geam::provider::{ExternalPayload, StringValue};
 use regex::Regex;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -11,11 +11,11 @@ pub struct Component;
 
 #[geam::module(path = "example_text_pattern")]
 mod text_pattern {
-    use super::{DefaultHasher, EcoString, ExternalPayload, Hash, Hasher, Regex};
+    use super::{DefaultHasher, ExternalPayload, Hash, Hasher, Regex, StringValue};
 
     #[geam::external(name = "Pattern", manual)]
     struct Pattern {
-        source: EcoString,
+        source: StringValue,
         regex: Regex,
     }
 
@@ -30,18 +30,18 @@ mod text_pattern {
             hasher.finish()
         }
 
-        fn inspect(&self) -> EcoString {
+        fn inspect(&self) -> geam::provider::EcoString {
             format!("Pattern({:?})", self.source).into()
         }
     }
 
     #[geam::custom]
     enum CompileError {
-        CompileError { message: EcoString },
+        CompileError { message: StringValue },
     }
 
     #[geam::function]
-    fn compile(source: EcoString) -> Result<Pattern, CompileError> {
+    fn compile(source: StringValue) -> Result<Pattern, CompileError> {
         match Regex::new(source.as_str()) {
             Ok(regex) => Ok(Pattern { source, regex }),
             Err(error) => Err(CompileError::CompileError {
@@ -51,21 +51,21 @@ mod text_pattern {
     }
 
     #[geam::function]
-    fn is_match(pattern: &Pattern, text: EcoString) -> bool {
+    fn is_match(pattern: &Pattern, text: StringValue) -> bool {
         pattern.regex.is_match(text.as_str())
     }
 
     #[geam::function]
-    fn find_all(pattern: &Pattern, text: EcoString) -> Vec<EcoString> {
+    fn find_all(pattern: &Pattern, text: StringValue) -> Vec<StringValue> {
         pattern
             .regex
             .find_iter(text.as_str())
-            .map(|matched| EcoString::from(matched.as_str()))
+            .map(|matched| text.slice(matched.start()..matched.end()))
             .collect()
     }
 
     #[geam::function]
-    fn replace_all(pattern: &Pattern, text: EcoString, replacement: EcoString) -> EcoString {
+    fn replace_all(pattern: &Pattern, text: StringValue, replacement: StringValue) -> StringValue {
         pattern
             .regex
             .replace_all(text.as_str(), replacement.as_str())

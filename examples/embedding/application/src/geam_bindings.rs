@@ -13,7 +13,6 @@ use geam::HostWorkProfile;
 
 use geam::embedding::BigInt;
 use geam::embedding::BindingError;
-use geam::embedding::EcoString;
 use geam::embedding::Function;
 use geam::embedding::FunctionDeclaration;
 use geam::embedding::HostedModuleBindings;
@@ -21,6 +20,7 @@ use geam::embedding::HostedModuleBuilder;
 use geam::embedding::HostedProject;
 use geam::embedding::InputShape;
 use geam::embedding::List;
+use geam::embedding::StringValue;
 use std::marker::PhantomData;
 
 pub const ROOT_MODULE: &str = "geam_rust_embedding_application";
@@ -197,15 +197,15 @@ where
 #[allow(clippy::type_complexity)]
 pub struct Functions {
     pub validate_batch: Function<
-        (List<(EcoString, BigInt)>,),
-        List<Result<(EcoString, BigInt), EcoString>>,
+        (List<(StringValue, BigInt)>,),
+        List<Result<(StringValue, BigInt), StringValue>>,
         Function0Input,
     >,
     pub total_quantity:
-        Function<(List<Result<(EcoString, BigInt), EcoString>>,), BigInt, Function1Input>,
+        Function<(List<Result<(StringValue, BigInt), StringValue>>,), BigInt, Function1Input>,
     pub first_valid: Function<
-        (List<Result<(EcoString, BigInt), EcoString>>,),
-        Option<(EcoString, BigInt)>,
+        (List<Result<(StringValue, BigInt), StringValue>>,),
+        Option<(StringValue, BigInt)>,
         Function2Input,
     >,
 }

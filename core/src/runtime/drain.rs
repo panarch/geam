@@ -1,7 +1,7 @@
 use parking_lot::Mutex;
 use std::collections::VecDeque;
 
-pub(super) struct DrainQueue<Value> {
+pub(in crate::runtime) struct DrainQueue<Value> {
     state: Mutex<State<Value>>,
 }
 
@@ -16,7 +16,7 @@ struct ResetOnUnwind<'queue, Value> {
 }
 
 impl<Value> DrainQueue<Value> {
-    pub(super) fn new() -> Self {
+    pub(in crate::runtime) fn new() -> Self {
         Self {
             state: Mutex::new(State {
                 draining: false,
@@ -27,7 +27,7 @@ impl<Value> DrainQueue<Value> {
 
     // Nested wake/drop callbacks enqueue work for the current draining caller.
     // No callback runs under the queue lock, and no background worker exists.
-    pub(super) fn deliver(
+    pub(in crate::runtime) fn deliver(
         &self,
         values: impl IntoIterator<Item = Value>,
         mut consume: impl FnMut(Value),
@@ -125,6 +125,26 @@ mod tests {
             worker.join().expect("queue worker");
         });
         assert_eq!(total.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn completed_drains_reuse_capacity_without_retaining_historical_payloads() {
+        let queue = DrainQueue::new();
+        let mut capacities = Vec::new();
+        for _ in 0..32 {
+            let payload = Arc::new(());
+            let weak = Arc::downgrade(&payload);
+            queue.deliver((0..1024).map(|_| Arc::clone(&payload)), drop);
+            assert_eq!(Arc::strong_count(&payload), 1);
+            drop(payload);
+            assert!(weak.upgrade().is_none());
+            let state = queue.state.lock();
+            assert!(!state.draining);
+            assert!(state.queued.is_empty());
+            capacities.push(state.queued.capacity());
+        }
+        assert!(capacities[0] >= 1024);
+        assert_eq!(capacities, vec![capacities[0]; 32]);
     }
 
     #[test]

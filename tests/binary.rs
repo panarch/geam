@@ -177,19 +177,59 @@ fn streams_gleam_io_and_echo_in_source_order_before_runtime_failure() {
 
     #[cfg(unix)]
     {
-        let mut child = geam_command(&project, ["run"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("Geam CLI should start with piped output");
-        drop(child.stdout.take());
-        let failed_output = child
-            .wait_with_output()
-            .expect("Geam CLI output failure should complete");
-        assert!(!failed_output.status.success());
+        for source in [
+            None,
+            Some(
+                "import gleam/io\npub fn main() { io.print(\"output\") panic as \"source-error-after-io-failure\" }\n",
+            ),
+        ] {
+            if let Some(source) = source {
+                fs::write(project.path().join("src/application.gleam"), source).unwrap();
+            }
+            let mut child = geam_command(&project, ["run"])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .expect("Geam CLI should start with piped output");
+            drop(child.stdout.take());
+            let failed_output = child
+                .wait_with_output()
+                .expect("Geam CLI output failure should complete");
+            assert!(!failed_output.status.success());
+            let stderr = String::from_utf8_lossy(&failed_output.stderr);
+            assert!(stderr.contains("geam runner:"));
+            assert!(stderr.contains("after writing its output directly"));
+            assert!(
+                !stderr.contains("source-error-after-io-failure"),
+                "{stderr}"
+            );
+        }
+
+        let build = geam(&project, ["build"]);
+        assert!(
+            build.status.success(),
+            "{}",
+            String::from_utf8_lossy(&build.stderr)
+        );
+        let executable = project.path().join(format!(
+            "build/geam/target/debug/application{}",
+            std::env::consts::EXE_SUFFIX
+        ));
+        let (reader, writer) = std::io::pipe().unwrap();
+        drop(reader);
+        let failed_output = Command::new(executable)
+            .current_dir(project.path())
+            .env_remove("GEAM_CONFIG")
+            .stdout(writer)
+            .output()
+            .unwrap();
+        assert_eq!(failed_output.status.code(), Some(1));
         let stderr = String::from_utf8_lossy(&failed_output.stderr);
-        assert!(stderr.contains("geam runner:"));
-        assert!(stderr.contains("after writing its output directly"));
+        assert!(stderr.starts_with("geam application:"), "{stderr}");
+        assert!(
+            !stderr.contains("source-error-after-io-failure"),
+            "{stderr}"
+        );
     }
 
     fs::write(

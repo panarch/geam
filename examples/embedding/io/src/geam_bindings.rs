@@ -9,13 +9,13 @@ use geam::HostRegistrationError;
 use geam::HostWorkProfile;
 
 use geam::embedding::BindingError;
-use geam::embedding::EcoString;
 use geam::embedding::Function;
 use geam::embedding::FunctionDeclaration;
 use geam::embedding::HostedModuleBindings;
 use geam::embedding::HostedModuleBuilder;
 use geam::embedding::HostedProject;
 use geam::embedding::InputShape;
+use geam::embedding::StringValue;
 use std::marker::PhantomData;
 
 pub const ROOT_MODULE: &str = "geam_rust_embedding_io";
@@ -163,12 +163,12 @@ where
 
 #[allow(clippy::type_complexity)]
 pub struct Functions {
-    pub announce: Function<(EcoString,), EcoString, Function0Input>,
+    pub announce: Function<(StringValue,), StringValue, Function0Input>,
 }
 
 pub struct Function0Input;
 
-impl InputShape<(EcoString,)> for Function0Input {}
+impl InputShape<(StringValue,)> for Function0Input {}
 
 pub fn bind<Io>(
     builder: HostedModuleBuilder<Profile<Io>>,

@@ -245,7 +245,7 @@ Named = a concrete custom or external type, including closed generic specializat
 | --- | --- |
 | `Int` | `BigInt` |
 | `Float` | `f64` |
-| `String` | `EcoString` |
+| `String` | `StringValue` |
 | `BitArray` | `BitArrayValue` |
 | `UtfCodepoint` | `char` |
 | `Bool` | `bool` |
@@ -264,11 +264,24 @@ uses the same `List<A>` declaration with `SharedList<A>` values. Read shared lis
 items through `read_item(index, |value| ...)`; `len` and `is_empty` remain
 constant-time. A borrowed shared List reuses its original storage.
 
-`BigInt`, `EcoString`, `BitArrayValue`, and embedding `List` are re-exported
+`BigInt`, `StringValue`, `BitArrayValue`, and embedding `List` are re-exported
 from `geam::embedding`. Tuple values have one through seven elements. `(T,)` is
 a one-element Gleam Tuple, while `()` is Gleam Nil. A function has zero through
 seven source arguments passed as one Rust argument tuple; this arity is separate
 from any Tuple-valued source argument.
+
+`StringValue` owns immutable text independently of a call or loaded module.
+Construct it with `"text".into()` and borrow its visible UTF-8 with `as_str()`.
+Clones and larger substrings share storage. A retained substring may keep its
+whole original buffer alive; use `detached()` when independent storage is
+needed. `into_ecostring()` returns flat text, copying only when the visible
+string is a range of its backing buffer. Empty and inline-sized slices do not
+retain the original allocation.
+
+When updating from the previous `EcoString` mapping, regenerate bindings with
+`geam embedding sync` and change handwritten source-value signatures to
+`StringValue`. Existing `.into()` inputs continue to work. Function names,
+configuration and diagnostic text still use `EcoString`.
 
 All compound types recurse, including `List(List(String))` and Lists inside
 Tuple, Result, or Option. Only the prelude Result and `gleam/option.Option` from
@@ -281,7 +294,7 @@ return. It is separate from the outer `Result` returned by a call, whose
 execution failure:
 
 ```rust
-let rows: Vec<(EcoString, BigInt)> = vec![("invalid".into(), 2.into())];
+let rows: Vec<(StringValue, BigInt)> = vec![("invalid".into(), 2.into())];
 let checked = scope.call(&functions.validate_batch, (rows,)).await?;
 assert_eq!(
     checked.read_item(0, |row| row.is_err()),
@@ -296,7 +309,7 @@ loaded module reuses its retained handle without traversing or reconstructing
 items:
 
 ```rust
-let rows: Vec<(EcoString, BigInt)> = vec![
+let rows: Vec<(StringValue, BigInt)> = vec![
     ("AB-12".into(), 3.into()),
     ("invalid".into(), 2.into()),
 ];
@@ -306,14 +319,17 @@ let total = scope.call(&functions.total_quantity, (&checked,)).await?;
 
 Host-driven calls return `SharedList`. Its `read_item` callback borrows one item
 and returns `None` for an out-of-range index. Reading or passing the list back
-does not copy every item. `len` and `is_empty` are O(1).
+does not copy every item. Locating an item takes O(log n); `len` and `is_empty`
+are O(1).
 
 Provider-free direct calls return `List`, whose read-only API makes
 materialization explicit:
 
 - `len` and `is_empty` are O(1) and decode no items.
-- `get` decodes one item and returns `None` for an out-of-range index.
-- `iter` yields owned items lazily.
+- `get` locates an item in O(log n), decodes only that item, and returns `None`
+  for an out-of-range index.
+- `iter` yields owned items lazily, traversing the storage in O(n) plus item
+  decoding.
 - `to_vec` decodes every item into a new Vec.
 
 Retained Lists of plain data own the immutable storage needed for reading.
@@ -331,7 +347,7 @@ transfers values to another owner. Nested Lists require explicit recursive
 materialization:
 
 ```rust
-let rows: Vec<Vec<EcoString>> = nested.iter().map(|row| row.to_vec()).collect();
+let rows: Vec<Vec<StringValue>> = nested.iter().map(|row| row.to_vec()).collect();
 ```
 
 A fresh outer Vec cannot contain retained children. `Vec<List<T>>` and
@@ -373,7 +389,7 @@ An absent Option or Result branch may not give Rust enough information to
 select a List carrier. Use an ordinary local type annotation:
 
 ```rust
-let rows: Option<Vec<(EcoString, BigInt)>> = None;
+let rows: Option<Vec<(StringValue, BigInt)>> = None;
 scope.call(&functions.optional_batch, (rows,)).await?;
 ```
 

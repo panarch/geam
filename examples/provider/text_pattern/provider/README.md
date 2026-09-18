@@ -57,7 +57,7 @@ matches the [Gleam declarations](https://github.com/panarch/geam/blob/main/examp
   defining equality, hashing, and inspection from the original pattern text;
 - `#[geam::custom]` maps the named `CompileError` constructor;
 - ordinary Rust `Result<Pattern, CompileError>` maps to Gleam `Result`; and
-- `Vec<EcoString>` constructs the returned Gleam `List(String)` once.
+- `Vec<StringValue>` constructs the returned Gleam `List(String)` once.
 
 Applications select this crate explicitly: standalone projects use
 `geam provider add geam-example-text-pattern`, while Rust embedding applications

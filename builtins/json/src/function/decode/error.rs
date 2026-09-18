@@ -1,11 +1,11 @@
-use ecow::EcoString;
+use geam_core::StringValue;
 use jiter::{JiterError, JiterErrorType, JsonErrorType};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum DecodeFailure {
     EndOfInput,
-    Byte(EcoString),
-    Sequence(EcoString),
+    Byte(StringValue),
+    Sequence(StringValue),
 }
 
 impl DecodeFailure {
@@ -35,7 +35,7 @@ impl DecodeFailure {
     }
 }
 
-fn unicode_sequence(input: &[u8], index: usize) -> EcoString {
+fn unicode_sequence(input: &[u8], index: usize) -> StringValue {
     let search_end = index.min(input.len());
     let start = (0..search_end)
         .rev()
@@ -47,7 +47,7 @@ fn unicode_sequence(input: &[u8], index: usize) -> EcoString {
         .into()
 }
 
-fn normalize_number(number: &[u8]) -> EcoString {
+fn normalize_number(number: &[u8]) -> StringValue {
     let input = String::from_utf8_lossy(number);
     let normalized = input.replace('E', "e");
     let Some(exponent_index) = normalized.find('e') else {

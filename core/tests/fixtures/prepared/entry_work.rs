@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 1,
+    format: 2,
     program: data::ProgramTables {
         root: data::source::module_id(3),
         modules: data::Storage::Static(&[
@@ -106,6 +106,14 @@ data::HostedEntryArtifact {
                                                 next: data::graph::Edge {
                                                     target: data::graph::BlockId(1),
                                                     args: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::String,
+                                                                positions: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
                                                 },
                                             }),
                                         },
@@ -248,6 +256,26 @@ data::HostedEntryArtifact {
                                                 },
                                             })),
                                         ]),
+                                        transfer: data::graph::Transfer {
+                                            families: data::Storage::Static(&[
+                                                data::graph::FamilyTransfer {
+                                                    family: data::graph::StorageFamily::Int,
+                                                    positions: data::Storage::Static(&[]),
+                                                },
+                                                data::graph::FamilyTransfer {
+                                                    family: data::graph::StorageFamily::External,
+                                                    positions: data::Storage::Static(&[
+                                                        0,
+                                                    ]),
+                                                },
+                                                data::graph::FamilyTransfer {
+                                                    family: data::graph::StorageFamily::CoreFunctionFunction,
+                                                    positions: data::Storage::Static(&[
+                                                        0,
+                                                    ]),
+                                                },
+                                            ]),
+                                        },
                                     },
                                 ]),
                             },
@@ -320,6 +348,14 @@ data::HostedEntryArtifact {
                                                 next: data::graph::Edge {
                                                     target: data::graph::BlockId(1),
                                                     args: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                positions: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
                                                 },
                                             }),
                                         },

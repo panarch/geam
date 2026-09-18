@@ -2,7 +2,7 @@ mod function;
 
 use super::{Component, GleamStdlibProviderProfile, GleamStdlibRunState};
 use crate::{HostProviderModule, HostRegistrationError};
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::provider::{Call, Value};
 use num_bigint::BigInt;
 
@@ -13,7 +13,7 @@ use num_bigint::BigInt;
     component = crate::Component<Profile::Io>,
 )]
 mod provider {
-    use super::{BigInt, Call, EcoString, GleamStdlibRunState, Value, function};
+    use super::{BigInt, Call, GleamStdlibRunState, StringValue, Value, function};
     use crate::string_tree;
     use geam_core::provider::HostResult;
 
@@ -25,66 +25,70 @@ mod provider {
     }
 
     #[geam_macros::function]
-    fn length(string: EcoString) -> BigInt {
+    fn length(string: StringValue) -> BigInt {
         function::length(string)
     }
 
     #[geam_macros::function]
-    fn lowercase(string: EcoString) -> EcoString {
+    fn lowercase(string: StringValue) -> StringValue {
         function::lowercase(string)
     }
 
     #[geam_macros::function]
-    fn uppercase(string: EcoString) -> EcoString {
+    fn uppercase(string: StringValue) -> StringValue {
         function::uppercase(string)
     }
 
     #[geam_macros::function]
-    fn less_than(left: EcoString, right: EcoString) -> bool {
+    fn less_than(left: StringValue, right: StringValue) -> bool {
         function::less_than(left, right)
     }
 
     #[geam_macros::function]
-    fn grapheme_slice(string: EcoString, index: BigInt, length: BigInt) -> HostResult<EcoString> {
+    fn grapheme_slice(
+        string: StringValue,
+        index: BigInt,
+        length: BigInt,
+    ) -> HostResult<StringValue> {
         function::grapheme_slice(string, index, length).map_err(Into::into)
     }
 
     #[geam_macros::function]
     fn unsafe_byte_slice(
-        string: EcoString,
+        string: StringValue,
         index: BigInt,
         length: BigInt,
-    ) -> HostResult<EcoString> {
+    ) -> HostResult<StringValue> {
         function::unsafe_byte_slice(string, index, length).map_err(Into::into)
     }
 
     #[geam_macros::function]
-    fn crop(string: EcoString, substring: EcoString) -> EcoString {
+    fn crop(string: StringValue, substring: StringValue) -> StringValue {
         function::crop(string, substring)
     }
 
     #[geam_macros::function]
-    fn contains(haystack: EcoString, needle: EcoString) -> bool {
+    fn contains(haystack: StringValue, needle: StringValue) -> bool {
         function::contains(haystack, needle)
     }
 
     #[geam_macros::function]
-    fn starts_with(string: EcoString, prefix: EcoString) -> bool {
+    fn starts_with(string: StringValue, prefix: StringValue) -> bool {
         function::starts_with(string, prefix)
     }
 
     #[geam_macros::function]
-    fn ends_with(string: EcoString, suffix: EcoString) -> bool {
+    fn ends_with(string: StringValue, suffix: StringValue) -> bool {
         function::ends_with(string, suffix)
     }
 
     #[geam_macros::function]
-    fn erl_split(string: EcoString, pattern: EcoString) -> Vec<EcoString> {
+    fn erl_split(string: StringValue, pattern: StringValue) -> Vec<StringValue> {
         function::erl_split(string, pattern)
     }
 
     #[geam_macros::function]
-    fn erl_trim(string: EcoString, direction: DirectionInput) -> EcoString {
+    fn erl_trim(string: StringValue, direction: DirectionInput) -> StringValue {
         let leading = match direction {
             DirectionInput::Leading => true,
             DirectionInput::Trailing => false,
@@ -93,7 +97,7 @@ mod provider {
     }
 
     #[geam_macros::function]
-    fn pop_grapheme(string: EcoString) -> Result<(EcoString, EcoString), ()> {
+    fn pop_grapheme(string: StringValue) -> Result<(StringValue, StringValue), ()> {
         function::pop_grapheme(string)
     }
 
@@ -103,7 +107,7 @@ mod provider {
     }
 
     #[geam_macros::function]
-    fn from_utf_codepoints(values: geam_core::provider::List<char>) -> EcoString {
+    fn from_utf_codepoints(values: geam_core::provider::List<char>) -> StringValue {
         let mut string = String::new();
         let mut index = 0;
         while let Some(value) = values.get(index) {
@@ -127,17 +131,17 @@ mod provider {
     }
 
     #[geam_macros::function]
-    fn byte_size(string: EcoString) -> BigInt {
+    fn byte_size(string: StringValue) -> BigInt {
         function::byte_size(string)
     }
 
     #[geam_macros::function]
-    fn remove_prefix(string: EcoString, prefix: EcoString) -> EcoString {
+    fn remove_prefix(string: StringValue, prefix: StringValue) -> StringValue {
         function::remove_prefix(string, prefix)
     }
 
     #[geam_macros::function]
-    fn remove_suffix(string: EcoString, suffix: EcoString) -> EcoString {
+    fn remove_suffix(string: StringValue, suffix: StringValue) -> StringValue {
         function::remove_suffix(string, suffix)
     }
 }

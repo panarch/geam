@@ -1,6 +1,6 @@
-use ecow::EcoString;
+use geam_core::StringValue;
 
-pub(super) fn parse_literal(source: &EcoString) -> Option<f64> {
+pub(super) fn parse_literal(source: &StringValue) -> Option<f64> {
     let bytes = source.as_bytes();
     let mut index = usize::from(matches!(bytes.first(), Some(b'+' | b'-')));
     let integer_start = index;
@@ -39,7 +39,7 @@ pub(super) fn parse_literal(source: &EcoString) -> Option<f64> {
         .flatten()
 }
 
-pub(super) fn format(value: f64) -> EcoString {
+pub(super) fn format(value: f64) -> StringValue {
     let mut output = format!("{value:?}");
     if let Some(exponent) = output.find('e')
         && !output[..exponent].contains('.')

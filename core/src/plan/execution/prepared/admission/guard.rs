@@ -468,8 +468,9 @@ mod tests {
     use crate::plan::execution::graph::{
         BlockGraphExitId, BoolBranch, Edge, IntInstruction, IntListLocalId, IntLocalId, Jump,
         ListInstruction, ListLocal, ParamSlot, ProfiledBlock, ProfiledBlockGraph,
-        StringInstruction, StringLocalId, Terminator, TypedListInstruction,
+        StringInstruction, StringLocalId, Terminator, Transfer, TypedListInstruction,
     };
+    use crate::plan::execution::storage::Table;
     use crate::plan::execution::type_::{IntListTypeId, ListTypeId, ValueShapeId};
     use std::convert::Infallible;
 
@@ -618,8 +619,17 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                             true_: Edge::new(
                                 BlockId(if bypass { 3 } else { 4 }),
                                 vec![ParamLocal::List(list(0))],
+                                Transfer {
+                                    families: Table::Static(&[]),
+                                },
                             ),
-                            false_: Edge::new(BlockId(index + 1), vec![ParamLocal::List(list(0))]),
+                            false_: Edge::new(
+                                BlockId(index + 1),
+                                vec![ParamLocal::List(list(0))],
+                                Transfer {
+                                    families: Table::Static(&[]),
+                                },
+                            ),
                         }),
                     ));
                 }
@@ -738,6 +748,9 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
         let edge = |target| Edge {
             target: BlockId(target),
             args: vec![source.clone()].into(),
+            transfer: Transfer {
+                families: Table::Static(&[]),
+            },
         };
         ProfiledBlockGraph::from_parts(
             BlockId(0),
@@ -795,6 +808,9 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                             edge: Edge {
                                 target: BlockId(1),
                                 args: vec![ParamLocal::List(list(0))].into(),
+                                transfer: Transfer {
+                                    families: Table::Static(&[]),
+                                },
                             },
                         }),
                     ),
@@ -814,6 +830,9 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                             edge: Edge {
                                 target: BlockId(1),
                                 args: vec![ParamLocal::List(list(1))].into(),
+                                transfer: Transfer {
+                                    families: Table::Static(&[]),
+                                },
                             },
                         }),
                     ),
@@ -958,8 +977,18 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                             success: MatchEdge::new(
                                 BlockId(1),
                                 vec![MatchEdgeArgument::Binding(binding)],
+                                Vec::new(),
+                                Transfer {
+                                    families: Table::Static(&[]),
+                                },
                             ),
-                            failure: Edge::new(BlockId(2), Vec::new()),
+                            failure: Edge::new(
+                                BlockId(2),
+                                Vec::new(),
+                                Transfer {
+                                    families: Table::Static(&[]),
+                                },
+                            ),
                         }),
                     ),
                     ProfiledBlock::new(vec![slot(ParamLocal::List(list(0)))], Vec::new(), exit()),
@@ -1113,8 +1142,21 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                 ))]
                 .into(),
             ),
-            success: MatchEdge::new(BlockId(0), Vec::new()),
-            failure: Edge::new(BlockId(0), Vec::new()),
+            success: MatchEdge::new(
+                BlockId(0),
+                Vec::new(),
+                Vec::new(),
+                Transfer {
+                    families: Table::Static(&[]),
+                },
+            ),
+            failure: Edge::new(
+                BlockId(0),
+                Vec::new(),
+                Transfer {
+                    families: Table::Static(&[]),
+                },
+            ),
         };
         for (block, root, path, success, expected) in [
             (0, 0, vec![Projection::Tuple(0)], true, true),
@@ -1185,7 +1227,13 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                             Vec::new()
                         },
                         Terminator::Jump(Jump {
-                            edge: Edge::new(BlockId(1), arguments),
+                            edge: Edge::new(
+                                BlockId(1),
+                                arguments,
+                                Transfer {
+                                    families: Table::Static(&[]),
+                                },
+                            ),
                         }),
                     ),
                     ProfiledBlock::new(

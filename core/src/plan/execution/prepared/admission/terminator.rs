@@ -17,6 +17,7 @@ pub(super) enum TerminatorError {
     Pattern(PatternError),
     Source(SourceError),
     Call(CallError),
+    Transfer(super::transfer::TransferError),
 }
 
 pub(super) fn check<'data, Graph: ExecutionGraphProfile>(
@@ -115,6 +116,8 @@ pub(super) fn check<'data, Graph: ExecutionGraphProfile>(
                         .map_err(TerminatorError::Call)?;
                 }
             }
+            super::transfer::arguments(&value.transfer, &value.args, locals)
+                .map_err(TerminatorError::Transfer)?;
         }
     }
     Ok(None)
@@ -127,10 +130,10 @@ mod tests {
         TerminatorError, check,
     };
     use crate::plan::execution::graph::{
-        BlockGraphExitId, BlockHeader, BlockId, BoolBranch, BoolLocalId, Echo, Edge, FloatLocalId,
-        FloatSwitch, IntLocalId, IntSwitch, IntegerLiteral, Jump, LetAssertPanic, Match, MatchEdge,
-        MatchPattern, ParamLocal, ParamSlot, ProfiledBlockGraph, SourceStop, SourceStopKind,
-        StringLocalId, StringSwitch,
+        BlockGraphExitId, BlockHeader, BlockId, BoolBranch, BoolLocalId, Echo, Edge,
+        FamilyTransfer, FloatLocalId, FloatSwitch, IntLocalId, IntSwitch, IntegerLiteral, Jump,
+        LetAssertPanic, Match, MatchEdge, MatchPattern, ParamLocal, ParamSlot, ProfiledBlockGraph,
+        SourceStop, SourceStopKind, StorageFamily, StringLocalId, StringSwitch, Transfer,
     };
     use crate::plan::execution::prepared::admission::{
         block::BlockError, catalog::Catalog, literal::IntegerError, local::Address,
@@ -200,7 +203,26 @@ mod tests {
             instructions: Table::Static(&[]),
         };
         let blocks = Blocks::admit(&raw).unwrap();
-        let edge = |index| Edge::new(BlockId(index), Vec::new());
+        let edge = |index| {
+            Edge::new(
+                BlockId(index),
+                Vec::new(),
+                Transfer {
+                    families: [
+                        StorageFamily::Int,
+                        StorageFamily::Float,
+                        StorageFamily::String,
+                        StorageFamily::Bool,
+                    ]
+                    .map(|family| FamilyTransfer {
+                        family,
+                        positions: Table::Static(&[]),
+                    })
+                    .to_vec()
+                    .into(),
+                },
+            )
+        };
         let bad_edge =
             || TerminatorError::Edge(EdgeError::Block(BlockError::Missing { index: 99 }));
         let missing = |local| TerminatorError::Local(LocalError::Missing(local));
@@ -316,7 +338,7 @@ mod tests {
             let value = Terminator::Match(Match {
                 subject: ParamLocal::Int(IntLocalId(subject)),
                 pattern,
-                success: MatchEdge::new(BlockId(success), Vec::new()),
+                success: MatchEdge::new(BlockId(success), Vec::new(), Vec::new(), edge(0).transfer),
                 failure: edge(failure),
             });
             assert_eq!(check(&value, &blocks, &locals, &context), expected);
@@ -416,11 +438,46 @@ pub fn main() { #(stop, "message", 42) }
                 let value = Terminator::NeverCall(NeverCall {
                     function: target.clone(),
                     args: arguments.into(),
+                    transfer: Transfer {
+                        families: vec![
+                            FamilyTransfer {
+                                family: StorageFamily::Int,
+                                positions: Table::Static(&[]),
+                            },
+                            FamilyTransfer {
+                                family: StorageFamily::String,
+                                positions: Table::Static(&[0]),
+                            },
+                            FamilyTransfer {
+                                family: StorageFamily::Tuple,
+                                positions: Table::Static(&[]),
+                            },
+                            FamilyTransfer {
+                                family: StorageFamily::NeverFunction,
+                                positions: Table::Static(&[]),
+                            },
+                        ]
+                        .into(),
+                    },
                     site: HostCallSite::new("example".into(), "main".into(), SourceSpan::new(0, 1)),
                 });
                 assert_eq!(check(&value, &blocks, &locals, &context), expected);
             }
         }
+        let malformed = Terminator::NeverCall(NeverCall {
+            function: NeverCallTarget::Direct(NeverFunctionId(0)),
+            args: vec![ParamLocal::String(StringLocalId(0))].into(),
+            transfer: Transfer {
+                families: Table::Static(&[]),
+            },
+            site: HostCallSite::new("example".into(), "main".into(), SourceSpan::new(0, 1)),
+        });
+        assert_eq!(
+            check(&malformed, &blocks, &locals, &context),
+            Err(TerminatorError::Transfer(
+                super::super::transfer::TransferError::Families
+            )),
+        );
         let mut missing_callback = callbacks[0].clone();
         missing_callback.id = NeverFunctionLocalId(99);
         for (target, module, expected) in [
@@ -448,6 +505,9 @@ pub fn main() { #(stop, "message", 42) }
             let value = Terminator::NeverCall(NeverCall {
                 function: target,
                 args: vec![ParamLocal::String(StringLocalId(0))].into(),
+                transfer: Transfer {
+                    families: Table::Static(&[]),
+                },
                 site: HostCallSite::new(module.into(), "main".into(), SourceSpan::new(0, 1)),
             });
             assert_eq!(check(&value, &blocks, &locals, &context), Err(expected));
@@ -534,7 +594,19 @@ pub fn main() { #(stop, "message", 42) }
                     subject: ParamLocal::Int(IntLocalId(0)),
                     message,
                     site: EchoSite::new(module.into(), "main".into(), span),
-                    next: Edge::new(BlockId(0), Vec::new()),
+                    next: Edge::new(
+                        BlockId(0),
+                        Vec::new(),
+                        Transfer {
+                            families: [StorageFamily::Int, StorageFamily::String]
+                                .map(|family| FamilyTransfer {
+                                    family,
+                                    positions: Table::Static(&[]),
+                                })
+                                .to_vec()
+                                .into(),
+                        },
+                    ),
                 }),
                 Terminator::SourceStop(SourceStop {
                     kind: SourceStopKind::Panic,
@@ -557,7 +629,13 @@ pub fn main() { #(stop, "message", 42) }
                 subject: ParamLocal::Int(IntLocalId(99)),
                 message: None,
                 site: EchoSite::new("example".into(), "main".into(), span),
-                next: Edge::new(BlockId(0), Vec::new()),
+                next: Edge::new(
+                    BlockId(0),
+                    Vec::new(),
+                    Transfer {
+                        families: Table::Static(&[]),
+                    },
+                ),
             }),
             Terminator::LetAssertPanic(LetAssertPanic {
                 subject: ParamLocal::Int(IntLocalId(99)),
@@ -577,7 +655,13 @@ pub fn main() { #(stop, "message", 42) }
             subject: ParamLocal::Int(IntLocalId(0)),
             message: None,
             site: EchoSite::new("example".into(), "main".into(), span),
-            next: Edge::new(BlockId(99), Vec::new()),
+            next: Edge::new(
+                BlockId(99),
+                Vec::new(),
+                Transfer {
+                    families: Table::Static(&[]),
+                },
+            ),
         });
         assert_eq!(
             check(&value, &blocks, &locals, &context),

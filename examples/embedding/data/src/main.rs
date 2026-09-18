@@ -1,6 +1,6 @@
 mod geam_bindings;
 
-use geam::embedding::{BigInt, EcoString, ModuleBuilder};
+use geam::embedding::{BigInt, ModuleBuilder, StringValue};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let program = geam_bindings::project().compile()?;
@@ -9,7 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let module = bindings.seal();
     let mut echo = Vec::new();
 
-    let rows: Vec<(EcoString, BigInt)> = vec![
+    let rows: Vec<(StringValue, BigInt)> = vec![
         ("A-1".into(), 3.into()),
         ("B-2".into(), (-1).into()),
         ("C-3".into(), 4.into()),

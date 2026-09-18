@@ -26,6 +26,12 @@ impl EmbeddingList {
         self.retained.item(index).map(EmbeddingOutput::from_value)
     }
 
+    pub(crate) fn iter(&self) -> EmbeddingListIter<'_> {
+        EmbeddingListIter {
+            inner: self.retained.iter(),
+        }
+    }
+
     pub(crate) fn read_item<Output>(
         &self,
         index: usize,
@@ -46,6 +52,18 @@ impl EmbeddingList {
     #[cfg(test)]
     pub(crate) fn same_allocation(&self, other: &Self) -> bool {
         self.retained.handle() == other.retained.handle()
+    }
+}
+
+pub(crate) struct EmbeddingListIter<'a> {
+    inner: crate::runtime::retained_list::RetainedListIter<'a>,
+}
+
+impl Iterator for EmbeddingListIter<'_> {
+    type Item = EmbeddingOutput;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(EmbeddingOutput::from_value)
     }
 }
 

@@ -10,7 +10,7 @@ use crate::runtime::{StoredRuntimeList, StoredRuntimeValue};
 pub(crate) trait HostTokenRuntime {
     fn int(&self, value: HostValueToken) -> num_bigint::BigInt;
     fn float(&self, value: HostValueToken) -> f64;
-    fn string(&self, value: HostValueToken) -> ecow::EcoString;
+    fn string(&self, value: HostValueToken) -> crate::StringValue;
     fn bit_array(&self, value: HostValueToken) -> crate::BitArrayValue;
     fn utf_codepoint(&self, value: HostValueToken) -> char;
     fn bool(&self, value: HostValueToken) -> bool;

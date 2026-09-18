@@ -33,8 +33,8 @@ mod project;
 mod value;
 mod work;
 
-pub use crate::BitArrayValue;
 pub use crate::plan::execution::prepared::{PreparedError, PreparedHostedModule, PreparedModule};
+pub use crate::{BitArrayValue, StringValue};
 pub use binding::{BindingError, FunctionDeclaration, ModuleBindings, ModuleBuilder};
 pub use ecow::EcoString;
 pub use error::CallError;
@@ -167,12 +167,12 @@ mod tests {
         Arguments, CallError, Function, FunctionDeclaration, ModuleBindings, ModuleBuilder,
         ReturnValue,
     };
+    use crate::StringValue;
     use crate::{
         BitArrayValue, ExecutionError, ModuleSource, PackageSource, PanicKind, PanicSite,
         SourceContext, SourceSpan, TypedProgram, Value, compile_typed_module,
         compile_typed_package_program, compile_typed_program,
     };
-    use ecow::EcoString;
     use num_bigint::BigInt;
 
     fn compile(source: &str) -> gleam_compiler_core::ast::TypedModule {
@@ -197,7 +197,7 @@ mod tests {
             [
                 PackageSource::new(
                     "gleam_stdlib",
-                    Vec::<EcoString>::new(),
+                    Vec::<ecow::EcoString>::new(),
                     [ModuleSource::new(
                         "gleam/option",
                         "gleam_stdlib/src/gleam/option.gleam",
@@ -248,7 +248,7 @@ pub fn choose(enabled: Bool, left: Float, right: Float) {
         );
         let builder = ModuleBuilder::new(typed).expect("library should plan without main");
         let (mut bindings, label) = builder
-            .function(FunctionDeclaration::<(EcoString, EcoString), EcoString>::new("label"))
+            .function(FunctionDeclaration::<(StringValue, StringValue), StringValue>::new("label"))
             .expect("first function should bind");
         let double = bind::<(BigInt,), BigInt>(&mut bindings, "double");
         let choose = bind::<(bool, f64, f64), f64>(&mut bindings, "choose");
@@ -274,6 +274,60 @@ pub fn choose(enabled: Bool, left: Float, right: Float) {
     }
 
     #[test]
+    fn string_ranges_survive_prefix_patterns_captures_lists_and_their_module() {
+        let source = r#"
+pub fn simple(value: String) {
+  let assert "prefix:" <> rest = value
+  rest
+}
+
+pub fn nested(values: List(#(String, Int))) {
+  case values {
+    [#("prefix:" <> rest, _), ..] -> rest
+    _ -> ""
+  }
+}
+
+pub fn retained(value: String) {
+  let rest = simple(value)
+  let read = fn() { rest }
+  [read(), rest]
+}
+"#;
+        let (mut bindings, simple) = ModuleBuilder::new(compile(source))
+            .expect("string functions should plan")
+            .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
+                "simple",
+            ))
+            .expect("prefix function should bind");
+        let nested =
+            bind::<(super::List<(StringValue, BigInt)>,), StringValue>(&mut bindings, "nested");
+        let retained = bind::<(StringValue,), super::List<StringValue>>(&mut bindings, "retained");
+        let module = bindings.seal();
+        let original = StringValue::from("prefix:abcdefghijklmnopqrstuvwxyz");
+        let pointer = original.as_ptr().wrapping_add(7);
+        let mut echo = Vec::new();
+        let simple = module
+            .call(&simple, (original.clone(),), &mut echo)
+            .expect("prefix should match");
+        let nested = module
+            .call(&nested, (vec![(original.clone(), 42.into())],), &mut echo)
+            .expect("nested prefix should match");
+        let values = module
+            .call(&retained, (original.clone(),), &mut echo)
+            .expect("captured strings should return through retained lists");
+        let values = values.iter().collect::<Vec<_>>();
+        assert_eq!(values.len(), 2);
+        drop(original);
+        drop(module);
+        assert!(echo.is_empty());
+        for value in [simple, nested].into_iter().chain(values) {
+            assert_eq!(value, "abcdefghijklmnopqrstuvwxyz");
+            assert_eq!(value.as_ptr(), pointer);
+        }
+    }
+
+    #[test]
     fn seals_cross_module_entries_once_and_calls_them_repeatedly() {
         let program = compile_program(
             r#"
@@ -290,7 +344,9 @@ pub fn double(value: Int) { value * 2 }
         let builder =
             ModuleBuilder::from_program(program).expect("library program should plan without main");
         let (mut bindings, label) = builder
-            .function(FunctionDeclaration::<(EcoString,), EcoString>::new("label"))
+            .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
+                "label",
+            ))
             .expect("first root function should bind");
         let double = bind::<(BigInt,), BigInt>(&mut bindings, "double");
         let module = bindings.seal();
@@ -320,7 +376,7 @@ pub fn announce(value: String) {
         );
         let builder = ModuleBuilder::new(typed).expect("echo library should plan");
         let (bindings, announce) = builder
-            .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+            .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
                 "announce",
             ))
             .expect("first function should bind");
@@ -338,13 +394,13 @@ pub fn announce(value: String) {
         );
         assert_eq!(first_echo.len(), 1);
         assert_eq!(
-            first_echo[0].message().map(EcoString::as_str),
+            first_echo[0].message().map(ecow::EcoString::as_str),
             Some("embedded")
         );
         assert_eq!(first_echo[0].value(), &Value::String("first".into()));
         assert_eq!(second_echo.len(), 1);
         assert_eq!(
-            second_echo[0].message().map(EcoString::as_str),
+            second_echo[0].message().map(ecow::EcoString::as_str),
             Some("embedded")
         );
         assert_eq!(second_echo[0].value(), &Value::String("second".into()));
@@ -380,12 +436,12 @@ pub fn mixed(
             .function(FunctionDeclaration::<(BigInt,), BigInt>::new("keep_int"))
             .expect("first function should bind");
         let float = bind::<(f64,), f64>(&mut bindings, "keep_float");
-        let string = bind::<(EcoString,), EcoString>(&mut bindings, "keep_string");
+        let string = bind::<(StringValue,), StringValue>(&mut bindings, "keep_string");
         let bits = bind::<(BitArrayValue,), BitArrayValue>(&mut bindings, "keep_bits");
         let codepoint = bind::<(char,), char>(&mut bindings, "keep_codepoint");
         let bool_ = bind::<(bool,), bool>(&mut bindings, "keep_bool");
         let nil = bind::<((),), ()>(&mut bindings, "keep_nil");
-        let mixed = bind::<(BigInt, f64, EcoString, BitArrayValue, char, bool, ()), bool>(
+        let mixed = bind::<(BigInt, f64, StringValue, BitArrayValue, char, bool, ()), bool>(
             &mut bindings,
             "mixed",
         );
@@ -459,30 +515,31 @@ pub fn swap_result(
             ))
             .expect("tuple should bind first");
         let scalar = bind::<(BigInt,), BigInt>(&mut bindings, "scalar");
-        let tuple2 = bind::<((BigInt, EcoString),), (BigInt, EcoString)>(&mut bindings, "tuple2");
-        let tuple3 = bind::<((BigInt, EcoString, bool),), (BigInt, EcoString, bool)>(
+        let tuple2 =
+            bind::<((BigInt, StringValue),), (BigInt, StringValue)>(&mut bindings, "tuple2");
+        let tuple3 = bind::<((BigInt, StringValue, bool),), (BigInt, StringValue, bool)>(
             &mut bindings,
             "tuple3",
         );
-        let tuple4 = bind::<((BigInt, EcoString, bool, ()),), (BigInt, EcoString, bool, ())>(
+        let tuple4 = bind::<((BigInt, StringValue, bool, ()),), (BigInt, StringValue, bool, ())>(
             &mut bindings,
             "tuple4",
         );
         let tuple5 = bind::<
-            ((BigInt, EcoString, bool, (), f64),),
-            (BigInt, EcoString, bool, (), f64),
+            ((BigInt, StringValue, bool, (), f64),),
+            (BigInt, StringValue, bool, (), f64),
         >(&mut bindings, "tuple5");
         let tuple6 = bind::<
-            ((BigInt, EcoString, bool, (), f64, char),),
-            (BigInt, EcoString, bool, (), f64, char),
+            ((BigInt, StringValue, bool, (), f64, char),),
+            (BigInt, StringValue, bool, (), f64, char),
         >(&mut bindings, "tuple6");
         let tuple7 = bind::<
-            ((BigInt, EcoString, bool, (), f64, char, BitArrayValue),),
-            (BigInt, EcoString, bool, (), f64, char, BitArrayValue),
+            ((BigInt, StringValue, bool, (), f64, char, BitArrayValue),),
+            (BigInt, StringValue, bool, (), f64, char, BitArrayValue),
         >(&mut bindings, "tuple7");
         let swap_result = bind::<
-            (Result<(BigInt, EcoString), (bool, ())>,),
-            Result<(bool, ()), (BigInt, EcoString)>,
+            (Result<(BigInt, StringValue), (bool, ())>,),
+            Result<(bool, ()), (BigInt, StringValue)>,
         >(&mut bindings, "swap_result");
         let module = bindings.seal();
         let mut echo = Vec::new();
@@ -563,13 +620,19 @@ pub fn keep_nested(
             ModuleBuilder::from_program(program).expect("Option library should plan without main");
         let (mut bindings, keep_option) = builder
             .function(FunctionDeclaration::<
-                (Option<(BigInt, Result<EcoString, bool>)>,),
-                Option<(BigInt, Result<EcoString, bool>)>,
+                (Option<(BigInt, Result<StringValue, bool>)>,),
+                Option<(BigInt, Result<StringValue, bool>)>,
             >::new("keep_option"))
             .expect("aliased Option should bind");
         let keep_nested = bind::<
-            ((Result<Option<BigInt>, EcoString>, Option<Result<bool, ()>>),),
-            (Result<Option<BigInt>, EcoString>, Option<Result<bool, ()>>),
+            ((
+                Result<Option<BigInt>, StringValue>,
+                Option<Result<bool, ()>>,
+            ),),
+            (
+                Result<Option<BigInt>, StringValue>,
+                Option<Result<bool, ()>>,
+            ),
         >(&mut bindings, "keep_nested");
         let module = bindings.seal();
         let mut echo = Vec::new();
@@ -626,8 +689,8 @@ pub fn nil_value() { Nil }
         assert_eq!(call_only::<BigInt>(source, "int_value"), BigInt::from(1));
         assert_eq!(call_only::<f64>(source, "float_value"), 1.5);
         assert_eq!(
-            call_only::<EcoString>(source, "string_value"),
-            EcoString::from("value"),
+            call_only::<StringValue>(source, "string_value"),
+            StringValue::from("value"),
         );
         assert_eq!(
             call_only::<BitArrayValue>(source, "bit_array_value"),
@@ -732,14 +795,14 @@ pub fn arity7(a: Int, b: Int, c: Int, d: Int, e: Int, f: Int, g: Int) {
         let source = "pub fn identity(value: String) { value }";
         let first = ModuleBuilder::new(compile(source)).expect("first module should plan");
         let (first, first_identity) = first
-            .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+            .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
                 "identity",
             ))
             .expect("first identity should bind");
         let first = first.seal();
         let second = ModuleBuilder::new(compile(source)).expect("second module should plan");
         let (second, second_identity) = second
-            .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+            .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
                 "identity",
             ))
             .expect("second identity should bind");
@@ -768,7 +831,7 @@ pub fn explode(_value: String) -> String { panic as "stopped" }
         );
         let builder = ModuleBuilder::new(typed).expect("library should plan");
         let (bindings, explode) = builder
-            .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+            .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
                 "explode",
             ))
             .expect("first function should bind");
@@ -805,7 +868,7 @@ pub fn explode(value: String) { support.explode(value) }
         );
         let builder = ModuleBuilder::from_program(program).expect("library program should plan");
         let (bindings, explode) = builder
-            .function(FunctionDeclaration::<(EcoString,), EcoString>::new(
+            .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
                 "explode",
             ))
             .expect("root function should bind");

@@ -1,4 +1,5 @@
 use ecow::EcoString;
+use geam_core::StringValue;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::mem;
@@ -13,7 +14,7 @@ struct StringTreeNode {
 }
 
 enum StringTreeNodeKind {
-    Text(EcoString),
+    Text(StringValue),
     Sequence(Box<[std::sync::Arc<StringTreeNode>]>),
 }
 
@@ -26,7 +27,7 @@ impl Clone for StringTree {
 }
 
 impl StringTree {
-    pub fn text(text: EcoString) -> Self {
+    pub fn text(text: StringValue) -> Self {
         Self {
             root: std::sync::Arc::new(StringTreeNode {
                 byte_len: text.len(),
@@ -57,7 +58,7 @@ impl StringTree {
         self.root.byte_len
     }
 
-    pub fn flatten(&self) -> EcoString {
+    pub fn flatten(&self) -> StringValue {
         let mut output = String::with_capacity(self.byte_len());
         let mut pending = vec![self.root.as_ref()];
         while let Some(node) = pending.pop() {
@@ -140,7 +141,7 @@ impl Drop for StringTreeNode {
 }
 
 fn take_children(kind: &mut StringTreeNodeKind) -> Vec<std::sync::Arc<StringTreeNode>> {
-    match mem::replace(kind, StringTreeNodeKind::Text(EcoString::new())) {
+    match mem::replace(kind, StringTreeNodeKind::Text(StringValue::new())) {
         StringTreeNodeKind::Text(_) => Vec::new(),
         StringTreeNodeKind::Sequence(children) => children.into_vec(),
     }
@@ -149,7 +150,7 @@ fn take_children(kind: &mut StringTreeNodeKind) -> Vec<std::sync::Arc<StringTree
 #[cfg(test)]
 mod tests {
     use super::{StringTreeNode, StringTreeNodeKind};
-    use ecow::EcoString;
+    use geam_core::StringValue;
     use std::sync::Arc;
 
     type StringTree = super::StringTree;
@@ -159,6 +160,28 @@ mod tests {
             StringTreeNodeKind::Text(_) => None,
             StringTreeNodeKind::Sequence(children) => Some(children),
         }
+    }
+
+    #[test]
+    fn text_leaves_retain_substrings_until_explicit_flattening() {
+        let root = StringValue::from("hidden:abcdefghijklmnopqrstuvwxyz:hidden");
+        let slice = root.slice(7..33);
+        let pointer = slice.as_ptr();
+        let tree = StringTree::text(slice);
+        drop(root);
+        assert!(matches!(&tree.root.kind, StringTreeNodeKind::Text(text)
+            if text == "abcdefghijklmnopqrstuvwxyz" && text.as_ptr() == pointer));
+        assert_eq!(tree.byte_len(), 26);
+        let flattened = tree.flatten();
+        assert_eq!(flattened, "abcdefghijklmnopqrstuvwxyz");
+        assert_ne!(flattened.as_ptr(), pointer);
+        let independent = StringTree::text("abcdefghijklmnopqrstuvwxyz".into());
+        assert!(tree.structurally_equal(&independent));
+        assert_eq!(tree.structural_hash(), independent.structural_hash());
+        assert_eq!(
+            tree.inspect(),
+            "string_tree.from_string(\"abcdefghijklmnopqrstuvwxyz\")"
+        );
     }
 
     #[test]
@@ -190,7 +213,7 @@ mod tests {
         assert!(Arc::ptr_eq(&children[0], &prefix.root));
         assert!(Arc::ptr_eq(&children[1], &suffix.root));
 
-        let mut deep = StringTree::text(EcoString::new());
+        let mut deep = StringTree::text(StringValue::new());
         for _ in 0..50_000 {
             deep = deep.append(&StringTree::text("x".into()));
         }
@@ -201,7 +224,7 @@ mod tests {
 
     #[test]
     fn empty_text_and_empty_sequence_are_textually_but_not_structurally_equal() {
-        let text = StringTree::text(EcoString::new());
+        let text = StringTree::text(StringValue::new());
         let sequence = StringTree::sequence([]);
 
         assert_eq!(text.flatten(), "");

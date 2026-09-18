@@ -9,12 +9,11 @@ use std::task::{Context, Poll, Wake, Waker};
 
 mod composition;
 mod dependency;
-mod drain;
 pub(crate) mod execution;
 pub(in crate::runtime) mod request;
 
+use super::drain::DrainQueue;
 pub(crate) use dependency::Dependencies;
-use drain::DrainQueue;
 
 pub(crate) struct WorkScope<Value> {
     registry: Arc<Mutex<Registry<Value>>>,

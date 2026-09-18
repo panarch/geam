@@ -44,7 +44,7 @@ pub struct Component;
 #[geam::module(path = "standalone_future/native")]
 mod native {
     use super::State;
-    use geam::provider::{BigInt, Call, EcoString, HostFailure, HostResult};
+    use geam::provider::{BigInt, Call, Callback, HostFailure, HostResult, StringValue};
     use std::future::{Future, poll_fn};
     use std::task::Poll;
     use std::time::Duration;
@@ -80,8 +80,36 @@ mod native {
         count.into()
     }
 
+    #[geam::function(await)]
+    async fn apply(
+        #[geam::call] call: &mut Call<State>,
+        callback: Callback<fn(BigInt) -> BigInt>,
+    ) -> HostResult<BigInt> {
+        let count = call
+            .with_state(|state| {
+                state.calls.set(state.calls.get() + 1);
+                state.calls.get()
+            })
+            .await?;
+        println!("before-callback");
+        tokio::task::yield_now().await;
+        let result = call.invoke(&callback, (count.into(),)).await?;
+        println!("after-callback");
+        Ok(result)
+    }
+
     #[geam::function]
-    async fn request(address: EcoString) -> HostResult<EcoString> {
+    fn panic_driver() -> () {
+        panic!("native driver panic");
+    }
+
+    #[geam::function(await)]
+    async fn panic_worker() -> HostResult<()> {
+        panic!("native worker panic");
+    }
+
+    #[geam::function]
+    async fn request(address: StringValue) -> HostResult<StringValue> {
         let mut stream = tokio::net::TcpStream::connect(address.as_str())
             .await
             .map_err(|error| HostFailure::new(error.to_string()))?;

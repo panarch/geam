@@ -1,7 +1,7 @@
 use crate::plan::execution::explain::FunctionLabel;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::NeverFunctionId;
-use crate::plan::execution::graph::{NeverFunctionLocal, ParamLocal};
+use crate::plan::execution::graph::{NeverFunctionLocal, ParamLocal, Transfer};
 use crate::plan::execution::prepared::rust::{Emit, Rust};
 use crate::plan::execution::storage::Table;
 
@@ -15,6 +15,7 @@ pub enum NeverCallTarget {
 pub struct NeverCall {
     pub function: NeverCallTarget,
     pub args: Table<ParamLocal>,
+    pub transfer: Transfer,
     pub site: crate::plan::HostCallSite,
 }
 
@@ -22,11 +23,13 @@ impl NeverCall {
     pub(in crate::plan::execution) fn new(
         function: NeverCallTarget,
         args: Table<ParamLocal>,
+        transfer: Transfer,
         site: crate::plan::HostCallSite,
     ) -> Self {
         Self {
             function,
             args,
+            transfer,
             site,
         }
     }
@@ -72,11 +75,17 @@ impl Emit for NeverCall {
         let Self {
             function,
             args,
+            transfer,
             site,
         } = self;
         output.structure(
             "graph::NeverCall",
-            &[("function", function), ("args", args), ("site", site)],
+            &[
+                ("function", function),
+                ("args", args),
+                ("transfer", transfer),
+                ("site", site),
+            ],
         );
     }
 }
@@ -133,6 +142,9 @@ data::graph::NeverCallTarget::Value(data::graph::NeverFunctionLocal {
         let call = NeverCall::new(
             target,
             vec![ParamLocal::Int(IntLocalId(1))].into(),
+            crate::plan::execution::graph::Transfer {
+                families: crate::plan::execution::storage::Table::Static(&[]),
+            },
             HostCallSite::from_static("example", "main", SourceSpan::new(3, 12)),
         );
         assert_eq!(
@@ -143,6 +155,9 @@ data::graph::NeverCall {
     args: data::Storage::Static(&[
         data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
     ]),
+    transfer: data::graph::Transfer {
+        families: data::Storage::Static(&[]),
+    },
     site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3, 12)),
 }"#.trim_start_matches('\n')
         );

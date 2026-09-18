@@ -3,7 +3,7 @@ mod parse;
 
 use super::GleamStdlibProviderProfile;
 use crate::{HostProviderModule, HostRegistrationError};
-use ecow::EcoString;
+use geam_core::StringValue;
 use num_bigint::BigInt;
 
 #[geam_macros::module(
@@ -13,26 +13,26 @@ use num_bigint::BigInt;
     component = crate::Component<Profile::Io>,
 )]
 mod provider {
-    use super::{BigInt, EcoString, function};
+    use super::{BigInt, StringValue, function};
     use geam_core::provider::HostResult;
 
     #[geam_macros::function]
-    fn parse(source: EcoString) -> Result<BigInt, ()> {
+    fn parse(source: StringValue) -> Result<BigInt, ()> {
         function::parse(source)
     }
 
     #[geam_macros::function]
-    fn do_base_parse(source: EcoString, base: BigInt) -> Result<BigInt, ()> {
+    fn do_base_parse(source: StringValue, base: BigInt) -> Result<BigInt, ()> {
         function::do_base_parse(source, base)
     }
 
     #[geam_macros::function]
-    fn to_string(value: BigInt) -> EcoString {
+    fn to_string(value: BigInt) -> StringValue {
         function::to_string(value)
     }
 
     #[geam_macros::function]
-    fn do_to_base_string(value: BigInt, base: BigInt) -> HostResult<EcoString> {
+    fn do_to_base_string(value: BigInt, base: BigInt) -> HostResult<StringValue> {
         function::do_to_base_string(value, base).map_err(Into::into)
     }
 

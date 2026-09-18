@@ -16,7 +16,7 @@ mod execution_fixture;
 
 #[geam_macros::module(path = "macro_consumer/main", crate_path = geam_core)]
 mod main {
-    use ecow::EcoString;
+    use geam_core::StringValue;
     use geam_core::provider::{Call, Callback};
     use geam_macro_cross_crate_declarations::values;
     use num_bigint::BigInt;
@@ -31,12 +31,12 @@ mod main {
     }
 
     #[geam_macros::function]
-    fn saved(value: EcoString) -> SavedEnvelope {
+    fn saved(value: StringValue) -> SavedEnvelope {
         SavedEnvelope::SavedOne(values::SavedStatus::Saved(values::SavedText::new(value)))
     }
 
     #[geam_macros::function]
-    fn saved_text(value: SavedEnvelopeInput) -> EcoString {
+    fn saved_text(value: SavedEnvelopeInput) -> StringValue {
         match value {
             SavedEnvelopeInput::SavedOne(values::SavedStatusInput::Saved(value)) => value.text(),
             SavedEnvelopeInput::SavedOne(values::SavedStatusInput::Empty) => "empty".into(),
@@ -45,12 +45,12 @@ mod main {
     }
 
     #[geam_macros::function]
-    fn read_saved(value: &values::SavedText) -> EcoString {
+    fn read_saved(value: &values::SavedText) -> StringValue {
         value.text()
     }
 
     #[geam_macros::function]
-    async fn saved_after(value: EcoString) -> SavedEnvelope {
+    async fn saved_after(value: StringValue) -> SavedEnvelope {
         pending_once().await;
         let saved = values::SavedStatus::Saved(values::SavedText::new(value));
         SavedEnvelope::SavedMany(vec![values::SavedStatus::Empty, saved.clone(), saved])
@@ -74,12 +74,12 @@ mod main {
     }
 
     #[geam_macros::function]
-    fn token(value: EcoString) -> values::Token {
+    fn token(value: StringValue) -> values::Token {
         values::Token(value)
     }
 
     #[geam_macros::function]
-    fn status_text(value: values::StatusInput) -> EcoString {
+    fn status_text(value: values::StatusInput) -> StringValue {
         match value {
             values::StatusInput::Ready => "ready".into(),
             values::StatusInput::Count(value) => format!("count:{value}").into(),
@@ -88,7 +88,7 @@ mod main {
     }
 
     #[geam_macros::function]
-    fn token_text(value: &values::Token) -> EcoString {
+    fn token_text(value: &values::Token) -> StringValue {
         value.0.clone()
     }
 
@@ -103,12 +103,12 @@ mod main {
     }
 
     #[geam_macros::function]
-    fn wrapped_token(value: EcoString) -> Envelope {
+    fn wrapped_token(value: StringValue) -> Envelope {
         Envelope::Token(values::Token(value))
     }
 
     #[geam_macros::function]
-    fn envelope_text(value: EnvelopeInput) -> EcoString {
+    fn envelope_text(value: EnvelopeInput) -> StringValue {
         match value {
             EnvelopeInput::One(value) => format!("one:{}", status_text(value)).into(),
             EnvelopeInput::Many(values) => {
@@ -120,12 +120,12 @@ mod main {
     }
 
     #[geam_macros::function]
-    fn first(values: geam_core::List<values::StatusInput>) -> EcoString {
+    fn first(values: geam_core::List<values::StatusInput>) -> StringValue {
         values.get(0).map_or_else(|| "missing".into(), status_text)
     }
 
     #[geam_macros::function]
-    async fn describe_async(value: values::StatusInput) -> EcoString {
+    async fn describe_async(value: values::StatusInput) -> StringValue {
         pending_once().await;
         match value {
             values::StatusInput::Ready => "ready".into(),
@@ -141,7 +141,7 @@ mod main {
         value: BigInt,
     ) -> (
         values::Status,
-        Result<BigInt, EcoString>,
+        Result<BigInt, StringValue>,
         Option<values::Token>,
         Vec<BigInt>,
     ) {

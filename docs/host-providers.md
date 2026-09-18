@@ -91,7 +91,7 @@ cargo add geam --no-default-features --features provider
 Then declare the package and implement the matching module and function:
 
 ```rust
-use geam::provider::EcoString;
+use geam::provider::StringValue;
 
 #[geam::provider(
     package = "example_text_tools",
@@ -101,11 +101,11 @@ pub struct Component;
 
 #[geam::module(path = "example_text_tools/casing")]
 mod casing {
-    use super::EcoString;
+    use super::StringValue;
 
     #[geam::function]
-    fn upper(value: EcoString) -> EcoString {
-        value.to_uppercase()
+    fn upper(value: StringValue) -> StringValue {
+        value.to_uppercase().into()
     }
 }
 ```
@@ -116,7 +116,7 @@ Geam compares that generated description with the typed Gleam declaration
 before provider state is initialized or application code runs.
 
 Geam re-exports its author-facing value types from `geam::provider`, so this
-single dependency supplies types such as `EcoString`, `BigInt`, and `List`.
+single dependency supplies types such as `StringValue`, `BigInt`, and `List`.
 
 ## Await Rust in a Gleam call
 
@@ -172,14 +172,14 @@ provider uses the `async-fs` crate to read a file:
 ```rust
 #[geam::module(path = "example_async_files")]
 mod files {
-    use geam::provider::EcoString;
+    use geam::provider::StringValue;
 
     #[geam::function]
-    async fn read(path: EcoString) -> Result<EcoString, EcoString> {
+    async fn read(path: StringValue) -> Result<StringValue, StringValue> {
         async_fs::read_to_string(path.as_str())
             .await
-            .map(EcoString::from)
-            .map_err(|error| EcoString::from(error.to_string()))
+            .map(StringValue::from)
+            .map_err(|error| StringValue::from(error.to_string()))
     }
 }
 ```

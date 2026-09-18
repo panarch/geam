@@ -285,8 +285,8 @@ macro_rules! scalar {
 scalar!(super::super::BigInt, &'value super::super::BigInt, int);
 scalar!(f64, f64, float);
 scalar!(
-    super::super::EcoString,
-    &'value super::super::EcoString,
+    super::super::StringValue,
+    &'value super::super::StringValue,
     string
 );
 scalar!(
@@ -513,13 +513,13 @@ impl<Profile: HostWorkProfile, Value: ScopedOutput<Profile>> ScopedOutput<Profil
 
 #[cfg(test)]
 mod tests {
+    use crate::StringValue;
     use crate::embedding::{FunctionDeclaration, HostedModuleBuilder, List};
     use crate::frontend::compile_typed_host_program;
     use crate::host::{HostComponentProfile, HostFutureStore, HostProfile, HostProviderSet};
     use crate::work_fixture::WorkComponent;
     use crate::work_fixture::WorkType;
     use crate::{EchoOutput, EchoSink, ModuleSource, PackageSource};
-    use ecow::EcoString;
 
     struct Profile;
     impl HostProfile for Profile {
@@ -567,7 +567,7 @@ mod tests {
         .expect("typed source");
         let (bindings, keep) = HostedModuleBuilder::new(program)
             .expect("plan")
-            .function(FunctionDeclaration::<(List<EcoString>,), List<EcoString>>::new("keep"))
+            .function(FunctionDeclaration::<(List<StringValue>,), List<StringValue>>::new("keep"))
             .expect("list binding");
         let mut module = bindings.seal().expect("list seal");
         let mut state = ();
@@ -579,7 +579,7 @@ mod tests {
                 &mut echo,
                 async |scope| {
                     let list = scope
-                        .call(&keep, (vec![EcoString::from("first"), "second".into()],))
+                        .call(&keep, (vec![StringValue::from("first"), "second".into()],))
                         .await
                         .expect("fresh list");
                     assert_eq!(list.len(), 2);
@@ -616,6 +616,161 @@ mod tests {
         .join()
         .expect("worker");
         assert_eq!(text, "second");
+    }
+
+    #[test]
+    fn list_tail_releases_unpolled_and_pending_work_without_ending_scope() {
+        use crate::host::{HostCall, HostProviderModule, HostTypeListEnd};
+        use crate::work_fixture::WorkHostType;
+        use num_bigint::BigInt;
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        struct Input(Arc<AtomicUsize>);
+        impl Drop for Input {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        type WorkCall<'call> = HostCall<'call, Profile, WorkComponent, WorkHostType<BigInt>>;
+        type WorkCompletion<'call> = Result<
+            crate::host::HostCallCompletion<'call, WorkHostType<BigInt>>,
+            crate::HostCallError,
+        >;
+
+        fn start(
+            drops: Arc<AtomicUsize>,
+            polls: Arc<AtomicUsize>,
+        ) -> impl for<'call> Fn(
+            WorkCall<'call>,
+            crate::host::HostConstructions<'call, HostTypeListEnd>,
+        ) -> WorkCompletion<'call> {
+            move |call, constructions| {
+                let input = Input(Arc::clone(&drops));
+                let polls = Arc::clone(&polls);
+                Ok(call.return_future(constructions, move |_context| {
+                    Box::pin(std::future::poll_fn(move |_| {
+                        let _input = &input;
+                        polls.fetch_add(1, Ordering::Relaxed);
+                        std::task::Poll::Pending
+                    }))
+                }))
+            }
+        }
+        let drops = Arc::new(AtomicUsize::new(0));
+        let polls = Arc::new(AtomicUsize::new(0));
+        let mut providers = WorkComponent::providers::<Profile>().expect("work provider");
+        providers.push(
+            HostProviderModule::new("application", "library")
+                .expect("module")
+                .with_scoped_function_and_constructions::<
+                    WorkComponent,
+                    (),
+                    WorkHostType<BigInt>,
+                    HostTypeListEnd,
+                    _,
+                >("start", start(Arc::clone(&drops), Arc::clone(&polls)))
+                .expect("native work"),
+        );
+        let program = compile_typed_host_program(
+            "application",
+            "library",
+            [
+                PackageSource::new(
+                    "work_fixture",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "fixture/work",
+                        "src/fixture/work.gleam",
+                        WorkComponent::SOURCE,
+                    )],
+                ),
+                PackageSource::new(
+                    "application",
+                    ["work_fixture"],
+                    [ModuleSource::new(
+                        "library",
+                        "src/library.gleam",
+                        r#"
+import fixture/work
+@external(erlang, "fixture", "start")
+fn start() -> work.Work(Int)
+pub fn build(n: Int) -> List(work.Work(Int)) {
+  case n { 0 -> [] _ -> [start(), ..build(n - 1)] }
+}
+pub fn tail(values: List(work.Work(Int))) {
+  let assert [_, ..rest] = values
+  rest
+}
+"#,
+                    )],
+                ),
+            ],
+            HostProviderSet::from_providers(providers).expect("providers"),
+        )
+        .expect("typed program");
+        let (mut bindings, build) = HostedModuleBuilder::new(program)
+            .expect("plan")
+            .function(FunctionDeclaration::<(BigInt,), List<WorkType<BigInt>>>::new("build"))
+            .expect("build entry");
+        let tail = bindings
+            .function(FunctionDeclaration::<
+                (List<WorkType<BigInt>>,),
+                List<WorkType<BigInt>>,
+            >::new("tail"))
+            .expect("tail entry");
+        let mut module = bindings.seal().expect("seal");
+        let execution_host = crate::execution_fixture::TestHost::default();
+        let mut echo = Echo::default();
+        let mut state = ();
+        execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut state,
+                &mut echo,
+                async |scope| {
+                    for len in [1_usize, 2, 63, 64, 65, 127, 128, 129, 1000] {
+                        drops.store(0, Ordering::Relaxed);
+                        let original = scope
+                            .call(&build, (BigInt::from(len),))
+                            .await
+                            .expect("work list");
+                        let suffix = scope
+                            .call(&tail, (&original,))
+                            .await
+                            .expect("structural tail");
+                        assert_eq!(drops.load(Ordering::Relaxed), 0);
+                        drop(original);
+                        assert_eq!(drops.load(Ordering::Relaxed), 1, "length {len}");
+                        assert_eq!(suffix.len(), len - 1);
+                        drop(suffix);
+                        assert_eq!(drops.load(Ordering::Relaxed), len, "length {len}");
+                    }
+                    assert_eq!(polls.load(Ordering::Relaxed), 0);
+
+                    drops.store(0, Ordering::Relaxed);
+                    let original = scope.call(&build, (65.into(),)).await.expect("work list");
+                    let first = original
+                        .read_item(0, std::convert::identity)
+                        .expect("first work");
+                    {
+                        let mut observation = std::pin::pin!(scope.observe(&first));
+                        assert!(execution_host.poll(observation.as_mut()).is_pending());
+                    }
+                    assert_eq!(polls.load(Ordering::Relaxed), 1);
+                    let suffix = scope.call(&tail, (&original,)).await.expect("pending tail");
+                    drop(original);
+                    assert_eq!(drops.load(Ordering::Relaxed), 0);
+                    drop(first);
+                    assert_eq!(drops.load(Ordering::Relaxed), 1);
+                    assert_eq!(suffix.len(), 64);
+                    drop(suffix);
+                    assert_eq!(drops.load(Ordering::Relaxed), 65);
+                },
+            ))
+            .expect("scope");
     }
 
     #[test]
@@ -926,13 +1081,13 @@ pub fn work(values: List(future.Work(Int))) { values }
         }
         bind_list!(ints, BigInt);
         bind_list!(floats, f64);
-        bind_list!(strings, EcoString);
+        bind_list!(strings, StringValue);
         bind_list!(bits, BitArrayValue);
         bind_list!(codepoints, char);
         bind_list!(bools, bool);
         bind_list!(nils, ());
-        bind_list!(tuples, (BigInt, EcoString));
-        bind_list!(choices, Result<BigInt, EcoString>);
+        bind_list!(tuples, (BigInt, StringValue));
+        bind_list!(choices, Result<BigInt, StringValue>);
         bind_list!(nested, List<BigInt>);
         bind_list!(work, WorkType<BigInt>);
         let mut module = bindings.seal().expect("all list families seal together");
@@ -959,11 +1114,11 @@ pub fn work(values: List(future.Work(Int))) { values }
                     );
                     assert_eq!(
                         scope
-                            .call(&strings, (vec![EcoString::from("hello")],))
+                            .call(&strings, (vec![StringValue::from("hello")],))
                             .await
                             .expect("string list")
                             .read_item(0, Clone::clone),
-                        Some(EcoString::from("hello"))
+                        Some(StringValue::from("hello"))
                     );
                     let bytes = BitArrayValue::try_from_parts(vec![0xa0], 3).expect("three bits");
                     assert_eq!(
@@ -1002,12 +1157,12 @@ pub fn work(values: List(future.Work(Int))) { values }
                         scope
                             .call(
                                 &tuples,
-                                (vec![(BigInt::from(42), EcoString::from("hello"))],)
+                                (vec![(BigInt::from(42), StringValue::from("hello"))],)
                             )
                             .await
                             .expect("tuple list")
                             .read_item(0, |(number, text)| (number.clone(), text.clone())),
-                        Some((BigInt::from(42), EcoString::from("hello")))
+                        Some((BigInt::from(42), StringValue::from("hello")))
                     );
                     assert_eq!(
                         scope

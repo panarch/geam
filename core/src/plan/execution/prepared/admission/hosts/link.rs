@@ -403,7 +403,7 @@ pub fn main() { echo double(21) stop() }
         }
         let incompatible = HostProviderSet::new([HostModule::new("app", "main")
             .unwrap()
-            .with_function("double", std::convert::identity::<ecow::EcoString>)
+            .with_function("double", std::convert::identity::<crate::StringValue>)
             .unwrap()])
         .unwrap();
         assert_eq!(

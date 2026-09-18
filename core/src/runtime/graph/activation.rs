@@ -1,5 +1,6 @@
 use super::RuntimeGraphState;
 use super::{BlockEnvironment, CompletedGraph, GraphPosition, RetainedValues};
+use crate::StringValue;
 use crate::plan::execution::constant::{ConstantId, ConstantValue};
 use crate::plan::execution::function::{
     ExecutionFunctionEntry, ExecutionFunctionRef, FunctionBodyOwner, FunctionExit,
@@ -17,7 +18,6 @@ use crate::runtime::state::list::{
     ParameterListValueId, StringListValueId, TupleListValueId, UtfCodepointListValueId,
 };
 use crate::runtime::{ExecutableRuntimePlan, RuntimeGraph};
-use ecow::EcoString;
 use num_bigint::BigInt;
 use std::marker::PhantomData;
 
@@ -110,14 +110,24 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
         }
     }
 
-    pub(in crate::runtime) fn step(
+    pub(in crate::runtime) fn advance(
         self,
         plan: &'plan Plan,
         state: &mut impl RuntimeGraphState<Error = crate::ExecutionError>,
         returns: &mut Returns<'plan, Plan>,
+        remaining: &mut usize,
     ) -> ExecutionResult<Progress<'plan, Plan>> {
         let active = match self.active {
-            Activation::Graph(frame) => frame.step(plan, state, returns)?,
+            // The caller charged this activation; only additional steps consume remaining budget.
+            Activation::Graph(mut frame) => loop {
+                match frame.step(plan, state, returns)? {
+                    Activation::Graph(next) if *remaining > 0 => {
+                        *remaining -= 1;
+                        frame = next;
+                    }
+                    active => break active,
+                }
+            },
             Activation::Host(invoke) => {
                 return Ok(Progress::Host(Plan::map_host(invoke, |active| {
                     Ok(Self { active })
@@ -144,24 +154,20 @@ impl<'plan, Plan: ExecutableRuntimePlan> Frame<'plan, Plan> {
             self.position.instruction += 1;
             return super::instruction::advance(plan, state, self, returns, instruction);
         }
-        match terminator_action(plan, state, &self.position.environment, block.terminator())? {
+        match terminator_action(plan, state, self.position.environment, block.terminator())? {
             GraphAction::Continue { block, inputs } => {
                 self.position = GraphPosition::new(block, inputs);
                 Ok(Activation::Graph(self))
             }
-            GraphAction::Exit(exit) => (self.exit)(
-                CompletedGraph {
-                    exit,
-                    environment: self.position.environment,
-                },
-                returns,
-            ),
+            GraphAction::Exit { exit, environment } => {
+                (self.exit)(CompletedGraph { exit, environment }, returns)
+            }
             GraphAction::NeverCall {
                 function,
                 mut inputs,
                 site,
             } => {
-                drop(self);
+                drop(self.exit);
                 let function = match function {
                     NeverCall::Direct(function) => function,
                     NeverCall::Value(function) => {
@@ -272,9 +278,11 @@ where
                             let value = map(completed.into_value(value))?;
                             Ok(destination.resume(returns, value))
                         }
-                        FunctionExit::TailCall { function, args } => {
+                        FunctionExit::TailCall {
+                            function, transfer, ..
+                        } => {
                             let (id, origin) = id.next(function);
-                            let inputs = completed.into_retained(args);
+                            let inputs = completed.into_retained(transfer);
                             Ok(enter_function(plan, id, origin, inputs, destination, map))
                         }
                     },
@@ -332,8 +340,10 @@ fn enter_never<'plan, Plan: ExecutableRuntimePlan>(
                 position: GraphPosition::new(graph.entry(), inputs),
                 exit: Box::new(move |completed, _| match body.exit(completed.exit()) {
                     FunctionExit::Return(never) => match *never {},
-                    FunctionExit::TailCall { function, args } => {
-                        let inputs = completed.into_retained(args);
+                    FunctionExit::TailCall {
+                        function, transfer, ..
+                    } => {
+                        let inputs = completed.into_retained(transfer);
                         Ok(enter_never(
                             plan,
                             *function.function(),
@@ -369,7 +379,7 @@ macro_rules! return_value {
 
 return_value!(BigInt, ints, push_int);
 return_value!(f64, floats, push_float);
-return_value!(EcoString, strings, push_string);
+return_value!(StringValue, strings, push_string);
 return_value!(EvaluatedBitArray, bit_arrays, push_bit_array);
 return_value!(char, utf_codepoints, push_utf_codepoint);
 return_value!(EvaluatedCustomValue, customs, push_custom);
@@ -446,7 +456,10 @@ mod tests {
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
         loop {
-            match execution.step(plan, &mut state, &mut returns).unwrap() {
+            match execution
+                .advance(plan, &mut state, &mut returns, &mut 0)
+                .unwrap()
+            {
                 Progress::Continue(next) => execution = next,
                 Progress::Complete(completed) => return completed,
                 Progress::Host(invoke) => match invoke {},
@@ -499,16 +512,19 @@ pub fn main() {
         let mut execution = Execution::new(body.block_graph().as_view(), RetainedValues::empty());
         let mut returns = Returns::new();
         let mut lists = RuntimeListStorage::default();
+        let captures = crate::runtime::CaptureStorage::default();
         let mut output = Vec::new();
         let mut steps = 0;
         let (completed, output) = std::thread::scope(|scope| {
             loop {
                 let plan = &plan;
+                let captures = captures.clone();
                 let (step, retained_returns, retained_lists, retained_output) = scope
                     .spawn(move || {
-                        let mut state = RuntimeState::with_host_and_lists(&mut output, (), lists);
+                        let mut state =
+                            RuntimeState::with_host_storage(&mut output, (), lists, captures);
                         let step = execution
-                            .step(plan, &mut state, &mut returns)
+                            .advance(plan, &mut state, &mut returns, &mut 0)
                             .expect("one actual evaluator step");
                         let lists = state.lists().clone();
                         drop(state);
@@ -581,7 +597,7 @@ pub fn main() { count(0) + 1 }
                 for _ in 0..50_000 {
                     execution = continuing(
                         execution
-                            .step(&plan, &mut state, &mut returns)
+                            .advance(&plan, &mut state, &mut returns, &mut 0)
                             .expect("recursive source step"),
                     );
                 }
@@ -720,7 +736,7 @@ pub fn main() { #(apply_int, apply_float, integer, floating, forward, fn() { 1.5
         let mut execution =
             crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
                 .unwrap();
-        let (plan, stores) = execution.parts_mut();
+        let (plan, stores, captures) = execution.parts_mut();
         let host = TestHost::default();
         let mut state = 0;
         let mut echo = Vec::new();
@@ -730,6 +746,7 @@ pub fn main() { #(apply_int, apply_float, integer, floating, forward, fn() { 1.5
             &mut state,
             stores,
             &mut echo,
+            captures.clone(),
             Domain::<Profile>::DEFAULT_BUDGET,
         );
         let context = domain.context();

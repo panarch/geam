@@ -215,7 +215,7 @@ mod tests {
             crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
                 .unwrap();
         let plan = execution.execution();
-        let services = crate::runtime::execution::Services::new();
+        let services = crate::runtime::execution::Services::new(Default::default());
         let context = services.context();
         let host = TestHost::default();
         let value = host

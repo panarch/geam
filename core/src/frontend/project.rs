@@ -1024,6 +1024,7 @@ pub fn value() -> Int
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             std::num::NonZeroUsize::MIN,
         );
         let context = domain.context();

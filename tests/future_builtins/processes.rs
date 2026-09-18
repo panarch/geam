@@ -15,6 +15,51 @@ impl NamedTypeSchema for Service {
     const NAME: &'static str = "Service";
 }
 
+#[cfg(feature = "standalone")]
+#[test]
+fn one_worker_runs_the_standalone_driver_cpu_process_and_timer_without_starvation() {
+    let program = geam::frontend::compile_typed_host_project(
+        super::project_root(),
+        "single_worker",
+        providers(),
+    )
+    .unwrap();
+    let mut entry =
+        geam::HostedEntry::try_from_module_plan(geam::plan_host_program(program).unwrap()).unwrap();
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_time()
+        .build()
+        .unwrap();
+    let host = geam::execution::TokioHost::new(runtime.handle().clone());
+    let mut state = State {
+        stdlib: GleamStdlibRunState::from_seed([0; 32]),
+        clock: Clock(Cell::new(100)),
+        native: NativeState::default(),
+        work: (),
+        json: (),
+        erlang: Configuration::default(),
+    };
+    let mut echo = super::Echo::default();
+    let (entry, state, echo, result) =
+        geam::__standalone_support::run_driver(&runtime, async move {
+            let result = tokio::time::timeout(
+                Duration::from_secs(30),
+                entry.run(&host, &mut state, &mut echo),
+            )
+            .await;
+            (entry, state, echo, result)
+        })
+        .unwrap();
+    result.unwrap().unwrap();
+    assert_eq!(echo.0, ["42"]);
+    assert!(state.stdlib.io_outputs().is_empty());
+    assert_eq!(state.native.starts.get(), 0);
+    drop(state);
+    drop(runtime);
+    drop(entry);
+}
+
 #[test]
 fn shared_work_outlives_its_creator_and_one_abandoned_observer() {
     let program = geam::frontend::compile_typed_host_project(

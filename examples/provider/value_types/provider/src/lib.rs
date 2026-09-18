@@ -1,4 +1,4 @@
-use geam::provider::{BigInt, BitArrayValue, EcoString};
+use geam::provider::{BigInt, BitArrayValue, StringValue};
 
 #[geam::provider(
     package = "example_value_types",
@@ -8,10 +8,10 @@ pub struct Component;
 
 #[geam::module(path = "example_value_types/scalars")]
 mod scalars {
-    use super::{BigInt, BitArrayValue, EcoString};
+    use super::{BigInt, BitArrayValue, StringValue};
 
     #[geam::function]
-    fn join(left: EcoString, right: EcoString) -> EcoString {
+    fn join(left: StringValue, right: StringValue) -> StringValue {
         format!("{left}:{right}").into()
     }
 
@@ -48,32 +48,32 @@ mod scalars {
 
 #[geam::module(path = "example_value_types/tuples")]
 mod tuples {
-    use super::{BigInt, EcoString};
+    use super::{BigInt, StringValue};
 
     #[geam::function]
-    fn wrap(value: EcoString) -> (EcoString,) {
+    fn wrap(value: StringValue) -> (StringValue,) {
         (value,)
     }
 
     #[geam::function]
-    fn unwrap(value: (EcoString,)) -> EcoString {
+    fn unwrap(value: (StringValue,)) -> StringValue {
         value.0
     }
 
     #[geam::function]
-    fn swap(value: (EcoString, BigInt)) -> (BigInt, EcoString) {
+    fn swap(value: (StringValue, BigInt)) -> (BigInt, StringValue) {
         let (label, count) = value;
         (count, label)
     }
 
     #[geam::function]
-    fn rotate(value: (EcoString, f64, bool)) -> (bool, EcoString, f64) {
+    fn rotate(value: (StringValue, f64, bool)) -> (bool, StringValue, f64) {
         let (label, measurement, enabled) = value;
         (enabled, label, measurement)
     }
 
     #[geam::function]
-    fn reassociate(value: (EcoString, (BigInt, bool))) -> ((EcoString, BigInt), bool) {
+    fn reassociate(value: (StringValue, (BigInt, bool))) -> ((StringValue, BigInt), bool) {
         let (label, (count, enabled)) = value;
         ((label, count), enabled)
     }
@@ -81,7 +81,7 @@ mod tuples {
 
 #[geam::module(path = "example_value_types/lists")]
 mod lists {
-    use super::{BigInt, EcoString};
+    use super::{BigInt, StringValue};
 
     #[geam::function]
     fn length(values: geam::provider::List<BigInt>) -> BigInt {
@@ -89,7 +89,7 @@ mod lists {
     }
 
     #[geam::function]
-    fn first_or(values: geam::provider::List<EcoString>, fallback: EcoString) -> EcoString {
+    fn first_or(values: geam::provider::List<StringValue>, fallback: StringValue) -> StringValue {
         values.get(0).unwrap_or(fallback)
     }
 
@@ -99,7 +99,7 @@ mod lists {
     }
 
     #[geam::function]
-    fn reverse(values: geam::provider::List<EcoString>) -> Vec<EcoString> {
+    fn reverse(values: geam::provider::List<StringValue>) -> Vec<StringValue> {
         (0..values.len())
             .rev()
             .filter_map(|index| values.get(index))
@@ -107,7 +107,7 @@ mod lists {
     }
 
     #[geam::function]
-    fn labels(values: geam::provider::List<(EcoString, BigInt)>) -> Vec<EcoString> {
+    fn labels(values: geam::provider::List<(StringValue, BigInt)>) -> Vec<StringValue> {
         (0..values.len())
             .filter_map(|index| values.get(index).map(|(label, _)| label))
             .collect()
@@ -116,7 +116,7 @@ mod lists {
 
 #[geam::module(path = "example_value_types/customs")]
 mod customs {
-    use super::{BigInt, EcoString};
+    use super::{BigInt, StringValue};
 
     #[geam::custom(input = PriorityInput)]
     enum Priority {
@@ -128,10 +128,10 @@ mod customs {
     #[geam::custom(input = JobInput)]
     enum Job {
         Pending,
-        Named(EcoString),
-        Scheduled { label: EcoString, attempt: BigInt },
+        Named(StringValue),
+        Scheduled { label: StringValue, attempt: BigInt },
         Prioritized(Priority),
-        Tags(Vec<EcoString>),
+        Tags(Vec<StringValue>),
     }
 
     #[geam::function]
@@ -155,12 +155,12 @@ mod customs {
     }
 
     #[geam::function]
-    fn named(label: EcoString) -> Job {
+    fn named(label: StringValue) -> Job {
         Job::Named(label)
     }
 
     #[geam::function]
-    fn scheduled(label: EcoString, attempt: BigInt) -> Job {
+    fn scheduled(label: StringValue, attempt: BigInt) -> Job {
         Job::Scheduled { label, attempt }
     }
 
@@ -170,12 +170,12 @@ mod customs {
     }
 
     #[geam::function]
-    fn tagged(first: EcoString, second: EcoString) -> Job {
+    fn tagged(first: StringValue, second: StringValue) -> Job {
         Job::Tags(vec![first, second])
     }
 
     #[geam::function]
-    fn describe(job: JobInput) -> EcoString {
+    fn describe(job: JobInput) -> StringValue {
         match job {
             JobInput::Pending => "pending".into(),
             JobInput::Named(label) => format!("named:{label}").into(),
@@ -191,7 +191,7 @@ mod customs {
     }
 
     #[geam::function]
-    fn first_priority(values: geam::provider::List<PriorityInput>) -> EcoString {
+    fn first_priority(values: geam::provider::List<PriorityInput>) -> StringValue {
         match values.get(0) {
             Some(PriorityInput::Low) => "low".into(),
             Some(PriorityInput::Normal) => "normal".into(),
@@ -203,16 +203,16 @@ mod customs {
 
 #[geam::module(path = "example_value_types/results")]
 mod results {
-    use super::{BigInt, EcoString};
+    use super::{BigInt, StringValue};
 
     #[geam::custom(input = ParseErrorInput)]
     enum ParseError {
         Empty,
-        Invalid(EcoString),
+        Invalid(StringValue),
     }
 
     #[geam::function]
-    fn parse(value: EcoString) -> Result<BigInt, ParseError> {
+    fn parse(value: StringValue) -> Result<BigInt, ParseError> {
         if value.is_empty() {
             Err(ParseError::Empty)
         } else {
@@ -224,7 +224,7 @@ mod results {
     }
 
     #[geam::function]
-    fn describe(value: Result<BigInt, ParseErrorInput>) -> EcoString {
+    fn describe(value: Result<BigInt, ParseErrorInput>) -> StringValue {
         match value {
             Ok(value) => format!("ok:{value}").into(),
             Err(ParseErrorInput::Empty) => "error:empty".into(),
@@ -233,12 +233,12 @@ mod results {
     }
 
     #[geam::function]
-    fn optional(value: BigInt, keep: bool) -> Option<(EcoString, BigInt)> {
+    fn optional(value: BigInt, keep: bool) -> Option<(StringValue, BigInt)> {
         keep.then(|| ("kept".into(), value))
     }
 
     #[geam::function]
-    fn describe_option(value: Option<(EcoString, BigInt)>) -> EcoString {
+    fn describe_option(value: Option<(StringValue, BigInt)>) -> StringValue {
         value.map_or_else(
             || "none".into(),
             |(label, value)| format!("some:{label}:{value}").into(),
@@ -246,7 +246,7 @@ mod results {
     }
 
     #[geam::function]
-    fn first(values: geam::provider::List<Result<BigInt, ParseErrorInput>>) -> EcoString {
+    fn first(values: geam::provider::List<Result<BigInt, ParseErrorInput>>) -> StringValue {
         values.get(0).map_or_else(|| "missing".into(), describe)
     }
 

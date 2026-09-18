@@ -19,5 +19,5 @@ pub use geam_core::embedding::{
     HostedModuleBindings, HostedModuleBuilder, HostedProject, HostedProjectError, InputShape, Iter,
     List, Module, ModuleBindings, ModuleBuilder, NamedTypeSchema, ObservationError, PreparedError,
     PreparedHostedModule, PreparedHostedModuleBindings, PreparedModule, PreparedModuleBindings,
-    Project, ReadValue, SharedExecutionError, SharedList, SourceType,
+    Project, ReadValue, SharedExecutionError, SharedList, SourceType, StringValue,
 };

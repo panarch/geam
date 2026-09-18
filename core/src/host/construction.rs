@@ -21,14 +21,14 @@ type CallScopedMarker<'call, Type> = PhantomData<fn(&'call ()) -> (&'call (), Ty
 /// An index selects exactly the type registered at that position.
 ///
 /// ```compile_fail
-/// use ecow::EcoString;
+/// use crate::StringValue;
 /// use geam_core::{
 ///     HostConstruction, HostConstructions, HostListType, HostTypeIndex0, HostTypeList,
 ///     HostTypeListEnd,
 /// };
 /// use num_bigint::BigInt;
 ///
-/// type Types = HostTypeList<HostListType<EcoString>, HostTypeListEnd>;
+/// type Types = HostTypeList<HostListType<StringValue>, HostTypeListEnd>;
 ///
 /// fn wrong<'call>(
 ///     constructions: HostConstructions<'call, Types>,
@@ -55,13 +55,13 @@ pub struct HostConstructions<'call, Types: HostTypeSequence> {
 /// The token cannot escape the call lifetime that granted it.
 ///
 /// ```compile_fail
-/// use ecow::EcoString;
+/// use crate::StringValue;
 /// use geam_core::{
 ///     HostConstruction, HostConstructions, HostListType, HostTypeIndex0, HostTypeList,
 ///     HostTypeListEnd,
 /// };
 ///
-/// type List = HostListType<EcoString>;
+/// type List = HostListType<StringValue>;
 /// type Types = HostTypeList<List, HostTypeListEnd>;
 ///
 /// fn escape<'call>(

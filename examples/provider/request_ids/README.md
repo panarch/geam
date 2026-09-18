@@ -18,7 +18,7 @@ The Rust signatures make mutation and observation explicit:
 
 ```rust
 #[geam::function]
-fn next(#[geam::call] call: &mut Call<RunState>) -> EcoString;
+fn next(#[geam::call] call: &mut Call<RunState>) -> StringValue;
 
 #[geam::function]
 fn issued(#[geam::call] call: &Call<RunState>) -> BigInt;

@@ -74,7 +74,7 @@ mod tests {
                 value: Box::new(scalar.clone()),
             }),
             failure: Box::new(StaticValueType::Option {
-                value: Box::new(StaticValueType::Scalar(syn::parse_quote!(EcoString))),
+                value: Box::new(StaticValueType::Scalar(syn::parse_quote!(StringValue))),
             }),
         };
 
@@ -88,7 +88,7 @@ mod tests {
         );
         assert_eq!(
             static_value_key(&result),
-            "result:<option:<scalar:BigInt>,option:<scalar:EcoString>>",
+            "result:<option:<scalar:BigInt>,option:<scalar:StringValue>>",
         );
     }
 

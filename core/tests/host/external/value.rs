@@ -2,7 +2,7 @@ use super::{
     Counter, CounterProvider, CounterSchema, ExternalProfile, ExternalRunState, GenericValue,
     HostCounter,
 };
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::{
     BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostExternal, HostModule,
     HostProviderModule, HostProviderSet, HostValue, HostedExecution, ModuleSource, PackageSource,
@@ -115,7 +115,7 @@ pub fn main() {
         "main",
         [PackageSource::new(
             "application",
-            Vec::<EcoString>::new(),
+            Vec::<ecow::EcoString>::new(),
             [ModuleSource::new("main", "src/main.gleam", source)],
         )],
         HostProviderSet::with_providers(Vec::new(), [provider])
@@ -356,7 +356,7 @@ fn external_storage_profiles_preserve_existing_runtime_families() {
         .expect("Int host function should be valid")
         .with_function("float", |value: f64| value)
         .expect("Float host function should be valid")
-        .with_function("string", |value: EcoString| value)
+        .with_function("string", |value: StringValue| value)
         .expect("String host function should be valid")
         .with_function("bit_array", |value: BitArrayValue| value)
         .expect("BitArray host function should be valid")

@@ -385,9 +385,9 @@ mod tests {
     };
     use crate::plan::execution::graph::{
         BlockGraphExitId, Edge, Jump, Match, MatchEdge, MatchEdgeArgument, MatchPatternBinding,
-        ProfiledBlock, ProfiledBlockGraph, Terminator,
+        ProfiledBlock, ProfiledBlockGraph, Terminator, Transfer,
     };
-    use crate::plan::execution::storage::Node;
+    use crate::plan::execution::storage::{Node, Table};
     use crate::plan::execution::type_::CustomConstructorId;
     use std::convert::Infallible;
 
@@ -512,21 +512,46 @@ pub fn main() { #(widen(First(42)), Second(7)) }
             let mut source_instructions = Vec::new();
             let mut target_instructions = Vec::new();
             let mut source_exit = Terminator::Jump(Jump {
-                edge: Edge::new(BlockId(1), vec![slot.local.clone()]),
+                edge: Edge::new(
+                    BlockId(1),
+                    vec![slot.local.clone()],
+                    Transfer {
+                        families: Table::Static(&[]),
+                    },
+                ),
             });
             let mut target_exit = Terminator::Exit(BlockGraphExitId(0));
             match corruption {
                 Corruption::MissingArgument => {
                     source_exit = Terminator::Jump(Jump {
-                        edge: Edge::new(BlockId(1), Vec::new()),
+                        edge: Edge::new(
+                            BlockId(1),
+                            Vec::new(),
+                            Transfer {
+                                families: Table::Static(&[]),
+                            },
+                        ),
                     })
                 }
                 Corruption::MissingBinding => {
                     source_exit = Terminator::Match(Match {
                         subject: slot.local.clone(),
                         pattern: MatchPattern::Discard,
-                        success: MatchEdge::new(BlockId(1), vec![MatchEdgeArgument::Binding(99)]),
-                        failure: Edge::new(BlockId(2), Vec::new()),
+                        success: MatchEdge::new(
+                            BlockId(1),
+                            vec![MatchEdgeArgument::Binding(99)],
+                            Vec::new(),
+                            Transfer {
+                                families: Table::Static(&[]),
+                            },
+                        ),
+                        failure: Edge::new(
+                            BlockId(2),
+                            Vec::new(),
+                            Transfer {
+                                families: Table::Static(&[]),
+                            },
+                        ),
                     })
                 }
                 Corruption::SourceCycle | Corruption::TargetCycle => {
@@ -552,12 +577,24 @@ pub fn main() { #(widen(First(42)), Second(7)) }
                         }),
                     ));
                     target_exit = Terminator::Jump(Jump {
-                        edge: Edge::new(BlockId(1), vec![ParamLocal::Custom(projected)]),
+                        edge: Edge::new(
+                            BlockId(1),
+                            vec![ParamLocal::Custom(projected)],
+                            Transfer {
+                                families: Table::Static(&[]),
+                            },
+                        ),
                     });
                 }
                 Corruption::UnprovenBackEdge => {
                     target_exit = Terminator::Jump(Jump {
-                        edge: Edge::new(BlockId(1), vec![slot.local.clone()]),
+                        edge: Edge::new(
+                            BlockId(1),
+                            vec![slot.local.clone()],
+                            Transfer {
+                                families: Table::Static(&[]),
+                            },
+                        ),
                     })
                 }
             }
@@ -632,8 +669,21 @@ pub fn main() { #(widen(First(42)), Second(7)) }
                             },
                             fields: vec![MatchPattern::Discard].into(),
                         },
-                        success: MatchEdge::new(BlockId(5), vec![]),
-                        failure: Edge::new(BlockId(1), arguments.clone()),
+                        success: MatchEdge::new(
+                            BlockId(5),
+                            vec![],
+                            Vec::new(),
+                            Transfer {
+                                families: Table::Static(&[]),
+                            },
+                        ),
+                        failure: Edge::new(
+                            BlockId(1),
+                            arguments.clone(),
+                            Transfer {
+                                families: Table::Static(&[]),
+                            },
+                        ),
                     }),
                 ),
                 ProfiledBlock::new(
@@ -641,22 +691,46 @@ pub fn main() { #(widen(First(42)), Second(7)) }
                     vec![],
                     Terminator::BoolBranch(BoolBranch {
                         subject: BoolLocalId(0),
-                        true_: Edge::new(BlockId(2), arguments.clone()),
-                        false_: Edge::new(BlockId(3), arguments.clone()),
+                        true_: Edge::new(
+                            BlockId(2),
+                            arguments.clone(),
+                            Transfer {
+                                families: Table::Static(&[]),
+                            },
+                        ),
+                        false_: Edge::new(
+                            BlockId(3),
+                            arguments.clone(),
+                            Transfer {
+                                families: Table::Static(&[]),
+                            },
+                        ),
                     }),
                 ),
                 ProfiledBlock::new(
                     parameters.clone(),
                     vec![],
                     Terminator::Jump(Jump {
-                        edge: Edge::new(BlockId(4), arguments.clone()),
+                        edge: Edge::new(
+                            BlockId(4),
+                            arguments.clone(),
+                            Transfer {
+                                families: Table::Static(&[]),
+                            },
+                        ),
                     }),
                 ),
                 ProfiledBlock::new(
                     parameters.clone(),
                     vec![],
                     Terminator::Jump(Jump {
-                        edge: Edge::new(BlockId(4), arguments),
+                        edge: Edge::new(
+                            BlockId(4),
+                            arguments,
+                            Transfer {
+                                families: Table::Static(&[]),
+                            },
+                        ),
                     }),
                 ),
                 ProfiledBlock::new(parameters, vec![], Terminator::Exit(BlockGraphExitId(0))),
@@ -684,6 +758,9 @@ pub fn main() { #(widen(First(42)), Second(7)) }
                 edge: Edge {
                     target: BlockId(1),
                     args: vec![slot.local.clone()].into(),
+                    transfer: Transfer {
+                        families: Table::Static(&[]),
+                    },
                 },
             })
         };
@@ -706,10 +783,17 @@ pub fn main() { #(widen(First(42)), Second(7)) }
                         success: MatchEdge {
                             target: BlockId(1),
                             args: vec![MatchEdgeArgument::Binding(0)].into(),
+                            bindings: Vec::new().into(),
+                            transfer: Transfer {
+                                families: Table::Static(&[]),
+                            },
                         },
                         failure: Edge {
                             target: BlockId(2),
                             args: vec![slot.local.clone()].into(),
+                            transfer: Transfer {
+                                families: Table::Static(&[]),
+                            },
                         },
                     }),
                 ),
@@ -730,17 +814,16 @@ pub fn main() { #(widen(First(42)), Second(7)) }
     #[test]
     fn shared_irrefutable_nodes_are_not_recursive_patterns() {
         static DISCARD: MatchPattern = MatchPattern::Discard;
-        static SHARED: MatchPattern =
-            MatchPattern::Tuple(crate::plan::execution::storage::Table::Static(&[
-                MatchPattern::Alias {
-                    pattern: Node::Static(&DISCARD),
-                    binding: MatchPatternBinding { index: 0 },
-                },
-                MatchPattern::Alias {
-                    pattern: Node::Static(&DISCARD),
-                    binding: MatchPatternBinding { index: 1 },
-                },
-            ]));
+        static SHARED: MatchPattern = MatchPattern::Tuple(Table::Static(&[
+            MatchPattern::Alias {
+                pattern: Node::Static(&DISCARD),
+                binding: MatchPatternBinding { index: 0 },
+            },
+            MatchPattern::Alias {
+                pattern: Node::Static(&DISCARD),
+                binding: MatchPatternBinding { index: 1 },
+            },
+        ]));
         static RECURSIVE: MatchPattern = MatchPattern::Alias {
             pattern: Node::Static(&RECURSIVE),
             binding: MatchPatternBinding { index: 0 },
@@ -965,8 +1048,21 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
                     pattern: Box::new(pattern).into(),
                     binding: MatchPatternBinding::new(0),
                 },
-                success: MatchEdge::new(BlockId(0), Vec::new()),
-                failure: Edge::new(BlockId(0), Vec::new()),
+                success: MatchEdge::new(
+                    BlockId(0),
+                    Vec::new(),
+                    Vec::new(),
+                    Transfer {
+                        families: Table::Static(&[]),
+                    },
+                ),
+                failure: Edge::new(
+                    BlockId(0),
+                    Vec::new(),
+                    Transfer {
+                        families: Table::Static(&[]),
+                    },
+                ),
             };
             let path = vec![if custom_parent {
                 Projection::Custom(0)
@@ -1046,8 +1142,21 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
                 pattern: Node::Static(&CYCLE),
                 binding: MatchPatternBinding { index: 1 },
             },
-            success: MatchEdge::new(BlockId(0), Vec::new()),
-            failure: Edge::new(BlockId(0), Vec::new()),
+            success: MatchEdge::new(
+                BlockId(0),
+                Vec::new(),
+                Vec::new(),
+                Transfer {
+                    families: Table::Static(&[]),
+                },
+            ),
+            failure: Edge::new(
+                BlockId(0),
+                Vec::new(),
+                Transfer {
+                    families: Table::Static(&[]),
+                },
+            ),
         };
         assert!(
             control

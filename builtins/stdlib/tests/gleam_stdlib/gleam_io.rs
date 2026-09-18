@@ -227,7 +227,7 @@ struct RecordingEchoSink {
 
 #[derive(Debug, PartialEq, Eq)]
 enum RecordedEvent {
-    Io(IoStream, EcoString),
+    Io(IoStream, geam_core::StringValue),
     Echo {
         message: Option<EcoString>,
         value: EcoString,

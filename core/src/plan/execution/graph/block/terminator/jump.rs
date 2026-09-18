@@ -39,7 +39,13 @@ mod emission_tests {
 
     #[test]
     fn emits_jump_with_edge_arguments() {
-        let value = Jump::new(Edge::new(BlockId(3), vec![ParamLocal::Int(IntLocalId(5))]));
+        let value = Jump::new(Edge::new(
+            BlockId(3),
+            vec![ParamLocal::Int(IntLocalId(5))],
+            crate::plan::execution::graph::Transfer {
+                families: crate::plan::execution::storage::Table::Static(&[]),
+            },
+        ));
         assert_eq!(
             Rust::expression(&value),
             r#"
@@ -49,6 +55,9 @@ data::graph::Jump {
         args: data::Storage::Static(&[
             data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
         ]),
+        transfer: data::graph::Transfer {
+            families: data::Storage::Static(&[]),
+        },
     },
 }"#
             .trim_start_matches('\n')

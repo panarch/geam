@@ -1,18 +1,18 @@
 use crate::geam_bindings::{Functions, Profile};
-use geam::embedding::{BigInt, CallError, EcoString, ExecutionScope, SharedList};
+use geam::embedding::{BigInt, CallError, ExecutionScope, SharedList, StringValue};
 use geam::gleam_stdlib::IoSink;
 use std::io::{self, Write};
 
 pub(super) struct Review {
-    rows: SharedList<Result<(EcoString, BigInt), EcoString>>,
+    rows: SharedList<Result<(StringValue, BigInt), StringValue>>,
     total_quantity: BigInt,
-    first_valid: Option<(EcoString, BigInt)>,
+    first_valid: Option<(StringValue, BigInt)>,
 }
 
 pub(super) async fn review<Io: IoSink + 'static>(
     scope: &ExecutionScope<'_, '_, Profile<Io>>,
     functions: &Functions,
-    rows: Vec<(EcoString, BigInt)>,
+    rows: Vec<(StringValue, BigInt)>,
 ) -> Result<Review, CallError> {
     let checked = scope.call(&functions.validate_batch, (rows,)).await?;
 
@@ -94,8 +94,8 @@ mod tests {
                     .expect("mixed receipt review");
                     assert_eq!(mixed.rows.len(), 4);
                     let row = |value: Result<
-                        (&geam::embedding::EcoString, &BigInt),
-                        &geam::embedding::EcoString,
+                        (&geam::embedding::StringValue, &BigInt),
+                        &geam::embedding::StringValue,
                     >| {
                         value
                             .map(|(code, quantity)| (code.clone(), quantity.clone()))

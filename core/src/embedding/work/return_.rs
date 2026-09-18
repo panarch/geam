@@ -68,7 +68,7 @@ macro_rules! scalar {
 
 scalar!(crate::embedding::BigInt, ints, take_int);
 scalar!(f64, floats, take_float);
-scalar!(crate::embedding::EcoString, strings, take_string);
+scalar!(crate::embedding::StringValue, strings, take_string);
 scalar!(crate::BitArrayValue, bit_arrays, take_bit_array);
 scalar!(char, utf_codepoints, take_utf_codepoint);
 scalar!(bool, bools, take_bool);

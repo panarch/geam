@@ -526,6 +526,7 @@ pub fn run() {
             &mut state,
             &mut stores,
             &mut echo,
+            Default::default(),
             std::num::NonZeroUsize::MIN,
         );
         let context = domain.context();
@@ -737,6 +738,7 @@ pub fn run() {
             &mut drops,
             &mut stores,
             &mut echo,
+            Default::default(),
             std::num::NonZeroUsize::MIN,
         );
         let context = domain.context();

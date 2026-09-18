@@ -1,4 +1,6 @@
-use geam_core::embedding::{BigInt, FunctionDeclaration, HostedModuleBuilder, ModuleBuilder};
+use geam_core::embedding::{
+    BigInt, FunctionDeclaration, HostedModuleBuilder, ModuleBuilder, StringValue,
+};
 use geam_core::{ModuleSource, PackageSource};
 use std::error::Error;
 use std::path::Path;
@@ -46,8 +48,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         )],
         native_provider::hosts(),
     )?;
-    let (native, _) = HostedModuleBuilder::new(native)?
+    let (mut native, _) = HostedModuleBuilder::new(native)?
         .function(FunctionDeclaration::<(), (bool, bool, BigInt)>::new("run"))?;
+    native
+        .function(FunctionDeclaration::<(StringValue,), (bool, StringValue)>::new("substring"))?;
 
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/prepared");
     for (name, data) in [

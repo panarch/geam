@@ -10,7 +10,7 @@ mod prelude;
 mod stored;
 mod value;
 
-pub use crate::{BitArrayValue, HostFailure};
+pub use crate::{BitArrayValue, HostFailure, StringValue};
 pub use call::{Call, HostResult};
 #[doc(hidden)]
 pub use call::{

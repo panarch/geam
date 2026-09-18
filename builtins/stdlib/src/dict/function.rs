@@ -189,7 +189,7 @@ pub(super) mod provider {
             });
             buckets
                 .entry(key_hash)
-                .or_insert_with(im::Vector::new)
+                .or_insert_with(imbl::Vector::new)
                 .push_back(entry);
         }
         Ok(DictValue::from_payload(DictPayload {
@@ -264,7 +264,7 @@ pub(super) mod provider {
                 .storage
                 .buckets
                 .get(&key_hash)
-                .map_or(0, im::Vector::len)
+                .map_or(0, imbl::Vector::len)
         });
         let mut index = None;
         for position in 0..candidates {
@@ -411,7 +411,6 @@ mod tests {
         use crate::{
             Component, GleamStdlibHostProfile, GleamStdlibRunState, GleamStdlibStores, IoOutput,
         };
-        use ecow::EcoString;
         use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder};
         use geam_core::frontend::compile_typed_host_program;
         use geam_core::host::{HostCall, HostComponentProfile, HostExternalBinding};
@@ -441,7 +440,7 @@ mod tests {
                 self.0.push(output.value().inspect().to_string());
             }
         }
-        type Dict = DictOf<EcoString, geam_core::HostListType<BigInt>>;
+        type Dict = DictOf<geam_core::StringValue, geam_core::HostListType<BigInt>>;
 
         impl HostProfile for Profile {
             type RunState = State;
@@ -997,13 +996,70 @@ pub fn main() {
     }
 
     #[test]
+    fn large_collision_bucket_preserves_aliases_across_updates_and_callbacks() {
+        let mut execution = collision_execution(
+            r#"
+import host/collision
+
+fn fill(next: Int, dict: Dict(collision.CollisionKey, Int)) {
+  case next {
+    384 -> dict
+    _ -> fill(next + 1, do_insert(collision.new(next), next, dict))
+  }
+}
+
+pub fn main() {
+  let original = fill(0, new())
+  let alias = original
+  assert size(original) == 384
+  assert do_fold(fn(_, value, total) { total + value }, 0, original) == 73536
+
+  let replaced = do_insert(collision.new(192), 1192, original)
+  assert size(replaced) == 384
+  assert get(alias, collision.new(192)) == Ok(192)
+  assert get(replaced, collision.new(192)) == Ok(1192)
+
+  let transient = to_transient(replaced)
+  let transient = transient_delete(collision.new(0), transient)
+  let transient = transient_delete(collision.new(192), transient)
+  let remaining = from_transient(transient_delete(collision.new(383), transient))
+  assert size(remaining) == 381
+  assert get(remaining, collision.new(0)) == Error(Nil)
+  assert get(remaining, collision.new(192)) == Error(Nil)
+  assert get(remaining, collision.new(383)) == Error(Nil)
+  assert get(remaining, collision.new(1)) == Ok(1)
+  assert get(remaining, collision.new(382)) == Ok(382)
+  assert do_fold(fn(_, value, total) { total + value }, 0, remaining) == 72961
+
+  let mapped = do_map_values(fn(_, value) { value * 2 }, remaining)
+  assert size(mapped) == 381
+  assert get(mapped, collision.new(100)) == Ok(200)
+  assert do_fold(fn(_, value, total) { total + value }, 0, mapped) == 145922
+  assert get(alias, collision.new(0)) == Ok(0)
+  assert get(alias, collision.new(192)) == Ok(192)
+  assert get(alias, collision.new(383)) == Ok(383)
+  assert size(alias) == 384
+  Nil
+}
+"#,
+        );
+        let mut state = CollisionRunState {
+            stdlib: GleamStdlibRunState::from_seed([0; 32]),
+            keys: (),
+        };
+        let actual = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
+            .expect("large collision buckets should retain immutable versions");
+        assert_eq!(actual.inspect().to_string(), "Nil");
+    }
+
+    #[test]
     fn preserves_nested_host_failure_identity_during_dict_callbacks() {
         let failure =
             HostModule::<GleamStdlibProfile>::new_for_profile("gleam_stdlib", "host/failure")
                 .expect("failure module should be valid")
                 .with_fallible_function(
                     "reject",
-                    |_: EcoString, _: BigInt| -> Result<BigInt, HostFailure> {
+                    |_: geam_core::StringValue, _: BigInt| -> Result<BigInt, HostFailure> {
                         Err(HostFailure::new("value is unavailable"))
                     },
                 )
@@ -1036,7 +1092,10 @@ pub fn main() {
                 .expect("failure module should be valid")
                 .with_fallible_function(
                     "reject",
-                    |_: EcoString, _: BigInt, _: BigInt| -> Result<BigInt, HostFailure> {
+                    |_: geam_core::StringValue,
+                     _: BigInt,
+                     _: BigInt|
+                     -> Result<BigInt, HostFailure> {
                         Err(HostFailure::new("fold is unavailable"))
                     },
                 )

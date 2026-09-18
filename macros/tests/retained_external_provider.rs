@@ -301,9 +301,9 @@ fn retained_external_payloads_share_old_entries_and_restore_exact_specialization
     assert_eq!(
         returned,
         RuntimeValue::Tuple(vec![
-            RuntimeValue::String(EcoString::from("empty")),
-            RuntimeValue::String(EcoString::from("low")),
-            RuntimeValue::String(EcoString::from("high")),
+            RuntimeValue::String("empty".into()),
+            RuntimeValue::String("low".into()),
+            RuntimeValue::String("high".into()),
             RuntimeValue::Int(1.into()),
             RuntimeValue::Int(2.into()),
             RuntimeValue::Bool(true),

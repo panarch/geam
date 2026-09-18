@@ -1,4 +1,4 @@
-use ecow::EcoString;
+use crate::StringValue;
 use num_bigint::BigInt;
 
 use super::{EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedValue};
@@ -36,7 +36,7 @@ pub(in crate::runtime) enum EvaluatedCaptureKind {
     },
     String {
         local: StringLocalId,
-        value: EcoString,
+        value: StringValue,
     },
     BitArray {
         local: BitArrayLocalId,
@@ -201,7 +201,7 @@ impl EvaluatedCapture {
         Self::from_kind(EvaluatedCaptureKind::Float { local, value })
     }
 
-    pub(in crate::runtime) fn string(local: StringLocalId, value: EcoString) -> Self {
+    pub(in crate::runtime) fn string(local: StringLocalId, value: StringValue) -> Self {
         Self::from_kind(EvaluatedCaptureKind::String { local, value })
     }
 
@@ -368,7 +368,7 @@ pub fn main() {
         let function_value: EvaluatedIntFunction = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::Int,

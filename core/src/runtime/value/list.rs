@@ -1,4 +1,4 @@
-use ecow::EcoString;
+use crate::StringValue;
 use num_bigint::BigInt;
 use thiserror::Error;
 
@@ -24,7 +24,7 @@ pub struct ListValueItemTypeMismatch {
 pub(super) enum ListValueKind {
     Parameter(TypeParameterId),
     Int(Vec<BigInt>),
-    String(Vec<EcoString>),
+    String(Vec<StringValue>),
     BitArray(Vec<BitArrayValue>),
     UtfCodepoint(Vec<char>),
     Custom {
@@ -59,7 +59,7 @@ impl ListValue {
         }
     }
 
-    pub fn string(values: Vec<EcoString>) -> Self {
+    pub fn string(values: Vec<StringValue>) -> Self {
         Self {
             kind: ListValueKind::String(values),
         }

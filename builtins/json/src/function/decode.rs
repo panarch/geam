@@ -8,7 +8,7 @@ use crate::schema::{
     UnexpectedByte, UnexpectedEndOfInput, UnexpectedSequence,
 };
 use crate::{BitArrayValue, HostCall, HostCallCompletion, HostExternal, HostProvider};
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::provider::{ProviderConstructions, ProviderValue};
 use geam_core::provider::{ProviderRootOutputValue, ProviderValueForms};
 use geam_stdlib::provider_support::Dynamic;
@@ -57,7 +57,7 @@ where
                 self.json.bytes(),
             )
         } else {
-            Err(DecodeFailure::Byte(EcoString::new()))
+            Err(DecodeFailure::Byte(StringValue::new()))
         };
         match decoded {
             Ok(value) => Ok(call.return_custom::<JsonDynamicOk>((value, ()))),
@@ -89,8 +89,8 @@ where
 enum ParseFrame<'call> {
     Array(Vec<HostExternal<'call, Dynamic>>),
     Object {
-        entries: Vec<(EcoString, HostExternal<'call, Dynamic>)>,
-        pending_key: EcoString,
+        entries: Vec<(StringValue, HostExternal<'call, Dynamic>)>,
+        pending_key: StringValue,
     },
 }
 
@@ -122,9 +122,9 @@ where
         } else if next == Peek::String {
             let value = parser
                 .known_str()
-                .map(EcoString::from)
+                .map(StringValue::from)
                 .map_err(|error| DecodeFailure::from_jiter(input, error))?;
-            builder.scalar::<EcoString>(value)
+            builder.scalar::<StringValue>(value)
         } else if next == Peek::Array {
             match parser
                 .known_array()
@@ -140,7 +140,7 @@ where
         } else if next == Peek::Object {
             match parser
                 .known_object()
-                .map(|key| key.map(EcoString::from))
+                .map(|key| key.map(StringValue::from))
                 .map_err(|error| DecodeFailure::from_jiter(input, error))?
             {
                 Some(pending_key) => {
@@ -198,7 +198,7 @@ where
                     entries.push((pending_key, value));
                     match parser
                         .next_key()
-                        .map(|key| key.map(EcoString::from))
+                        .map(|key| key.map(StringValue::from))
                         .map_err(|error| DecodeFailure::from_jiter(input, error))?
                     {
                         Some(next_key) => {
@@ -230,14 +230,14 @@ fn parse_number(number: &[u8]) -> Result<ParsedNumber, DecodeFailure> {
             return Err(DecodeFailure::Byte(
                 number
                     .first()
-                    .map_or_else(EcoString::new, |byte| format!("0x{byte:02X}").into()),
+                    .map_or_else(StringValue::new, |byte| format!("0x{byte:02X}").into()),
             ));
         };
         return Ok(ParsedNumber::Int(value));
     }
 
     let Ok(text) = std::str::from_utf8(number) else {
-        return Err(DecodeFailure::Byte(EcoString::new()));
+        return Err(DecodeFailure::Byte(StringValue::new()));
     };
     let Ok(value) = text.parse::<f64>() else {
         return Err(DecodeFailure::overflow(number));

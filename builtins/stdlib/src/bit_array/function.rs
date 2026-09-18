@@ -5,11 +5,11 @@ pub(super) use self::codec::{base16_decode, base16_encode, base64_encode, decode
 pub(super) use self::slice::slice;
 
 use crate::{BitArrayValue, HostFailure};
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::provider_support::bit_array_pad_to_bytes;
 use num_bigint::{BigInt, Sign};
 
-pub(super) fn from_string(value: EcoString) -> BitArrayValue {
+pub(super) fn from_string(value: StringValue) -> BitArrayValue {
     BitArrayValue::from_bytes(value.as_bytes().to_vec())
 }
 
@@ -25,12 +25,12 @@ pub(super) fn pad_to_bytes(value: BitArrayValue) -> BitArrayValue {
     bit_array_pad_to_bytes(&value)
 }
 
-pub(super) fn unsafe_to_string(value: BitArrayValue) -> Result<EcoString, HostFailure> {
+pub(super) fn unsafe_to_string(value: BitArrayValue) -> Result<StringValue, HostFailure> {
     if !value.bit_len().is_multiple_of(8) {
         return Err(HostFailure::new("bit array is not byte-aligned UTF-8"));
     }
     std::str::from_utf8(value.bytes())
-        .map(EcoString::from)
+        .map(StringValue::from)
         .map_err(|_| HostFailure::new("bit array is not valid UTF-8"))
 }
 

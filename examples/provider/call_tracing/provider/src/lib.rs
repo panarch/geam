@@ -1,8 +1,8 @@
-use geam::provider::{Call, Callback, EcoString, HostResult, Value};
+use geam::provider::{Call, Callback, HostResult, StringValue, Value};
 
 #[derive(Default)]
 pub struct RunState {
-    entries: Vec<EcoString>,
+    entries: Vec<StringValue>,
 }
 
 #[geam::provider(
@@ -14,17 +14,17 @@ pub struct Component;
 
 #[geam::module(path = "example_call_tracing")]
 mod call_tracing {
-    use super::{Call, Callback, EcoString, HostResult, RunState, Value};
+    use super::{Call, Callback, HostResult, RunState, StringValue, Value};
 
     #[geam::function]
-    fn record(#[geam::call] call: &mut Call<RunState>, entry: EcoString) -> () {
+    fn record(#[geam::call] call: &mut Call<RunState>, entry: StringValue) -> () {
         call.state_mut().entries.push(entry);
     }
 
     #[geam::function(await)]
     async fn record_later(
         #[geam::call] call: &mut Call<RunState>,
-        entry: EcoString,
+        entry: StringValue,
     ) -> HostResult<()> {
         tokio::time::sleep(std::time::Duration::from_millis(1)).await;
         call.with_state(move |state| state.entries.push(entry))
@@ -46,7 +46,7 @@ mod call_tracing {
     }
 
     #[geam::function]
-    fn entries(#[geam::call] call: &Call<RunState>) -> Vec<EcoString> {
+    fn entries(#[geam::call] call: &Call<RunState>) -> Vec<StringValue> {
         call.state().entries.clone()
     }
 }

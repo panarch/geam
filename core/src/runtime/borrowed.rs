@@ -1,7 +1,7 @@
+use crate::StringValue;
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedCustomValue, EvaluatedValue};
 use crate::runtime::state::list::{ListValueId, ParameterListValueId, StoredListValueId};
 use crate::runtime::{EvaluatedExternalValue, StoredRuntimeValue};
-use ecow::EcoString;
 use num_bigint::BigInt;
 use std::slice;
 
@@ -12,7 +12,7 @@ use std::slice;
 pub(crate) struct BorrowedValue<'value> {
     ints: &'value [BigInt],
     floats: &'value [f64],
-    strings: &'value [EcoString],
+    strings: &'value [StringValue],
     bit_arrays: &'value [EvaluatedBitArray],
     utf_codepoints: &'value [char],
     bools: &'value [bool],
@@ -53,7 +53,7 @@ impl<'value> BorrowedValue<'value> {
     pub(crate) fn float(&self) -> f64 {
         self.floats[0]
     }
-    pub(crate) fn string(&self) -> &'value EcoString {
+    pub(crate) fn string(&self) -> &'value StringValue {
         &self.strings[0]
     }
     pub(crate) fn bit_array(&self) -> &'value crate::BitArrayValue {
@@ -194,7 +194,7 @@ mod tests {
         let mut providers = WorkComponent::providers::<Profile>().expect("Future module");
         providers.push(HostProviderModule::new("application", "library")
             .expect("native module")
-            .with_scoped_function::<WorkComponent, (HostListType<HostTypeParameter<0>>, ecow::EcoString), (), _>("check", check_list)
+            .with_scoped_function::<WorkComponent, (HostListType<HostTypeParameter<0>>, crate::StringValue), (), _>("check", check_list)
             .expect("generic list observer"));
         let program = crate::frontend::compile_typed_host_program(
             "application",
@@ -266,7 +266,7 @@ pub fn run() {
     fn check_list<'call>(
         mut call: crate::host::HostCall<'call, Profile, crate::work_fixture::WorkComponent, ()>,
         values: crate::host::HostList<'call, crate::host::HostTypeParameter<0>>,
-        expected: ecow::EcoString,
+        expected: crate::StringValue,
     ) -> Result<crate::host::HostCallCompletion<'call, ()>, crate::HostCallError> {
         assert_eq!(call.state(), &());
         let stored = call

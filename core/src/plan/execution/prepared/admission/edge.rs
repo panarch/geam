@@ -14,6 +14,7 @@ pub(super) enum EdgeError {
     Arity { expected: usize, found: usize },
     Argument { index: usize },
     Binding { index: usize },
+    Transfer(super::transfer::TransferError),
 }
 
 pub(super) fn matched<'data, Graph: ExecutionGraphProfile>(
@@ -49,7 +50,7 @@ pub(super) fn matched<'data, Graph: ExecutionGraphProfile>(
             }
         }
     }
-    Ok(())
+    super::transfer::matched(edge, parameters, locals).map_err(EdgeError::Transfer)
 }
 
 pub(super) fn regular<'data, Graph: ExecutionGraphProfile>(
@@ -70,7 +71,7 @@ pub(super) fn regular<'data, Graph: ExecutionGraphProfile>(
         let source = argument.read(locals).map_err(EdgeError::Local)?;
         transfer(source, expected, index, locals, types)?;
     }
-    Ok(())
+    super::transfer::arguments(&edge.transfer, &edge.args, locals).map_err(EdgeError::Transfer)
 }
 
 fn transfer(
@@ -92,7 +93,8 @@ fn transfer(
 #[cfg(test)]
 mod tests {
     use super::{BlockError, Blocks, Edge, EdgeError, Locals, Types, regular};
-    use crate::plan::execution::graph::{BlockId, Terminator};
+    use crate::plan::execution::graph::{BlockId, Terminator, Transfer};
+    use crate::plan::execution::storage::Table;
 
     #[test]
     fn verifies_real_branch_arguments_before_entering_a_block() {
@@ -123,6 +125,9 @@ mod tests {
                         let missing = Edge {
                             target: BlockId(usize::MAX),
                             args: edge.args.clone(),
+                            transfer: Transfer {
+                                families: Table::Static(&[]),
+                            },
                         };
                         assert_eq!(
                             regular(&missing, &blocks, &locals, &types),
@@ -131,6 +136,9 @@ mod tests {
                         let empty = Edge {
                             target: edge.target,
                             args: Vec::new().into(),
+                            transfer: Transfer {
+                                families: Table::Static(&[]),
+                            },
                         };
                         assert_eq!(
                             regular(&empty, &blocks, &locals, &types),
@@ -218,11 +226,29 @@ mod tests {
             MatchEdgeArgument::Binding(0),
             MatchEdgeArgument::Value(inputs[0].local.clone()),
         ] {
+            let (selected, position) = match argument {
+                MatchEdgeArgument::Binding(_) => (vec![0], 1),
+                MatchEdgeArgument::Value(_) => (vec![], 0),
+            };
             assert_eq!(
                 matched(
                     &MatchEdge {
                         target: BlockId(0),
-                        args: vec![argument].into()
+                        args: vec![argument].into(),
+                        bindings: selected.into(),
+                        transfer: Transfer {
+                            families: vec![
+                                crate::plan::execution::graph::FamilyTransfer {
+                                    family: crate::plan::execution::graph::StorageFamily::Int,
+                                    positions: vec![position].into(),
+                                },
+                                crate::plan::execution::graph::FamilyTransfer {
+                                    family: crate::plan::execution::graph::StorageFamily::Bool,
+                                    positions: Vec::new().into(),
+                                },
+                            ]
+                            .into(),
+                        },
                     },
                     &bindings,
                     &blocks,
@@ -238,6 +264,10 @@ mod tests {
                 MatchEdge {
                     target: BlockId(99),
                     args: vec![].into(),
+                    bindings: Vec::new().into(),
+                    transfer: Transfer {
+                        families: Table::Static(&[]),
+                    },
                 },
                 EdgeError::Block(BlockError::Missing { index: 99 }),
             ),
@@ -245,6 +275,10 @@ mod tests {
                 MatchEdge {
                     target: BlockId(0),
                     args: vec![].into(),
+                    bindings: Vec::new().into(),
+                    transfer: Transfer {
+                        families: Table::Static(&[]),
+                    },
                 },
                 EdgeError::Arity {
                     expected: 1,
@@ -255,6 +289,10 @@ mod tests {
                 MatchEdge {
                     target: BlockId(0),
                     args: vec![MatchEdgeArgument::Binding(99)].into(),
+                    bindings: Vec::new().into(),
+                    transfer: Transfer {
+                        families: Table::Static(&[]),
+                    },
                 },
                 EdgeError::Binding { index: 99 },
             ),
@@ -262,6 +300,10 @@ mod tests {
                 MatchEdge {
                     target: BlockId(0),
                     args: vec![MatchEdgeArgument::Value(missing.clone())].into(),
+                    bindings: Vec::new().into(),
+                    transfer: Transfer {
+                        families: Table::Static(&[]),
+                    },
                 },
                 EdgeError::Local(LocalError::Missing(Address::of(&missing))),
             ),
@@ -269,6 +311,10 @@ mod tests {
                 MatchEdge {
                     target: BlockId(0),
                     args: vec![MatchEdgeArgument::Value(inputs[1].local.clone())].into(),
+                    bindings: Vec::new().into(),
+                    transfer: Transfer {
+                        families: Table::Static(&[]),
+                    },
                 },
                 EdgeError::Argument { index: 0 },
             ),
@@ -283,7 +329,11 @@ mod tests {
             matched(
                 &MatchEdge {
                     target: BlockId(0),
-                    args: vec![MatchEdgeArgument::Binding(0)].into()
+                    args: vec![MatchEdgeArgument::Binding(0)].into(),
+                    bindings: Vec::new().into(),
+                    transfer: Transfer {
+                        families: Table::Static(&[])
+                    },
                 },
                 &bool_bindings,
                 &blocks,
@@ -296,7 +346,10 @@ mod tests {
             regular(
                 &Edge {
                     target: BlockId(0),
-                    args: vec![missing.clone()].into()
+                    args: vec![missing.clone()].into(),
+                    transfer: Transfer {
+                        families: Table::Static(&[])
+                    },
                 },
                 &blocks,
                 &locals,
@@ -308,7 +361,10 @@ mod tests {
             regular(
                 &Edge {
                     target: BlockId(0),
-                    args: vec![inputs[1].local.clone()].into()
+                    args: vec![inputs[1].local.clone()].into(),
+                    transfer: Transfer {
+                        families: Table::Static(&[])
+                    },
                 },
                 &blocks,
                 &locals,
@@ -339,6 +395,9 @@ mod tests {
                     &Edge {
                         target: BlockId(0),
                         args: vec![inputs[0].local.clone()].into(),
+                        transfer: Transfer {
+                            families: Table::Static(&[]),
+                        },
                     },
                     &blocks,
                     &locals,
@@ -348,6 +407,10 @@ mod tests {
                     &MatchEdge {
                         target: BlockId(0),
                         args: vec![MatchEdgeArgument::Binding(0)].into(),
+                        bindings: Vec::new().into(),
+                        transfer: Transfer {
+                            families: Table::Static(&[]),
+                        },
                     },
                     &bindings,
                     &blocks,

@@ -1,6 +1,7 @@
 use super::work_fixture::{WorkComponent, WorkType};
 use geam_core::embedding::{
-    BigInt, FunctionDeclaration, HostedModuleBuilder, List, PreparedHostedModule,
+    BigInt, CustomType, FunctionDeclaration, HostedModuleBuilder, List, NamedTypeSchema,
+    PreparedHostedModule,
 };
 use geam_core::host::{
     HostComponentProfile, HostFutureStore, HostProfile, HostProviderSet, HostWorkProfile,
@@ -33,7 +34,54 @@ pub fn hosts() -> HostProviderSet<Profile> {
 }
 
 pub fn prepare() -> PreparedHostedModule {
-    let program = geam_core::compile_typed_host_program(
+    let (mut bindings, _) = HostedModuleBuilder::new(program())
+        .unwrap()
+        .function(FunctionDeclaration::<(BigInt,), WorkType<BigInt>>::new(
+            "make",
+        ))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(BigInt,), WorkType<List<BigInt>>>::new("collect"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(WorkType<BigInt>,), WorkType<BigInt>>::new("keep"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(), WorkType<BigInt>>::new("failure"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(BigInt,), Captured>::new("capture"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(Captured, BigInt), Captured>::new(
+            "extend",
+        ))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(Captured,), (bool, bool)>::new(
+            "identities",
+        ))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(Captured,), WorkType<BigInt>>::new(
+            "invoke",
+        ))
+        .unwrap();
+    bindings.prepare().unwrap()
+}
+
+pub struct CapturedSchema;
+
+impl NamedTypeSchema for CapturedSchema {
+    const PACKAGE: &'static str = "app";
+    const MODULE: &'static str = "app";
+    const NAME: &'static str = "Captured";
+}
+
+pub type Captured = CustomType<CapturedSchema>;
+
+pub fn program() -> geam_core::HostedTypedProgram<Profile> {
+    geam_core::compile_typed_host_program(
         "app",
         "app",
         [
@@ -58,23 +106,7 @@ pub fn prepare() -> PreparedHostedModule {
         ],
         hosts(),
     )
-    .unwrap();
-    let (mut bindings, _) = HostedModuleBuilder::new(program)
-        .unwrap()
-        .function(FunctionDeclaration::<(BigInt,), WorkType<BigInt>>::new(
-            "make",
-        ))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BigInt,), WorkType<List<BigInt>>>::new("collect"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(WorkType<BigInt>,), WorkType<BigInt>>::new("keep"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(), WorkType<BigInt>>::new("failure"))
-        .unwrap();
-    bindings.prepare().unwrap()
+    .unwrap()
 }
 
 pub fn prepare_entry(module: &str) -> geam_core::PreparedHostedEntry {

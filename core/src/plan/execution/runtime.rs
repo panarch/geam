@@ -115,8 +115,8 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
         self.value_metadata().custom_value_type(id)
     }
 
-    fn shape_value_type(&self, id: ValueShapeId) -> ValueType {
-        self.program().common.value_shapes.value_type(id).clone()
+    fn shape_value_type(&self, id: ValueShapeId) -> &ValueType {
+        self.program().common.value_shapes.value_type(id)
     }
 
     fn custom_constructor(

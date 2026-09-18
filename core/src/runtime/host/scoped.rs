@@ -14,7 +14,6 @@ use crate::runtime::state::list::{
     CustomListAllocation, ExternalListAllocation, ListValueId, ParameterListValueId,
     StoredListValueId,
 };
-use ecow::EcoString;
 use num_bigint::BigInt;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -24,7 +23,7 @@ use std::sync::Arc;
 pub(super) struct ScopedValues {
     ints: Vec<BigInt>,
     floats: Vec<f64>,
-    strings: Vec<EcoString>,
+    strings: Vec<crate::StringValue>,
     bit_arrays: Vec<EvaluatedBitArray>,
     utf_codepoints: Vec<char>,
     bools: Vec<bool>,
@@ -247,7 +246,7 @@ impl<'value> StoredRuntimeListItem<'value> {
         self.values.take_float(self.token)
     }
 
-    pub(crate) fn into_string(self) -> EcoString {
+    pub(crate) fn into_string(self) -> crate::StringValue {
         self.values.take_string(self.token)
     }
 
@@ -826,7 +825,7 @@ impl ScopedValues {
         self.floats[value.index]
     }
 
-    pub(super) fn string(&self, value: HostValueToken) -> EcoString {
+    pub(super) fn string(&self, value: HostValueToken) -> crate::StringValue {
         self.strings[value.index].clone()
     }
 
@@ -850,7 +849,7 @@ impl ScopedValues {
         self.floats.swap_remove(value.index)
     }
 
-    fn take_string(&mut self, value: HostValueToken) -> EcoString {
+    fn take_string(&mut self, value: HostValueToken) -> crate::StringValue {
         self.strings.swap_remove(value.index)
     }
 
@@ -944,10 +943,11 @@ mod tests {
         use crate::runtime::evaluated::{EvaluatedCapture, EvaluatedIntFunction};
 
         let captured = num_bigint::BigInt::from(1u8) << 1024usize;
+        let storage = crate::runtime::CaptureStorage::default();
         let function = EvaluatedIntFunction::closure(
             IntFunctionId(0),
             Vec::new(),
-            vec![EvaluatedCapture::int(IntLocalId(0), captured.clone())],
+            storage.capture(vec![EvaluatedCapture::int(IntLocalId(0), captured.clone())]),
             FunctionType::new(Vec::new(), ValueType::Int),
         );
         let original_captures = function.captures().as_ptr();
@@ -980,6 +980,7 @@ mod tests {
     }
 
     use super::{ScopedValues, StoredRuntimeListItem, StoredRuntimeValue};
+    use crate::StringValue;
     use crate::host::HostCustomToken;
     use crate::host::test::{StatelessTestProvider, TestTypeParameter, stateless_identity};
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
@@ -991,7 +992,6 @@ mod tests {
         HostTypeListEnd, HostedExecution, ModuleSource, PackageSource, StatelessHostProfile, Value,
         compile_typed_host_program, plan_host_program,
     };
-    use ecow::EcoString;
     use num_bigint::BigInt;
 
     #[test]
@@ -1083,7 +1083,7 @@ mod tests {
         assert_eq!(
             StoredRuntimeListItem::new(&mut values, EvaluatedValue::String("text".into()),)
                 .into_string(),
-            EcoString::from("text"),
+            StringValue::from("text"),
         );
         assert_eq!(
             StoredRuntimeListItem::new(
@@ -1129,7 +1129,7 @@ mod tests {
         let stored_equal =
             |_: &crate::runtime::RetainedValueRef, _: &crate::runtime::RetainedValueRef| false;
         let stored_hash = |_: &crate::runtime::RetainedValueRef| 0;
-        let stored_inspect = |_: &crate::runtime::RetainedValueRef| EcoString::from("7");
+        let stored_inspect = |_: &crate::runtime::RetainedValueRef| ecow::EcoString::from("7");
         let equality = crate::host::RetainedValueEquality::new(&stored_equal);
         let hashing = crate::host::RetainedValueHashing::new(&stored_hash);
         let inspection = crate::host::RetainedValueInspection::new(&stored_inspect);
@@ -1148,7 +1148,7 @@ mod tests {
         let second = tuple.take_item(1).into_string();
         let first = tuple.take_item(0).into_int();
         assert_eq!(first, BigInt::from(1),);
-        assert_eq!(second, EcoString::from("second"));
+        assert_eq!(second, StringValue::from("second"));
     }
 
     #[test]
@@ -1219,7 +1219,7 @@ mod tests {
         type Sixth = HostTypeList<bool, Seventh>;
         type Fifth = HostTypeList<char, Sixth>;
         type Fourth = HostTypeList<BitArrayValue, Fifth>;
-        type Third = HostTypeList<EcoString, Fourth>;
+        type Third = HostTypeList<StringValue, Fourth>;
         type Second = HostTypeList<f64, Third>;
         type Elements = HostTypeList<BigInt, Second>;
         type Tuple = HostTupleType<Elements>;
@@ -1238,7 +1238,7 @@ mod tests {
                 && call.equal::<Tuple>(value, value)
                 && call.equal::<BigInt>(int, 1.into())
                 && call.equal::<f64>(float, 1.5)
-                && call.equal::<EcoString>(string, "text".into())
+                && call.equal::<StringValue>(string, "text".into())
                 && call.equal::<BitArrayValue>(bits, BitArrayValue::from_bytes(vec![1]))
                 && call.equal::<char>(codepoint, 'A')
                 && call.equal::<bool>(bool_, true)
@@ -1276,7 +1276,7 @@ pub fn main() {
             "main",
             [PackageSource::new(
                 "application",
-                Vec::<EcoString>::new(),
+                Vec::<ecow::EcoString>::new(),
                 [ModuleSource::new("main", "src/main.gleam", source)],
             )],
             HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
@@ -1308,7 +1308,7 @@ pub fn main() {
         let function = crate::runtime::evaluated::EvaluatedNilFunction::reference(
             crate::plan::execution::function::NilFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::Nil,

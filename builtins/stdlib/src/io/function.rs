@@ -1,37 +1,39 @@
 use super::{IoOutput, IoSink, IoStream};
-use ecow::EcoString;
+use geam_core::StringValue;
 
-pub(super) fn print<Io>(io: &mut Io, text: EcoString)
+pub(super) fn print<Io>(io: &mut Io, text: StringValue)
 where
     Io: IoSink,
 {
     emit(io, IoStream::Stdout, text);
 }
 
-pub(super) fn print_error<Io>(io: &mut Io, text: EcoString)
+pub(super) fn print_error<Io>(io: &mut Io, text: StringValue)
 where
     Io: IoSink,
 {
     emit(io, IoStream::Stderr, text);
 }
 
-pub(super) fn println<Io>(io: &mut Io, mut text: EcoString)
+pub(super) fn println<Io>(io: &mut Io, text: StringValue)
 where
     Io: IoSink,
 {
+    let mut text = text.into_ecostring();
     text.push('\n');
-    emit(io, IoStream::Stdout, text);
+    emit(io, IoStream::Stdout, text.into());
 }
 
-pub(super) fn println_error<Io>(io: &mut Io, mut text: EcoString)
+pub(super) fn println_error<Io>(io: &mut Io, text: StringValue)
 where
     Io: IoSink,
 {
+    let mut text = text.into_ecostring();
     text.push('\n');
-    emit(io, IoStream::Stderr, text);
+    emit(io, IoStream::Stderr, text.into());
 }
 
-fn emit<Io>(io: &mut Io, stream: IoStream, text: EcoString)
+fn emit<Io>(io: &mut Io, stream: IoStream, text: StringValue)
 where
     Io: IoSink,
 {

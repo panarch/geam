@@ -1,12 +1,12 @@
 use super::{HostCustomIdentity, HostCustomSchema, HostCustomType, HostCustomTypeSchema};
 use super::{HostSchemaType, collect_custom_type_schema};
 use crate::BitArrayValue;
+use crate::StringValue;
 use crate::host::{
     HostAbiType, HostExternalSchema, HostExternalType, HostExternalTypeSchema, HostFunctionType,
     HostListType, HostTupleType, HostType, HostTypeAt, HostTypeIndex0, HostTypeIndexNext,
     HostTypeList, HostTypeListEnd, HostTypeSequence,
 };
-use ecow::EcoString;
 use num_bigint::BigInt;
 use std::collections::HashSet;
 use std::marker::PhantomData;
@@ -64,7 +64,7 @@ trait AtomicCustomFieldType: HostAbiType {}
 
 impl AtomicCustomFieldType for BigInt {}
 impl AtomicCustomFieldType for f64 {}
-impl AtomicCustomFieldType for EcoString {}
+impl AtomicCustomFieldType for StringValue {}
 impl AtomicCustomFieldType for BitArrayValue {}
 impl AtomicCustomFieldType for char {}
 impl AtomicCustomFieldType for bool {}

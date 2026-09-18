@@ -10,7 +10,7 @@ pub struct IntegerLiteral {
 
 impl IntegerLiteral {
     pub(crate) fn materialize(&self) -> BigInt {
-        BigInt::new(self.sign, self.digits.to_vec())
+        BigInt::from_slice(self.sign, &self.digits)
     }
 
     pub(crate) fn matches(&self, value: &BigInt) -> bool {
@@ -78,6 +78,64 @@ mod tests {
         assert!(!IntegerLiteral::from(BigInt::from(42)).matches(&BigInt::from(-42)));
         assert!(!IntegerLiteral::from(BigInt::from(42)).matches(&BigInt::from(43)));
         assert!(!IntegerLiteral::from(BigInt::from(42)).matches(&(BigInt::from(1) << 64)));
+    }
+
+    #[test]
+    fn materializes_owned_and_static_digits_as_independent_values() {
+        const CASES: &[(Sign, &[u32], &str)] = &[
+            (Sign::NoSign, &[], "0"),
+            (Sign::Plus, &[1], "1"),
+            (Sign::Minus, &[1], "-1"),
+            (Sign::Plus, &[u32::MAX], "4294967295"),
+            (Sign::Minus, &[u32::MAX], "-4294967295"),
+            (Sign::Plus, &[0, 1], "4294967296"),
+            (Sign::Minus, &[0, 1], "-4294967296"),
+            (Sign::Plus, &[u32::MAX, u32::MAX], "18446744073709551615"),
+            (Sign::Minus, &[u32::MAX, u32::MAX], "-18446744073709551615"),
+            (Sign::Plus, &[0, 0, 1], "18446744073709551616"),
+            (Sign::Minus, &[0, 0, 1], "-18446744073709551616"),
+            (
+                Sign::Plus,
+                &[1, 0, 0, 0, 0, 0, 0, 0, 1],
+                "115792089237316195423570985008687907853269984665640564039457584007913129639937",
+            ),
+            (
+                Sign::Minus,
+                &[1, 0, 0, 0, 0, 0, 0, 0, 1],
+                "-115792089237316195423570985008687907853269984665640564039457584007913129639937",
+            ),
+        ];
+
+        for &(sign, digits, text) in CASES {
+            let expected: BigInt = text.parse().unwrap();
+            for storage in [Table::from(digits.to_vec()), Table::Static(digits)] {
+                let pointer = storage.as_ptr();
+                let kind = std::mem::discriminant(&storage);
+                let literal = IntegerLiteral {
+                    sign,
+                    digits: storage,
+                };
+                let mut first = literal.materialize();
+                let second = literal.materialize();
+                assert_eq!(first, expected);
+                assert_eq!(second, expected);
+
+                first += 1;
+                assert_eq!(first, &expected + 1);
+                assert_eq!(second, expected);
+                assert_eq!(literal.materialize(), expected);
+                assert!(literal.matches(&expected));
+                assert_eq!(literal.to_string(), text);
+                assert_eq!(literal.sign, sign);
+                assert_eq!(&*literal.digits, digits);
+                assert!(std::ptr::eq(literal.digits.as_ptr(), pointer));
+                assert_eq!(std::mem::discriminant(&literal.digits), kind);
+
+                drop(first);
+                drop(literal);
+                assert_eq!(second, expected);
+            }
+        }
     }
 
     #[test]

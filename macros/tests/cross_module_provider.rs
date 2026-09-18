@@ -1,7 +1,7 @@
 #[path = "../../tests/support/execution_host.rs"]
 mod execution_fixture;
 
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::{
     HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
     HostProviderComponentRegistration, HostProviderSet, HostedExecution, ModuleSource,
@@ -18,11 +18,11 @@ pub struct Component;
 
 #[geam_macros::module(path = "declarations", crate_path = geam_core)]
 mod declarations {
-    use super::{BigInt, EcoString};
+    use super::{BigInt, StringValue};
 
     #[geam_macros::external(name = "Token")]
     #[derive(Clone, PartialEq, Eq, Hash)]
-    pub struct Token(pub(super) EcoString);
+    pub struct Token(pub(super) StringValue);
 
     #[geam_macros::custom(input = StatusInput)]
     pub enum Status {
@@ -34,7 +34,7 @@ mod declarations {
 
 #[geam_macros::module(path = "consumer", crate_path = geam_core)]
 mod consumer {
-    use super::{BigInt, EcoString, declarations};
+    use super::{BigInt, StringValue, declarations};
 
     #[geam_macros::custom(input = EnvelopeInput)]
     enum Envelope {
@@ -56,12 +56,12 @@ mod consumer {
     }
 
     #[geam_macros::function]
-    fn token(value: EcoString) -> declarations::Token {
+    fn token(value: StringValue) -> declarations::Token {
         declarations::Token(value)
     }
 
     #[geam_macros::function]
-    fn status_text(value: declarations::StatusInput) -> EcoString {
+    fn status_text(value: declarations::StatusInput) -> StringValue {
         match value {
             declarations::StatusInput::Ready => "ready".into(),
             declarations::StatusInput::Count(value) => format!("count:{value}").into(),
@@ -70,7 +70,7 @@ mod consumer {
     }
 
     #[geam_macros::function]
-    fn token_text(value: &declarations::Token) -> EcoString {
+    fn token_text(value: &declarations::Token) -> StringValue {
         value.0.clone()
     }
 
@@ -95,7 +95,7 @@ mod consumer {
     }
 
     #[geam_macros::function]
-    fn wrapped_token(value: EcoString) -> Envelope {
+    fn wrapped_token(value: StringValue) -> Envelope {
         Envelope::Token(declarations::Token(value))
     }
 
@@ -105,12 +105,12 @@ mod consumer {
     }
 
     #[geam_macros::function]
-    fn tokens(value: EcoString) -> Envelope {
+    fn tokens(value: StringValue) -> Envelope {
         Envelope::Tokens(vec![declarations::Token(value)])
     }
 
     #[geam_macros::function]
-    fn envelope_text(value: EnvelopeInput) -> EcoString {
+    fn envelope_text(value: EnvelopeInput) -> StringValue {
         match value {
             EnvelopeInput::One(value) => format!("one:{}", status_text(value)).into(),
             EnvelopeInput::Many(values) => {
@@ -132,12 +132,12 @@ mod consumer {
     }
 
     #[geam_macros::function]
-    fn first(values: geam_core::List<declarations::StatusInput>) -> EcoString {
+    fn first(values: geam_core::List<declarations::StatusInput>) -> StringValue {
         values.get(0).map_or_else(|| "missing".into(), status_text)
     }
 
     #[geam_macros::function]
-    fn first_envelope(values: geam_core::List<EnvelopeInput>) -> EcoString {
+    fn first_envelope(values: geam_core::List<EnvelopeInput>) -> StringValue {
         values
             .get(0)
             .map_or_else(|| "missing".into(), envelope_text)

@@ -1,7 +1,6 @@
 use super::{HostSchemaType, HostType, HostTypeDescriptor, private};
-use crate::BitArrayValue;
 use crate::host::HostScopedValue;
-use ecow::EcoString;
+use crate::{BitArrayValue, StringValue};
 use num_bigint::BigInt;
 
 impl private::Sealed for BigInt {}
@@ -58,13 +57,13 @@ impl private::Abi for f64 {
     }
 }
 
-impl private::Sealed for EcoString {}
+impl private::Sealed for StringValue {}
 
-impl HostType for EcoString {
-    type Value<'call> = EcoString;
+impl HostType for StringValue {
+    type Value<'call> = StringValue;
 }
 
-impl private::Abi for EcoString {
+impl private::Abi for StringValue {
     fn descriptor() -> HostTypeDescriptor {
         HostTypeDescriptor::String
     }
@@ -196,11 +195,10 @@ impl private::Abi for () {
 #[cfg(test)]
 mod tests {
     use super::{HostSchemaType, HostTypeDescriptor};
-    use crate::BitArrayValue;
     use crate::host::function::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{HostAbiType, HostScopedValue, HostValueFamily, HostValueToken};
-    use ecow::EcoString;
+    use crate::{BitArrayValue, StringValue};
     use num_bigint::BigInt;
 
     #[test]
@@ -214,7 +212,7 @@ mod tests {
             HostTypeDescriptor::Float
         );
         assert_eq!(
-            <EcoString as HostAbiType>::descriptor(),
+            <StringValue as HostAbiType>::descriptor(),
             HostTypeDescriptor::String,
         );
         assert_eq!(
@@ -234,7 +232,7 @@ mod tests {
         assert_eq!(<BigInt as HostAbiType>::schema_type(), HostSchemaType::Int);
         assert_eq!(<f64 as HostAbiType>::schema_type(), HostSchemaType::Float);
         assert_eq!(
-            <EcoString as HostAbiType>::schema_type(),
+            <StringValue as HostAbiType>::schema_type(),
             HostSchemaType::String,
         );
         assert_eq!(
@@ -257,7 +255,7 @@ mod tests {
             HostScopedValue::Float(1.5),
         );
         assert_eq!(
-            <EcoString as HostAbiType>::into_scoped("one".into()),
+            <StringValue as HostAbiType>::into_scoped("one".into()),
             HostScopedValue::String("one".into()),
         );
         assert_eq!(
@@ -291,7 +289,7 @@ mod tests {
             0.0,
         );
         assert_eq!(
-            crate::host::type_::from_token::<EcoString, TestHostProfile>(&runtime, token),
+            crate::host::type_::from_token::<StringValue, TestHostProfile>(&runtime, token),
             "",
         );
         assert_eq!(

@@ -8,7 +8,7 @@ pub(crate) use input::{
     EmbeddingCustomInput, EmbeddingInput, EmbeddingInputStorage, EmbeddingInputValue,
     EmbeddingListInput, EmbeddingTupleInput,
 };
-pub(crate) use list::EmbeddingList;
+pub(crate) use list::{EmbeddingList, EmbeddingListIter};
 pub(crate) use output::EmbeddingOutput;
 
 use super::error::HostCallOrigin;
@@ -48,7 +48,7 @@ pub(crate) fn run_embedded_string(
     function: StringFunctionId,
     inputs: RetainedValues,
     echo: &mut dyn EchoSink,
-) -> Result<ecow::EcoString, ExecutionError> {
+) -> Result<crate::StringValue, ExecutionError> {
     let mut state = RuntimeState::new(echo);
     function::run_string(plan, &mut state, function, HostCallOrigin::Entry, inputs)
 }

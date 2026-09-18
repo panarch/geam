@@ -1,7 +1,7 @@
 #[path = "../../tests/support/execution_host.rs"]
 mod execution_fixture;
 
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::{
     HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
     HostProviderComponentRegistration, HostProviderSet, HostedExecution, ModuleSource,
@@ -18,25 +18,25 @@ pub struct Component;
 
 #[geam_macros::module(path = "declarations", crate_path = geam_core)]
 mod declarations {
-    use super::EcoString;
+    use super::StringValue;
 
     #[geam_macros::external(name = "SharedToken")]
     #[derive(Clone, PartialEq, Eq, Hash)]
-    pub struct SharedToken(pub(super) EcoString);
+    pub struct SharedToken(pub(super) StringValue);
 
     #[geam_macros::custom(input = SharedProblemInput)]
     pub enum SharedProblem {
         Missing,
-        Label(EcoString),
+        Label(StringValue),
     }
 
     #[geam_macros::function]
-    fn shared_token(value: EcoString) -> SharedToken {
+    fn shared_token(value: StringValue) -> SharedToken {
         SharedToken(value)
     }
 
     #[geam_macros::function]
-    fn shared_problem(value: EcoString) -> SharedProblem {
+    fn shared_problem(value: StringValue) -> SharedProblem {
         if value.is_empty() {
             SharedProblem::Missing
         } else {
@@ -47,26 +47,26 @@ mod declarations {
 
 #[geam_macros::module(path = "prelude_values", crate_path = geam_core)]
 mod prelude_values {
-    use super::{BigInt, EcoString, declarations};
+    use super::{BigInt, StringValue, declarations};
 
     #[geam_macros::external(name = "Token")]
     #[derive(Clone, PartialEq, Eq, Hash)]
-    struct Token(EcoString);
+    struct Token(StringValue);
 
     #[geam_macros::custom(input = ParseErrorInput)]
     enum ParseError {
         Empty,
-        Invalid(EcoString),
+        Invalid(StringValue),
     }
 
     #[geam_macros::custom(input = OutcomeInput)]
     enum Outcome {
         Parsed(Result<BigInt, ParseError>),
-        Optional(Option<(EcoString, BigInt)>),
+        Optional(Option<(StringValue, BigInt)>),
     }
 
     #[geam_macros::function]
-    fn parse(value: EcoString) -> Result<BigInt, ParseError> {
+    fn parse(value: StringValue) -> Result<BigInt, ParseError> {
         if value.is_empty() {
             Err(ParseError::Empty)
         } else {
@@ -78,7 +78,7 @@ mod prelude_values {
     }
 
     #[geam_macros::function]
-    fn result_text(value: Result<BigInt, ParseErrorInput>) -> EcoString {
+    fn result_text(value: Result<BigInt, ParseErrorInput>) -> StringValue {
         match value {
             Ok(value) => format!("ok:{value}").into(),
             Err(ParseErrorInput::Empty) => "error:empty".into(),
@@ -87,12 +87,12 @@ mod prelude_values {
     }
 
     #[geam_macros::function]
-    fn optional(value: BigInt, keep: bool) -> Option<(EcoString, BigInt)> {
+    fn optional(value: BigInt, keep: bool) -> Option<(StringValue, BigInt)> {
         keep.then(|| ("kept".into(), value))
     }
 
     #[geam_macros::function]
-    fn option_text(value: Option<(EcoString, BigInt)>) -> EcoString {
+    fn option_text(value: Option<(StringValue, BigInt)>) -> StringValue {
         value.map_or_else(
             || "none".into(),
             |(label, value)| format!("some:{label}:{value}").into(),
@@ -100,7 +100,7 @@ mod prelude_values {
     }
 
     #[geam_macros::function]
-    fn token(value: EcoString) -> Result<Token, ParseError> {
+    fn token(value: StringValue) -> Result<Token, ParseError> {
         if value.is_empty() {
             Err(ParseError::Empty)
         } else {
@@ -109,7 +109,7 @@ mod prelude_values {
     }
 
     #[geam_macros::function]
-    fn token_text(value: Result<&Token, ParseErrorInput>) -> EcoString {
+    fn token_text(value: Result<&Token, ParseErrorInput>) -> StringValue {
         match value {
             Ok(value) => format!("token:{}", value.0).into(),
             Err(ParseErrorInput::Empty) => "token:empty".into(),
@@ -118,7 +118,7 @@ mod prelude_values {
     }
 
     #[geam_macros::function]
-    fn declared_problem_text(value: Option<declarations::SharedProblemInput>) -> EcoString {
+    fn declared_problem_text(value: Option<declarations::SharedProblemInput>) -> StringValue {
         match value {
             Some(declarations::SharedProblemInput::Missing) => "declared:missing".into(),
             Some(declarations::SharedProblemInput::Label(value)) => {
@@ -129,7 +129,7 @@ mod prelude_values {
     }
 
     #[geam_macros::function]
-    fn declared_token_text(value: Option<&declarations::SharedToken>) -> EcoString {
+    fn declared_token_text(value: Option<&declarations::SharedToken>) -> StringValue {
         value.map_or_else(
             || "shared:none".into(),
             |value| format!("shared:{}", value.0).into(),
@@ -145,12 +145,12 @@ mod prelude_values {
     }
 
     #[geam_macros::function]
-    fn optional_outcome(value: Option<(EcoString, BigInt)>) -> Outcome {
+    fn optional_outcome(value: Option<(StringValue, BigInt)>) -> Outcome {
         Outcome::Optional(value)
     }
 
     #[geam_macros::function]
-    fn outcome_text(value: OutcomeInput) -> EcoString {
+    fn outcome_text(value: OutcomeInput) -> StringValue {
         match value {
             OutcomeInput::Parsed(Ok(value)) => format!("parsed:{value}").into(),
             OutcomeInput::Parsed(Err(ParseErrorInput::Empty)) => "parsed:empty".into(),
@@ -165,7 +165,7 @@ mod prelude_values {
     }
 
     #[geam_macros::function]
-    fn result_items(values: geam_core::List<Result<BigInt, ParseErrorInput>>) -> EcoString {
+    fn result_items(values: geam_core::List<Result<BigInt, ParseErrorInput>>) -> StringValue {
         match values.get(0) {
             Some(Ok(value)) => format!("first:{value}").into(),
             Some(Err(ParseErrorInput::Empty)) => "first:empty".into(),
@@ -187,7 +187,7 @@ mod prelude_values {
     }
 
     #[geam_macros::function]
-    fn nested_result_text(value: (EcoString, Result<BigInt, ParseErrorInput>)) -> EcoString {
+    fn nested_result_text(value: (StringValue, Result<BigInt, ParseErrorInput>)) -> StringValue {
         match value {
             (label, Ok(value)) => format!("{label}:ok:{value}").into(),
             (label, Err(ParseErrorInput::Empty)) => format!("{label}:empty").into(),

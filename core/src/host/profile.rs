@@ -868,6 +868,7 @@ where
 mod tests {
     use super::{HostCall, HostProvider};
     use crate::BitArrayValue;
+    use crate::StringValue;
     use crate::embedding::{FunctionDeclaration, HostedModuleBuilder};
     use crate::frontend::compile_typed_host_program;
     use crate::host::function::CallArguments;
@@ -892,7 +893,6 @@ mod tests {
     use crate::provider::{ProviderListItemDecoder, ProviderListItemValue};
     use crate::work_fixture::{WorkComponent, WorkHostType, WorkSchema};
     use crate::{HostCallCompletion, HostCallError, HostExternal, ModuleSource, PackageSource};
-    use ecow::EcoString;
     use num_bigint::BigInt;
 
     struct Counter;
@@ -1156,7 +1156,7 @@ pub fn main() { #(active(), converted(42), converted(0)) }
             HostCall::<TestHostProfile, Counter, f64>::new(&mut runtime)
                 .return_value(1.5)
                 .token,
-            HostCall::<TestHostProfile, Counter, EcoString>::new(&mut runtime)
+            HostCall::<TestHostProfile, Counter, StringValue>::new(&mut runtime)
                 .return_value("text".into())
                 .token,
             HostCall::<TestHostProfile, Counter, BitArrayValue>::new(&mut runtime)
@@ -1321,8 +1321,8 @@ pub fn main() { #(active(), converted(42), converted(0)) }
             state
         }
     }
-    type Pair = HostTypeList<BigInt, HostTypeList<EcoString, HostTypeListEnd>>;
-    type Choice = ProviderResult<BigInt, EcoString>;
+    type Pair = HostTypeList<BigInt, HostTypeList<StringValue, HostTypeListEnd>>;
+    type Choice = ProviderResult<BigInt, StringValue>;
 
     fn inspect_data<'call>(
         mut call: HostCall<'call, Profile, WorkComponent, ()>,
@@ -1337,10 +1337,10 @@ pub fn main() { #(active(), converted(42), converted(0)) }
         assert_eq!(call.tuple_len(pair), 2);
         assert_eq!(
             call.tuple_values(pair),
-            (BigInt::from(42), (EcoString::from("answer"), ()))
+            (BigInt::from(42), (StringValue::from("answer"), ()))
         );
-        let ok = call.custom_fields::<ProviderOk<BigInt, EcoString>>(choice);
-        let error = call.custom_fields::<ProviderError<BigInt, EcoString>>(choice);
+        let ok = call.custom_fields::<ProviderOk<BigInt, StringValue>>(choice);
+        let error = call.custom_fields::<ProviderError<BigInt, StringValue>>(choice);
         assert_eq!(ok.is_some(), call.custom_constructor(choice) == 0);
         assert_eq!(error.is_some(), call.custom_constructor(choice) == 1);
         if let Some((value, ())) = ok {

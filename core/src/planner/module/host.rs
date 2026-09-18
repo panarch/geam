@@ -122,7 +122,7 @@ mod tests {
                 "consume",
                 |_: BigInt,
                  _: f64,
-                 _: EcoString,
+                 _: crate::StringValue,
                  _: crate::BitArrayValue,
                  _: char,
                  _: bool,

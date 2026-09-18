@@ -1,4 +1,4 @@
-use geam::provider::EcoString;
+use geam::provider::StringValue;
 
 #[geam::provider(
     package = "example_text_tools",
@@ -8,45 +8,45 @@ pub struct Component;
 
 #[geam::module(path = "example_text_tools")]
 mod text_tools {
-    use super::EcoString;
+    use super::StringValue;
 
     #[geam::function]
-    fn join(left: EcoString, separator: EcoString, right: EcoString) -> EcoString {
+    fn join(left: StringValue, separator: StringValue, right: StringValue) -> StringValue {
         format!("{left}{separator}{right}").into()
     }
 
     #[geam::function]
-    fn surround(value: EcoString, left: EcoString, right: EcoString) -> EcoString {
+    fn surround(value: StringValue, left: StringValue, right: StringValue) -> StringValue {
         format!("{left}{value}{right}").into()
     }
 }
 
 #[geam::module(path = "example_text_tools/casing")]
 mod casing {
-    use super::EcoString;
+    use super::StringValue;
 
     #[geam::function]
-    fn upper(value: EcoString) -> EcoString {
-        value.to_uppercase()
+    fn upper(value: StringValue) -> StringValue {
+        value.to_uppercase().into()
     }
 
     #[geam::function]
-    fn lower(value: EcoString) -> EcoString {
-        value.to_lowercase()
+    fn lower(value: StringValue) -> StringValue {
+        value.to_lowercase().into()
     }
 }
 
 #[geam::module(path = "example_text_tools/checks")]
 mod checks {
-    use super::EcoString;
+    use super::StringValue;
 
     #[geam::function]
-    fn starts_with(value: EcoString, prefix: EcoString) -> bool {
+    fn starts_with(value: StringValue, prefix: StringValue) -> bool {
         value.starts_with(prefix.as_str())
     }
 
     #[geam::function]
-    fn ends_with(value: EcoString, suffix: EcoString) -> bool {
+    fn ends_with(value: StringValue, suffix: StringValue) -> bool {
         value.ends_with(suffix.as_str())
     }
 }

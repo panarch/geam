@@ -1,4 +1,4 @@
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::{
     BitArrayValue, ExecutionError, HostCall, HostCallCompletion, HostCallError, HostCallable,
     HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
@@ -79,10 +79,10 @@ fn invoke_float<'call>(
 }
 
 fn invoke_string<'call>(
-    call: HostCall<'call, StatelessHostProfile, Provider, EcoString>,
+    call: HostCall<'call, StatelessHostProfile, Provider, StringValue>,
     constructions: geam_core::HostConstructions<'call, HostTypeListEnd>,
-    function: HostCallable<'call, NoArguments, EcoString>,
-) -> Result<geam_core::HostCallContinuation<'call, EcoString>, HostCallError> {
+    function: HostCallable<'call, NoArguments, StringValue>,
+) -> Result<geam_core::HostCallContinuation<'call, StringValue>, HostCallError> {
     let function = call.owned_callable(function, &constructions);
     Ok(call.resume(constructions, move |context| {
         Box::pin(async move {
@@ -351,7 +351,7 @@ fn invokes_every_successful_callback_return_family() {
             invoke_float,
         )
         .expect("Float callback should register")
-        .with_resumable_function::<Provider, (HostFunctionType<NoArguments, EcoString>,), EcoString, geam_core::HostTypeListEnd, _>(
+        .with_resumable_function::<Provider, (HostFunctionType<NoArguments, StringValue>,), StringValue, geam_core::HostTypeListEnd, _>(
             "invoke_string",
             invoke_string,
         )

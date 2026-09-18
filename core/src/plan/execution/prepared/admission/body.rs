@@ -57,6 +57,7 @@ pub(super) enum ExitError {
     Call(CallError),
     Source(SourceError),
     ReturnType,
+    Transfer(super::transfer::TransferError),
 }
 
 pub(super) trait Tail {
@@ -162,8 +163,13 @@ where
                 let value = value.read(locals).map_err(ExitError::Local)?;
                 return_value(locals.value(value), contract.return_, context.types)
             }
-            FunctionExit::TailCall { function, args } => {
-                function.check(family, args, contract.return_, locals, context)
+            FunctionExit::TailCall {
+                function,
+                args,
+                transfer,
+            } => {
+                function.check(family, args, contract.return_, locals, context)?;
+                super::transfer::arguments(transfer, args, locals).map_err(ExitError::Transfer)
             }
         }
     })?;
@@ -481,6 +487,27 @@ mod tests {
                 }),
             ),
             (
+                Vec::new(),
+                Terminator::Exit(BlockGraphExitId(0)),
+                vec![FunctionExit::TailCall {
+                    function: FunctionCallTarget::new(
+                        IntFunctionId(99),
+                        HostCallSite::new("example".into(), "main".into(), SourceSpan::new(16, 18)),
+                    ),
+                    args: Vec::new().into(),
+                    transfer: crate::plan::execution::graph::Transfer {
+                        families: crate::plan::execution::storage::Table::Static(&[]),
+                    },
+                }],
+                Err(BodyError::Exit {
+                    block: 0,
+                    error: ExitError::Call(CallError::Catalog(CatalogError::MissingFunction {
+                        family: FunctionTableFamily::Int,
+                        index: 99,
+                    })),
+                }),
+            ),
+            (
                 vec![literal()],
                 Terminator::Exit(BlockGraphExitId(99)),
                 vec![FunctionExit::Return(IntLocalId(0))],
@@ -501,7 +528,13 @@ mod tests {
             (
                 vec![literal()],
                 Terminator::Jump(Jump {
-                    edge: Edge::new(BlockId(99), Vec::new()),
+                    edge: Edge::new(
+                        BlockId(99),
+                        Vec::new(),
+                        crate::plan::execution::graph::Transfer {
+                            families: crate::plan::execution::storage::Table::Static(&[]),
+                        },
+                    ),
                 }),
                 vec![FunctionExit::Return(IntLocalId(0))],
                 Err(BodyError::Terminator {
@@ -717,6 +750,68 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn rejects_a_tail_exit_with_a_missing_transfer_family() {
+        use super::super::{tests::owned_mut, transfer::TransferError};
+        use super::{BodyError, ExitError, FunctionExit};
+        use crate::plan::execution::storage::Table;
+
+        let typed = crate::compile_typed_module(
+            "example",
+            "src/example.gleam",
+            "fn done(n) { n } pub fn main() { done(42) }",
+        )
+        .unwrap();
+        let mut plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let mut changed = Vec::new();
+        let tables = owned_mut(&mut plan.program.functions);
+        for (index, value) in owned_mut(&mut tables.value_returns.int_functions)
+            .iter_mut()
+            .enumerate()
+        {
+            for exit in owned_mut(&mut value.body.exits) {
+                if let FunctionExit::TailCall { transfer, .. } = exit {
+                    transfer.families = Table::Static(&[]);
+                    changed.push(index);
+                }
+            }
+        }
+        assert_eq!(changed.len(), 1);
+        let common = &plan.program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let catalog =
+            Catalog::admit(&common.function_parameters, &plan.program.functions, &types).unwrap();
+        let sources = Sources::admit(common.root, &common.modules).unwrap();
+        let context = Instructions {
+            types: &types,
+            catalog: &catalog,
+            constants: &common.constants,
+            sources: &sources,
+        };
+        let index = changed[0];
+        let value = &plan.program.functions.value_returns.int_functions[index];
+        assert_eq!(
+            function(
+                value.body(),
+                value.entry(),
+                FunctionTableFamily::Int,
+                &catalog.function(FunctionTableFamily::Int, index).unwrap(),
+                &context,
+            ),
+            Err(BodyError::Exit {
+                block: 0,
+                error: ExitError::Transfer(TransferError::Families),
+            }),
+        );
+    }
+
     #[test]
     fn checks_calls_matches_branches_and_exits_of_real_programs() {
         for source in [

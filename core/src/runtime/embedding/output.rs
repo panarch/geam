@@ -1,14 +1,14 @@
 use super::list::EmbeddingList;
+use crate::StringValue;
 use crate::runtime::EvaluatedCustomValue;
 use crate::runtime::evaluated::{EvaluatedExternalValue, EvaluatedFunctionValue, EvaluatedValue};
 use crate::runtime::state::list::{ParameterListValueId, StoredListValueId};
-use ecow::EcoString;
 use num_bigint::BigInt;
 
 pub(crate) struct EmbeddingOutput {
     ints: Vec<BigInt>,
     floats: Vec<f64>,
-    strings: Vec<EcoString>,
+    strings: Vec<StringValue>,
     bit_arrays: Vec<crate::BitArrayValue>,
     utf_codepoints: Vec<char>,
     customs: Vec<EvaluatedCustomValue>,
@@ -48,7 +48,7 @@ impl EmbeddingOutput {
         take_last(&mut self.floats)
     }
 
-    pub(crate) fn take_string(&mut self) -> EcoString {
+    pub(crate) fn take_string(&mut self) -> StringValue {
         take_last(&mut self.strings)
     }
 
@@ -188,7 +188,7 @@ pub fn main() {
         let function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             FunctionType::new(Vec::new(), ValueType::Int),
         );
         let mut output = EmbeddingOutput::empty();

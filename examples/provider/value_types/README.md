@@ -28,7 +28,7 @@ pub fn keep_nil(value: Nil) -> Nil
 ```
 
 The matching Rust signatures import Geam's boundary types from
-`geam::provider` and use `EcoString`, `BigInt`, `f64`, `BitArrayValue`, `char`,
+`geam::provider` and use `StringValue`, `BigInt`, `f64`, `BitArrayValue`, `char`,
 `bool`, and `()`, respectively:
 
 ```rust
@@ -68,14 +68,14 @@ Rust uses ordinary native tuples, including one-element and nested tuples:
 
 ```rust
 #[geam::function]
-fn wrap(value: EcoString) -> (EcoString,) {
+fn wrap(value: StringValue) -> (StringValue,) {
     (value,)
 }
 
 #[geam::function]
 fn reassociate(
-    value: (EcoString, (BigInt, bool)),
-) -> ((EcoString, BigInt), bool) {
+    value: (StringValue, (BigInt, bool)),
+) -> ((StringValue, BigInt), bool) {
     let (label, (count, enabled)) = value;
     ((label, count), enabled)
 }
@@ -99,7 +99,7 @@ and `get` decodes only the requested index. Returning the view preserves the
 original Gleam List handle; returning `Vec<T>` constructs one new Gleam List:
 
 ```rust
-use geam::provider::{BigInt, EcoString, List};
+use geam::provider::{BigInt, StringValue, List};
 
 #[geam::function]
 fn identity(values: List<BigInt>) -> List<BigInt> {
@@ -107,7 +107,7 @@ fn identity(values: List<BigInt>) -> List<BigInt> {
 }
 
 #[geam::function]
-fn reverse(values: List<EcoString>) -> Vec<EcoString> {
+fn reverse(values: List<StringValue>) -> Vec<StringValue> {
     (0..values.len())
         .rev()
         .map(|index| values.get(index).expect("index comes from the List length"))
@@ -128,12 +128,12 @@ the same directional custom decoding used elsewhere:
 
 ```rust
 #[geam::function]
-fn parse(value: EcoString) -> Result<BigInt, ParseError> {
+fn parse(value: StringValue) -> Result<BigInt, ParseError> {
     // ...
 }
 
 #[geam::function]
-fn describe(value: Result<BigInt, ParseErrorInput>) -> EcoString {
+fn describe(value: Result<BigInt, ParseErrorInput>) -> StringValue {
     // ...
 }
 ```
@@ -153,10 +153,10 @@ value:
 #[geam::custom(input = JobInput)]
 enum Job {
     Pending,
-    Named(EcoString),
-    Scheduled { label: EcoString, attempt: BigInt },
+    Named(StringValue),
+    Scheduled { label: StringValue, attempt: BigInt },
     Prioritized(Priority),
-    Tags(Vec<EcoString>),
+    Tags(Vec<StringValue>),
 }
 ```
 

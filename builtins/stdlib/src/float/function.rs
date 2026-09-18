@@ -1,13 +1,13 @@
 use super::parse::{format, parse_literal};
 use crate::HostFailure;
-use ecow::EcoString;
+use geam_core::StringValue;
 use num_bigint::BigInt;
 use num_traits::{FromPrimitive, ToPrimitive};
-pub(super) fn parse(source: EcoString) -> Result<f64, ()> {
+pub(super) fn parse(source: StringValue) -> Result<f64, ()> {
     parse_literal(&source).ok_or(())
 }
 
-pub(super) fn to_string(value: f64) -> EcoString {
+pub(super) fn to_string(value: f64) -> StringValue {
     format(value)
 }
 

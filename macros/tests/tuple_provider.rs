@@ -1,7 +1,7 @@
 #[path = "../../tests/support/execution_host.rs"]
 mod execution_fixture;
 
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::provider::{Call, Configuration};
 use geam_core::{
     HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
@@ -26,27 +26,27 @@ pub struct Component;
 
 #[geam_macros::module(path = "tuples", crate_path = geam_core)]
 mod tuples {
-    use super::{BigInt, Call, EcoString, RunState};
+    use super::{BigInt, Call, RunState, StringValue};
 
     #[geam_macros::external(name = "Tag")]
     #[derive(Clone, PartialEq, Eq, Hash)]
-    struct Tag(EcoString);
+    struct Tag(StringValue);
 
     #[geam_macros::function]
-    fn make_tagged(label: EcoString) -> (Tag, (EcoString,)) {
+    fn make_tagged(label: StringValue) -> (Tag, (StringValue,)) {
         (Tag(label.clone()), (label,))
     }
 
     #[geam_macros::function]
-    fn read_tagged((tag, (label,)): (&Tag, (EcoString,))) -> EcoString {
+    fn read_tagged((tag, (label,)): (&Tag, (StringValue,))) -> StringValue {
         format!("{}:{label}", tag.0).into()
     }
 
     #[geam_macros::function]
     fn reassociate(
         #[geam_macros::call] call: &mut Call<RunState>,
-        (label, (count, enabled)): (EcoString, (BigInt, bool)),
-    ) -> ((EcoString, BigInt), bool) {
+        (label, (count, enabled)): (StringValue, (BigInt, bool)),
+    ) -> ((StringValue, BigInt), bool) {
         let state = call.state_mut();
         state.transformations += 1;
         ((label, count), enabled)

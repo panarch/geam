@@ -79,5 +79,5 @@ pub use runtime::{
     CustomValue, EchoLocation, EchoOutput, EchoSink, ExecutionError, ExternalValue,
     ExternalValueIdentity, FunctionValue, HostError, HostLocation, HostOrigin, InvariantError,
     ListValue, ListValueItemTypeMismatch, Panic, PanicDetails, PanicKind, PanicMessage, PanicValue,
-    Value, ValueInspection, run_main,
+    StringValue, Value, ValueInspection, run_main,
 };

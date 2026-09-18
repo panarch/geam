@@ -1,7 +1,7 @@
 #[path = "../../tests/support/execution_host.rs"]
 mod execution_fixture;
 
-use ecow::EcoString;
+use geam_core::StringValue;
 use geam_core::provider::{Configuration, ExternalPayload};
 use geam_core::{
     HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
@@ -23,12 +23,12 @@ pub struct Component;
 
 #[geam_macros::module(path = "metrics", crate_path = geam_core)]
 mod metrics {
-    use super::{BTreeMap, BigInt, DefaultHasher, EcoString, ExternalPayload, Hash, Hasher};
+    use super::{BTreeMap, BigInt, DefaultHasher, ExternalPayload, Hash, Hasher, StringValue};
 
     #[geam_macros::external(name = "Metrics", manual)]
     #[derive(Clone, Default, PartialEq)]
     pub(super) struct Metrics {
-        entries: BTreeMap<EcoString, Metric>,
+        entries: BTreeMap<StringValue, Metric>,
     }
 
     #[derive(Clone, Default, PartialEq)]
@@ -52,7 +52,7 @@ mod metrics {
             hasher.finish()
         }
 
-        fn inspect(&self) -> EcoString {
+        fn inspect(&self) -> ecow::EcoString {
             let entries = self
                 .entries
                 .iter()
@@ -72,12 +72,12 @@ mod metrics {
     }
 
     #[geam_macros::function]
-    pub(super) fn record(metrics: &Metrics, name: EcoString, value: f64) -> Metrics {
+    pub(super) fn record(metrics: &Metrics, name: StringValue, value: f64) -> Metrics {
         metrics.record(name, value)
     }
 
     impl Metrics {
-        pub(super) fn record(&self, name: EcoString, value: f64) -> Self {
+        pub(super) fn record(&self, name: StringValue, value: f64) -> Self {
             let mut updated = self.clone();
             let metric = updated.entries.entry(name).or_default();
             metric.count += 1u8;
@@ -87,7 +87,7 @@ mod metrics {
     }
 
     #[geam_macros::function]
-    fn count(metrics: &Metrics, name: EcoString) -> BigInt {
+    fn count(metrics: &Metrics, name: StringValue) -> BigInt {
         metrics
             .entries
             .get(&name)
@@ -96,7 +96,7 @@ mod metrics {
     }
 
     #[geam_macros::function]
-    fn total(metrics: &Metrics, name: EcoString) -> f64 {
+    fn total(metrics: &Metrics, name: StringValue) -> f64 {
         metrics
             .entries
             .get(&name)
@@ -216,7 +216,10 @@ fn execution(source: &str) -> Result<HostedExecution<Profile>, PlanError> {
 fn macro_authored_external_schema_and_function_shapes_are_exact() {
     assert_eq!(Component::ID, "geam-macros");
     assert_eq!(Component::initialize(&Configuration::empty()), Ok(()));
-    let configured = Configuration::new(BTreeMap::from([(EcoString::from("unused"), true.into())]));
+    let configured = Configuration::new(BTreeMap::from([(
+        ecow::EcoString::from("unused"),
+        true.into(),
+    )]));
     let error = Component::initialize(&configured)
         .expect_err("default initialization must reject unused configuration");
     assert_eq!(error.component_id(), "geam-macros");

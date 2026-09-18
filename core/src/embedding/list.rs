@@ -23,10 +23,12 @@ use std::sync::Arc;
 /// A foreign retained input returns [`super::CallError::ForeignValue`] before
 /// source execution or mutable host state access.
 ///
-/// [`Self::len`] and [`Self::is_empty`] are O(1). Reading an item decodes only
-/// that item; [`Self::to_vec`] explicitly materializes one List layer. Nested
-/// List items still retain their own source handles and need explicit
-/// materialization before they can become fresh Vec inputs for another owner.
+/// [`Self::len`] and [`Self::is_empty`] are O(1). [`Self::get`] locates an item
+/// in O(log n) and decodes only that item. [`Self::iter`] traverses the storage
+/// in O(n), plus item decoding; [`Self::to_vec`] explicitly materializes one
+/// List layer. Nested List items still retain their own source handles and
+/// need explicit materialization before they can become fresh Vec inputs for
+/// another owner.
 ///
 /// Retained lists own immutable source storage and can be moved or shared
 /// between threads when their Rust item type permits it:
@@ -62,7 +64,7 @@ pub struct List<T> {
 /// An iterator that decodes retained List items only as they are requested.
 pub struct Iter<'a, T> {
     list: &'a List<T>,
-    indices: std::ops::Range<usize>,
+    values: crate::runtime::EmbeddingListIter<'a>,
 }
 
 #[allow(private_bounds)]
@@ -81,6 +83,8 @@ where
     }
 
     /// Decodes one item, returning None for an out-of-range index.
+    ///
+    /// Locating the item takes O(log n), excluding its decoding cost.
     pub fn get(&self, index: usize) -> Option<T> {
         self.value
             .item(index)
@@ -88,10 +92,12 @@ where
     }
 
     /// Iterates over owned Rust items without materializing the whole list.
+    ///
+    /// Traversing the storage takes O(n), excluding item decoding.
     pub fn iter(&self) -> Iter<'_, T> {
         Iter {
             list: self,
-            indices: 0..self.len(),
+            values: self.value.iter(),
         }
     }
 
@@ -108,7 +114,9 @@ where
     type Item = T;
 
     fn next(&mut self) -> Option<T> {
-        self.indices.next().and_then(|index| self.list.get(index))
+        self.values
+            .next()
+            .map(|mut output| T::take(&mut output, &self.list.owner))
     }
 }
 
@@ -278,8 +286,8 @@ mod tests {
     use crate::compile_typed_module;
     use crate::embedding::value::{Arguments, ReturnValue};
     use crate::embedding::{
-        BigInt, BitArrayValue, CallError, EcoString, Function, FunctionDeclaration, ModuleBindings,
-        ModuleBuilder,
+        BigInt, BitArrayValue, CallError, Function, FunctionDeclaration, ModuleBindings,
+        ModuleBuilder, StringValue,
     };
 
     fn library(source: &str) -> ModuleBuilder {
@@ -316,7 +324,7 @@ pub fn nils(values: List(Nil)) { values }
             ))
             .expect("first List entry should bind");
         let floats = bind::<(List<f64>,), List<f64>>(&mut bindings, "floats");
-        let strings = bind::<(List<EcoString>,), List<EcoString>>(&mut bindings, "strings");
+        let strings = bind::<(List<StringValue>,), List<StringValue>>(&mut bindings, "strings");
         let bits = bind::<(List<BitArrayValue>,), List<BitArrayValue>>(&mut bindings, "bits");
         let codepoints = bind::<(List<char>,), List<char>>(&mut bindings, "codepoints");
         let bools = bind::<(List<bool>,), List<bool>>(&mut bindings, "bools");
@@ -339,7 +347,7 @@ pub fn nils(values: List(Nil)) { values }
             module
                 .call(
                     &strings,
-                    (vec![EcoString::from("first"), "second".into()],),
+                    (vec![StringValue::from("first"), "second".into()],),
                     &mut echo
                 )
                 .expect("strings")
@@ -384,14 +392,14 @@ pub fn nils(values: List(Nil)) { values }
     #[test]
     fn reads_lazily_and_passes_a_retained_list_back_without_decoding() {
         let (bindings, keep) = library("pub fn keep(values: List(String)) { values }")
-            .function(FunctionDeclaration::<(List<EcoString>,), List<EcoString>>::new("keep"))
+            .function(FunctionDeclaration::<(List<StringValue>,), List<StringValue>>::new("keep"))
             .expect("list function should bind");
         let module = bindings.seal();
         let mut echo = Vec::new();
         let values = module
             .call(
                 &keep,
-                (vec![EcoString::from("one"), "two".into(), "three".into()],),
+                (vec![StringValue::from("one"), "two".into(), "three".into()],),
                 &mut echo,
             )
             .expect("fresh list");
@@ -422,7 +430,7 @@ pub fn nils(values: List(Nil)) { values }
         assert_eq!(retained.value.item_reads(), 3);
 
         let empty = module
-            .call(&keep, (Vec::<EcoString>::new(),), &mut echo)
+            .call(&keep, (Vec::<StringValue>::new(),), &mut echo)
             .expect("empty list");
         assert!(empty.is_empty());
         assert_eq!(empty.iter().next(), None);
@@ -432,6 +440,39 @@ pub fn nils(values: List(Nil)) { values }
         drop(module);
         assert_eq!(values.to_vec(), ["one", "two", "three"]);
         assert_eq!(retained.get(2), Some("three".into()));
+    }
+
+    #[test]
+    fn cursor_crosses_chunks_without_eager_decoding() {
+        let (bindings, keep) = library("pub fn keep(values: List(String)) { values }")
+            .function(FunctionDeclaration::<(List<StringValue>,), List<StringValue>>::new("keep"))
+            .expect("list entry");
+        let module = bindings.seal();
+        let mut echo = Vec::new();
+
+        for len in [0, 1, 2, 63, 64, 65, 127, 128, 129, 1_000] {
+            let expected: Vec<StringValue> = (0..len).map(|n| format!("item {n}").into()).collect();
+            let values = module
+                .call(&keep, (expected.clone(),), &mut echo)
+                .expect("fresh list");
+            let alias = module
+                .call(&keep, (&values,), &mut echo)
+                .expect("retained list");
+            assert!(values.value.same_allocation(&alias.value));
+            let mut iter = values.iter();
+            assert_eq!(values.value.item_reads(), 0);
+            for (index, expected) in expected.iter().enumerate() {
+                assert_eq!(iter.next().as_ref(), Some(expected));
+                assert_eq!(values.value.item_reads(), index + 1);
+            }
+            assert_eq!(iter.next(), None);
+            assert_eq!(values.value.item_reads(), len);
+            assert_eq!(alias.value.item_reads(), 0);
+            for index in (0..len).rev() {
+                assert_eq!(alias.get(index).as_ref(), expected.get(index));
+            }
+        }
+        assert!(echo.is_empty());
     }
 
     #[test]
@@ -445,15 +486,17 @@ pub fn grouped(values: List(#(Int, List(Result(Int, String))))) { values }
 "#,
         )
         .function(FunctionDeclaration::<
-            (List<List<EcoString>>,),
-            List<List<EcoString>>,
+            (List<List<StringValue>>,),
+            List<List<StringValue>>,
         >::new("nested"))
         .expect("nested lists should bind");
-        let rows =
-            bind::<(List<(EcoString, BigInt)>,), List<(EcoString, BigInt)>>(&mut bindings, "rows");
-        type CheckedRow = Result<(EcoString, BigInt), EcoString>;
+        let rows = bind::<(List<(StringValue, BigInt)>,), List<(StringValue, BigInt)>>(
+            &mut bindings,
+            "rows",
+        );
+        type CheckedRow = Result<(StringValue, BigInt), StringValue>;
         let checked = bind::<(List<CheckedRow>,), List<CheckedRow>>(&mut bindings, "checked");
-        type Group = (BigInt, List<Result<BigInt, EcoString>>);
+        type Group = (BigInt, List<Result<BigInt, StringValue>>);
         let grouped = bind::<(List<Group>,), List<Group>>(&mut bindings, "grouped");
         let module = bindings.seal();
         let mut echo = Vec::new();
@@ -462,7 +505,7 @@ pub fn grouped(values: List(#(Int, List(Result(Int, String))))) { values }
             .call(
                 &nested,
                 (vec![
-                    vec![EcoString::from("first")],
+                    vec![StringValue::from("first")],
                     vec![],
                     vec!["last".into()],
                 ],),
@@ -482,7 +525,7 @@ pub fn grouped(values: List(#(Int, List(Result(Int, String))))) { values }
         drop(retained);
 
         let row_values = vec![
-            (EcoString::from("A"), BigInt::from(2)),
+            (StringValue::from("A"), BigInt::from(2)),
             ("B".into(), 3.into()),
         ];
         assert_eq!(
@@ -515,7 +558,7 @@ pub fn grouped(values: List(#(Int, List(Result(Int, String))))) { values }
                 (vec![
                     (
                         BigInt::from(1),
-                        vec![Ok(BigInt::from(7)), Err(EcoString::from("bad"))],
+                        vec![Ok(BigInt::from(7)), Err(StringValue::from("bad"))],
                     ),
                     (2.into(), vec![]),
                 ],),
@@ -563,7 +606,7 @@ pub fn optional(input: Result(List(Int), String), fallback: List(Int)) {
             ))
             .expect("second owner");
         let inspect = bind::<(List<BigInt>,), BigInt>(&mut bindings, "inspect");
-        let optional = bind::<(Result<List<BigInt>, EcoString>, List<BigInt>), BigInt>(
+        let optional = bind::<(Result<List<BigInt>, StringValue>, List<BigInt>), BigInt>(
             &mut bindings,
             "optional",
         );
@@ -577,12 +620,12 @@ pub fn optional(input: Result(List(Int), String), fallback: List(Int)) {
         let accepted = target
             .call(&target_values, (values.to_vec(),), &mut echo)
             .expect("explicit cross-owner copy");
-        let branch: Result<&List<BigInt>, EcoString> = Ok(&values);
+        let branch: Result<&List<BigInt>, StringValue> = Ok(&values);
         assert_eq!(
             target.call(&optional, (branch, &accepted), &mut echo),
             Err(CallError::ForeignValue)
         );
-        let branch: Result<Vec<BigInt>, EcoString> = Err("use fallback".into());
+        let branch: Result<Vec<BigInt>, StringValue> = Err("use fallback".into());
         assert_eq!(
             target.call(&optional, (branch, &values), &mut echo),
             Err(CallError::ForeignValue)

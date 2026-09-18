@@ -9,8 +9,8 @@ use crate::schema::{
     TimerSchema,
 };
 use crate::{Component, GleamErlangHostProfile, reference};
-use ecow::EcoString;
 use futures_util::future::BoxFuture;
+use geam_core::StringValue;
 use geam_core::host::native::{NativeCall, NativeRules};
 use geam_core::host::{
     HostCall, HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
@@ -47,7 +47,7 @@ pub(crate) fn host_provider<Profile: GleamErlangHostProfile>()
         .and_then(|module| module.with_scoped_function::<Component<Profile>, (), Pid, _>("self", current::<Profile>))
         .and_then(|module| module.with_scoped_function::<Component<Profile>, (HostFunctionType<HostTypeListEnd, A>,), Pid, _>("spawn", spawn::<Profile>))
         .and_then(|module| module.with_scoped_function::<Component<Profile>, (HostFunctionType<HostTypeListEnd, A>,), Pid, _>("spawn_unlinked", spawn_unlinked::<Profile>))
-        .and_then(|module| module.with_scoped_function::<Component<Profile>, (EcoString,), Name<A>, _>("new_name", new_name::<Profile>))
+        .and_then(|module| module.with_scoped_function::<Component<Profile>, (StringValue,), Name<A>, _>("new_name", new_name::<Profile>))
         .and_then(|module| module.with_scoped_function::<Component<Profile>, (Pid, A), DoNotLeak, _>("raw_send", raw_send::<Profile>))
         .and_then(|module| module.with_resumable_native_function::<Component<Profile>, (Subject<A>, BigInt), GleamResult<A, ()>, One<GleamResult<A, ()>>, _>("perform_receive", native_rules(), mailbox::receive::<Profile>))
         .and_then(|module| module.with_resumable_native_function::<Component<Profile>, (Subject<A>,), A, One<A>, _>("receive_forever", native_rules(), mailbox::receive_forever::<Profile>))
@@ -143,7 +143,7 @@ fn spawn<'call, Profile: GleamErlangHostProfile>(
 
 fn new_name<'call, Profile: GleamErlangHostProfile>(
     mut call: Call<'call, Profile, Name<A>>,
-    prefix: EcoString,
+    prefix: StringValue,
 ) -> Result<HostCallCompletion<'call, Name<A>>, HostCallError> {
     let name = format!("{prefix}${}", ReferenceId::new().number()).into();
     let name = Profile::erlang_execution(call.execution_state()).intern(name)?;

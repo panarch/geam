@@ -1,3 +1,9 @@
+mod transfer;
+mod value;
+
+pub(in crate::runtime) use value::GraphValue;
+
+use crate::StringValue;
 use crate::host::{
     HostBitArrayArgumentSlot, HostBoolArgumentSlot, HostCallArguments, HostFloatArgumentSlot,
     HostIntArgumentSlot, HostNilArgumentSlot, HostStringArgumentSlot, HostUtfCodepointArgumentSlot,
@@ -30,14 +36,13 @@ use crate::runtime::state::list::{
     ParameterListListValueId, ParameterListValueId, StoredListValueId, StringListValueId,
     TupleListValueId, UtfCodepointListValueId,
 };
-use ecow::EcoString;
 use num_bigint::BigInt;
 
 #[derive(Default)]
 struct BlockValues {
     ints: Vec<BigInt>,
     floats: Vec<f64>,
-    strings: Vec<EcoString>,
+    strings: Vec<StringValue>,
     bit_arrays: Vec<EvaluatedBitArray>,
     utf_codepoints: Vec<char>,
     customs: Vec<EvaluatedCustomValue>,
@@ -198,11 +203,11 @@ impl BlockEnvironment {
         self.values.floats[local.0]
     }
 
-    pub(super) fn push_string(&mut self, value: EcoString) {
+    pub(super) fn push_string(&mut self, value: StringValue) {
         self.values.strings.push(value);
     }
 
-    pub(super) fn string(&self, local: StringLocalId) -> EcoString {
+    pub(super) fn string(&self, local: StringLocalId) -> StringValue {
         self.values.strings[local.0].clone()
     }
 
@@ -618,21 +623,21 @@ impl BlockEnvironment {
     pub(super) fn push_function_value(&mut self, value: EvaluatedFunctionValue) {
         use crate::runtime::EvaluatedFunctionValueKind as F;
 
-        match value.kind() {
-            F::Generic(value) => self.push_generic_function(value.clone()),
-            F::Never(value) => self.push_never_function(value.clone()),
-            F::Int(value) => self.push_int_function(value.clone()),
-            F::Float(value) => self.push_float_function(value.clone()),
-            F::String(value) => self.push_string_function(value.clone()),
-            F::BitArray(value) => self.push_bit_array_function(value.clone()),
-            F::UtfCodepoint(value) => self.push_utf_codepoint_function(value.clone()),
-            F::Custom(value) => self.push_custom_function(value.clone()),
-            F::External(value) => self.push_external_function(value.clone()),
-            F::Bool(value) => self.push_bool_function(value.clone()),
-            F::Nil(value) => self.push_nil_function(value.clone()),
-            F::Tuple(value) => self.push_tuple_function(value.clone()),
-            F::List(value) => self.values.push_list_function(value.clone()),
-            F::Function(value) => self.push_function_function(value.clone()),
+        match value.into_kind() {
+            F::Generic(value) => self.push_generic_function(value),
+            F::Never(value) => self.push_never_function(value),
+            F::Int(value) => self.push_int_function(value),
+            F::Float(value) => self.push_float_function(value),
+            F::String(value) => self.push_string_function(value),
+            F::BitArray(value) => self.push_bit_array_function(value),
+            F::UtfCodepoint(value) => self.push_utf_codepoint_function(value),
+            F::Custom(value) => self.push_custom_function(value),
+            F::External(value) => self.push_external_function(value),
+            F::Bool(value) => self.push_bool_function(value),
+            F::Nil(value) => self.push_nil_function(value),
+            F::Tuple(value) => self.push_tuple_function(value),
+            F::List(value) => self.values.push_list_function(value),
+            F::Function(value) => self.push_function_function(value),
         }
     }
 
@@ -694,7 +699,7 @@ impl RetainedValues {
         self.values.floats.push(value);
     }
 
-    pub(in crate::runtime) fn push_string(&mut self, value: EcoString) {
+    pub(in crate::runtime) fn push_string(&mut self, value: StringValue) {
         self.values.strings.push(value);
     }
 
@@ -825,25 +830,25 @@ impl RetainedValues {
     pub(in crate::runtime) fn push_function(&mut self, value: EvaluatedFunctionValue) {
         use crate::runtime::EvaluatedFunctionValueKind as F;
 
-        match value.kind() {
-            F::Generic(value) => self.values.generic_functions.push(value.clone()),
-            F::Never(value) => self.values.never_functions.push(value.clone()),
-            F::Int(value) => self.values.int_functions.push(value.clone()),
-            F::Float(value) => self.values.float_functions.push(value.clone()),
-            F::String(value) => self.values.string_functions.push(value.clone()),
-            F::BitArray(value) => self.values.bit_array_functions.push(value.clone()),
-            F::UtfCodepoint(value) => self.values.utf_codepoint_functions.push(value.clone()),
-            F::Custom(value) => self.values.custom_functions.push(value.clone()),
-            F::External(value) => self.values.external_functions.push(value.clone()),
-            F::Bool(value) => self.values.bool_functions.push(value.clone()),
-            F::Nil(value) => self.values.nil_functions.push(value.clone()),
-            F::Tuple(value) => self.values.tuple_functions.push(value.clone()),
-            F::List(value) => self.values.push_list_function(value.clone()),
+        match value.into_kind() {
+            F::Generic(value) => self.values.generic_functions.push(value),
+            F::Never(value) => self.values.never_functions.push(value),
+            F::Int(value) => self.values.int_functions.push(value),
+            F::Float(value) => self.values.float_functions.push(value),
+            F::String(value) => self.values.string_functions.push(value),
+            F::BitArray(value) => self.values.bit_array_functions.push(value),
+            F::UtfCodepoint(value) => self.values.utf_codepoint_functions.push(value),
+            F::Custom(value) => self.values.custom_functions.push(value),
+            F::External(value) => self.values.external_functions.push(value),
+            F::Bool(value) => self.values.bool_functions.push(value),
+            F::Nil(value) => self.values.nil_functions.push(value),
+            F::Tuple(value) => self.values.tuple_functions.push(value),
+            F::List(value) => self.values.push_list_function(value),
             F::Function(EvaluatedFunctionFunction::Core(value)) => {
-                self.values.core_function_functions.push(value.clone());
+                self.values.core_function_functions.push(value);
             }
             F::Function(EvaluatedFunctionFunction::External(value)) => {
-                self.values.external_function_functions.push(value.clone());
+                self.values.external_function_functions.push(value);
             }
         }
     }
@@ -897,7 +902,7 @@ impl HostCallArguments for RetainedValues {
         self.values.floats[slot.index()]
     }
 
-    fn string(&self, slot: HostStringArgumentSlot) -> EcoString {
+    fn string(&self, slot: HostStringArgumentSlot) -> StringValue {
         self.values.strings[slot.index()].clone()
     }
 
@@ -951,9 +956,65 @@ mod tests {
     use crate::host::{
         HostFunctionDefinition, HostScopedValue, HostValueFamily, expect_value_implementation,
     };
-    use crate::plan::execution::graph::{IntLocalId, ParamLocal};
+    use crate::plan::execution::graph::{
+        BlockGraphExitId, FamilyTransfer, IntLocalId, ParamLocal, StorageFamily, Transfer,
+        TupleLocalId,
+    };
+    use crate::runtime::graph::CompletedGraph;
     use crate::runtime::{EvaluatedValue, ListValue, Value};
     use num_bigint::BigInt;
+
+    #[test]
+    fn completed_graph_handoff_reuses_its_owned_storage() {
+        let mut inputs = RetainedValues::empty();
+        inputs.push_int(10.into());
+        inputs.push_int(20.into());
+        inputs.push_string("discarded".into());
+        let environment = BlockEnvironment::from_retained(inputs);
+        let owner = std::ptr::from_ref(&*environment.values);
+        let integers = environment.values.ints.as_ptr();
+        let completed = CompletedGraph {
+            exit: BlockGraphExitId(0),
+            environment,
+        };
+        let retained = completed.into_retained(&Transfer {
+            families: vec![
+                FamilyTransfer {
+                    family: StorageFamily::Int,
+                    positions: vec![1, 1].into(),
+                },
+                FamilyTransfer {
+                    family: StorageFamily::String,
+                    positions: Vec::new().into(),
+                },
+            ]
+            .into(),
+        });
+
+        assert_eq!(retained.values.ints, vec![20.into(), 10.into()]);
+        assert!(retained.values.strings.is_empty());
+        assert_eq!(std::ptr::from_ref(&*retained.values), owner);
+        assert_eq!(retained.values.ints.as_ptr(), integers);
+    }
+
+    #[test]
+    fn completed_graph_return_moves_the_tuple_buffer() {
+        let tuple = vec![EvaluatedValue::Int(42.into()), EvaluatedValue::Bool(true)];
+        let buffer = tuple.as_ptr();
+        let mut inputs = RetainedValues::empty();
+        inputs.push_tuple(tuple);
+        let completed = CompletedGraph {
+            exit: BlockGraphExitId(0),
+            environment: BlockEnvironment::from_retained(inputs),
+        };
+        let returned = completed.into_value(&TupleLocalId(0));
+
+        assert_eq!(
+            returned,
+            vec![EvaluatedValue::Int(42.into()), EvaluatedValue::Bool(true)]
+        );
+        assert_eq!(returned.as_ptr(), buffer);
+    }
 
     #[test]
     fn edge_retention_preserves_argument_order_and_omits_unselected_values() {

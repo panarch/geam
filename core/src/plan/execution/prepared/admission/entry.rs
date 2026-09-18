@@ -498,7 +498,7 @@ mod tests {
 
     #[test]
     fn every_plain_export_family_can_be_the_prepared_main_entry() {
-        use crate::embedding::{BitArrayValue, EcoString};
+        use crate::embedding::{BitArrayValue, StringValue};
 
         type Prepare = fn(ModuleBuilder) -> PreparedModule;
         let cases: [(&str, Prepare, FunctionReturnFamily); 10] = [
@@ -528,7 +528,7 @@ mod tests {
                 "pub fn main() { \"hello\" }",
                 |builder| {
                     builder
-                        .function(FunctionDeclaration::<(), EcoString>::new("main"))
+                        .function(FunctionDeclaration::<(), StringValue>::new("main"))
                         .unwrap()
                         .0
                         .prepare()
@@ -561,7 +561,7 @@ mod tests {
                 "pub fn main() -> Result(Int, String) { Ok(42) }",
                 |builder| {
                     builder
-                        .function(FunctionDeclaration::<(), Result<BigInt, EcoString>>::new(
+                        .function(FunctionDeclaration::<(), Result<BigInt, StringValue>>::new(
                             "main",
                         ))
                         .unwrap()
@@ -1141,8 +1141,8 @@ pub fn result(value: Result(Int, String)) { value }
             .unwrap();
         bindings
             .function(FunctionDeclaration::<
-                (Result<BigInt, ecow::EcoString>,),
-                Result<BigInt, ecow::EcoString>,
+                (Result<BigInt, crate::StringValue>,),
+                Result<BigInt, crate::StringValue>,
             >::new("result"))
             .unwrap();
         bindings.prepare()

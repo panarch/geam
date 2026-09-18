@@ -106,13 +106,13 @@ fn standalone_entries_preserve_generic_function_outer_work_and_source_failure_be
 #[test]
 fn incompatible_format_never_produces_a_prepared_binding_owner() {
     static INCOMPATIBLE: data::ModuleArtifact<std::convert::Infallible> = data::ModuleArtifact {
-        format: 0,
+        format: 1,
         ..include!("fixtures/prepared/arithmetic.rs")
     };
     let error = INCOMPATIBLE.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 0 is incompatible with format 1; regenerate the prepared program"
+        "prepared format 1 is incompatible with format 2; regenerate the prepared program"
     );
 }
 
@@ -212,6 +212,98 @@ fn emitted_work_retains_captures_shared_completion_and_scope_ownership() {
         )
         .unwrap();
     assert!(echo.is_empty());
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn dynamic_and_prepared_calls_share_captures_through_opaque_values_and_native_work() {
+    use work_fixture::WorkType;
+    use work_provider::Captured;
+
+    macro_rules! select {
+        ($bindings:ident) => {{
+            let capture = $bindings
+                .function(FunctionDeclaration::<(BigInt,), Captured>::new("capture"))
+                .unwrap();
+            let extend = $bindings
+                .function(FunctionDeclaration::<(Captured, BigInt), Captured>::new(
+                    "extend",
+                ))
+                .unwrap();
+            let identities = $bindings
+                .function(FunctionDeclaration::<(Captured,), (bool, bool)>::new(
+                    "identities",
+                ))
+                .unwrap();
+            let invoke = $bindings
+                .function(FunctionDeclaration::<(Captured,), WorkType<BigInt>>::new(
+                    "invoke",
+                ))
+                .unwrap();
+            (capture, extend, identities, invoke)
+        }};
+    }
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let host = geam_core::execution::TokioHost::new(runtime.handle().clone());
+    for prepared in [false, true] {
+        let (mut module, (capture, extend, identities, invoke)) = if prepared {
+            let mut bindings = WORK.load(work_provider::hosts()).unwrap();
+            let functions = select!(bindings);
+            (bindings.seal(), functions)
+        } else {
+            let (mut bindings, _) =
+                geam_core::embedding::HostedModuleBuilder::new(work_provider::program())
+                    .unwrap()
+                    .function(FunctionDeclaration::<(BigInt,), WorkType<BigInt>>::new(
+                        "make",
+                    ))
+                    .unwrap();
+            let functions = select!(bindings);
+            (bindings.seal().unwrap(), functions)
+        };
+        let mut echo = Vec::new();
+        // Reuse the same loaded module, but never revive a previous scope's work.
+        for _ in 0..3 {
+            runtime
+                .block_on(
+                    module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                        let original = scope.call(&capture, (8.into(),)).await.unwrap();
+                        let sibling = original.clone();
+                        let mut value = original;
+                        for _ in 0..8 {
+                            value = scope.call(&extend, (&value, 8.into())).await.unwrap();
+                        }
+                        assert_eq!(scope.call(&identities, (&value,)).await, Ok((true, false)));
+                        let work = scope.call(&invoke, (&value,)).await.unwrap();
+                        drop(value);
+                        let complete = scope.observe(&work).await.unwrap();
+                        let alias = scope.observe(&work).await.unwrap();
+                        complete
+                            .read(|left| alias.read(|right| assert!(std::ptr::eq(left, right))));
+                        assert_eq!(complete.read(Clone::clone), BigInt::from(73));
+                        let sibling_work = scope.call(&invoke, (&sibling,)).await.unwrap();
+                        assert_eq!(
+                            scope
+                                .observe(&sibling_work)
+                                .await
+                                .unwrap()
+                                .read(Clone::clone),
+                            BigInt::from(9)
+                        );
+                        let deep = scope.call(&capture, (2000.into(),)).await.unwrap();
+                        let unobserved = scope.call(&invoke, (&deep,)).await.unwrap();
+                        drop(deep);
+                        drop(unobserved);
+                    }),
+                )
+                .unwrap();
+        }
+        assert!(echo.is_empty());
+    }
 }
 
 #[test]
@@ -685,15 +777,77 @@ fn native_data_matches_preparation_output() {
         native_provider::hosts(),
     )
     .unwrap();
-    let (bindings, _) = HostedModuleBuilder::new(program)
+    let (mut bindings, _) = HostedModuleBuilder::new(program)
         .unwrap()
         .function(FunctionDeclaration::<(), (bool, bool, BigInt)>::new("run"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<
+            (geam_core::StringValue,),
+            (bool, geam_core::StringValue),
+        >::new("substring"))
         .unwrap();
     assert_eq!(
         bindings.prepare().unwrap().emit_rust(),
         include_str!("fixtures/prepared/native.rs").trim()
     );
     NATIVE.load(native_provider::hosts()).unwrap();
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn dynamic_and_prepared_strings_share_input_storage_after_native_calls() {
+    use geam_core::embedding::{HostedModuleBuilder, StringValue};
+    use geam_core::{ModuleSource, PackageSource, compile_typed_host_program};
+
+    let program = compile_typed_host_program(
+        "application",
+        "main",
+        [PackageSource::new(
+            "application",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "main",
+                "src/main.gleam",
+                include_str!("fixtures/prepared/native.gleam"),
+            )],
+        )],
+        native_provider::hosts(),
+    )
+    .unwrap();
+    let (dynamic, dynamic_entry) = HostedModuleBuilder::new(program)
+        .unwrap()
+        .function(FunctionDeclaration::<(StringValue,), (bool, StringValue)>::new("substring"))
+        .unwrap();
+    let mut prepared = NATIVE.load(native_provider::hosts()).unwrap();
+    let prepared_entry = prepared
+        .function(FunctionDeclaration::<(StringValue,), (bool, StringValue)>::new("substring"))
+        .unwrap();
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let host = geam_core::execution::TokioHost::new(runtime.handle().clone());
+    for (mut module, entry) in [
+        (dynamic.seal().unwrap(), dynamic_entry),
+        (prepared.seal(), prepared_entry),
+    ] {
+        let input = StringValue::from("prefix:abcdefghijklmnopqrstuvwxyz");
+        let address = input.as_ptr().addr() + 7;
+        let mut echo = Vec::new();
+        let (same, text) = runtime
+            .block_on(
+                module.with_execution(&host, &mut (), &mut echo, async move |scope| {
+                    scope.call(&entry, (input,)).await.unwrap()
+                }),
+            )
+            .unwrap();
+        drop(module);
+        assert!(same);
+        assert_eq!(text.as_str(), "abcdefghijklmnopqrstuvwxyz");
+        assert_eq!(text.as_ptr().addr(), address);
+        assert!(echo.is_empty());
+    }
 }
 
 #[cfg(feature = "tokio")]

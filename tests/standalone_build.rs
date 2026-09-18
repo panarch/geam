@@ -245,6 +245,24 @@ pub fn main() {
     fs::write(&source, complete).unwrap();
     for (module, body, stdout, failure) in [
         (
+            "callback",
+            "import standalone_future/native\npub fn main() { let assert 2 = native.apply(fn(_) { native.current() + 1 }) Nil }\n",
+            "initialized\narguments:[]\nbefore-callback\nstate:1\nafter-callback\nstate-drop:1\n",
+            "",
+        ),
+        (
+            "panic_driver",
+            "import standalone_future/native\npub fn main() { native.panic_driver() }\n",
+            "initialized\narguments:[]\nstate-drop:0\n",
+            "native driver panic",
+        ),
+        (
+            "panic_worker",
+            "import standalone_future/native\npub fn main() { native.panic_worker() }\n",
+            "initialized\narguments:[]\nstate-drop:0\n",
+            "geam application: the host executor failed:",
+        ),
+        (
             "cancelled",
             "import geam/future\nimport standalone_future/native\npub fn main() { future.all([native.pending(), native.fail()]) }\n",
             "initialized\narguments:[]\npending-started\npending-drop\nstate-drop:0\n",
@@ -273,6 +291,10 @@ pub fn main() {
         assert_eq!(output.status.success(), failure.is_empty());
         assert_eq!(output.stdout, stdout.as_bytes());
         assert!(String::from_utf8_lossy(&output.stderr).contains(failure));
+        if module == "panic_driver" {
+            assert!(!String::from_utf8_lossy(&output.stderr).contains("geam application:"));
+            assert_eq!(output.status.code(), Some(101));
+        }
         if module == "failure" {
             fs::copy(
                 &binary,

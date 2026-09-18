@@ -1,4 +1,6 @@
 mod borrowed;
+mod captures;
+mod drain;
 mod echo;
 mod embedding;
 pub(crate) use embedding::EmbeddingEntry;
@@ -21,10 +23,11 @@ mod value;
 pub(crate) mod work;
 
 pub(crate) use borrowed::BorrowedValue;
+pub(crate) use captures::CaptureStorage;
 pub use echo::{EchoLocation, EchoOutput, EchoSink};
 pub(crate) use embedding::{
     EmbeddingCustomInput, EmbeddingInput, EmbeddingInputStorage, EmbeddingInputValue,
-    EmbeddingList, EmbeddingListInput, EmbeddingOutput, EmbeddingTupleInput,
+    EmbeddingList, EmbeddingListInput, EmbeddingListIter, EmbeddingOutput, EmbeddingTupleInput,
     run_embedded_bit_array, run_embedded_bool, run_embedded_custom, run_embedded_float,
     run_embedded_int, run_embedded_list, run_embedded_nil, run_embedded_string, run_embedded_tuple,
     run_embedded_utf_codepoint,
@@ -62,7 +65,7 @@ pub(crate) use value::{
 };
 pub use value::{
     BitArrayValue, BitArrayValueLengthError, CustomFieldValue, CustomValue, ExternalValue,
-    ExternalValueIdentity, FunctionValue, ListValue, ListValueItemTypeMismatch, Value,
+    ExternalValueIdentity, FunctionValue, ListValue, ListValueItemTypeMismatch, StringValue, Value,
     ValueInspection,
 };
 
@@ -92,13 +95,14 @@ pub(crate) async fn run_hosted_main<Profile: crate::HostProfile>(
     state: &mut Profile::RunState,
     echo: &mut (dyn EchoSink + Send),
 ) -> Result<Value, crate::execution::RunError> {
-    let (plan, stores) = plan.parts_mut();
+    let (plan, stores, captures) = plan.parts_mut();
     let domain = execution::Domain::new(
         std::sync::Arc::clone(plan),
         host,
         state,
         stores,
         echo,
+        captures.clone(),
         execution::Domain::<Profile>::DEFAULT_BUDGET,
     );
     let context = domain.context();

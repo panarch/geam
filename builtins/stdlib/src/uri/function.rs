@@ -1,23 +1,23 @@
 mod codec;
 
 use crate::HostFailure;
-use ecow::EcoString;
+use geam_core::StringValue;
 use num_bigint::BigInt;
 use num_traits::ToPrimitive;
-pub(super) fn pop_codeunit(string: EcoString) -> (BigInt, EcoString) {
+pub(super) fn pop_codeunit(string: StringValue) -> (BigInt, StringValue) {
     let Some(value) = string.chars().next() else {
         return (BigInt::from(0), string);
     };
-    let rest = EcoString::from(&string[value.len_utf8()..]);
+    let rest = string.slice(value.len_utf8()..string.len());
 
     (BigInt::from(u32::from(value)), rest)
 }
 
 pub(super) fn codeunit_slice(
-    string: EcoString,
+    string: StringValue,
     from: BigInt,
     length: BigInt,
-) -> Result<EcoString, HostFailure> {
+) -> Result<StringValue, HostFailure> {
     let from = from
         .to_usize()
         .ok_or_else(|| HostFailure::new("URI string slice index is not representable"))?;
@@ -32,18 +32,18 @@ pub(super) fn codeunit_slice(
     let end = scalar_byte_index(&string, end)
         .ok_or_else(|| HostFailure::new("URI string slice ends outside the string"))?;
 
-    Ok(EcoString::from(&string[from..end]))
+    Ok(string.slice(from..end))
 }
 
-pub(super) fn parse_query(query: EcoString) -> Result<Vec<(EcoString, EcoString)>, ()> {
+pub(super) fn parse_query(query: StringValue) -> Result<Vec<(StringValue, StringValue)>, ()> {
     codec::parse_query(&query).ok_or(())
 }
 
-pub(super) fn percent_encode(value: EcoString) -> EcoString {
+pub(super) fn percent_encode(value: StringValue) -> StringValue {
     codec::percent_encode(&value)
 }
 
-pub(super) fn percent_decode(value: EcoString) -> Result<EcoString, ()> {
+pub(super) fn percent_decode(value: StringValue) -> Result<StringValue, ()> {
     codec::percent_decode(&value).ok_or(())
 }
 

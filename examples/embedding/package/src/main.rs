@@ -2,7 +2,7 @@
 #[allow(dead_code)]
 mod geam_bindings;
 
-use geam::embedding::{EcoString, HostedModuleBuilder};
+use geam::embedding::{HostedModuleBuilder, StringValue};
 use geam::gleam_stdlib::GleamStdlibRunState;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -26,11 +26,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let first = scope
                 .call(
                     &functions.first,
-                    (vec![EcoString::from("Gleam"), EcoString::from("Rust")],),
+                    (vec![StringValue::from("Gleam"), StringValue::from("Rust")],),
                 )
                 .await?;
             let empty = scope
-                .call(&functions.first, (Vec::<EcoString>::new(),))
+                .call(&functions.first, (Vec::<StringValue>::new(),))
                 .await?;
             Ok::<_, geam::embedding::CallError>((first, empty))
         },

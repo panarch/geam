@@ -15,7 +15,7 @@ use crate::{Component, GleamJsonHostProfile};
 pub(super) mod provider {
     use super::{decode, encode};
     use crate::BitArrayValue;
-    use ecow::EcoString;
+    use geam_core::StringValue;
     use geam_core::provider::{ExternalPayload, HostResult};
     use geam_stdlib::provider_support::StoredStringTree;
     use num_bigint::BigInt;
@@ -44,7 +44,7 @@ pub(super) mod provider {
             self.tree.structural_hash()
         }
 
-        fn inspect(&self) -> EcoString {
+        fn inspect(&self) -> ecow::EcoString {
             format!("{:?}", self.tree.flatten()).into()
         }
     }
@@ -53,8 +53,8 @@ pub(super) mod provider {
     #[allow(dead_code)]
     pub(crate) enum DecodeError {
         UnexpectedEndOfInput,
-        UnexpectedByte(EcoString),
-        UnexpectedSequence(EcoString),
+        UnexpectedByte(StringValue),
+        UnexpectedSequence(StringValue),
         UnableToDecode(Vec<geam_stdlib::provider_support::DynamicDecodeErrorValue>),
     }
 
@@ -64,7 +64,7 @@ pub(super) mod provider {
     }
 
     #[geam_macros::function]
-    fn do_to_string(json: &JsonPayload) -> EcoString {
+    fn do_to_string(json: &JsonPayload) -> StringValue {
         encode::do_to_string(json)
     }
 
@@ -74,7 +74,7 @@ pub(super) mod provider {
     }
 
     #[geam_macros::function]
-    fn do_string(value: EcoString) -> JsonPayload {
+    fn do_string(value: StringValue) -> JsonPayload {
         encode::do_string(value)
     }
 
@@ -99,7 +99,7 @@ pub(super) mod provider {
     }
 
     #[geam_macros::function]
-    fn do_object(entries: geam_core::provider::List<(EcoString, JsonPayload)>) -> JsonPayload {
+    fn do_object(entries: geam_core::provider::List<(StringValue, JsonPayload)>) -> JsonPayload {
         let mut index = 0;
         let mut trees = vec![StoredStringTree::text("{".into())];
         while let Some((key, value)) = entries.get(index) {

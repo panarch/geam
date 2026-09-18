@@ -125,6 +125,85 @@ fn compile(source: &str) -> Result<HostedTypedProgram<Profile>, geam_core::Front
 }
 
 #[test]
+fn strings_retain_ranges_through_native_callbacks_and_shared_completion() {
+    use geam_core::StringValue;
+
+    let source = r#"
+import async_provider/native
+import geam/future
+
+pub fn direct(value: String) -> String {
+  let assert "prefix:" <> rest = value
+  native.string_identity(native.first_token([native.new_token(rest)]))
+}
+
+pub fn awaited(value: String) -> String {
+  let assert "prefix:" <> rest = value
+  native.string_callback(fn() { rest })
+}
+
+pub fn delayed(value: String) -> future.Future(String) {
+  let assert "prefix:" <> rest = value
+  use batch <- future.map(native.make_pairs(rest, 1))
+  let #(label, _) = native.summarize_batch(batch)
+  native.manual_read(native.manual_new(label))
+}
+"#;
+    let (mut bindings, direct) = HostedModuleBuilder::new(compile(source).expect("source"))
+        .expect("plan")
+        .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
+            "direct",
+        ))
+        .expect("ordinary entry");
+    let awaited = bindings
+        .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
+            "awaited",
+        ))
+        .expect("awaited entry");
+    let delayed = bindings
+        .function(FunctionDeclaration::<(StringValue,), FutureType<StringValue>>::new("delayed"))
+        .expect("work entry");
+    let mut module = bindings.seal().expect("sealed");
+    let host = execution_fixture::TestHost::default();
+    let mut state = State::default();
+    let mut echo = Echo::default();
+    let input = StringValue::from("prefix:abcdefghijklmnopqrstuvwxyz");
+    let address = input.as_ptr().addr() + 7;
+    let results = host
+        .block_on(
+            module.with_execution(&host, &mut state, &mut echo, async move |scope| {
+                let direct = scope
+                    .call(&direct, (input.clone(),))
+                    .await
+                    .expect("ordinary provider");
+                let awaited = scope
+                    .call(&awaited, (input.clone(),))
+                    .await
+                    .expect("suspended callback");
+                let work = scope
+                    .call(&delayed, (input,))
+                    .await
+                    .expect("construct work");
+                let first = scope.observe(&work).await.expect("complete work");
+                let again = scope.observe(&work).await.expect("shared completion");
+                let completed = first.read(Clone::clone);
+                again.read(|text| {
+                    assert_eq!(text.as_ptr().addr(), address);
+                    assert_eq!(text.as_str(), "abcdefghijklmnopqrstuvwxyz");
+                });
+                vec![direct, awaited, completed]
+            }),
+        )
+        .expect("execution");
+    drop(module);
+    for text in results {
+        assert_eq!(text.as_str(), "abcdefghijklmnopqrstuvwxyz");
+        assert_eq!(text.as_ptr().addr(), address);
+    }
+    assert_eq!(echo.0, 0);
+}
+
+#[test]
 fn an_ordinary_callback_cannot_hide_a_future_return_type() {
     let result = compile(
         r#"

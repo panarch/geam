@@ -10,7 +10,7 @@ pub use storage::StringTree as StoredStringTree;
 
 use super::{Component, GleamStdlibProviderProfile};
 use crate::{HostExternalType, HostProviderModule, HostRegistrationError};
-use ecow::EcoString;
+use geam_core::StringValue;
 use num_bigint::BigInt;
 
 pub type StringTree = HostExternalType<StringTreeSchema>;
@@ -23,7 +23,7 @@ pub type StringTree = HostExternalType<StringTreeSchema>;
     stores = string_tree,
 )]
 mod provider {
-    use super::{BigInt, EcoString, StoredStringTree, function};
+    use super::{BigInt, StoredStringTree, StringValue, function};
     use geam_core::provider::ExternalPayload;
 
     #[geam_macros::external(name = "StringTree", manual)]
@@ -50,7 +50,7 @@ mod provider {
             self.tree.structural_hash()
         }
 
-        fn inspect(&self) -> EcoString {
+        fn inspect(&self) -> ecow::EcoString {
             self.tree.inspect()
         }
     }
@@ -67,7 +67,7 @@ mod provider {
     }
 
     #[geam_macros::function]
-    fn from_strings(strings: geam_core::provider::List<EcoString>) -> StringTreePayload {
+    fn from_strings(strings: geam_core::provider::List<StringValue>) -> StringTreePayload {
         let mut trees = Vec::with_capacity(strings.len());
         let mut index = 0;
         while let Some(string) = strings.get(index) {
@@ -89,12 +89,12 @@ mod provider {
     }
 
     #[geam_macros::function]
-    fn from_string(string: EcoString) -> StringTreePayload {
+    fn from_string(string: StringValue) -> StringTreePayload {
         function::from_string(string)
     }
 
     #[geam_macros::function]
-    fn to_string(tree: &StringTreePayload) -> EcoString {
+    fn to_string(tree: &StringTreePayload) -> StringValue {
         function::to_string(tree)
     }
 
@@ -114,14 +114,14 @@ mod provider {
     }
 
     #[geam_macros::function]
-    fn do_to_graphemes(string: EcoString) -> Vec<EcoString> {
+    fn do_to_graphemes(string: StringValue) -> Vec<StringValue> {
         function::do_to_graphemes(string)
     }
 
     #[geam_macros::function]
     fn erl_split(
         tree: &StringTreePayload,
-        pattern: EcoString,
+        pattern: StringValue,
         _direction: DirectionInput,
     ) -> Vec<StringTreePayload> {
         function::erl_split(tree, pattern)
@@ -130,8 +130,8 @@ mod provider {
     #[geam_macros::function]
     fn replace(
         tree: &StringTreePayload,
-        pattern: EcoString,
-        substitute: EcoString,
+        pattern: StringValue,
+        substitute: StringValue,
     ) -> StringTreePayload {
         function::replace(tree, pattern, substitute)
     }

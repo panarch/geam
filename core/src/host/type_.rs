@@ -523,6 +523,7 @@ mod tests {
         HostCustomTypeSchema, HostListType, HostSchemaType, HostTupleType, HostTypeDescriptor,
         HostTypeList, HostTypeListEnd, HostTypeParameter, from_token, from_tokens,
     };
+    use crate::StringValue;
     use crate::host::function::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
@@ -530,7 +531,6 @@ mod tests {
         HostScopedValue, HostTuple, HostTupleToken, HostValue, HostValueFamily, HostValueToken,
     };
     use crate::runtime::BitArrayValue;
-    use ecow::EcoString;
     use num_bigint::BigInt;
 
     struct MarkerSchema;
@@ -904,7 +904,7 @@ mod tests {
             HostTypeList<
                 f64,
                 HostTypeList<
-                    EcoString,
+                    StringValue,
                     HostTypeList<
                         BitArrayValue,
                         HostTypeList<
@@ -1001,7 +1001,7 @@ mod tests {
             HostTypeDescriptor::Float
         );
         assert_eq!(
-            <EcoString as HostAbiType>::descriptor(),
+            <StringValue as HostAbiType>::descriptor(),
             HostTypeDescriptor::String,
         );
         assert_eq!(
@@ -1048,7 +1048,7 @@ mod tests {
             HostScopedValue::Float(1.5),
         );
         assert_eq!(
-            <EcoString as HostAbiType>::into_scoped("text".into()),
+            <StringValue as HostAbiType>::into_scoped("text".into()),
             HostScopedValue::String("text".into()),
         );
         assert_eq!(
@@ -1100,7 +1100,7 @@ mod tests {
         );
         assert_eq!(from_token::<f64, TestHostProfile>(&runtime, token), 0.0,);
         assert_eq!(
-            from_token::<EcoString, TestHostProfile>(&runtime, token),
+            from_token::<StringValue, TestHostProfile>(&runtime, token),
             "",
         );
         assert_eq!(

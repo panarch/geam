@@ -4,7 +4,7 @@ use geam::__prepared_support as data;
 
 #[rustfmt::skip]
 pub(super) static PROGRAM: data::ModuleArtifact<std::convert::Infallible> = data::ModuleArtifact {
-    format: 1,
+    format: 2,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -288,4 +288,4 @@ pub(super) static PROGRAM: data::ModuleArtifact<std::convert::Infallible> = data
     ]),
 };
 
-// Preparation inputs: sha256:cb60a38e890ff5769f022dd490825aa4adf63831892542fce1017fdbed2f5fb8
+// Preparation inputs: sha256:50443dd49d1dd0f976a354cca12e72f1d7288bbb4dba8897853fc3ca980ba71f

@@ -4,14 +4,13 @@ mod environment;
 mod instruction;
 mod pattern;
 mod terminator;
-mod value;
 
+pub(super) use environment::GraphValue;
 pub(crate) use environment::RetainedValues;
-pub(super) use value::GraphValue;
 
 pub(in crate::runtime) use self::environment::BlockEnvironment;
 pub(in crate::runtime) use self::terminator::RuntimeGraphState;
-use crate::plan::execution::graph::{BlockGraphExitId, BlockId, ParamLocal};
+use crate::plan::execution::graph::{BlockGraphExitId, BlockId, Transfer};
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::ExecutionResult;
 pub(in crate::runtime) use activation::{Activation, Frame, Returns};
@@ -47,15 +46,11 @@ impl CompletedGraph {
     where
         Value: GraphValue,
     {
-        let value = value.read(&self.environment);
-        drop(self.environment);
-        value
+        value.take(self.environment)
     }
 
-    pub(in crate::runtime) fn into_retained(self, values: &[ParamLocal]) -> RetainedValues {
-        let retained = self.environment.retain(values);
-        drop(self.environment);
-        retained
+    pub(in crate::runtime) fn into_retained(self, transfer: &Transfer) -> RetainedValues {
+        self.environment.into_retained(transfer)
     }
 }
 
@@ -65,7 +60,7 @@ pub(in crate::runtime) fn advance_external_list_instruction<'plan, Plan>(
     frame: Frame<'plan, Plan>,
     returns: &mut Returns<'plan, Plan>,
     instruction: &crate::plan::execution::graph::ExternalListInstruction,
-    expected: &crate::plan::ValueType,
+    expected: &crate::plan::execution::type_::ValueType,
 ) -> ExecutionResult<Activation<'plan, Plan>>
 where
     Plan: ExecutableRuntimePlan<Profile = crate::plan::execution::host::HostedExecutionProfile>,
@@ -75,6 +70,7 @@ where
 
 pub(in crate::runtime) fn advance_external_function_instruction<'plan, Plan>(
     plan: &'plan Plan,
+    captures: &crate::runtime::CaptureStorage,
     frame: Frame<'plan, Plan>,
     returns: &mut Returns<'plan, Plan>,
     instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
@@ -82,7 +78,7 @@ pub(in crate::runtime) fn advance_external_function_instruction<'plan, Plan>(
 where
     Plan: ExecutableRuntimePlan<Profile = crate::plan::execution::host::HostedExecutionProfile>,
 {
-    instruction::advance_external_function(plan, frame, returns, instruction)
+    instruction::advance_external_function(plan, captures, frame, returns, instruction)
 }
 
 #[cfg(test)]
@@ -94,6 +90,42 @@ mod tests {
     use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedValue};
     use crate::runtime::state::RuntimeState;
     use crate::runtime::{ExecutionError, Value};
+
+    #[test]
+    fn mutual_tail_handoffs_preserve_duplicates_and_an_ordinary_callers_live_values() {
+        let source = r#"
+fn left(n, first, second) {
+  case n {
+    0 -> #(second, first, second)
+    _ -> right(n - 1, second, first)
+  }
+}
+
+fn right(n, first, second) {
+  case n {
+    0 -> #(first, second, first)
+    _ -> left(n - 1, second, first)
+  }
+}
+
+pub fn main() {
+  let first = #(10, "first")
+  let second = #(20, "second")
+  let result = left(1001, first, second)
+  #(first, second, result)
+}
+"#;
+        let first = Value::Tuple(vec![Value::Int(10.into()), Value::String("first".into())]);
+        let second = Value::Tuple(vec![Value::Int(20.into()), Value::String("second".into())]);
+        assert_eq!(
+            crate::runtime::run_src(source),
+            Value::Tuple(vec![
+                first.clone(),
+                second.clone(),
+                Value::Tuple(vec![second.clone(), first, second])
+            ]),
+        );
+    }
 
     #[test]
     fn deeply_nested_intra_function_control_flow_runs_iteratively() {

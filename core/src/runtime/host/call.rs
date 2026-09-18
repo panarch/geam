@@ -106,7 +106,7 @@ where
     {
         let mut retained = RetainedValues::empty();
         self.scoped.retain(returned, &mut retained);
-        local.read(&BlockEnvironment::from_retained(retained))
+        local.take(BlockEnvironment::from_retained(retained))
     }
 }
 
@@ -122,7 +122,7 @@ where
         self.scoped.float(value)
     }
 
-    fn string(&self, value: HostValueToken) -> EcoString {
+    fn string(&self, value: HostValueToken) -> crate::StringValue {
         self.scoped.string(value)
     }
 

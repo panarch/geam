@@ -1,4 +1,4 @@
-use geam::provider::{BigInt, Call, EcoString};
+use geam::provider::{BigInt, Call, StringValue};
 
 #[derive(Default)]
 pub struct RunState {
@@ -14,10 +14,10 @@ pub struct Component;
 
 #[geam::module(path = "example_request_ids")]
 mod request_ids {
-    use super::{BigInt, Call, EcoString, RunState};
+    use super::{BigInt, Call, RunState, StringValue};
 
     #[geam::function]
-    fn next(#[geam::call] call: &mut Call<RunState>) -> EcoString {
+    fn next(#[geam::call] call: &mut Call<RunState>) -> StringValue {
         let state = call.state_mut();
         state.issued += 1;
         format!("request-{}", state.issued).into()

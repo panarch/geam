@@ -5,8 +5,8 @@ mod external;
 mod function;
 mod inspection;
 mod list;
+mod string;
 
-use ecow::EcoString;
 use num_bigint::BigInt;
 
 use crate::plan::ValueType;
@@ -24,12 +24,13 @@ pub(crate) use self::function::{
 };
 pub use self::inspection::ValueInspection;
 pub use self::list::{ListValue, ListValueItemTypeMismatch};
+pub use self::string::StringValue;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Int(BigInt),
     Float(f64),
-    String(EcoString),
+    String(StringValue),
     BitArray(BitArrayValue),
     UtfCodepoint(char),
     Custom(CustomValue),

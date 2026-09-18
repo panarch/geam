@@ -1,15 +1,19 @@
 use crate::HostFailure;
-use ecow::EcoString;
+use geam_core::StringValue;
 use num_bigint::BigInt;
 use num_traits::ToPrimitive;
 use unicode_segmentation::UnicodeSegmentation;
 
-pub(in crate::string) fn pop_grapheme(string: EcoString) -> Result<(EcoString, EcoString), ()> {
+pub(in crate::string) fn pop_grapheme(
+    string: StringValue,
+) -> Result<(StringValue, StringValue), ()> {
     let Some(grapheme) = string.graphemes(true).next() else {
         return Err(());
     };
-    let rest = EcoString::from(&string[grapheme.len()..]);
-    Ok((grapheme.into(), rest))
+    Ok((
+        string.slice(0..grapheme.len()),
+        string.slice(grapheme.len()..string.len()),
+    ))
 }
 
 pub(in crate::string) fn unsafe_int_to_utf_codepoint(value: BigInt) -> Result<char, HostFailure> {
@@ -25,8 +29,27 @@ pub(in crate::string) fn utf_codepoint_to_int(value: char) -> BigInt {
 
 #[cfg(test)]
 mod tests {
-    use super::{unsafe_int_to_utf_codepoint, utf_codepoint_to_int};
+    use super::{pop_grapheme, unsafe_int_to_utf_codepoint, utf_codepoint_to_int};
+    use geam_core::StringValue;
     use num_bigint::BigInt;
+
+    #[test]
+    fn graphemes_share_large_ranges_and_resegment_the_visible_text() {
+        let first = format!("a{}", "\u{301}".repeat(9));
+        let original = StringValue::from(format!("{first}abcdefghijklmnopqrstuvwxyz"));
+        let (grapheme, rest) = pop_grapheme(original.clone()).expect("nonempty string");
+        assert_eq!(grapheme.as_str(), first);
+        assert_eq!(grapheme.as_ptr(), original.as_ptr());
+        assert_eq!(rest, "abcdefghijklmnopqrstuvwxyz");
+        assert_eq!(rest.as_ptr(), original.as_ptr().wrapping_add(first.len()));
+        let regional = StringValue::from("\u{1f1e6}\u{1f1e7}\u{1f1e8}abcdefghijklmnopqrstuvwxyz");
+        let inside_original_grapheme = regional.slice(4..regional.len());
+        let (grapheme, rest) = pop_grapheme(inside_original_grapheme).expect("valid UTF-8 view");
+        assert_eq!(grapheme, "\u{1f1e7}\u{1f1e8}");
+        assert_eq!(rest, "abcdefghijklmnopqrstuvwxyz");
+        assert_eq!(rest.as_ptr(), regional.as_ptr().wrapping_add(12));
+        assert_eq!(pop_grapheme(StringValue::new()), Err(()));
+    }
 
     #[test]
     fn converts_exact_unicode_scalar_values() {

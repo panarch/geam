@@ -4,7 +4,7 @@ mod execution_fixture;
 mod work_fixture;
 use crate::work_fixture::WorkComponent;
 use crate::work_fixture::WorkType;
-use geam_core::embedding::{BigInt, EcoString, FunctionDeclaration, HostedModuleBuilder, List};
+use geam_core::embedding::{BigInt, FunctionDeclaration, HostedModuleBuilder, List, StringValue};
 use geam_core::frontend::compile_typed_host_program;
 use geam_core::host::{HostComponentProfile, HostFutureStore, HostProfile, HostProviderSet};
 use geam_core::{ModuleSource, PackageSource};
@@ -246,7 +246,7 @@ fn public_calls_preserve_direct_results_and_recursively_scoped_shared_work() {
     let delayed = bindings
         .function(FunctionDeclaration::<(), WorkType<BigInt>>::new("delayed"))
         .expect("Future entry");
-    type Nested = WorkType<Result<(EcoString, List<WorkType<BigInt>>), ()>>;
+    type Nested = WorkType<Result<(StringValue, List<WorkType<BigInt>>), ()>>;
     let nested = bindings
         .function(FunctionDeclaration::<(), Nested>::new("nested"))
         .expect("nested entry");
@@ -308,7 +308,7 @@ fn public_future_inputs_retain_identity_and_do_not_construct_their_completion_ty
             List<WorkType<BigInt>>,
         >::new("keep_list"))
         .expect("work list");
-    type ResultList = Result<List<BigInt>, EcoString>;
+    type ResultList = Result<List<BigInt>, StringValue>;
     let packet_work = bindings
         .function(FunctionDeclaration::<(), WorkType<ResultList>>::new(
             "packet_work",
@@ -360,7 +360,7 @@ fn public_future_inputs_retain_identity_and_do_not_construct_their_completion_ty
                     .expect("second list completion");
                 first.read(|a| second.read(|b| assert!(std::ptr::eq(a, b))));
                 let work = scope.call(&packet_work, ()).await.expect("packet work");
-                for input in [Ok(vec![BigInt::from(3)]), Err(EcoString::from("message"))] {
+                for input in [Ok(vec![BigInt::from(3)]), Err(StringValue::from("message"))] {
                     let (work, result) = scope
                         .call(&packet, ((&work, input.clone()),))
                         .await

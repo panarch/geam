@@ -1,6 +1,6 @@
+use crate::StringValue;
 use bitvec::order::Msb0;
 use bitvec::vec::BitVec;
-use ecow::EcoString;
 use num_bigint::BigInt;
 
 mod capture;
@@ -106,7 +106,7 @@ impl EvaluatedCustomValue {
 pub(in crate::runtime) enum EvaluatedValue {
     Int(BigInt),
     Float(f64),
-    String(EcoString),
+    String(StringValue),
     BitArray(EvaluatedBitArray),
     UtfCodepoint(char),
     Custom(EvaluatedCustomValue),
@@ -217,7 +217,7 @@ pub fn main() {
         let function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             Vec::new(),
-            Vec::new(),
+            Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::type_::ValueType::Int,

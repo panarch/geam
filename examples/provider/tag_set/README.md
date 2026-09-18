@@ -35,7 +35,7 @@ pub struct Component;
 #[geam::external(name = "TagSet")]
 #[derive(Clone, Default, PartialEq, Eq, Hash)]
 struct TagSet {
-    tags: BTreeSet<EcoString>,
+    tags: BTreeSet<StringValue>,
 }
 ```
 

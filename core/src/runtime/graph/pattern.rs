@@ -7,10 +7,12 @@ use super::environment::BlockEnvironment;
 use crate::plan::execution::graph::{
     BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
     BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, IntegerLiteral,
-    MatchIntBindingId, MatchPattern, MatchPatternBinding, MatchPatternListTail,
+    MatchIntBindingId, MatchPattern, MatchPatternBinding, MatchPatternList, MatchPatternListTail,
 };
 use crate::runtime::InvariantError;
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedValue};
+use crate::runtime::retained_list::RetainedList;
+use crate::runtime::state::list::StoredListValueId;
 
 pub(super) struct MatchBindings {
     values: Vec<EvaluatedValue>,
@@ -38,8 +40,8 @@ impl MatchBindings {
         self.ints[&binding].clone()
     }
 
-    pub(super) fn value(&self, index: usize) -> EvaluatedValue {
-        self.values[index].clone()
+    pub(in crate::runtime::graph) fn into_values(self) -> Vec<EvaluatedValue> {
+        self.values
     }
 }
 
@@ -120,26 +122,14 @@ where
                 EvaluatedValue::List(value) => value,
                 _ => return Ok(false),
             };
-            let values = lists.evaluated_values(value);
-            let element_count = pattern.elements().len();
-            if pattern.tail().is_some() {
-                if values.len() < element_count {
-                    return Ok(false);
-                }
-            } else if values.len() != element_count {
-                return Ok(false);
-            }
-            for (index, pattern) in pattern.elements().iter().enumerate() {
-                let value = &values[index];
-                if !matches(plan, lists, environment, pattern, value, bindings)? {
-                    return Ok(false);
-                }
-            }
-            if let Some(MatchPatternListTail::Bind(binding)) = pattern.tail() {
-                let tail = lists.drop_first(value, element_count);
-                bindings.bind(binding, EvaluatedValue::List(tail));
-            }
-            Ok(true)
+            matches_list(
+                plan,
+                lists,
+                environment,
+                pattern,
+                &RetainedList::new(value.clone()),
+                bindings,
+            )
         }
         MatchPattern::BitArray(pattern) => {
             let EvaluatedValue::BitArray(value) = value else {
@@ -184,14 +174,17 @@ where
             let EvaluatedValue::String(value) = value else {
                 return Ok(false);
             };
-            let Some(suffix) = value.strip_prefix(prefix.as_str()) else {
+            if !value.starts_with(prefix.as_str()) {
                 return Ok(false);
-            };
+            }
             if let Some(binding) = left {
-                bindings.bind(binding, EvaluatedValue::String(prefix.materialize()));
+                bindings.bind(binding, EvaluatedValue::String(prefix.materialize().into()));
             }
             if let Some(binding) = right {
-                bindings.bind(binding, EvaluatedValue::String(suffix.into()));
+                bindings.bind(
+                    binding,
+                    EvaluatedValue::String(value.slice(prefix.len()..value.len())),
+                );
             }
             Ok(true)
         }
@@ -203,6 +196,37 @@ where
             Ok(true)
         }
     }
+}
+
+fn matches_list<Plan>(
+    plan: &Plan,
+    lists: &mut crate::runtime::RuntimeListStorage,
+    environment: &BlockEnvironment,
+    pattern: &MatchPatternList,
+    values: &RetainedList<StoredListValueId>,
+    bindings: &mut MatchBindings,
+) -> Result<bool, InvariantError>
+where
+    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+{
+    let element_count = pattern.elements().len();
+    if pattern.tail().is_some() {
+        if values.len() < element_count {
+            return Ok(false);
+        }
+    } else if values.len() != element_count {
+        return Ok(false);
+    }
+    for (pattern, value) in pattern.elements().iter().zip(values.iter()) {
+        if !matches(plan, lists, environment, pattern, &value, bindings)? {
+            return Ok(false);
+        }
+    }
+    if let Some(MatchPatternListTail::Bind(binding)) = pattern.tail() {
+        let tail = lists.drop_first(values.handle(), element_count);
+        bindings.bind(binding, EvaluatedValue::List(tail));
+    }
+    Ok(true)
 }
 
 fn match_bit_array(
@@ -446,15 +470,70 @@ fn bind_utf_codepoint(pattern: &BitArrayBindingPattern, value: char, bindings: &
 #[cfg(test)]
 mod tests {
     use super::super::environment::{BlockEnvironment, RetainedValues};
-    use super::{MatchPattern, match_pattern};
+    use super::{MatchBindings, MatchPattern, match_pattern, matches_list};
     use crate::plan::ValueType;
     use crate::plan::execution::ExecutionPlan;
     use crate::plan::execution::function::{CoreRuntimeFunctionId, RuntimeFunctionId};
-    use crate::plan::execution::graph::Terminator;
+    use crate::plan::execution::graph::{MatchPatternBinding, MatchPatternList, Terminator};
+    use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedValue};
+    use crate::runtime::retained_list::RetainedList;
     use crate::runtime::state::RuntimeState;
     use crate::runtime::state::list::{CustomListAllocation, ListValueId, ParameterListValueId};
     use crate::runtime::{InvariantError, Value};
+
+    #[test]
+    fn successful_match_moves_selected_binding_buffers_and_duplicates_only_extra_uses() {
+        use crate::plan::execution::graph::{
+            FamilyTransfer, StorageFamily, Transfer, TupleLocalId,
+        };
+
+        let first = vec![EvaluatedValue::Int(10.into())];
+        let second = vec![EvaluatedValue::Int(20.into())];
+        let first_buffer = first.as_ptr();
+        let second_buffer = second.as_ptr();
+        let mut bindings = MatchBindings::new();
+        for (index, value) in [
+            EvaluatedValue::Tuple(first),
+            EvaluatedValue::String("unused".into()),
+            EvaluatedValue::Nil,
+            EvaluatedValue::Tuple(second),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            bindings.bind(&MatchPatternBinding { index }, value);
+        }
+        let environment = BlockEnvironment::from_retained(RetainedValues::empty());
+        let retained = environment.into_match_retained(
+            &Transfer {
+                families: vec![FamilyTransfer {
+                    family: StorageFamily::Tuple,
+                    positions: vec![1, 1, 0].into(),
+                }]
+                .into(),
+            },
+            &[0, 2, 3],
+            bindings,
+        );
+        let environment = BlockEnvironment::from_retained(retained);
+        assert_eq!(
+            environment.tuple(TupleLocalId(0)),
+            vec![EvaluatedValue::Int(20.into())]
+        );
+        assert_eq!(
+            environment.tuple(TupleLocalId(1)),
+            vec![EvaluatedValue::Int(10.into())]
+        );
+        assert_eq!(
+            environment.tuple(TupleLocalId(2)),
+            vec![EvaluatedValue::Int(20.into())]
+        );
+        // Consuming extraction observes the inserted buffers without another copy.
+        let value = super::super::GraphValue::take(&TupleLocalId(1), environment);
+        assert_eq!(value.as_ptr(), first_buffer);
+        assert_ne!(value.as_ptr(), second_buffer);
+    }
 
     #[test]
     fn recursive_matcher_executes_every_supported_pattern_family() {
@@ -614,6 +693,174 @@ pub fn main() {
             ),
             Value::Bool(true),
         );
+    }
+
+    #[test]
+    fn list_inspection_reads_only_the_deciding_prefix() {
+        for (pattern, items, expected, reads) in [
+            ("[]", vec![], true, 0),
+            ("[]", vec![1], false, 0),
+            ("[1, 2]", vec![1], false, 0),
+            ("[1]", vec![1, 2], false, 0),
+            ("[1, 2, ..]", vec![1], false, 0),
+            ("[1, 2]", vec![1, 2], true, 2),
+            ("[1, 2, ..]", vec![1, 2, 3, 4], true, 2),
+            ("[1, 2, ..]", vec![9, 2, 3, 4], false, 1),
+            ("[1, 2, ..]", vec![1, 9, 3, 4], false, 2),
+        ] {
+            let source = format!(
+                r#"
+fn ints() -> List(Int) {{ [] }}
+pub fn main() {{
+  let assert {pattern} = ints()
+  1
+}}
+"#
+            );
+            let plan = execution_plan(&source);
+            let mut echo = Vec::new();
+            let mut state = RuntimeState::new(&mut echo);
+            let list = state.lists_mut().int(
+                plan.int_list_function_id(0).type_id(),
+                items.into_iter().map(Into::into).collect(),
+            );
+            let values = RetainedList::new(list.into());
+            let environment = BlockEnvironment::from_retained(RetainedValues::empty());
+            let mut bindings = MatchBindings::new();
+
+            assert_eq!(
+                matches_list(
+                    &plan,
+                    state.lists_mut(),
+                    &environment,
+                    list_pattern(main_pattern(&plan)),
+                    &values,
+                    &mut bindings,
+                ),
+                Ok(expected),
+                "{pattern}",
+            );
+            assert_eq!(values.item_reads(), reads, "{pattern}");
+            assert!(bindings.values.is_empty());
+            assert!(echo.is_empty());
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture pattern should be a list")]
+    fn list_pattern_guard_rejects_other_patterns() {
+        list_pattern(&MatchPattern::Discard);
+    }
+
+    #[test]
+    fn list_inspection_preserves_nested_tails_and_aliases_from_an_escaped_owner() {
+        let plan = execution_plan(
+            r#"
+fn ints() -> List(Int) { [] }
+fn lists() -> List(List(Int)) { [] }
+pub fn main() {
+  let _ = ints()
+  let assert [[head as alias, ..inner] as first, ..outer] = lists()
+  head
+}
+"#,
+        );
+        let int_type = plan.int_list_function_id(0).type_id();
+        let list_type = plan.list_list_function_id(0).type_id();
+        let owner = crate::runtime::RuntimeListStorage::default();
+        let first = owner.int(int_type, vec![1.into(), 2.into(), 3.into()]);
+        let second = owner.int(int_type, vec![4.into(), 5.into()]);
+        let values = RetainedList::new(
+            owner
+                .list(list_type, vec![first.clone().into(), second.into()])
+                .into(),
+        );
+        drop(owner);
+
+        let mut caller = crate::runtime::RuntimeListStorage::default();
+        let unrelated = caller.int(int_type, vec![999.into()]);
+        let unrelated_lists = caller.list(list_type, vec![unrelated.into()]);
+        let environment = BlockEnvironment::from_retained(RetainedValues::empty());
+        let mut bindings = MatchBindings::new();
+        assert_eq!(
+            matches_list(
+                &plan,
+                &mut caller,
+                &environment,
+                list_pattern(main_pattern(&plan)),
+                &values,
+                &mut bindings,
+            ),
+            Ok(true),
+        );
+        assert_eq!(values.item_reads(), 1);
+        assert_eq!(bindings.values.len(), 5);
+        assert_eq!(bindings.values[3], EvaluatedValue::List(first.into()));
+        drop(values);
+        drop(unrelated_lists);
+
+        assert_eq!(
+            crate::runtime::materialize::value(
+                plan.value_metadata(),
+                &caller,
+                EvaluatedValue::Tuple(bindings.values),
+            ),
+            Value::Tuple(vec![
+                Value::Int(1.into()),
+                Value::Int(1.into()),
+                Value::List(crate::ListValue::int(vec![2.into(), 3.into()])),
+                Value::List(crate::ListValue::int(vec![1.into(), 2.into(), 3.into()])),
+                Value::List(
+                    crate::ListValue::try_list(
+                        ValueType::Int,
+                        vec![crate::ListValue::int(vec![4.into(), 5.into()])],
+                    )
+                    .unwrap(),
+                ),
+            ]),
+        );
+    }
+
+    #[test]
+    fn failed_list_inspection_releases_partial_alias_bindings() {
+        let plan = execution_plan(
+            r#"
+fn ints() -> List(Int) { [] }
+fn lists() -> List(List(Int)) { [] }
+pub fn main() {
+  let _ = ints()
+  let assert [[head, ..tail] as first, []] = lists()
+  head
+}
+"#,
+        );
+        let mut lists = crate::runtime::RuntimeListStorage::default();
+        let inner = lists.int(
+            plan.int_list_function_id(0).type_id(),
+            vec![1.into(), 2.into()],
+        );
+        let items = std::sync::Arc::downgrade(&lists.int_values(&inner));
+        let outer = lists.list(
+            plan.list_list_function_id(0).type_id(),
+            vec![inner.clone().into(), inner.into()],
+        );
+        let subject = EvaluatedValue::List(outer.into());
+        let environment = BlockEnvironment::from_retained(RetainedValues::empty());
+
+        assert!(
+            match_pattern(
+                &plan,
+                &mut lists,
+                &environment,
+                main_pattern(&plan),
+                &subject
+            )
+            .unwrap()
+            .is_none()
+        );
+        assert!(items.upgrade().is_some());
+        drop(subject);
+        assert!(items.upgrade().is_none());
     }
 
     #[test]
@@ -964,7 +1211,7 @@ pub fn main() {
         .expect("string-prefix matching should not be an execution error")
         .expect("the prefix should match");
 
-        assert_eq!(bindings.value(0), EvaluatedValue::String("pre".into()));
+        assert_eq!(bindings.values[0], EvaluatedValue::String("pre".into()));
     }
 
     #[test]
@@ -987,7 +1234,7 @@ pub fn main() {
         .expect("Bool matching should not be an execution error")
         .expect("the Bool pattern should match");
 
-        assert_eq!(bindings.value(0), EvaluatedValue::Bool(true));
+        assert_eq!(bindings.values[0], EvaluatedValue::Bool(true));
     }
 
     #[test]
@@ -1176,6 +1423,14 @@ pub fn main() {
         main_pattern(&execution_plan("pub fn main() { Nil }"));
     }
 
+    #[test]
+    #[should_panic(expected = "fixture graph should contain a match terminator")]
+    fn main_pattern_guard_rejects_an_unconditional_list_discard() {
+        main_pattern(&execution_plan(
+            "fn ints() -> List(Int) { [] } pub fn main() { let assert [..] = ints() 1 }",
+        ));
+    }
+
     fn assert_custom_field_corruption(
         plan: &ExecutionPlan,
         state: &mut RuntimeState,
@@ -1201,6 +1456,13 @@ pub fn main() {
                 actual: ValueType::String,
             },
         );
+    }
+
+    fn list_pattern(pattern: &MatchPattern) -> &MatchPatternList {
+        match pattern {
+            MatchPattern::List(pattern) => pattern,
+            _ => panic!("fixture pattern should be a list"),
+        }
     }
 
     fn custom_pattern_constructor(
