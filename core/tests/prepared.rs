@@ -787,6 +787,18 @@ fn native_data_matches_preparation_output() {
             (bool, geam_core::StringValue),
         >::new("substring"))
         .unwrap();
+    bindings
+        .function(FunctionDeclaration::<
+            (geam_core::BitArrayValue, BigInt, BigInt),
+            geam_core::BitArrayValue,
+        >::new("bit_range"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<
+            (geam_core::BitArrayValue,),
+            geam_core::BitArrayValue,
+        >::new("bit_tail"))
+        .unwrap();
     assert_eq!(
         bindings.prepare().unwrap().emit_rust(),
         include_str!("fixtures/prepared/native.rs").trim()
@@ -846,6 +858,104 @@ fn dynamic_and_prepared_strings_share_input_storage_after_native_calls() {
         assert!(same);
         assert_eq!(text.as_str(), "abcdefghijklmnopqrstuvwxyz");
         assert_eq!(text.as_ptr().addr(), address);
+        assert!(echo.is_empty());
+    }
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn dynamic_and_prepared_bit_ranges_preserve_storage_and_canonical_bytes_through_providers() {
+    use geam_core::embedding::{BitArrayValue, HostedModuleBuilder};
+    use geam_core::{ModuleSource, PackageSource, compile_typed_host_program};
+
+    let program = compile_typed_host_program(
+        "application",
+        "main",
+        [PackageSource::new(
+            "application",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "main",
+                "src/main.gleam",
+                include_str!("fixtures/prepared/native.gleam"),
+            )],
+        )],
+        native_provider::hosts(),
+    )
+    .unwrap();
+    let (mut dynamic, dynamic_range) = HostedModuleBuilder::new(program)
+        .unwrap()
+        .function(FunctionDeclaration::<
+            (BitArrayValue, BigInt, BigInt),
+            BitArrayValue,
+        >::new("bit_range"))
+        .unwrap();
+    let dynamic_tail = dynamic
+        .function(FunctionDeclaration::<(BitArrayValue,), BitArrayValue>::new(
+            "bit_tail",
+        ))
+        .unwrap();
+    let mut prepared = NATIVE.load(native_provider::hosts()).unwrap();
+    let prepared_range = prepared
+        .function(FunctionDeclaration::<
+            (BitArrayValue, BigInt, BigInt),
+            BitArrayValue,
+        >::new("bit_range"))
+        .unwrap();
+    let prepared_tail = prepared
+        .function(FunctionDeclaration::<(BitArrayValue,), BitArrayValue>::new(
+            "bit_tail",
+        ))
+        .unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let host = geam_core::execution::TokioHost::new(runtime.handle().clone());
+
+    for (mut module, range, tail) in [
+        (dynamic.seal().unwrap(), dynamic_range, dynamic_tail),
+        (prepared.seal(), prepared_range, prepared_tail),
+    ] {
+        let input = BitArrayValue::from_bytes(vec![0xab, 0xcd, 0xef]);
+        let pointer = input.bytes().as_ptr();
+        let partial = BitArrayValue::try_from_parts(vec![0xab, 0xcd, 0xef], 20).unwrap();
+        let mut echo = Vec::new();
+        let (aligned, unaligned, short, partial_source, empty) = runtime
+            .block_on(
+                module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                    let aligned = scope
+                        .call(&range, (input.clone(), 8.into(), 8.into()))
+                        .await
+                        .unwrap();
+                    let unaligned = scope
+                        .call(&range, (input.clone(), 4.into(), 8.into()))
+                        .await
+                        .unwrap();
+                    let short = scope
+                        .call(&range, (input.clone(), 0.into(), 4.into()))
+                        .await
+                        .unwrap();
+                    let partial_source = scope
+                        .call(&range, (partial, 8.into(), 8.into()))
+                        .await
+                        .unwrap();
+                    let empty = scope
+                        .call(&tail, (BitArrayValue::from_bytes(vec![1]),))
+                        .await
+                        .unwrap();
+                    (aligned, unaligned, short, partial_source, empty)
+                }),
+            )
+            .unwrap();
+        drop(input);
+        drop(module);
+        assert_eq!(aligned.bytes(), &[0xcd]);
+        assert_eq!(aligned.bytes().as_ptr(), pointer.wrapping_add(1));
+        assert_eq!(unaligned, BitArrayValue::from_bytes(vec![0xbc]));
+        assert_eq!(short.bytes(), &[0xa0]);
+        assert_eq!(short.bit_len(), 4);
+        assert_eq!(partial_source, BitArrayValue::from_bytes(vec![0xcd]));
+        assert_eq!(empty, BitArrayValue::from_bytes(Vec::new()));
         assert!(echo.is_empty());
     }
 }

@@ -1,4 +1,3 @@
-use bitvec::vec::BitVec;
 use num_bigint::BigInt;
 use std::collections::HashMap;
 
@@ -293,10 +292,11 @@ fn match_bit_array(
                         remaining
                     }
                 };
-                let Some(bits) = bit_array::take_bits(subject.bits(), &mut cursor, bit_size) else {
+                let Some(value) = subject.as_value().bit_slice(cursor, bit_size) else {
                     return false;
                 };
-                let value = EvaluatedBitArray::new(BitVec::from_bitslice(bits));
+                cursor += bit_size;
+                let value = EvaluatedBitArray::from_value(value);
                 bind_bit_array(pattern, &value, bindings);
                 true
             }
@@ -476,7 +476,7 @@ mod tests {
     use crate::plan::execution::function::{CoreRuntimeFunctionId, RuntimeFunctionId};
     use crate::plan::execution::graph::{MatchPatternBinding, MatchPatternList, Terminator};
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
-    use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedValue};
+    use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedCustomValue, EvaluatedValue};
     use crate::runtime::retained_list::RetainedList;
     use crate::runtime::state::RuntimeState;
     use crate::runtime::state::list::{CustomListAllocation, ListValueId, ParameterListValueId};
@@ -921,6 +921,155 @@ pub fn main() {
 "#;
 
         assert_eq!(crate::runtime::run_src(source), Value::Int(1.into()));
+    }
+
+    #[test]
+    fn source_matcher_shares_sized_bit_array_ranges_and_remainders() {
+        let plan = execution_plan(
+            r#"
+pub fn main() {
+  let assert <<first:bytes-size(2), middle:bits-size(8), _ as rest:bytes>> = <<10, 20, 30, 40, 50>>
+  case first == <<10, 20>> && middle == <<30>> && rest == <<40, 50>> {
+    True -> 1
+    False -> 0
+  }
+}
+"#,
+        );
+        let original = crate::BitArrayValue::from_bytes(vec![0, 10, 20, 30, 40, 50, 255]);
+        let pointer = original.bytes().as_ptr();
+        let subject = original.byte_slice(1, 5).unwrap();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
+        let environment = BlockEnvironment::from_retained(RetainedValues::empty());
+        let bindings = match_pattern(
+            &plan,
+            state.lists_mut(),
+            &environment,
+            main_pattern(&plan),
+            &EvaluatedValue::BitArray(EvaluatedBitArray::from_value(subject)),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(bindings.values.len(), 3);
+        for (binding, offset, expected) in [
+            (&bindings.values[0], 1, &[10, 20][..]),
+            (&bindings.values[1], 3, &[30][..]),
+            (&bindings.values[2], 4, &[40, 50][..]),
+        ] {
+            let value = matched_bit_array(binding);
+            assert_eq!(value.bytes(), expected);
+            assert_eq!(value.bytes().as_ptr(), pointer.wrapping_add(offset));
+        }
+        drop(original);
+        drop(plan);
+        assert_eq!(matched_bit_array(&bindings.values[2]).bytes(), &[40, 50]);
+    }
+
+    #[test]
+    fn source_matcher_detaches_an_empty_bit_array_remainder() {
+        let plan = execution_plan(
+            r#"
+pub fn main() {
+  let assert <<_:bytes-size(2), rest:bits>> = <<1, 2>>
+  case rest == <<>> {
+    True -> 1
+    False -> 0
+  }
+}
+"#,
+        );
+        let original = crate::BitArrayValue::from_bytes(vec![1, 2]);
+        let end = original.bytes().as_ptr().wrapping_add(2);
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
+        let environment = BlockEnvironment::from_retained(RetainedValues::empty());
+        let bindings = match_pattern(
+            &plan,
+            state.lists_mut(),
+            &environment,
+            main_pattern(&plan),
+            &EvaluatedValue::BitArray(EvaluatedBitArray::from_value(original)),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(bindings.values.len(), 1);
+        let value = matched_bit_array(&bindings.values[0]);
+        assert!(value.bytes().is_empty());
+        assert_eq!(value.bit_len(), 0);
+        assert_ne!(value.bytes().as_ptr(), end);
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture binding should be a bit array")]
+    fn matched_bit_array_guard_rejects_other_families() {
+        matched_bit_array(&EvaluatedValue::Nil);
+    }
+
+    #[test]
+    fn source_matcher_preserves_bit_range_results_and_guard_fallback() {
+        let source = r#"
+pub fn main() {
+  let zero = 0
+  #(
+    case <<0xab, 0xcd, 0xef>> {
+      <<first:bits-size(4), middle:bits-size(8), rest:bits>> -> #(first, middle, rest)
+      _ -> #(<<>>, <<>>, <<>>)
+    },
+    case <<0xab, 3:size(2)>> {
+      <<first:bytes-size(1), rest:bits>> -> #(first, rest)
+      _ -> #(<<>>, <<>>)
+    },
+    case <<1:size(1)>> {
+      <<_:size(1), _:bits-size(zero), _:bits>> -> True
+      _ -> False
+    },
+    case <<1>> {
+      <<_:bytes-size(zero), _:bytes>> -> True
+      _ -> False
+    },
+    case <<1, 2, 3>> {
+      <<tag, rest:bits>> if tag == 9 -> rest
+      <<_:bytes-size(1), _ as rest:bytes>> -> rest
+      _ -> <<>>
+    },
+    case <<1, 1:size(1)>> {
+      <<_:bytes>> -> True
+      _ -> False
+    },
+    case <<1:size(1)>> {
+      <<_:size(1), rest:bits>> -> rest
+      _ -> <<1>>
+    },
+    case <<>> {
+      <<rest:bytes>> -> rest
+      _ -> <<1>>
+    },
+  )
+}
+"#;
+        assert_eq!(
+            crate::runtime::run_src(source),
+            Value::Tuple(vec![
+                Value::Tuple(vec![
+                    Value::BitArray(crate::BitArrayValue::try_from_parts(vec![0xa0], 4).unwrap()),
+                    Value::BitArray(crate::BitArrayValue::from_bytes(vec![0xbc])),
+                    Value::BitArray(
+                        crate::BitArrayValue::try_from_parts(vec![0xde, 0xf0], 12).unwrap()
+                    ),
+                ]),
+                Value::Tuple(vec![
+                    Value::BitArray(crate::BitArrayValue::from_bytes(vec![0xab])),
+                    Value::BitArray(crate::BitArrayValue::try_from_parts(vec![0xc0], 2).unwrap()),
+                ]),
+                Value::Bool(false),
+                Value::Bool(false),
+                Value::BitArray(crate::BitArrayValue::from_bytes(vec![2, 3])),
+                Value::Bool(false),
+                Value::BitArray(crate::BitArrayValue::from_bytes(Vec::new())),
+                Value::BitArray(crate::BitArrayValue::from_bytes(Vec::new())),
+            ]),
+        );
     }
 
     #[test]
@@ -1494,6 +1643,13 @@ pub fn main() {
                 _ => panic!("fixture pattern should contain nested custom constructors"),
             },
             _ => panic!("fixture pattern should contain nested custom constructors"),
+        }
+    }
+
+    fn matched_bit_array(value: &EvaluatedValue) -> &crate::BitArrayValue {
+        match value {
+            EvaluatedValue::BitArray(value) => value.as_value(),
+            _ => panic!("fixture binding should be a bit array"),
         }
     }
 

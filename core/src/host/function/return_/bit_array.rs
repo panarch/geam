@@ -31,16 +31,23 @@ mod tests {
 
     #[test]
     fn bit_array_return_owns_typed_callback_and_family() {
+        let original = BitArrayValue::from_bytes(vec![0xff, 0xa5, 0xff]);
+        let selected = original.byte_slice(1, 1).unwrap();
+        let address = original.bytes().as_ptr().wrapping_add(1).addr();
         let mut layout = HostParameterLayout::default();
         let slot = layout.register::<BitArrayValue>();
         let implementation = <BitArrayValue as HostReturn>::implementation::<TestHostProfile>(
-            move |_, arguments| Ok(arguments.bit_array(slot)),
+            move |_, arguments| {
+                let value = arguments.bit_array(slot);
+                assert_eq!(value.bytes().as_ptr().addr(), address);
+                Ok(value)
+            },
         );
         let implementation = implementation.into_immediate();
         let arguments = CallArguments::new(Vec::new(), Vec::new()).with_scalar_values(
             Vec::new(),
             Vec::new(),
-            vec![BitArrayValue::from_bytes(vec![0xa5])],
+            vec![selected],
             Vec::new(),
             0,
         );

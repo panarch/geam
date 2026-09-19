@@ -516,6 +516,53 @@ pub fn main() { floats() }
     }
 
     #[test]
+    fn bit_array_ranges_compare_and_hash_by_logical_content() {
+        let storage = crate::runtime::RuntimeListStorage::default();
+        let original = crate::BitArrayValue::from_bytes(vec![0xab, 0xcd, 0xab, 0xcd]);
+        for (selected, expected) in [
+            (
+                original.bit_slice(0, 16).unwrap(),
+                crate::BitArrayValue::from_bytes(vec![0xab, 0xcd]),
+            ),
+            (
+                original.bit_slice(16, 16).unwrap(),
+                crate::BitArrayValue::from_bytes(vec![0xab, 0xcd]),
+            ),
+            (
+                original.bit_slice(4, 8).unwrap(),
+                crate::BitArrayValue::from_bytes(vec![0xbc]),
+            ),
+            (
+                original.bit_slice(0, 4).unwrap(),
+                crate::BitArrayValue::try_from_parts(vec![0xa0], 4).unwrap(),
+            ),
+            (
+                original.bit_slice(32, 0).unwrap(),
+                crate::BitArrayValue::from_bytes(Vec::new()),
+            ),
+        ] {
+            let selected = EvaluatedValue::BitArray(EvaluatedBitArray::from_value(selected));
+            let expected = EvaluatedValue::BitArray(EvaluatedBitArray::from_value(expected));
+            assert!(values_equal(&storage, &selected, &expected));
+            assert_eq!(
+                value_source_hash(&storage, &selected),
+                value_source_hash(&storage, &expected)
+            );
+        }
+        let first = EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
+            original.bit_slice(0, 8).unwrap(),
+        ));
+        let second = EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
+            original.bit_slice(8, 8).unwrap(),
+        ));
+        let short = EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
+            original.bit_slice(0, 4).unwrap(),
+        ));
+        assert!(!values_equal(&storage, &first, &second));
+        assert!(!values_equal(&storage, &first, &short));
+    }
+
+    #[test]
     fn semantic_value_equality_covers_every_list_and_function_family() {
         fn external_equal(
             context: &crate::host::HostExternalEquality<'_>,

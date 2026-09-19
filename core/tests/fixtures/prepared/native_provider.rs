@@ -1,4 +1,4 @@
-use geam_core::embedding::{BigInt, StringValue};
+use geam_core::embedding::{BigInt, BitArrayValue, StringValue};
 use geam_core::host::native::{NativeCall, NativeRules};
 use geam_core::{
     HostCall, HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
@@ -100,6 +100,13 @@ fn fold<'call>(
     }))
 }
 
+fn keep_bits<'call>(
+    call: HostCall<'call, StatelessHostProfile, Provider, BitArrayValue>,
+    value: BitArrayValue,
+) -> Result<HostCallCompletion<'call, BitArrayValue>, HostCallError> {
+    Ok(call.return_value(value))
+}
+
 pub fn hosts() -> HostProviderSet {
     HostProviderSet::from_providers([HostProviderModule::new("application", "main")
         .unwrap()
@@ -111,6 +118,11 @@ pub fn hosts() -> HostProviderSet {
         .unwrap()
         .with_resumable_function::<Provider, (Callback, BigInt), BigInt, HostTypeListEnd, _>(
             "fold", fold,
+        )
+        .unwrap()
+        .with_scoped_function::<Provider, (BitArrayValue,), BitArrayValue, _>(
+            "keep_bits",
+            keep_bits,
         )
         .unwrap()])
     .unwrap()

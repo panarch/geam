@@ -30,9 +30,13 @@ mod tests {
 
     #[test]
     fn writes_aligned_and_unaligned_bit_arrays() {
+        let original = BitArrayValue::from_bytes(vec![255, 1, 2, 0xff]);
         let cases = [
             (BitArrayValue::from_bytes(Vec::new()), "<<>>"),
             (BitArrayValue::from_bytes(vec![1, 2, 3]), "<<1, 2, 3>>"),
+            (original.bit_slice(8, 16).unwrap(), "<<1, 2>>"),
+            (original.bit_slice(8, 18).unwrap(), "<<1, 2, 3:size(2)>>"),
+            (original.bit_slice(32, 0).unwrap(), "<<>>"),
             (
                 BitArrayValue::try_from_parts(vec![1, 2, 0b1100_0000], 18)
                     .expect("eighteen supplied bits should be valid"),

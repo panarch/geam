@@ -328,6 +328,41 @@ pub fn retained(value: String) {
     }
 
     #[test]
+    fn bit_array_ranges_survive_patterns_captures_lists_and_their_module() {
+        let source = r#"
+pub fn selected(value: BitArray) {
+  let assert <<_:8, rest:bits>> = value
+  let read = fn() { rest }
+  case [read(), rest] {
+    [<<_:8, selected:bits>>, ..] -> selected
+    _ -> <<>>
+  }
+}
+"#;
+        let (bindings, selected) = ModuleBuilder::new(compile(source))
+            .unwrap()
+            .function(FunctionDeclaration::<(BitArrayValue,), BitArrayValue>::new(
+                "selected",
+            ))
+            .unwrap();
+        let module = bindings.seal();
+        let original = BitArrayValue::from_bytes(vec![10, 20, 30, 40, 50]);
+        let pointer = original.bytes().as_ptr().wrapping_add(2);
+        let mut echo = Vec::new();
+        let first = module
+            .call(&selected, (original.clone(),), &mut echo)
+            .unwrap();
+        let second = module.call(&selected, (first.clone(),), &mut echo).unwrap();
+        drop(original);
+        drop(module);
+        assert_eq!(first.bytes(), &[30, 40, 50]);
+        assert_eq!(first.bytes().as_ptr(), pointer);
+        assert_eq!(second.bytes(), &[50]);
+        assert_eq!(second.bytes().as_ptr(), pointer.wrapping_add(2));
+        assert!(echo.is_empty());
+    }
+
+    #[test]
     fn seals_cross_module_entries_once_and_calls_them_repeatedly() {
         let program = compile_program(
             r#"

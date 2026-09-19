@@ -911,8 +911,15 @@ mod tests {
 
     #[test]
     fn native_binary_preserves_bits_and_checks_utf8_without_changing_source_storage() {
-        let values =
-            source(r#"pub fn main() { #("hello", <<"hello":utf8>>, <<255>>, <<1:size(1)>>) }"#);
+        let values = source(
+            r#"
+pub fn main() {
+  let assert <<_:8, binary:bytes-size(5), _:8>> = <<0, "hello":utf8, 255>>
+  let assert <<_:8, partial:bits>> = <<0, 1:size(1)>>
+  #("hello", binary, <<255>>, partial)
+}
+"#,
+        );
         let string = values.index(0).unwrap();
         let binary = values.index(1).unwrap();
         let invalid = values.index(2).unwrap();
@@ -934,6 +941,7 @@ mod tests {
         assert!(invalid.as_string().is_none());
         assert!(partial.as_string().is_none());
         assert_eq!(partial.as_bit_array().unwrap().bit_len(), 1);
+        assert_eq!(partial.as_bit_array().unwrap().bytes(), &[0x80]);
         assert!(!invalid.source_equal(&equality, &partial));
         assert_eq!(invalid.inspect(&inspection), "<<255>>");
         assert!(binary.as_symbol().is_none());
