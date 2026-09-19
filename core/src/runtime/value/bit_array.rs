@@ -5,6 +5,13 @@ use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
 use thiserror::Error;
 
+/// An immutable bit array with canonical bytes and a logical bit length.
+///
+/// Clones share their backing storage. Nonempty pattern ranges also share storage
+/// when the source length, start and selected length are all byte-aligned.
+/// A retained range can keep the original allocation alive. To obtain independent
+/// storage, copy [`Self::bytes`] into [`Self::from_bytes`] for an aligned value,
+/// or into [`Self::try_from_parts`] with the original [`Self::bit_len`] otherwise.
 #[derive(Clone)]
 pub struct BitArrayValue {
     bytes: Arc<[u8]>,
@@ -78,6 +85,26 @@ impl BitArrayValue {
             byte_offset: 0,
             bit_len,
         }
+    }
+
+    pub(in crate::runtime) fn bit_slice(&self, start: usize, length: usize) -> Option<Self> {
+        let end = start.checked_add(length)?;
+        let bits = self.bits().get(start..end)?;
+        let value = if bits.is_empty() {
+            Self::from_bytes(Vec::new())
+        } else if self.bit_len.is_multiple_of(8)
+            && start.is_multiple_of(8)
+            && length.is_multiple_of(8)
+        {
+            Self {
+                bytes: Arc::clone(&self.bytes),
+                byte_offset: self.byte_offset + start / 8,
+                bit_len: length,
+            }
+        } else {
+            Self::from_evaluated(BitVec::from_bitslice(bits))
+        };
+        Some(value)
     }
 
     pub(crate) fn byte_slice(&self, start: usize, length: usize) -> Option<Self> {
@@ -212,6 +239,95 @@ mod tests {
             format!("{slice:?}"),
             "BitArrayValue { bytes: [2], bit_len: 8 }",
         );
+    }
+
+    #[test]
+    fn bit_slices_share_aligned_ranges_and_release_the_last_backing_owner() {
+        let value = BitArrayValue::from_bytes(vec![10, 20, 30, 40, 50, 60]);
+        let backing = Arc::downgrade(&value.bytes);
+        let full = value.bit_slice(0, 48).unwrap();
+        let middle = value.bit_slice(8, 32).unwrap();
+        let nested = middle.bit_slice(8, 16).unwrap();
+        let suffix = value.bit_slice(32, 16).unwrap();
+
+        for slice in [&full, &middle, &nested, &suffix] {
+            assert!(Arc::ptr_eq(&value.bytes, &slice.bytes));
+        }
+        assert_eq!(full.bytes(), &[10, 20, 30, 40, 50, 60]);
+        assert_eq!(middle.bytes(), &[20, 30, 40, 50]);
+        assert_eq!(nested.bytes(), &[30, 40]);
+        assert_eq!(nested.byte_offset, 2);
+        assert_eq!(nested.bit_len(), 16);
+        assert_eq!(suffix.bytes(), &[50, 60]);
+        assert_send_sync::<BitArrayValue>();
+
+        drop(value);
+        drop(full);
+        drop(middle);
+        drop(suffix);
+        assert_eq!(backing.strong_count(), 1);
+        assert_eq!(nested.bytes(), &[30, 40]);
+        drop(nested);
+        assert_eq!(backing.strong_count(), 0);
+    }
+
+    #[test]
+    fn bit_slices_copy_unaligned_ranges_and_partial_sources_canonically() {
+        let value = BitArrayValue::from_bytes(vec![0xab, 0xcd, 0xef]);
+        for (start, length, expected) in [
+            (0, 4, vec![0xa0]),
+            (4, 8, vec![0xbc]),
+            (8, 12, vec![0xcd, 0xe0]),
+        ] {
+            let slice = value.bit_slice(start, length).unwrap();
+            assert!(!Arc::ptr_eq(&value.bytes, &slice.bytes));
+            assert_eq!(slice.bytes(), expected);
+            assert_eq!(slice.bit_len(), length);
+            assert_eq!(slice.pad_to_bytes().bytes(), expected);
+        }
+
+        let partial = BitArrayValue::try_from_parts(vec![0xab, 0xcd, 0xef], 20).unwrap();
+        let aligned_range = partial.bit_slice(8, 8).unwrap();
+        let tail = partial.bit_slice(8, 12).unwrap();
+        assert!(!Arc::ptr_eq(&partial.bytes, &aligned_range.bytes));
+        assert!(!Arc::ptr_eq(&partial.bytes, &tail.bytes));
+        assert_eq!(aligned_range, BitArrayValue::from_bytes(vec![0xcd]));
+        assert_eq!(tail.bytes(), &[0xcd, 0xe0]);
+        assert_eq!(tail.bit_len(), 12);
+        assert_eq!(tail.pad_to_bytes().bit_len(), 16);
+    }
+
+    #[test]
+    fn empty_bit_slices_do_not_retain_their_source() {
+        let value = BitArrayValue::from_bytes(vec![0xff; 32]);
+        let backing = Arc::downgrade(&value.bytes);
+        let first = value.bit_slice(0, 0).unwrap();
+        let middle = value.bit_slice(1, 0).unwrap();
+        let last = value.bit_slice(256, 0).unwrap();
+        let mut remaining = value.clone();
+        for length in (0..32).rev() {
+            remaining = remaining.bit_slice(8, length * 8).unwrap();
+        }
+        drop(value);
+        assert_eq!(backing.strong_count(), 0);
+        for empty in [first, middle, last, remaining] {
+            assert!(empty.bytes().is_empty());
+            assert_eq!(empty.bit_len(), 0);
+        }
+
+        let partial = BitArrayValue::try_from_parts(vec![0xf0], 4).unwrap();
+        let empty = partial.bit_slice(4, 0).unwrap();
+        assert!(!Arc::ptr_eq(&partial.bytes, &empty.bytes));
+        assert_eq!(empty, BitArrayValue::from_bytes(Vec::new()));
+    }
+
+    #[test]
+    fn bit_slices_reject_overflow_and_out_of_bounds_ranges() {
+        let value = BitArrayValue::from_bytes(vec![1, 2]);
+        assert_eq!(value.bit_slice(usize::MAX, 1), None);
+        assert_eq!(value.bit_slice(1, usize::MAX), None);
+        assert_eq!(value.bit_slice(17, 0), None);
+        assert_eq!(value.bit_slice(8, 9), None);
     }
 
     fn assert_send_sync<Value: Send + Sync>() {}

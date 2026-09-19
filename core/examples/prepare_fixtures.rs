@@ -1,5 +1,5 @@
 use geam_core::embedding::{
-    BigInt, FunctionDeclaration, HostedModuleBuilder, ModuleBuilder, StringValue,
+    BigInt, BitArrayValue, FunctionDeclaration, HostedModuleBuilder, ModuleBuilder, StringValue,
 };
 use geam_core::{ModuleSource, PackageSource};
 use std::error::Error;
@@ -52,6 +52,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         .function(FunctionDeclaration::<(), (bool, bool, BigInt)>::new("run"))?;
     native
         .function(FunctionDeclaration::<(StringValue,), (bool, StringValue)>::new("substring"))?;
+    native.function(FunctionDeclaration::<
+        (BitArrayValue, BigInt, BigInt),
+        BitArrayValue,
+    >::new("bit_range"))?;
+    native.function(FunctionDeclaration::<(BitArrayValue,), BitArrayValue>::new(
+        "bit_tail",
+    ))?;
 
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/prepared");
     for (name, data) in [

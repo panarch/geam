@@ -1,7 +1,7 @@
 import gleam/bit_array
 
 pub fn main() {
-  let hello = bit_array.from_string("hello")
+  let assert <<_:8, hello:bytes-size(5), _:8>> = <<255, "hello":utf8, 255>>
   assert bit_array.base64_encode(hello, True) == "aGVsbG8="
   assert bit_array.base64_encode(hello, False) == "aGVsbG8"
   assert bit_array.base64_decode("aGVsbG8=") == Ok(hello)

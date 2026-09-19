@@ -3,6 +3,14 @@ import gleam/dict
 import gleam/order
 
 pub fn main() {
+  let assert <<_:8, selected:bytes-size(2), _:bytes>> = <<0, "AB":utf8, 255>>
+  assert bit_array.bit_size(selected) == 16
+  assert bit_array.byte_size(selected) == 2
+  assert bit_array.pad_to_bytes(selected) == <<65, 66>>
+  assert bit_array.to_string(selected) == Ok("AB")
+  assert bit_array.inspect(selected) == "<<65, 66>>"
+  assert dict.get(dict.from_list([#(selected, "selected")]), <<65, 66>>)
+    == Ok("selected")
   assert bit_array.from_string("AB") == <<"AB":utf8>>
   assert bit_array.bit_size(<<1, 2:size(2)>>) == 10
   assert bit_array.byte_size(<<1, 2:size(2)>>) == 2
