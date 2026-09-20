@@ -1,5 +1,5 @@
 use super::Text;
-use crate::plan::execution::prepared::rust::{Emit, Rust};
+use crate::plan::execution::prepared::rust::{Emit, Rust, TextBlock};
 use camino::{Utf8Path, Utf8PathBuf};
 use ecow::EcoString;
 use gleam_compiler_core::ast::SrcSpan;
@@ -60,6 +60,17 @@ impl SourceContext {
         }
     }
 
+    /// Retains source embedded as a text block, without reading a file. A leading
+    /// line break only separates the literal's opening delimiter from the source,
+    /// so that one line break is left out and the rest is borrowed unchanged.
+    pub const fn from_static_block(path: &'static str, block: &'static str) -> Self {
+        let source = match block.as_bytes() {
+            [b'\n', ..] => block.split_at(1).1,
+            _ => block,
+        };
+        Self::from_static(path, source)
+    }
+
     pub fn path(&self) -> &Utf8Path {
         Utf8Path::new(&self.path)
     }
@@ -75,10 +86,16 @@ impl SourceContext {
 
 impl Emit for SourceContext {
     fn emit(&self, output: &mut Rust) {
-        output.call(
-            "source::SourceContext::from_static",
-            &[&self.path().as_str(), &self.source()],
-        );
+        let path = self.path().as_str();
+        match TextBlock::new(self.source()) {
+            Some(block) => {
+                output.call("source::SourceContext::from_static_block", &[&path, &block])
+            }
+            None => output.call(
+                "source::SourceContext::from_static",
+                &[&path, &self.source()],
+            ),
+        }
     }
 }
 
@@ -324,7 +341,11 @@ mod tests {
         );
         assert_eq!(
             Rust::expression(&source),
-            r#"data::source::SourceContext::from_static("sources/example.gleam", "pub fn main() { \"line\\ntext\" }\n")"#
+            r##"
+data::source::SourceContext::from_static_block("sources/example.gleam", r#"
+pub fn main() { "line\ntext" }
+"#)"##
+                .trim_start_matches('\n')
         );
         let span = SourceSpan::new(3, 12);
         assert_eq!(
@@ -363,6 +384,20 @@ data::source::FunctionCallTarget {
     }
 
     #[test]
+    fn emits_single_line_and_carriage_return_source_as_escaped_strings() {
+        let single_line = SourceContext::new("main.gleam", "pub fn main() { \"one\" }");
+        assert_eq!(
+            Rust::expression(&single_line),
+            r#"data::source::SourceContext::from_static("main.gleam", "pub fn main() { \"one\" }")"#
+        );
+        let carriage_return = SourceContext::new("main.gleam", "pub fn main() {\r\n  1\r\n}\r\n");
+        assert_eq!(
+            Rust::expression(&carriage_return),
+            r#"data::source::SourceContext::from_static("main.gleam", "pub fn main() {\r\n  1\r\n}\r\n")"#
+        );
+    }
+
+    #[test]
     fn source_context_preserves_path_and_source() {
         let context = SourceContext::new("main.gleam", "pub fn main() { 1 }");
 
@@ -391,6 +426,25 @@ data::source::FunctionCallTarget {
         assert_eq!(
             format!("{CONTEXT:?}"),
             "SourceContext { path: \"not-on-disk/main.gleam\", source: \"pub fn main() { 42 }\" }"
+        );
+    }
+
+    #[test]
+    fn static_source_block_excludes_only_its_leading_line_break() {
+        static PATH: &str = "not-on-disk/main.gleam";
+        static BLOCK: &str = "\npub fn main() { 42 }\n";
+        static CONTEXT: SourceContext = SourceContext::from_static_block(PATH, BLOCK);
+
+        assert_eq!(CONTEXT.source(), "pub fn main() { 42 }\n");
+        assert!(std::ptr::eq(CONTEXT.source().as_ptr(), BLOCK[1..].as_ptr()));
+        assert_eq!(CONTEXT, SourceContext::from_static(PATH, &BLOCK[1..]));
+        assert_eq!(
+            SourceContext::from_static_block(PATH, "\n\nsecond line\n").source(),
+            "\nsecond line\n"
+        );
+        assert_eq!(
+            SourceContext::from_static_block(PATH, "pub fn main() { 42 }").source(),
+            "pub fn main() { 42 }"
         );
     }
 

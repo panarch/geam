@@ -10,7 +10,11 @@ pub(super) static PROGRAM: data::ModuleArtifact<std::convert::Infallible> = data
         modules: data::Storage::Static(&[
             data::program::ExecutionModuleContext {
                 module: data::Text::Static("geam_rust_embedding_prepared"),
-                source_context: Some(data::source::SourceContext::from_static("geam_rust_embedding_prepared/src/geam_rust_embedding_prepared.gleam", "pub fn double(value: Int) -> Int {\n  value * 2\n}\n")),
+                source_context: Some(data::source::SourceContext::from_static_block("geam_rust_embedding_prepared/src/geam_rust_embedding_prepared.gleam", r#"
+pub fn double(value: Int) -> Int {
+  value * 2
+}
+"#)),
             },
         ]),
         main: data::function::ProfiledRuntimeFunctionId::Core(data::function::ProfiledCoreRuntimeFunctionId::Int(data::function::IntFunctionId(0))),

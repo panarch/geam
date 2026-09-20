@@ -5,19 +5,65 @@ data::HostedEntryArtifact {
         modules: data::Storage::Static(&[
             data::program::ExecutionModuleContext {
                 module: data::Text::Static("fixture/work"),
-                source_context: Some(data::source::SourceContext::from_static("src/fixture/work.gleam", "pub type Work(value)\n\n@external(erlang, \"fixture\", \"ready\")\npub fn ready(value: value) -> Work(value)\n\n@external(erlang, \"fixture\", \"map\")\npub fn map(value: Work(a), callback: fn(a) -> b) -> Work(b)\n\n@external(erlang, \"fixture\", \"flatten\")\npub fn flatten(value: Work(Work(a))) -> Work(a)\n\n@external(erlang, \"fixture\", \"all\")\npub fn all(values: List(Work(a))) -> Work(List(a))\n\npub fn then(value: Work(a), callback: fn(a) -> Work(b)) -> Work(b) {\n  flatten(map(value, callback))\n}\n")),
+                source_context: Some(data::source::SourceContext::from_static_block("src/fixture/work.gleam", r#"
+pub type Work(value)
+
+@external(erlang, "fixture", "ready")
+pub fn ready(value: value) -> Work(value)
+
+@external(erlang, "fixture", "map")
+pub fn map(value: Work(a), callback: fn(a) -> b) -> Work(b)
+
+@external(erlang, "fixture", "flatten")
+pub fn flatten(value: Work(Work(a))) -> Work(a)
+
+@external(erlang, "fixture", "all")
+pub fn all(values: List(Work(a))) -> Work(List(a))
+
+pub fn then(value: Work(a), callback: fn(a) -> Work(b)) -> Work(b) {
+  flatten(map(value, callback))
+}
+"#)),
             },
             data::program::ExecutionModuleContext {
                 module: data::Text::Static("entry"),
-                source_context: Some(data::source::SourceContext::from_static("src/entry.gleam", "pub fn main() {\n  echo second([0, 42])\n  fn(value) { value }\n}\n\nfn second(items) {\n  case items {\n    [] -> 0\n    [item] -> item\n    [_, item, ..] -> item\n  }\n}\n")),
+                source_context: Some(data::source::SourceContext::from_static_block("src/entry.gleam", r#"
+pub fn main() {
+  echo second([0, 42])
+  fn(value) { value }
+}
+
+fn second(items) {
+  case items {
+    [] -> 0
+    [item] -> item
+    [_, item, ..] -> item
+  }
+}
+"#)),
             },
             data::program::ExecutionModuleContext {
                 module: data::Text::Static("entry_failure"),
-                source_context: Some(data::source::SourceContext::from_static("src/entry_failure.gleam", "pub fn main() {\n  echo \"before failure\"\n  panic as \"prepared main failed\"\n}\n")),
+                source_context: Some(data::source::SourceContext::from_static_block("src/entry_failure.gleam", r#"
+pub fn main() {
+  echo "before failure"
+  panic as "prepared main failed"
+}
+"#)),
             },
             data::program::ExecutionModuleContext {
                 module: data::Text::Static("entry_work"),
-                source_context: Some(data::source::SourceContext::from_static("src/entry_work.gleam", "import fixture/work\n\npub fn main() {\n  echo \"main\"\n  work.map(work.ready(41), fn(value) {\n    echo value + 1\n    fn(value: Int) { value + 1 }\n  })\n}\n")),
+                source_context: Some(data::source::SourceContext::from_static_block("src/entry_work.gleam", r#"
+import fixture/work
+
+pub fn main() {
+  echo "main"
+  work.map(work.ready(41), fn(value) {
+    echo value + 1
+    fn(value: Int) { value + 1 }
+  })
+}
+"#)),
             },
         ]),
         main: data::function::ProfiledRuntimeFunctionId::External(data::function::ExternalFunctionId {

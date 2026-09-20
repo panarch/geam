@@ -6,11 +6,89 @@ data::HostedModuleArtifact {
             modules: data::Storage::Static(&[
                 data::program::ExecutionModuleContext {
                     module: data::Text::Static("fixture/work"),
-                    source_context: Some(data::source::SourceContext::from_static("src/fixture/work.gleam", "pub type Work(value)\n\n@external(erlang, \"fixture\", \"ready\")\npub fn ready(value: value) -> Work(value)\n\n@external(erlang, \"fixture\", \"map\")\npub fn map(value: Work(a), callback: fn(a) -> b) -> Work(b)\n\n@external(erlang, \"fixture\", \"flatten\")\npub fn flatten(value: Work(Work(a))) -> Work(a)\n\n@external(erlang, \"fixture\", \"all\")\npub fn all(values: List(Work(a))) -> Work(List(a))\n\npub fn then(value: Work(a), callback: fn(a) -> Work(b)) -> Work(b) {\n  flatten(map(value, callback))\n}\n")),
+                    source_context: Some(data::source::SourceContext::from_static_block("src/fixture/work.gleam", r#"
+pub type Work(value)
+
+@external(erlang, "fixture", "ready")
+pub fn ready(value: value) -> Work(value)
+
+@external(erlang, "fixture", "map")
+pub fn map(value: Work(a), callback: fn(a) -> b) -> Work(b)
+
+@external(erlang, "fixture", "flatten")
+pub fn flatten(value: Work(Work(a))) -> Work(a)
+
+@external(erlang, "fixture", "all")
+pub fn all(values: List(Work(a))) -> Work(List(a))
+
+pub fn then(value: Work(a), callback: fn(a) -> Work(b)) -> Work(b) {
+  flatten(map(value, callback))
+}
+"#)),
                 },
                 data::program::ExecutionModuleContext {
                     module: data::Text::Static("app"),
-                    source_context: Some(data::source::SourceContext::from_static("src/app.gleam", "import fixture/work\n\nfn identity(value) {\n  value\n}\n\npub fn make(seed: Int) -> work.Work(Int) {\n  let original = work.ready(seed)\n  let same = identity(original)\n  let assert [same_list] = identity([same])\n  let same_closure = identity(fn() { same_list })()\n  let assert [same_closure_list] = identity(fn() { [same_closure] })()\n  let offset = 2\n  use value <- work.map(same_closure_list)\n  value + offset\n}\n\npub fn collect(seed: Int) -> work.Work(List(Int)) {\n  let shared = make(seed)\n  work.all([shared, shared])\n}\n\npub fn keep(value: work.Work(Int)) -> work.Work(Int) {\n  value\n}\n\npub fn failure() -> work.Work(Int) {\n  use _ <- work.map(work.ready(0))\n  panic as \"prepared work failed\"\n}\n\npub type Captured {\n  Captured(callback: fn(Int) -> Int)\n}\n\nfn chain(depth: Int, previous: fn(Int) -> Int) -> fn(Int) -> Int {\n  case depth {\n    0 -> previous\n    _ -> chain(depth - 1, fn(value) { previous(value) + 1 })\n  }\n}\n\npub fn capture(depth: Int) -> Captured {\n  Captured(chain(depth, fn(value) { value }))\n}\n\npub fn extend(value: Captured, depth: Int) -> Captured {\n  Captured(chain(depth, value.callback))\n}\n\npub fn identities(value: Captured) -> #(Bool, Bool) {\n  let callback = value.callback\n  #(callback == value.callback, callback == fn(input) { callback(input) })\n}\n\npub fn invoke(value: Captured) -> work.Work(Int) {\n  use initial <- work.map(work.ready(1))\n  value.callback(initial)\n}\n")),
+                    source_context: Some(data::source::SourceContext::from_static_block("src/app.gleam", r#"
+import fixture/work
+
+fn identity(value) {
+  value
+}
+
+pub fn make(seed: Int) -> work.Work(Int) {
+  let original = work.ready(seed)
+  let same = identity(original)
+  let assert [same_list] = identity([same])
+  let same_closure = identity(fn() { same_list })()
+  let assert [same_closure_list] = identity(fn() { [same_closure] })()
+  let offset = 2
+  use value <- work.map(same_closure_list)
+  value + offset
+}
+
+pub fn collect(seed: Int) -> work.Work(List(Int)) {
+  let shared = make(seed)
+  work.all([shared, shared])
+}
+
+pub fn keep(value: work.Work(Int)) -> work.Work(Int) {
+  value
+}
+
+pub fn failure() -> work.Work(Int) {
+  use _ <- work.map(work.ready(0))
+  panic as "prepared work failed"
+}
+
+pub type Captured {
+  Captured(callback: fn(Int) -> Int)
+}
+
+fn chain(depth: Int, previous: fn(Int) -> Int) -> fn(Int) -> Int {
+  case depth {
+    0 -> previous
+    _ -> chain(depth - 1, fn(value) { previous(value) + 1 })
+  }
+}
+
+pub fn capture(depth: Int) -> Captured {
+  Captured(chain(depth, fn(value) { value }))
+}
+
+pub fn extend(value: Captured, depth: Int) -> Captured {
+  Captured(chain(depth, value.callback))
+}
+
+pub fn identities(value: Captured) -> #(Bool, Bool) {
+  let callback = value.callback
+  #(callback == value.callback, callback == fn(input) { callback(input) })
+}
+
+pub fn invoke(value: Captured) -> work.Work(Int) {
+  use initial <- work.map(work.ready(1))
+  value.callback(initial)
+}
+"#)),
                 },
             ]),
             main: data::function::ProfiledRuntimeFunctionId::External(data::function::ExternalFunctionId {
