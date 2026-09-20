@@ -1,0 +1,20 @@
+[package]
+name = "geam-benchmark-support"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Measurement adapters for the Geam benchmark project"
+
+[package.metadata.geam.provider]
+schema = 1
+gleam-package = "geam_benchmarks"
+gleam-version = ">= 0.1.0 and < 0.2.0"
+
+[dependencies]
+geam.workspace = true
+
+[dev-dependencies]
+geam = { workspace = true, features = ["embedding", "tokio"] }
+tokio = { version = "1", features = ["rt"] }

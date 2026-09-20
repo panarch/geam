@@ -1,0 +1,19 @@
+[package]
+name = "geam-bench"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Cross-target prepared execution benchmarks"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+clap.workspace = true
+sha2.workspace = true
+
+tempfile = "3"
+toml_edit = "0.25"
+signal-hook = "0.4"
+nix = { version = "0.30", features = ["signal", "process"] }

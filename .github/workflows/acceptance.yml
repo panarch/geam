@@ -645,3 +645,57 @@ jobs:
 
       - name: Check fixture coverage
         run: cargo llvm-cov --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --locked --summary-only --fail-under-lines 100 --fail-under-regions 100
+
+  benchmark-tooling:
+    name: Benchmark tooling
+    needs: checkout-cli
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Gleam toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          gleam-version: "1.18.1"
+          rebar3-version: "3"
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: benchmarks/.node-version
+          package-manager-cache: false
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+          rustflags: ""
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: benchmark-tooling
+          workspaces: |
+            . -> target
+            benchmarks -> target
+
+      - name: Fetch benchmark dependencies
+        run: cargo fetch --manifest-path benchmarks/Cargo.toml --locked
+
+      - name: Download checkout CLI
+        uses: actions/download-artifact@v8
+        with:
+          name: checkout-geam-linux
+          path: ${{ runner.temp }}/checkout-geam/bin
+
+      - name: Make checkout CLI executable
+        run: chmod +x "$RUNNER_TEMP/checkout-geam/bin/geam"
+
+      - name: Test benchmark owners and relocated three-target workflow
+        env:
+          GEAM_BENCH_TEST_GEAM: ${{ runner.temp }}/checkout-geam/bin/geam
+        run: cargo test --manifest-path benchmarks/Cargo.toml --workspace --locked

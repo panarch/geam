@@ -2083,6 +2083,30 @@ mod tests {
     }
 
     #[test]
+    fn raw_identifiers_keep_rust_spelling_but_register_the_unraw_gleam_name() {
+        for (attribute, asyncness) in [
+            (quote!(#[geam::function]), quote!()),
+            (quote!(#[geam::function(await)]), quote!(async)),
+            (quote!(#[geam::function]), quote!(async)),
+        ] {
+            let expansion = expand(
+                quote!(path = "names", crate_path = geam_core),
+                quote! {
+                    mod names {
+                        #attribute
+                        #asyncness fn r#match() -> bool { true }
+                    }
+                },
+            )
+            .unwrap()
+            .to_string();
+            assert!(expansion.contains("fn r#match"));
+            assert!(expansion.contains("\"match\""));
+            assert!(!expansion.contains("\"r#match\""));
+        }
+    }
+
+    #[test]
     fn await_keyword_selects_ordinary_completion_without_changing_unmarked_async() {
         for (arguments, continuation) in [
             (quote!(), false),
