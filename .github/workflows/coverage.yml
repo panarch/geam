@@ -153,3 +153,63 @@ jobs:
 
       - name: Check geam binary coverage
         run: cargo llvm-cov report --package geam --summary-only --fail-under-lines 100 --fail-under-regions 100
+
+  benchmark-coverage:
+    name: Benchmark tooling
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Gleam toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          gleam-version: "1.18.1"
+          rebar3-version: "3"
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: benchmarks/.node-version
+          package-manager-cache: false
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: llvm-tools-preview
+          cache: false
+          rustflags: ""
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: benchmark-tooling
+          workspaces: |
+            . -> target
+            benchmarks -> target
+
+      - name: Fetch benchmark dependencies
+        run: cargo fetch --manifest-path benchmarks/Cargo.toml --locked
+
+      - name: Build checkout CLI without coverage instrumentation
+        run: cargo build --package geam --bin geam --locked
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.8.7
+
+      - name: Clean independent benchmark coverage artifacts
+        run: cargo llvm-cov clean --manifest-path benchmarks/Cargo.toml --workspace
+
+      - name: Run benchmark coverage closure
+        run: cargo llvm-cov --manifest-path benchmarks/Cargo.toml --workspace --no-report --locked
+
+      - name: Check geam-bench coverage
+        run: cargo llvm-cov report --manifest-path benchmarks/Cargo.toml --package geam-bench --summary-only --fail-under-lines 100 --fail-under-regions 100
+
+      - name: Check geam-benchmark-support coverage
+        run: cargo llvm-cov report --manifest-path benchmarks/Cargo.toml --package geam-benchmark-support --summary-only --fail-under-lines 100 --fail-under-regions 100

@@ -67,7 +67,6 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             },
         ),
     };
-    let module_count = modules.len();
     let store_fields = modules.iter().map(|module| {
         quote! {
             #module: #module::__GeamStores,
@@ -116,14 +115,14 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                 ::std::vec::Vec<#support::HostProviderModule<Profile>>,
                 #support::HostRegistrationError,
             > {
-                let mut providers = ::std::vec::Vec::with_capacity(#module_count);
-                #(
-                    providers.push(
-                        <#modules::__GeamModule as
-                            #support::ProviderModuleRegistration<Profile>>::module()?,
-                    );
-                )*
-                ::core::result::Result::Ok(providers)
+                ::core::iter::empty()
+                    #(
+                        .chain(::core::iter::once_with(
+                            <#modules::__GeamModule as
+                                #support::ProviderModuleRegistration<Profile>>::module,
+                        ))
+                    )*
+                    .collect()
             }
         }
     })

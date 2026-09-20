@@ -1,0 +1,8 @@
+name = "geam_benchmarks"
+version = "0.1.0"
+description = "Shared Gleam workloads for Geam, Erlang, and JavaScript"
+licences = ["Apache-2.0"]
+
+[dependencies]
+gleam_stdlib = ">= 1.0.3 and < 1.0.4"
+gleam_json = ">= 3.1.0 and < 3.1.1"

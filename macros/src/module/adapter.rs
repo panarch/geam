@@ -14,6 +14,7 @@ use super::{
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
+use syn::ext::IdentExt;
 
 pub(super) fn generate_function_adapter(
     declaration: &ProviderFunction,
@@ -182,7 +183,7 @@ pub(super) fn generate_function_adapter(
         support,
         call_is_mutable || super::syntax::function_contains_future_input(function),
     );
-    let name = ident.to_string();
+    let name = ident.unraw().to_string();
     let host_result_unwrap = function
         .host_result
         .then(|| quote!(let returned = returned?;));

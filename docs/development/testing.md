@@ -559,6 +559,62 @@ Source-level rejection fixtures live under categorized
 boundary cases that are clearer as complete Gleam modules than as planner unit
 tests.
 
+## Benchmark Tooling
+
+The independently locked [`benchmarks/`](https://github.com/panarch/geam/tree/main/benchmarks) workspace
+owns `geam-bench` (preparation, artifact admission, process execution and result
+analysis) and `geam-benchmark-support` (the ordinary clock/environment/consumer
+provider). These are tooling packages; benchmark results and private remote
+machine administration are outside the repository's verification contract.
+
+Build the checkout CLI and install Gleam `1.18.1`, Erlang/OTP `29` and the exact
+Node.js version in `benchmarks/.node-version` before running its mandatory tests:
+
+```sh
+cargo build --package geam --bin geam --locked
+cargo fetch --manifest-path benchmarks/Cargo.toml --locked
+cargo test --manifest-path benchmarks/Cargo.toml --workspace --locked
+cargo fmt --manifest-path benchmarks/Cargo.toml --all --check
+cargo clippy --manifest-path benchmarks/Cargo.toml --workspace --all-targets --locked -- -D warnings
+RUSTDOCFLAGS='-D warnings' cargo doc --manifest-path benchmarks/Cargo.toml --workspace --no-deps --locked
+(cd benchmarks/project && gleam format --check src)
+```
+
+`GEAM_BENCH_TEST_GEAM` selects an existing checkout CLI instead of the default
+`target/debug/geam`. The public workflow test prepares the actual shared suite,
+relocates the complete executable bundle, deletes original source/build paths,
+and removes compilers from its execution PATH. It runs all 54 cases on three
+targets (162 processes / 486 smoke samples), two cases in four paired rounds
+(16 processes / 48 samples), Geam-only execution and runtime-free analysis.
+It also verifies interruption, collisions and changed evidence. The timings
+are diagnostic; there are no performance thresholds or published result tables.
+Owner tests separately fix protocols, case oracles, schedules, normalization,
+receipts, artifact admission and typed provider behavior.
+Failure tests use Rust writer/durability and process-control boundaries, actual
+filesystem errors and acquired OS results. They verify partial writes, failed
+synchronization, primary-error preservation and termination/reaping ownership.
+Preparation and result admission check source changes and incomplete evidence.
+The real workflow continues to execute compiled workloads; owner-level failure
+inputs do not replace a workload evaluator. No C fixture or loader injection is
+required.
+
+Workspace owns Rust/Gleam formatting, warnings-denied Clippy and rustdoc.
+Acceptance's mandatory Linux `Benchmark tooling` job reuses the `Checkout CLI`
+artifact. Coverage has a separate benchmark-only closure; root-package or other
+workspace coverage does not compensate for either benchmark package:
+
+```sh
+cargo llvm-cov clean --manifest-path benchmarks/Cargo.toml --workspace
+cargo llvm-cov --manifest-path benchmarks/Cargo.toml --workspace --no-report --locked
+cargo llvm-cov report --manifest-path benchmarks/Cargo.toml --package geam-bench --summary-only --fail-under-lines 100 --fail-under-regions 100
+cargo llvm-cov report --manifest-path benchmarks/Cargo.toml --package geam-benchmark-support --summary-only --fail-under-lines 100 --fail-under-regions 100
+```
+
+Both line and full-scope region gates remain 100%. The detailed LLVM report
+commands below also accept `--manifest-path benchmarks/Cargo.toml` and either
+benchmark package name. Runtime/performance baselines, profiling and private
+remote-host validation are separate explicitly scheduled work.
+
 ## Commands
 
 With the Rust toolchain, Gleam `v1.18.1`, and Erlang/OTP `29` installed, run the
