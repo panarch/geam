@@ -400,6 +400,9 @@ jobs:
       - name: Fetch workspace dependencies for offline fixtures
         run: cargo fetch --locked
 
+      - name: Fetch independently locked callable consumer dependencies
+        run: cargo fetch --manifest-path examples/embedding/callables/Cargo.toml --locked
+
       - name: Verify prepared generation and source-free distribution
         run: cargo test --package geam --test prepared_embedding --test standalone_build --locked
 

@@ -232,6 +232,19 @@ fn prepares_app_local_callables_and_runs_without_source_or_compilers() {
     fs::create_dir_all(application.join(".cargo")).unwrap();
     copy_directory(&source.join("src"), &application.join("src"));
     copy_directory(&source.join("gleam/src"), &application.join("gleam/src"));
+    // Exercise Windows-style checkout line endings on every CI platform.
+    for file in [
+        "src/callbacks.rs",
+        "src/pricing.rs",
+        "src/main.rs",
+        "src/declarations.rs",
+        "src/geam_bindings.rs",
+        "src/geam_bindings/program.rs",
+    ] {
+        let path = application.join(file);
+        let content = fs::read_to_string(&path).unwrap();
+        fs::write(path, content.replace("\r\n", "\n").replace('\n', "\r\n")).unwrap();
+    }
     for file in ["Cargo.lock", "gleam/gleam.toml", "gleam/manifest.toml"] {
         fs::copy(source.join(file), application.join(file)).unwrap();
     }
